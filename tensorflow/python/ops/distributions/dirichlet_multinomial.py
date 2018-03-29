@@ -192,7 +192,7 @@ class DirichletMultinomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, concentration]):
+    with ops.name_scope(name, values=[total_count, concentration]) as name:
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
       #   we use the last dimension for the distribution, whereas

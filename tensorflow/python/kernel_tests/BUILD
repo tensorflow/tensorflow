@@ -1569,7 +1569,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "init_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["init_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

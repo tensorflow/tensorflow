@@ -630,7 +630,10 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:graph_optimizer",
     ],
@@ -638,7 +641,6 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "debug_stripper_test",
-    size = "small",
     srcs = ["debug_stripper_test.cc"],
     deps = [
         ":debug_stripper",
@@ -646,6 +648,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:grappler_test",
     ],

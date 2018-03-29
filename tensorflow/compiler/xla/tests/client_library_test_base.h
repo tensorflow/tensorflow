@@ -217,11 +217,13 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   // Convenience method for running a built computation, transferring the
   // result, and comparing it to the expected tuple literal.
+  template <typename BuilderT>
   void ComputeAndCompareTuple(
-      ComputationBuilder* builder, const Literal& expected,
+      BuilderT* builder, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+  template <typename BuilderT>
   void ComputeAndCompareTuple(
-      ComputationBuilder* builder, const Literal& expected,
+      BuilderT* builder, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
 
   // Convenience method for running a built computation and comparing the result

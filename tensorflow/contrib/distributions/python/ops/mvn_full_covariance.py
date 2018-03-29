@@ -159,7 +159,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
     parameters = locals()
 
     # Convert the covariance_matrix up to a scale_tril and call MVNTriL.
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[loc, covariance_matrix]):
         if covariance_matrix is None:
           scale_tril = None
