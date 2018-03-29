@@ -145,6 +145,12 @@ class OpLevelCostEstimator {
   Costs PredictBatchMatMul(const OpContext& op_context) const;
   Costs PredictMetadata(const OpContext& op_context) const;
   Costs PredictGatherOrSlice(const OpContext& op_context) const;
+  Costs PredictMaxPool(const OpContext& op_context) const;
+  Costs PredictMaxPoolGrad(const OpContext& op_context) const;
+  Costs PredictAvgPool(const OpContext& op_context) const;
+  Costs PredictAvgPoolGrad(const OpContext& op_context) const;
+  Costs PredictFusedBatchNorm(const OpContext& op_context) const;
+  Costs PredictFusedBatchNormGrad(const OpContext& op_context) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -156,9 +162,15 @@ class OpLevelCostEstimator {
     }
   }
 
+  // For convolution and its grad ops.
   static ConvolutionDimensions ConvolutionDimensionsFromInputs(
       const TensorShapeProto& original_image_shape,
-      const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
+      const TensorShapeProto& original_filter_shape, const OpInfo& op_info,
+      bool* found_unknown_shapes);
+
+  // For Pooling, FusedBatchNorm, and their grad ops.
+  static ConvolutionDimensions OpDimensionsFromInputs(
+      const TensorShapeProto& original_image_shape, const OpInfo& op_info,
       bool* found_unknown_shapes);
 
  protected:

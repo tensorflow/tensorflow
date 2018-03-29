@@ -151,10 +151,11 @@ class Kumaraswamy(transformed_distribution.TransformedDistribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    concentration1 = ops.convert_to_tensor(
-        concentration1, name="concentration1")
-    concentration0 = ops.convert_to_tensor(
-        concentration0, name="concentration0")
+    with ops.name_scope(name, values=[concentration1, concentration0]) as name:
+      concentration1 = ops.convert_to_tensor(
+          concentration1, name="concentration1")
+      concentration0 = ops.convert_to_tensor(
+          concentration0, name="concentration0")
     super(Kumaraswamy, self).__init__(
         distribution=uniform.Uniform(
             low=array_ops.zeros([], dtype=concentration1.dtype),

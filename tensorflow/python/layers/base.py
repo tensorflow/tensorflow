@@ -625,6 +625,8 @@ class Layer(checkpointable.CheckpointableBase):
     input_list = nest.flatten(inputs)
 
     build_graph = not context.executing_eagerly()
+    # TODO(fchollet, allenl): Make deferred mode work with subclassed Models
+    # which don't use an "inputs" argument.
     in_deferred_mode = isinstance(input_list[0], _DeferredTensor)
     # Ensure the Layer, if being reused, is working with inputs from
     # the same graph as where it was created.

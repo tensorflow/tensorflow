@@ -32,6 +32,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@group_by_window
 @@ignore_errors
 @@make_batched_features_dataset
+@@make_csv_dataset
 @@make_saveable_from_iterator
 @@map_and_batch
 @@padded_batch_and_drop_remainder
@@ -70,6 +71,7 @@ from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
 from tensorflow.contrib.data.python.ops.readers import make_batched_features_dataset
+from tensorflow.contrib.data.python.ops.readers import make_csv_dataset
 from tensorflow.contrib.data.python.ops.readers import read_batch_features
 from tensorflow.contrib.data.python.ops.readers import SqlDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
@@ -82,3 +84,6 @@ from tensorflow.python.ops.parsing_ops import parse_single_example_v2 as parse_s
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__)
+
+# A constant that can be used to enable auto-tuning.
+AUTOTUNE = -1

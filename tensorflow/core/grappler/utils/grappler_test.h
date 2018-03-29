@@ -37,6 +37,10 @@ class GrapplerTest : public ::testing::Test {
   std::vector<Tensor> EvaluateNodes(
       const GraphDef& graph, const std::vector<string>& node_names) const;
 
+  std::vector<Tensor> EvaluateNodes(
+      const GraphDef& graph, const std::vector<string>& node_names,
+      const std::vector<std::pair<string, Tensor>>& inputs) const;
+
   std::vector<Tensor> EvaluateFetchNodes(const GrapplerItem& item) const;
 
   NodeDef* AddNode(const string& name, const string& op,

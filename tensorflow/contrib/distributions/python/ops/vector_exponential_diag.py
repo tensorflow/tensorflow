@@ -176,7 +176,7 @@ class VectorExponentialDiag(
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
     parameters = locals()
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier]):
         # No need to validate_args while making diag_scale.  The returned
