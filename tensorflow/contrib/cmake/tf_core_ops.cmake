@@ -15,8 +15,9 @@
 set(tf_op_lib_names
     "audio_ops"
     "array_ops"
-		"batch_ops"
+    "batch_ops"
     "bitwise_ops"
+    "boosted_trees_ops"
     "candidate_sampling_ops"
     "checkpoint_ops"
     "control_flow_ops"
@@ -28,7 +29,7 @@ set(tf_op_lib_names
     "image_ops"
     "io_ops"
     "linalg_ops"
-		"list_ops"
+    "list_ops"
     "lookup_ops"
     "logging_ops"
     "manip_ops"
@@ -48,7 +49,7 @@ set(tf_op_lib_names
     "state_ops"
     "stateless_random_ops"
     "string_ops"
-		"summary_ops"
+    "summary_ops"
     "training_ops"
 )
 

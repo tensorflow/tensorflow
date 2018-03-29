@@ -228,6 +228,11 @@ tensorflow/core/kernels/cast_op_impl_int64.cc
 tensorflow/core/kernels/cast_op_impl_int8.cc
 tensorflow/core/kernels/cast_op_impl_uint16.cc
 tensorflow/core/kernels/cast_op_impl_uint8.cc
+tensorflow/core/kernels/boosted_trees/prediction_ops.cc
+tensorflow/core/kernels/boosted_trees/resource_ops.cc
+tensorflow/core/kernels/boosted_trees/resources.cc
+tensorflow/core/kernels/boosted_trees/stats_ops.cc
+tensorflow/core/kernels/boosted_trees/training_ops.cc
 tensorflow/core/kernels/bias_op.cc
 tensorflow/core/kernels/bcast_ops.cc
 tensorflow/core/kernels/batch_norm_op.cc
@@ -286,6 +291,7 @@ tensorflow/core/ops/data_flow_ops.cc
 tensorflow/core/ops/ctc_ops.cc
 tensorflow/core/ops/control_flow_ops.cc
 tensorflow/core/ops/candidate_sampling_ops.cc
+tensorflow/core/ops/boosted_trees_ops.cc
 tensorflow/core/ops/array_ops.cc
 tensorflow/core/ops/array_grad.cc
 tensorflow/core/kernels/spacetobatch_functor.cc

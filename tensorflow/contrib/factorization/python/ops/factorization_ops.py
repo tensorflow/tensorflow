@@ -218,11 +218,11 @@ class WALSModel(object):
         - When set to None, w_ij = unobserved_weight, which simplifies to ALS.
         Note that col_weights must also be set to "None" in this case.
         - If it is a list of lists of non-negative real numbers, it needs to be
-        in the form of \\([[w_0, w_1, ...], [w_k, ... ], [...]]\\), with the
-        number of inner lists matching the number of row factor shards and the
-        elements in each inner list are the weights for the rows of the
-        corresponding row factor shard. In this case,  \\(w_ij\\) =
-        unobserved_weight + row_weights[i] * col_weights[j].
+        in the form of [[w_0, w_1, ...], [w_k, ... ], [...]], with the number of
+        inner lists matching the number of row factor shards and the elements in
+        each inner list are the weights for the rows of the corresponding row
+        factor shard. In this case,  w_ij = unobserved_weight +
+                                            row_weights[i] * col_weights[j].
         - If this is a single non-negative real number, this value is used for
         all row weights and \\(w_ij\\) = unobserved_weight + row_weights *
                                    col_weights[j].

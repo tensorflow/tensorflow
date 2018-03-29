@@ -1569,7 +1569,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "init_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["init_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2944,16 +2944,4 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

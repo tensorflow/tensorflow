@@ -86,6 +86,7 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 
 * [TensorFlow Website](https://www.tensorflow.org)
 * [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
+* [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
 * [TensorFlow Model Zoo](https://github.com/tensorflow/models)
 * [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
 * [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)

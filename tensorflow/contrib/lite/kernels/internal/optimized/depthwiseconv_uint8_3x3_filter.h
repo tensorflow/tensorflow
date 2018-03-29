@@ -440,6 +440,47 @@ struct ConvKernel3x3FilterDepth16<1, 1> {
   }
 };
 
+inline bool Fast3by3FilterKernelSupported(const Dims<4>& input_dims,
+                                          const Dims<4>& filter_dims,
+                                          int stride_width, int stride_height,
+                                          int pad_width, int pad_height,
+                                          int depth_multiplier,
+                                          const Dims<4>& output_dims) {
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int input_depth = ArraySize(input_dims, 0);
+  const int filter_height = ArraySize(filter_dims, 2);
+  const int filter_width = ArraySize(filter_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
+
+  bool supported = filter_width == 3 && filter_height == 3 &&
+                   depth_multiplier == 1 &&
+                   (stride_width == 1 || stride_width == 2) &&
+                   (stride_height == 1 || stride_height == 2) &&
+                   pad_width == 0 && pad_height == 0 && (input_depth % 16) == 0;
+
+  if (!supported) {
+    return false;
+  }
+
+  // Handle case where padding is zero but type is not kValid. This would
+  // require special boundary case handling that is not supported yet.
+
+  const int out_x = output_width - 1;
+  const int out_y = output_height - 1;
+
+  const int in_x_origin = (out_x * stride_width) - pad_width;
+  const int in_y_origin = (out_y * stride_height) - pad_height;
+
+  const int in_x_end = in_x_origin + filter_width;
+  const int in_y_end = in_y_origin + filter_height;
+
+  // Supported only if filter on the right and bottom boundary lies completely
+  // within the input.
+  return in_x_end <= input_width && in_y_end <= input_height;
+}
+
 inline void DepthwiseConv3by3FilterDepth16(
     const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
     const uint8* filter_data, const Dims<4>& filter_dims, int32 filter_offset,
@@ -634,7 +675,7 @@ inline void DepthwiseConv3by3FilterDepth16(
         // Handle the rest of the right side.
         for (; out_x < output_width; out_x++) {
           // This code path can only be reached if we're handling >1 x outputs
-          // at a time or support padding.
+          // at a time or support kSame padding.
         }
       }
 

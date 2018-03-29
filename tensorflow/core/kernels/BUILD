@@ -6096,6 +6096,13 @@ cc_library(
     ],
 )
 
+tf_kernel_library(
+    name = "boosted_trees_ops",
+    deps = [
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_ops",
+    ],
+)
+
 cc_library(
     name = "captured_function",
     hdrs = ["captured_function.h"],
@@ -6146,18 +6153,6 @@ tf_kernel_library(
 
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.

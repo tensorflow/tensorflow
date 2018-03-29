@@ -600,6 +600,20 @@ class UnaryOpsTest(XLATestCase):
               src,
               expected=dst)
 
+  def testBitcast(self):
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.bitcast(x, dtypes.int32),
+        np.array([1, 0x3f800000], np.int32),
+        expected=np.array([1, 0x3f800000], np.int32))
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.bitcast(x, dtypes.float32),
+        np.array([1, 0x3f800000], np.int32),
+        expected=np.array([1e-45, 1.0], np.float32))
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.bitcast(x, dtypes.int32),
+        np.array([1e-45, 1.0], np.float32),
+        expected=np.array([1, 0x3f800000], np.int32))
+
   def testInvertPermutation(self):
     self._assertOpOutputMatchesExpected(
         array_ops.invert_permutation,

@@ -83,18 +83,6 @@ py_library(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 # NOTE: target cannot be testonly because it needs to be in the pip
 # package. Sigh.
 py_library(
