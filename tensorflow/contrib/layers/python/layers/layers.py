@@ -3045,16 +3045,16 @@ def legacy_fully_connected(x,
   `activation_fn` is `None`, the result of `y = w * x + b` is
   returned.
 
-  If `x` has shape [\\\(\\text{dim}_0, \\text{dim}_1, ..., \\text{dim}_n\\\)]
-  with more than 2 dimensions (\\\(n > 1\\\)), then we repeat the matrix
+  If `x` has shape [\\(\text{dim}_0, \text{dim}_1, ..., \text{dim}_n\\)]
+  with more than 2 dimensions (\\(n > 1\\)), then we repeat the matrix
   multiply along the first dimensions. The result r is a tensor of shape
-  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`],
-  where \\\( r_{i_0, ..., i_{n-1}, k} =
-  \\sum_{0 \\leq j < \\text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\\).
+  [\\(\text{dim}_0, ..., \text{dim}_{n-1},\\) `num_output_units`],
+  where \\( r_{i_0, ..., i_{n-1}, k} =
+  \sum_{0 \leq j < \text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\).
   This is accomplished by reshaping `x` to 2-D
-  [\\\(\\text{dim}_0 \\cdot ... \\cdot \\text{dim}_{n-1}, \\text{dim}_n\\\)]
+  [\\(\text{dim}_0 \cdot ... \cdot \text{dim}_{n-1}, \text{dim}_n\\)]
   before the matrix multiply and afterwards reshaping it to
-  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`].
+  [\\(\text{dim}_0, ..., \text{dim}_{n-1},\\) `num_output_units`].
 
   This op creates `w` and optionally `b`. Bias (`b`) can be disabled by setting
   `bias_init` to `None`.
