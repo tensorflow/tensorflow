@@ -107,13 +107,7 @@ def dynamic_print(*values):
   return py_func.wrap_py_func(
       flushed_print, None, values, use_dummy_return=True)
 
-  def flushed_print(*vals):
-    print(*vals)
-    sys.stdout.flush()
-
-  return py_func.wrap_py_func(
-      flushed_print, None, values, use_dummy_return=True)
-
+ 
 def dynamic_dataset(iterated):
   """Implementartion of smart tf.data.Dataset epoch wrapping.
 
