@@ -40,7 +40,7 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import tf_export
 
-TreeHParams = collections.namedtuple(
+_TreeHParams = collections.namedtuple(
     'TreeHParams',
     ['n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity'])
 
@@ -259,8 +259,8 @@ def _bt_model_fn(
     example_id_column_name=None,
     # TODO(youngheek): replace this later using other options.
     train_in_memory=False,
-    name='TreeEnsembleModel'):
-  """Gradient Boosted Decision Tree model_fn.
+    name='boosted_trees'):
+  """Gradient Boosted Trees model_fn.
 
   Args:
     features: dict of `Tensor`.
@@ -290,7 +290,7 @@ def _bt_model_fn(
   Raises:
     ValueError: mode or params are invalid, or features has the wrong type.
   """
-  is_single_machine = (config.num_worker_replicas == 1)
+  is_single_machine = (config.num_worker_replicas <= 1)
   if train_in_memory:
     assert n_batches_per_layer == 1, (
         'When train_in_memory is enabled, input_fn should return the entire '
@@ -617,7 +617,7 @@ class BoostedTreesClassifier(estimator.Estimator):
         n_classes, weight_column, label_vocabulary=label_vocabulary)
 
     # HParams for the model.
-    tree_hparams = TreeHParams(
+    tree_hparams = _TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
         tree_complexity)
 
@@ -723,7 +723,7 @@ class BoostedTreesRegressor(estimator.Estimator):
     head = _create_regression_head(label_dimension, weight_column)
 
     # HParams for the model.
-    tree_hparams = TreeHParams(
+    tree_hparams = _TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
         tree_complexity)
 

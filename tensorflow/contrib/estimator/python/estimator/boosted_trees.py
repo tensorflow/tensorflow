@@ -67,20 +67,20 @@ class _BoostedTreesEstimator(estimator.Estimator):
       tree_complexity: regularization factor to penalize trees with more leaves.
       config: `RunConfig` object to configure the runtime settings.
     """
-    # TODO(youngheek): param validations.
-
+    # pylint:disable=protected-access
     # HParams for the model.
-    tree_hparams = canned_boosted_trees.TreeHParams(
+    tree_hparams = canned_boosted_trees._TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
         tree_complexity)
 
     def _model_fn(features, labels, mode, config):
-      return canned_boosted_trees._bt_model_fn(  # pylint: disable=protected-access
+      return canned_boosted_trees._bt_model_fn(
           features, labels, mode, head, feature_columns, tree_hparams,
           n_batches_per_layer, config)
 
     super(_BoostedTreesEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)
+    # pylint:enable=protected-access
 
 
 def boosted_trees_classifier_train_in_memory(
@@ -182,7 +182,7 @@ def boosted_trees_classifier_train_in_memory(
           n_classes, weight_column, label_vocabulary=label_vocabulary))
 
   # HParams for the model.
-  tree_hparams = canned_boosted_trees.TreeHParams(
+  tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
       tree_complexity)
 
@@ -298,7 +298,7 @@ def boosted_trees_regressor_train_in_memory(
                                                       weight_column)
 
   # HParams for the model.
-  tree_hparams = canned_boosted_trees.TreeHParams(
+  tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
       tree_complexity)
 
