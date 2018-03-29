@@ -139,8 +139,6 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
            [[0, pad_samples]],
            array_ops.zeros([num_inner_dimensions, 2], dtype=pad_samples.dtype)],
           0)
-      # TODO(rjryan): the paddings tensor must of rank tf.rank(signal) + 1. This
-      # isn't the case here and should be fixed.
       signal = array_ops.pad(signal, paddings, constant_values=pad_value)
 
       signal_shape = array_ops.shape(signal)

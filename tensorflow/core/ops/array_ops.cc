@@ -494,9 +494,9 @@ REGISTER_OP("SplitV")
       const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
         // If the rank of input tensor is unknown, then return unknown shapes.
-        output_shape = c->UnknownShape();
+        // Note that the shape of each output can be different.
         for (int i = 0; i < num_outputs; ++i) {
-          c->set_output(i, output_shape);
+          c->set_output(i, c->UnknownShape());
         }
       } else if (rank == 0) {
         // Throw error if input is a scalar.
@@ -505,18 +505,19 @@ REGISTER_OP("SplitV")
         // If split dimension is known, but the sizes are unknown, then
         // only the split dimension is unknown
         output_shape = input;
-        TF_RETURN_IF_ERROR(c->ReplaceDim(output_shape,
-                                         c->Value(split_dimension),
-                                         c->UnknownDim(), &output_shape));
         for (int i = 0; i < num_outputs; ++i) {
+          TF_RETURN_IF_ERROR(c->ReplaceDim(output_shape,
+                                           c->Value(split_dimension),
+                                           c->UnknownDim(), &output_shape));
           c->set_output(i, output_shape);
         }
       } else if (size_splits == nullptr && !c->ValueKnown(split_dimension)) {
         // If split dimension or tensor containing the split sizes is unknown,
-        // then return unknown shapes of same rank as input.
-        output_shape = c->UnknownShapeOfRank(rank);
+        // then return unknown shapes of same rank as input. Note that each
+        // output shape can be different since splitv doesn't always split
+        // tensors evenly.
         for (int i = 0; i < num_outputs; ++i) {
-          c->set_output(i, output_shape);
+          c->set_output(i, c->UnknownShapeOfRank(rank));
         }
       } else {
         // Determine the output shape if split dimension and split sizes are
