@@ -141,16 +141,16 @@ class StatisticalTestingTest(test.TestCase):
 
   def test_dkwm_mean_two_sample_assertion(self):
     rng = np.random.RandomState(seed=0)
-    num_samples = 15000
+    num_samples = 4000
 
-    # 15000 samples is chosen to be enough to find discrepancies of
-    # size 0.1 or more with assurance 1e-6, as confirmed here:
+    # 4000 samples is chosen to be enough to find discrepancies of
+    # size 0.2 or more with assurance 1e-6, as confirmed here:
     with self.test_session() as sess:
       d = st.min_discrepancy_of_true_means_detectable_by_dkwm_two_sample(
           num_samples, 0., 1., num_samples, 0., 1.,
           false_fail_rate=1e-6, false_pass_rate=1e-6)
       d = sess.run(d)
-      self.assertLess(d, 0.1)
+      self.assertLess(d, 0.2)
 
     # Test that the test assertion agrees that the standard
     # uniform distribution has the same mean as itself.
@@ -160,6 +160,15 @@ class StatisticalTestingTest(test.TestCase):
       sess.run(st.assert_true_mean_equal_by_dkwm_two_sample(
           samples1, 0., 1., samples2, 0., 1., false_fail_rate=1e-6))
 
+  def test_dkwm_mean_two_sample_assertion_beta_2_1_false(self):
+    rng = np.random.RandomState(seed=0)
+    num_samples = 4000
+    samples1 = rng.uniform(size=num_samples).astype(np.float32)
+
+    # As established above, 4000 samples is enough to find discrepancies
+    # of size 0.2 or more with assurance 1e-6.
+
+    with self.test_session() as sess:
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is different from the mean of beta(2, 1).
       beta_high_samples = rng.beta(2, 1, size=num_samples).astype(np.float32)
@@ -169,6 +178,15 @@ class StatisticalTestingTest(test.TestCase):
             beta_high_samples, 0., 1.,
             false_fail_rate=1e-6))
 
+  def test_dkwm_mean_two_sample_assertion_beta_1_2_false(self):
+    rng = np.random.RandomState(seed=0)
+    num_samples = 4000
+    samples1 = rng.uniform(size=num_samples).astype(np.float32)
+
+    # As established above, 4000 samples is enough to find discrepancies
+    # of size 0.2 or more with assurance 1e-6.
+
+    with self.test_session() as sess:
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is different from the mean of beta(1, 2).
       beta_low_samples = rng.beta(1, 2, size=num_samples).astype(np.float32)
