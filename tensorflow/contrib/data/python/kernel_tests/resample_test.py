@@ -12,46 +12,84 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for resampling input pipeline ops."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import resampling
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
+
+
+def _time_resampling(test_obj, data_np, target_dist, init_dist, use_v2, num_to_sample):
+  dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
+  dataset = dataset.repeat(100)
+
+  # Reshape distribution via rejection sampling.
+  apply_fn = resampling.rejection_resample_v2 if use_v2 else resampling.rejection_resample
+  dataset = dataset.apply(
+    apply_fn(
+      class_func=lambda x: x,
+      target_dist=target_dist,
+      initial_dist=init_dist,
+      seed=142))
+
+  iterator = dataset.make_initializable_iterator()
+  get_next = iterator.get_next()
+  initializer = iterator.initializer
+
+  with test_obj.test_session() as sess:
+    sess.run(initializer)
+    start_time = time.time()
+    for _ in xrange(num_to_sample):
+      sess.run(get_next)
+    end_time = time.time()
+
+  return end_time - start_time
 
 
 class ResampleTest(test.TestCase):
 
   def testInitialKnownDistribution(self):
-    self._testDistribution(initial_known=True)
+    self._testDistribution(initial_known=True, use_v2=False)
 
   def testInitialNotKnownDistribution(self):
-    self._testDistribution(initial_known=False)
+    self._testDistribution(initial_known=False, use_v2=False)
 
-  def _testDistribution(self, initial_known):
+  def testInitialKnownDistributionV2(self):
+    self._testDistribution(initial_known=True, use_v2=True)
+
+  def testInitialNotKnownDistributionV2(self):
+    self._testDistribution(initial_known=False, use_v2=True)
+
+  def _testDistribution(self, initial_known, use_v2):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
     initial_dist = [0.2] * 5 if initial_known else None
-    iterator = (dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
-        200, seed=21).map(lambda c: (c, string_ops.as_string(c))).apply(
-            resampling.rejection_resample(
-                target_dist=target_dist,
-                initial_dist=initial_dist,
-                class_func=lambda c, _: c,
-                seed=27)).make_one_shot_iterator())
+    dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
+      200, seed=21).map(lambda c: (c, string_ops.as_string(c)))
+    apply_fn = resampling.rejection_resample_v2 if use_v2 else resampling.rejection_resample
+    iterator = dataset.apply(
+      apply_fn(
+        target_dist=target_dist,
+        initial_dist=initial_dist,
+        class_func=lambda c, _: c,
+        seed=27)).make_initializable_iterator()
     get_next = iterator.get_next()
+    initializer = iterator.initializer
 
     with self.test_session() as sess:
+      sess.run(initializer)
       returned = []
       with self.assertRaises(errors.OutOfRangeError):
         while True:
@@ -75,7 +113,8 @@ class ResampleTest(test.TestCase):
     init_dist = [0.25, 0.25, 0.25, 0.25]
     target_dist = [0.0, 0.0, 0.0, 1.0]
     num_classes = len(init_dist)
-    num_samples = 100   # We don't need many samples to test a dirac-delta target distribution
+    # We don't need many samples to test a dirac-delta target distribution
+    num_samples = 1000
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
     dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
@@ -95,7 +134,6 @@ class ResampleTest(test.TestCase):
 
     get_next = dataset.make_one_shot_iterator().get_next()
 
-
     with self.test_session() as sess:
       returned = []
       with self.assertRaises(errors.OutOfRangeError):
@@ -108,6 +146,67 @@ class ResampleTest(test.TestCase):
         minlength=num_classes).astype(np.float32) / len(classes)
 
     self.assertAllClose(target_dist, bincount, atol=1e-2)
+
+  def _testNewResampleIsFaster(self, target_dist, num_to_sample):
+    init_dist = [0.25, 0.25, 0.25, 0.25]
+    num_classes = len(init_dist)
+    num_samples = 1000
+    data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+
+    fast_time = _time_resampling(
+      self, data_np, target_dist, init_dist, use_v2=True, num_to_sample=num_to_sample)
+    slow_time = _time_resampling(
+      self, data_np, target_dist, init_dist, use_v2=False, num_to_sample=num_to_sample)
+
+    self.assertLess(fast_time, slow_time)
+
+  def testNewResampleIsFasterSmallSkewManySamples(self):
+    self._testNewResampleIsFaster([0.1, 0.1, 0.1, 0.7], 1000)
+
+  def testNewResampleIsFasterBigSkewManySamples(self):
+    self._testNewResampleIsFaster([0.01, 0.01, 0.01, 0.97], 1000)
+
+  def testNewResampleIsFasterSmallSkewFewSamples(self):
+    self._testNewResampleIsFaster([0.1, 0.1, 0.1, 0.7], 100)
+
+  def testNewResampleIsFasterBigSkewFewSamples(self):
+    self._testNewResampleIsFaster([0.01, 0.01, 0.01, 0.97], 100)
+
+
+class MapDatasetBenchmark(test.Benchmark):
+
+  def benchmarkResamplePerformance(self):
+    init_dist = [0.25, 0.25, 0.25, 0.25]
+    target_dist = [0.0, 0.0, 0.0, 1.0]
+    num_classes = len(init_dist)
+    # We don't need many samples to test a dirac-delta target distribution
+    num_samples = 1000
+    data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+
+    resample_time = _time_resampling(
+      self, data_np, target_dist, init_dist, use_v2=False,
+      num_to_sample=1000)
+
+    self.report_benchmark(
+      iters=1000, wall_time=resample_time,
+      name="benchmark_resample")
+
+  def benchmarkResampleAndBatchPerformance(self):
+    init_dist = [0.25, 0.25, 0.25, 0.25]
+    target_dist = [0.0, 0.0, 0.0, 1.0]
+    num_classes = len(init_dist)
+    # We don't need many samples to test a dirac-delta target distribution
+    num_samples = 1000
+    data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+
+    resample_time = _time_resampling(
+      self, data_np, target_dist, init_dist, use_v2=True,
+      num_to_sample=1000)
+
+    self.report_benchmark(
+      iters=1000, wall_time=resample_time,
+      name="benchmark_resample_v2")
+
 
 if __name__ == "__main__":
   test.main()
