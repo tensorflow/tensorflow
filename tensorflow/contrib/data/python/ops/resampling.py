@@ -183,7 +183,7 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
                         .map(maybe_warn_on_large_rejection))
 
   def _gather_and_copy(class_val, acceptance_prob, data):
-      return class_val, array_ops.gather(acceptance_prob, class_val), data
+    return class_val, array_ops.gather(acceptance_prob, class_val), data
 
   current_probabilities_and_class_and_data_ds = dataset_ops.Dataset.zip(
       (class_values_ds, acceptance_dist_ds, dataset)).map(_gather_and_copy)
