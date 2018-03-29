@@ -219,10 +219,10 @@ class WALSModel(object):
         Note that col_weights must also be set to "None" in this case.
         - If it is a list of lists of non-negative real numbers, it needs to be
         in the form of \\([[w_0, w_1, ...], [w_k, ... ], [...]]\\), with the
-		number of inner lists matching the number of row factor shards and the
-		elements in each inner list are the weights for the rows of the
-		corresponding row factor shard. In this case,  \\(w_ij\\) =
-		unobserved_weight + row_weights[i] * col_weights[j].
+        number of inner lists matching the number of row factor shards and the
+        elements in each inner list are the weights for the rows of the
+        corresponding row factor shard. In this case,  \\(w_ij\\) =
+        unobserved_weight + row_weights[i] * col_weights[j].
         - If this is a single non-negative real number, this value is used for
         all row weights and \\(w_ij\\) = unobserved_weight + row_weights *
                                    col_weights[j].
@@ -667,17 +667,17 @@ class WALSModel(object):
       unregularized_loss: A tensor (scalar) that contains the normalized
         minibatch loss corresponding to sp_input, without the regularization
         term. If sp_input contains the rows \\({A_{i, :}, i \in I}\\), and the
-		input matrix A has n total rows, then the unregularized loss is:
+        input matrix A has n total rows, then the unregularized loss is:
         \\(\|\sqrt W_I \odot (A_I - U_I V^T)\|_F^2 * n / |I|\\)
         The total loss is unregularized_loss + regularization.
       regularization: A tensor (scalar) that contains the normalized
         regularization term for the minibatch loss corresponding to sp_input.
         If sp_input contains the rows \\({A_{i, :}, i \in I}\\), and the input
-		matrix A has n total rows, then the regularization term is:
+        matrix A has n total rows, then the regularization term is:
         \\(\lambda \|U_I\|_F^2) * n / |I| + \lambda \|V\|_F^2\\).
       sum_weights: The sum of the weights W_I corresponding to sp_input,
         normalized by a factor of \\(n / |I|\\). The root weighted squared
-		error is: \sqrt(unregularized_loss / sum_weights).
+        error is: \sqrt(unregularized_loss / sum_weights).
     """
     return self._process_input_helper(
         True, sp_input=sp_input, transpose_input=transpose_input)
@@ -700,17 +700,17 @@ class WALSModel(object):
       unregularized_loss: A tensor (scalar) that contains the normalized
         minibatch loss corresponding to sp_input, without the regularization
         term. If sp_input contains the columns \\({A_{:, j}, j \in J}\\), and
-		the input matrix A has m total columns, then the unregularized loss is:
+        the input matrix A has m total columns, then the unregularized loss is:
         \\(\|\sqrt W_J \odot (A_J - U V_J^T)\|_F^2 * m / |I|\\)
         The total loss is unregularized_loss + regularization.
       regularization: A tensor (scalar) that contains the normalized
         regularization term for the minibatch loss corresponding to sp_input.
         If sp_input contains the columns \\({A_{:, j}, j \in J}\\), and the
-		input matrix A has m total columns, then the regularization term is:
+        input matrix A has m total columns, then the regularization term is:
         \\(\lambda \|V_J\|_F^2) * m / |J| + \lambda \|U\|_F^2\\).
       sum_weights: The sum of the weights W_J corresponding to sp_input,
         normalized by a factor of \\(m / |J|\\). The root weighted squared
-		error is: \sqrt(unregularized_loss / sum_weights).
+        error is: \sqrt(unregularized_loss / sum_weights).
     """
     return self._process_input_helper(
         False, sp_input=sp_input, transpose_input=transpose_input)
@@ -722,7 +722,7 @@ class WALSModel(object):
     """Projects the row factors.
 
     This computes the row embedding \\(u_i\\) for an observed row \\(a_i\\) by
-	solving one iteration of the update equations.
+    solving one iteration of the update equations.
 
     Args:
       sp_input: A SparseTensor representing a set of rows. Please note that the
@@ -755,7 +755,7 @@ class WALSModel(object):
     """Projects the column factors.
 
     This computes the column embedding \\(v_j\\) for an observed column
-	\\(a_j\\) by solving one iteration of the update equations.
+    \\(a_j\\) by solving one iteration of the update equations.
 
     Args:
       sp_input: A SparseTensor representing a set of columns. Please note that
