@@ -33,7 +33,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 
 
 def parse_branch_ref(filename):
@@ -157,16 +156,12 @@ def get_git_version(git_base_path):
   Returns:
     A bytestring representing the git version
   """
-  git_binary = "git"
-  if sys.platform == "win32":
-    git_binary = "git.cmd"
-
   unknown_label = b"unknown"
   try:
     val = bytes(subprocess.check_output([
-        git_binary, str("--git-dir=%s/.git" % git_base_path),
+        "git", str("--git-dir=%s/.git" % git_base_path),
         str("--work-tree=" + git_base_path), "describe", "--long", "--tags"
-    ]).strip())
+    ], shell=True).strip())
     return val if val else unknown_label
   except subprocess.CalledProcessError:
     return unknown_label
