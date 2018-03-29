@@ -99,7 +99,7 @@ def dynamic_print(*values):
 
   if all(map(is_tf_print_compatible, values)):
     return logging_ops.Print(1, values)
-<
+
   def flushed_print(*vals):
     print(*vals)
     sys.stdout.flush()
