@@ -461,6 +461,7 @@ def gan_loss(
     gradient_penalty_weight=None,
     gradient_penalty_epsilon=1e-10,
     gradient_penalty_target=1.0,
+    gradient_penalty_mode='two_sided',
     mutual_information_penalty_weight=None,
     aux_cond_generator_weight=None,
     aux_cond_discriminator_weight=None,
@@ -485,6 +486,9 @@ def gan_loss(
     gradient_penalty_target: If `gradient_penalty_weight` is not None, a Python
       number or `Tensor` indicating the target value of gradient norm. See the
       CIFAR10 section of https://arxiv.org/abs/1710.10196. Defaults to 1.0.
+    gradient_penalty_mode: One of `"two_sided"` or `"one_sided"`. If `"one_sided"`,
+      gradient penalty proposed in https://arxiv.org/abs/1709.08894 is used.
+      Defaults to `"two_sided"`.
     mutual_information_penalty_weight: If not `None`, must be a non-negative
       Python number or Tensor indicating how much to weight the mutual
       information penalty. See https://arxiv.org/abs/1606.03657 for more
@@ -546,6 +550,7 @@ def gan_loss(
         model,
         epsilon=gradient_penalty_epsilon,
         target=gradient_penalty_target,
+        mode=gradient_penalty_mode,
         add_summaries=add_summaries)
     dis_loss += gradient_penalty_weight * gp_loss
   if _use_aux_loss(mutual_information_penalty_weight):

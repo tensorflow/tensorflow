@@ -306,6 +306,7 @@ def wasserstein_gradient_penalty(
     discriminator_scope,
     epsilon=1e-10,
     target=1.0,
+    mode='two_sided',
     weights=1.0,
     scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -327,6 +328,8 @@ def wasserstein_gradient_penalty(
       computing the gradient norm.
     target: Optional Python number or `Tensor` indicating the target value of
       gradient norm. Defaults to 1.0.
+    mode: One of `"two_sided"` or `"one_sided"`. If `"one_sided"`, penalty
+      proposed in https://arxiv.org/abs/1709.08894 is used. Defaults to `"two_sided"`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `real_data` and `generated_data`, and must be broadcastable to
       them (i.e., all dimensions must be either `1`, or the same as the
@@ -342,6 +345,9 @@ def wasserstein_gradient_penalty(
   Raises:
     ValueError: If the rank of data Tensors is unknown.
   """
+  if mode not in {'two_sided', 'one_sided'}:
+      raise ValueError('The `mode` argument must be one of '
+                       '"two_sided", "one_sided". Received: ' + str(mode))
   with ops.name_scope(scope, 'wasserstein_gradient_penalty',
                       (real_data, generated_data)) as scope:
     real_data = ops.convert_to_tensor(real_data)
@@ -377,9 +383,12 @@ def wasserstein_gradient_penalty(
     # For numerical stability, add epsilon to the sum before taking the square
     # root. Note tf.norm does not add epsilon.
     slopes = math_ops.sqrt(gradient_squares + epsilon)
-    penalties = math_ops.square(slopes / target - 1.0)
+    penalties = slopes / target - 1.0
+    if mode == 'one_sided':
+        penalties = math_ops.maximum(0., penalties)
+    penalties_squared = math_ops.square(penalties)
     penalty = losses.compute_weighted_loss(
-        penalties, weights, scope=scope, loss_collection=loss_collection,
+        penalties_squared, weights, scope=scope, loss_collection=loss_collection,
         reduction=reduction)
 
     if add_summaries:
