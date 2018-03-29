@@ -224,6 +224,13 @@ class FunctionBufferingResource : public ResourceBase {
                   if (buffer_.size() < buffer_size_ && !end_of_sequence_) {
                     restart_buffering = true;
                   } else {
+                    // When the buffer is full, we don't want to call
+                    // FillBuffer() unless we're in cancellation phase in which
+                    // case FillBuffer() will do the final cleanup post
+                    // cancellation.
+                    if (cancelled_) {
+                      restart_buffering = true;
+                    }
                     is_buffering_ = false;
                   }
                 }
