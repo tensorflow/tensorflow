@@ -20,9 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.tpu.python.tpu import bfloat16
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 
 from tensorflow.python.platform import test

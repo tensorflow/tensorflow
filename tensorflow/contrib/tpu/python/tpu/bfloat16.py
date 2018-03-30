@@ -22,7 +22,6 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_contextlib
 
 
