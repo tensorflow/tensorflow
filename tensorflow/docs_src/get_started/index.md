@@ -1,4 +1,4 @@
-# Getting Started
+# Get Started
 
 If you are new to machine learning, we recommend taking the following online
 course prior to diving into TensorFlow documentation:
@@ -13,10 +13,12 @@ functionality, TensorFlow is mainly designed for deep neural network models.
 TensorFlow provides many APIs. This section focuses on the high-level APIs.
 If you are new to TensorFlow, begin by reading one of the following documents:
 
-  * @{$get_started/get_started_for_beginners}, which is aimed at readers
-    new to machine learning.
-  * @{$get_started/premade_estimators}, which is aimed at readers who have
-    experience in machine learning.
+  * @{$get_started/eager} is for machine learning beginners and uses
+    @{$programmers_guide/eager}.
+  * @{$get_started/get_started_for_beginners} is also for machine learning
+    beginners and uses @{$programmers_guide/graphs}.
+  * @{$get_started/premade_estimators} assumes some machine learning background
+    and uses an @{tf.estimator.Estimator$Estimator}.
 
 Then, read the following documents, which demonstrate the key features
 in the high-level APIs:

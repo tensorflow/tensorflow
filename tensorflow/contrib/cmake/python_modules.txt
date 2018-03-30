@@ -160,6 +160,9 @@ tensorflow/contrib/data/python/ops
 tensorflow/contrib/decision_trees
 tensorflow/contrib/decision_trees/proto
 tensorflow/contrib/deprecated
+tensorflow/contrib/distribute
+tensorflow/contrib/distribute/python
+tensorflow/contrib/distribute/python/examples
 tensorflow/contrib/distributions
 tensorflow/contrib/distributions/python
 tensorflow/contrib/distributions/python/ops
@@ -342,6 +345,7 @@ tensorflow/contrib/nn/python/ops
 tensorflow/contrib/opt
 tensorflow/contrib/opt/python
 tensorflow/contrib/opt/python/training
+tensorflow/contrib/optimizer_v2
 tensorflow/contrib/pi_examples
 tensorflow/contrib/pi_examples/camera
 tensorflow/contrib/pi_examples/label_image

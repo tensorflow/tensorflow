@@ -855,7 +855,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new SimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6));
   ops.emplace_back(
-      new SimpleOperator<Relu1Operator>("PRELU", OperatorType::kPRelu));
+      new SimpleOperator<PReluOperator>("PRELU", OperatorType::kPRelu));
   ops.emplace_back(new SimpleOperator<LogisticOperator>(
       "LOGISTIC", OperatorType::kLogistic));
   ops.emplace_back(

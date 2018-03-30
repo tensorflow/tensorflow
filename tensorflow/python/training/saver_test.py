@@ -2980,6 +2980,37 @@ class CheckpointableCompatibilityTests(test.TestCase):
       self.assertEqual(42., self.evaluate(v.non_dep_variable))
       self.assertEqual(42., self.evaluate(v.mirrored))
 
+  def testSingleTensorEvaluation(self):
+
+    class _CountingSaveable(saver_module.BaseSaverBuilder.SaveableObject):
+
+      def __init__(self, name):
+        self.eval_count = 0
+        def _tensor():
+          self.eval_count += 1
+          return constant_op.constant([1.])
+        dummy_op = constant_op.constant([2.])
+        super(_CountingSaveable, self).__init__(
+            dummy_op,
+            [saver_module.BaseSaverBuilder.SaveSpec(
+                _tensor, "", name, dtype=dummy_op.dtype)],
+            name)
+
+      def restore(self, restored_tensors, restored_shapes):
+        """Restore the same value into both variables."""
+        pass
+
+    with context.eager_mode():
+      v = _CountingSaveable("foo")
+      saver = saver_module.Saver(var_list=[v])
+      test_dir = self.get_temp_dir()
+      prefix = os.path.join(test_dir, "ckpt")
+      with self.test_session() as sess:
+        save_path = saver.save(sess, prefix)
+        self.assertEqual(1, v.eval_count)
+        saver.restore(sess, save_path)
+        self.assertEqual(1, v.eval_count)
+
 
 if __name__ == "__main__":
   test.main()

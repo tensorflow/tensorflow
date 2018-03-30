@@ -32,15 +32,15 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import tf_export
 
-TreeHParams = collections.namedtuple(
+_TreeHParams = collections.namedtuple(
     'TreeHParams',
     ['n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity'])
 
@@ -259,8 +259,8 @@ def _bt_model_fn(
     example_id_column_name=None,
     # TODO(youngheek): replace this later using other options.
     train_in_memory=False,
-    name='TreeEnsembleModel'):
-  """Gradient Boosted Decision Tree model_fn.
+    name='boosted_trees'):
+  """Gradient Boosted Trees model_fn.
 
   Args:
     features: dict of `Tensor`.
@@ -290,7 +290,7 @@ def _bt_model_fn(
   Raises:
     ValueError: mode or params are invalid, or features has the wrong type.
   """
-  is_single_machine = (config.num_worker_replicas == 1)
+  is_single_machine = (config.num_worker_replicas <= 1)
   if train_in_memory:
     assert n_batches_per_layer == 1, (
         'When train_in_memory is enabled, input_fn should return the entire '
@@ -425,7 +425,7 @@ def _bt_model_fn(
         return grow_op
 
       if train_in_memory and is_single_machine:
-        train_op.append(state_ops.assign_add(global_step, 1))
+        train_op.append(distribute_lib.increment_var(global_step))
         train_op.append(grow_tree_from_stats_summaries(stats_summary_list))
       else:
         summary_accumulator = data_flow_ops.ConditionalAccumulator(
@@ -445,7 +445,7 @@ def _bt_model_fn(
           return grow_op
 
         with ops.control_dependencies([apply_grad]):
-          train_op.append(state_ops.assign_add(global_step, 1))
+          train_op.append(distribute_lib.increment_var(global_step))
           if config.is_chief:
             train_op.append(
                 control_flow_ops.cond(
@@ -617,7 +617,7 @@ class BoostedTreesClassifier(estimator.Estimator):
         n_classes, weight_column, label_vocabulary=label_vocabulary)
 
     # HParams for the model.
-    tree_hparams = TreeHParams(
+    tree_hparams = _TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
         tree_complexity)
 
@@ -723,7 +723,7 @@ class BoostedTreesRegressor(estimator.Estimator):
     head = _create_regression_head(label_dimension, weight_column)
 
     # HParams for the model.
-    tree_hparams = TreeHParams(
+    tree_hparams = _TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
         tree_complexity)
 

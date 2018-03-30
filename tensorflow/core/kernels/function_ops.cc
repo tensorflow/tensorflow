@@ -144,6 +144,11 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
                                                RetvalOp);
+REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<ResourceHandle>("T")
+                            .HostMemory("input"),
+                        RetvalOp);
 #undef REGISTER
 
 class PassOn : public OpKernel {

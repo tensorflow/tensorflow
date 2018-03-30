@@ -3253,6 +3253,7 @@ cuda_py_tests(
         ":client_testlib",
         ":framework_test_lib",
         ":platform_test",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -4169,6 +4170,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_op",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",

@@ -1,5 +1,12 @@
 # TensorFlow Lite Optimizing Converter (TOCO) Python API reference
 
+This page provides examples on how to use TOCO via the Python API. It is
+complemented by the following documents:
+
+*   [README](../README.md)
+*   [Command-line examples](cmdline_examples.md)
+*   [Command-line glossary](cmdline_reference.md)
+
 ## High-level overview
 
 While the TensorFlow Lite Optimizing Converter can be used from the command

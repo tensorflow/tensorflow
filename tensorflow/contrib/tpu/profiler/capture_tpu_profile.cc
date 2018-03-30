@@ -70,8 +70,12 @@ ProfileResponse Profile(const string& service_addr, int duration_ms,
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
-  request.set_repository_root(repository_root);
-  request.set_session_id(session_id);
+  if (tensorflow::str_util::StartsWith(repository_root, "gs://")) {
+    // For backward compatibilities, only generate tracetable etc when the
+    // user provide a GCS path for model directory.
+    request.set_repository_root(repository_root);
+    request.set_session_id(session_id);
+  }
   request.add_tools("input_pipeline");
   request.add_tools("overview_page");
   *request.mutable_opts() = opts;
