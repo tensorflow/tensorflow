@@ -157,6 +157,12 @@ Status MemmappedFileSystem::GetChildren(const string& filename,
   return errors::Unimplemented("memmapped format doesn't support GetChildren");
 }
 
+Status MemmappedFileSystem::GetMatchingPaths(const string& pattern,
+                                             std::vector<string>* results) {
+  return errors::Unimplemented(
+      "memmapped format doesn't support GetMatchingPaths");
+}
+
 Status MemmappedFileSystem::DeleteFile(const string& filename) {
   return errors::Unimplemented("memmapped format doesn't support DeleteFile");
 }
