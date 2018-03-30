@@ -693,7 +693,8 @@ class Estimator(object):
     # using any input is alright in that case. There is also a
     # has_dataset_or_queue_runner function that we may want to extend and use.
     if (self._distribution is not None and
-        not isinstance(result, dataset_ops.Dataset)):
+        not isinstance(result, dataset_ops.Dataset) and
+        mode == model_fn_lib.ModeKeys.TRAIN):
       raise ValueError('input_fn() must return a tf.data.Dataset when using a '
                        'DistributionStrategy.')
     input_hooks = []

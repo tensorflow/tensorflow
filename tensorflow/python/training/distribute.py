@@ -23,6 +23,8 @@ import threading
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.training import device_util
@@ -1165,6 +1167,24 @@ class _DefaultDistributionStrategy(DistributionStrategy):
   def _worker_device_index(self):
     raise RuntimeError("worker_device_index() method unsupported by "
                        "_DefaultDistributionStrategy.")
+
+# ------------------------------------------------------------------------------
+# Common operations
+
+
+def increment_var(v, amount=1):
+  """`v += amount`, distributed-aware version."""
+  def update(vu):
+    if isinstance(vu, resource_variable_ops.ResourceVariable):
+      return vu.assign_add(amount, read_value=False)
+    else:
+      return state_ops.assign_add(vu, amount)
+
+  def merge_fn(dist, vm):
+    return dist.group(dist.update(vm, update))
+
+  tower_context = get_tower_context()
+  return tower_context.merge_call(merge_fn, v)
 
 
 # ------------------------------------------------------------------------------
