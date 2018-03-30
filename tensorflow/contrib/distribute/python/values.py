@@ -216,6 +216,9 @@ class DistributedVariable(DistributedDelegate):
   def get_shape(self):
     return self._primary_var.get_shape()
 
+  def to_proto(self, export_scope=None):
+    return self._primary_var.to_proto(export_scope=export_scope)
+
   @property
   def op(self):
     # We want cross-tower code that does some var.op.X calls
