@@ -630,6 +630,7 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "debug_stripper_test",
+    size = "small",
     srcs = ["debug_stripper_test.cc"],
     deps = [
         ":debug_stripper",
