@@ -244,13 +244,9 @@ class Context(object):
       try:
         self._num_gpus = 0
         for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
-          with errors.raise_exception_on_not_ok_status() as status:
-            dev_name = pywrap_tensorflow.TF_DeviceListName(
-                device_list, i, status)
+          dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
           self._context_devices.append(pydev.canonical_name(dev_name))
-          with errors.raise_exception_on_not_ok_status() as status:
-            dev_type = pywrap_tensorflow.TF_DeviceListType(
-                device_list, i, status)
+          dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
           if dev_type == "GPU":
             self._num_gpus += 1
 

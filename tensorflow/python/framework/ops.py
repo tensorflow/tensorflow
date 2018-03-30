@@ -373,15 +373,12 @@ class Tensor(_TensorLike):
     """
     graph = self._op._graph._c_graph # pylint: disable=protected-access
     if graph and _USE_C_SHAPES:
-      with errors.raise_exception_on_not_ok_status() as status:
-        num_dims = c_api.TF_GraphGetTensorNumDims(graph, self._as_tf_output(),
-                                                  status)
+      num_dims = c_api.TF_GraphGetTensorNumDims(graph, self._as_tf_output())
       if num_dims == -1:
         dim_list = None
       else:
-        with errors.raise_exception_on_not_ok_status() as status:
-          dim_list = c_api.TF_GraphGetTensorShape_wrapper(
-              graph, self._as_tf_output(), num_dims, status)
+        dim_list = c_api.TF_GraphGetTensorShape_wrapper(
+            graph, self._as_tf_output(), num_dims)
         dim_list = [None if i == -1 else i for i in dim_list]
       return tensor_shape.TensorShape(dim_list)
     return self._shape_val
@@ -489,13 +486,11 @@ class Tensor(_TensorLike):
         else:
           dim_list.append(dim.value)
     try:
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.TF_GraphSetTensorShape_wrapper(
-            self._op._graph._c_graph,  # pylint: disable=protected-access
-            self._as_tf_output(),
-            dim_list,
-            unknown_shape,
-            status)
+      c_api.TF_GraphSetTensorShape_wrapper(
+          self._op._graph._c_graph,  # pylint: disable=protected-access
+          self._as_tf_output(),
+          dim_list,
+          unknown_shape)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
       raise ValueError(str(e))
@@ -1514,13 +1509,10 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
     serialized = attr_value.SerializeToString()
     # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
     # It might be worth creating a convenient way to re-use the same status.
-    with errors.raise_exception_on_not_ok_status() as status:
-      c_api.TF_SetAttrValueProto(op_desc,
-                                 compat.as_str(name), serialized, status)
+    c_api.TF_SetAttrValueProto(op_desc, compat.as_str(name), serialized)
 
   try:
-    with errors.raise_exception_on_not_ok_status() as status:
-      c_op = c_api.TF_FinishOperation(op_desc, status)
+    c_op = c_api.TF_FinishOperation(op_desc)
   except errors.InvalidArgumentError as e:
     # Convert to ValueError for backwards compatibility.
     raise ValueError(str(e))
@@ -1943,12 +1935,10 @@ class Operation(object):
     if self._c_op:
       # Reset cached inputs.
       self._inputs_val = None
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.UpdateEdge(
-            self._graph._c_graph,  # pylint: disable=protected-access
-            tensor._as_tf_output(),  # pylint: disable=protected-access
-            self._tf_input(index),
-            status)
+      c_api.UpdateEdge(
+          self._graph._c_graph,  # pylint: disable=protected-access
+          tensor._as_tf_output(),  # pylint: disable=protected-access
+          self._tf_input(index))
     else:
       self._inputs_val[index].consumers().remove(self)
       self._inputs_val[index] = tensor
@@ -2169,8 +2159,7 @@ class Operation(object):
     # pylint: enable=line-too-long
     if self._c_op:
       with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          c_api.TF_OperationToNodeDef(self._c_op, buf, status)
+        c_api.TF_OperationToNodeDef(self._c_op, buf)
         data = c_api.TF_GetBuffer(buf)
       node_def = node_def_pb2.NodeDef()
       node_def.ParseFromString(compat.as_bytes(data))
@@ -2228,11 +2217,9 @@ class Operation(object):
       buf = c_api.TF_NewBufferFromString(
           compat.as_bytes(attr_value.SerializeToString()))
       try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          # pylint: disable=protected-access
-          c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf,
-                        status)
-          # pylint: enable=protected-access
+        # pylint: disable=protected-access
+        c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf)
+        # pylint: enable=protected-access
       finally:
         c_api.TF_DeleteBuffer(buf)
     else:
@@ -2254,8 +2241,7 @@ class Operation(object):
     if self._c_op:
       try:
         with c_api_util.tf_buffer() as buf:
-          with errors.raise_exception_on_not_ok_status() as status:
-            c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf, status)
+          c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf)
           data = c_api.TF_GetBuffer(buf)
       except errors.InvalidArgumentError as e:
         # Convert to ValueError for backwards compatibility.
@@ -2469,11 +2455,10 @@ def _set_shapes_for_outputs_c_api(op):
   # The C API computes the shapes when the TF_Operation is created. Fetch the
   # output shapes from the C object.
   for output in op.outputs:
-    with errors.raise_exception_on_not_ok_status() as status:
-      # pylint: disable=protected-access
-      shape_vector, unknown_shape = c_api.TF_GraphGetTensorShapeHelper(
-          op._graph._c_graph, output._as_tf_output(), status)
-      # pylint: enable=protected-access
+    # pylint: disable=protected-access
+    shape_vector, unknown_shape = c_api.TF_GraphGetTensorShapeHelper(
+        op._graph._c_graph, output._as_tf_output())
+    # pylint: enable=protected-access
     if unknown_shape:
       output.set_shape(tensor_shape.unknown_shape())
     elif not shape_vector:
@@ -2994,8 +2979,7 @@ class Graph(object):
     # pylint: enable=line-too-long
     if self._c_graph:
       with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          c_api.TF_GraphVersions(self._c_graph, buf, status)
+        c_api.TF_GraphVersions(self._c_graph, buf)
         data = c_api.TF_GetBuffer(buf)
       version_def = versions_pb2.VersionDef()
       version_def.ParseFromString(compat.as_bytes(data))
@@ -3098,8 +3082,7 @@ class Graph(object):
     if self._c_graph:
       with self._lock:
         with c_api_util.tf_buffer() as buf:
-          with errors.raise_exception_on_not_ok_status() as status:
-            c_api.TF_GraphToGraphDef(self._c_graph, buf, status)
+          c_api.TF_GraphToGraphDef(self._c_graph, buf)
           data = c_api.TF_GetBuffer(buf)
         graph = graph_pb2.GraphDef()
         graph.ParseFromString(compat.as_bytes(data))
@@ -3208,14 +3191,10 @@ class Graph(object):
       # remove this when all functions are generated using the C API by default
       # as this will be unnecessary.
       if not function._c_func:
-        with errors.raise_exception_on_not_ok_status() as status:
-          serialized = function.definition.SerializeToString()
-          function._c_func = c_api.TF_FunctionImportFunctionDef(
-              serialized, status)
-      with errors.raise_exception_on_not_ok_status() as status:
-        gradient = function._grad_func._c_func if function._grad_func else None
-        c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient,
-                                   status)
+        serialized = function.definition.SerializeToString()
+        function._c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+      gradient = function._grad_func._c_func if function._grad_func else None
+      c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient)
     else:
       # If there is already a function with the same name, raise an error
       # if bodies are different. Else, do nothing. The C API version above
@@ -3732,11 +3711,9 @@ class Graph(object):
     """Returns the `OpDef` proto for `type`. `type` is a string."""
     if self._c_graph:
       with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          # pylint: disable=protected-access
-          c_api.TF_GraphGetOpDef(self._c_graph,
-                                 compat.as_bytes(type), buf, status)
-          # pylint: enable=protected-access
+        # pylint: disable=protected-access
+        c_api.TF_GraphGetOpDef(self._c_graph, compat.as_bytes(type), buf)
+        # pylint: enable=protected-access
         data = c_api.TF_GetBuffer(buf)
       op_def = op_def_pb2.OpDef()
       op_def.ParseFromString(compat.as_bytes(data))

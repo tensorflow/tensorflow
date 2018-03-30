@@ -284,6 +284,17 @@ cc_library(
 )
 
 cc_library(
+    name = "py_exception_registry",
+    srcs = ["lib/core/py_exception_registry.cc"],
+    hdrs = ["lib/core/py_exception_registry.h"],
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:lib",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
     name = "kernel_registry",
     srcs = ["util/kernel_registry.cc"],
     hdrs = ["util/kernel_registry.h"],
@@ -3313,6 +3324,7 @@ tf_py_wrap_cc(
         "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
         "lib/core/bfloat16.i",
+        "lib/core/py_exception_registry.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
         "lib/io/file_io.i",
@@ -3344,6 +3356,7 @@ tf_py_wrap_cc(
         ":kernel_registry",
         ":numpy_lib",
         ":safe_ptr",
+        ":py_exception_registry",
         ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",
