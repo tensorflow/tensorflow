@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include "tensorflow/core/common_runtime/process_util.h"
+
 namespace tensorflow {
 
 EagerContext::EagerContext(const SessionOptions& opts,
@@ -25,9 +27,10 @@ EagerContext::EagerContext(const SessionOptions& opts,
       device_manager_(std::move(device_mgr)),
       devices_(device_manager_->ListDevices()),
       rendezvous_(rendezvous),
-      pflr_(new ProcessFunctionLibraryRuntime(device_manager_.get(), opts.env,
-                                              TF_GRAPH_DEF_VERSION,
-                                              &func_lib_def_, {})),
+      thread_pool_(NewThreadPoolFromSessionOptions(opts)),
+      pflr_(new ProcessFunctionLibraryRuntime(
+          device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
+          {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       async_default_(async) {
   if (async_default_) {

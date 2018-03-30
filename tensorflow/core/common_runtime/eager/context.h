@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -159,6 +160,8 @@ class EagerContext {
   mutex functions_mu_;
   FunctionLibraryDefinition func_lib_def_ GUARDED_BY(functions_mu_){
       OpRegistry::Global(), {}};
+
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
 
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to

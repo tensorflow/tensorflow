@@ -3274,6 +3274,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "common_runtime_process_util_test",
+    size = "small",
+    srcs = ["common_runtime/process_util_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core_cpu_internal",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "common_runtime_rendezvous_util_test",
     size = "small",
     srcs = ["common_runtime/rendezvous_util_test.cc"],

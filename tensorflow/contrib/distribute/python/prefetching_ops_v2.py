@@ -59,8 +59,7 @@ class _PrefetchToDeviceIterator(object):
             f=_prefetch_fn,
             target_device=target_device,
             string_arg=input_iterator_handle,
-            buffer_size=buffer_size,
-            thread_pool_size=0)
+            buffer_size=buffer_size)
         self._buffering_resources.append(buffer_resource_handle)
 
   def get_next(self, name=None):
