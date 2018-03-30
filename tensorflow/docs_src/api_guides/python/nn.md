@@ -98,10 +98,10 @@ and no padding is used.
 
 Given the output size and the padding, the output can be computed as
 
-\\(    output[b, i, j, :] =\\)
-\\(        sum_{d_i, d_j} input[b, strides[1] * i + d_i - pad_{top},\\)
-\\(                           strides[2] * j + d_j - pad_{left}, ...] * \\)
-\\(                     filter[di, dj, ...]\\)
+$$    output[b, i, j, :] =
+        sum_{d_i, d_j} input[b, strides[1] * i + d_i - pad_{top},\
+                           strides[2] * j + d_j - pad_{left}, ...] *
+                     filter[d_i, d_j,\ ...]$$
 
 where any value outside the original input image region are considered zero (
 i.e. we pad zero values around the border of the image).
