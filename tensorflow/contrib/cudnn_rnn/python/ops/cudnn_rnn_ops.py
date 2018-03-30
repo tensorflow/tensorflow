@@ -87,9 +87,9 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   Cudnn compatible GRU (from Cudnn library user guide):
   ```python
   # reset gate
-  $$r_t = sigma(x_t * W_r + h_t-1 * R_h + b_{Wr} + b_{Rr})$$
+  $$r_t = \sigma(x_t * W_r + h_t-1 * R_h + b_{Wr} + b_{Rr})$$
   # update gate
-  $$u_t = sigma(x_t * W_u + h_t-1 * R_u + b_{Wu} + b_{Ru})$$
+  $$u_t = \sigma(x_t * W_u + h_t-1 * R_u + b_{Wu} + b_{Ru})$$
   # new memory gate
   $$h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_{Rh}) + b_{Wh})$$
   $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
