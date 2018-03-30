@@ -20,11 +20,11 @@
 namespace tensorflow {
 namespace {
 
+using tensorflow::decision_trees::InequalityTest;
+using tensorflow::decision_trees::MatchingValuesTest;
 using tensorflow::tensorforest::InequalityDecisionNodeEvaluator;
 using tensorflow::tensorforest::MatchingValuesDecisionNodeEvaluator;
 using tensorflow::tensorforest::ObliqueInequalityDecisionNodeEvaluator;
-using tensorflow::decision_trees::InequalityTest;
-using tensorflow::decision_trees::MatchingValuesTest;
 
 TEST(InequalityDecisionNodeEvaluatorTest, TestLessOrEqual) {
   InequalityTest test;
@@ -124,4 +124,3 @@ TEST(ObliqueDecisionNodeEvaluatorTest, Basic) {
 
 }  // namespace
 }  // namespace tensorflow
-

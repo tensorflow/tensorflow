@@ -19,6 +19,7 @@ py_library(
         "python/training/elastic_average_optimizer.py",
         "python/training/external_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
+        "python/training/model_average_optimizer.py",
         "python/training/moving_average_optimizer.py",
         "python/training/multitask_optimizer_wrapper.py",
         "python/training/nadam_optimizer.py",
@@ -51,6 +52,9 @@ py_test(
     name = "external_optimizer_test",
     srcs = ["python/training/external_optimizer_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",
@@ -81,22 +85,22 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "variable_clipping_optimizer_test",
     srcs = ["python/training/variable_clipping_optimizer_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "manual",  # Flaky: b/29892493
-        "notap",  # data race due to b/62910646
-    ],
-    deps = [
+    additional_deps = [
         ":opt_py",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
+    ],
+    grpc_enabled = True,
+    tags = [
+        "manual",  # Flaky: b/29892493
+        "notap",  # data race due to b/62910646
     ],
 )
 
@@ -169,6 +173,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # Flaky due to port collisions
     ],
@@ -189,6 +194,27 @@ tf_py_test(
         "//tensorflow/python:ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "model_average_optimizer_test",
+    srcs = ["python/training/model_average_optimizer_test.py"],
+    additional_deps = [
+        ":opt_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+    tags = [
+        "notap",  # This test launches local server.
     ],
 )
 
@@ -238,15 +264,4 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

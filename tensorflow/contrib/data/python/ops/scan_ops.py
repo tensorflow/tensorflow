@@ -188,7 +188,7 @@ def scan(initial_state, scan_func):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
     return _ScanDataset(dataset, initial_state, scan_func)

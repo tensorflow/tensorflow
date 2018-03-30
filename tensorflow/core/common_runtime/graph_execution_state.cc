@@ -73,6 +73,10 @@ GraphExecutionState::~GraphExecutionState() {
 /* static */ Status GraphExecutionState::MakeForBaseGraph(
     GraphDef* graph_def, const GraphExecutionStateOptions& options,
     std::unique_ptr<GraphExecutionState>* out_state) {
+#ifndef __ANDROID__
+  VLOG(1) << "Graph proto is " << graph_def->DebugString();
+#endif  // __ANDROID__
+
   std::unique_ptr<GraphExecutionState> ret(
       new GraphExecutionState(graph_def, options));
 
@@ -233,6 +237,42 @@ void GraphExecutionState::RestoreStatefulNodes(Graph* graph) {
   }
 }
 
+Status GraphExecutionState::PruneGraph(
+    const BuildGraphOptions& options, Graph* graph,
+    subgraph::RewriteGraphMetadata* out_rewrite_metadata) {
+  std::vector<std::unique_ptr<subgraph::PruneRewrite>> feed_rewrites;
+  feed_rewrites.reserve(options.callable_options.feed_size());
+  std::vector<std::unique_ptr<subgraph::PruneRewrite>> fetch_rewrites;
+  fetch_rewrites.reserve(options.callable_options.fetch_size());
+  const DeviceAttributes* device_info =
+      &device_set_->client_device()->attributes();
+  if (options.use_function_convention) {
+    for (int i = 0; i < options.callable_options.feed_size(); ++i) {
+      feed_rewrites.emplace_back(new subgraph::ArgFeedRewrite(
+          &options.callable_options.feed(i), device_info, i));
+    }
+    for (int i = 0; i < options.callable_options.fetch_size(); ++i) {
+      fetch_rewrites.emplace_back(new subgraph::RetvalFetchRewrite(
+          &options.callable_options.fetch(i), device_info, i));
+    }
+  } else {
+    for (const string& feed : options.callable_options.feed()) {
+      feed_rewrites.emplace_back(
+          new subgraph::RecvFeedRewrite(&feed, device_info));
+    }
+    for (const string& fetch : options.callable_options.fetch()) {
+      fetch_rewrites.emplace_back(
+          new subgraph::SendFetchRewrite(&fetch, device_info));
+    }
+  }
+  std::vector<string> target_node_names(
+      options.callable_options.target().begin(),
+      options.callable_options.target().end());
+  return subgraph::RewriteGraphForExecution(graph, feed_rewrites,
+                                            fetch_rewrites, target_node_names,
+                                            out_rewrite_metadata);
+}
+
 Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   const GraphDef* graph_def = &original_graph_def_;
 
@@ -247,10 +287,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
     rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
-    TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-        new_graph.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes(),
-        options.use_function_convention, rewrite_metadata_.get()));
+    TF_RETURN_IF_ERROR(
+        PruneGraph(options, new_graph.get(), rewrite_metadata_.get()));
   }
 
   // Save stateful placements before placing.
@@ -295,13 +333,16 @@ Status GraphExecutionState::OptimizeGraph(
     item.id = "tf_graph";
     graph_->ToGraphDef(&item.graph);
 
-    item.fetch = options.fetch_endpoints;
-    item.fetch.insert(item.fetch.end(), options.target_nodes.begin(),
-                      options.target_nodes.end());
+    item.fetch.insert(item.fetch.end(),
+                      options.callable_options.fetch().begin(),
+                      options.callable_options.fetch().end());
+    item.fetch.insert(item.fetch.end(),
+                      options.callable_options.target().begin(),
+                      options.callable_options.target().end());
 
-    if (!options.feed_endpoints.empty()) {
+    if (!options.callable_options.feed().empty()) {
       std::unordered_set<string> feeds;
-      for (const string& feed : options.feed_endpoints) {
+      for (const string& feed : options.callable_options.feed()) {
         TensorId id = ParseTensorName(feed);
         if (id.second != 0) {
           return errors::InvalidArgument("Unsupported feed: ", feed);
@@ -340,8 +381,11 @@ Status GraphExecutionState::OptimizeGraph(
     std::unordered_map<string, DeviceProperties> device_map;
     Device* cpu_device = nullptr;
     for (const auto& device : device_set_->devices()) {
-      device_map[device->name()] =
-          grappler::GetDeviceInfo(device->parsed_name());
+      DeviceProperties props = grappler::GetDeviceInfo(device->parsed_name());
+      if (props.type() == "UNKNOWN") {
+        continue;
+      }
+      device_map[device->name()] = props;
       if (device->parsed_name().id == 0 &&
           StringPiece(device->parsed_name().type) == "CPU" &&
           device->GetAllocator(AllocatorAttributes()) != nullptr) {
@@ -394,12 +438,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||
       !session_options_->config.graph_options().place_pruned_graph()) {
-    // Extract the subset of the graph that needs to be run, adding feed/fetch
-    // ops as needed.
-    TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-        ng.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes(),
-        options.use_function_convention, &rewrite_metadata));
+    TF_RETURN_IF_ERROR(PruneGraph(options, ng.get(), &rewrite_metadata));
   } else {
     // This GraphExecutionState represents a graph that was
     // pruned when this was constructed, so we copy the metadata from
@@ -408,8 +447,10 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     rewrite_metadata = *rewrite_metadata_;
   }
 
-  CHECK_EQ(options.feed_endpoints.size(), rewrite_metadata.feed_types.size());
-  CHECK_EQ(options.fetch_endpoints.size(), rewrite_metadata.fetch_types.size());
+  CHECK_EQ(options.callable_options.feed_size(),
+           rewrite_metadata.feed_types.size());
+  CHECK_EQ(options.callable_options.fetch_size(),
+           rewrite_metadata.fetch_types.size());
 
   // Make a fresh copy of the function library for the client graph.
   std::unique_ptr<FunctionLibraryDefinition> flib(

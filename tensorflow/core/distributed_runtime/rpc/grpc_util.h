@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
 
 #include <memory>
 
@@ -23,6 +23,7 @@ limitations under the License.
 #include "grpc++/support/byte_buffer.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -61,6 +62,13 @@ inline ::grpc::Status ToGrpcStatus(const ::tensorflow::Status& s) {
   if (s.ok()) {
     return ::grpc::Status::OK;
   } else {
+    if (s.error_message().size() > 3072 /* 3k bytes */) {
+      // TODO(b/62947679): Remove truncation once the gRPC issue is resolved.
+      string scratch =
+          strings::Printf("%.3072s ... [truncated]", s.error_message().c_str());
+      LOG(ERROR) << "Truncated error message: " << s;
+      return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()), scratch);
+    }
     return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()),
                           s.error_message());
   }
@@ -106,4 +114,4 @@ class GrpcByteBufferSource : public ::grpc::protobuf::io::ZeroCopyInputStream {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_

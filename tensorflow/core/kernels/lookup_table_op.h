@@ -64,7 +64,7 @@ class LookupTableOp : public OpKernel {
         return ctx->status();
       }
       if (ctx->track_allocations()) {
-        ctx->record_host_persistent_memory_allocation(
+        ctx->record_persistent_memory_allocation(
             container->MemoryUsed() + table_handle_.AllocatedBytes());
       }
       *ret = container;
@@ -190,6 +190,11 @@ class HashTable : public InitializableLookupTable {
     }
     return Status::OK();
   };
+
+  Status DoLazyPrepare(std::function<int64(void)> unused) override {
+    constexpr size_t kUnusedSize = 0;
+    return DoPrepare(kUnusedSize);
+  }
 
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
     if (!table_) {

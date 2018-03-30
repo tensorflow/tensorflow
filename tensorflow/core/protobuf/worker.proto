@@ -27,6 +27,7 @@ import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/lib/core/error_codes.proto";
 import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
@@ -226,7 +227,14 @@ message RunGraphRequest {
   // True if this is the last partial run request in a sequence of requests.
   bool is_last_partial_run = 7;
 
-  // Next: 9
+  // If true then some errors, e.g., execution errors that have long
+  // error messages, may return an OK RunGraphResponse with the actual
+  // error saved in the status_code/status_error_message fields of the
+  // response body. This is a workaround since the RPC subsystem may
+  // truncate long metadata messages.
+  bool store_errors_in_response_body = 9;
+
+  // Next: 10
 }
 
 message RunGraphResponse {
@@ -240,6 +248,13 @@ message RunGraphResponse {
   StepStats step_stats = 2;
   CostGraphDef cost_graph = 3;
   repeated GraphDef partition_graph = 4;
+
+  // If store_errors_in_response_body is true in the request, then
+  // optionally the server may return an OK status for the RPC and
+  // fill the true status into the fields below, to allow for messages
+  // that are too long to fit in metadata.
+  error.Code status_code = 5;
+  string status_error_message = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -277,7 +292,10 @@ message RecvTensorRequest {
   // into a RunGraph call on the same WorkerService.
   int64 step_id = 1;
 
-  // A key that identifies the tensor to be received.
+  // A key identifying the channel to receive tensors from. A RecvTensor request
+  // retrieves one tensor from the channel, but multiple tensors can be sent and
+  // received over the same channel with multiple RecvTensor requests. See
+  // rendezvous.h for details.
   string rendezvous_key = 2;
 
   // If true, use an out-of-band DMA mechanism to transfer the
@@ -292,6 +310,16 @@ message RecvTensorRequest {
 
   // Optional information needed by the RPC subsystem.
   google.protobuf.Any transport_options = 6;
+
+  // Unique identifier for this request. Every RecvTensorRequest must have a
+  // unique request_id, and retried RecvTensorRequests must have the same
+  // request_id. If request_id is zero, retry detection is disabled.
+  //
+  // Retried RecvTensorRequests are problematic because a RecvTensor with no
+  // corresponding sender will wait forever, and the tensor may have been
+  // delivered to a previous retry. Workers use request_ids to reject retried
+  // RecvTensor requests instead of waiting forever.
+  int64 request_id = 7;
 }
 
 message RecvTensorResponse {

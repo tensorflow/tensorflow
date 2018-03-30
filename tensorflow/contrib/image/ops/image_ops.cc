@@ -98,4 +98,34 @@ col_to_row_match_indices: A vector of length num_columns, which is the number
   `col_to_row_match_indices[j]`.
 )doc");
 
+REGISTER_OP("ImageConnectedComponents")
+    .Input("image: dtype")
+    .Output("components: int64")
+    .Attr(
+        "dtype: {int64, int32, uint16, int16, uint8, int8, half, float, "
+        "double, bool, string}")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShape(c);
+    })
+    .Doc(R"doc(
+Find the connected components of image(s).
+
+For each image (along the 0th axis), all connected components of adjacent pixels
+with the same non-zero value are detected and given unique ids.
+
+The returned `components` tensor has 0s for the zero pixels of `images`, and
+arbitrary nonzero ids for the connected components of nonzero values. Ids are
+unique across all of the images, and are in row-major order by the first pixel
+in the component.
+
+Uses union-find with union by rank but not path compression, giving a runtime of
+`O(n log n)`. See:
+    https://en.wikipedia.org/wiki/Disjoint-set_data_structure#Time_Complexity
+
+image: Image(s) with shape (N, H, W).
+components: Component ids for each pixel in "image". Same shape as "image". Zero
+    pixels all have an output of 0, and all components of adjacent pixels with
+    the same value are given consecutive ids, starting from 1.
+)doc");
+
 }  // namespace tensorflow

@@ -32,6 +32,10 @@ Status SendTensorsToRendezvous(
         "; alloc_attrs.size() = ", alloc_attrs.size());
   }
 
+  if (!rendezvous) {
+    return errors::InvalidArgument("Rendezvous is null.");
+  }
+
   Rendezvous::ParsedKey parsed;
   for (int i = 0; i < keys.size(); ++i) {
     Rendezvous::Args rendez_args;

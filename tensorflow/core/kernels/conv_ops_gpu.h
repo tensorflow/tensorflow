@@ -27,7 +27,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-
 // Get the Cudnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
@@ -146,7 +145,7 @@ class ConvParameters {
     int64 total_size = 16 * std::ceil(batch_ / 16.0) *
                        std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
                        sizeof(T);
-    int64 threshold = 1L << 31;
+    int64 threshold = 1LL << 31;
     if (total_size >= threshold) {
       return false;
     } else {

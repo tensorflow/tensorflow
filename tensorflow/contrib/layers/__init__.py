@@ -27,6 +27,7 @@ See the @{$python/contrib.layers} guide.
 @@convolution2d_transpose
 @@conv3d_transpose
 @@convolution3d_transpose
+@@dense_to_sparse
 @@dropout
 @@elu
 @@embedding_lookup_unique
@@ -34,6 +35,7 @@ See the @{$python/contrib.layers} guide.
 @@fully_connected
 @@GDN
 @@gdn
+@@images_to_sequence
 @@layer_norm
 @@linear
 @@max_pool2d
@@ -49,6 +51,7 @@ See the @{$python/contrib.layers} guide.
 @@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
+@@sequence_to_images
 @@softmax
 @@spatial_softmax
 @@stack

@@ -25,6 +25,7 @@ import numpy as np
 
 # pylint: disable=unused-import,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
 
 
@@ -160,6 +161,24 @@ class Bfloat16Test(test.TestCase):
       for w in self.float_values():
         self.assertEqual(v != w, bfloat16(v) != bfloat16(w))
 
+  def testNan(self):
+    a = np.isnan(bfloat16(float("nan")))
+    self.assertTrue(a)
+    np.testing.assert_allclose(np.array([1.0, a]), np.array([1.0, a]))
+
+    a = np.array(
+        [bfloat16(1.34375),
+         bfloat16(1.4375),
+         bfloat16(float("nan"))],
+        dtype=dtypes.bfloat16.as_numpy_dtype)
+    b = np.array(
+        [bfloat16(1.3359375),
+         bfloat16(1.4375),
+         bfloat16(float("nan"))],
+        dtype=dtypes.bfloat16.as_numpy_dtype)
+    np.testing.assert_allclose(
+        a, b, rtol=0.1, atol=0.1, equal_nan=True, err_msg="", verbose=True)
+
 
 class Bfloat16NumPyTest(test.TestCase):
 
@@ -172,9 +191,29 @@ class Bfloat16NumPyTest(test.TestCase):
     self.assertEqual("[[bfloat16(1) bfloat16(2) bfloat16(3)]]", str(x))
     self.assertAllEqual(x, x)
     self.assertAllClose(x, x)
+    self.assertTrue((x == x).all())
+
+  def testComparisons(self):
+    x = np.array([401408, 7, -32], dtype=np.float32)
+    bx = x.astype(bfloat16)
+    y = np.array([82432, 7, 0], dtype=np.float32)
+    by = y.astype(bfloat16)
+    self.assertAllEqual(x == y, bx == by)
+    self.assertAllEqual(x != y, bx != by)
+    self.assertAllEqual(x < y, bx < by)
+    self.assertAllEqual(x > y, bx > by)
+    self.assertAllEqual(x <= y, bx <= by)
+    self.assertAllEqual(x >= y, bx >= by)
+
+  def testEqual2(self):
+    a = np.array([401408], bfloat16)
+    b = np.array([82432], bfloat16)
+    self.assertFalse(a.__eq__(b))
 
   def testCasts(self):
-    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [
+        np.float16, np.float32, np.float64, np.int32, np.int64,
+        np.complex64, np.complex128]:
       x = np.array([[1, 2, 3]], dtype=dtype)
       y = x.astype(bfloat16)
       z = y.astype(dtype)
@@ -182,6 +221,17 @@ class Bfloat16NumPyTest(test.TestCase):
       self.assertEqual(bfloat16, y.dtype)
       self.assertTrue(np.all(x == z))
       self.assertEqual(dtype, z.dtype)
+
+  def testConformNumpyComplex(self):
+    for dtype in [np.complex64, np.complex128]:
+      x = np.array([1.1, 2.2 + 2.2j, 3.3], dtype=dtype)
+      y_np = x.astype(np.float32)
+      y_tf = x.astype(bfloat16)
+      self.assertAllClose(y_np, y_tf, atol=2e-2)
+
+      z_np = y_np.astype(dtype)
+      z_tf = y_tf.astype(dtype)
+      self.assertAllClose(z_np, z_tf, atol=2e-2)
 
   def testAdd(self):
     x = np.array([[1, 2, 3]], dtype=bfloat16)

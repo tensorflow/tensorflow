@@ -68,14 +68,6 @@ dictionary that maps @{tf.Tensor} objects to
 numpy arrays (and some other types), which will be used as the values of those
 tensors in the execution of a step.
 
-Often, you have certain tensors, such as inputs, that will always be fed. The
-@{tf.placeholder} op allows you
-to define tensors that *must* be fed, and optionally allows you to constrain
-their shape as well. See the
-@{$beginners$beginners' MNIST tutorial} for an
-example of how placeholders and feeding can be used to provide the training data
-for a neural network.
-
 #### What is the difference between `Session.run()` and `Tensor.eval()`?
 
 If `t` is a @{tf.Tensor} object,
@@ -167,8 +159,7 @@ available. These operations allow you to build sophisticated
 @{$reading_data$input pipelines}, at the cost of making the
 TensorFlow computation somewhat more complicated. See the how-to documentation
 for
-@{$reading_data#creating-threads-to-prefetch-using-queuerunner-objects$using
-`QueueRunner` objects to drive queues and readers}
+@{$reading_data#creating_threads_to_prefetch_using_queuerunner_objects$using `QueueRunner` objects to drive queues and readers}
 for more information on how to use them.
 
 ## Variables
@@ -281,7 +272,7 @@ Prefer predefined TensorFlow operations such as @{tf.decode_raw},
 
 If your data is not easily parsable with the built-in TensorFlow operations,
 consider converting it, offline, to a format that is easily parsable, such
-as ${tf.python_io.TFRecordWriter$`TFRecord`} format.
+as @{tf.python_io.TFRecordWriter$`TFRecord`} format.
 
 The more efficient method to customize the parsing behavior is to
 @{$adding_an_op$add a new op written in C++} that parses your
@@ -300,7 +291,7 @@ functions, methods, and properties. We also adhere to the
 [Google Python style guide](https://google.github.io/styleguide/pyguide.html).
 
 The TensorFlow C++ code base adheres to the
-[Google C++ style guide](http://google.github.io/styleguide/cppguide.html).
+[Google C++ style guide](https://google.github.io/styleguide/cppguide.html).
 
 (<sup>*</sup> With one exception: we use 2-space indentation instead of 4-space
 indentation.)

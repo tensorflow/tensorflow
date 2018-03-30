@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import shutil
+import tempfile
 
 import numpy as np
 
@@ -74,6 +75,7 @@ class TestImage(test.TestCase):
           shear_range=0.5,
           zoom_range=0.2,
           channel_shift_range=0.,
+          brightness_range=(1, 5),
           fill_mode='nearest',
           cval=0.5,
           horizontal_flip=True,
@@ -91,6 +93,47 @@ class TestImage(test.TestCase):
           shuffle=True):
         self.assertEqual(x.shape[1:], images.shape[1:])
         break
+
+  def test_image_data_generator_with_validation_split(self):
+    if PIL is None:
+      return  # Skip test if PIL is not available.
+
+    for test_images in _generate_test_images():
+      img_list = []
+      for im in test_images:
+        img_list.append(keras.preprocessing.image.img_to_array(im)[None, ...])
+
+      images = np.vstack(img_list)
+      generator = keras.preprocessing.image.ImageDataGenerator(
+          validation_split=0.5)
+      seq = generator.flow(
+          images,
+          np.arange(images.shape[0]),
+          shuffle=False,
+          batch_size=3,
+          subset='validation')
+      _, y = seq[0]
+      self.assertEqual(list(y), [0, 1, 2])
+      seq = generator.flow(
+          images,
+          np.arange(images.shape[0]),
+          shuffle=False,
+          batch_size=3,
+          subset='training')
+      _, y2 = seq[0]
+      self.assertEqual(list(y2), [4, 5, 6])
+
+      with self.assertRaises(ValueError):
+        generator.flow(
+            images,
+            np.arange(images.shape[0]),
+            shuffle=False,
+            batch_size=3,
+            subset='foo')
+
+  def test_image_data_generator_with_split_value_error(self):
+    with self.assertRaises(ValueError):
+      keras.preprocessing.image.ImageDataGenerator(validation_split=5)
 
   def test_image_data_generator_invalid_data(self):
     generator = keras.preprocessing.image.ImageDataGenerator(
@@ -202,8 +245,79 @@ class TestImage(test.TestCase):
     # check number of classes and images
     self.assertEqual(len(dir_iterator.class_indices), num_classes)
     self.assertEqual(len(dir_iterator.classes), count)
-    self.assertEqual(sorted(dir_iterator.filenames), sorted(filenames))
+    self.assertEqual(set(dir_iterator.filenames), set(filenames))
     _ = dir_iterator.next()
+
+  def directory_iterator_with_validation_split_test_helper(
+      self, validation_split):
+    if PIL is None:
+      return  # Skip test if PIL is not available.
+
+    num_classes = 2
+    tmp_folder = tempfile.mkdtemp(prefix='test_images')
+
+    # create folders and subfolders
+    paths = []
+    for cl in range(num_classes):
+      class_directory = 'class-{}'.format(cl)
+      classpaths = [
+          class_directory,
+          os.path.join(class_directory, 'subfolder-1'),
+          os.path.join(class_directory, 'subfolder-2'),
+          os.path.join(class_directory, 'subfolder-1', 'sub-subfolder')
+      ]
+      for path in classpaths:
+        os.mkdir(os.path.join(tmp_folder, path))
+      paths.append(classpaths)
+
+    # save the images in the paths
+    count = 0
+    filenames = []
+    for test_images in _generate_test_images():
+      for im in test_images:
+        # rotate image class
+        im_class = count % num_classes
+        # rotate subfolders
+        classpaths = paths[im_class]
+        filename = os.path.join(classpaths[count % len(classpaths)],
+                                'image-{}.jpg'.format(count))
+        filenames.append(filename)
+        im.save(os.path.join(tmp_folder, filename))
+        count += 1
+
+    # create iterator
+    generator = keras.preprocessing.image.ImageDataGenerator(
+        validation_split=validation_split)
+
+    with self.assertRaises(ValueError):
+      generator.flow_from_directory(tmp_folder, subset='foo')
+
+    num_validation = int(count * validation_split)
+    num_training = count - num_validation
+    train_iterator = generator.flow_from_directory(
+        tmp_folder, subset='training')
+    self.assertEqual(train_iterator.samples, num_training)
+
+    valid_iterator = generator.flow_from_directory(
+        tmp_folder, subset='validation')
+    self.assertEqual(valid_iterator.samples, num_validation)
+
+    # check number of classes and images
+    self.assertEqual(len(train_iterator.class_indices), num_classes)
+    self.assertEqual(len(train_iterator.classes), num_training)
+    self.assertEqual(
+        len(set(train_iterator.filenames) & set(filenames)), num_training)
+
+    shutil.rmtree(tmp_folder)
+
+  def test_directory_iterator_with_validation_split_25_percent(self):
+    self.directory_iterator_with_validation_split_test_helper(0.25)
+
+  def test_directory_iterator_with_validation_split_40_percent(self):
+    self.directory_iterator_with_validation_split_test_helper(0.40)
+
+  def test_directory_iterator_with_validation_split_50_percent(self):
+    self.directory_iterator_with_validation_split_test_helper(0.50)
 
   def test_img_utils(self):
     if PIL is None:
@@ -240,6 +354,41 @@ class TestImage(test.TestCase):
     self.assertEqual(img.size, (width, height))
     x = keras.preprocessing.image.img_to_array(img, data_format='channels_last')
     self.assertEqual(x.shape, (height, width, 1))
+
+  def test_batch_standardize(self):
+    if PIL is None:
+      return  # Skip test if PIL is not available.
+
+    # ImageDataGenerator.standardize should work on batches
+    for test_images in _generate_test_images():
+      img_list = []
+      for im in test_images:
+        img_list.append(keras.preprocessing.image.img_to_array(im)[None, ...])
+
+      images = np.vstack(img_list)
+      generator = keras.preprocessing.image.ImageDataGenerator(
+          featurewise_center=True,
+          samplewise_center=True,
+          featurewise_std_normalization=True,
+          samplewise_std_normalization=True,
+          zca_whitening=True,
+          rotation_range=90.,
+          width_shift_range=0.1,
+          height_shift_range=0.1,
+          shear_range=0.5,
+          zoom_range=0.2,
+          channel_shift_range=0.,
+          brightness_range=(1, 5),
+          fill_mode='nearest',
+          cval=0.5,
+          horizontal_flip=True,
+          vertical_flip=True)
+      generator.fit(images, augment=True)
+
+      transformed = np.copy(images)
+      for i, im in enumerate(transformed):
+        transformed[i] = generator.random_transform(im)
+      transformed = generator.standardize(transformed)
 
   def test_img_transforms(self):
     x = np.random.random((3, 200, 200))

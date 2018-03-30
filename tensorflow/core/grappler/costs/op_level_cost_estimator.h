@@ -28,6 +28,9 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
+                                        TensorShapeProto* tensor_shape_proto);
+
 class OpLevelCostEstimator {
  public:
   OpLevelCostEstimator();
@@ -35,7 +38,6 @@ class OpLevelCostEstimator {
 
   virtual Costs PredictCosts(const OpContext& op_context) const;
 
- protected:
   // Basic device performance info, sufficient for roofline estimate.
   struct DeviceInfo {
     double gigaops;     // Billions of operations executed per second.
@@ -45,13 +47,19 @@ class OpLevelCostEstimator {
   // Returns basic device performance info.
   virtual DeviceInfo GetDeviceInfo(const DeviceProperties& device) const;
 
+ protected:
   // Predict cost of an op for which no accurate estimator is defined.
   Costs PredictCostOfAnUnknownOp(const OpContext& op_context) const;
 
-  // Naive cost estimate based on operations divided by device ops/sec,
-  // and input/output tensor sizes.
-  Costs PredictOpCountBasedCost(double operations,
-                                const OpInfo& op_features) const;
+  // Naive cost estimate based on the given operations count and total
+  // input/output tensor sizes of the given op_info combined.
+  Costs PredictOpCountBasedCost(double operations, const OpInfo& op_info) const;
+
+  // Naive cost estimate based on the given operations count and the given total
+  // io size in bytes. Sizes of op_info inputs and outputs are not taken into
+  // consideration.
+  Costs PredictOpCountBasedCost(double operations, double total_io_bytes,
+                                const OpInfo& op_info) const;
 
   // This family of routines counts the number of operations to perform the
   // specified TensorFlow Op.
@@ -122,7 +130,7 @@ class OpLevelCostEstimator {
   // implementation just divides the operations to
   // perform the op (from the "Count" routines,
   // above) by the device peak operations per
-  // second. Override to supply a better estimate.
+  // second.
   // Implementation of costs other than
   // execution_time is optional, depending on the
   // device.
@@ -132,8 +140,17 @@ class OpLevelCostEstimator {
   Costs PredictConv2DBackpropFilter(const OpContext& op_context) const;
   Costs PredictMatMul(const OpContext& op_context) const;
   Costs PredictNoOp(const OpContext& op_context) const;
+  Costs PredictIdentity(const OpContext& op_context) const;
+  Costs PredictVariable(const OpContext& op_context) const;
   Costs PredictBatchMatMul(const OpContext& op_context) const;
   Costs PredictMetadata(const OpContext& op_context) const;
+  Costs PredictGatherOrSlice(const OpContext& op_context) const;
+  Costs PredictMaxPool(const OpContext& op_context) const;
+  Costs PredictMaxPoolGrad(const OpContext& op_context) const;
+  Costs PredictAvgPool(const OpContext& op_context) const;
+  Costs PredictAvgPoolGrad(const OpContext& op_context) const;
+  Costs PredictFusedBatchNorm(const OpContext& op_context) const;
+  Costs PredictFusedBatchNormGrad(const OpContext& op_context) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -145,9 +162,15 @@ class OpLevelCostEstimator {
     }
   }
 
+  // For convolution and its grad ops.
   static ConvolutionDimensions ConvolutionDimensionsFromInputs(
       const TensorShapeProto& original_image_shape,
-      const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
+      const TensorShapeProto& original_filter_shape, const OpInfo& op_info,
+      bool* found_unknown_shapes);
+
+  // For Pooling, FusedBatchNorm, and their grad ops.
+  static ConvolutionDimensions OpDimensionsFromInputs(
+      const TensorShapeProto& original_image_shape, const OpInfo& op_info,
       bool* found_unknown_shapes);
 
  protected:

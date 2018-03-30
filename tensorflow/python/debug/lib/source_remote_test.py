@@ -103,7 +103,7 @@ class SendTracebacksTest(test_util.TensorFlowTestCase):
           self._server.query_origin_stack()[-1])
 
       self.assertEqual(
-          "a = variables.Variable(21.0, name=\"a\")",
+          "      a = variables.Variable(21.0, name=\"a\")",
           self._server.query_source_file_line(__file__, a_lineno))
       # Files in the TensorFlow code base shouldn not have been sent.
       tf_trace_file_path = self._findFirstTraceInsideTensorFlowPyLibrary(a.op)
@@ -145,7 +145,7 @@ class SendTracebacksTest(test_util.TensorFlowTestCase):
             server.query_origin_stack()[-1])
 
         self.assertEqual(
-            "x = math_ops.add(a, b, name=\"two/x\")",
+            "      x = math_ops.add(a, b, name=\"two/x\")",
             server.query_source_file_line(__file__, x_lineno))
         tf_trace_file_path = self._findFirstTraceInsideTensorFlowPyLibrary(x.op)
         with self.assertRaises(ValueError):

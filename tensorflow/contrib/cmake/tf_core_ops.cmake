@@ -15,19 +15,24 @@
 set(tf_op_lib_names
     "audio_ops"
     "array_ops"
+    "batch_ops"
     "bitwise_ops"
+    "boosted_trees_ops"
     "candidate_sampling_ops"
     "checkpoint_ops"
     "control_flow_ops"
     "ctc_ops"
+    "cudnn_rnn_ops"
     "data_flow_ops"
     "dataset_ops"
     "functional_ops"
     "image_ops"
     "io_ops"
     "linalg_ops"
+    "list_ops"
     "lookup_ops"
     "logging_ops"
+    "manip_ops"
     "math_ops"
     "nn_ops"
     "no_op"
@@ -44,7 +49,7 @@ set(tf_op_lib_names
     "state_ops"
     "stateless_random_ops"
     "string_ops"
-		"summary_ops"
+    "summary_ops"
     "training_ops"
 )
 
@@ -80,8 +85,8 @@ GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_training "${tensorflow_source_dir}/ten
 GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_prediction "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/prediction_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_quantiles "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/quantile_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_stats_accumulator "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc")
-GENERATE_CONTRIB_OP_LIBRARY(cudnn_rnn "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/ops/cudnn_rnn_ops.cc")
-GENERATE_CONTRIB_OP_LIBRARY(data_prefetching "${tensorflow_source_dir}/tensorflow/contrib/data/ops/prefetching_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(coder "${tensorflow_source_dir}/tensorflow/contrib/coder/ops/coder_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(data_dataset "${tensorflow_source_dir}/tensorflow/contrib/data/ops/dataset_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(factorization_clustering "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/clustering_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(factorization_factorization "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(framework_variable "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/variable_ops.cc")

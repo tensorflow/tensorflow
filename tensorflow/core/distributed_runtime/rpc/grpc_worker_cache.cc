@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 
+#include <unordered_map>
+
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache_partial.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 
@@ -30,29 +33,21 @@ namespace {
 
 class GrpcWorkerCache : public WorkerCachePartial {
  public:
+  // TODO(ncteisen): consider adding a config var or flag for this
+  static constexpr const size_t kGrpcWorkerCacheThreadCount = 8;
+
   explicit GrpcWorkerCache(GrpcChannelCache* channel_cache,
                            WorkerInterface* local_worker,
                            const string& local_target)
       : local_target_(local_target),
         local_worker_(local_worker),
-        channel_cache_(channel_cache) {
-    // TODO(mrry): Investigate possible performance improvements by
-    // replacing this thread with a threadpool.
-    polling_thread_ = Env::Default()->StartThread(
-        ThreadOptions(), "grpc_worker_cache", [this]() {
-          void* tag;
-          bool ok;
-          while (completion_queue_.Next(&tag, &ok)) {
-            GrpcClientCQTag* callback_tag = static_cast<GrpcClientCQTag*>(tag);
-            callback_tag->OnCompleted(ok);
-          }
-        });
-  }
+        channel_cache_(channel_cache),
+        threads_(kGrpcWorkerCacheThreadCount),
+        next_round_robin_assignment_(0) {}
 
   // Explicit destructor to control destruction order.
   ~GrpcWorkerCache() override {
-    completion_queue_.Shutdown();
-    delete polling_thread_;  // Blocks until thread exits.
+    threads_.clear();  // Blocks until threads exit.
     delete channel_cache_;
   }
 
@@ -66,7 +61,9 @@ class GrpcWorkerCache : public WorkerCachePartial {
     } else {
       SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
       if (!channel) return nullptr;
-      return NewGrpcRemoteWorker(channel, &completion_queue_, &logger_);
+      return NewGrpcRemoteWorker(
+          channel, threads_[AssignWorkerToThread(target)].completion_queue(),
+          &logger_);
     }
   }
 
@@ -88,12 +85,59 @@ class GrpcWorkerCache : public WorkerCachePartial {
   }
 
  private:
+  // Thread wrapping class that drives work over a single gRPC
+  // CompletionQueue.
+  class GrpcWorkerCacheThread {
+   public:
+    GrpcWorkerCacheThread() {
+      thread_.reset(Env::Default()->StartThread(
+          ThreadOptions(), "grpc_worker_cache", [this]() {
+            void* tag;
+            bool ok;
+            while (completion_queue_.Next(&tag, &ok)) {
+              GrpcClientCQTag* callback_tag =
+                  static_cast<GrpcClientCQTag*>(tag);
+              callback_tag->OnCompleted(ok);
+            }
+          }));
+    }
+
+    ~GrpcWorkerCacheThread() {
+      completion_queue_.Shutdown();
+      thread_.reset();
+    }
+
+    ::grpc::CompletionQueue* completion_queue() { return &completion_queue_; }
+
+   private:
+    ::grpc::CompletionQueue completion_queue_;
+    std::unique_ptr<Thread> thread_;
+  };  // GrpcWorkerCacheThread
+
+  size_t AssignWorkerToThread(const string& target) {
+    // Round-robin target assignment, but keeps the same target on the same
+    // polling thread always, as this is important for gRPC performace
+    mutex_lock lock(assignment_mu_);
+    auto it = target_assignments_.find(target);
+    if (it == target_assignments_.end()) {
+      it = target_assignments_
+               .insert(std::make_pair(
+                   target, (next_round_robin_assignment_++) % threads_.size()))
+               .first;
+    }
+    return it->second;
+  }
+
   const string local_target_;
   WorkerInterface* const local_worker_;  // Not owned.
-  GrpcChannelCache* channel_cache_;  // Owned.
-  ::grpc::CompletionQueue completion_queue_;
-  Thread* polling_thread_;  // Owned.
+  GrpcChannelCache* channel_cache_;      // Owned.
   WorkerCacheLogger logger_;
+  std::vector<GrpcWorkerCacheThread> threads_;
+
+  mutex assignment_mu_;
+  std::unordered_map<std::string, size_t> target_assignments_
+      GUARDED_BY(assignment_mu_);
+  size_t next_round_robin_assignment_ GUARDED_BY(assignment_mu_);
 };
 
 }  // namespace

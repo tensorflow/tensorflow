@@ -139,6 +139,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
 
   file(GLOB_RECURSE tf_test_src_py
     ${tf_test_rnn_src_py}
+    "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/*.py"
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/debug/lib/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/*_test.py"
@@ -152,8 +153,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/profiler/internal/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/coder/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/feature_column/python/feature_column/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/python/kernel_tests/*_test.py"
@@ -189,11 +192,14 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/profiler/pprof_profiler_test.py"
     # flaky test
     "${tensorflow_source_dir}/tensorflow/python/profiler/internal/run_metadata_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/profiler/model_analyzer_test.py"
     # Fails because uses data dependencies with bazel
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/image/python/kernel_tests/sparse_image_warp_test.py"
     # requires scipy
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/image/python/kernel_tests/interpolate_spline_test.py"
     # Takes very long to run without sharding (defined in bazel build file).
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"
     # Loading resources in contrib doesn't seem to work on Windows
@@ -204,6 +210,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/graph_io_test.py"
     # Test is flaky on Windows GPU builds (b/38283730).
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/gmm_test.py"
+    # Disable following manual tag in BUILD.
+    "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/layers/convolutional_test.py"
+
   )
   if (WIN32)
     set(tf_test_src_py_exclude
@@ -218,12 +227,14 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
       # TFDBG grpc:// mode is not yet available on Windows.
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/dist_session_debug_grpc_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/lib/grpc_large_data_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/source_remote_test.py"
       # stl on windows handles overflows different
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/as_string_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/list_ops_test.py"  # Needs portpicker.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/tensor_array_ops_test.py"  # Needs portpicker.
       # Numerical issues, calculations off.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
@@ -240,11 +251,11 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
       "${tensorflow_source_dir}tensorflow/python/training/localhost_cluster_performance_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/iterator_ops_cluster_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_cluster_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_cluster_test.py"
       # Type error in testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU.
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/iterator_ops_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/self_adjoint_eig_op_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_test.py"
       # IteratorGetMax OutOfRangeError
@@ -268,12 +279,12 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg_grad_test.py"  # cudaSolver handle creation fails.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
       # Dataset tests
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/dataset_constructor_op_test.py"  # Segfaults on windows
+      "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/dataset_constructor_op_test.py"  # Segfaults on windows
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/dataset_constructor_op_test.py"  # Segfaults on Windows.
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/iterator_ops_cluster_test.py"
-      # Broken tensorboard test due to cmake issues.
-      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_cluster_test.py"  # Needs portpicker
+      "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_cluster_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/interleave_dataset_op_test.py"  # Deadlocks
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/sloppy_transformation_dataset_op_test.py"  # b/65430561
+      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/prefetching_ops_test.py"  # Segfaults on Windows.
       # tensor_forest tests (also note that we exclude the hybrid tests for now)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/count_extremely_random_stats_op_test.py"  # Results in wrong order.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
@@ -304,6 +315,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Depends on python/framework/test_ops
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/control_flow_util_test.py"
+      # Flaky replicate_model_fn_test
+      "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/replicate_model_fn_test.py"  # b/71901810
+      # Broken io_utils_test
+      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/io_utils_test.py"  # b/72894325
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
@@ -371,7 +386,6 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/tensor_coding_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_rewriter_transform_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/graph_transferer_test.cc"
-    "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc"
   )
 
   if (NOT tensorflow_ENABLE_GPU)
@@ -466,6 +480,10 @@ if (tensorflow_BUILD_CC_TESTS)
   file(GLOB tf_core_profiler_test_srcs
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/*_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/advisor/*_test.cc"
+  )
+
+  list(REMOVE_ITEM tf_test_src_simple
+    ${tf_core_profiler_test_srcs}
   )
 
   set(tf_test_lib tf_test_lib)

@@ -77,8 +77,8 @@ class HloProfileIndexMap {
   std::unordered_map<const HloComputation*, int64> computation_to_profile_idx_;
 };
 
-// Create an instance of `HloProfilePrinter` that owns its memory.
-std::unique_ptr<HloProfilePrinter> CreateHloProfilePrinter(
+// Create an instance of `HloProfilePrinterData`.
+std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
     const HloCostAnalysis& cost_analysis);
 
@@ -90,7 +90,7 @@ class HloExecutionProfile {
  public:
   using DeviceDescription = perftools::gputools::DeviceDescription;
 
-  HloExecutionProfile(const HloProfilePrinter* hlo_profile_printer,
+  HloExecutionProfile(const HloProfilePrinterData* hlo_profile_printer_data,
                       const HloProfileIndexMap* hlo_profile_index_map);
 
   // Record how many cycles this HLO took to execute.
@@ -117,17 +117,19 @@ class HloExecutionProfile {
   // debugging; e.g. emits cycle counts, execution time at the nominal device
   // frequency, and the effective throughput given the provided cost_analysis
   // for the operations in a given computation. Returns an empty string if it
-  // wasn't possible to generate a printable version. cost_analysis should be a
-  // clean analysis that can be used to visit the computation.
+  // wasn't possible to generate a printable version.
   string ToString(const DeviceDescription& device_description) const {
-    return hlo_profile_printer_.ToString(profile_counters_.data(),
-                                         device_description.clock_rate_ghz());
+    return PrintHloProfile(hlo_profile_printer_data_, profile_counters_.data(),
+                           device_description.clock_rate_ghz());
   }
 
   std::vector<int64>* mutable_profile_counters() { return &profile_counters_; }
+  const std::vector<int64>& profile_counters() const {
+    return profile_counters_;
+  }
 
  private:
-  const HloProfilePrinter& hlo_profile_printer_;
+  const HloProfilePrinterData& hlo_profile_printer_data_;
   const HloProfileIndexMap& hlo_profile_index_map_;
 
   // Stores per-Hlo profile counters.  This is the only thing that changes when

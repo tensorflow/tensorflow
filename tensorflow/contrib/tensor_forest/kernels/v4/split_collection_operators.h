@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
 
 #include <vector>
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model.pb.h"
@@ -71,9 +71,7 @@ class SplitCollectionOperator {
   }
 
   // Perform any necessary cleanup for any tracked state for the slot.
-  virtual void ClearSlot(int32 node_id) {
-    stats_.erase(node_id);
-  }
+  virtual void ClearSlot(int32 node_id) { stats_.erase(node_id); }
 
   // Return true if slot is fully initialized.
   virtual bool IsInitialized(int32 node_id) const;
@@ -128,6 +126,4 @@ class AnyCollectionCreator : public CollectionCreator {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-
-
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_

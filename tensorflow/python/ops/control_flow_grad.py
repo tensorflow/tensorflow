@@ -28,7 +28,6 @@ from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.control_flow_ops import *
-from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
 
 
@@ -53,7 +52,8 @@ def _SwitchGrad(op, *grad):
       # TODO(yuanbyu): Perform shape inference with this new input.
       if grad[1] is not None:
         # pylint: disable=protected-access
-        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
+        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1],
+                                             enforce_shape_invariant=False)
         # pylint: enable=protected-access
       return None, None
     elif grad[0] is not None:
@@ -142,6 +142,7 @@ def _ExitGrad(op, grad):
   """Gradients for an exit op are calculated using an Enter op."""
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
+  op_ctxt = op._get_control_flow_context()
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if not grad_ctxt.back_prop:
@@ -150,10 +151,8 @@ def _ExitGrad(op, grad):
     # no gradient computation.
     return None
 
-  # pylint: disable=protected-access
-  if op._get_control_flow_context().grad_state:
+  if op_ctxt.grad_state:
     raise TypeError("Second-order gradient for while loops not supported.")
-  # pylint: enable=protected-access
 
   if isinstance(grad, ops.Tensor):
     grad_ctxt.AddName(grad.name)

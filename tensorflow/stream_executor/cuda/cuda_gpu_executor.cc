@@ -664,7 +664,7 @@ bool CUDAExecutor::StopTimer(Stream *stream, Timer *timer) {
   return AsCUDATimer(timer)->Stop(AsCUDAStream(stream));
 }
 
-bool CUDAExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status CUDAExecutor::BlockHostUntilDone(Stream *stream) {
   return CUDADriver::SynchronizeStream(context_, AsCUDAStreamValue(stream));
 }
 
@@ -860,6 +860,9 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
   return 0;
 #elif defined(PLATFORM_WINDOWS)
   // Windows support for NUMA is not currently implemented. Return node 0.
+  return 0;
+#elif defined(__aarch64__)
+  LOG(INFO) << "ARM64 does not support NUMA - returning NUMA node zero";
   return 0;
 #else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
@@ -1098,6 +1101,18 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
     uint64 device_memory_size = -1;
     (void)CUDADriver::GetDeviceTotalMemory(device_, &device_memory_size);
     builder.set_device_memory_size(device_memory_size);
+  }
+
+  port::StatusOr<int> mem_clock_khz = CUDADriver::GetDeviceAttribute(
+      CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device_ordinal_);
+  port::StatusOr<int> mem_bus_width_bits = CUDADriver::GetDeviceAttribute(
+      CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH, device_ordinal_);
+  if (mem_clock_khz.ok() && mem_bus_width_bits.ok()) {
+    // Times 2 because HBM is DDR memory; it gets two data bits per each data
+    // lane.
+    builder.set_memory_bandwidth(2 * int64_t{mem_clock_khz.ValueOrDie()} *
+                                 1000 *
+                                 int64_t{mem_bus_width_bits.ValueOrDie()} / 8);
   }
 
   {

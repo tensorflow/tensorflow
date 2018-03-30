@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -28,8 +29,8 @@ constexpr char kTestProject[] = "test-project";
 constexpr char kTestDataset[] = "test-dataset";
 constexpr char kTestTable[] = "test-table";
 
-bool HasSubstr(const string& base, const string& substr) {
-  bool ok = StringPiece(base).contains(substr);
+bool HasSubstr(StringPiece base, StringPiece substr) {
+  bool ok = str_util::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
 }

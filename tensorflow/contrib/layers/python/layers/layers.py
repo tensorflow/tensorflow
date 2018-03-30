@@ -29,6 +29,7 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -50,51 +51,21 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
-from tensorflow.python.layers.maxout import maxout
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
-__all__ = ['avg_pool2d',
-           'avg_pool3d',
-           'batch_norm',
-           'bias_add',
-           'conv2d',
-           'conv3d',
-           'conv2d_in_plane',
-           'conv2d_transpose',
-           'conv3d_transpose',
-           'convolution',
-           'convolution2d',
-           'convolution2d_in_plane',
-           'convolution2d_transpose',
-           'convolution3d',
-           'convolution3d_transpose',
-           'dropout',
-           'elu',
-           'flatten',
-           'fully_connected',
-           'GDN',
-           'gdn',
-           'layer_norm',
-           'linear',
-           'pool',
-           'max_pool2d',
-           'max_pool3d',
-           'one_hot_encoding',
-           'relu',
-           'relu6',
-           'repeat',
-           'scale_gradient',
-           'separable_conv2d',
-           'separable_convolution2d',
-           'softmax',
-           'spatial_softmax',
-           'stack',
-           'unit_norm',
-           'legacy_fully_connected',
-           'legacy_linear',
-           'legacy_relu',
-           'maxout']
+__all__ = [
+    'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
+    'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
+    'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
+    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
+    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn',
+    'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
+    'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
+    'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
+    'sequence_to_images', 'softmax', 'spatial_softmax', 'stack', 'unit_norm',
+    'legacy_fully_connected', 'legacy_linear', 'legacy_relu', 'maxout'
+]
 
 DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
@@ -139,13 +110,14 @@ def avg_pool2d(inputs,
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with ops.name_scope(scope, 'AvgPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    df = ('channels_first' if data_format and data_format.startswith('NC')
-          else 'channels_last')
-    layer = pooling_layers.AveragePooling2D(pool_size=kernel_size,
-                                            strides=stride,
-                                            padding=padding,
-                                            data_format=df,
-                                            _scope=sc)
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    layer = pooling_layers.AveragePooling2D(
+        pool_size=kernel_size,
+        strides=stride,
+        padding=padding,
+        data_format=df,
+        _scope=sc)
     outputs = layer.apply(inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
@@ -187,13 +159,14 @@ def avg_pool3d(inputs,
     raise ValueError('data_format has to be either NCDHW or NDHWC.')
   with ops.name_scope(scope, 'AvgPool3D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    df = ('channels_first' if data_format and data_format.startswith('NC')
-          else 'channels_last')
-    layer = pooling_layers.AveragePooling3D(pool_size=kernel_size,
-                                            strides=stride,
-                                            padding=padding,
-                                            data_format=df,
-                                            _scope=sc)
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    layer = pooling_layers.AveragePooling3D(
+        pool_size=kernel_size,
+        strides=stride,
+        padding=padding,
+        data_format=df,
+        _scope=sc)
     outputs = layer.apply(inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
@@ -298,8 +271,8 @@ def _fused_batch_norm(inputs,
       raise ValueError('Inputs %s has undefined rank' % inputs.name)
     elif original_rank not in [2, 4]:
       raise ValueError('Inputs %s has unsupported rank.'
-                       ' Expected 2 or 4 but got %d' % (
-                           inputs.name, original_rank))
+                       ' Expected 2 or 4 but got %d' % (inputs.name,
+                                                        original_rank))
     if original_rank == 2:
       channels = inputs.get_shape()[-1].value
       if channels is None:
@@ -393,6 +366,7 @@ def _fused_batch_norm(inputs,
     def _fused_batch_norm_training():
       return nn.fused_batch_norm(
           inputs, gamma, beta, epsilon=epsilon, data_format=data_format)
+
     def _fused_batch_norm_inference():
       return nn.fused_batch_norm(
           inputs,
@@ -403,9 +377,9 @@ def _fused_batch_norm(inputs,
           epsilon=epsilon,
           is_training=False,
           data_format=data_format)
-    outputs, mean, variance = utils.smart_cond(is_training,
-                                               _fused_batch_norm_training,
-                                               _fused_batch_norm_inference)
+
+    outputs, mean, variance = utils.smart_cond(
+        is_training, _fused_batch_norm_training, _fused_batch_norm_inference)
 
     # If `is_training` doesn't have a constant value, because it is a `Tensor`,
     # a `Variable` or `Placeholder` then is_training_value will be None and
@@ -415,6 +389,7 @@ def _fused_batch_norm(inputs,
     if need_updates:
       if updates_collections is None:
         no_updates = lambda: outputs
+
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -424,9 +399,11 @@ def _fused_batch_norm(inputs,
           with ops.control_dependencies(
               [update_moving_mean, update_moving_variance]):
             return array_ops.identity(outputs)
+
         outputs = utils.smart_cond(is_training, _force_updates, no_updates)
       else:
         moving_vars_fn = lambda: (moving_mean, moving_variance)
+
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -434,9 +411,9 @@ def _fused_batch_norm(inputs,
           update_moving_variance = moving_averages.assign_moving_average(
               moving_variance, variance, decay, zero_debias=False)
           return update_moving_mean, update_moving_variance
-        update_mean, update_variance = utils.smart_cond(is_training,
-                                                        _delay_updates,
-                                                        moving_vars_fn)
+
+        update_mean, update_variance = utils.smart_cond(
+            is_training, _delay_updates, moving_vars_fn)
         ops.add_to_collections(updates_collections, update_mean)
         ops.add_to_collections(updates_collections, update_variance)
 
@@ -479,7 +456,12 @@ def batch_norm(inputs,
 
     Sergey Ioffe, Christian Szegedy
 
-  Can be used as a normalizer function for conv2d and fully_connected.
+  Can be used as a normalizer function for conv2d and fully_connected. The
+  normalization is over all but the last dimension if `data_format` is `NHWC`
+  and all but the second dimension if `data_format` is `NCHW`.  In case of a 2D
+  tensor this corresponds to the batch dimension, while in case of a 4D tensor
+  this
+  corresponds to the batch and space dimensions.
 
   Note: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
@@ -535,8 +517,8 @@ def batch_norm(inputs,
       then the batch normalization uses weighted mean and
       variance. (This can be used to correct for bias in training
       example selection.)
-    fused: if `True`, use a faster, fused implementation if possible.
-      If `None`, use the system recommended implementation.
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
     zero_debias_moving_mean: Use zero_debias for moving_mean. It creates a new
       pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
@@ -588,10 +570,9 @@ def batch_norm(inputs,
   #   implementation in normalization_layers.BatchNormalization.
   inputs = ops.convert_to_tensor(inputs)
   rank = inputs.get_shape().ndims
-  possible_to_fuse = (batch_weights is None and
-                      not renorm and
-                      rank in [2, 4] and
-                      adjustment is None)
+  possible_to_fuse = (
+      batch_weights is None and not renorm and rank in [2, 4] and
+      adjustment is None)
   if fused and possible_to_fuse and (
       zero_debias_moving_mean or rank == 2 or
       updates_collections is not ops.GraphKeys.UPDATE_OPS):
@@ -619,7 +600,9 @@ def batch_norm(inputs,
 
   layer_variable_getter = _build_variable_getter()
   with variable_scope.variable_scope(
-      scope, 'BatchNorm', [inputs], reuse=reuse,
+      scope,
+      'BatchNorm', [inputs],
+      reuse=reuse,
       custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
@@ -667,15 +650,15 @@ def batch_norm(inputs,
       outputs = layer.apply(inputs, training=is_training)
 
       # Add variables to collections.
-      _add_variable_to_collections(
-          layer.moving_mean, variables_collections, 'moving_mean')
-      _add_variable_to_collections(
-          layer.moving_variance, variables_collections, 'moving_variance')
+      _add_variable_to_collections(layer.moving_mean, variables_collections,
+                                   'moving_mean')
+      _add_variable_to_collections(layer.moving_variance, variables_collections,
+                                   'moving_variance')
       if layer.beta is not None:
         _add_variable_to_collections(layer.beta, variables_collections, 'beta')
       if layer.gamma is not None:
-        _add_variable_to_collections(
-            layer.gamma, variables_collections, 'gamma')
+        _add_variable_to_collections(layer.gamma, variables_collections,
+                                     'gamma')
 
       if activation_fn is not None:
         outputs = activation_fn(outputs)
@@ -715,8 +698,8 @@ def batch_norm(inputs,
       params_shape = inputs_shape[-1:]
       params_shape_broadcast = None
     if not params_shape.is_fully_defined():
-      raise ValueError('Inputs %s has undefined channels dimension %s.' % (
-          inputs.name, params_shape))
+      raise ValueError('Inputs %s has undefined channels dimension %s.' %
+                       (inputs.name, params_shape))
 
     # Allocate parameters for the beta and gamma of the normalization.
     beta, gamma = None, None
@@ -727,23 +710,25 @@ def batch_norm(inputs,
                                                         'beta')
       beta_initializer = param_initializers.get('beta',
                                                 init_ops.zeros_initializer())
-      beta = variables.model_variable('beta',
-                                      shape=params_shape,
-                                      dtype=dtype,
-                                      initializer=beta_initializer,
-                                      collections=beta_collections,
-                                      trainable=trainable)
+      beta = variables.model_variable(
+          'beta',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=beta_initializer,
+          collections=beta_collections,
+          trainable=trainable)
     if scale:
-      gamma_collections = utils.get_variable_collections(variables_collections,
-                                                         'gamma')
+      gamma_collections = utils.get_variable_collections(
+          variables_collections, 'gamma')
       gamma_initializer = param_initializers.get('gamma',
                                                  init_ops.ones_initializer())
-      gamma = variables.model_variable('gamma',
-                                       shape=params_shape,
-                                       dtype=dtype,
-                                       initializer=gamma_initializer,
-                                       collections=gamma_collections,
-                                       trainable=trainable)
+      gamma = variables.model_variable(
+          'gamma',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=gamma_initializer,
+          collections=gamma_collections,
+          trainable=trainable)
 
     # Create moving_mean and moving_variance variables and add them to the
     # appropriate collections. We disable variable partitioning while creating
@@ -792,8 +777,8 @@ def batch_norm(inputs,
           mean, variance = nn.moments(inputs, moments_axes)
       else:
         if data_format == DATA_FORMAT_NCHW:
-          mean, variance = nn.weighted_moments(inputs, moments_axes,
-                                               batch_weights, keep_dims=True)
+          mean, variance = nn.weighted_moments(
+              inputs, moments_axes, batch_weights, keepdims=True)
           mean = array_ops.reshape(mean, [-1])
           variance = array_ops.reshape(variance, [-1])
         else:
@@ -802,19 +787,21 @@ def batch_norm(inputs,
 
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
+
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
               moving_mean, mean, decay, zero_debias=zero_debias_moving_mean)
           update_moving_variance = moving_averages.assign_moving_average(
               moving_variance, variance, decay, zero_debias=False)
-          with ops.control_dependencies([update_moving_mean,
-                                         update_moving_variance]):
+          with ops.control_dependencies(
+              [update_moving_mean, update_moving_variance]):
             return array_ops.identity(mean), array_ops.identity(variance)
-        mean, variance = utils.smart_cond(is_training,
-                                          _force_updates,
+
+        mean, variance = utils.smart_cond(is_training, _force_updates,
                                           moving_vars_fn)
       else:
+
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -823,9 +810,8 @@ def batch_norm(inputs,
               moving_variance, variance, decay, zero_debias=False)
           return update_moving_mean, update_moving_variance
 
-        update_mean, update_variance = utils.smart_cond(is_training,
-                                                        _delay_updates,
-                                                        moving_vars_fn)
+        update_mean, update_variance = utils.smart_cond(
+            is_training, _delay_updates, moving_vars_fn)
         ops.add_to_collections(updates_collections, update_mean)
         ops.add_to_collections(updates_collections, update_variance)
         # Use computed moments during training and moving_vars otherwise.
@@ -893,8 +879,8 @@ def bias_add(inputs,
   """
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
-  with variable_scope.variable_scope(scope, 'BiasAdd', [inputs],
-                                     reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'BiasAdd', [inputs], reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     inputs_shape = inputs.get_shape()
@@ -909,13 +895,16 @@ def bias_add(inputs,
       raise ValueError('`C` dimension must be known but is None')
     biases_collections = utils.get_variable_collections(variables_collections,
                                                         'biases')
-    biases = variables.model_variable('biases',
-                                      shape=[num_features,],
-                                      dtype=dtype,
-                                      initializer=initializer,
-                                      regularizer=regularizer,
-                                      collections=biases_collections,
-                                      trainable=trainable)
+    biases = variables.model_variable(
+        'biases',
+        shape=[
+            num_features,
+        ],
+        dtype=dtype,
+        initializer=initializer,
+        regularizer=regularizer,
+        collections=biases_collections,
+        trainable=trainable)
     outputs = nn.bias_add(inputs, biases, data_format=data_format)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
@@ -1015,8 +1004,10 @@ def convolution(inputs,
   if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
     raise ValueError('Invalid data_format: %r' % (data_format,))
 
-  layer_variable_getter = _build_variable_getter(
-      {'bias': 'biases', 'kernel': 'weights'})
+  layer_variable_getter = _build_variable_getter({
+      'bias': 'biases',
+      'kernel': 'weights'
+  })
 
   with variable_scope.variable_scope(
       scope, 'Conv', [inputs], reuse=reuse,
@@ -1034,26 +1025,27 @@ def convolution(inputs,
       raise ValueError('Convolution not supported for input with rank',
                        input_rank)
 
-    df = ('channels_first' if data_format and data_format.startswith('NC')
-          else 'channels_last')
-    layer = layer_class(filters=num_outputs,
-                        kernel_size=kernel_size,
-                        strides=stride,
-                        padding=padding,
-                        data_format=df,
-                        dilation_rate=rate,
-                        activation=None,
-                        use_bias=not normalizer_fn and biases_initializer,
-                        kernel_initializer=weights_initializer,
-                        bias_initializer=biases_initializer,
-                        kernel_regularizer=weights_regularizer,
-                        bias_regularizer=biases_regularizer,
-                        activity_regularizer=None,
-                        trainable=trainable,
-                        name=sc.name,
-                        dtype=inputs.dtype.base_dtype,
-                        _scope=sc,
-                        _reuse=reuse)
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    layer = layer_class(
+        filters=num_outputs,
+        kernel_size=kernel_size,
+        strides=stride,
+        padding=padding,
+        data_format=df,
+        dilation_rate=rate,
+        activation=None,
+        use_bias=not normalizer_fn and biases_initializer,
+        kernel_initializer=weights_initializer,
+        bias_initializer=biases_initializer,
+        kernel_regularizer=weights_regularizer,
+        bias_regularizer=biases_regularizer,
+        activity_regularizer=None,
+        trainable=trainable,
+        name=sc.name,
+        dtype=inputs.dtype.base_dtype,
+        _scope=sc,
+        _reuse=reuse)
     outputs = layer.apply(inputs)
 
     # Add variables to collections.
@@ -1068,6 +1060,7 @@ def convolution(inputs,
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
 
 convolution2d = convolution
 convolution3d = convolution
@@ -1144,13 +1137,14 @@ def convolution2d_in_plane(
     weights_shape = [kernel_h, kernel_w, 1, 1]
     weights_collections = utils.get_variable_collections(
         variables_collections, 'weights')
-    weights = variables.model_variable('weights',
-                                       shape=weights_shape,
-                                       dtype=dtype,
-                                       initializer=weights_initializer,
-                                       regularizer=weights_regularizer,
-                                       collections=weights_collections,
-                                       trainable=trainable)
+    weights = variables.model_variable(
+        'weights',
+        shape=weights_shape,
+        dtype=dtype,
+        initializer=weights_initializer,
+        regularizer=weights_regularizer,
+        collections=weights_collections,
+        trainable=trainable)
     depthwise_weights = array_ops.tile(weights, [1, 1, num_filters_in, 1])
     outputs = nn.depthwise_conv2d(inputs, depthwise_weights,
                                   [1, stride_h, stride_w, 1], padding)
@@ -1161,13 +1155,16 @@ def convolution2d_in_plane(
       if biases_initializer is not None:
         biases_collections = utils.get_variable_collections(
             variables_collections, 'biases')
-        biases = variables.model_variable('biases',
-                                          shape=[num_filters_in,],
-                                          dtype=dtype,
-                                          initializer=biases_initializer,
-                                          regularizer=biases_regularizer,
-                                          collections=biases_collections,
-                                          trainable=trainable)
+        biases = variables.model_variable(
+            'biases',
+            shape=[
+                num_filters_in,
+            ],
+            dtype=dtype,
+            initializer=biases_initializer,
+            regularizer=biases_regularizer,
+            collections=biases_collections,
+            trainable=trainable)
         outputs = nn.bias_add(outputs, biases)
 
     if activation_fn is not None:
@@ -1240,19 +1237,23 @@ def convolution2d_transpose(
     ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: If `C` dimension of `inputs` is None.
   """
-  layer_variable_getter = _build_variable_getter(
-      {'bias': 'biases', 'kernel': 'weights'})
+  layer_variable_getter = _build_variable_getter({
+      'bias': 'biases',
+      'kernel': 'weights'
+  })
 
   with variable_scope.variable_scope(
-      scope, 'Conv2d_transpose', [inputs], reuse=reuse,
+      scope,
+      'Conv2d_transpose', [inputs],
+      reuse=reuse,
       custom_getter=layer_variable_getter) as sc:
     if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
       raise ValueError('data_format has to be either NCHW or NHWC.')
 
     inputs = ops.convert_to_tensor(inputs)
 
-    df = ('channels_first' if data_format and data_format.startswith('NC')
-          else 'channels_last')
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
     layer = convolutional_layers.Convolution2DTranspose(
         filters=num_outputs,
         kernel_size=kernel_size,
@@ -1349,19 +1350,23 @@ def convolution3d_transpose(
     ValueError: If `data_format` is neither `NDHWC` nor `NCDHW`.
     ValueError: If `C` dimension of `inputs` is None.
   """
-  layer_variable_getter = _build_variable_getter(
-      {'bias': 'biases', 'kernel': 'weights'})
+  layer_variable_getter = _build_variable_getter({
+      'bias': 'biases',
+      'kernel': 'weights'
+  })
 
   with variable_scope.variable_scope(
-      scope, 'Conv3d_transpose', [inputs], reuse=reuse,
+      scope,
+      'Conv3d_transpose', [inputs],
+      reuse=reuse,
       custom_getter=layer_variable_getter) as sc:
     if data_format not in (DATA_FORMAT_NCDHW, DATA_FORMAT_NDHWC):
       raise ValueError('data_format has to be either NCDHW or NDHWC.')
 
     inputs = ops.convert_to_tensor(inputs)
 
-    df = ('channels_first' if data_format and data_format.startswith('NC')
-          else 'channels_last')
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
     layer = convolutional_layers.Convolution3DTranspose(
         filters=num_outputs,
         kernel_size=kernel_size,
@@ -1393,6 +1398,30 @@ def convolution3d_transpose(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
+def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
+  """Converts a dense tensor into a sparse tensor.
+  An example use would be to convert dense labels to sparse ones
+  so that they can be fed to the ctc_loss.
+
+  Args:
+     tensor: An `int` `Tensor` to be converted to a `Sparse`.
+     eos_token: An integer.
+       It is part of the target label that signfies the end of a sentence.
+     outputs_collections: Collection to add the outputs.
+     scope: Optional scope for name_scope.
+  """
+  with variable_scope.variable_scope(scope, 'dense_to_sparse', [tensor]) as sc:
+    tensor = ops.convert_to_tensor(tensor)
+    indices = array_ops.where(
+        math_ops.not_equal(tensor, constant_op.constant(eos_token,
+                                                        tensor.dtype)))
+    values = array_ops.gather_nd(tensor, indices)
+    shape = array_ops.shape(tensor, out_type=dtypes.int64)
+    outputs = sparse_tensor.SparseTensor(indices, values, shape)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
@@ -1430,19 +1459,18 @@ def dropout(inputs,
   with variable_scope.variable_scope(
       scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    layer = core_layers.Dropout(rate=1 - keep_prob,
-                                noise_shape=noise_shape,
-                                seed=seed,
-                                name=sc.name,
-                                _scope=sc)
+    layer = core_layers.Dropout(
+        rate=1 - keep_prob,
+        noise_shape=noise_shape,
+        seed=seed,
+        name=sc.name,
+        _scope=sc)
     outputs = layer.apply(inputs, training=is_training)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
-def flatten(inputs,
-            outputs_collections=None,
-            scope=None):
+def flatten(inputs, outputs_collections=None, scope=None):
   """Flattens the input while maintaining the batch_size.
 
     Assumes that the first dimension represents the batch.
@@ -1474,8 +1502,8 @@ def _sparse_inner_flatten(inputs, new_rank):
 
   outer_dimensions = inputs.dense_shape[:new_rank - 1]
   inner_dimensions = inputs.dense_shape[new_rank - 1:]
-  new_shape = array_ops.concat((outer_dimensions,
-                                [math_ops.reduce_prod(inner_dimensions)]), 0)
+  new_shape = array_ops.concat(
+      (outer_dimensions, [math_ops.reduce_prod(inner_dimensions)]), 0)
   flattened = sparse_ops.sparse_reshape(inputs, new_shape)
   return flattened
 
@@ -1541,10 +1569,18 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
-def _model_variable_getter(getter, name, shape=None, dtype=None,
-                           initializer=None, regularizer=None, trainable=True,
-                           collections=None, caching_device=None,
-                           partitioner=None, rename=None, use_resource=None,
+def _model_variable_getter(getter,
+                           name,
+                           shape=None,
+                           dtype=None,
+                           initializer=None,
+                           regularizer=None,
+                           trainable=True,
+                           collections=None,
+                           caching_device=None,
+                           partitioner=None,
+                           rename=None,
+                           use_resource=None,
                            **_):
   """Getter that uses model_variable for compatibility with core layers."""
   short_name = name.split('/')[-1]
@@ -1553,25 +1589,34 @@ def _model_variable_getter(getter, name, shape=None, dtype=None,
     name_components[-1] = rename[short_name]
     name = '/'.join(name_components)
   return variables.model_variable(
-      name, shape=shape, dtype=dtype, initializer=initializer,
-      regularizer=regularizer, collections=collections, trainable=trainable,
-      caching_device=caching_device, partitioner=partitioner,
-      custom_getter=getter, use_resource=use_resource)
+      name,
+      shape=shape,
+      dtype=dtype,
+      initializer=initializer,
+      regularizer=regularizer,
+      collections=collections,
+      trainable=trainable,
+      caching_device=caching_device,
+      partitioner=partitioner,
+      custom_getter=getter,
+      use_resource=use_resource)
 
 
 def _build_variable_getter(rename=None):
   """Build a model variable getter that respects scope getter and renames."""
+
   # VariableScope will nest the getters
   def layer_variable_getter(getter, *args, **kwargs):
     kwargs['rename'] = rename
     return _model_variable_getter(getter, *args, **kwargs)
+
   return layer_variable_getter
 
 
 def _add_variable_to_collections(variable, collections_set, collections_name):
   """Adds variable (or all its parts) to all collections with that name."""
-  collections = utils.get_variable_collections(
-      collections_set, collections_name) or []
+  collections = utils.get_variable_collections(collections_set,
+                                               collections_name) or []
   variables_list = [variable]
   if isinstance(variable, tf_variables.PartitionedVariable):
     variables_list = [v for v in variable]
@@ -1640,15 +1685,19 @@ def fully_connected(inputs,
     ValueError: If x has rank less than 2 or if its last dimension is not set.
   """
   if not isinstance(num_outputs, six.integer_types):
-    raise ValueError(
-        'num_outputs should be int or long, got %s.' % (num_outputs,))
+    raise ValueError('num_outputs should be int or long, got %s.' %
+                     (num_outputs,))
 
-  layer_variable_getter = _build_variable_getter({'bias': 'biases',
-                                                  'kernel': 'weights'})
+  layer_variable_getter = _build_variable_getter({
+      'bias': 'biases',
+      'kernel': 'weights'
+  })
 
   with variable_scope.variable_scope(
-      scope, 'fully_connected', [inputs],
-      reuse=reuse, custom_getter=layer_variable_getter) as sc:
+      scope,
+      'fully_connected', [inputs],
+      reuse=reuse,
+      custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.Dense(
         units=num_outputs,
@@ -1754,15 +1803,17 @@ class GDN(base.Layer):
                inverse=False,
                beta_min=1e-6,
                gamma_init=.1,
-               reparam_offset=2 ** -18,
+               reparam_offset=2**-18,
                data_format='channels_last',
                activity_regularizer=None,
                trainable=True,
                name=None,
                **kwargs):
-    super(GDN, self).__init__(trainable=trainable, name=name,
-                              activity_regularizer=activity_regularizer,
-                              **kwargs)
+    super(GDN, self).__init__(
+        trainable=trainable,
+        name=name,
+        activity_regularizer=activity_regularizer,
+        **kwargs)
     self.inverse = inverse
     self._beta_min = beta_min
     self._gamma_init = gamma_init
@@ -1797,8 +1848,9 @@ class GDN(base.Layer):
     with ops.name_scope(name, 'GDNLowerBound', [inputs, bound]) as scope:
       inputs = ops.convert_to_tensor(inputs, name='inputs')
       bound = ops.convert_to_tensor(bound, name='bound')
-      with ops.get_default_graph().gradient_override_map(
-          {'Maximum': 'GDNLowerBound'}):
+      with ops.get_default_graph().gradient_override_map({
+          'Maximum': 'GDNLowerBound'
+      }):
         return math_ops.maximum(inputs, bound, name=scope)
 
   @staticmethod
@@ -1825,12 +1877,14 @@ class GDN(base.Layer):
       raise ValueError('The channel dimension of the inputs to `GDN` '
                        'must be defined.')
     self._input_rank = input_shape.ndims
-    self.input_spec = base.InputSpec(ndim=input_shape.ndims,
-                                     axes={channel_axis: num_channels})
+    self.input_spec = base.InputSpec(
+        ndim=input_shape.ndims, axes={
+            channel_axis: num_channels
+        })
 
-    pedestal = array_ops.constant(self._reparam_offset ** 2, dtype=self.dtype)
+    pedestal = array_ops.constant(self._reparam_offset**2, dtype=self.dtype)
     beta_bound = array_ops.constant(
-        (self._beta_min + self._reparam_offset ** 2) ** .5, dtype=self.dtype)
+        (self._beta_min + self._reparam_offset**2)**.5, dtype=self.dtype)
     gamma_bound = array_ops.constant(self._reparam_offset, dtype=self.dtype)
 
     def beta_initializer(shape, dtype=None, partition_info=None):
@@ -1844,19 +1898,21 @@ class GDN(base.Layer):
       eye = linalg_ops.eye(shape[0], dtype=dtype)
       return math_ops.sqrt(self._gamma_init * eye + pedestal)
 
-    beta = self.add_variable('reparam_beta',
-                             shape=[num_channels],
-                             initializer=beta_initializer,
-                             dtype=self.dtype,
-                             trainable=True)
+    beta = self.add_variable(
+        'reparam_beta',
+        shape=[num_channels],
+        initializer=beta_initializer,
+        dtype=self.dtype,
+        trainable=True)
     beta = self._lower_bound(beta, beta_bound)
     self.beta = math_ops.square(beta) - pedestal
 
-    gamma = self.add_variable('reparam_gamma',
-                              shape=[num_channels, num_channels],
-                              initializer=gamma_initializer,
-                              dtype=self.dtype,
-                              trainable=True)
+    gamma = self.add_variable(
+        'reparam_gamma',
+        shape=[num_channels, num_channels],
+        initializer=gamma_initializer,
+        dtype=self.dtype,
+        trainable=True)
     gamma = self._lower_bound(gamma, gamma_bound)
     self.gamma = math_ops.square(gamma) - pedestal
 
@@ -1871,8 +1927,11 @@ class GDN(base.Layer):
 
     # Compute normalization pool.
     if self.data_format == 'channels_first':
-      norm_pool = nn.convolution(math_ops.square(inputs), gamma, 'VALID',
-                                 data_format='NC' + 'DHW'[-(ndim - 2):])
+      norm_pool = nn.convolution(
+          math_ops.square(inputs),
+          gamma,
+          'VALID',
+          data_format='NC' + 'DHW' [-(ndim - 2):])
       if ndim == 3:
         norm_pool = array_ops.expand_dims(norm_pool, 2)
         norm_pool = nn.bias_add(norm_pool, self.beta, data_format='NCHW')
@@ -1896,7 +1955,7 @@ class GDN(base.Layer):
     outputs.set_shape(inputs.get_shape())
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     channel_axis = self._channel_axis()
     input_shape = tensor_shape.TensorShape(input_shape)
     if not 3 <= input_shape.ndim <= 5:
@@ -1914,7 +1973,7 @@ def gdn(inputs,
         inverse=False,
         beta_min=1e-6,
         gamma_init=.1,
-        reparam_offset=2 ** -18,
+        reparam_offset=2**-18,
         data_format='channels_last',
         activity_regularizer=None,
         trainable=True,
@@ -1980,17 +2039,18 @@ def gdn(inputs,
   Returns:
     Output tensor.
   """
-  layer = GDN(inverse=inverse,
-              beta_min=beta_min,
-              gamma_init=gamma_init,
-              reparam_offset=reparam_offset,
-              data_format=data_format,
-              activity_regularizer=activity_regularizer,
-              trainable=trainable,
-              name=name,
-              dtype=inputs.dtype.base_dtype,
-              _scope=name,
-              _reuse=reuse)
+  layer = GDN(
+      inverse=inverse,
+      beta_min=beta_min,
+      gamma_init=gamma_init,
+      reparam_offset=reparam_offset,
+      data_format=data_format,
+      activity_regularizer=activity_regularizer,
+      trainable=trainable,
+      name=name,
+      dtype=inputs.dtype.base_dtype,
+      _scope=name,
+      _reuse=reuse)
   return layer.apply(inputs)
 
 
@@ -2066,8 +2126,8 @@ def layer_norm(inputs,
       or if `inputs.shape[begin_params_axis:]` is not fully defined at
       graph build time.
   """
-  with variable_scope.variable_scope(scope, 'LayerNorm', [inputs],
-                                     reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'LayerNorm', [inputs], reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     inputs_shape = inputs.shape
     inputs_rank = inputs_shape.ndims
@@ -2077,15 +2137,14 @@ def layer_norm(inputs,
     if begin_norm_axis < 0:
       begin_norm_axis = inputs_rank + begin_norm_axis
     if begin_params_axis >= inputs_rank or begin_norm_axis >= inputs_rank:
-      raise ValueError(
-          'begin_params_axis (%d) and begin_norm_axis (%d) '
-          'must be < rank(inputs) (%d)'
-          % (begin_params_axis, begin_norm_axis, inputs_rank))
+      raise ValueError('begin_params_axis (%d) and begin_norm_axis (%d) '
+                       'must be < rank(inputs) (%d)' %
+                       (begin_params_axis, begin_norm_axis, inputs_rank))
     params_shape = inputs_shape[begin_params_axis:]
     if not params_shape.is_fully_defined():
       raise ValueError(
-          'Inputs %s: shape(inputs)[%s:] is not fully defined: %s' % (
-              inputs.name, begin_params_axis, inputs_shape))
+          'Inputs %s: shape(inputs)[%s:] is not fully defined: %s' %
+          (inputs.name, begin_params_axis, inputs_shape))
     # Allocate parameters for the beta and gamma of the normalization.
     beta, gamma = None, None
     if center:
@@ -2099,8 +2158,8 @@ def layer_norm(inputs,
           collections=beta_collections,
           trainable=trainable)
     if scale:
-      gamma_collections = utils.get_variable_collections(variables_collections,
-                                                         'gamma')
+      gamma_collections = utils.get_variable_collections(
+          variables_collections, 'gamma')
       gamma = variables.model_variable(
           'gamma',
           shape=params_shape,
@@ -2114,12 +2173,46 @@ def layer_norm(inputs,
     # Compute layer normalization using the batch_normalization function.
     variance_epsilon = 1e-12
     outputs = nn.batch_normalization(
-        inputs, mean, variance, offset=beta, scale=gamma,
+        inputs,
+        mean,
+        variance,
+        offset=beta,
+        scale=gamma,
         variance_epsilon=variance_epsilon)
     outputs.set_shape(inputs_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
+def images_to_sequence(inputs,
+                       data_format=DATA_FORMAT_NHWC,
+                       outputs_collections=None,
+                       scope=None):
+  """Convert a batch of images into a batch of sequences.
+  Args:
+    inputs: a (num_images, height, width, depth) tensor
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+  Returns:
+    (width, num_images*height, depth) sequence tensor
+  """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
+  with ops.name_scope(scope, 'ImagesToSequence', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    if df == 'channels_first':
+      inputs = array_ops.transpose(inputs, [0, 2, 3, 1])
+    _, _, width, depth = inputs.get_shape().as_list()
+    s = array_ops.shape(inputs)
+    batch_size, height = s[0], s[1]
+    transposed = array_ops.transpose(inputs, [2, 0, 1, 3])
+    outputs = array_ops.reshape(transposed, [width, batch_size * height, depth])
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
 @add_arg_scope
@@ -2160,13 +2253,14 @@ def max_pool2d(inputs,
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with ops.name_scope(scope, 'MaxPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    df = ('channels_first' if data_format and data_format.startswith('NC')
-          else 'channels_last')
-    layer = pooling_layers.MaxPooling2D(pool_size=kernel_size,
-                                        strides=stride,
-                                        padding=padding,
-                                        data_format=df,
-                                        _scope=sc)
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    layer = pooling_layers.MaxPooling2D(
+        pool_size=kernel_size,
+        strides=stride,
+        padding=padding,
+        data_format=df,
+        _scope=sc)
     outputs = layer.apply(inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
@@ -2209,13 +2303,14 @@ def max_pool3d(inputs,
     raise ValueError('data_format has to be either NCDHW or NDHWC.')
   with ops.name_scope(scope, 'MaxPool3D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    df = ('channels_first' if data_format and data_format.startswith('NC')
-          else 'channels_last')
-    layer = pooling_layers.MaxPooling3D(pool_size=kernel_size,
-                                        strides=stride,
-                                        padding=padding,
-                                        data_format=df,
-                                        _scope=sc)
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    layer = pooling_layers.MaxPooling3D(
+        pool_size=kernel_size,
+        strides=stride,
+        padding=padding,
+        data_format=df,
+        _scope=sc)
     outputs = layer.apply(inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
@@ -2268,8 +2363,8 @@ def pool(inputs,
 
   """
   # pylint: enable=line-too-long
-  with ops.name_scope(scope, '%s_pool' %
-                      (pooling_type.lower()), [inputs]) as sc:
+  with ops.name_scope(scope, '%s_pool' % (pooling_type.lower()),
+                      [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     input_rank = inputs.get_shape().ndims
     if input_rank is None:
@@ -2314,18 +2409,16 @@ def one_hot_encoding(labels,
     labels = ops.convert_to_tensor(labels)
     if labels.dtype == dtypes.int32:
       labels = standard_ops.to_int64(labels)
-    outputs = standard_ops.one_hot(labels,
-                                   num_classes,
-                                   on_value=on_value,
-                                   off_value=off_value)
+    outputs = standard_ops.one_hot(
+        labels, num_classes, on_value=on_value, off_value=off_value)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
 def _apply_activation(y, activation_fn, output_collections):
   if activation_fn is not None:
     y = activation_fn(y)
-  ops.add_to_collections(list(output_collections or []) +
-                         [ops.GraphKeys.ACTIVATIONS], y)
+  ops.add_to_collections(
+      list(output_collections or []) + [ops.GraphKeys.ACTIVATIONS], y)
   return y
 
 
@@ -2370,7 +2463,7 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
         scope = 'repeat'
     outputs = inputs
     for i in range(repetitions):
-      kwargs['scope'] = scope + '_' + str(i+1)
+      kwargs['scope'] = scope + '_' + str(i + 1)
       outputs = layer(outputs, *args, **kwargs)
     return outputs
 
@@ -2385,8 +2478,8 @@ def _scale_gradient_grad(op, grad):
   return [grad * op.inputs[1], None]
 
 
-@function.Defun(python_grad_func=_scale_gradient_grad,
-                shape_func=_scale_gradient_shape)
+@function.Defun(
+    python_grad_func=_scale_gradient_grad, shape_func=_scale_gradient_shape)
 def scale_gradient(inputs, gradient_multiplier):
   """Identity operation, but with the gradient multiplied by a tensor.
 
@@ -2491,18 +2584,21 @@ def separable_convolution2d(
   """
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
-  layer_variable_getter = _build_variable_getter(
-      {'bias': 'biases',
-       'depthwise_kernel': 'depthwise_weights',
-       'pointwise_kernel': 'pointwise_weights'})
+  layer_variable_getter = _build_variable_getter({
+      'bias': 'biases',
+      'depthwise_kernel': 'depthwise_weights',
+      'pointwise_kernel': 'pointwise_weights'
+  })
 
   with variable_scope.variable_scope(
-      scope, 'SeparableConv2d', [inputs], reuse=reuse,
+      scope,
+      'SeparableConv2d', [inputs],
+      reuse=reuse,
       custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
-    df = ('channels_first' if data_format and data_format.startswith('NC')
-          else 'channels_last')
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
     if num_outputs is not None:
       # Apply separable conv using the SeparableConvolution2D layer.
       layer = convolutional_layers.SeparableConvolution2D(
@@ -2535,8 +2631,8 @@ def separable_convolution2d(
       _add_variable_to_collections(layer.pointwise_kernel,
                                    variables_collections, 'weights')
       if layer.bias is not None:
-        _add_variable_to_collections(layer.bias,
-                                     variables_collections, 'biases')
+        _add_variable_to_collections(layer.bias, variables_collections,
+                                     'biases')
 
       if normalizer_fn is not None:
         normalizer_params = normalizer_params or {}
@@ -2551,8 +2647,7 @@ def separable_convolution2d(
       weights_collections = utils.get_variable_collections(
           variables_collections, 'weights')
 
-      depthwise_shape = [kernel_h, kernel_w,
-                         num_filters_in, depth_multiplier]
+      depthwise_shape = [kernel_h, kernel_w, num_filters_in, depth_multiplier]
       depthwise_weights = variables.model_variable(
           'depthwise_weights',
           shape=depthwise_shape,
@@ -2566,9 +2661,13 @@ def separable_convolution2d(
                      1, stride_h, stride_w, 1
                  ]
 
-      outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding,
-                                    rate=utils.two_element_tuple(rate),
-                                    data_format=data_format)
+      outputs = nn.depthwise_conv2d(
+          inputs,
+          depthwise_weights,
+          strides,
+          padding,
+          rate=utils.two_element_tuple(rate),
+          data_format=data_format)
       num_outputs = depth_multiplier * num_filters_in
 
       if normalizer_fn is not None:
@@ -2578,18 +2677,54 @@ def separable_convolution2d(
         if biases_initializer is not None:
           biases_collections = utils.get_variable_collections(
               variables_collections, 'biases')
-          biases = variables.model_variable('biases',
-                                            shape=[num_outputs,],
-                                            dtype=dtype,
-                                            initializer=biases_initializer,
-                                            regularizer=biases_regularizer,
-                                            trainable=trainable,
-                                            collections=biases_collections)
+          biases = variables.model_variable(
+              'biases',
+              shape=[
+                  num_outputs,
+              ],
+              dtype=dtype,
+              initializer=biases_initializer,
+              regularizer=biases_regularizer,
+              trainable=trainable,
+              collections=biases_collections)
           outputs = nn.bias_add(outputs, biases, data_format=data_format)
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
+def sequence_to_images(inputs,
+                       height,
+                       output_data_format='channels_last',
+                       outputs_collections=None,
+                       scope=None):
+  """Convert a batch of sequences into a batch of images.
+  Args:
+    inputs: (num_steps, num_batches, depth) sequence tensor
+    height: the height of the images
+    output_data_format: Format of output tensor.
+      Currently supports `'channels_first'` and `'channels_last'`.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+  Returns:
+    A tensor representing the output of the operation.
+  """
+  with ops.name_scope(scope, 'SequenceToImages', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    width, num_batches, depth = inputs.get_shape().as_list()
+    if num_batches is None:
+      num_batches = -1
+    else:
+      num_batches = num_batches // height
+    reshaped = array_ops.reshape(inputs,
+                                 [width, num_batches, height, depth])
+    if output_data_format == 'channels_first':
+      outputs = array_ops.transpose(reshaped, [1, 3, 2, 0])
+    else:
+      outputs = array_ops.transpose(reshaped, [1, 2, 0, 3])
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
 @add_arg_scope
@@ -2612,7 +2747,7 @@ def softmax(logits, scope=None):
     logits_2d = array_ops.reshape(logits, [-1, num_logits])
     predictions = nn.softmax(logits_2d)
     predictions = array_ops.reshape(predictions, array_ops.shape(logits))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       predictions.set_shape(logits.get_shape())
     return predictions
 
@@ -2669,35 +2804,45 @@ def spatial_softmax(features,
 
     with ops.name_scope('spatial_softmax_op', 'spatial_softmax_op', [features]):
       # Create tensors for x and y coordinate values, scaled to range [-1, 1].
-      pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
-                                        math_ops.lin_space(-1., 1., num=width),
-                                        indexing='ij')
+      pos_x, pos_y = array_ops.meshgrid(
+          math_ops.lin_space(-1., 1., num=height),
+          math_ops.lin_space(-1., 1., num=width),
+          indexing='ij')
       pos_x = array_ops.reshape(pos_x, [height * width])
       pos_y = array_ops.reshape(pos_y, [height * width])
+
       if temperature is None:
-        temperature_collections = utils.get_variable_collections(
+        temp_initializer = init_ops.ones_initializer()
+      else:
+        temp_initializer = init_ops.constant_initializer(temperature)
+
+      if not trainable:
+        temp_collections = None
+      else:
+        temp_collections = utils.get_variable_collections(
             variables_collections, 'temperature')
-        temperature = variables.model_variable(
-            'temperature',
-            shape=(),
-            dtype=dtypes.float32,
-            initializer=init_ops.ones_initializer(),
-            collections=temperature_collections,
-            trainable=trainable)
+
+      temperature = variables.model_variable(
+          'temperature',
+          shape=(),
+          dtype=dtypes.float32,
+          initializer=temp_initializer,
+          collections=temp_collections,
+          trainable=trainable)
       if data_format == 'NCHW':
         features = array_ops.reshape(features, [-1, height * width])
       else:
         features = array_ops.reshape(
             array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
 
-      softmax_attention = nn.softmax(features/temperature)
+      softmax_attention = nn.softmax(features / temperature)
       expected_x = math_ops.reduce_sum(
-          pos_x * softmax_attention, [1], keep_dims=True)
+          pos_x * softmax_attention, [1], keepdims=True)
       expected_y = math_ops.reduce_sum(
-          pos_y * softmax_attention, [1], keep_dims=True)
+          pos_y * softmax_attention, [1], keepdims=True)
       expected_xy = array_ops.concat([expected_x, expected_y], 1)
-      feature_keypoints = array_ops.reshape(
-          expected_xy, [-1, num_channels.value * 2])
+      feature_keypoints = array_ops.reshape(expected_xy,
+                                            [-1, num_channels.value * 2])
       feature_keypoints.set_shape([None, num_channels.value * 2])
   return feature_keypoints
 
@@ -2749,7 +2894,7 @@ def stack(inputs, layer, stack_args, **kwargs):
         scope = 'stack'
     outputs = inputs
     for i in range(len(stack_args)):
-      kwargs['scope'] = scope + '_' + str(i+1)
+      kwargs['scope'] = scope + '_' + str(i + 1)
       layer_args = stack_args[i]
       if not isinstance(layer_args, (list, tuple)):
         layer_args = [layer_args]
@@ -2780,11 +2925,10 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
       raise ValueError('The input rank must be known.')
     input_rank = len(inputs.get_shape().as_list())
     if dim < 0 or dim >= input_rank:
-      raise ValueError(
-          'dim must be positive but smaller than the input rank.')
+      raise ValueError('dim must be positive but smaller than the input rank.')
 
-    lengths = math_ops.sqrt(epsilon + math_ops.reduce_sum(
-        math_ops.square(inputs), dim, True))
+    lengths = math_ops.sqrt(
+        epsilon + math_ops.reduce_sum(math_ops.square(inputs), dim, True))
     multiples = []
     if dim > 0:
       multiples.append(array_ops.ones([dim], dtypes.int32))
@@ -2794,6 +2938,53 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
     multiples = array_ops.concat(multiples, 0)
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
+
+
+@add_arg_scope
+def maxout(inputs, num_units, axis=-1, scope=None):
+  """Adds a maxout op from https://arxiv.org/abs/1302.4389
+
+  "Maxout Networks" Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron
+  Courville,
+   Yoshua Bengio
+
+  Usually the operation is performed in the filter/channel dimension. This can
+  also be
+  used after fully-connected layers to reduce number of features.
+
+  Arguments:
+    inputs: Tensor input
+    num_units: Specifies how many features will remain after maxout
+      in the `axis` dimension (usually channel).
+      This must be multiple of number of `axis`.
+    axis: The dimension where max pooling will be performed. Default is the
+    last dimension.
+    scope: Optional scope for variable_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: if num_units is not multiple of number of features.
+  """
+  with variable_scope.variable_scope(scope, 'MaxOut', [inputs]):
+    inputs = ops.convert_to_tensor(inputs)
+    shape = inputs.get_shape().as_list()
+    num_channels = shape[axis]
+    if num_channels % num_units:
+      raise ValueError('number of features({}) is not '
+                       'a multiple of num_units({})'.format(
+                           num_channels, num_units))
+    shape[axis] = -1
+    shape += [num_channels // num_units]
+
+    # Dealing with batches with arbitrary sizes
+    for i in range(len(shape)):
+      if shape[i] is None:
+        shape[i] = array_ops.shape(inputs)[i]
+    outputs = math_ops.reduce_max(
+        array_ops.reshape(inputs, shape), -1, keepdims=False)
+    return outputs
 
 
 def poincare_normalize(x, axis=1, epsilon=1e-5, name=None):
@@ -2828,7 +3019,7 @@ def poincare_normalize(x, axis=1, epsilon=1e-5, name=None):
   """
   with ops.name_scope(name, 'poincare_normalize', [x]) as name:
     x = ops.convert_to_tensor(x, name='x')
-    square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keep_dims=True)
+    square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(square_sum)
     x_inv_norm = math_ops.minimum((1. - epsilon) * x_inv_norm, 1.)
     return math_ops.multiply(x, x_inv_norm, name=name)
@@ -2854,16 +3045,16 @@ def legacy_fully_connected(x,
   `activation_fn` is `None`, the result of `y = w * x + b` is
   returned.
 
-  If `x` has shape [\\\(\\text{dim}_0, \\text{dim}_1, ..., \\text{dim}_n\\\)]
-  with more than 2 dimensions (\\\(n > 1\\\)), then we repeat the matrix
+  If `x` has shape [\\(\text{dim}_0, \text{dim}_1, ..., \text{dim}_n\\)]
+  with more than 2 dimensions (\\(n > 1\\)), then we repeat the matrix
   multiply along the first dimensions. The result r is a tensor of shape
-  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`],
-  where \\\( r_{i_0, ..., i_{n-1}, k} =
-  \\sum_{0 \\leq j < \\text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\\).
+  [\\(\text{dim}_0, ..., \text{dim}_{n-1},\\) `num_output_units`],
+  where \\( r_{i_0, ..., i_{n-1}, k} =
+  \sum_{0 \leq j < \text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\).
   This is accomplished by reshaping `x` to 2-D
-  [\\\(\\text{dim}_0 \\cdot ... \\cdot \\text{dim}_{n-1}, \\text{dim}_n\\\)]
+  [\\(\text{dim}_0 \cdot ... \cdot \text{dim}_{n-1}, \text{dim}_n\\)]
   before the matrix multiply and afterwards reshaping it to
-  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`].
+  [\\(\text{dim}_0, ..., \text{dim}_{n-1},\\) `num_output_units`].
 
   This op creates `w` and optionally `b`. Bias (`b`) can be disabled by setting
   `bias_init` to `None`.
@@ -2925,29 +3116,31 @@ def legacy_fully_connected(x,
       raise ValueError('last dimension of x must be known but is None')
     dtype = x.dtype.base_dtype
 
-    weight_collections = set(list(weight_collections or []) +
-                             [ops.GraphKeys.GLOBAL_VARIABLES])
-    w = variable_scope.get_variable('weights',
-                                    shape=[num_input_units, num_output_units],
-                                    dtype=dtype,
-                                    initializer=weight_init,
-                                    collections=weight_collections,
-                                    regularizer=weight_regularizer,
-                                    trainable=trainable)
-    x_2_dim = x if len(dims) <= 2 else array_ops.reshape(x,
-                                                         [-1, num_input_units])
+    weight_collections = set(
+        list(weight_collections or []) + [ops.GraphKeys.GLOBAL_VARIABLES])
+    w = variable_scope.get_variable(
+        'weights',
+        shape=[num_input_units, num_output_units],
+        dtype=dtype,
+        initializer=weight_init,
+        collections=weight_collections,
+        regularizer=weight_regularizer,
+        trainable=trainable)
+    x_2_dim = x if len(dims) <= 2 else array_ops.reshape(
+        x, [-1, num_input_units])
     y = standard_ops.matmul(x_2_dim, w)
 
     if bias_init is not None:
-      bias_collections = set(list(bias_collections or []) +
-                             [ops.GraphKeys.GLOBAL_VARIABLES])
-      b = variable_scope.get_variable('bias',
-                                      shape=[num_output_units],
-                                      dtype=dtype,
-                                      initializer=bias_init,
-                                      collections=bias_collections,
-                                      regularizer=bias_regularizer,
-                                      trainable=trainable)
+      bias_collections = set(
+          list(bias_collections or []) + [ops.GraphKeys.GLOBAL_VARIABLES])
+      b = variable_scope.get_variable(
+          'bias',
+          shape=[num_output_units],
+          dtype=dtype,
+          initializer=bias_init,
+          collections=bias_collections,
+          regularizer=bias_regularizer,
+          trainable=trainable)
 
       y = nn.bias_add(y, b)
 

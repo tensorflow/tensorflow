@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
 
 #include <vector>
 
@@ -32,7 +32,7 @@ class ShapeRefinerTest;
 namespace grappler {
 class GraphProperties;
 class SymbolicShapeManager;
-}
+}  // namespace grappler
 
 namespace shape_inference {
 
@@ -317,6 +317,7 @@ class InferenceContext {
     input_tensors_as_shapes_ = input_tensors_as_shapes;
   }
 
+  ShapeHandle output(int64 idx) const { return outputs_[idx]; }
   void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
   Status set_output(StringPiece output_name,
                     const std::vector<ShapeHandle>& shapes);
@@ -787,4 +788,4 @@ Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
 }  // namespace shape_inference
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_

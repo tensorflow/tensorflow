@@ -23,6 +23,7 @@ import six
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
+from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -30,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
+from tensorflow.python.training import training_util
 
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -186,44 +188,50 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
       logits_dict = logits
     else:
       logits_dict = self._split_logits(logits)
-    weighted_sum_losses = []
-    example_weight_sums = []
+    training_losses = []
     labels_by_head = {}
-    for head in self._heads:
-      (weighted_sum_loss,
-       example_weight_sum, processed_labels) = head.create_loss(
+    unreduced_losses_by_head = {}
+    example_weights_by_head = {}
+    for i, head in enumerate(self._heads):
+      (training_loss, unreduced_loss,
+       weights, processed_labels) = head.create_loss(
            features, mode, logits_dict[head.name], labels[head.name])
-      weighted_sum_losses.append(weighted_sum_loss)
-      example_weight_sums.append(example_weight_sum)
+      training_losses.append(training_loss)
       labels_by_head[head.name] = processed_labels
-
-    weighted_sum_losses = tuple(weighted_sum_losses)
-    with ops.name_scope('merge_losses',
-                        values=weighted_sum_losses + (self._head_weights or
-                                                      tuple())):
       if self._head_weights:
-        head_weighted_losses = []
-        head_weighted_example_weight_sums = []
-        for loss, example_weight_sum, weight in zip(weighted_sum_losses,
-                                                    example_weight_sums,
-                                                    self._head_weights):
-          head_weighted_losses.append(math_ops.multiply(loss, weight))
-          head_weighted_example_weight_sums.append(math_ops.multiply(
-              example_weight_sum, weight))
-        merged_weighted_sum_loss = math_ops.add_n(head_weighted_losses)
-        merged_example_weight_sum = math_ops.add_n(
-            head_weighted_example_weight_sums)
+        head_weight = self._head_weights[i]
+        unreduced_losses_by_head[head.name] = math_ops.multiply(
+            unreduced_loss, head_weight)
+        example_weights_by_head[head.name] = math_ops.multiply(
+            weights, head_weight)
       else:
-        merged_weighted_sum_loss = math_ops.add_n(weighted_sum_losses)
-        merged_example_weight_sum = math_ops.add_n(example_weight_sums)
+        unreduced_losses_by_head[head.name] = unreduced_loss
+        example_weights_by_head[head.name] = weights
+
+    training_losses = tuple(training_losses)
+    with ops.name_scope(
+        'merge_losses',
+        values=training_losses + (self._head_weights or tuple())):
+      if self._head_weights:
+        head_weighted_training_losses = []
+        for training_loss, head_weight in zip(
+            training_losses, self._head_weights):
+          head_weighted_training_losses.append(
+              math_ops.multiply(training_loss, head_weight))
+        merged_training_loss = math_ops.add_n(head_weighted_training_losses)
+      else:
+        merged_training_loss = math_ops.add_n(training_losses)
 
     return head_lib.LossSpec(
-        weighted_sum_loss=merged_weighted_sum_loss,
-        example_weight_sum=merged_example_weight_sum,
+        training_loss=merged_training_loss,
+        unreduced_loss=unreduced_losses_by_head,
+        weights=example_weights_by_head,
         processed_labels=labels_by_head)
 
+  # TODO(b/65403806): Support regularization_losses arg.
   def create_estimator_spec(
-      self, features, mode, logits, labels=None, train_op_fn=None):
+      self, features, mode, logits, labels=None, optimizer=None,
+      train_op_fn=None):
     """See `_Head`."""
     if isinstance(logits, dict):
       logits_dict = logits
@@ -244,9 +252,10 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
               train_op_fn=_no_op_train_fn))
 
     if mode == model_fn.ModeKeys.TRAIN:
-      if train_op_fn is None:
-        raise ValueError('train_op_fn can not be None in TRAIN mode.')
-      spec = self._merge_train(all_estimator_spec, train_op_fn)
+      spec = self._merge_train(
+          all_estimator_spec=all_estimator_spec,
+          optimizer=optimizer,
+          train_op_fn=train_op_fn)
       with ops.name_scope(''):
         summary.scalar(metric_keys.MetricKeys.LOSS, spec.loss)
       return spec
@@ -275,16 +284,21 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
         begin_idx += head.logits_dimension
     return logits_dict
 
-  def _merge_train(self, all_estimator_spec, train_op_fn):
+  def _merge_train(self, all_estimator_spec, optimizer, train_op_fn):
     """Merges list of `EstimatorSpec` for training.
 
     Args:
       all_estimator_spec: list of `EstimatorSpec` for the individual heads.
-      train_op_fn: Function to create train op. See `create_estimator_spec`
-        documentation for more details.
+      optimizer: `Optimizer` instance to create train op. See
+        `create_estimator_spec` documentation for more details.
+      train_op_fn: Function to create train op. Used if `optimizer` is `None`.
 
     Returns:
       `EstimatorSpec` that merges all heads for TRAIN.
+
+    Raises:
+      ValueError: If both `train_op_fn` and `optimizer` are `None` in TRAIN
+        mode.
     """
     losses = []
     metrics = {}
@@ -293,11 +307,20 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
       # Metric keys already contain head.name.
       metrics.update(spec.eval_metric_ops or {})
     loss = _merge_losses(losses, self._head_weights)
+    if optimizer is not None:
+      if train_op_fn is not None:
+        raise ValueError('train_op_fn and optimizer cannot both be set.')
+      train_op = optimizer.minimize(
+          loss, global_step=training_util.get_global_step())
+    elif train_op_fn is not None:
+      train_op = train_op_fn(loss)
+    else:
+      raise ValueError('train_op_fn and optimizer cannot both be None.')
 
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         loss=loss,
-        train_op=train_op_fn(loss),
+        train_op=train_op,
         eval_metric_ops=metrics)
 
   def _merge_predict(self, all_estimator_spec):
@@ -315,6 +338,7 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
             all_estimator_spec[0].export_outputs,
             self._heads[0].name),
     }
+    merged_predict_outputs = {}
     for head, spec in zip(self._heads, all_estimator_spec):
       head_name = head.name
       for k, v in six.iteritems(spec.export_outputs):
@@ -323,8 +347,15 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
         else:
           key = '%s/%s' % (k, head_name)
         export_outputs[key] = v
+        if (k == head_lib._PREDICT_SERVING_KEY and  # pylint:disable=protected-access
+            isinstance(v, export_output_lib.PredictOutput)):
+          for kp, vp in six.iteritems(v.outputs):
+            key = '%s/%s' % (head_name, kp)
+            merged_predict_outputs[key] = vp
       for k, v in six.iteritems(spec.predictions):
         predictions[(head_name, k)] = v
+    export_outputs[head_lib._PREDICT_SERVING_KEY] = (  # pylint:disable=protected-access
+        export_output_lib.PredictOutput(merged_predict_outputs))
 
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.PREDICT,

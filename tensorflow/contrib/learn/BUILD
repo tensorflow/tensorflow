@@ -5,12 +5,14 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(default_visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//tensorflow:internal",
 ])
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 py_library(
     name = "learn",
@@ -154,12 +156,11 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "experiment_test",
     size = "medium",
     srcs = ["python/learn/experiment_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/core:protos_all_py",
@@ -170,6 +171,17 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
+    ],
+)
+
+py_test(
+    name = "export_strategy_test",
+    size = "small",
+    srcs = ["python/learn/export_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -214,6 +226,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/monitors_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip_gpu"],  # b/74437598
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",
@@ -346,6 +359,7 @@ py_test(
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # flaky b/70524820
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
@@ -377,6 +391,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
@@ -414,6 +429,10 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/kmeans_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "noasan",  # b/73741358
+        "nomac",
+    ],
     deps = [
         ":learn",
         "//tensorflow/python:array_ops",
@@ -483,7 +502,7 @@ py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
-    shard_count = 4,
+    shard_count = 20,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -716,12 +735,11 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "graph_io_test",
     size = "small",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":learn",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -737,20 +755,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
-)
-
-py_test(
-    name = "numpy_io_test",
-    size = "small",
-    srcs = ["python/learn/learn_io/numpy_io_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
+    grpc_enabled = True,
 )
 
 py_test(
@@ -868,16 +873,4 @@ py_binary(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:platform",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -238,6 +239,14 @@ struct FusedBatchNorm<GPUDevice, T, U> {
             << " scale shape: " << scale.shape().DebugString()
             << " offset shape: " << offset.shape().DebugString()
             << " tensor format: " << tensor_format;
+
+    // If input is empty, return NaN mean/variance
+    if (x.shape().num_elements() == 0) {
+      functor::SetNanFunctor<U> f;
+      f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
+      f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
+      return;
+    }
 
     Tensor x_maybe_transformed = x;
     Tensor x_transformed;
@@ -623,14 +632,26 @@ class FusedBatchNormGradOp : public OpKernel {
     Tensor* offset_backprop = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(2, scale_offset_shape,
                                                      &offset_backprop));
-    // two placeholders for estimated_mean and estimated_variance, which are
+    // Two placeholders for estimated_mean and estimated_variance, which are
     // used for inference and thus not needed here for gradient computation.
+    // They are filled with zeros so as to avoid NaN outputs.
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(3, TensorShape({}), &placeholder_1));
+    functor::SetZeroFunctor<Device, float> f;
+    f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({}), &placeholder_2));
+    f(context->eigen_device<Device>(), placeholder_2->flat<U>());
+
+    // If input is empty, set gradients w.r.t scale/offset to zero.
+    if (x.shape().num_elements() == 0) {
+      functor::SetZeroFunctor<Device, U> f;
+      f(context->eigen_device<Device>(), scale_backprop->flat<U>());
+      f(context->eigen_device<Device>(), offset_backprop->flat<U>());
+      return;
+    }
 
     if (is_training_) {
       functor::FusedBatchNormGrad<Device, T, U>()(

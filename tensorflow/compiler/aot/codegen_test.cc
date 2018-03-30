@@ -18,11 +18,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -32,7 +34,7 @@ namespace {
 
 void ExpectErrorContains(const Status& status, StringPiece str) {
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(StringPiece(status.error_message()).contains(str))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), str))
       << "expected error: " << status.error_message() << " to contain: " << str;
 }
 
@@ -123,9 +125,39 @@ TEST_F(ParseCppClassTest, ParseFail) {
   ExpectFail("good::0bad");
 }
 
-TEST(GenerateHeader, Golden) {
-  HeaderOpts opts;
+static void CompareWithGoldenFile(
+    const string& tensorflow_relative_golden_file_name,
+    const string& expected_contents) {
+  // To update the golden file, flip update_golden to true and run the
+  // following:
+  // bazel test --test_strategy=local \
+  //   third_party/tensorflow/compiler/aot:codegen_test
+  const bool update_golden = false;
+  const string golden_file_name = io::JoinPath(
+      testing::TensorFlowSrcRoot(), tensorflow_relative_golden_file_name);
+
+  if (update_golden) {
+    TF_EXPECT_OK(
+        WriteStringToFile(Env::Default(), golden_file_name, expected_contents));
+  }
+
+  string golden_file_contents;
+  TF_ASSERT_OK(ReadFileToString(Env::Default(), golden_file_name,
+                                &golden_file_contents));
+  EXPECT_EQ(golden_file_contents, expected_contents);
+}
+
+TEST(CodegenTest, Golden) {
+  // Normally CpuCompiler::CpuCompiler does this, but in this test we've
+  // bypassed the Cpu compiler so we have to do this manually.
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetMC();
+
+  CodegenOpts opts;
   opts.class_name = "MyClass";
+  opts.target_triple = "x86_64-pc-linux";
   opts.namespaces = {"foo", "bar"};
   opts.gen_name_to_index = true;
   opts.gen_program_shape = true;
@@ -150,25 +182,22 @@ TEST(GenerateHeader, Golden) {
           {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}));
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;
+
+  MetadataResult metadata_result;
+  TF_ASSERT_OK(GenerateMetadata(opts, compile_result, &metadata_result));
+
+  // The other fields in metadata_result are tested as part of the generated
+  // header test.
+
+  CompareWithGoldenFile("compiler/aot/codegen_test_o.golden",
+                        metadata_result.object_file_data);
+
   string header;
-  TF_EXPECT_OK(GenerateHeader(opts, config, compile_result, &header));
+  TF_ASSERT_OK(
+      GenerateHeader(opts, config, compile_result, metadata_result, &header));
 
-  // Compare against the golden file.
-  const string golden_name = io::JoinPath(testing::TensorFlowSrcRoot(),
-                                          "compiler/aot/codegen_test_h.golden");
-  // To update the golden file, flip update_golden to true and run the
-  // following:
-  // bazel test --test_strategy=local \
-  //   third_party/tensorflow/compiler/aot:codegen_test
-  const bool update_golden = false;
-  if (update_golden) {
-    TF_EXPECT_OK(WriteStringToFile(Env::Default(), golden_name, header));
-  }
-  string golden_data;
-  TF_EXPECT_OK(ReadFileToString(Env::Default(), golden_name, &golden_data));
-  EXPECT_EQ(header, golden_data);
+  CompareWithGoldenFile("compiler/aot/codegen_test_h.golden", header);
 }
-
 }  // namespace
 }  // namespace tfcompile
 }  // namespace tensorflow

@@ -50,6 +50,25 @@ cc_library(
 )
 
 cc_library(
+    name = "scatter",
+    srcs = ["scatter.cc"],
+    hdrs = ["scatter.h"],
+    deps = [
+        ":util",
+        ":while_loop",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "triangular_solve",
     srcs = ["triangular_solve.cc"],
     hdrs = ["triangular_solve.h"],
@@ -60,6 +79,8 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/core:lib",
@@ -105,16 +126,17 @@ cc_library(
     ],
 )
 
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_library(
+    name = "while_loop",
+    srcs = ["while_loop.cc"],
+    hdrs = ["while_loop.h"],
+    deps = [
+        ":util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:lib",
+    ],
 )

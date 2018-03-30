@@ -1115,19 +1115,20 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   return true;
 }
 
-/* static */ bool CUDADriver::SynchronizeStream(CudaContext* context,
-                                                CUstream stream) {
+/* static */ port::Status CUDADriver::SynchronizeStream(CudaContext *context,
+                                                        CUstream stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
   CUresult res = cuStreamSynchronize(stream);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "could not synchronize on CUDA stream: " << ToString(res)
-               << " :: " << port::CurrentStackTrace();
-    return false;
+    port::Status status = port::InternalError(
+        port::StrCat("could not synchronize on CUDA stream: ", ToString(res)));
+    LOG(ERROR) << status << " :: " << port::CurrentStackTrace();
+    return status;
   }
   VLOG(2) << "successfully synchronized stream " << stream << " on context "
           << context;
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ bool CUDADriver::IsStreamIdle(CudaContext *context,
@@ -1500,6 +1501,19 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   }
 
   return true;
+}
+
+/* static */ port::StatusOr<int> CUDADriver::GetDeviceAttribute(
+    CUdevice_attribute attribute, CUdevice device) {
+  int val;
+  CUresult res = cuDeviceGetAttribute(&val, attribute, device);
+  if (res != CUDA_SUCCESS) {
+    return port::Status{
+        port::error::INTERNAL,
+        port::Printf("failed to get device attribute %d for device %d: %s",
+                     attribute, device, ToString(res).c_str())};
+  }
+  return val;
 }
 
 /* static */ bool CUDADriver::IsEccEnabled(CUdevice device, bool *result) {

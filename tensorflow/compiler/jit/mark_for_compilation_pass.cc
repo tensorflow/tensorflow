@@ -41,6 +41,7 @@ limitations under the License.
 namespace tensorflow {
 
 const char* const kXlaClusterAttr = "_XlaCluster";
+const char* const kXlaOutsideCompilationAttr = "_XlaOutsideCompilation";
 
 namespace {
 
@@ -172,10 +173,169 @@ bool HasResourceInputOrOutput(const Node& node) {
                    DT_RESOURCE) != node.output_types().end();
 }
 
+struct NodeCompare {
+  bool operator()(const Node* a, const Node* b) const {
+    return a->id() < b->id();
+  }
+};
+using OrderedNodeSet = std::set<Node*, NodeCompare>;
+
+// Returns true if the op can be decomposed into XLA ops for which
+// there are fusable elemental implementations.
+//
+// TODO(hpucha): Consider a black list instead of a white list as
+// implemented below.
+bool IsXlaFusable(const NodeDef& node) {
+  static const std::unordered_set<std::string>* elementwise_ops =
+      new std::unordered_set<std::string>(
+          {// tf2xla/kernels/aggregate_ops.cc
+           "AddN",
+           // tf2xla/kernels/batchtospace_op.cc
+           "BatchToSpace", "BatchToSpaceND",
+           // tf2xla/kernels/bcast_ops.cc
+           "BroadcastArgs", "BroadcastGradientArgs",
+           // tf2xla/kernels/bias_ops.cc
+           "BiasAdd", "BiasAddV1", "BiasAddGrad" /*(Reduce)*/,
+           // tf2xla/kernels/binary_ops.cc
+           "Add", "Sub", "Mul", "Div", "Atan2", "Complex", "FloorDiv",
+           "FloorMod", "BitwiseAnd", "BitwiseOr", "LeftShift", "RightShift",
+           "LogicalAnd", "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
+           "ReciprocalGrad", "RsqrtGrad", "SqrtGrad", "SquaredDifference",
+           "TruncateDiv", "TruncateMod", "Equal", "NotEqual", "Greater",
+           "GreaterEqual", "Less", "LessEqual", "SigmoidGrad", "SoftplusGrad",
+           "SoftsignGrad", "TanhGrad", "Pow", "ApproximateEqual",
+           // tf2xla/kernels/cast_op.cc
+           "Cast",
+           // tf2xla/kernels/categorical_op.cc
+           "Multinomial" /* (Rng ops are disabled on GPU backend currently)*/,
+           // tf2xla/kernels/concat_op.cc
+           "Concat", "ConcatV2", "ConcatOffset",
+           // tf2xla/kernels/const_op.cc
+           "Const",
+           // tf2xla/kernels/cross_op.cc
+           "Cross",
+           // tf2xla/kernels/depthtospace_op.cc
+           "DepthToSpace",
+           // tf2xla/kernels/diag_op.cc
+           "Diag", "DiagPart", "MatrixDiag", "MatrixDiagPart",
+           // tf2xla/kernels/dynamic_stitch_op.cc
+           "DynamicStitch", "ParallelDynamicStitch",
+           // tf2xla/kernels/elu_op.cc
+           "Elu", "EluGrad", "Selu", "SeluGrad",
+           // tf2xla/kernels/fake_quantize_ops.cc
+           "FakeQuantWithMinMaxArgs", "FakeQuantWithMinMaxArgsGradient",
+           "FakeQuantWithMinMaxVars",
+           "FakeQuantWithMinMaxVarsGradient" /*(Reduce)*/,
+           // tf2xla/kernels/fill_op.cc
+           "Fill",
+           // tf2xla/kernels/gather_op.cc
+           "Gather", "GatherV2", "GatherNd",
+           // tf2xla/kernels/identity_op.cc
+           "Identity", "IdentityN", "PreventGradient", "StopGradient",
+           "Snapshot",
+           // tf2xla/kernels/image_ops.cc
+           "RGBToHSV", "HSVToRGB", "AdjustContrastv2" /*(Reduce)*/,
+           "AdjustSaturation", "AdjustHue",
+           // tf2xla/kernels/index_ops.cc
+           "ArgMax", "ArgMin",
+           // tf2xla/kernels/l2loss_op.cc
+           "L2Loss" /*(Reduce)*/,
+           // tf2xla/kernels/lrn_ops.cc (ReduceWindow)
+           "LRN", "LRNGrad",
+           // tf2xla/kernels/matrix_band_part_op.cc
+           "MatrixBandPart",
+           // tf2xla/kernels/matrix_set_diag_op.cc
+           "MatrixSetDiag",
+           // tf2xla/kernels/mirror_pad_op.cc
+           "MirrorPad",
+           // tf2xla/kernels/no_op.cc
+           "NoOp", "ControlTrigger",
+           // tf2xla/kernels/one_hot_op.cc
+           "OneHot",
+           // tf2xla/kernels/pack_op.cc
+           "Pack",
+           // tf2xla/kernels/pad_op.cc
+           "Pad", "PadV2",
+           // tf2xla/kernels/pooling_ops.cc
+           "MaxPool", "MaxPoolV2", "MaxPool3D", "AvgPool",
+           "AvgPool3D", /*(all the pooling ops use ReduceWindow)*/
+           "MaxPoolGrad", "MaxPoolGradV2", "MaxPool3DGrad", "AvgPoolGrad",
+           "AvgPool3DGrad",
+           // tf2xla/kernels/quantize_and_dequantize_op.cc (Reduce)
+           "QuantizeAndDequantizeV2",
+           // tf2xla/kernels/random_ops.cc (Rng ops are disabled on GPU backend
+           // currently)
+           "RandomUniform", "RandomUniformInt", "RandomStandardNormal",
+           "TruncatedNormal",
+           // tf2xla/kernels/reduction_ops.cc (Reduce)
+           "Sum", "Prod", "Min", "Max", "Mean", "All", "Any",
+           // tf2xla/kernels/relu_op.cc
+           "Relu", "Relu6", "ReluGrad", "Relu6Grad",
+           // tf2xla/kernels/reshape_op.cc
+           "Reshape",
+           // tf2xla/kernels/reverse_op.cc
+           "Reverse", "ReverseV2",
+           // tf2xla/kernels/reverse_sequence_op.cc
+           "ReverseSequence",
+           // tf2xla/kernels/scan_ops.cc (ReduceWindow)
+           "Cumsum", "Cumprod",
+           // tf2xla/kernels/scatter_nd_op.cc (Reduce)
+           "ScatterNd",
+           // tf2xla/kernels/segment_reduction_ops.cc (Reduce)
+           "UnsortedSegmentSum",
+           // tf2xla/kernels/select_op.cc
+           "Select",
+           // tf2xla/kernels/sequence_ops.cc
+           "Range", "LinSpace",
+           // tf2xla/kernels/shape_op.cc
+           "Shape", "ShapeN", "Rank", "Size", "ExpandDims", "Squeeze",
+           "ZerosLike", "OnesLike",
+           // tf2xla/kernels/slice_op.cc
+           "Slice",
+           // tf2xla/kernels/softmax_op.cc (Reduce)
+           "Softmax", "LogSoftmax", "SoftmaxCrossEntropyWithLogits",
+           "SparseSoftmaxCrossEntropyWithLogits",
+           // tf2xla/kernels/spacetobatch_op.cc
+           "SpaceToBatchND", "SpaceToBatch",
+           // tf2xla/kernels/spacetodepth_op.cc
+           "SpaceToDepth",
+           // tf2xla/kernels/split_op.cc
+           "Split", "SplitV",
+           // tf2xla/kernels/stack_ops.cc
+           "StackV2", "StackPushV2", "StackPopV2", "StackCloseV2",
+           // tf2xla/kernels/stateless_random_ops.cc (Rng ops are disabled on
+           // GPU
+           // backend currently)
+           "StatelessRandomUniform",
+           "StatelessRandomNormal"
+           // tf2xla/kernels/strided_slice_op.cc
+           "StridedSlice",
+           "StridedSliceGrad", "ResourceStridedSliceAssign",
+           // tf2xla/kernels/tile_ops.cc
+           "Tile",
+           // tf2xla/kernels/training_ops.cc
+           "ResourceApplyGradientDescent", "ResourceApplyMomentum",
+           "ResourceApplyAdagrad", "ResourceApplyAdam", "ResourceApplyRMSProp",
+           "ResourceApplyFtrl", "ResourceApplyFtrlV2",
+           // tf2xla/kernels/transpose_op.cc
+           "Transpose", "InvertPermutation",
+           // tf2xla/kernels/unary_ops.cc
+           "ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin",
+           "Asinh", "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp",
+           "Expm1", "Floor", "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal",
+           "Log", "Log1p", "Invert", "LogicalNot", "Neg", "Rint", "Round",
+           "Rsqrt", "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt",
+           "Square", "Tan", "Tanh", "Real", "Imag",
+           // tf2xla/kernels/unpack_op.cc
+           "Unpack"});
+
+  return elementwise_ops->count(node.op()) > 0;
+}
+
 Status FindCompilationCandidates(
     const Graph& graph, FunctionLibraryDefinition* flib_def, Env* env,
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
-    std::unordered_set<Node*>* candidates) {
+    OrderedNodeSet* candidates) {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
@@ -183,7 +343,30 @@ Status FindCompilationCandidates(
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
+  int64& fuel =
+      legacy_flags::GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
+
+  // Iterate over nodes in sorted order so that compiler fuel is deterministic.
+  // We can't simply pass op_nodes().begin() and op_nodes().end to the
+  // std::vector constructor because they're not proper iterators, with
+  // iterator_traits defined and so on.
+  std::vector<Node*> sorted_nodes;
   for (Node* node : graph.op_nodes()) {
+    sorted_nodes.push_back(node);
+  }
+  std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeCompare());
+
+  for (Node* node : sorted_nodes) {
+    VLOG(2) << "Fuel: " << fuel;
+    if (fuel <= 0) {
+      VLOG(2)
+          << "Hit fuel limit; not marking any remaining ops as clusterable.";
+      break;
+    }
+
+    VLOG(2) << "FindCompilationCandidates(): Processing "
+            << node->DebugString();
+
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
         DeviceTypeOfDevice(node->assigned_device_name(), &device_type));
@@ -210,6 +393,13 @@ Status FindCompilationCandidates(
         !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
       continue;
     }
+    // _Arg nodes in a top-level function represent feeds.
+    // Do not compile them.
+    if (node->type_string() == "_Arg") {
+      VLOG(2) << "Skipping jit compilation for '_Arg'-typed node "
+              << node->DebugString();
+      continue;
+    }
     // _Retval nodes in a top-level function represent fetches.
     // Do not compile them.
     if (node->type_string() == "_Retval") {
@@ -218,7 +408,9 @@ Status FindCompilationCandidates(
       continue;
     }
     candidates->insert(node);
+    --fuel;
   }
+  VLOG(2) << "candidates->size() = " << candidates->size();
   return Status::OK();
 }
 
@@ -298,9 +490,13 @@ Status MarkForCompilationPass::Run(
         static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
   }
   bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
+  bool fusion_only = flags->tf_xla_fusion_only;
+
+  VLOG(1) << "flags->tf_xla_cpu_global_jit = " << flags->tf_xla_cpu_global_jit;
+  VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
-  auto is_compilable = [global_jit_level, cpu_global_jit, fld](
+  auto is_compilable = [global_jit_level, cpu_global_jit, fusion_only, fld](
                            const Node* node, const DeviceType& device_type) {
     const XlaOpRegistry::DeviceRegistration* registration;
     if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
@@ -322,6 +518,11 @@ Status MarkForCompilationPass::Run(
 
     status = fld->GetAttr(*node, kXlaCompileAttr, &compile);
     if (status.ok()) return compile;
+
+    // Check for fusable ops only if requested.
+    if (global_jit_level > 0 && fusion_only && !IsXlaFusable(node->def())) {
+      return false;
+    }
 
     // Otherwise use the value of global_jit_level.
     // Ignore enable_jit_by_default if global jit compilation for CPU
@@ -354,7 +555,7 @@ Status MarkForCompilationPass::RunImpl(
 
   Graph* graph = options.graph->get();
 
-  std::unordered_set<Node*> compilation_candidates;
+  OrderedNodeSet compilation_candidates;
   TF_RETURN_IF_ERROR(FindCompilationCandidates(
       *graph, options.flib_def,
       (options.session_options != nullptr) ? options.session_options->env

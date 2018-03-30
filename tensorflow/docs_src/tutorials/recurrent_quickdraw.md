@@ -38,8 +38,8 @@ To try the code for this tutorial:
 1.  [Download the data](#download-the-data) in `TFRecord` format from
     [here](http://download.tensorflow.org/data/quickdraw_tutorial_dataset_v1.tar.gz) and unzip it. More details about [how to
     obtain the original Quick, Draw!
-    data](#optional-download-the-full-quick-draw-data) and [how to convert that
-    to `TFRecord` files](#optional-converting-the-data) is available below.
+    data](#optional_download_the_full_quick_draw_data) and [how to convert that
+    to `TFRecord` files](#optional_converting_the_data) is available below.
 
 1.  Execute the tutorial code with the following command to train the RNN-based
     model described in this tutorial. Make sure to adjust the paths to point to
@@ -108,8 +108,9 @@ This download will take a while and download a bit more than 23GB of data.
 ### Optional: Converting the data
 
 To convert the `ndjson` files to
-@{$python/python_io#tfrecords_format_details$TFRecord} files containing
-${tf.train.Example} protos run the following command.
+@{$python/python_io#TFRecords_Format_Details$TFRecord} files containing
+[`tf.train.Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+protos run the following command.
 
 ```shell
    python create_dataset.py --ndjson_path rnn_tutorial_data \
@@ -117,7 +118,7 @@ ${tf.train.Example} protos run the following command.
 ```
 
 This will store the data in 10 shards of
-@{$python/python_io#tfrecords_format_details$TFRecord} files with 10000 items
+@{$python/python_io#TFRecords_Format_Details$TFRecord} files with 10000 items
 per class for the training data and 1000 items per class as eval data.
 
 This conversion process is described in more detail in the following.
@@ -219,7 +220,7 @@ length 2.
 ### Defining the model
 
 To define the model we create a new `Estimator`. If you want to read more about
-estimators, we recommend @{$extend/estimators$this tutorial}.
+estimators, we recommend @{$get_started/custom_estimators$this tutorial}.
 
 To build the model, we:
 

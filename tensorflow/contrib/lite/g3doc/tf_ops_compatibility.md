@@ -1,4 +1,4 @@
-# TensorFlow Compatibility Guide
+# TensorFlow Lite & TensorFlow Compatibility Guide
 
 TensorFlow Lite supports a number of TensorFlow operations used in common
 inference models. As they are processed by the TensorFlow Lite Optimizing
@@ -30,13 +30,18 @@ quantized training is necessary before conversion.
 ## Data Format and Broadcasting
 
 At the moment TensorFlow Lite supports only TensorFlow's "NHWC" format, and
-broadcasting in operations like tf.add and tf.mul is generally not supported.
+broadcasting is only support in a limited number of ops (tf.add, tf.mul, tf.sub,
+and tf.div).
 
 ## Compatible Operations
 
 The following TensorFlow operations are usually mapped to their TensorFlow Lite
 counterparts:
 
+*   [tf.batch_to_space_nd](https://www.tensorflow.org/api_docs/python/tf/batch_to_space_nd) -
+    *as long as the input tensor is 4D (1 batch + 2 spatial + 1 other) and the
+    crops attribute is not used*
+*   [tf.exp](https://www.tensorflow.org/api_docs/python/tf/exp)
 *   [tf.matmul](https://www.tensorflow.org/api_docs/python/tf/matmul) - *as long
     as the second argument is constant and transposition is not used*
 *   [tf.nn.avg_pool](https://www.tensorflow.org/api_docs/python/tf/nn/avg_pool)
@@ -47,12 +52,30 @@ counterparts:
 *   [tf.nn.l2_normalize](https://www.tensorflow.org/api_docs/python/tf/nn/l2_normalize) -
     *as long as normalization is done along the last dimension*
 *   [tf.nn.local_response_normalization](https://www.tensorflow.org/api_docs/python/tf/nn/local_response_normalization)
+*   [tf.nn.log_softmax](https://www.tensorflow.org/api_docs/python/tf/nn/log_softmax) -
+    *as long as axis is not provided*
 *   [tf.nn.max_pool](https://www.tensorflow.org/api_docs/python/tf/nn/max_pool)
 *   [tf.nn.softmax](https://www.tensorflow.org/api_docs/python/tf/nn/softmax) -
     *as long as tensors are 2D and axis is the last dimension*
+*   [tf.nn.top_k](https://www.tensorflow.org/api_docs/python/tf/nn/top_k)
+*   [tf.pad](https://www.tensorflow.org/api_docs/python/tf/pad) - *as long as
+    mode and constant_values are not used*
+*   [tf.reduce_mean](https://www.tensorflow.org/api_docs/python/tf/reduce_mean) -
+    *as long as the reduction_indices attribute is not used*
 *   [tf.reshape](https://www.tensorflow.org/api_docs/python/tf/reshape)
 *   [tf.sigmoid](https://www.tensorflow.org/api_docs/python/tf/sigmoid)
+*   [tf.space_to_batch_nd](https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd) -
+    *as long as the input tensor is 4D (1 batch + 2 spatial + 1 other)*
 *   [tf.space_to_depth](https://www.tensorflow.org/api_docs/python/tf/space_to_depth)
+*   [tf.split](https://www.tensorflow.org/api_docs/python/tf/split) - *as long
+    as num is not provided and num_or_size_split contains number of splits as a
+    0D tensor*
+*   [tf.squeeze](https://www.tensorflow.org/api_docs/python/tf/squeeze) - *as
+    long as axis is not provided*
+*   [tf.strided_slice](https://www.tensorflow.org/api_docs/python/tf/strided_slice) -
+    *as long as ellipsis_mask and new_axis_mask are not used*
+*   [tf.transpose](https://www.tensorflow.org/versions/master/api_docs/python/tf/transpose) -
+    *as long as conjugate is not used*
 
 ## Straightforward Conversions, Constant-Folding and Fusing
 
@@ -91,7 +114,6 @@ Here is a list of TensorFlow operations that are usually removed from the graph:
 *   [tf.shape](https://www.tensorflow.org/api_docs/python/tf/shape)
 *   [tf.sqrt](https://www.tensorflow.org/api_docs/python/tf/sqrt)
 *   [tf.square](https://www.tensorflow.org/api_docs/python/tf/square)
-*   [tf.squeeze](https://www.tensorflow.org/api_docs/python/tf/squeeze)
 *   [tf.subtract](https://www.tensorflow.org/api_docs/python/tf/subtract)
 *   [tf.tile](https://www.tensorflow.org/api_docs/python/tf/tile)
 *   [tf.nn.batch_norm_with_global_normalization](https://www.tensorflow.org/api_docs/python/tf/nn/batch_norm_with_global_normalization)
@@ -109,17 +131,11 @@ fused.
 TensorFlow operation not listed above are likely unsupported. Notably, the
 following common ops are not supported at the moment:
 
-*   [tf.batch_to_space_nd](https://www.tensorflow.org/api_docs/python/tf/batch_to_space_nd)
 *   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
 *   [tf.floor](https://www.tensorflow.org/api_docs/python/tf/floor)
 *   [tf.gather](https://www.tensorflow.org/api_docs/python/tf/gather)
 *   [tf.image.resize_bilinear](https://www.tensorflow.org/api_docs/python/tf/image/resize_bilinear)
-*   [tf.pad](https://www.tensorflow.org/api_docs/python/tf/pad)
-*   [tf.reduce_mean](https://www.tensorflow.org/api_docs/python/tf/reduce_mean)
 *   [tf.slice](https://www.tensorflow.org/api_docs/python/tf/slice)
-*   [tf.space_to_batch_nd](https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd)
-*   [tf.split](https://www.tensorflow.org/api_docs/python/tf/split)
-*   [tf.strided_slice](https://www.tensorflow.org/api_docs/python/tf/strided_slice)
 *   [tf.tanh](https://www.tensorflow.org/api_docs/python/tf/tanh)
 
 ## TensorFlow Lite Operations
@@ -157,6 +173,20 @@ Options {
   padding: SAME|VALID
   stride_w,stride_h: stride of the sliding window
   filter_width,filter_height: size of the sliding window
+}
+```
+
+**BATCH_TO_SPACE_ND**
+
+```
+Inputs {
+  0: 4D tensor
+  1: 1D tensor
+  2: 2D tensor
+}
+Outputs {
+  0: tensor rearranged using block_shape. See tf.batch_to_space_nd for
+     details.
 }
 ```
 
@@ -210,6 +240,17 @@ Options {
   stride_w,stride_h: stride of the filter window
   depth_multiplier: relation between the last dimension of the input and output
     tensors
+}
+```
+
+**EXP**
+
+```
+Inputs {
+  0: tensor
+}
+Outputs {
+  0: result of computing element-wise exponential of the input tensor
 }
 ```
 
@@ -289,6 +330,17 @@ Outputs {
 }
 ```
 
+**LOG_SOFTMAX**
+
+```
+Inputs {
+  0: tensor
+}
+Outputs {
+  0: tensor equivalent to logits - log(reduce_sum(exp(logits), -1))
+}
+```
+
 **MAX_POOL_2D**
 
 ```
@@ -322,6 +374,34 @@ Options {
 }
 ```
 
+**PAD**
+
+```
+Inputs {
+  0: tensor
+  1: tensor
+}
+Outputs {
+  0: tensor where additional values are added before and after the contents of
+     each dimension
+}
+```
+
+**MEAN (tf.reduce_mean)**
+
+```
+Inputs {
+  0: tensor
+  1: tensor
+}
+Outputs {
+  0: tensor containing the mean of the elements
+}
+Options {
+  keep_dims: whether to retain reduced dimensions
+}
+```
+
 **RELU**
 
 ```
@@ -329,18 +409,18 @@ Inputs {
   0: a tensor
 }
 Outputs {
-  0: a tensor equivalent to max(0, min(input, 1)
+  0: a tensor equivalent to max(0, input)
 }
 ```
 
-**RELU1**
+**RELU_N1_TO_1**
 
 ```
 Inputs {
   0: a tensor
 }
 Outputs {
-  0: a tensor equivalent to max(-1, min(input, 6)
+  0: a tensor equivalent to max(-1, min(input, 1)
 }
 ```
 
@@ -396,6 +476,93 @@ Outputs {
 }
 Options {
   block_size
+}
+```
+
+**SPACE_TO_BATCH_ND**
+
+```
+Inputs {
+  0: 4D tensor
+  1: 1D tensor
+  2: 2D tensor
+}
+Outputs {
+  0: a tensor rearranged using block_shape. See tf.space_to_batch_nd for
+     details.
+}
+```
+
+**SPLIT**
+
+```
+Inputs {
+  0: 0D tensor (axis)
+  1: tensor (input)
+}
+Outputs {
+  0-N: subtensors built from the input tensors
+}
+Options {
+  num_splits: Specifies number of outputs
+}
+```
+
+**SQUEEZE**
+
+```
+Inputs {
+  0: tensor
+}
+Outputs {
+  0: tensor without any dimensions of size 1
+}
+Options {
+  squeeze_dims
+}
+```
+
+**STRIDED_SLICE**
+
+```
+Inputs {
+  0: tensor
+  1: 1D tensor
+  2: 1D tensor
+  3: 1D tensor
+}
+Outputs {
+  0: slice of the input tensor of the given size
+}
+Options {
+  begin_mask: mask for begin indicies
+  end_mask: mask for end indices
+  shrink_axis_mask: mask that indicates which dimensions to remove
+}
+```
+
+**TOP_K**
+
+```
+Inputs {
+  0: tensor
+  1: OD tensor
+}
+Outputs {
+  0: k largest element along each last dimensional slice
+  1: indicies of values within the last dimension of the input ensor
+}
+```
+
+**TRANSPOSE**
+
+```
+Inputs {
+  0: tensor
+  1: tensor
+}
+Outputs {
+  0: tensor permuted according to perm
 }
 ```
 

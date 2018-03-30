@@ -1,9 +1,10 @@
 path: "tensorflow.nn.rnn_cell.BasicRNNCell"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.BasicRNNCell\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._LayerRNNCell\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.LayerRNNCell\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -116,6 +117,10 @@ tf_class {
   member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\', \'state\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"

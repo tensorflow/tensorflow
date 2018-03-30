@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import logistic_regressor
@@ -57,7 +57,10 @@ def _logistic_regression_model_fn(features, labels, mode):
   predictions = math_ops.sigmoid(logits)
   loss = losses.sigmoid_cross_entropy(labels, logits)
   train_op = optimizers.optimize_loss(
-      loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss,
+      training_util.get_global_step(),
+      optimizer='Adagrad',
+      learning_rate=0.1)
   return predictions, loss, train_op
 
 

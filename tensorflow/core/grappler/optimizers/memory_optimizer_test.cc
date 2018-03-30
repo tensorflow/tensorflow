@@ -19,17 +19,18 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace {
 
-class RecomputeSubgraphTest : public ::testing::Test {};
+class RecomputeSubgraphTest : public GrapplerTest {};
 
 TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -193,7 +194,7 @@ TEST_F(RecomputeSubgraphTest, MultiNode) {
   EXPECT_EQ("^gradients/BN1Grad", recompute_trigger_c->input(0));
 }
 
-class MemoryOptimizerTest : public ::testing::Test {
+class MemoryOptimizerTest : public GrapplerTest {
  public:
   static std::unique_ptr<VirtualCluster> CreateVirtualCluster() {
     DeviceProperties cpu_device;
@@ -201,8 +202,17 @@ class MemoryOptimizerTest : public ::testing::Test {
     cpu_device.set_frequency(1000);
     cpu_device.set_num_cores(4);
     cpu_device.set_bandwidth(32);
+    cpu_device.set_memory_size(1024 * 1024);
+    DeviceProperties gpu_device;
+    gpu_device.set_type("GPU");
+    gpu_device.set_frequency(1000);
+    gpu_device.set_num_cores(24);
+    gpu_device.set_bandwidth(128);
+    gpu_device.set_memory_size(1024 * 1024);
+    gpu_device.mutable_environment()->insert({"architecture", "6"});
     std::unordered_map<string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
+    devices["/job:localhost/replica:0/task:0/gpu:0"] = gpu_device;
     return std::unique_ptr<VirtualCluster>(new VirtualCluster(devices));
   }
 };
@@ -211,16 +221,20 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   // Build a simple graph with an op that's marked for swapping.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Variable(s.WithOpName("a"), {10, 10}, DT_FLOAT);
-  Output b = ops::AddN(s.WithOpName("b"), {a});
-  Output c = ops::AddN(s.WithOpName("c"), {b});
-  Output d = ops::AddN(s.WithOpName("d"), {c});
-  Output e = ops::AddN(s.WithOpName("e"), {b, d});
+  Output a =
+      ops::Variable(s.WithOpName("a").WithDevice("/gpu:0"), {10, 10}, DT_FLOAT);
+  Output b = ops::AddN(s.WithOpName("b").WithDevice("/gpu:0"), {a});
+  Output c = ops::AddN(s.WithOpName("c").WithDevice("/gpu:0"), {b});
+  Output d = ops::AddN(s.WithOpName("d").WithDevice("/gpu:0"), {c});
+  Output e = ops::AddN(s.WithOpName("e").WithDevice("/gpu:0"), {b, d});
+
+  Output constant = ops::Const(s.WithOpName("constant"), 0.0f, {10, 10});
+  Output init = ops::Assign(s.WithOpName("init"), a, constant);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  EXPECT_EQ(5, item.graph.node_size());
+  EXPECT_EQ(7, item.graph.node_size());
   EXPECT_EQ(NodeName(e.name()), item.graph.node(4).name());
   AttrValue& val =
       (*item.graph.mutable_node(4)->mutable_attr())["_swap_to_host"];
@@ -233,23 +247,197 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   Status status = optimizer.Optimize(cluster.get(), item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(7, output.node_size());
-  const NodeDef& new_e = output.node(4);
+  EXPECT_EQ(9, output.node_size());
+  const NodeDef& new_e = output.node(6);
   EXPECT_EQ(NodeName(e.name()), new_e.name());
 
   EXPECT_EQ(2, new_e.input_size());
   EXPECT_EQ(NodeName(d.name()), new_e.input(1));
   EXPECT_EQ("swap_in_e_0", new_e.input(0));
 
-  const NodeDef& swap_out = output.node(5);
+  const NodeDef& swap_out = output.node(7);
   EXPECT_EQ("swap_out_e_0", swap_out.name());
+  EXPECT_EQ("_CopyFromGpuToHost", swap_out.op());
 
-  const NodeDef& swap_in = output.node(6);
+  const NodeDef& swap_in = output.node(8);
   EXPECT_EQ("swap_in_e_0", swap_in.name());
+  EXPECT_EQ("_CopyFromHostToGpu", swap_in.op());
 
   EXPECT_EQ(NodeName(b.name()), swap_out.input(0));
   EXPECT_EQ(NodeName(swap_out.name()), swap_in.input(0));
   EXPECT_EQ("^c", swap_in.input(1));
+
+  const NodeDef& new_c = output.node(4);
+  EXPECT_EQ(NodeName(c.name()), new_c.name());
+  EXPECT_EQ("^swap_out_e_0", new_c.input(1));
+
+  // Run the optimizer a second time to ensure it's idempotent.
+  GrapplerItem item_copy(item, std::move(output));
+  status = optimizer.Optimize(cluster.get(), item_copy, &output);
+  TF_EXPECT_OK(status);
+
+#if GOOGLE_CUDA
+  item.fetch = {"e"};
+  item.init_ops = {init.name()};
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+#endif
+}
+
+TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output v = ops::Variable(s.WithOpName("v").WithDevice("/gpu:0"),
+                           {128, 128, 8}, DT_FLOAT);
+  Output a = ops::Identity(s.WithOpName("a").WithDevice("/gpu:0"), v);
+  Output b = ops::Square(s.WithOpName("b").WithDevice("/gpu:0"), v);
+  Output c = ops::Sqrt(s.WithOpName("c").WithDevice("/gpu:0"), a);
+  Output d = ops::Identity(s.WithOpName("d").WithDevice("/gpu:0"), b);
+  Output axis = ops::Const(s.WithOpName("axis"), 0);
+  Output e =
+      ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {a, b, c, d}, axis);
+  Output f = ops::Square(s.WithOpName("f").WithDevice("/gpu:0"), a);
+  Output g = ops::Sqrt(s.WithOpName("g").WithDevice("/gpu:0"), b);
+  Output h = ops::Exp(s.WithOpName("h").WithDevice("/gpu:0"), c);
+  Output i = ops::Log(s.WithOpName("i").WithDevice("/gpu:0"), d);
+
+  Output constant = ops::Const(s.WithOpName("constant"), 0.0f, {128, 128, 8});
+  Output init = ops::Assign(s.WithOpName("init"), v, constant);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"e", "f", "g", "h", "i"};
+  item.init_ops = {init.name()};
+
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
+
+  MemoryOptimizer optimizer(RewriterConfig::SWAPPING_HEURISTICS);
+  GraphDef output;
+  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  TF_EXPECT_OK(status);
+
+  for (const auto& node : output.node()) {
+    if (node.name() == "e") {
+      EXPECT_EQ(5, node.input_size());
+      EXPECT_EQ("a", node.input(0));
+      EXPECT_EQ("swap_in_e_1", node.input(1));
+      EXPECT_EQ("swap_in_e_2", node.input(2));
+      EXPECT_EQ("swap_in_e_3", node.input(3));
+      EXPECT_EQ("axis", node.input(4));
+    }
+  }
+
+#if GOOGLE_CUDA
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+  }
+#endif
+}
+
+TEST_F(MemoryOptimizerTest, UnswappableInputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output v = ops::Variable(s.WithOpName("v").WithDevice("/gpu:0"),
+                           {128, 128, 8}, DT_FLOAT);
+  Output a = ops::Square(s.WithOpName("a").WithDevice("/gpu:0"), v);
+  Output b = ops::Identity(s.WithOpName("b").WithDevice("/gpu:0"), {a});
+  Output c = ops::Identity(s.WithOpName("c").WithDevice("/gpu:0"), {a});
+  Output index = ops::Const(s.WithOpName("index"), {0});
+  Output indices = ops::Tile(s.WithOpName("indices"), index, {128});
+  Output d =
+      ops::ScatterAdd(s.WithOpName("d").WithDevice("/gpu:0"), v, indices, c);
+  Output axis = ops::Const(s.WithOpName("axis"), 0);
+  Output e =
+      ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {b, c, d}, axis);
+
+  Output constant = ops::Const(s.WithOpName("constant"), 0.0f, {128, 128, 8});
+  Output init = ops::Assign(s.WithOpName("init"), v, constant);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"e"};
+  item.init_ops = {init.name()};
+
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
+
+  MemoryOptimizer optimizer(RewriterConfig::SWAPPING_HEURISTICS);
+  GraphDef output;
+  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  TF_EXPECT_OK(status);
+
+  for (const auto& node : output.node()) {
+    if (node.name() == "e") {
+      // The d node isn't swappable.
+      EXPECT_EQ(5, node.input_size());
+      EXPECT_EQ("d", node.input(2));
+      EXPECT_EQ("^swap_out_d_2", node.input(4));
+    }
+  }
+
+#if GOOGLE_CUDA
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+#endif
+}
+
+TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::RandomNormal(s.WithOpName("a").WithDevice("/cpu:0"),
+                               {128, 128, 8}, DT_FLOAT);
+  Output b = ops::RandomNormal(s.WithOpName("b").WithDevice("/cpu:0"),
+                               {128, 128, 8}, DT_FLOAT);
+  Output c = ops::RandomNormal(s.WithOpName("c").WithDevice("/cpu:0"),
+                               {128, 128, 8}, DT_FLOAT);
+  Output d = ops::AddN(s.WithOpName("d").WithDevice("/cpu:0"), {a, b, c});
+  Output e = ops::Square(s.WithOpName("e").WithDevice("/cpu:0"), d);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"e"};
+
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
+  MemoryOptimizer optimizer(RewriterConfig::SCHEDULING_HEURISTICS);
+  GraphDef output;
+  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  TF_EXPECT_OK(status);
+
+  int count = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "d") {
+      EXPECT_EQ("DestroyTemporaryVariable", node.op());
+      count++;
+    } else if (node.name() == "d/tmp_var_initializer") {
+      EXPECT_EQ("Assign", node.op());
+      count++;
+    } else if (node.name() == "d/tmp_var") {
+      EXPECT_EQ("TemporaryVariable", node.op());
+      count++;
+    } else if (node.name() == "e") {
+      EXPECT_EQ("Square", node.op());
+      EXPECT_EQ("d", node.input(0));
+      count++;
+    }
+  }
+  EXPECT_EQ(4, count);
+
+  std::vector<string> fetch = {"a", "b", "c", "e"};
+  auto tensors = EvaluateNodes(output, fetch, {});
+  EXPECT_EQ(4, tensors.size());
+
+  for (int i = 0; i < tensors[0].NumElements(); ++i) {
+    float actual = tensors[3].flat<float>()(i);
+    float expected = 0.0f;
+    for (int j = 0; j < 3; ++j) {
+      expected += tensors[j].flat<float>()(i);
+    }
+    expected *= expected;
+    EXPECT_NEAR(actual, expected, 1e-4);
+  }
 }
 
 }  // namespace

@@ -34,7 +34,6 @@ namespace xla {
 namespace {
 
 using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrCat;
 
 class SliceTest : public ClientLibraryTestBase {};
 
@@ -194,7 +193,9 @@ class SliceR1Test : public ClientLibraryTestBase,
  protected:
   template <typename NativeT>
   void Run(const R1Spec& spec) {
-    std::vector<NativeT> input(spec.input_dim0);
+    // This can't be an std::vector, since you can't grab an ArraySlice of a
+    // vector<bool>.
+    tensorflow::gtl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());
 
     ComputationBuilder builder(client_, TestName());
@@ -202,7 +203,8 @@ class SliceR1Test : public ClientLibraryTestBase,
     builder.Slice(original, {spec.slice_start}, {spec.slice_limit},
                   {spec.slice_stride});
 
-    std::vector<NativeT> expected;
+    // Ditto.
+    tensorflow::gtl::InlinedVector<NativeT, 1> expected;
     for (int i = spec.slice_start; i < spec.slice_limit;
          i += spec.slice_stride) {
       expected.push_back(i);
@@ -231,6 +233,8 @@ XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64>(GetParam()); }
 
+XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
+
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
 // clang-format off
@@ -238,6 +242,12 @@ INSTANTIATE_TEST_CASE_P(
     SliceR1TestInstantiation,
     SliceR1Test,
     ::testing::Values(
+// TODO(b/69425338): This uses too much memory on GPU.
+#ifndef XLA_TEST_BACKEND_GPU
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1},
+#endif
         R1Spec{10, 0, 0, 1},
         R1Spec{10, 7, 7, 1},
         R1Spec{10, 0, 5, 1},
@@ -268,13 +278,15 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{64 * 1024, 1024 + 1, 63 * 1024 - 1, 1},
         R1Spec{64 * 1024, 32 * 1024, 33 * 1024, 1},
         R1Spec{64 * 1024, 32 * 1024 + 1, 33 * 1024 - 1, 1},
-        R1Spec{64 * 1024, 32 * 1024 - 17, 36 * 1024 - 18, 1},
-// TODO(b/69425338): This uses too much memory on GPU.
-#ifndef XLA_TEST_BACKEND_GPU
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1},
-#endif
+        R1Spec{64 * 1024, 32 * 1024 - 17, 36 * 1024 - 18, 1}
+    ),
+    SliceR1TestDataToString
+);
+
+INSTANTIATE_TEST_CASE_P(
+    SliceStridedR1TestInstantiation,
+    SliceR1Test,
+    ::testing::Values(
         R1Spec{10, 2, 4, 2},
         R1Spec{10, 0, 10, 2},
         R1Spec{10, 0, 10, 3},
@@ -286,8 +298,24 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{2047, 1024 - 24, 1024 + 160, 31},
         R1Spec{2047, 1, 2046, 3 * 128},
         R1Spec{4096, 1024 + 3, 4095, 500},
-        R1Spec{8192, 0, 8192, 1024 * 3 + 400}
-        ),
+        R1Spec{8192, 0, 8192, 1024 * 3 + 400},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 2},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 8},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 7},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 125},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 2},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 8},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 7},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 125},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 2},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 8},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 7},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 125},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 2},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 8},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 7},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 125}
+    ),
     SliceR1TestDataToString
 );
 // clang-format on
@@ -383,7 +411,7 @@ struct R4Spec {
 
 string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
   const R4Spec& spec = data.param;
-  return StrCat(                                   //
+  return tensorflow::strings::StrCat(              //
       "input_", Join(spec.input_dims, "x"),        //
       "__layout_", Join(spec.input_layout, ""),    //
       "__starts_", Join(spec.slice_starts, "x"),   //

@@ -23,10 +23,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorFullMatrix"]
 
 
+@tf_export("linalg.LinearOperatorFullMatrix")
 class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   """`LinearOperator` that wraps a [batch] matrix.
 
@@ -114,7 +116,8 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
 
     Args:
       matrix:  Shape `[B1,...,Bb, M, N]` with `b >= 0`, `M, N >= 0`.
-        Allowed dtypes: `float32`, `float64`, `complex64`, `complex128`.
+        Allowed dtypes: `float16`, `float32`, `float64`, `complex64`,
+        `complex128`.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
@@ -122,8 +125,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
@@ -147,7 +149,12 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   def _check_matrix(self, matrix):
     """Static check of the `matrix` argument."""
     allowed_dtypes = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]
 
     matrix = ops.convert_to_tensor(matrix, name="matrix")
 

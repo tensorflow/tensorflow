@@ -1,0 +1,39 @@
+path: "tensorflow.estimator.VocabInfo"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
+  is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "backup_initializer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "new_vocab"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "new_vocab_size"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_oov_buckets"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "old_vocab"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "old_vocab_size"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

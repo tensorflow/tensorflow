@@ -39,10 +39,22 @@ namespace xla {
 class ReferenceUtil {
  public:
   // Returns the result of a transpose operation on the input matrix.
-  static std::unique_ptr<Array2D<float>> TransposeArray2D(
-      const Array2D<float>& operand);
+  template <typename T>
+  static std::unique_ptr<Array2D<T>> TransposeArray2D(
+      const Array2D<T>& operand) {
+    auto result = MakeUnique<Array2D<T>>(operand.width(), operand.height());
+    for (int64 w = 0; w < operand.width(); ++w) {
+      for (int64 h = 0; h < operand.height(); ++h) {
+        (*result)(w, h) = operand(h, w);
+      }
+    }
+
+    return result;
+  }
 
   // Returns the result of a matrix multiply `lhs x rhs`.
+  static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
+      const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
   static std::unique_ptr<Array2D<float>> MatmulArray2D(
       const Array2D<float>& lhs, const Array2D<float>& rhs);
   static std::unique_ptr<Array2D<double>> MatmulArray2D(
@@ -173,6 +185,10 @@ class ReferenceUtil {
       const Array2D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+  static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
+      const Array3D<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
@@ -183,9 +199,10 @@ class ReferenceUtil {
       const tensorflow::gtl::ArraySlice<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
-  static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
-      const tensorflow::gtl::ArraySlice<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& stride,
+      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+  static std::unique_ptr<Array2D<float>> ReduceWindow2DGeneric(
+      const Array2D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride,
@@ -195,6 +212,7 @@ class ReferenceUtil {
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+  // With arbitrary padding.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
@@ -210,6 +228,7 @@ class ReferenceUtil {
 
   // Performs select and scatter with Greater Than or equal as the select, plus
   // as the scatter, and Same Padding.
+  // TODO(b/74533103) Switch tests to evaluator and remove this implementation.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(
       const Array4D<float>& operand, const Array4D<float>& source, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,

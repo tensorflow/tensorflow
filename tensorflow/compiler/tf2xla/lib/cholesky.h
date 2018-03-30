@@ -29,6 +29,7 @@ namespace tensorflow {
 // the block size to use.
 // TODO(phawkins): check for negative values on the diagonal and return an
 // error, instead of silently yielding NaNs.
+// TODO(mattjj): handle the complex Hermitian case
 xla::StatusOr<xla::ComputationDataHandle> Cholesky(
     xla::ComputationBuilder* builder, xla::ComputationDataHandle a,
     int64 block_size = 256);

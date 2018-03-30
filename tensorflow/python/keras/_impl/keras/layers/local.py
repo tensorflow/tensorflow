@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import activations
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
@@ -26,9 +25,12 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
+from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils import conv_utils
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.LocallyConnected1D')
 class LocallyConnected1D(Layer):
   """Locally-connected layer for 1D inputs.
 
@@ -51,7 +53,7 @@ class LocallyConnected1D(Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of a single integer,
           specifying the length of the 1D convolution window.
       strides: An integer or tuple/list of a single integer,
@@ -98,8 +100,7 @@ class LocallyConnected1D(Layer):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(LocallyConnected1D, self).__init__(
-        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
+    super(LocallyConnected1D, self).__init__(**kwargs)
     self.filters = filters
     self.kernel_size = conv_utils.normalize_tuple(kernel_size, 1, 'kernel_size')
     self.strides = conv_utils.normalize_tuple(strides, 1, 'strides')
@@ -114,12 +115,13 @@ class LocallyConnected1D(Layer):
     self.bias_initializer = initializers.get(bias_initializer)
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
+    self.activity_regularizer = regularizers.get(activity_regularizer)
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
     self.input_spec = InputSpec(ndim=3)
 
+  @shape_type_conversion
   def build(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
     input_dim = input_shape[2]
     if input_dim is None:
       raise ValueError('Axis 2 of input should be fully-defined. '
@@ -146,15 +148,14 @@ class LocallyConnected1D(Layer):
     self.input_spec = InputSpec(ndim=3, axes={2: input_dim})
     self.built = True
 
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
     length = conv_utils.conv_output_length(input_shape[1], self.kernel_size[0],
                                            self.padding, self.strides[0])
-    return tensor_shape.TensorShape([input_shape[0], length, self.filters])
+    return (input_shape[0], length, self.filters)
 
   def call(self, inputs):
     output = K.local_conv1d(inputs, self.kernel, self.kernel_size, self.strides)
-
     if self.use_bias:
       output = K.bias_add(output, self.bias)
     if self.activation is not None:
@@ -163,25 +164,38 @@ class LocallyConnected1D(Layer):
 
   def get_config(self):
     config = {
-        'filters': self.filters,
-        'kernel_size': self.kernel_size,
-        'strides': self.strides,
-        'padding': self.padding,
-        'activation': activations.serialize(self.activation),
-        'use_bias': self.use_bias,
-        'kernel_initializer': initializers.serialize(self.kernel_initializer),
-        'bias_initializer': initializers.serialize(self.bias_initializer),
-        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+        'filters':
+            self.filters,
+        'kernel_size':
+            self.kernel_size,
+        'strides':
+            self.strides,
+        'padding':
+            self.padding,
+        'activation':
+            activations.serialize(self.activation),
+        'use_bias':
+            self.use_bias,
+        'kernel_initializer':
+            initializers.serialize(self.kernel_initializer),
+        'bias_initializer':
+            initializers.serialize(self.bias_initializer),
+        'kernel_regularizer':
+            regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint': constraints.serialize(self.kernel_constraint),
-        'bias_constraint': constraints.serialize(self.bias_constraint)
+        'kernel_constraint':
+            constraints.serialize(self.kernel_constraint),
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
     }
     base_config = super(LocallyConnected1D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.LocallyConnected2D')
 class LocallyConnected2D(Layer):
   """Locally-connected layer for 2D inputs.
 
@@ -208,7 +222,7 @@ class LocallyConnected2D(Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
           width and height of the 2D convolution window.
           Can be a single integer to specify the same value for
@@ -273,8 +287,7 @@ class LocallyConnected2D(Layer):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(LocallyConnected2D, self).__init__(
-        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
+    super(LocallyConnected2D, self).__init__(**kwargs)
     self.filters = filters
     self.kernel_size = conv_utils.normalize_tuple(kernel_size, 2, 'kernel_size')
     self.strides = conv_utils.normalize_tuple(strides, 2, 'strides')
@@ -289,12 +302,13 @@ class LocallyConnected2D(Layer):
     self.bias_initializer = initializers.get(bias_initializer)
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
+    self.activity_regularizer = regularizers.get(activity_regularizer)
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
     self.input_spec = InputSpec(ndim=4)
 
+  @shape_type_conversion
   def build(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_last':
       input_row, input_col = input_shape[1:-1]
       input_filter = input_shape[3]
@@ -306,7 +320,6 @@ class LocallyConnected2D(Layer):
                        ' a LocallyConnected2D layer '
                        'should be fully-defined, but layer received '
                        'the inputs shape ' + str(input_shape))
-
     output_row = conv_utils.conv_output_length(input_row, self.kernel_size[0],
                                                self.padding, self.strides[0])
     output_col = conv_utils.conv_output_length(input_col, self.kernel_size[1],
@@ -337,33 +350,30 @@ class LocallyConnected2D(Layer):
       self.input_spec = InputSpec(ndim=4, axes={-1: input_filter})
     self.built = True
 
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
     if self.data_format == 'channels_first':
       rows = input_shape[2]
       cols = input_shape[3]
     elif self.data_format == 'channels_last':
       rows = input_shape[1]
       cols = input_shape[2]
+
     rows = conv_utils.conv_output_length(rows, self.kernel_size[0],
                                          self.padding, self.strides[0])
     cols = conv_utils.conv_output_length(cols, self.kernel_size[1],
                                          self.padding, self.strides[1])
 
     if self.data_format == 'channels_first':
-      return tensor_shape.TensorShape(
-          [input_shape[0], self.filters, rows, cols])
+      return (input_shape[0], self.filters, rows, cols)
     elif self.data_format == 'channels_last':
-      return tensor_shape.TensorShape(
-          [input_shape[0], rows, cols, self.filters])
+      return (input_shape[0], rows, cols, self.filters)
 
   def call(self, inputs):
-    output = K.local_conv2d(inputs,
-                            self.kernel,
-                            self.kernel_size,
-                            self.strides,
+    output = K.local_conv2d(inputs, self.kernel, self.kernel_size, self.strides,
                             (self.output_row, self.output_col),
                             self.data_format)
+
     if self.use_bias:
       output = K.bias_add(output, self.bias, data_format=self.data_format)
 
@@ -372,21 +382,34 @@ class LocallyConnected2D(Layer):
 
   def get_config(self):
     config = {
-        'filters': self.filters,
-        'kernel_size': self.kernel_size,
-        'strides': self.strides,
-        'padding': self.padding,
-        'data_format': self.data_format,
-        'activation': activations.serialize(self.activation),
-        'use_bias': self.use_bias,
-        'kernel_initializer': initializers.serialize(self.kernel_initializer),
-        'bias_initializer': initializers.serialize(self.bias_initializer),
-        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+        'filters':
+            self.filters,
+        'kernel_size':
+            self.kernel_size,
+        'strides':
+            self.strides,
+        'padding':
+            self.padding,
+        'data_format':
+            self.data_format,
+        'activation':
+            activations.serialize(self.activation),
+        'use_bias':
+            self.use_bias,
+        'kernel_initializer':
+            initializers.serialize(self.kernel_initializer),
+        'bias_initializer':
+            initializers.serialize(self.bias_initializer),
+        'kernel_regularizer':
+            regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint': constraints.serialize(self.kernel_constraint),
-        'bias_constraint': constraints.serialize(self.bias_constraint)
+        'kernel_constraint':
+            constraints.serialize(self.kernel_constraint),
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
     }
     base_config = super(LocallyConnected2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

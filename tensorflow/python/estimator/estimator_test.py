@@ -40,6 +40,7 @@ from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import layers
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -47,16 +48,19 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
@@ -77,18 +81,18 @@ def dummy_model_fn(features, labels, params):
   _, _, _ = features, labels, params
 
 
-def check_eventfile_for_keyword(keyword, est):
+def check_eventfile_for_keyword(keyword, dir_):
   """Checks event files for the keyword."""
 
   writer_cache.FileWriterCache.clear()
 
   # Get last Event written.
-  event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
+  event_paths = glob.glob(os.path.join(dir_, 'events*'))
   last_event = None
   for last_event in summary_iterator.summary_iterator(event_paths[-1]):
     if last_event.summary is not None:
-      if last_event.summary.value:
-        if keyword in last_event.summary.value[0].tag:
+      for value in last_event.summary.value:
+        if keyword in value.tag:
           return True
 
   return False
@@ -418,6 +422,7 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(1, model_fn_call_count[0])
 
   def test_callable_input_fn(self):
+    expected_mode = model_fn_lib.ModeKeys.TRAIN
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -430,8 +435,9 @@ class EstimatorTrainTest(test.TestCase):
 
     class InputFn(object):
 
-      def __call__(self, params, config):
+      def __call__(self, mode, params, config):
         input_fn_call_count[0] += 1
+        test_self.assertEqual(expected_mode, mode)
         test_self.assertEqual(expected_params, params)
         test_self.assertEqual(4321, config.tf_random_seed)
         return dummy_input_fn()
@@ -444,6 +450,7 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(1, input_fn_call_count[0])
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.TRAIN
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -452,8 +459,9 @@ class EstimatorTrainTest(test.TestCase):
       del params, config
       return model_fn_global_step_incrementer(features, labels, mode)
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()
@@ -603,7 +611,7 @@ class EstimatorTrainTest(test.TestCase):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
 
-    if check_eventfile_for_keyword('loss', est):
+    if check_eventfile_for_keyword('loss', est.model_dir):
       return
     self.fail('{} should be part of reported summaries.'.format('loss'))
 
@@ -622,6 +630,33 @@ class EstimatorTrainTest(test.TestCase):
     est.train(dummy_input_fn, steps=5)
     self.assertEqual(
         10, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
+
+  def test_warm_starts(self):
+    def _make_model_fn(x):
+      def _variable_creating_model_fn(features, labels, mode):
+        _, _ = features, labels
+        variable_scope.get_variable('x', initializer=x)
+        global_step = training.get_global_step()
+        return model_fn_lib.EstimatorSpec(
+            mode,
+            loss=constant_op.constant(1.),
+            train_op=state_ops.assign_add(global_step, 1))
+      return _variable_creating_model_fn
+
+    est = estimator.Estimator(model_fn=_make_model_fn(42.))
+    est.train(dummy_input_fn, steps=10)
+
+    warm_started_est = estimator.Estimator(
+        model_fn=_make_model_fn(36.),
+        warm_start_from=est.model_dir)
+    warm_started_est.train(dummy_input_fn, steps=5)
+    # warm_start is called after the model_fn, so x should have the value
+    # from the checkpoint.
+    self.assertEqual(42., warm_started_est.get_variable_value('x'))
+    # global_step should not be warm-started.
+    self.assertEqual(
+        5, estimator._load_global_step_from_checkpoint_dir(
+            warm_started_est.model_dir))
 
   def test_max_step(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
@@ -990,6 +1025,7 @@ class EstimatorDatasetIntegrationTest(test.TestCase):
 class EstimatorEvaluateTest(test.TestCase):
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.EVAL
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -998,8 +1034,9 @@ class EstimatorEvaluateTest(test.TestCase):
       del params, config
       return model_fn_global_step_incrementer(features, labels, mode)
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()
@@ -1232,10 +1269,10 @@ class EstimatorEvaluateTest(test.TestCase):
       _, _ = features, labels
       global_step = training.get_global_step()
 
-      image = array_ops.zeros([1, 3, 3, 1])
+      image = array_ops.zeros([5, 3, 3, 1])
       eval_metric_ops = {
-          'image': (summary.image('image', image, max_outputs=1),
-                    constant_op.constant(1))
+          'foo': (summary.image('image', image, max_outputs=3),
+                  constant_op.constant(1))
       }
       return model_fn_lib.EstimatorSpec(
           mode,
@@ -1254,15 +1291,17 @@ class EstimatorEvaluateTest(test.TestCase):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
 
-    # Get last Event written.
-    if check_eventfile_for_keyword('image', est):
-      return
-    self.fail('{} should be part of reported summaries.'.format('image'))
+    # Get last evaluation Event written.
+    for key in ['foo/0', 'foo/1', 'foo/2']:
+      self.assertTrue(
+          check_eventfile_for_keyword(key, os.path.join(est.model_dir, 'eval')),
+          '{} should be part of reported summaries.'.format(key))
 
 
 class EstimatorPredictTest(test.TestCase):
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.PREDICT
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -1275,8 +1314,9 @@ class EstimatorPredictTest(test.TestCase):
           train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.]]))
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()
@@ -1316,6 +1356,25 @@ class EstimatorPredictTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
     self.assertEqual(10., next(est.predict(dummy_input_fn)))
+
+  def test_predictionhooks_are_used(self):
+    hook = test.mock.MagicMock(
+        wraps=training.SessionRunHook(), spec=training.SessionRunHook)
+
+    def _model_fn_hooks(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]),
+          prediction_hooks=[hook])
+
+    est = estimator.Estimator(model_fn=_model_fn_hooks)
+    est.train(dummy_input_fn, steps=1)
+    self.assertFalse(hook.begin.called)
+    next(est.predict(dummy_input_fn))
+    self.assertTrue(hook.begin.called)
 
   def test_warn_if_no_queue_runner(self):
 
@@ -1414,6 +1473,27 @@ class EstimatorPredictTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'Batch length of predictions should be same'):
       next(est.predict(dummy_input_fn))
+
+  def test_iterate_batches(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions={
+              # First dim is different but the prediction should still work
+              'y1': array_ops.zeros(shape=[3]),
+              'y2': array_ops.zeros(shape=[5, 3])
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+
+    predictions = next(est.predict(dummy_input_fn, yield_single_examples=False))
+    self.assertAllEqual(predictions['y1'].shape, [3])
+    self.assertAllEqual(predictions['y2'].shape, [5, 3])
 
   def test_predict_keys_defined_for_tensor(self):
 
@@ -1857,6 +1937,60 @@ class EstimatorExportTest(test.TestCase):
     # cleanup
     gfile.DeleteRecursively(tmpdir)
 
+  def test_export_savedmodel_tensor_features(self):
+    """Test that models accepting a single raw Tensor can be exported.
+
+    See https://github.com/tensorflow/tensorflow/issues/11674
+
+    If the model_fn and receiver_fn accept raw tensors rather than dictionaries
+    as input, export_savedmodel should be okay with that, too.
+
+    """
+
+    tmpdir = tempfile.mkdtemp()
+
+    def _input_fn_tensor_features():
+      t = array_ops.constant([1, 2, 3], dtype=dtypes.float32, shape=[1, 3])
+      return (t, None)
+
+    def _model_fn_tensor_features(features, labels, mode):
+      _ = labels
+      prediction = math_ops.matmul(features, features, transpose_b=True)
+
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=prediction,
+          loss=constant_op.constant(1.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          export_outputs={
+              'test': export_output.PredictOutput({'prediction': prediction})
+          })
+
+    def _serving_input_receiver_fn():
+      feat = array_ops.placeholder(dtype=dtypes.float32)
+      return export.TensorServingInputReceiver(
+          features=feat, receiver_tensors=feat)
+
+    est = estimator.Estimator(model_fn=_model_fn_tensor_features)
+    est.train(input_fn=_input_fn_tensor_features, steps=1)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, _serving_input_receiver_fn)
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name.lower() for x in graph.get_operations()]
+        self.assertTrue('const' in graph_ops)
+        self.assertTrue('matmul' in graph_ops)
+
+    # Clean up.
+    gfile.DeleteRecursively(tmpdir)
+
   def test_scaffold_is_used_for_saver(self):
     tmpdir = tempfile.mkdtemp()
 
@@ -2048,6 +2182,65 @@ class EstimatorExportTest(test.TestCase):
         compat.as_bytes(export_dir),
         compat.as_bytes('variables/variables.data-00000-of-00001'))))
 
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_proto_strip_default_attrs(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn_for_export_tests)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir_stripped = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn, strip_default_attrs=True)
+    export_dir_not_stripped = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn, strip_default_attrs=False)
+
+    # Load the SavedModel from disk as-is to verify default attrs
+    # are stripped. Reimporting the SavedModel via the loader causes the
+    # default attrs to be populated in the NodeDefs.
+
+    # pylint: disable=protected-access
+    saved_model_stripped_pb = loader_impl._parse_saved_model(
+        export_dir_stripped)
+    saved_model_not_stripped_pb = loader_impl._parse_saved_model(
+        export_dir_not_stripped)
+    self.assertIsNotNone(saved_model_stripped_pb)
+    self.assertIsNotNone(saved_model_not_stripped_pb)
+    # pylint: enable=protected-access
+
+    meta_graph_def_stripped = [
+        x for x in saved_model_stripped_pb.meta_graphs
+        if x.meta_info_def.tags == [tag_constants.SERVING]][0]
+    meta_graph_def_not_stripped = [
+        x for x in saved_model_not_stripped_pb.meta_graphs
+        if x.meta_info_def.tags == [tag_constants.SERVING]][0]
+
+    # "weight" node in graph is a "Variable" Op with 2 default valued attrs.
+    #   o "container"    : "".
+    #   o "shared_name"  : "".
+
+    # saved_model_stripped_pb was exported with strip_default_attrs set to True.
+    # "weight" node shouldn't have attributes "container" and "shared_name".
+    node_def = test_util.get_node_def_from_graph(
+        'weight', meta_graph_def_stripped.graph_def)
+    self.assertNotIn('container', node_def.attr)
+    self.assertNotIn('shared_name', node_def.attr)
+
+    # saved_model_not_stripped_pb was exported with strip_default_attrs
+    # disabled. "weight" node should have attributes "container" and
+    # "shared_name".
+    node_def = test_util.get_node_def_from_graph(
+        'weight', meta_graph_def_not_stripped.graph_def)
+    self.assertIn('container', node_def.attr)
+    self.assertIn('shared_name', node_def.attr)
+
+    # Clean up.
     gfile.DeleteRecursively(tmpdir)
 
 

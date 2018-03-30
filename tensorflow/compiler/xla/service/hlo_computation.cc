@@ -65,6 +65,7 @@ HloComputation::HloComputation(
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
     HloInstruction* root_instruction, HloInstruction* fusion_instruction)
     : name_(name),
+      unique_id_(-1),
       root_instruction_(root_instruction),
       fusion_instruction_(fusion_instruction) {
   param_instructions_.resize(parameter_count, nullptr);
@@ -101,7 +102,7 @@ HloInstruction* HloComputation::AddInstructionInternal(
     instruction->UniquifyName(&parent()->instruction_name_uniquer());
     instruction->SetUniqueId(parent()->NewUniqueInstructionId());
   }
-  Reparent(instruction.get());
+  instruction->set_parent(this);
   HloInstruction* pinst = instruction.get();
   instruction_iterators_[pinst] =
       instructions_.insert(instructions_.end(), std::move(instruction));
@@ -131,9 +132,9 @@ Status HloComputation::RemoveParameter(int64 param_no) {
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
-    string param_name = param_instruction->parameter_name();
+    string param_name = param_instruction->name();
     // Fusion parameters are named foo.param_1, bar.param_2, etc. We are
-    // renumbering the parameters so replace the final number in the name with
+    // renumbering the parameters, so replace the final number in the name with
     // the updated value.
     const string param_underscore = ".param_";
     size_t index = param_name.rfind(param_underscore);
@@ -156,10 +157,6 @@ Status HloComputation::RemoveParameter(int64 param_no) {
   }
 
   return Status::OK();
-}
-
-void HloComputation::Reparent(HloInstruction* instruction) {
-  instruction->set_parent(this);
 }
 
 bool HloComputation::IsRemovable(const HloInstruction* instruction) {
@@ -364,26 +361,27 @@ std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   return post_order;
 }
 
-string HloComputation::ToString(int nested_level,
-                                bool include_large_constants) const {
+string HloComputation::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  for (int i = 0; i < nested_level; i++) {
+  for (int i = 0; i < options.indent_amount(); i++) {
     s << "    ";
   }
-  s << "%" << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
-    << " {\n";
+  if (options.print_percent()) {
+    s << "%";
+  }
+  s << name();
+  if (options.print_program_shape()) {
+    s << " " << ShapeUtil::HumanString(ComputeProgramShape());
+  }
+  s << " {\n";
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    for (int i = 0; i < nested_level; i++) {
+    for (int i = 0; i < options.indent_amount(); i++) {
       s << "    ";
     }
     s << "  " << (instruction == root_instruction_ ? "ROOT " : "")
-      << instruction->ToString(
-             /*compact_operands=*/false,
-             /*include_metadata=*/true,
-             /*include_large_constants=*/include_large_constants)
-      << "\n";
+      << instruction->ToString(options) << "\n";
   }
-  for (int i = 0; i < nested_level; i++) {
+  for (int i = 0; i < options.indent_amount(); i++) {
     s << "    ";
   }
   s << "}";
@@ -392,43 +390,46 @@ string HloComputation::ToString(int nested_level,
 
 HloComputationProto HloComputation::ToProto() const {
   HloComputationProto proto;
+  CHECK(unique_id_ != -1)
+      << "This computation does not have a valid id. Please make sure the "
+         "computation is inside a module before dumping it.";
+  proto.set_id(unique_id_);
   proto.set_name(name_);
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     HloInstructionProto instruction_proto = instruction->ToProto();
     proto.add_instructions()->Swap(&instruction_proto);
   }
-  proto.set_root_name(root_instruction()->name());
+  proto.set_root_id(root_instruction()->unique_id());
+  *proto.mutable_program_shape() = ComputeProgramShape();
   return proto;
 }
 
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     HloModule* module, const HloComputationProto& proto,
-    const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
-    const std::function<void(std::unique_ptr<HloComputation>)>&
-        add_fused_computation,
-    HloInstruction* fusion_instruction) {
+    const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map) {
   std::vector<std::unique_ptr<HloInstruction>> instructions;
-  tensorflow::gtl::FlatMap<string, HloInstruction*> instruction_map;
+  tensorflow::gtl::FlatMap<int64, HloInstruction*> instruction_map;
   int64 parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
-                        HloInstruction::CreateFromProto(
-                            module, instruction_proto, instruction_map,
-                            computation_map, add_fused_computation));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloInstruction> instruction,
+        HloInstruction::CreateFromProto(module, instruction_proto,
+                                        instruction_map, computation_map));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }
-    TF_RET_CHECK(!ContainsKey(instruction_map, instruction->name()));
-    instruction_map[instruction->name()] = instruction.get();
+    TF_RET_CHECK(!ContainsKey(instruction_map, instruction_proto.id()));
+    instruction_map[instruction_proto.id()] = instruction.get();
     instructions.push_back(std::move(instruction));
   }
 
-  TF_RET_CHECK(!proto.root_name().empty());
-  TF_RET_CHECK(ContainsKey(instruction_map, proto.root_name()));
-  HloInstruction* root = instruction_map.at(proto.root_name());
-  return WrapUnique(new HloComputation(
-      proto.name(), parameter_count, &instructions, root, fusion_instruction));
+  TF_RET_CHECK(proto.root_id() != -1);
+  TF_RET_CHECK(ContainsKey(instruction_map, proto.root_id()));
+  HloInstruction* root = instruction_map.at(proto.root_id());
+  return WrapUnique(new HloComputation(proto.name(), parameter_count,
+                                       &instructions, root,
+                                       /*fusion_instruction=*/nullptr));
 }
 
 void HloComputation::FuseInstructionsInto(
@@ -456,20 +457,6 @@ HloInstruction* HloComputation::CreateFusionInstruction(
   HloInstruction* root = instructions_to_fuse.front();
   HloInstruction* fusion_instruction = AddInstruction(
       HloInstruction::CreateFusion(root->shape(), fusion_kind, root));
-  FuseInstructionsInto(instructions_to_fuse, fusion_instruction);
-  return fusion_instruction;
-}
-
-HloInstruction* HloComputation::CreateFusionInstructionForBackwardConvolution(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
-    HloInstruction::FusionKind fusion_kind, const Window& window,
-    const ConvolutionDimensionNumbers& conv_dnums) {
-  CHECK(HloInstruction::FusionKind::kConvBackwardFilter == fusion_kind ||
-        HloInstruction::FusionKind::kConvBackwardInput == fusion_kind);
-  HloInstruction* root = instructions_to_fuse.front();
-  HloInstruction* fusion_instruction =
-      AddInstruction(HloInstruction::CreateFusionForBackwardConvolution(
-          root->shape(), fusion_kind, window, conv_dnums, root));
   FuseInstructionsInto(instructions_to_fuse, fusion_instruction);
   return fusion_instruction;
 }
@@ -522,13 +509,14 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
         "Can't deep copy instruction %s: instruction is not in computation %s",
         instruction->name().c_str(), name().c_str());
   }
-
   if (indices_to_copy != nullptr &&
       !ShapeUtil::Compatible(instruction->shape(), indices_to_copy->shape())) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: given shape tree of indices to copy "
-        "has incompatible shape",
-        instruction->name().c_str());
+        "has incompatible shapes: %s vs. %s",
+        instruction->name().c_str(),
+        ShapeUtil::HumanString(instruction->shape()).c_str(),
+        ShapeUtil::HumanString(indices_to_copy->shape()).c_str());
   }
 
   ShapeIndex index;
@@ -540,11 +528,10 @@ ProgramShape HloComputation::ComputeProgramShape() const {
 
   for (auto* param_instruction : param_instructions_) {
     *program_shape.add_parameters() = param_instruction->shape();
-    *program_shape.add_parameter_names() = param_instruction->parameter_name();
+    *program_shape.add_parameter_names() = param_instruction->name();
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
-  LayoutUtil::ClearLayout(&program_shape);
   return program_shape;
 }
 
@@ -576,8 +563,11 @@ Status HloComputation::ReplaceWithNewInstruction(
 
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction) {
-  TF_RET_CHECK(ShapeUtil::Compatible(old_instruction->shape(),
-                                     new_instruction->shape()));
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
+      << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
+      << ShapeUtil::HumanString(new_instruction->shape());
+
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
   // Try to add metadata for HLO instructions that are created to replace

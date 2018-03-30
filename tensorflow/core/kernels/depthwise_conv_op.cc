@@ -241,7 +241,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 };
 
 // Extern template instantiated in conv_ops.cc.
-extern template class LaunchConv2DOp<CPUDevice, float>;
+extern template struct LaunchConv2DOp<CPUDevice, float>;
 
 #if GOOGLE_CUDA
 
@@ -251,7 +251,7 @@ extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
 // Extern template instantiated in conv_ops.cc.
-extern template class LaunchConv2DOp<GPUDevice, float>;
+extern template struct LaunchConv2DOp<GPUDevice, float>;
 
 #endif
 
@@ -308,10 +308,10 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
     // in_depth for input and filter must match.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is depth multiplier.
     const int32 depth_multiplier = filter.dim_size(3);
@@ -430,9 +430,10 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(
-    Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    DepthwiseConv2dNativeOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        DepthwiseConv2dNativeOp<GPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(
     Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<float>("T"),

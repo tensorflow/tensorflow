@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -218,8 +219,8 @@ TEST_F(RecordioTest, RandomRead) {
 
 // Tests of all the error paths in log_reader.cc follow:
 static void AssertHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(StringPiece(s).contains(expected)) << s << " does not contain "
-                                                 << expected;
+  EXPECT_TRUE(str_util::StrContains(s, expected))
+      << s << " does not contain " << expected;
 }
 
 TEST_F(RecordioTest, ReadError) {

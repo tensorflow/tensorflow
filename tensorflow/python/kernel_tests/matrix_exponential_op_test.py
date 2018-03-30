@@ -46,11 +46,9 @@ def np_expm(x):
 class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):
-    # TODO(pfau): add matrix logarithm and test that it is inverse of expm.
     inp = x.astype(np_type)
     with self.test_session(use_gpu=True):
-      # Verify that x^{-1} * x == Identity matrix.
-      tf_ans = gen_linalg_ops._matrix_exponential(inp)
+      tf_ans = gen_linalg_ops.matrix_exponential(inp)
       if x.size == 0:
         np_ans = np.empty(x.shape, dtype=np_type)
       else:
@@ -118,13 +116,13 @@ class ExponentialOpTest(test.TestCase):
     # When the exponential of a non-square matrix is attempted we should return
     # an error
     with self.assertRaises(ValueError):
-      gen_linalg_ops._matrix_exponential(np.array([[1., 2., 3.], [3., 4., 5.]]))
+      gen_linalg_ops.matrix_exponential(np.array([[1., 2., 3.], [3., 4., 5.]]))
 
   def testWrongDimensions(self):
-    # The input to the inverse should be at least a 2-dimensional tensor.
+    # The input to the exponential should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
-      gen_linalg_ops._matrix_exponential(tensor3)
+      gen_linalg_ops.matrix_exponential(tensor3)
 
   def testEmpty(self):
     self._verifyExponentialReal(np.empty([0, 2, 2]))
@@ -145,8 +143,8 @@ class ExponentialOpTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
-      expm1 = gen_linalg_ops._matrix_exponential(matrix1)
-      expm2 = gen_linalg_ops._matrix_exponential(matrix2)
+      expm1 = gen_linalg_ops.matrix_exponential(matrix1)
+      expm2 = gen_linalg_ops.matrix_exponential(matrix2)
       expm = sess.run([expm1, expm2])
       self.assertAllEqual(expm[0], expm[1])
 
@@ -182,7 +180,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
           session.Session() as sess, \
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
-        expm = gen_linalg_ops._matrix_exponential(matrix)
+        expm = gen_linalg_ops.matrix_exponential(matrix)
         variables.global_variables_initializer().run()
         self.run_op_benchmark(
             sess,

@@ -57,7 +57,8 @@ struct ImportGraphDefOptions {
   ImportGraphDefOptions()
       : uniquify_names(false),
         uniquify_prefix(false),
-        skip_mapped_nodes(false) {}
+        skip_mapped_nodes(false),
+        validate_shape(true) {}
 
   // Name prefix to use for nodes imported from the GraphDef.  For example, if
   // prefix="animals" and GraphDef contains a node "bunny" then the node will be
@@ -130,6 +131,9 @@ struct ImportGraphDefOptions {
   // If true, checks that all colocation constraints are nodes in the GraphDef.
   bool validate_colocation_constraints = true;
 
+  // If false skips shape validation.
+  bool validate_shape;
+
   // TODO(ashankar): Enable handling of GraphDefs produced by newer binaries
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
@@ -148,9 +152,10 @@ struct ImportGraphDefResults {
   // The requested nodes associated with ImportGraphDefOptions::return_nodes.
   std::vector<Node*> return_nodes;
 
-  // Keys in ImportGraphDefOptions::input_map that weren't used as an input to
-  // any node in`gdef`.
-  std::vector<TensorId> unused_input_map_keys;
+  // Keys in ImportGraphDefOptions::input_map that don't appear in `gdef` and
+  // weren't used as an input to any node in `gdef`. These keys are likely due
+  // to typos, and callers may wish to treat their existence as an error.
+  std::vector<TensorId> missing_unused_input_map_keys;
 };
 
 // Adds the graph in GraphDef `gdef` into an existing Graph `*g`.

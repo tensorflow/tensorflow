@@ -225,7 +225,7 @@ class LabeledTensorTest(test_util.Base):
     tensor = array_ops.placeholder(dtypes.string, [None])
     actual = core.LabeledTensor(tensor, ['x'])
     self.assertIsNone(actual.axes['x'].size)
-    self.assertIs(actual.axes['x'].value, tensor.get_shape()[0])
+    self.assertIsNone(actual.axes['x'].value.value)
 
   def test_eq(self):
     self.assertEqual(self.lt, self.lt)
@@ -243,6 +243,9 @@ class LabeledTensorTest(test_util.Base):
 
   def test_dtype(self):
     self.assertEqual(self.lt.dtype, self.lt.tensor.dtype)
+
+  def test_shape(self):
+    self.assertEqual(self.lt.shape, self.lt.tensor.shape)
 
   def test_get_shape(self):
     self.assertEqual(self.lt.get_shape(), self.lt.tensor.get_shape())

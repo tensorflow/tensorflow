@@ -55,7 +55,9 @@ py_test(
     name = "train_test",
     srcs = ["python/train_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
+        ":features",
         ":namedtuples",
         ":train",
         "//tensorflow/contrib/framework:framework_py",
@@ -82,6 +84,7 @@ py_library(
     deps = [
         ":classifier_metrics",
         ":eval_utils",
+        ":sliced_wasserstein",
         ":summaries",
         "//tensorflow/python:util",
     ],
@@ -175,6 +178,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":losses_impl",
+        ":namedtuples",
         "//tensorflow/python:util",
     ],
 )
@@ -186,6 +190,9 @@ py_test(
     deps = [
         ":tuple_losses",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -393,6 +400,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":eval_utils",
+        ":namedtuples",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -502,14 +510,37 @@ py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_library(
+    name = "sliced_wasserstein",
+    srcs = [
+        "python/eval/python/sliced_wasserstein.py",
+        "python/eval/python/sliced_wasserstein_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "sliced_wasserstein_test",
+    srcs = ["python/eval/python/sliced_wasserstein_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":sliced_wasserstein",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
+    ],
 )

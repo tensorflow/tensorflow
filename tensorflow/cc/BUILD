@@ -421,7 +421,7 @@ tf_cc_test(
 
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
-    api_def_srcs = ["//tensorflow/core:base_api_def"],
+    api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
     op_lib_names = [
         "array_ops",
         "audio_ops",
@@ -433,6 +433,7 @@ tf_gen_op_wrappers_cc(
         "linalg_ops",
         "logging_ops",
         "lookup_ops",
+        "manip_ops",
         "math_ops",
         "nn_ops",
         "no_op",
@@ -448,7 +449,6 @@ tf_gen_op_wrappers_cc(
         "ops/const_op.h",
         "ops/standard_ops.h",
     ],
-    override_file = "ops/op_gen_overrides.pbtxt",
     pkg = "//tensorflow/core",
 )
 
@@ -527,14 +527,13 @@ cc_library_with_android_deps(
     ],
     copts = tf_copts(),
     data = [
-        "//tensorflow/core:base_api_def",
+        "//tensorflow/core/api_def:base_api_def",
     ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -547,15 +546,11 @@ tf_cc_test(
         "framework/cc_op_gen.h",
         "framework/cc_op_gen_test.cc",
     ],
-    data = [
-        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
-    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -625,18 +620,6 @@ tf_cc_binary(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "queue_runner",
     srcs = ["training/queue_runner.cc"],
@@ -679,7 +662,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ],
 )
 

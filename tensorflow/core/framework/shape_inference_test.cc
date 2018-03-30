@@ -359,11 +359,11 @@ TEST_F(ShapeInferenceTest, WithRankAtMost) {
   // WithRankAtMost on a shape with unknown dimensionality always succeeds.
   EXPECT_TRUE(c.WithRankAtMost(in0, 1, &s1).ok());
   EXPECT_EQ("?", c.DebugString(s1));
-  EXPECT_FALSE(SameHandle(in0, s1));
+  EXPECT_TRUE(SameHandle(in0, s1));
 
   EXPECT_TRUE(c.WithRankAtMost(in0, 2, &s2).ok());
   EXPECT_EQ("?", c.DebugString(s2));
-  EXPECT_FALSE(SameHandle(s1, s2));
+  EXPECT_TRUE(SameHandle(s1, s2));
 
   // WithRankAtMost on shape with known dimensionality.
   s1 = in1;
@@ -398,11 +398,11 @@ TEST_F(ShapeInferenceTest, WithRankAtLeast) {
   // WithRankAtLeast on a shape with unknown dimensionality always succeeds.
   EXPECT_TRUE(c.WithRankAtLeast(in0, 1, &s1).ok());
   EXPECT_EQ("?", c.DebugString(s1));
-  EXPECT_FALSE(SameHandle(in0, s1));
+  EXPECT_TRUE(SameHandle(in0, s1));
 
   EXPECT_TRUE(c.WithRankAtLeast(in0, 2, &s2).ok());
   EXPECT_EQ("?", c.DebugString(s2));
-  EXPECT_FALSE(SameHandle(s1, s2));
+  EXPECT_TRUE(SameHandle(s1, s2));
 
   // WithRankAtLeast on shape with known dimensionality.
   s1 = in1;
@@ -760,7 +760,10 @@ TEST_F(ShapeInferenceTest, MergePrefix) {
   NodeDef def;
   InferenceContext c(kVersion, &def, MakeOpDef(4, 2),
                      {
-                         Unknown(), S({-1, 2}), S({1, -1, 3}), S({2, 4}),
+                         Unknown(),
+                         S({-1, 2}),
+                         S({1, -1, 3}),
+                         S({2, 4}),
                      },
                      {}, {}, {});
 

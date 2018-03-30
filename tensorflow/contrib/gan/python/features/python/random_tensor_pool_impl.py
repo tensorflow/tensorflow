@@ -17,7 +17,7 @@
 We use this to keep a history of values created by a generator, such that
 a discriminator can randomly be trained on some older samples, not just the
 current one. This can help to not let the discriminator get too far ahead of the
-generator and also to keep the system from oscilating, if the discriminator
+generator and also to keep the system from oscillating, if the discriminator
 forgets too fast what past samples from the generator looked like.
 
 See the following papers for more details.
@@ -49,7 +49,7 @@ def _to_tuple(x):
 
 
 def tensor_pool(input_values,
-                pool_size,
+                pool_size=50,
                 pooling_probability=0.5,
                 name='tensor_pool'):
   """Queue storing input values and returning random previously stored ones.
@@ -65,7 +65,8 @@ def tensor_pool(input_values,
   Args:
     input_values: A `Tensor`, or a list or tuple of `Tensor`s from which to read
       values to be pooled.
-    pool_size: An integer specifying the maximum size of the pool.
+    pool_size: An integer specifying the maximum size of the pool. Defaults to
+      50.
     pooling_probability: A float `Tensor` specifying the probability of getting
       a value from the pool, as opposed to just the current input.
     name: A string prefix for the name scope for all tensorflow ops.
@@ -96,7 +97,7 @@ def tensor_pool(input_values,
         dtypes=[v.dtype for v in input_values],
         shapes=None)
 
-    # In pseudeo code this code does the following:
+    # In pseudo code this code does the following:
     # if not pool_full:
     #   enqueue(input_values)
     #   return input_values
@@ -126,6 +127,10 @@ def tensor_pool(input_values,
     output_values = _to_tuple(control_flow_ops.cond(
         pool_queue.size() < pool_size, _get_input_value_pooled,
         _get_random_pool_value_and_enqueue_input))
+
+    # Make sure that the shape of `output_value` is set.
+    for input_value, output_value in zip(input_values, output_values):
+      output_value.set_shape(input_value.shape)
 
   if isinstance(original_input_values, list):
     return list(output_values)

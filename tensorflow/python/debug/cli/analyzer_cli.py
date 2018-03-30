@@ -186,6 +186,15 @@ class DebugAnalyzer(object):
         default="",
         help="List only Tensors passing the filter of the specified name")
     ap.add_argument(
+        "-fenn",
+        "--filter_exclude_node_names",
+        dest="filter_exclude_node_names",
+        type=str,
+        default="",
+        help="When applying the tensor filter, exclude node with names "
+        "matching the regular expression. Applicable only if --tensor_filter "
+        "or -f is used.")
+    ap.add_argument(
         "-n",
         "--node_name_filter",
         dest="node_name_filter",
@@ -402,6 +411,12 @@ class DebugAnalyzer(object):
         action="store_true",
         help="Print the tensor in its entirety, i.e., do not use ellipses "
         "(may be slow for large results).")
+    ap.add_argument(
+        "-w",
+        "--write_path",
+        default="",
+        help="Path of the numpy file to write the evaluation result to, "
+        "using numpy.save()")
     self._arg_parsers["eval"] = ap
 
   def add_tensor_filter(self, filter_name, filter_callable):
@@ -478,6 +493,10 @@ class DebugAnalyzer(object):
 
     Returns:
       Output text lines as a RichTextLines object.
+
+    Raises:
+      ValueError: If `--filter_exclude_node_names` is used without `-f` or
+        `--tensor_filter` being used.
     """
 
     # TODO(cais): Add annotations of substrings for dumped tensor names, to
@@ -514,8 +533,15 @@ class DebugAnalyzer(object):
         _add_main_menu(output, node_name=None, enable_list_tensors=False)
         return output
 
-      data_to_show = self._debug_dump.find(filter_callable)
+      data_to_show = self._debug_dump.find(
+          filter_callable,
+          exclude_node_names=parsed.filter_exclude_node_names)
     else:
+      if parsed.filter_exclude_node_names:
+        raise ValueError(
+            "The flag --filter_exclude_node_names is valid only when "
+            "the flag -f or --tensor_filter is used.")
+
       data_to_show = self._debug_dump.dumped_tensor_data
 
     # TODO(cais): Implement filter by lambda on tensor value.
@@ -972,7 +998,8 @@ class DebugAnalyzer(object):
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
             highlight_options=highlight_options,
-            include_numeric_summary=parsed.numeric_summary)
+            include_numeric_summary=parsed.numeric_summary,
+            write_path=parsed.write_path)
       else:
         output = cli_shared.error(
             "Invalid number (%d) for tensor %s, which generated one dump." %
@@ -1018,7 +1045,8 @@ class DebugAnalyzer(object):
             np_printoptions,
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
-            highlight_options=highlight_options)
+            highlight_options=highlight_options,
+            write_path=parsed.write_path)
       _add_main_menu(output, node_name=node_name, enable_print_tensor=False)
 
     return output
@@ -1071,7 +1099,8 @@ class DebugAnalyzer(object):
         "from eval of expression '%s'" % parsed.expression,
         np_printoptions,
         print_all=parsed.print_all,
-        include_numeric_summary=True)
+        include_numeric_summary=True,
+        write_path=parsed.write_path)
 
   def _reconstruct_print_source_command(self,
                                         parsed,

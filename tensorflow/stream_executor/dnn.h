@@ -896,7 +896,7 @@ class DnnSupport {
   //  offset: offset parameters.
   //  estimated_mean: population mean estimated during training.
   //    Used for inference only; empty for training.
-  //  estimated_variance: population variance estimated during traning,
+  //  estimated_variance: population variance estimated during training,
   //    used for inference only; empty for training.
   //  x_desc: dimensions of the input data, which is the same as the dimensions
   //    of the output.
@@ -908,8 +908,8 @@ class DnnSupport {
   //    the running variance.
   //  reserve_space_1: saved mean, to be reused in the backward gradient
   //    computation.
-  //  reserve_space_2: saved variance, to be reused in the backward gradient
-  //    computation.
+  //  reserve_space_2: saved inv_var (1/sqrt(epsilon + variance), to be reused
+  //    in the backward gradient computation.
   //  is_training: Set to true for training, false for inference.
   //  var_to_inv_var: a function to convert the variance to inverted variance
   //    for cuDNN v4 forward inference.
@@ -957,6 +957,7 @@ class DnnSupport {
   //  y_backprop: gradient with regard to output y.
   //  x: input data.
   //  scale: scaling parameters.
+  //  inv_var: 1/sqrt(epsilon + variance) of x.
   //  x_desc: dimensions of the input data, which is the same as the dimensions
   //    of the output.
   //  scale_offset_desc: dimensions of scale and offset.
@@ -967,7 +968,7 @@ class DnnSupport {
   virtual bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
       const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
@@ -981,7 +982,7 @@ class DnnSupport {
   virtual bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
       const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,
@@ -1171,7 +1172,9 @@ class DnnSupport {
       const DeviceMemory<double>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double>* output_data) = 0;
+      DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result) = 0;
 
   // Enqueues a half-precision convolution operation onto the stream.
   // See DoConvolve above for argument details.
@@ -1274,6 +1277,18 @@ class DnnSupport {
 
   virtual bool DoConvolveBackwardData(
       Stream* stream, const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<double>& filter_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const BatchDescriptor& input_descriptor,
+      DeviceMemory<double>* backward_input_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) = 0;
+
+  virtual bool DoConvolveBackwardData(
+      Stream* stream, const FilterDescriptor& filter_descriptor,
       const DeviceMemory<Eigen::half>& filter_data,
       const BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half> backward_output_data,
@@ -1320,6 +1335,18 @@ class DnnSupport {
   virtual bool GetConvolveBackwardFilterAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
+
+  virtual bool DoConvolveBackwardFilter(
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      const DeviceMemory<double>& input_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const FilterDescriptor& filter_descriptor,
+      DeviceMemory<double>* backward_filter_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) = 0;
 
   virtual bool DoConvolveBackwardFilter(
       Stream* stream, const BatchDescriptor& input_descriptor,
@@ -2023,7 +2050,7 @@ class DnnSupport {
   //  output_h_desc: descriptor for the output "h" state.
   //  output_h_data: the memory region that stores the output "h" data.
   //  output_c_desc: descriptor for the output "c" state.
-  //  output_c_data: the memory region that stores the outptu "c" data. This
+  //  output_c_data: the memory region that stores the output "c" data. This
   //    must be specified for LSTM models.
   //  is_training: whether this is used in training or inference. That decides
   //    whether respace_space data need to be produced.
@@ -2032,7 +2059,7 @@ class DnnSupport {
   //  retains the data and feed it to the backward pass.
   //  workspace_allocator: an allocator to create temporary workspace used in
   //    this kernel. The caller is responsible for retaining the memory long
-  //    enough for the lifespan of this operation, and recycles aftewards.
+  //    enough for the lifespan of this operation, and recycles afterwards.
   virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                             const dnn::RnnSequenceTensorDescriptor& input_desc,
                             const DeviceMemory<Eigen::half>& input_data,
@@ -2111,7 +2138,7 @@ class DnnSupport {
   //  output_h_desc: descriptor for the output "h" state.
   //  output_h_data: the memory region that stores the output "h" data.
   //  output_c_desc: descriptor for the output "c" state.
-  //  output_c_data: the memory region that stores the outptu "c" data. This
+  //  output_c_data: the memory region that stores the output "c" data. This
   //    must be specified for LSTM models.
   //  output_backprop_data: the device memory region that contains the backprop
   //    to the output sequence.

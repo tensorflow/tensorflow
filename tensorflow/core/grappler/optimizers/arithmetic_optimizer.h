@@ -32,9 +32,14 @@ constexpr char kArithmeticOptimizer[] = "ArithmeticOptimizer";
 // run a model.
 class ArithmeticOptimizer : public GraphOptimizer {
  public:
-  ArithmeticOptimizer() : opt_level_(RewriterConfig::ON) {}
+  ArithmeticOptimizer()
+      : opt_level_(RewriterConfig::ON),
+        options_(ArithmeticOptimizerOptions::Default(RewriterConfig::ON)) {}
+
   explicit ArithmeticOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+      : opt_level_(opt_level),
+        options_(ArithmeticOptimizerOptions::Default(opt_level)) {}
+
   ~ArithmeticOptimizer() override {}
 
   string name() const override { return "arithmetic_optimizer"; };
@@ -46,9 +51,37 @@ class ArithmeticOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  friend class ArithmeticOptimizerTest;
+
+  // Granular control for arithmetic optimizer stages
+  struct ArithmeticOptimizerOptions {
+    // TODO(ezhulenev): flag do disable TrySimplifyAndReplaceUses in tests.
+    // Remove when all optimizers will be migrated to separate stages.
+    bool enable_try_simplify_and_replace = true;
+    bool combine_add_to_addn = false;
+    bool hoist_common_factor_out_of_aggregation = true;
+    bool remove_identity_transpose = true;
+    bool remove_redundant_bitcast = true;
+    bool remove_redundant_cast = true;
+    bool remove_negation = true;
+
+    // Choose which arithmetic optimizer stages will be enabled for a given
+    // optimization level by default.
+    static ArithmeticOptimizerOptions Default(
+        RewriterConfig::Toggle opt_level) {
+      return ArithmeticOptimizerOptions();
+    }
+  };
+
   // Returns true is a node with given name and the optimizer prefix already
   // exists.
-  bool OptimizedNodeExists(const string& name);
+  string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
+  bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
+
+  // Creates a new node in the graph, with name equal to that of node, prefixed
+  // with "ArithmeticOptimizer/" and the given suffix. Also updates node_map_,
+  // and optionally copies node into the new node if copy_node is true.
+  NodeDef* AddNode(const NodeDef& node, StringPiece suffix, bool copy_node);
 
   // Creates a new node in the graph, prefixed with "ArithmeticOptimizer/",
   // updates node_map_, and optionally copies *node_to_copy into the new
@@ -91,13 +124,14 @@ class ArithmeticOptimizer : public GraphOptimizer {
                                    SetVector<NodeDef*>* nodes_to_simplify);
 
   RewriterConfig::Toggle opt_level_;
+  ArithmeticOptimizerOptions options_;
 
-  bool fetch_nodes_known_;
+  bool fetch_nodes_known_ = false;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
   FrameMap frame_map_;
   std::unique_ptr<GraphProperties> graph_properties_;
-  GraphDef* optimized_graph_;  // Not owned.
+  GraphDef* optimized_graph_ = nullptr;  // Not owned.
 };
 
 }  // end namespace grappler

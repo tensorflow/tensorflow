@@ -25,25 +25,40 @@ namespace tensorflow {
 
 const char ProcessFunctionLibraryRuntime::kDefaultFLRDevice[] = "null";
 
+Status ProcessFunctionLibraryRuntime::FunctionData::DistributedInit(
+    DistributedFunctionLibraryRuntime* parent, const string& function_name,
+    const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options) {
+  mutex_lock l(mu_);
+  if (!init_started_) {
+    init_started_ = true;
+    init_result_ = parent->Instantiate(function_name, lib_def, attrs, options,
+                                       &local_handle_);
+  }
+  return init_result_;
+}
+
 ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
+    thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent)
     : device_mgr_(device_mgr),
       lib_def_(lib_def),
+      default_thread_pool_(default_thread_pool),
       next_handle_(0),
       parent_(parent) {
   if (device_mgr == nullptr) {
-    flr_map_[nullptr] =
-        NewFunctionLibraryRuntime(nullptr, env, nullptr, graph_def_version,
-                                  lib_def, optimizer_options, this);
+    flr_map_[nullptr] = NewFunctionLibraryRuntime(
+        nullptr, env, nullptr, graph_def_version, lib_def, default_thread_pool,
+        optimizer_options, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d] =
-        NewFunctionLibraryRuntime(device_mgr, env, d, graph_def_version,
-                                  lib_def, optimizer_options, this);
+    flr_map_[d] = NewFunctionLibraryRuntime(
+        device_mgr, env, d, graph_def_version, lib_def, default_thread_pool,
+        optimizer_options, this);
   }
 }
 
@@ -52,49 +67,24 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator,
+    thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent)
     : device_mgr_(device_mgr),
       lib_def_(lib_def),
+      default_thread_pool_(default_thread_pool),
       next_handle_(0),
       parent_(parent) {
   if (device_mgr == nullptr) {
     flr_map_[nullptr] = NewFunctionLibraryRuntime(
-        nullptr, env, nullptr, graph_def_version, lib_def, optimizer_options,
-        std::move(custom_kernel_creator), this);
+        nullptr, env, nullptr, graph_def_version, lib_def, default_thread_pool,
+        optimizer_options, std::move(custom_kernel_creator), this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
     flr_map_[d] = NewFunctionLibraryRuntime(
-        device_mgr, env, d, graph_def_version, lib_def, optimizer_options,
-        custom_kernel_creator, this);
+        device_mgr, env, d, graph_def_version, lib_def, default_thread_pool,
+        optimizer_options, custom_kernel_creator, this);
   }
-}
-
-ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options)
-    : ProcessFunctionLibraryRuntime(device_mgr, env, graph_def_version, lib_def,
-                                    optimizer_options,
-                                    nullptr /* cluster_flr */) {}
-
-ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator)
-    : ProcessFunctionLibraryRuntime(
-          device_mgr, env, graph_def_version, lib_def, optimizer_options,
-          std::move(custom_kernel_creator), nullptr /* cluster_flr */) {}
-
-/* static */
-string ProcessFunctionLibraryRuntime::ObtainFunctionTarget(
-    const AttrSlice& attrs) {
-  const AttrValue* value;
-  if (!attrs.Find("_target", &value).ok()) {
-    return "";
-  }
-  return DeviceNameUtils::CanonicalizeDeviceName(value->s());
 }
 
 /* static */
@@ -168,11 +158,11 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 }
 
 FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
-    const string& device_name) {
+    const string& device_name) const {
   Device* device = nullptr;
   if (device_name != kDefaultFLRDevice) {
     if (!device_mgr_->LookupDevice(device_name, &device).ok()) {
-      LOG(ERROR) << "Could not find device: " << device_name;
+      VLOG(1) << "Could not find device: " << device_name;
       return nullptr;
     }
   }
@@ -194,7 +184,8 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
     if (function_data_.count(h) != 0) return h;
   }
   h = next_handle_;
-  function_data_.insert({h, FunctionData(device_name, local_handle)});
+  FunctionData* fd = new FunctionData(device_name, local_handle);
+  function_data_[h] = std::unique_ptr<FunctionData>(fd);
   table_[function_key] = h;
   next_handle_++;
   return h;
@@ -223,39 +214,58 @@ ProcessFunctionLibraryRuntime::GetHandleOnDevice(
   if (function_data_.count(handle) == 0) {
     return kInvalidLocalHandle;
   }
-  const FunctionData& function_data = function_data_[handle];
-  if (function_data.target_device != device_name) {
+  FunctionData* function_data = function_data_[handle].get();
+  if (function_data->target_device() != device_name) {
     return kInvalidLocalHandle;
   }
-  return function_data.local_handle;
+  return function_data->local_handle();
 }
 
 string ProcessFunctionLibraryRuntime::GetDeviceName(
     FunctionLibraryRuntime::Handle handle) {
   mutex_lock l(mu_);
   CHECK_EQ(1, function_data_.count(handle));
-  const FunctionData& function_data = function_data_[handle];
-  return function_data.target_device;
+  FunctionData* function_data = function_data_[handle].get();
+  return function_data->target_device();
 }
 
 Status ProcessFunctionLibraryRuntime::Instantiate(
     const string& function_name, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::Handle* handle) {
   *handle = kInvalidHandle;
-  string target = ObtainFunctionTarget(attrs);
-  FunctionLibraryRuntime* flr = GetFLR(target);
+  FunctionLibraryRuntime* flr = GetFLR(options.target);
   if (flr != nullptr) {
-    return flr->Instantiate(function_name, attrs, handle);
+    return flr->Instantiate(function_name, attrs, options, handle);
   }
   if (parent_ == nullptr) {
     return errors::Internal(
-        "Currently don't support instantiating functions on device: ", target);
+        "Currently don't support instantiating functions on device: ",
+        options.target);
   }
-  FunctionLibraryRuntime::Handle cluster_handle;
+  VLOG(1) << "ProcessFLR Instantiate: " << function_name
+          << " on: " << options.target;
+  string function_key = Canonicalize(function_name, attrs, options);
+  FunctionData* f;
+  {
+    mutex_lock l(mu_);
+    FunctionLibraryRuntime::Handle h =
+        gtl::FindWithDefault(table_, function_key, kInvalidHandle);
+    if (h == kInvalidHandle || function_data_.count(h) == 0) {
+      h = next_handle_;
+      FunctionData* fd = new FunctionData(options.target, kInvalidHandle);
+      function_data_[h] = std::unique_ptr<FunctionData>(fd);
+      table_[function_key] = h;
+      next_handle_++;
+    }
+    f = function_data_[h].get();
+    *handle = h;
+  }
   TF_RETURN_IF_ERROR(
-      parent_->Instantiate(function_name, *lib_def_, attrs, &cluster_handle));
-  string function_key = Canonicalize(function_name, attrs);
-  *handle = AddHandle(function_key, target, cluster_handle);
+      f->DistributedInit(parent_, function_name, *lib_def_, attrs, options));
+  VLOG(1) << "ProcessFLR Instantiate [success]: " << function_name
+          << " on: " << options.target << " with handle: " << *handle
+          << " (this: " << this << ")";
   return Status::OK();
 }
 
@@ -272,8 +282,8 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   string target_device;
   {
     mutex_lock l(mu_);
-    CHECK_EQ(1, function_data_.count(handle));
-    target_device = function_data_[handle].target_device;
+    CHECK_EQ(1, function_data_.count(handle)) << " handle: " << handle;
+    target_device = function_data_[handle]->target_device();
   }
   flr = GetFLR(target_device);
   if (flr != nullptr) {
@@ -302,8 +312,8 @@ void ProcessFunctionLibraryRuntime::Run(
       done(errors::NotFound("Handle: ", handle, " not found."));
       return;
     }
-    target_device = function_data_[handle].target_device;
-    local_handle = function_data_[handle].local_handle;
+    target_device = function_data_[handle]->target_device();
+    local_handle = function_data_[handle]->local_handle();
   }
   flr = GetFLR(target_device);
   if (flr != nullptr) {
@@ -357,6 +367,19 @@ void ProcessFunctionLibraryRuntime::Run(
     return;
   }
   done(errors::Internal("Could not find device"));
+}
+
+Status ProcessFunctionLibraryRuntime::Clone(
+    Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator,
+    std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) {
+  out_lib_def->reset(new FunctionLibraryDefinition(*lib_def_));
+  out_pflr->reset(new ProcessFunctionLibraryRuntime(
+      device_mgr_, env, graph_def_version, out_lib_def->get(),
+      optimizer_options, std::move(custom_kernel_creator), default_thread_pool_,
+      parent_));
+  return Status::OK();
 }
 
 }  // namespace tensorflow

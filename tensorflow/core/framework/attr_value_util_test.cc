@@ -135,6 +135,38 @@ TEST(AttrValueUtil, DeepAttr) {
             "f[F=f[F=f[F=[f[T=x[]], g[T=x[]]], T=x[]], T=x[]], T=x[]]");
 }
 
+TEST(AttrValueUtil, SummarizeAttrValueDoesNotElideShortStrings) {
+  AttrValue attr_value;
+  SetAttrValue(string(40, '-'), &attr_value);
+  EXPECT_EQ(strings::StrCat("\"", string(40, '-'), "\""),
+            SummarizeAttrValue(attr_value));
+}
+
+TEST(AttrValueUtil, SummarizeAttrValueElidesLongStrings) {
+  AttrValue attr_value;
+  SetAttrValue(string(80, '-'), &attr_value);
+  EXPECT_EQ("\"----------...----------\"", SummarizeAttrValue(attr_value));
+}
+
+TEST(AttrValueUtil, SummarizeAttrValueDoesNotElideShortLists) {
+  std::vector<int> alist(10);
+  std::iota(alist.begin(), alist.end(), 0);
+
+  AttrValue attr_value;
+  SetAttrValue(alist, &attr_value);
+  EXPECT_EQ("[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]", SummarizeAttrValue(attr_value));
+}
+
+TEST(AttrValueUtil, SummarizeAttrValueElidesLongLists) {
+  std::vector<int> alist(30);
+  std::iota(alist.begin(), alist.end(), 0);
+
+  AttrValue attr_value;
+  SetAttrValue(alist, &attr_value);
+  EXPECT_EQ("[0, 1, 2, 3, 4, ..., 25, 26, 27, 28, 29]",
+            SummarizeAttrValue(attr_value));
+}
+
 AttrValue FromText(const string& text) {
   AttrValue attr;
   EXPECT_TRUE(protobuf::TextFormat::MergeFromString(text, &attr));

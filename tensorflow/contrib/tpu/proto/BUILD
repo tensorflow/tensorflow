@@ -4,15 +4,13 @@ exports_files(["LICENSE"])
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+tf_proto_library(
+    name = "tpu_embedding_config_proto",
+    srcs = [
+        "tpu_embedding_config.proto",
+    ],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(

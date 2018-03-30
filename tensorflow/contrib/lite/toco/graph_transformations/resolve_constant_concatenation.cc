@@ -73,7 +73,7 @@ void CopyTensorSegments(const std::vector<Array*>& input_arrays,
 
 // Receives a series of input arrays of type Array and an integer showing the
 // axis on which those arrays will be concatenated. It returns the concatenated
-// arrray.
+// array.
 template <ArrayDataType A>
 void ConcatenateTensorBuffers(const std::vector<Array*>& input_arrays,
                               int concatenation_axis,
@@ -151,7 +151,7 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
     if (!IsDiscardableArray(*model, input_name)) return false;
   }
 
-  const int concatenation_axis = concat_op->concat_dim;
+  const int concatenation_axis = concat_op->axis;
 
   CHECK_EQ(concat_op->outputs.size(), 1);
   string concatenated_array_name = concat_op->outputs[0];
@@ -179,13 +179,20 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
       ConcatenateTensorBuffers<ArrayDataType::kInt64>(
           input_arrays, concatenation_axis, &concatenated_array);
       break;
+    case ArrayDataType::kString:
+      ConcatenateTensorBuffers<ArrayDataType::kString>(
+          input_arrays, concatenation_axis, &concatenated_array);
+      break;
     default:
       LOG(FATAL) << "ArrayDataType not supported";
   }
 
   // Remove all the resolved arrays.
   for (const string& input_name : concat_op->inputs) {
-    model->arrays.erase(input_name);
+    // Check to prevent removal of shared tensors
+    if (CountOpsWithInput(*model, input_name) == 1) {
+      model->EraseArray(input_name);
+    }
   }
 
   // Remove concatenate operator

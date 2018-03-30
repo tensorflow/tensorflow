@@ -35,7 +35,8 @@ class Tape(object):
 
 def push_new_tape(persistent=False):
   """Pushes a new tape onto the tape stack."""
-  pywrap_tensorflow.TFE_Py_TapeStackPushNew(persistent)
+  tape = pywrap_tensorflow.TFE_Py_TapeSetNew(persistent)
+  return Tape(tape)
 
 
 def watch(tensor):
@@ -44,7 +45,7 @@ def watch(tensor):
   Args:
     tensor: tensor to be watched.
   """
-  pywrap_tensorflow.TFE_Py_TapeStackWatch(tensor)
+  pywrap_tensorflow.TFE_Py_TapeSetWatch(tensor)
 
 
 def watch_variable(variable):
@@ -53,42 +54,39 @@ def watch_variable(variable):
   Args:
     variable: variable to be watched.
   """
-  pywrap_tensorflow.TFE_Py_TapeStackWatchVariable(variable)
+  pywrap_tensorflow.TFE_Py_TapeSetWatchVariable(variable)
 
 
-def pop_tape():
+def pop_tape(tape):
   """Pops the top tape in the stack, if any."""
-  return Tape(pywrap_tensorflow.TFE_Py_TapeStackPop())
+  pywrap_tensorflow.TFE_Py_TapeSetRemove(tape._tape)  # pylint: disable=protected-access
 
 
 @contextlib.contextmanager
 def stop_recording():
-  stack = []
-  while not pywrap_tensorflow.TFE_Py_TapeStackIsEmpty():
-    stack.append(pop_tape()._tape)  # pylint: disable=protected-access
   try:
+    pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
     yield
   finally:
-    for tape in reversed(stack):
-      pywrap_tensorflow.TFE_Py_TapeStackPush(tape)
+    pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
 
 
 def should_record(tensors):
   """Returns true if any tape in the stack watches any of these tensors."""
-  return pywrap_tensorflow.TFE_Py_TapeStackShouldRecord(tensors)
+  return pywrap_tensorflow.TFE_Py_TapeSetShouldRecord(tensors)
 
 
 def record_operation(op_type, output_tensors, input_tensors, backward_function):
   """Records the operation on all tapes in the stack."""
-  pywrap_tensorflow.TFE_Py_TapeStackRecordOperation(
+  pywrap_tensorflow.TFE_Py_TapeSetRecordOperation(
       op_type, output_tensors, input_tensors, backward_function)
 
 
 def delete_trace(tensor_id):
   """Deletes traces for this Tensor from all tapes in the stack."""
-  pywrap_tensorflow.TFE_Py_TapeStackDeleteTrace(tensor_id)
+  pywrap_tensorflow.TFE_Py_TapeSetDeleteTrace(tensor_id)
 
 
 def could_possibly_record():
   """Returns True if any tape is active."""
-  return not pywrap_tensorflow.TFE_Py_TapeStackIsEmpty()
+  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()

@@ -27,6 +27,7 @@ from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops.gen_logging_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 # The python wrapper for Assert is in control_flow_ops, as the Assert
 # call relies on certain conditionals for its dependencies.  Use
@@ -35,6 +36,7 @@ from tensorflow.python.util.deprecation import deprecated
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
+@tf_export("Print")
 def Print(input_, data, message=None, first_n=None, summarize=None,
           name=None):
   """Prints a list of tensors.
@@ -107,7 +109,7 @@ def histogram_summary(tag, values, collections=None, name=None):
     buffer.
   """
   with ops.name_scope(name, "HistogramSummary", [tag, values]) as scope:
-    val = gen_logging_ops._histogram_summary(
+    val = gen_logging_ops.histogram_summary(
         tag=tag, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
@@ -168,7 +170,7 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
     buffer.
   """
   with ops.name_scope(name, "ImageSummary", [tag, tensor]) as scope:
-    val = gen_logging_ops._image_summary(
+    val = gen_logging_ops.image_summary(
         tag=tag, tensor=tensor, max_images=max_images, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
@@ -224,11 +226,12 @@ def audio_summary(tag,
   with ops.name_scope(name, "AudioSummary", [tag, tensor]) as scope:
     sample_rate = ops.convert_to_tensor(sample_rate, dtype=dtypes.float32,
                                         name="sample_rate")
-    val = gen_logging_ops._audio_summary_v2(tag=tag,
-                                            tensor=tensor,
-                                            max_outputs=max_outputs,
-                                            sample_rate=sample_rate,
-                                            name=scope)
+    val = gen_logging_ops.audio_summary_v2(
+        tag=tag,
+        tensor=tensor,
+        max_outputs=max_outputs,
+        sample_rate=sample_rate,
+        name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 
@@ -261,7 +264,7 @@ def merge_summary(inputs, collections=None, name=None):
     buffer resulting from the merging.
   """
   with ops.name_scope(name, "MergeSummary", inputs):
-    val = gen_logging_ops._merge_summary(inputs=inputs, name=name)
+    val = gen_logging_ops.merge_summary(inputs=inputs, name=name)
     _Collect(val, collections, [])
   return val
 
@@ -343,7 +346,7 @@ def scalar_summary(tags, values, collections=None, name=None):
     buffer.
   """
   with ops.name_scope(name, "ScalarSummary", [tags, values]) as scope:
-    val = gen_logging_ops._scalar_summary(tags=tags, values=values, name=scope)
+    val = gen_logging_ops.scalar_summary(tags=tags, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 
@@ -354,3 +357,4 @@ ops.NotDifferentiable("AudioSummary")
 ops.NotDifferentiable("AudioSummaryV2")
 ops.NotDifferentiable("MergeSummary")
 ops.NotDifferentiable("ScalarSummary")
+ops.NotDifferentiable("Timestamp")

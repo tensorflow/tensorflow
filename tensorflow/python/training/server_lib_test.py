@@ -421,6 +421,17 @@ class ServerDefTest(test.TestCase):
 
 class ClusterSpecTest(test.TestCase):
 
+  def testStringConversion(self):
+    cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:1111"],
+        "worker": ["worker0:3333", "worker1:4444"]
+    })
+
+    expected_str = (
+        "ClusterSpec({'ps': ['ps0:1111'], 'worker': ['worker0:3333', "
+        "'worker1:4444']})")
+    self.assertEqual(expected_str, str(cluster_spec))
+
   def testProtoDictDefEquivalences(self):
     cluster_spec = server_lib.ClusterSpec({
         "ps": ["ps0:2222", "ps1:2222"],

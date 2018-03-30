@@ -184,6 +184,7 @@ class TrainingHelper(Helper):
     """
     with ops.name_scope(name, "TrainingHelper", [inputs, sequence_length]):
       inputs = ops.convert_to_tensor(inputs, name="inputs")
+      self._inputs = inputs
       if not time_major:
         inputs = nest.map_structure(_transpose_batch_time, inputs)
 
@@ -199,6 +200,14 @@ class TrainingHelper(Helper):
           lambda inp: array_ops.zeros_like(inp[0, :]), inputs)
 
       self._batch_size = array_ops.size(sequence_length)
+
+  @property
+  def inputs(self):
+    return self._inputs
+
+  @property
+  def sequence_length(self):
+    return self._sequence_length
 
   @property
   def batch_size(self):
@@ -223,7 +232,8 @@ class TrainingHelper(Helper):
 
   def sample(self, time, outputs, name=None, **unused_kwargs):
     with ops.name_scope(name, "TrainingHelperSample", [time, outputs]):
-      sample_ids = math_ops.argmax(outputs, axis=-1, output_type=dtypes.int32)
+      sample_ids = math_ops.cast(
+          math_ops.argmax(outputs, axis=-1), dtypes.int32)
       return sample_ids
 
   def next_inputs(self, time, outputs, state, name=None, **unused_kwargs):

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
@@ -39,8 +40,6 @@ struct ItemConfig {
   int placeholder_unknown_output_shape_dim = -1;
   // If true, does L1 optimizations.
   bool apply_optimizations = false;
-  // If true, does inlining.
-  bool inline_functions = false;
   // If true, erases all "_noinline" attributes from user-defined functions.
   // Has no effect if "inline_functions" is disabled.
   bool erase_noinline_attributes = false;

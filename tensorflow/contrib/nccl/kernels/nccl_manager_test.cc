@@ -16,6 +16,7 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 
 #include <algorithm>
+#include <random>
 #include <vector>
 
 #include "tensorflow/contrib/nccl/kernels/nccl_manager.h"
@@ -175,7 +176,7 @@ class NcclManagerTest : public ::testing::Test {
       auto out_gpu_mem = AsDeviceMemory(out_gpu.flat<float>().data());
       stream->ThenMemcpy(out_cpu.flat<float>().data(), out_gpu_mem,
                          out_cpu.TotalBytes());
-      stream->BlockHostUntilDone();
+      SE_ASSERT_OK(stream->BlockHostUntilDone());
       test::ExpectTensorEqual<float>(test_case->expected, out_cpu);
     }
   }
@@ -236,10 +237,11 @@ TEST_F(NcclManagerTest, MultipleCallers) {
     for (int i = 0; i < num_ranks; ++i) {
       auto* device = devices->at(i % devices->size());
       auto* stream = device->tensorflow_gpu_device_info()->stream;
-      stream->BlockHostUntilDone();
+      SE_ASSERT_OK(stream->BlockHostUntilDone());
     }
 
-    std::random_shuffle(case_and_device_num.begin(), case_and_device_num.end());
+    std::shuffle(case_and_device_num.begin(), case_and_device_num.end(),
+                 std::mt19937(std::random_device()()));
 
     mutex mu;  // guards case_and_device_num.
     std::unique_ptr<thread::ThreadPool> pool(

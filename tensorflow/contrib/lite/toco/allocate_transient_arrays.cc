@@ -148,7 +148,7 @@ std::size_t TransientArraySize(const Model& model, const string& array_name,
   if (!IsAllocatableTransientArray(model, array_name)) {
     return 0;
   }
-  const auto& array = model.arrays.at(array_name);
+  const auto& array = &model.GetArray(array_name);
   CHECK(array->has_shape())
       << "Array '" << array_name << "' doesn't have a shape";
   if (array->data_type == ArrayDataType::kNone) {
@@ -158,9 +158,7 @@ std::size_t TransientArraySize(const Model& model, const string& array_name,
         LOG(FATAL)
             << "A RNN state array, " << array_name << ", still does not "
             << "have a known data type after all graph transformations have "
-            << "run. That's mostly a toco bug --- sorry. For now, you can "
-            << "work around this issue by adding manually_create:true in the "
-            << "--rnn_state description of this RNN state.";
+            << "run.";
       }
     }
     LOG(FATAL) << "An array, " << array_name << ", still does not "
@@ -185,7 +183,7 @@ void AllocateTransientArray(const Model& model, const string& array_name,
   }
   const std::size_t size =
       TransientArraySize(model, array_name, transient_data_alignment);
-  const auto& array = model.arrays.at(array_name);
+  const auto& array = &model.GetArray(array_name);
   CHECK(!array->alloc);
   allocator->Allocate(size, &array->GetOrCreateAlloc());
 }
@@ -197,7 +195,7 @@ void DeallocateTransientArray(const Model& model, const string& array_name,
   if (!IsAllocatableTransientArray(model, array_name)) {
     return;
   }
-  const auto& array = model.arrays.at(array_name);
+  const auto& array = &model.GetArray(array_name);
   CHECK(!!array->alloc);
   allocator->Deallocate(*array->alloc);
 }
@@ -231,7 +229,7 @@ void AllocateTransientArrays(Model* model,
   // Construct a sorted map of array names, so that other layout engines can
   // match exactly.
   std::map<string, const Array*> ordered_arrays_map;
-  for (const auto& pair : model->arrays) {
+  for (const auto& pair : model->GetArrayMap()) {
     ordered_arrays_map[pair.first] = pair.second.get();
   }
 
@@ -239,8 +237,8 @@ void AllocateTransientArrays(Model* model,
   // is a misnormer, should read 'workspace'.
   for (const auto& array_pair : ordered_arrays_map) {
     const string& array_name = array_pair.first;
-    const auto& array_lifespan = array_lifespans.find(array_name)->second;
-    if (array_lifespan.persistent) {
+    auto it = array_lifespans.find(array_name);
+    if (it != array_lifespans.end() && it->second.persistent) {
       AllocateTransientArray(*model, array_name, &allocator,
                              transient_data_alignment);
     }
@@ -250,28 +248,48 @@ void AllocateTransientArrays(Model* model,
        op_index++) {
     const auto& op = model->operators[op_index];
     // Allocate those arrays whose lifespan starts exactly here.
+    std::vector<string> arrays_to_allocate;
     for (const auto& input : op->inputs) {
       if (StartsAt(array_lifespans[input], op_index)) {
-        AllocateTransientArray(*model, input, &allocator,
-                               transient_data_alignment);
+        if (std::find(arrays_to_allocate.begin(), arrays_to_allocate.end(),
+                      input) == arrays_to_allocate.end()) {
+          arrays_to_allocate.push_back(input);
+        }
       }
     }
     for (const auto& output : op->outputs) {
       if (StartsAt(array_lifespans[output], op_index)) {
-        AllocateTransientArray(*model, output, &allocator,
-                               transient_data_alignment);
+        if (std::find(arrays_to_allocate.begin(), arrays_to_allocate.end(),
+                      output) == arrays_to_allocate.end()) {
+          arrays_to_allocate.push_back(output);
+        }
       }
     }
+    for (const string& array : arrays_to_allocate) {
+      AllocateTransientArray(*model, array, &allocator,
+                             transient_data_alignment);
+    }
+
     // Deallocate those arrays whose lifespan ends exactly here.
+    std::vector<string> arrays_to_deallocate;
     for (const auto& input : op->inputs) {
       if (EndsAt(array_lifespans[input], op_index)) {
-        DeallocateTransientArray(*model, input, &allocator);
+        if (std::find(arrays_to_deallocate.begin(), arrays_to_deallocate.end(),
+                      input) == arrays_to_deallocate.end()) {
+          arrays_to_deallocate.push_back(input);
+        }
       }
     }
     for (const auto& output : op->outputs) {
       if (EndsAt(array_lifespans[output], op_index)) {
-        DeallocateTransientArray(*model, output, &allocator);
+        if (std::find(arrays_to_deallocate.begin(), arrays_to_deallocate.end(),
+                      output) == arrays_to_deallocate.end()) {
+          arrays_to_deallocate.push_back(output);
+        }
       }
+    }
+    for (const string& array : arrays_to_deallocate) {
+      DeallocateTransientArray(*model, array, &allocator);
     }
   }
 
@@ -282,8 +300,8 @@ void AllocateTransientArrays(Model* model,
   std::size_t persistent_alloc_size = 0;
   for (const auto& array_pair : ordered_arrays_map) {
     const string& array_name = array_pair.first;
-    const auto& array_lifespan = array_lifespans.find(array_name)->second;
-    if (array_lifespan.persistent) {
+    auto it = array_lifespans.find(array_name);
+    if (it != array_lifespans.end() && it->second.persistent) {
       persistent_alloc_size +=
           TransientArraySize(*model, array_name, transient_data_alignment);
     }

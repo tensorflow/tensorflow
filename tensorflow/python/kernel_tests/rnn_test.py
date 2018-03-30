@@ -23,6 +23,7 @@ import timeit
 
 import numpy as np
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -110,10 +111,10 @@ class RNNTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
-    if context.in_graph_mode():
-      inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
-    else:
+    if context.executing_eagerly():
       inputs = [constant_op.constant(np.ones((3, 4)))]
+    else:
+      inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
     with self.assertRaisesRegexp(ValueError, "must be a vector"):
       rnn.dynamic_rnn(
           cell,
@@ -124,38 +125,30 @@ class RNNTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testBatchSizeFromInput(self):
     cell = Plus1RNNCell()
-    in_graph_mode = context.in_graph_mode()
+    in_eager_mode = context.executing_eagerly()
     # With static batch size
-    if in_graph_mode:
-      inputs = array_ops.placeholder(dtypes.float32, shape=(3, 4, 5))
-      initial_state = array_ops.placeholder(dtypes.float32, shape=(3, 5))
-    else:
+    if in_eager_mode:
       inputs = np.zeros((3, 4, 5), dtype=np.float32)
       initial_state = np.zeros((3, 5), dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(3, 4, 5))
+      initial_state = array_ops.placeholder(dtypes.float32, shape=(3, 5))
 
     # - Without initial_state
     outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
-    if in_graph_mode:
-      self.assertEqual(3, outputs.shape[0].value)
-      self.assertEqual(3, state.shape[0].value)
-    else:
-      self.assertEqual(3, outputs.shape[0])
-      self.assertEqual(3, state.shape[0])
+    self.assertEqual(3, outputs.shape[0])
+    self.assertEqual(3, state.shape[0])
 
     # - With initial_state
     outputs, state = rnn.dynamic_rnn(
         cell, inputs, initial_state=initial_state)
-    if in_graph_mode:
-      self.assertEqual(3, outputs.shape[0].value)
-      self.assertEqual(3, state.shape[0].value)
-    else:
-      self.assertEqual(3, outputs.shape[0])
-      self.assertEqual(3, state.shape[0])
+    self.assertEqual(3, outputs.shape[0])
+    self.assertEqual(3, state.shape[0])
 
     # Without static batch size
-    # Tensor shapes are fully determined in Eager mode, so only run this
-    # test in graph mode.
-    if in_graph_mode:
+    # Tensor shapes are fully determined with eager execution enabled,
+    # so only run this test for graph construction.
+    if not in_eager_mode:
       inputs = array_ops.placeholder(dtypes.float32, shape=(None, 4, 5))
       # - Without initial_state
       outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
@@ -172,56 +165,46 @@ class RNNTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testScalarStateIsAccepted(self):
     cell = ScalarStateRNNCell()
-    in_graph_mode = context.in_graph_mode()
+    in_eager_mode = context.executing_eagerly()
 
-    if in_graph_mode:
-      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
-    else:
+    if in_eager_mode:
       inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
     with self.test_session() as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
-      if in_graph_mode:
+      if not in_eager_mode:
         outputs, state = sess.run(
             [outputs, state], feed_dict={inputs: [[[1], [2], [3], [4]]]})
 
-    if in_graph_mode:
-      self.assertAllEqual(outputs, np.array([[[1], [2], [3], [4]]]))
-      self.assertEqual(state, 4)
-    else:
-      self.assertAllEqual(outputs.numpy(), np.array([[[1], [2], [3], [4]]]))
-      self.assertEqual(state.numpy(), 4)
+    self.assertAllEqual([[[1], [2], [3], [4]]], outputs)
+    self.assertAllEqual(4, state)
 
   @test_util.run_in_graph_and_eager_modes()
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()
-    in_graph_mode = context.in_graph_mode()
+    in_eager_mode = context.executing_eagerly()
 
-    if in_graph_mode:
-      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
-    else:
+    if in_eager_mode:
       inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
     with self.test_session() as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       state = (state[0], state[1].stack())
-      if in_graph_mode:
+      if not in_eager_mode:
         outputs, state = sess.run(
             [outputs, state], feed_dict={
                 inputs: [[[1], [2], [3], [4]]]
             })
 
-    if in_graph_mode:
-      self.assertAllEqual(outputs, np.array([[[1], [2], [3], [4]]]))
-      self.assertEqual(state[0], 4)
-      self.assertAllEqual(state[1], np.array([[[1]], [[2]], [[3]], [[4]]]))
-    else:
-      self.assertAllEqual(outputs.numpy(), np.array([[[1], [2], [3], [4]]]))
-      self.assertEqual(state[0].numpy(), 4)
-      self.assertAllEqual(state[1].numpy(),
-                          np.array([[[1]], [[2]], [[3]], [[4]]]))
+    self.assertAllEqual([[[1], [2], [3], [4]]], outputs)
+    self.assertAllEqual(4, state[0])
+    self.assertAllEqual([[[1]], [[2]], [[3]], [[4]]], state[1])
 
 
 ######### Benchmarking RNN code

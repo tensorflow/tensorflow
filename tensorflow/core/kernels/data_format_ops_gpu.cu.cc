@@ -25,6 +25,8 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 template struct functor::DataFormatDimMap<GPUDevice, int32>;
 template struct functor::DataFormatDimMap<GPUDevice, int64>;
+template struct functor::DataFormatVecPermute<GPUDevice, int32>;
+template struct functor::DataFormatVecPermute<GPUDevice, int64>;
 
 }  // namespace tensorflow
 

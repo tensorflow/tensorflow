@@ -2,17 +2,23 @@ workspace(name = "org_tensorflow")
 
 http_archive(
     name = "io_bazel_rules_closure",
-    sha256 = "110fe68753413777944b473c25eed6368c4a0487cee23a7bac1b13cc49d3e257",
-    strip_prefix = "rules_closure-4af89ef1db659eb41f110df189b67d4cf14073e1",
+    sha256 = "6691c58a2cd30a86776dd9bb34898b041e37136f2dc7e24cadaeaf599c95c657",
+    strip_prefix = "rules_closure-08039ba8ca59f64248bb3b6ae016460fe9c9914f",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/4af89ef1db659eb41f110df189b67d4cf14073e1.tar.gz",
-        "https://github.com/bazelbuild/rules_closure/archive/4af89ef1db659eb41f110df189b67d4cf14073e1.tar.gz",  # 2017-08-28
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/08039ba8ca59f64248bb3b6ae016460fe9c9914f.tar.gz",
+        "https://github.com/bazelbuild/rules_closure/archive/08039ba8ca59f64248bb3b6ae016460fe9c9914f.tar.gz",  # 2018-01-16
     ],
 )
 
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
+
+# We must check the bazel version before trying to parse any other BUILD
+# files, in case the parsing of those build files depends on the bazel
+# version we require here.
+load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
+check_bazel_version_at_least("0.10.0")
 
 load("//tensorflow:workspace.bzl", "tf_workspace")
 
@@ -41,12 +47,12 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 tf_workspace()
 
 new_http_archive(
-    name = "inception5h",
+    name = "inception_v1",
     build_file = "models.BUILD",
-    sha256 = "d13569f6a98159de37e92e9c8ec4dae8f674fbf475f69fe6199b514f756d4364",
+    sha256 = "7efe12a8363f09bc24d7b7a450304a15655a57a7751929b2c1593a71183bb105",
     urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip",
-        "http://download.tensorflow.org/models/inception5h.zip",
+        "http://storage.googleapis.com/download.tensorflow.org/models/inception_v1.zip",
+        "http://download.tensorflow.org/models/inception_v1.zip",
     ],
 )
 

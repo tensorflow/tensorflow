@@ -26,8 +26,8 @@ namespace functor {
 // Functor used by DataFormatDimMapOP to do the computations.
 template <typename Device, typename T>
 struct DataFormatDimMap {
-  void operator()(const Device& d, typename TTypes<T>::ConstScalar x,
-                  typename TTypes<T>::Scalar y) {
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::Flat y) {
     auto zero = x.constant(0);
     auto one = x.constant(1);
     auto three = x.constant(3);
@@ -36,6 +36,37 @@ struct DataFormatDimMap {
     auto is_zero = (x_mod == zero);
     auto is_three = (x_mod == three);
     y.device(d) = is_zero.select(zero, is_three.select(one, x_mod + one));
+  }
+};
+
+template <typename T>
+struct VecPermute {
+  VecPermute(const Eigen::DSizes<Eigen::DenseIndex, 8>& dst) : dst_(dst) {}
+  Eigen::DSizes<Eigen::DenseIndex, 1> dimensions(
+      typename TTypes<T>::ConstFlat input) const {
+    Eigen::DSizes<Eigen::DenseIndex, 1> result;
+    result[0] = input.dimension(0);
+    return result;
+  }
+  template <typename Output, typename Device>
+  void eval(typename TTypes<T>::ConstFlat input, Output& output,
+            const Device& d) const {
+    for (int i = 0; i < input.size(); ++i) {
+      output.template chip<0>(dst_[i]).device(d) = input.template chip<0>(i);
+    }
+  }
+
+ private:
+  Eigen::DSizes<Eigen::DenseIndex, 8> dst_;
+};
+
+// Functor used by DataFormatVecPermuteOp to do the computations.
+template <typename Device, typename T>
+struct DataFormatVecPermute {
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::Flat y,
+                  const Eigen::DSizes<Eigen::DenseIndex, 8>& dst) {
+    y.device(d) = x.customOp(VecPermute<T>(dst));
   }
 };
 

@@ -28,7 +28,7 @@ limitations under the License.
 #include "mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 using mkldnn::stream;
 #endif
@@ -40,7 +40,7 @@ class MklReshapeOp : public OpKernel {
  public:
   explicit MklReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
   void Compute(OpKernelContext* context) override {
     const Tensor& input = MklGetInput(context, 0);
     const Tensor& sizes = MklGetInput(context, 1);
@@ -166,9 +166,9 @@ class MklReshapeOp : public OpKernel {
     MklDnnShape mkl_shape_input;
     GetMklShape(context, kInputSlotIdx, &mkl_shape_input);
     bool input_in_mkl_format = mkl_shape_input.IsMklTensor();
-    const int64 nelems = input_in_mkl_format ?
-                         mkl_shape_input.GetTfShape().num_elements()
-                         : input_tensor.NumElements();
+    const int64 nelems = input_in_mkl_format
+                             ? mkl_shape_input.GetTfShape().num_elements()
+                             : input_tensor.NumElements();
 
     // Preliminary validation of sizes.
     OP_REQUIRES(context, IsLegacyVector(sizes.shape()),
@@ -210,11 +210,11 @@ class MklReshapeOp : public OpKernel {
               product));
       shape.set_dim(unknown_index, missing);
     }
-    OP_REQUIRES(context, shape.num_elements() == nelems,
-                errors::InvalidArgument("Input to reshape is a tensor with ",
-                                        nelems,
-                                        " values, but the requested shape has ",
-                                        shape.num_elements()));
+    OP_REQUIRES(
+        context, shape.num_elements() == nelems,
+        errors::InvalidArgument("Input to reshape is a tensor with ", nelems,
+                                " values, but the requested shape has ",
+                                shape.num_elements()));
 
     if (input_in_mkl_format) {
       TensorShape& shape_to = shape;
@@ -237,31 +237,40 @@ class MklReshapeOp : public OpKernel {
           // need to update MklDnnShape object associated with the input
           // tensor to reflect the shape change expected by reshape.
           if (!SkipReorder(mkl_shape_input, shape_to)) {
-              // If dimensions that are being expanded or collapsed are not
-              // maintained contiguously by MKLDNN, then we use reorder.
+            // If dimensions that are being expanded or collapsed are not
+            // maintained contiguously by MKLDNN, then we use reorder.
 
-              // Get Mkl layout of input tensor.
-              auto input_mkl_md = mkl_shape_input.GetMklLayout();
-              // Set input Mkl layout as the user layout.
-              dnn_data_input.SetUsrMem(input_mkl_md, &input_tensor);
-              // Get expected Tensorflow layout of input tensor.
-              auto output_tf_md = mkl_shape_input.GetTfLayout();
-              auto output_tf_pd = memory::primitive_desc(output_tf_md,
-                                                         cpu_engine);
+            // Get Mkl layout of input tensor.
+            auto input_mkl_md = mkl_shape_input.GetMklLayout();
+            // Set input Mkl layout as the user layout.
+            dnn_data_input.SetUsrMem(input_mkl_md, &input_tensor);
+            // Get expected Tensorflow layout of input tensor.
+            auto output_tf_md = mkl_shape_input.GetTfLayout();
+            auto output_tf_pd =
+                memory::primitive_desc(output_tf_md, cpu_engine);
 
-              Tensor* output_tensor = nullptr;
-              MklShape mkl_shape_output;
-              mkl_shape_output.SetMklTensor(false);
-              // We allocate output tensor in the shape expected by Reshape.
-              AllocateOutputSetMklShape(context, kOutputSlotIdx, &output_tensor,
-                                        shape_to, mkl_shape_output);
+            Tensor* output_tensor = nullptr;
+            MklShape mkl_shape_output;
+            mkl_shape_output.SetMklTensor(false);
+            // We allocate output tensor in the shape expected by Reshape.
+            AllocateOutputSetMklShape(context, kOutputSlotIdx, &output_tensor,
+                                      shape_to, mkl_shape_output);
 
-              // Insert reorder between Mkl layout and TensorFlow layout.
-              std::vector<primitive> net;
-              CHECK_EQ(dnn_data_input.CheckReorderToOpMem(output_tf_pd,
-                       output_tensor, &net), true);
+            // Insert reorder between Mkl layout and TensorFlow layout if
+            // needed. If reorder is not needed but reshape is needed (since
+            // shape_from != shape_to), then we just copy input tensor to
+            // output tensor with target shape (we cannot forward Mkl layout
+            // in such case because shape has changed.)
+            std::vector<primitive> net;
+            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor,
+                                                   &net)) {
               stream(stream::kind::eager).submit(net).wait();
-              return;
+            } else {
+              OP_REQUIRES(
+                  context, output_tensor->CopyFrom(input_tensor, shape_to),
+                  errors::InvalidArgument("invalid input tensor shape"));
+            }
+            return;
           } else {
             // If dimensions that are being expanded or collapsed are
             // maintained contiguously by MKLDNN, then we skip reorder, just
@@ -269,10 +278,10 @@ class MklReshapeOp : public OpKernel {
             // Tensorflow tensor as it is to the output.
             auto output_dims = TFShapeToMklDnnDims(shape_to);
             auto output_strides = CalculateTFStrides(output_dims);
-            auto output_tf_md = MklDnnData<T>::CreateBlockedMemDesc(output_dims,
-                                                               output_strides);
-            auto output_tf_pd = memory::primitive_desc(output_tf_md,
-                                                       cpu_engine);
+            auto output_tf_md = MklDnnData<T>::CreateBlockedMemDesc(
+                output_dims, output_strides);
+            auto output_tf_pd =
+                memory::primitive_desc(output_tf_md, cpu_engine);
 
             // Set MklDnnShape
             MklDnnShape mkl_shape_output;
@@ -284,18 +293,17 @@ class MklReshapeOp : public OpKernel {
 
             // We now simply forward input Mkl tensor to output and change its
             // output MklDnnShape object.
-            ForwardMklTensorInToOutWithMklShape(context, kInputSlotIdx,
-                                              kOutputSlotIdx, mkl_shape_output);
+            ForwardMklTensorInToOutWithMklShape(
+                context, kInputSlotIdx, kOutputSlotIdx, mkl_shape_output);
             return;
           }
-        } catch (mkldnn::error &e) {
+        } catch (mkldnn::error& e) {
           string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) +
-                       ", in file " + string(__FILE__) + ":" +
-                       std::to_string(__LINE__);
-          OP_REQUIRES_OK(context,
-                   errors::Aborted("Operation received an exception:",
-                      error_msg));
+                             ", message: " + string(e.message) + ", in file " +
+                             string(__FILE__) + ":" + std::to_string(__LINE__);
+          OP_REQUIRES_OK(
+              context,
+              errors::Aborted("Operation received an exception:", error_msg));
         }
       }
     } else {
@@ -306,7 +314,7 @@ class MklReshapeOp : public OpKernel {
     }
   }
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
  private:
   const int kInputSlotIdx = 0;

@@ -62,7 +62,7 @@ def parse_branch_ref(filename):
     raise RuntimeError("Git directory has unparseable HEAD")
 
 
-def configure(src_base_path, debug=False):
+def configure(src_base_path, gen_path, debug=False):
   """Configure `src_base_path` to embed git hashes if available."""
 
   # TODO(aselle): No files generated or symlinked here are deleted by
@@ -71,7 +71,6 @@ def configure(src_base_path, debug=False):
   # without running ./configure again.
 
   git_path = os.path.join(src_base_path, ".git")
-  gen_path = os.path.join(src_base_path, "tensorflow", "tools", "git", "gen")
 
   # Remove and recreate the path
   if os.path.exists(gen_path):
@@ -115,6 +114,13 @@ def configure(src_base_path, debug=False):
   for target, src in link_map.items():
     if src is None:
       open(os.path.join(gen_path, target), "w").write("")
+    elif not os.path.exists(src):
+      # Git repo is configured in a way we don't support such as having
+      # packed refs. Even though in a git repo, tf.__git_version__ will not
+      # be accurate.
+      # TODO(mikecase): Support grabbing git info when using packed refs.
+      open(os.path.join(gen_path, target), "w").write("")
+      spec["git"] = False
     else:
       try:
         # In python 3.5, symlink function exists even on Windows. But requires
@@ -176,6 +182,13 @@ const char* tf_compiler_version() {return __VERSION__;}
 const int tf_cxx11_abi_flag() {
 #ifdef _GLIBCXX_USE_CXX11_ABI
   return _GLIBCXX_USE_CXX11_ABI;
+#else
+  return 0;
+#endif
+}
+const int tf_monolithic_build() {
+#ifdef TENSORFLOW_MONOLITHIC_BUILD
+  return 1;
 #else
   return 0;
 #endif
@@ -254,6 +267,10 @@ parser.add_argument(
     help="Path to configure as a git repo dependency tracking sentinel")
 
 parser.add_argument(
+    "--gen_root_path", type=str,
+    help="Root path to place generated git files (created by --configure).")
+
+parser.add_argument(
     "--generate",
     type=str,
     help="Generate given spec-file, HEAD-symlink-file, ref-symlink-file",
@@ -267,7 +284,9 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.configure is not None:
-  configure(args.configure, debug=args.debug)
+  if args.gen_root_path is None:
+    raise RuntimeError("Must pass --gen_root_path arg when running --configure")
+  configure(args.configure, args.gen_root_path, debug=args.debug)
 elif args.generate is not None:
   generate(args.generate)
 elif args.raw_generate is not None:

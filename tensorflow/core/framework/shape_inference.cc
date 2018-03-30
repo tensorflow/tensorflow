@@ -168,7 +168,7 @@ Status InferenceContext::Run(
 
 Status InferenceContext::set_output(StringPiece output_name,
                                     const std::vector<ShapeHandle>& shapes) {
-  const auto result = output_name_map_.find(output_name.ToString());
+  auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -187,7 +187,7 @@ Status InferenceContext::set_output(StringPiece output_name,
 
 Status InferenceContext::input(StringPiece input_name,
                                std::vector<ShapeHandle>* output) const {
-  const auto result = input_name_map_.find(input_name.ToString());
+  const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
     return errors::InvalidArgument("Unknown input name: ", input_name);
   } else {
@@ -201,7 +201,7 @@ Status InferenceContext::input(StringPiece input_name,
 
 Status InferenceContext::output(StringPiece output_name,
                                 std::vector<ShapeHandle>* output) const {
-  const auto result = output_name_map_.find(output_name.ToString());
+  const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -298,13 +298,23 @@ bool InferenceContext::FullyDefined(ShapeHandle s) {
 DimensionHandle InferenceContext::NumElements(ShapeHandle s) {
   const auto rank = Rank(s);
   if (rank == kUnknownRank) return UnknownDim();
+  bool found_unknown = false;
   int64 size = 1;
   for (int i = 0; i < rank; ++i) {
     int64 dim_val = Value(Dim(s, i));
-    if (dim_val == kUnknownDim) return UnknownDim();
-    size *= dim_val;
+    if (dim_val == kUnknownDim) {
+      found_unknown = true;
+    } else if (dim_val == 0) {
+      return MakeDim(0);
+    } else {
+      size *= dim_val;
+    }
   }
-  return MakeDim(size);
+  if (found_unknown) {
+    return UnknownDim();
+  } else {
+    return MakeDim(size);
+  }
 }
 
 string InferenceContext::DebugString(ShapeHandle s) {
@@ -342,8 +352,8 @@ Status InferenceContext::WithRank(ShapeHandle shape, int64 rank,
     for (int i = 0; i < rank; ++i) {
       dims.push_back(UnknownDim());
     }
-    *out = shape_manager_.MakeShape(dims);
-    return Status::OK();
+    ShapeHandle shp = shape_manager_.MakeShape(dims);
+    return Merge(shape, shp, out);
   }
   *out = nullptr;
 
@@ -357,12 +367,9 @@ Status InferenceContext::WithRankAtLeast(ShapeHandle shape, int64 rank,
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
   const int32 existing = Rank(shape);
-  if (existing >= rank) {
+  if (existing >= rank || existing == kUnknownRank) {
     *out = shape;
     return Status::OK();
-  }
-  if (existing == kUnknownRank) {
-    return ReturnUnknownShape(out);
   }
   *out = nullptr;
   return errors::InvalidArgument("Shape must be at least rank ", rank,
@@ -375,10 +382,7 @@ Status InferenceContext::WithRankAtMost(ShapeHandle shape, int64 rank,
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
   const int32 existing = Rank(shape);
-  if (existing == kUnknownRank) {
-    return ReturnUnknownShape(out);
-  }
-  if (existing <= rank) {
+  if (existing <= rank || existing == kUnknownRank) {
     *out = shape;
     return Status::OK();
   }
@@ -395,8 +399,8 @@ Status InferenceContext::WithValue(DimensionHandle dim, int64 value,
     return Status::OK();
   }
   if (existing == kUnknownDim) {
-    *out = MakeDim(value);
-    return Status::OK();
+    DimensionHandle d = MakeDim(value);
+    return Merge(dim, d, out);
   }
   *out = nullptr;
   return errors::InvalidArgument("Dimension must be ", value, " but is ",

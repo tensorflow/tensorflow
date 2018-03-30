@@ -122,9 +122,8 @@ class Executor {
 
 // Creates an Executor that computes the given "graph".
 //
-// If successful, returns the constructed executor in "*executor". The
-// caller keeps the ownership of "device". The returned executor takes
-// the ownership of "graph". Otherwise, returns an error status.
+// If successful, returns the constructed executor in "*executor". Otherwise,
+// returns an error status.
 //
 // "params" provides a set of context for the executor. We expect that
 // different context would provide different implementations.
@@ -143,7 +142,8 @@ struct LocalExecutorParams {
   Executor::Args::NodeOutputsCallback node_outputs_cb;
 };
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
-                                      const Graph* graph, Executor** executor);
+                                      std::unique_ptr<const Graph> graph,
+                                      Executor** executor);
 
 // A class to help run multiple executors in parallel and wait until
 // all of them are complete.
@@ -202,11 +202,12 @@ class ExecutorBarrier {
       // below.
       if (--pending_ == 0) {
         CHECK(done_cb_ != nullptr);
-        done = done_cb_;
-        done_cb_ = nullptr;
+        std::swap(done, done_cb_);
       }
 
-      status = status_;
+      if (!status_.ok()) {
+        status = status_;
+      }
     }
 
     if (error) {

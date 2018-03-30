@@ -166,7 +166,7 @@ TokKind HloLexer::LexIdentifier() {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     // 'consumable' will be advanced iff its prefix matches the pattern.
     static LazyRE2 shape_pattern = {
-        R"(^(\w*\d*)\[([\d,]*)\](?:{([\d,]*)})?)"};
+        R"(^(\w*\d*)\[([\d,]*)\](?:(dense|sparse)?{([\d,]+)})?)"};
     if (RE2::Consume(&consumable, *shape_pattern)) {
       auto status_or_shape = ShapeUtil::ParseShapeString(
           StringPieceFromPointers(token_start_, consumable.begin()));
@@ -257,7 +257,8 @@ TokKind HloLexer::LexPercent() {
 // fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
 // dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
 // dxd_pattern ::= [0-9]+(x[0-9]+)+
-// pad_pattern ::= [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
+// pad_pattern ::=
+//   [-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*
 // int ::=  [-]?[0-9]+
 // negative inf ::= '-inf'
 TokKind HloLexer::LexNumberOrPattern() {
@@ -275,7 +276,7 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
   static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
   static LazyRE2 pad_pattern = {
-      R"([0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*)"};
+      R"([-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*)"};
 
   if (RE2::Consume(&consumable, *dim_labels_pattern)) {
     current_ptr_ = consumable.begin();
@@ -312,18 +313,43 @@ TokKind HloLexer::LexNumberOrPattern() {
   return TokKind::kError;
 }
 
-StringPiece HloLexer::GetCurrentLine() const {
-  const char* start = token_start_;
-  const char* end = current_ptr_;
-  if (!CanDereference(start) || !CanDereference(end)) {
+std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
+  unsigned line_no = 1;
+  const char* start = buf_.begin();
+  const char* ptr = start;
+  if (line_no_cache_.last_query && CanDereference(line_no_cache_.last_query) &&
+      line_no_cache_.last_query <= location) {
+    ptr = line_no_cache_.last_query;
+    line_no = line_no_cache_.line_no_of_query;
+  }
+  for (; ptr != location; ptr++) {
+    if (*ptr == '\n') {
+      line_no++;
+    }
+  }
+
+  // Update the line number cache.
+  line_no_cache_.last_query = ptr;
+  line_no_cache_.line_no_of_query = line_no;
+  size_t line_offset = StringPieceFromPointers(start, ptr).rfind('\n');
+  if (line_offset == StringPiece::npos) {
+    line_offset = 0;
+  }
+  return {line_no, ptr - start - line_offset};
+}
+
+StringPiece HloLexer::GetLine(LocTy loc) const {
+  if (!CanDereference(loc)) {
     return "LINE OUT OF RANGE";
   }
-  while (start > buf_.begin() && *start != '\n') {
-    start--;
-  }
-  while (end < buf_.end() && *end != '\n') {
-    end++;
-  }
+  size_t line_start =
+      StringPieceFromPointers(buf_.begin(), loc + 1).rfind('\n');
+  const char* start = line_start == StringPiece::npos
+                          ? buf_.begin()
+                          : buf_.begin() + line_start + 1;
+  size_t line_end = StringPieceFromPointers(loc, buf_.end()).find('\n');
+  const char* end = line_end == StringPiece::npos ? buf_.end() : loc + line_end;
+
   return StringPieceFromPointers(start, end);
 }
 

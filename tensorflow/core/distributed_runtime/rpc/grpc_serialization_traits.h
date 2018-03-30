@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
 
 #include "grpc++/impl/codegen/proto_utils.h"
 #include "grpc++/support/slice.h"
+#include "grpc/grpc.h"
 
 namespace grpc {
 
@@ -30,13 +31,13 @@ class GrpcBufferWriter final
  public:
   explicit GrpcBufferWriter(grpc_byte_buffer** bp, int block_size)
       : block_size_(block_size), byte_count_(0), have_backup_(false) {
-    *bp = g_core_codegen_interface->grpc_raw_byte_buffer_create(NULL, 0);
+    *bp = grpc_raw_byte_buffer_create(NULL, 0);
     slice_buffer_ = &(*bp)->data.raw.slice_buffer;
   }
 
   ~GrpcBufferWriter() override {
     if (have_backup_) {
-      g_core_codegen_interface->grpc_slice_unref(backup_slice_);
+      grpc_slice_unref(backup_slice_);
     }
   }
 
@@ -45,28 +46,28 @@ class GrpcBufferWriter final
       slice_ = backup_slice_;
       have_backup_ = false;
     } else {
-      slice_ = g_core_codegen_interface->grpc_slice_malloc(block_size_);
+      slice_ = grpc_slice_malloc(block_size_);
     }
     *data = GRPC_SLICE_START_PTR(slice_);
     // On win x64, int is only 32bit
     GPR_CODEGEN_ASSERT(GRPC_SLICE_LENGTH(slice_) <= INT_MAX);
     byte_count_ += * size = (int)GRPC_SLICE_LENGTH(slice_);
-    g_core_codegen_interface->grpc_slice_buffer_add(slice_buffer_, slice_);
+    grpc_slice_buffer_add(slice_buffer_, slice_);
     return true;
   }
 
   void BackUp(int count) override {
-    g_core_codegen_interface->grpc_slice_buffer_pop(slice_buffer_);
+    grpc_slice_buffer_pop(slice_buffer_);
     if (count == block_size_) {
       backup_slice_ = slice_;
     } else {
-      backup_slice_ = g_core_codegen_interface->grpc_slice_split_tail(
-          &slice_, GRPC_SLICE_LENGTH(slice_) - count);
-      g_core_codegen_interface->grpc_slice_buffer_add(slice_buffer_, slice_);
+      backup_slice_ =
+          grpc_slice_split_tail(&slice_, GRPC_SLICE_LENGTH(slice_) - count);
+      grpc_slice_buffer_add(slice_buffer_, slice_);
     }
     // It's dangerous to keep an inlined grpc_slice as the backup slice, since
     // on a following Next() call, a reference will be returned to this slice
-    // via GRPC_SLICE_START_PTR, which will not be an adddress held by
+    // via GRPC_SLICE_START_PTR, which will not be an address held by
     // slice_buffer_.
     have_backup_ = backup_slice_.refcount != NULL;
     byte_count_ -= count;
@@ -85,29 +86,12 @@ class GrpcBufferWriter final
 
 class GrpcBufferReader final
     : public ::grpc::protobuf::io::ZeroCopyInputStream {
-  typedef void (CoreCodegenInterface::*OldReaderInitAPI)(
-      grpc_byte_buffer_reader* reader, grpc_byte_buffer* buffer);
-  typedef int (CoreCodegenInterface::*NewReaderInitAPI)(
-      grpc_byte_buffer_reader* reader, grpc_byte_buffer* buffer);
-  void ReaderInit(OldReaderInitAPI ptr, grpc_byte_buffer_reader* reader,
-                  grpc_byte_buffer* buffer) {
-    (g_core_codegen_interface->*ptr)(reader, buffer);
-  }
-  void ReaderInit(NewReaderInitAPI ptr, grpc_byte_buffer_reader* reader,
-                  grpc_byte_buffer* buffer) {
-    int result = (g_core_codegen_interface->*ptr)(reader, buffer);
-    (void)result;
-  }
-
  public:
   explicit GrpcBufferReader(grpc_byte_buffer* buffer)
       : byte_count_(0), backup_count_(0) {
-    ReaderInit(&CoreCodegenInterface::grpc_byte_buffer_reader_init, &reader_,
-               buffer);
+    (void)grpc_byte_buffer_reader_init(&reader_, buffer);
   }
-  ~GrpcBufferReader() override {
-    g_core_codegen_interface->grpc_byte_buffer_reader_destroy(&reader_);
-  }
+  ~GrpcBufferReader() override { grpc_byte_buffer_reader_destroy(&reader_); }
 
   bool Next(const void** data, int* size) override {
     if (backup_count_ > 0) {
@@ -118,11 +102,10 @@ class GrpcBufferReader final
       backup_count_ = 0;
       return true;
     }
-    if (!g_core_codegen_interface->grpc_byte_buffer_reader_next(&reader_,
-                                                                &slice_)) {
+    if (!grpc_byte_buffer_reader_next(&reader_, &slice_)) {
       return false;
     }
-    g_core_codegen_interface->grpc_slice_unref(slice_);
+    grpc_slice_unref(slice_);
     *data = GRPC_SLICE_START_PTR(slice_);
     // On win x64, int is only 32bit
     GPR_CODEGEN_ASSERT(GRPC_SLICE_LENGTH(slice_) <= INT_MAX);
@@ -176,18 +159,18 @@ class UnlimitedSizeProtoSerializationTraits {
       return Status(StatusCode::INTERNAL, "Message length was negative");
     } else if (byte_size <=
                tensorflow_helper::kGrpcBufferWriterMaxBufferLength) {
-      grpc_slice slice = g_core_codegen_interface->grpc_slice_malloc(byte_size);
+      grpc_slice slice = grpc_slice_malloc(byte_size);
       GPR_CODEGEN_ASSERT(
           GRPC_SLICE_END_PTR(slice) ==
           msg.SerializeWithCachedSizesToArray(GRPC_SLICE_START_PTR(slice)));
-      *bp = g_core_codegen_interface->grpc_raw_byte_buffer_create(&slice, 1);
-      g_core_codegen_interface->grpc_slice_unref(slice);
-      return g_core_codegen_interface->ok();
+      *bp = grpc_raw_byte_buffer_create(&slice, 1);
+      grpc_slice_unref(slice);
+      return Status::OK;
     } else {
       tensorflow_helper::GrpcBufferWriter writer(
           bp, tensorflow_helper::kGrpcBufferWriterMaxBufferLength);
       return msg.SerializeToZeroCopyStream(&writer)
-                 ? g_core_codegen_interface->ok()
+                 ? Status::OK
                  : Status(StatusCode::INTERNAL, "Failed to serialize message");
     }
   }
@@ -197,7 +180,7 @@ class UnlimitedSizeProtoSerializationTraits {
     if (buffer == nullptr) {
       return Status(StatusCode::INTERNAL, "No payload");
     }
-    Status result = g_core_codegen_interface->ok();
+    Status result = Status::OK;
     {
       tensorflow_helper::GrpcBufferReader reader(buffer);
       ::grpc::protobuf::io::CodedInputStream decoder(&reader);
@@ -214,7 +197,7 @@ class UnlimitedSizeProtoSerializationTraits {
         result = Status(StatusCode::INTERNAL, "Did not read entire message");
       }
     }
-    g_core_codegen_interface->grpc_byte_buffer_destroy(buffer);
+    grpc_byte_buffer_destroy(buffer);
     return result;
   }
 };
@@ -231,4 +214,4 @@ class UnlimitedSizeProtoSerializationTraits {
       : public UnlimitedSizeProtoSerializationTraits<MessageType> {}; \
   }  // namespace grpc
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_

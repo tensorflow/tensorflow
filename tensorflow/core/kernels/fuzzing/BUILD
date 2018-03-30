@@ -17,18 +17,6 @@ cc_library(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib")
 
 tf_ops_fuzz_target_lib("identity")
@@ -42,6 +30,8 @@ tf_ops_fuzz_target_lib("encode_base64")
 tf_ops_fuzz_target_lib("decode_base64")
 
 tf_ops_fuzz_target_lib("encode_jpeg")
+
+tf_ops_fuzz_target_lib("decode_bmp")
 
 tf_ops_fuzz_target_lib("decode_png")
 

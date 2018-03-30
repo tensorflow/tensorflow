@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from absl import flags
 
 import os
 import subprocess
@@ -24,13 +25,36 @@ import sys
 
 import tensorflow as tf
 
-tf.flags.DEFINE_string('service_addr', '',
-                       'Address of TPU profiler service e.g. localhost:8466')
-tf.flags.DEFINE_string('logdir', '',
-                       'Path of TensorBoard log directory e.g. /tmp/tb_log')
-tf.flags.DEFINE_integer('duration_ms', 2000, 'Duration of tracing in ms.')
+# Cloud TPU Cluster Resolvers
+flags.DEFINE_string(
+    'gcp_project', None,
+    'Project name for the Cloud TPU-enabled project. If not specified, we '
+    'will attempt to automatically detect the GCE project from metadata.')
+flags.DEFINE_string(
+    'tpu_zone',
+    None,
+    help='GCE zone where the Cloud TPU is located in. If not specified, we '
+    'will attempt to automatically detect the GCE project from metadata.')
+flags.DEFINE_string('tpu_name', None,
+                    'Name of the Cloud TPU for Cluster Resolvers. You must '
+                    'specify either this flag or --master.')
 
-FLAGS = tf.flags.FLAGS
+# Tool specific parameters
+flags.DEFINE_string(
+    'service_addr', None, 'Address of TPU profiler service e.g. '
+    'localhost:8466, you must specify either this flag or --tpu_name.')
+flags.DEFINE_string('logdir', None,
+                    'Path of TensorBoard log directory e.g. /tmp/tb_log, '
+                    'gs://tb_bucket')
+flags.DEFINE_integer('duration_ms', 2000, 'Duration of tracing in ms.')
+flags.DEFINE_integer('num_tracing_attempts', 3,
+                     'Automatically retry N times when no trace '
+                     'event is collected.')
+flags.DEFINE_boolean('include_dataset_ops', True,
+                     'Set to false to profile longer TPU '
+                     'device traces.')
+
+FLAGS = flags.FLAGS
 EXECUTABLE = 'data/capture_tpu_profile'
 
 
@@ -39,13 +63,35 @@ def run_main():
 
 
 def main(unused_argv=None):
-  if not FLAGS.service_addr or not FLAGS.logdir:
-    sys.exit('service_addr and logdir must be provided.')
+  tf.logging.set_verbosity(tf.logging.INFO)
+
+  if FLAGS.service_addr is None and FLAGS.tpu_name is None:
+    sys.exit('You must specify either --service_addr or --tpu_name.')
+
+  if FLAGS.service_addr is not None:
+    if FLAGS.tpu_name is not None:
+      tf.logging.warn('Both --service_addr and --tpu_name are set. Ignoring '
+                      '--tpu_name and using --service_addr.')
+    service_addr = FLAGS.service_addr
+  else:
+    tpu_cluster_resolver = (
+        tf.contrib.cluster_resolver.TPUClusterResolver(
+            [FLAGS.tpu_name],
+            zone=FLAGS.tpu_zone,
+            project=FLAGS.gcp_project))
+    service_addr = tpu_cluster_resolver.get_master()
+  service_addr = service_addr.replace('grpc://', '').replace(':8470', ':8466')
+
+  if not FLAGS.logdir:
+    sys.exit('logdir must be provided.')
   executable_path = os.path.join(os.path.dirname(__file__), EXECUTABLE)
+  logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
   cmd = [executable_path]
-  cmd.append('--logdir='+FLAGS.logdir)
-  cmd.append('--service_addr='+FLAGS.service_addr)
-  cmd.append('--duration_ms='+str(FLAGS.duration_ms))
+  cmd.append('--logdir=' + logdir)
+  cmd.append('--service_addr=' + service_addr)
+  cmd.append('--duration_ms=' + str(FLAGS.duration_ms))
+  cmd.append('--num_tracing_attempts=' + str(FLAGS.num_tracing_attempts))
+  cmd.append('--include_dataset_ops=' + str(FLAGS.include_dataset_ops).lower())
   subprocess.call(cmd)
 
 

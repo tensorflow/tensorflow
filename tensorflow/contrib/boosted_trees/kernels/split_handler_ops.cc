@@ -34,10 +34,10 @@
 
 namespace tensorflow {
 
+using boosted_trees::learner::LearnerConfig_MultiClassStrategy;
 using boosted_trees::learner::SplitInfo;
 using boosted_trees::learner::stochastic::GradientStats;
 using boosted_trees::learner::stochastic::NodeStats;
-using boosted_trees::learner::LearnerConfig_MultiClassStrategy;
 
 namespace {
 const int32 DUMMY_FEATURE_DIMENSION = -1;
@@ -47,9 +47,8 @@ class BaseBuildSplitOp : public OpKernel {
  public:
   explicit BaseBuildSplitOp(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(
-        context,
-        context->GetAttr("feature_column_group_id", &feature_column_group_id_));
+    OP_REQUIRES_OK(context, context->GetAttr("feature_column_group_id",
+                                             &feature_column_group_id_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("l1_regularization", &l1_regularization_));
     OP_REQUIRES_OK(context,

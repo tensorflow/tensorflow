@@ -1,6 +1,10 @@
 path: "tensorflow.keras.applications"
 tf_module {
   member {
+    name: "densenet"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "inception_resnet_v2"
     mtype: "<type \'module\'>"
   }
@@ -10,6 +14,10 @@ tf_module {
   }
   member {
     name: "mobilenet"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "nasnet"
     mtype: "<type \'module\'>"
   }
   member {
@@ -29,6 +37,18 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member_method {
+    name: "DenseNet121"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\'], "
+  }
+  member_method {
+    name: "DenseNet169"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\'], "
+  }
+  member_method {
+    name: "DenseNet201"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\'], "
+  }
+  member_method {
     name: "InceptionResNetV2"
     argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\'], "
   }
@@ -39,6 +59,14 @@ tf_module {
   member_method {
     name: "MobileNet"
     argspec: "args=[\'input_shape\', \'alpha\', \'depth_multiplier\', \'dropout\', \'include_top\', \'weights\', \'input_tensor\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'1\', \'0.001\', \'True\', \'imagenet\', \'None\', \'None\', \'1000\'], "
+  }
+  member_method {
+    name: "NASNetLarge"
+    argspec: "args=[\'input_shape\', \'include_top\', \'weights\', \'input_tensor\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'imagenet\', \'None\', \'None\', \'1000\'], "
+  }
+  member_method {
+    name: "NASNetMobile"
+    argspec: "args=[\'input_shape\', \'include_top\', \'weights\', \'input_tensor\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'imagenet\', \'None\', \'None\', \'1000\'], "
   }
   member_method {
     name: "ResNet50"

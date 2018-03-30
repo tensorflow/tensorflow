@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -66,6 +67,7 @@ struct Options {
   bool use_fake_data = false;
   bool print_result = true;
   int num_runs = 1;
+  bool xla_hlo_profile_last_run = false;
 };
 
 // Invokes the given computation passing arbitrary data for every (unbound)
@@ -82,9 +84,10 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
     arguments = MakeFakeArgumentsOrDie(computation, client);
   } else {  // use recorded data if available
     for (const auto& proto : module.arguments()) {
-      Literal literal(proto);
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
+                          Literal::CreateFromProto(proto));
       TF_ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
-                          client->TransferToServer(literal));
+                          client->TransferToServer(*literal));
       arguments.push_back(std::move(data));
     }
   }
@@ -121,16 +124,21 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
   std::unique_ptr<Literal> result;
   for (int i = 0; i < opts.num_runs; ++i) {
     ExecutionProfile profile;
+    ExecutionOptions execution_options = CreateDefaultExecutionOptions();
+    if (opts.xla_hlo_profile_last_run && i == opts.num_runs - 1) {
+      execution_options.mutable_debug_options()->set_xla_hlo_profile(true);
+    }
+
     if (opts.print_result) {
-      TF_ASSIGN_OR_RETURN(result, client->ExecuteAndTransfer(
-                                      computation, execute_arguments,
-                                      /*execution_options=*/nullptr, &profile));
+      TF_ASSIGN_OR_RETURN(
+          result, client->ExecuteAndTransfer(computation, execute_arguments,
+                                             &execution_options, &profile));
     } else {
       // If we're not printing the result, execute the computation but don't
       // bother retrieving the result.  This can be a significant speedup.
       TF_RETURN_IF_ERROR(client
                              ->Execute(computation, execute_arguments,
-                                       /*execution_options=*/nullptr, &profile)
+                                       &execution_options, &profile)
                              .status());
     }
     LOG(INFO) << "Execution took "
@@ -162,12 +170,16 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
               ShapeUtil::HumanString(result->shape()).c_str(),
               result->ToString().c_str());
       if (module.has_result()) {
+        std::unique_ptr<Literal> literal =
+            Literal::CreateFromProto(module.result()).ConsumeValueOrDie();
         fprintf(stdout, "was %s:%s\n",
                 ShapeUtil::HumanString(module.result().shape()).c_str(),
-                Literal(module.result()).ToString().c_str());
+                literal->ToString().c_str());
       }
     }
   }
+
+  ClientLibrary::DestroyLocalInstances();
   return exit_status;
 }
 
@@ -186,6 +198,9 @@ int main(int argc, char** argv) {
                        "Number of times to run each computation"),
       tensorflow::Flag("fake_infeed_shape", &opts.fake_infeed_shape,
                        "Shape of fake data to construct for (infinite) infeed"),
+      tensorflow::Flag(
+          "xla_hlo_profile_last_run", &opts.xla_hlo_profile_last_run,
+          "Pass --xla_hlo_profile the last time we run the computation."),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);

@@ -1,4 +1,4 @@
-# Debugging TensorFlow Programs
+# TensorFlow Debugger
 
 <!-- [comment]: TODO(barryr): Links to and from sections on "Graphs" & "Monitoring Learning". -->
 
@@ -23,8 +23,13 @@ debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
 > installed using `pip install <your_version>.whl`, however curses on Windows
 > may not work as reliably as curses on Linux or Mac.
 
-This tutorial demonstrates how to use the **tfdbg** command-line interface
-(CLI) to debug the appearance of [`nan`s](https://en.wikipedia.org/wiki/NaN)
+> NOTE: This guide focuses on the command-line interface (CLI) of tfdbg. For
+> guide on how to use the graphical user interface (GUI) of tfdbg, i.e., the
+> **TensorBoard Debugger Plugin**, please visit
+> [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
+
+This tutorial demonstrates how to use the **tfdbg** CLI to debug the appearance
+of [`nan`s](https://en.wikipedia.org/wiki/NaN)
 and [`inf`s](https://en.wikipedia.org/wiki/Infinity), a frequently-encountered
 type of bug in TensorFlow model development.
 The following example is for users who use the low-level
@@ -150,6 +155,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-n <name_pattern>` | List dumped tensors with names matching given regular-expression pattern. | `lt -n Softmax.*` |
 | | `-t <op_pattern>` | List dumped tensors with op types matching given regular-expression pattern. | `lt -t MatMul` |
 | | `-f <filter_name>` | List only the tensors that pass a registered tensor filter. | `lt -f has_inf_or_nan` |
+| | `-f <filter_name> -fenn <regex>` | List only the tensors that pass a registered tensor filter, excluding nodes with names matching the regular expression. | `lt -f has_inf_or_nan` `-fenn .*Sqrt.*` |
 | | `-s <sort_key>` | Sort the output by given `sort_key`, whose possible values are `timestamp` (default), `dump_size`, `op_type` and `tensor_name`. | `lt -s dump_size` |
 | | `-r` | Sort in reverse order. | `lt -r -s dump_size` |
 | **`pt`** | | **Print value of a dumped tensor.** | |
@@ -159,6 +165,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-r <range>` | Highlight elements falling into specified numerical range. Multiple ranges can be used in conjunction. | `pt hidden/Relu:0 -a -r [[-inf,-1],[1,inf]]` |
 | | `-n <number>` | Print dump corresponding to specified 0-based dump number. Required for tensors with multiple dumps. | `pt -n 0 hidden/Relu:0` |
 | | `-s` | Include a summary of the numeric values of the tensor (applicable only to non-empty tensors with Boolean and numeric types such as `int*` and `float*`.) | `pt -s hidden/Relu:0[0:50,:]` |
+| | `-w` | Write the value of the tensor (possibly sliced) to a Numpy file using [`numpy.save()`](https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.save.html) | `pt -s hidden/Relu:0 -w /tmp/relu.npy` |
 | **`@[coordinates]`** | | Navigate to specified element in `pt` output. | `@[10,0]` or `@10,0` |
 | **`/regex`** | |  [less](https://linux.die.net/man/1/less)-style search for given regular expression. | `/inf` |
 | **`/`** | | Scroll to the next line with matches to the searched regex (if any). | `/` |
@@ -167,6 +174,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | **eval** | | **Evaluate arbitrary Python and numpy expression.** | |
 | | `eval <expression>` | Evaluate a Python / numpy expression, with numpy available as `np` and debug tensor names enclosed in backticks. | ``eval "np.matmul((`output/Identity:0` / `Softmax:0`).T, `Softmax:0`)"`` |
 | | `-a` | Print a large-sized evaluation result in its entirety, i.e., without using ellipses. | ``eval -a 'np.sum(`Softmax:0`, axis=1)'`` |
+| | `-w` | Write the result of the evaluation to a Numpy file using [`numpy.save()`](https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.save.html) | ``eval -a 'np.sum(`Softmax:0`, axis=1)' -w /tmp/softmax_sum.npy`` |
 | **`ni`** | | **Display node information.** | |
 | | `-a` | Include node attributes in the output. | `ni -a hidden/Relu` |
 | | `-d` | List the debug dumps available from the node. | `ni -d hidden/Relu` |
@@ -193,6 +201,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-n` | Execute through the next `Session.run` without debugging, and drop to CLI right before the run after that. | `run -n` |
 | | `-t <T>` | Execute `Session.run` `T - 1` times without debugging, followed by a run with debugging. Then drop to CLI right after the debugged run. | `run -t 10` |
 | | `-f <filter_name>` | Continue executing `Session.run` until any intermediate tensor triggers the specified Tensor filter (causes the filter to return `True`). | `run -f has_inf_or_nan` |
+| | `-f <filter_name> -fenn <regex>` | Continue executing `Session.run` until any intermediate tensor whose node names doesn't match the regular expression triggers the specified Tensor filter (causes the filter to return `True`). | `run -f has_inf_or_nan -fenn .*Sqrt.*` |
 | | `--node_name_filter <pattern>` | Execute the next `Session.run`, watching only nodes with names matching the given regular-expression pattern. | `run --node_name_filter Softmax.*` |
 | | `--op_type_filter <pattern>` | Execute the next `Session.run`, watching only nodes with op types matching the given regular-expression pattern. | `run --op_type_filter Variable.*` |
 | | `--tensor_dtype_filter <pattern>` | Execute the next `Session.run`, dumping only Tensors with data types (`dtype`s) matching the given regular-expression pattern. | `run --tensor_dtype_filter int.*` |
@@ -212,7 +221,7 @@ navigate between these screens by clicking the `<--` and
 ### Other Features of the tfdbg CLI
 
 In addition to the commands listed above, the tfdbg CLI provides the following
-addditional features:
+additional features:
 
 *   To navigate through previous tfdbg commands, type in a few characters
     followed by the Up or Down arrow keys. tfdbg will show you the history of
@@ -338,11 +347,11 @@ tfdbg> ni cross_entropy/Log
 ![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_node_info.png)
 
 You can see that this node has the op type `Log`
-and that its input is the node `softmax/Softmax`. Run the following command to
+and that its input is the node `Softmax`. Run the following command to
 take a closer look at the input tensor:
 
 ```none
-tfdbg> pt softmax/Softmax:0
+tfdbg> pt Softmax:0
 ```
 
 Examine the values in the input tensor, searching for zeros:
@@ -392,7 +401,7 @@ diff = -(y_ * tf.log(y))
 to the built-in, numerically-stable implementation of softmax cross-entropy:
 
 ```python
-diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits)
+diff = tf.losses.sparse_softmax_cross_entropy(labels=y_, logits=logits)
 ```
 
 Rerun with the `--debug` flag as follows:
@@ -452,7 +461,7 @@ accuracy_score = classifier.evaluate(x=test_set.data,
 
 
 [debug_tflearn_iris.py](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py),
-based on {$tflearn$tf-learn's iris tutorial}, contains a full example of how to
+based on [tf-learn's iris tutorial](https://www.tensorflow.org/versions/r1.2/get_started/tflearn), contains a full example of how to
 use the tfdbg with `Estimator`s. To run this example, do:
 
 ```none
@@ -746,6 +755,7 @@ There are three possible workarounds or solutions:
    # For LocalCLIDebugHook
    hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
    ```
+
    Make sure that the directory pointed to by dump_root is empty or nonexistent.
    tfdbg cleans up the dump directories before exiting.
 *  Reduce the batch size used during the runs.
@@ -804,3 +814,27 @@ sess.run(b)
 
 the constant-folding would not occur and `tfdbg` should show the intermediate
 tensor dumps.
+
+
+**Q**: I am debugging a model that generates unwanted infinities or NaNs. But
+       there are some nodes in my model that are known to generate infinities
+       or NaNs in their output tensors even under completely normal conditions.
+       How can I skip those nodes during my `run -f has_inf_or_nan` actions?
+
+**A**: Use the `--filter_exclude_node_names` (`-fenn` for short) flag. For
+       example, if you known you have a node with name matching the regular
+       expression `.*Sqrt.*` that generates infinities or NaNs regardless
+       of whether the model is behaving correctly, you can exclude the nodes
+       from the infinity/NaN-finding runs with the command
+       `run -f has_inf_or_nan -fenn .*Sqrt.*`.
+
+
+**Q**: Is there a GUI for tfdbg?
+
+**A**: Yes, the **TensorBoard Debugger Plugin** is the GUI of tfdbg.
+       It offers features such as inspection of the computation graph,
+       real-time visualization of tensor values, continuation to tensor
+       and conditional breakpoints, and tying tensors to their
+       graph-construction source code, all in the browser environment.
+       To get started, please visit
+       [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).

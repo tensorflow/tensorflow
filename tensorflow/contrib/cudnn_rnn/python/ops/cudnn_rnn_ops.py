@@ -17,26 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
 from tensorflow.contrib.rnn.python.ops import lstm_ops
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
-
-_cudnn_rnn_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"
@@ -72,7 +67,7 @@ class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
   def __init__(self, num_units, reuse=None):
     super(CudnnCompatibleLSTMCell, self).__init__(
         num_units, forget_bias=0, cell_clip=None, use_peephole=False,
-        reuse=reuse)
+        reuse=reuse, name="cudnn_compatible_lstm_cell")
     self._names.update({"scope": "cudnn_compatible_lstm_cell"})
 
 
@@ -91,19 +86,23 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
 
   Cudnn compatible GRU (from Cudnn library user guide):
   ```python
-  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
-  u_t = sigma(x_t * W_u + h_t-1 * R_u + b_Wu + b_Ru)  # update gate
-  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
-  h_t = (1 - u_t) .* h'_t + u_t .* h_t-1
+  # reset gate
+  $$r_t = \sigma(x_t * W_r + h_t-1 * R_h + b_{Wr} + b_{Rr})$$
+  # update gate
+  $$u_t = \sigma(x_t * W_u + h_t-1 * R_u + b_{Wu} + b_{Ru})$$
+  # new memory gate
+  $$h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_{Rh}) + b_{Wh})$$
+  $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
   ```
 
   Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
   ```python
-  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
+  # new memory gate
+  \\(h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_{Wh})\\)
   ```
   which is not equivalent to Cudnn GRU: in addition to the extra bias term b_Rh,
   ```python
-  r .* (h * R) != (r .* h) * R
+  \\(r .* (h * R) != (r .* h) * R\\)
   ```
   """
 
@@ -303,16 +302,17 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       2 list for weights and biases respectively.
     """
-    weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        params=self._variables,
-        num_params=self._num_params,
-        rnn_mode=self._rnn_mode,
-        input_mode=self._input_mode,
-        direction=self._direction)
-    return (weights, biases)
+    with ops.device("/gpu:0"):
+      weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          params=self._variables,
+          num_params=self._num_params,
+          rnn_mode=self._rnn_mode,
+          input_mode=self._input_mode,
+          direction=self._direction)
+      return (weights, biases)
 
   def _CanonicalToOpaqueParams(self, cu_weights, cu_biases):
     """Converts from Cudnn canonical format to opaque params.
@@ -323,15 +323,16 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       a single opaque tensor.
     """
-    return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        weights=cu_weights,
-        biases=cu_biases,
-        rnn_mode=self._rnn_mode,
-        input_mode=self._input_mode,
-        direction=self._direction)
+    with ops.device("/gpu:0"):
+      return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          weights=cu_weights,
+          biases=cu_biases,
+          rnn_mode=self._rnn_mode,
+          input_mode=self._input_mode,
+          direction=self._direction)
 
   def _TransformCanonical(self, cu_weights, cu_biases):
     r"""Transform from Cudnn canonical to tf canonical.
@@ -1352,7 +1353,7 @@ class _CudnnRNN(object):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
       output_c: the final state for c. This is only relevant for LSTM.
     """
@@ -1470,7 +1471,7 @@ class CudnnLSTM(_CudnnRNN):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
       output_c: the final state for c.
     """
@@ -1540,7 +1541,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
     """
     return _cudnn_rnn_no_input_c(

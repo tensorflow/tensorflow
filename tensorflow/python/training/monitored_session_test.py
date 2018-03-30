@@ -36,7 +36,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -282,6 +281,42 @@ class MonitoredTrainingSessionTest(test.TestCase):
       with monitored_session.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as session:
         self.assertEqual(2, session.run(gstep))
+
+  def test_save_checkpoint_steps(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_steps')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True,
+          checkpoint_dir=logdir,
+          save_checkpoint_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(100):
+          session.run(new_gstep)
+      # A restart will find the checkpoint and recover automatically.
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True, checkpoint_dir=logdir) as session:
+        self.assertEqual(100, session.run(gstep))
+
+  def test_save_checkpoint_secs(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_secs')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True,
+          checkpoint_dir=logdir,
+          save_checkpoint_secs=0.1,
+          log_step_count_steps=10) as session:
+        session.run(new_gstep)
+        time.sleep(0.2)
+        for _ in range(10):
+          session.run(new_gstep)
+      # A restart will find the checkpoint and recover automatically.
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True, checkpoint_dir=logdir) as session:
+        self.assertEqual(11, session.run(gstep))
 
   def test_summaries_steps(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries_steps')
@@ -1968,19 +2003,6 @@ class MonitoredSessionTest(test.TestCase):
           self.assertNear(1.3, session.run_step_fn(step_fn), 0.1)
           self.assertEqual(2, trace_the_exception['side_effect_counter'])
           self.assertNear(0.62, session.run(graph_state), 0.1)
-
-  def test_saver_on_a_gpu(self):
-    if not test_util.is_gpu_available():
-      return
-    with ops.Graph().as_default():
-      with self.test_session():
-        with ops.device('/gpu:0'):
-          variables.Variable(0)
-        saver_lib.Saver()
-
-        # TODO(b/36964652): Reproduces the issue that needs to be fixed.
-        with self.assertRaises(errors_impl.InvalidArgumentError):
-          monitored_session.MonitoredSession()
 
 
 class SingularMonitoredSessionTest(test.TestCase):

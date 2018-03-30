@@ -53,6 +53,14 @@ bool IsReshapeOrTranspose(const HloInstruction* instruction) {
          instruction->opcode() == HloOpcode::kTranspose;
 }
 
+// Returns true if `a` is a broadcast instruction to target shape `shape` and
+// its operand is a scalar.
+bool IsBroadcastScalarToShape(const HloInstruction* a, const Shape& shape) {
+  return a->opcode() == HloOpcode::kBroadcast &&
+         ShapeUtil::SameDimensions(a->shape(), shape) &&
+         ShapeUtil::IsScalar(a->operand(0)->shape());
+}
+
 // Returns true iff `instruction` can change its shape simply by adjusting
 // metadata.
 bool CanTriviallyChangeShape(const HloInstruction* instruction) {
@@ -88,6 +96,7 @@ bool CanTriviallyChangeShape(const HloInstruction* instruction) {
       instruction->user_count() == 1) {
     return true;
   }
+
   return false;
 }
 
@@ -101,8 +110,9 @@ HloInstruction* FirstNonScalarAndNonTrivialReshapeOperand(
         IsReshapeOrTranspose(operand) &&
         !CanTriviallyChangeShape(operand->operand(0))) {
       VLOG(5) << "Found first non-scalar and non-trivial reshape operand of "
-              << hlo->ToStringNoMetadata() << ":\n\t"
-              << operand->ToStringNoMetadata();
+              << hlo->ToString(HloPrintOptions().set_print_metadata(false))
+              << ":\n\t"
+              << operand->ToString(HloPrintOptions().set_print_metadata(false));
       return operand;
     }
   }
@@ -133,8 +143,9 @@ bool AreEquivalentReshapes(const HloInstruction* a, const HloInstruction* b) {
 bool AllOperandsHaveEasyShapeChanges(
     const HloInstruction* instruction,
     const HloInstruction* first_reshape_operand) {
+  auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
   VLOG(3) << "** Checking whether all operands have easy shape changes: "
-          << instruction->ToStringNoMetadata();
+          << instruction->ToString(print_no_metadata);
   // Check whether all operands:
   //    0. Have the same dimensions as the output -- if not, it may be
   //       implicitly broadcast, which can confound the movement's
@@ -146,26 +157,40 @@ bool AllOperandsHaveEasyShapeChanges(
   //     or
   //    2. Are one of kConstant, kRng, and scalars that can change shape
   //    trivially,
+  //     or
+  //    3. Are broadcast with a scalar operand.
   for (const HloInstruction* operand : instruction->operands()) {
     if (!ShapeUtil::SameDimensions(operand->shape(), instruction->shape())) {
       VLOG(5) << "Operand shape differs from output shape; may be "
                  "implicitly broadcast, so preventing "
                  "movement\n\toperand: "
-              << operand->ToStringNoMetadata()
-              << "\n\tinstruction: " << instruction->ToStringNoMetadata();
+              << operand->ToString(print_no_metadata) << "\n\tinstruction: "
+              << instruction->ToString(print_no_metadata);
       return false;
+    }
+
+    // Skip the rest checks if the current operand is first_reshape_operand
+    // itself.
+    if (first_reshape_operand == operand) {
+      continue;
     }
 
     if (AreEquivalentReshapes(first_reshape_operand, operand)) {
       VLOG(5) << "Are equivalent reshapes:\n\tfirst_reshape_operand: "
-              << first_reshape_operand->ToStringNoMetadata()
-              << "\n\toperand: " << operand->ToStringNoMetadata();
+              << first_reshape_operand->ToString(print_no_metadata)
+              << "\n\toperand: " << operand->ToString(print_no_metadata);
       continue;
     }
 
     if (CanTriviallyChangeShape(operand)) {
       VLOG(5) << "Operand can trivially change shape: "
-              << operand->ToStringNoMetadata();
+              << operand->ToString(print_no_metadata);
+      continue;
+    }
+
+    if (IsBroadcastScalarToShape(operand, first_reshape_operand->shape())) {
+      VLOG(5) << "Broadcast scalar to shape: "
+              << operand->ToString(print_no_metadata);
       continue;
     }
 
@@ -173,12 +198,12 @@ bool AllOperandsHaveEasyShapeChanges(
     // well.
     VLOG(5) << "Operand is neither equalivant to the first Reshape operand"
                "nor can trivially change shape: "
-            << operand->ToStringNoMetadata();
+            << operand->ToString(print_no_metadata);
     return false;
   }
 
   VLOG(3) << "All operands have easy shape changes: "
-          << instruction->ToStringNoMetadata();
+          << instruction->ToString(print_no_metadata);
   return true;
 }
 
@@ -220,6 +245,12 @@ HloInstruction* UpdateOperand(HloComputation* computation,
       VLOG(5) << "Using existing operand of kReshape or kTranspose";
       return operand->mutable_operand(0);
     }
+    case HloOpcode::kBroadcast:
+      CHECK(IsBroadcastScalarToShape(operand, first_reshape_operand->shape()));
+      VLOG(5) << "Changing broadcast";
+      return computation->AddInstruction(
+          operand->CloneWithNewOperands(new_shape, operand->operands()));
+
     default:
       LOG(FATAL) << "Unexpected operand opcode during update: " << operand;
   }
@@ -250,11 +281,13 @@ StatusOr<bool> TrySinkReshapeOrTranspose(HloComputation* computation,
     return false;
   }
 
+  auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
   // At this point we've decided to sink reshape/transpose operands.
   const Shape& new_operand_shape = first_reshape_operand->operand(0)->shape();
   VLOG(3) << "** Sinking reshape or transpose: "
-          << instruction->ToStringNoMetadata() << "\n\tfirst reshape operand: "
-          << first_reshape_operand->ToStringNoMetadata()
+          << instruction->ToString(print_no_metadata)
+          << "\n\tfirst reshape operand: "
+          << first_reshape_operand->ToString(print_no_metadata)
           << "\n\tnew operand shape: "
           << ShapeUtil::HumanString(new_operand_shape);
 
@@ -267,7 +300,7 @@ StatusOr<bool> TrySinkReshapeOrTranspose(HloComputation* computation,
       continue;
     }
     VLOG(3) << "Updating operand #" << i << ": "
-            << operands[i]->ToStringNoMetadata();
+            << operands[i]->ToString(print_no_metadata);
     operands[i] = UpdateOperand(computation, first_reshape_operand,
                                 new_operand_shape, operands[i]);
   }
@@ -298,7 +331,7 @@ StatusOr<bool> TrySinkReshapeOrTranspose(HloComputation* computation,
   switch (first_reshape_operand->opcode()) {
     case HloOpcode::kReshape:
       VLOG(3) << "Creating new reshape for new elementwise op: "
-              << new_elementwise->ToStringNoMetadata();
+              << new_elementwise->ToString(print_no_metadata);
       new_reshape =
           HloInstruction::CreateReshape(instruction->shape(), new_elementwise);
       break;

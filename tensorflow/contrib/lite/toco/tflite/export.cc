@@ -26,6 +26,9 @@ namespace toco {
 
 namespace tflite {
 
+using flatbuffers::FlatBufferBuilder;
+using flatbuffers::Offset;
+using flatbuffers::Vector;
 using ::tflite::Buffer;
 using ::tflite::BuiltinOperator;
 using ::tflite::BuiltinOperator_CUSTOM;
@@ -39,9 +42,6 @@ using ::tflite::Operator;
 using ::tflite::OperatorCode;
 using ::tflite::SubGraph;
 using ::tflite::Tensor;
-using flatbuffers::FlatBufferBuilder;
-using flatbuffers::Offset;
-using flatbuffers::Vector;
 
 namespace {
 
@@ -62,7 +62,7 @@ namespace details {
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
   // First find a list of unique array names.
   std::set<string> names;
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     names.insert(array_pair.first);
   }
 
@@ -96,7 +96,7 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
   // tensors in the tensors_map.
   std::map<int, Offset<Tensor>> ordered_tensors;
 
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     const string& tensor_name = array_pair.first;
     const toco::Array& array = *array_pair.second;
 
@@ -235,9 +235,10 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
   for (const auto& op : model.operators) {
     std::vector<int32_t> inputs;
     for (const string& input : op->inputs) {
-      inputs.push_back(tensors_map.at(input));
+      // -1 is the ID for optional tensor in TFLite output
+      int id = model.IsOptionalArray(input) ? -1 : tensors_map.at(input);
+      inputs.push_back(id);
     }
-
     std::vector<int32_t> outputs;
     for (const string& output : op->outputs) {
       outputs.push_back(tensors_map.at(output));
@@ -299,6 +300,17 @@ void Export(const Model& model, bool allow_custom_ops,
   std::set<string> error_summary;
   auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
                                       &builder, &error_summary);
+  const string fake_quant_operation_name = "FAKE_QUANT";
+  if (error_summary.count(fake_quant_operation_name) != 0) {
+    LOG(ERROR)
+        << fake_quant_operation_name
+        << " operation was not converted. If running quantized make sure you "
+           "are passing --inference_type=QUANTIZED_UINT8 and values for "
+           "--std_values and --mean_values.";
+    // Remove the fake quant operation from the errors, since it shouldn't
+    // be provided a custom implementation.
+    error_summary.erase(fake_quant_operation_name);
+  }
   if (!allow_custom_ops && !error_summary.empty()) {
     LOG(QFATAL) << "Some of the operators in the model are not supported by "
                    "the standard TensorFlow Lite runtime. If you have a custom "

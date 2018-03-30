@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -251,8 +252,7 @@ typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
 }
 
 bool IsQueue(const Node& node) {
-  StringPiece type(node.type_string());
-  return type.ends_with("QueueV2");
+  return str_util::EndsWith(node.type_string(), "QueueV2");
 }
 
 // Returns true if the node is an Enter op AND its input is a Queue.
@@ -292,6 +292,7 @@ void VerboseLogUnknownDimensionSources(
   // Find all nodes in the graph for which we
   // do not have any unknown dimensions in their inputs, but
   // we have some unknown dimensions in their outputs.
+  std::map<string, int> op_to_count;
   for (const Node* const node : graph.nodes()) {
     if (node->num_outputs() == 0) {
       continue;
@@ -331,10 +332,17 @@ void VerboseLogUnknownDimensionSources(
         VLOG(2) << "Node: " << node->name() << ", Op: " << node->def().op()
                 << ", " << inputs << ", " << outputs;
 
+        op_to_count[node->def().op()]++;
+
         // don't log again for this node
         break;
       }
     }
+  }
+  VLOG(2) << "Op types with known inputs, but with unknown output dimensions "
+          << "(format: <op_type> (<count>)):";
+  for (const auto& p : op_to_count) {
+    VLOG(2) << p.first << " (" << p.second << ")";
   }
 }
 
@@ -364,7 +372,7 @@ class TopoQueue {
   // use their id to ensure they're sorted topologically.
   struct CompareNodes {
     bool operator()(const Node* lhs, const Node* rhs) const {
-      return lhs->id() > rhs->id();
+      return lhs->id() < rhs->id();
     }
   };
   std::set<const Node*, CompareNodes> queue_;
@@ -685,6 +693,10 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
   InferenceContext* c = shape_refiner->GetContext(node);
   CHECK_NE(c, nullptr);
 
+  ShapeHandle out1;
+  TF_RETURN_IF_ERROR(c->WithRank(c->output(1), 0, &out1));
+  c->set_output(1, out1);
+
   ShapeHandle out;
   bool out_initialized = false;
   for (const Edge* e : node->in_edges()) {
@@ -719,7 +731,6 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
 
   if (!shape_refiner->EquivalentShapes(out, c->output(0))) {
     c->set_output(0, out);
-    c->set_output(1, c->Scalar());
     new_shapes->push(node);
   }
 
@@ -845,6 +856,10 @@ Status GraphProperties::PropagateShapes(
   } while (!new_shapes->empty() &&
            num_resource_iterations++ < max_resource_iterations);
 
+  if (!new_shapes->empty()) {
+    return errors::Internal("Shape inference failed to converge");
+  }
+
   return Status::OK();
 }
 
@@ -911,7 +926,6 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   shape_refiner.set_disable_constant_propagation(true);
-  shape_refiner.set_function_library_for_shape_inference(&function_library);
   ImportGraphDefOptions options;
   // Graph optimization happens at the late stage of graph execution,
   // when colocation constraints are already validated previously and
@@ -1021,7 +1035,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
   }
 
   for (const Node* const node : graph.nodes()) {
-    VLOG(1) << "<Node> " << node->name();
+    VLOG(3) << "Filling in graph properties for node: " << node->name();
     auto ctx = shape_refiner.GetContext(node);
     if (!ctx) {
       continue;
@@ -1165,6 +1179,13 @@ GraphProperties::GetOutputProperties(const string& node_name) const {
     return it->second;
   }
   return missing_properties_;
+}
+
+void GraphProperties::ClearInputProperties(const string& node_name) {
+  input_properties_.erase(node_name);
+}
+void GraphProperties::ClearOutputProperties(const string& node_name) {
+  output_properties_.erase(node_name);
 }
 
 }  // end namespace grappler

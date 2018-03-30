@@ -14,6 +14,7 @@ py_library(
     name = "tools_pip",
     deps = [
         ":freeze_graph",
+        ":import_pb_to_tensorboard",
         ":inspect_checkpoint",
         ":optimize_for_inference",
         ":print_selective_registration_header",
@@ -248,22 +249,12 @@ py_test(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no-internal-py3",
+    ],
     deps = [
         ":saved_model_cli",
+        "//tensorflow/core:protos_all_py",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

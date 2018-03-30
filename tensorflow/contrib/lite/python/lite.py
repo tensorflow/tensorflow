@@ -18,23 +18,36 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 @@toco_convert
 @@toco_convert_protos
+@@OpHint
+@@convert_op_hints_to_stubs
 
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import os as _os
+import subprocess as _subprocess
+import tempfile as _tempfile
 
-import os
-import subprocess
-import tempfile
-
+# pylint: disable=unused-import
+from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs
+from tensorflow.contrib.lite.python.op_hint import OpHint
+# pylint: enable=unused-import
 from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2
-from tensorflow.contrib.lite.toco.python.tensorflow_wrap_toco import TocoConvert as _toco_convert_protos
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+# Lazy load since some of the performance benchmark skylark rules
+# break dependencies.
+_toco_python = LazyLoader(
+    "tensorflow_wrap_toco", globals(),
+    "tensorflow.contrib.lite.toco.python."
+    "tensorflow_wrap_toco")
+del LazyLoader
 
 # Enum types from the protobuf promoted to the API
 FLOAT = _types_pb2.FLOAT
@@ -61,7 +74,7 @@ else:
   _toco_from_proto_bin = _resource_loader.get_path_to_datafile(
       "../toco/python/toco_from_protos")
 
-if _toco_from_proto_bin and not os.path.exists(_toco_from_proto_bin):
+if _toco_from_proto_bin and not _os.path.exists(_toco_from_proto_bin):
   _toco_from_proto_bin = "toco_from_protos"
 
 
@@ -86,12 +99,13 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   # TODO(aselle): When toco does not use fatal errors for failure, we can
   # switch this on.
   if not _toco_from_proto_bin:
-    return _toco_convert_protos(model_flags_str, toco_flags_str, input_data_str)
+    return _toco_python.TocoConvert(
+        model_flags_str, toco_flags_str, input_data_str)
 
-  with tempfile.NamedTemporaryFile() as fp_toco, \
-           tempfile.NamedTemporaryFile() as fp_model, \
-           tempfile.NamedTemporaryFile() as fp_input, \
-           tempfile.NamedTemporaryFile() as fp_output:
+  with _tempfile.NamedTemporaryFile() as fp_toco, \
+           _tempfile.NamedTemporaryFile() as fp_model, \
+           _tempfile.NamedTemporaryFile() as fp_input, \
+           _tempfile.NamedTemporaryFile() as fp_output:
     fp_model.write(model_flags_str)
     fp_toco.write(toco_flags_str)
     fp_input.write(input_data_str)
@@ -104,11 +118,11 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
         fp_output.name
     ]
     cmdline = " ".join(cmd)
-    proc = subprocess.Popen(
+    proc = _subprocess.Popen(
         cmdline,
         shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdout=_subprocess.PIPE,
+        stderr=_subprocess.STDOUT,
         close_fds=True)
     stdout, stderr = proc.communicate()
     exitcode = proc.returncode
@@ -184,15 +198,16 @@ def toco_convert(input_data,
     if inference_type == QUANTIZED_UINT8:
       if tflite_input_type == FLOAT:
         tflite_input_type = QUANTIZED_UINT8
-      input_array.mean, input_array.std = quantized_input_stats[idx]
+      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
 
     input_array.name = _tensor_name(input_tensor)
     input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
-    toco.inference_input_type = tflite_input_type
 
   for output_tensor in output_tensors:
     model.output_arrays.append(_tensor_name(output_tensor))
 
+  # TODO(aselle): Consider handling the case of allowing quantized
+  # inputs to be converted to float (via the toco.inference_input_type field).
   data = toco_convert_protos(model.SerializeToString(),
                              toco.SerializeToString(),
                              input_data.SerializeToString())

@@ -23,8 +23,7 @@ Cluster::Cluster(int timeout_s) : timeout_s_(timeout_s) {
   DisableDetailedStats(false);
 }
 
-Cluster::~Cluster() {
-}
+Cluster::~Cluster() {}
 
 void Cluster::AllowSoftPlacement(bool soft_placement_state) {
   options_.config.set_allow_soft_placement(soft_placement_state);

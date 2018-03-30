@@ -399,28 +399,14 @@ class TensorArrayTest(test.TestCase):
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
     with self.test_session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
-      in_graph_mode = context.in_graph_mode()
       # Test writing the wrong datatype
-      if in_graph_mode:
-        with self.assertRaisesOpError(
-            "TensorArray dtype is float but Op is trying to write "
-            "dtype string"):
-          self.evaluate(ta.write(0, "wrong_type_scalar").flow)
-      else:
-        with self.assertRaisesOpError(
-            "TensorArray dtype is float32 but Op is trying to write "
-            "dtype string"):
-          self.evaluate(ta.write(0, "wrong_type_scalar").flow)
+      with self.assertRaisesOpError(
+          "TensorArray dtype is (float|float32) but Op is trying to write "
+          "dtype string"):
+        self.evaluate(ta.write(0, "wrong_type_scalar").flow)
 
-      if context.in_graph_mode():
-        with self.assertRaisesOpError(
-            "Tried to write to index -1 but array is not "
-            "resizeable and size is: 3"):
-          self.evaluate(ta.write(-1, 3.0).flow)
-      else:
-        with self.assertRaisesOpError(
-            r"Writing to negative indices \(index -1\) is not allowed."):
-          self.evaluate(ta.write(-1, 3.0).flow)
+      with self.assertRaisesOpError("index -1"):
+        self.evaluate(ta.write(-1, 3.0).flow)
 
       # Test reading from too large an index
       with self.assertRaisesOpError(
@@ -435,23 +421,17 @@ class TensorArrayTest(test.TestCase):
 
       w0 = ta.write(0, [[4.0, 5.0]])
 
-      # Test reading wrong datatype, which is only possible in graph mode
-      if context.in_graph_mode():
-        r0_bad = gen_data_flow_ops._tensor_array_read_v3(
+      # Test reading wrong datatype (only possible when constructing graphs).
+      if not context.executing_eagerly():
+        r0_bad = gen_data_flow_ops.tensor_array_read_v3(
             handle=w0.handle, index=0, dtype=dtypes.float64, flow_in=w0.flow)
         with self.assertRaisesOpError(
             "TensorArray dtype is float but Op requested dtype double."):
           r0_bad.eval()
 
       # Test reading from a negative index, which is not allowed
-      if context.in_graph_mode():
-        with self.assertRaisesOpError(
-            r"Tried to read from index -1 but array size is: 3"):
-          self.evaluate(ta.read(-1))
-      else:
-        with self.assertRaisesOpError(
-            r"Reading from negative indices \(index -1\) is not allowed."):
-          self.evaluate(ta.read(-1))
+      with self.assertRaisesOpError("index -1"):
+        self.evaluate(ta.read(-1))
 
       # Test reading from too large an index
       with self.assertRaisesOpError(
@@ -467,10 +447,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(
           "Could not write to TensorArray index 2 because "
           "it has already been written to."):
-        if context.in_graph_mode():
-          self.evaluate(ta.write(2, 3.0).write(2, 3.0).flow)
-        else:
-          self.evaluate(ta.write(2, 3.0).write(2, 3.0))
+        self.evaluate(ta.write(2, 3.0).write(2, 3.0).flow)
 
   @test_util.run_in_graph_and_eager_modes()
   def testTensorArrayConcatIncompatibleShapesFails(self):
@@ -499,58 +476,40 @@ class TensorArrayTest(test.TestCase):
       w2 = w1.write(1, [4.0])
       w3 = w2.write(2, [[3.0]])
 
-      # The eager-mode implementation just passes up array_op.concat's error
-      # message.
-      if context.in_graph_mode():
-        with self.assertRaisesOpError(
-            r"TensorArray has inconsistent shapes.  Index 0 has "
-            r"\(excepting dimension 0\) shape: \[\] but index 2 has "
-            r"\(excepting dimension 0\) shape: \[1\]"):
-          self.evaluate(w3.concat())
-      else:
-        with self.assertRaisesOpError(
-            r".*Ranks of all input tensors should match: shape\[0\] "
-            r"= \[1\] vs\. shape\[2\] = \[1,1\].*"):
-          self.evaluate(w3.concat())
+      # The exact error messages differ between eager execution and graph
+      # construction as the former bubbles up the error from array_op.concat.
+      with self.assertRaisesOpError("shape"):
+        self.evaluate(w3.concat())
 
   @test_util.run_in_graph_and_eager_modes()
   def testTensorArraySplitIncompatibleShapesFails(self):
     with self.test_session(use_gpu=True):
-      in_graph_mode = context.in_graph_mode()
+      in_eager_mode = context.executing_eagerly()
       ta = _make_ta(3, "foo")
       with self.assertRaisesOpError(
           r"Expected lengths to be a vector, received shape: \[\]"):
-        if in_graph_mode:
+        if in_eager_mode:
+          self.evaluate(ta.split([1.0, 2.0, 3.0], 1))
+        else:
           lengths = array_ops.placeholder(dtypes.int64)
           ta.split([1.0, 2.0, 3.0], lengths).flow.eval(feed_dict={lengths: 1})
-        else:
-          self.evaluate(ta.split([1.0, 2.0, 3.0], 1))
 
       with self.assertRaisesOpError(
           r"Expected sum of lengths to be equal to values.shape\[0\], "
           r"but sum of lengths is 1 and value's shape is: \[3\]"):
-        if in_graph_mode:
-          self.evaluate(ta.split([1.0, 2.0, 3.0], [1]).flow)
-        else:
-          self.evaluate(ta.split([1.0, 2.0, 3.0], [1]))
+        self.evaluate(ta.split([1.0, 2.0, 3.0], [1]).flow)
 
       ta = _make_ta(1, "baz")
       with self.assertRaisesOpError(
           r"Expected value to be at least a vector, but received shape: \[\]"):
-        if in_graph_mode:
-          self.evaluate(ta.split(1.0, [1]).flow)
-        else:
-          self.evaluate(ta.split(1.0, [1]))
+        self.evaluate(ta.split(1.0, [1]).flow)
 
       ta = _make_ta(2, "buz")
       with self.assertRaisesOpError(
           r"TensorArray's size is not equal to the size of lengths "
           r"\(2 vs. 1\), and the TensorArray is not marked as "
           r"dynamically resizeable"):
-        if in_graph_mode:
-          self.evaluate(ta.split([1.0], [1]).flow)
-        else:
-          self.evaluate(ta.split([1.0], [1]))
+        self.evaluate(ta.split([1.0], [1]).flow)
 
   def _testTensorArrayWriteGradientAddMultipleAdds(self, dtype):
     with self.test_session(use_gpu=True):
@@ -868,14 +827,14 @@ class TensorArrayTest(test.TestCase):
 
       vout = func(v0, state0, var)
       grad_val = -np.arange(3 * 5, dtype=np_dtype).reshape(3, 5)
-      if context.in_graph_mode():
+      if context.executing_eagerly():
+        grad_fn = backprop.gradients_function(func)
+        v0_grad, state0_grad, var_grad = grad_fn(v0, state0, var, dy=grad_val)
+      else:
         v0_grad = gradients_impl.gradients([vout], [v0], [grad_val])[0]
         state0_grad = gradients_impl.gradients([vout], [state0], [grad_val])[0]
         var_grad = gradients_impl.gradients([vout], [var], [grad_val])[0]
         variables.global_variables_initializer().run()
-      else:
-        grad_fn = backprop.gradients_function(func)
-        v0_grad, state0_grad, var_grad = grad_fn(v0, state0, var, dy=grad_val)
 
       state0_t, var_t, v0_t, vout_t, v0_grad_t, var_grad_t, state0_grad_t = (
           self.evaluate(
@@ -959,10 +918,10 @@ class TensorArrayTest(test.TestCase):
         return r
 
       x = constant_op.constant(2.0, name="x")
-      if context.in_graph_mode():
-        grad = gradients_impl.gradients(loop(x), [x])[0]
-      else:
+      if context.executing_eagerly():
         grad = backprop.gradients_function(loop)(x)[0]
+      else:
+        grad = gradients_impl.gradients(loop(x), [x])[0]
       self.assertAllClose(31.0, self.evaluate(grad))
 
   def testSumOfTwoReadVariablesWithoutRepeatGrad(self):
@@ -1158,14 +1117,14 @@ class TensorArrayTest(test.TestCase):
           infer_shape=True)
       w0 = ta1.split(value, [1, 2])
       r0 = w0.read(0)
-      if context.in_graph_mode():
+      if context.executing_eagerly():
+        self.assertEqual((1, 2), r0.get_shape())
+        self.assertEqual((2, 2), w0.read(1).get_shape())
+      else:
         self.assertEqual(r0.get_shape().ndims, None)
         self.assertEqual(
             tensor_shape.TensorShape(
                 ta1.handle.op.get_attr("element_shape")).ndims, None)
-      else:
-        self.assertEqual((1, 2), r0.get_shape())
-        self.assertEqual((2, 2), w0.read(1).get_shape())
 
   def testWriteUnknownShape(self):
     with self.test_session(use_gpu=True):
@@ -1297,13 +1256,13 @@ class TensorArrayTest(test.TestCase):
       g = func(values)
       grad_ys = [[[2.0, 3.0], [4.0, 5.0]]]
       # Test combined gradients + aggregation of read(0)
-      if context.in_graph_mode():
-        grad = gradients_impl.gradients(ys=[g], xs=[values], grad_ys=grad_ys)
-        g_vals, grad_vals = session.run([[g], grad])
-      else:
+      if context.executing_eagerly():
         g_vals = [g]
         grad_vals = backprop.gradients_function(func)(
             values, dy=constant_op.constant(grad_ys[0], dtype=dtypes.float32))
+      else:
+        grad = gradients_impl.gradients(ys=[g], xs=[values], grad_ys=grad_ys)
+        g_vals, grad_vals = session.run([[g], grad])
 
       # Gradients for 8 of the 10 unread components are zero.
       expected_grad = np.zeros((10, 2))
@@ -1453,13 +1412,13 @@ class TensorArrayTest(test.TestCase):
       # Tests correct properties on new TensorArrays.
       self.assertEqual(dtypes.float32, ta0.dtype)
       self.assertEqual(dtypes.int32, ta1.dtype)
-      if context.in_graph_mode():
-        self.assertEqual(tensor_shape.unknown_shape(), read0.get_shape())
+      if context.executing_eagerly():
+        self.assertEqual(tensor_shape.scalar(), read0.get_shape())
       else:
-        self.assertEqual(tensor_shape.scalar(), read1.get_shape())
+        self.assertEqual(tensor_shape.unknown_shape(), read0.get_shape())
       self.assertEqual(tensor_shape.scalar(), read1.get_shape())
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         variables.global_variables_initializer().run()
 
       read0_v, read1_v, size0_v, size1_v = self.evaluate((read0, read1, size0,

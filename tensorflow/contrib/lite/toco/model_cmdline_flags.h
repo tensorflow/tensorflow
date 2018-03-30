@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_CMDLINE_FLAGS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_CMDLINE_FLAGS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_CMDLINE_FLAGS_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_CMDLINE_FLAGS_H_
 
 #include <string>
 #include <unordered_map>
@@ -38,9 +38,6 @@ void ParseModelFlagsOrDie(int* argc, char* argv[]);
 // Get the global parsed model flags
 ParsedModelFlags* GlobalParsedModelFlags();
 
-void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags);
-
 }  // namespace toco
 
-
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_CMDLINE_FLAGS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_CMDLINE_FLAGS_H_

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/python_api.h"
 
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/python/framework/cpp_shape_inference.pb.h"
 
 namespace tensorflow {
 
@@ -85,6 +86,53 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
     // record the source node as being modified.
     RecordMutation(graph, *dst.oper, "updating input tensor");
   }
+}
+
+void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
+  mutex_lock l(graph->mu);
+  std::vector<const Edge*> control_edges;
+  for (const Edge* edge : op->node.in_edges()) {
+    if (!edge->IsControlEdge()) continue;
+    control_edges.push_back(edge);
+  }
+  for (const Edge* edge : control_edges) {
+    graph->graph.RemoveControlEdge(edge);
+  }
+}
+
+void SetRequireShapeInferenceFns(TF_Graph* graph, bool require) {
+  mutex_lock l(graph->mu);
+  graph->refiner.set_require_shape_inference_fns(require);
+}
+
+void ExtendSession(TF_Session* session, TF_Status* status) {
+  ExtendSessionGraphHelper(session, status);
+  session->extend_before_run = false;
+}
+
+std::string ResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
+  Node* node = &output.oper->node;
+  CppShapeInferenceResult::HandleData handle_data;
+  handle_data.set_is_set(true);
+  {
+    mutex_lock l(graph->mu);
+    tensorflow::shape_inference::InferenceContext* ic =
+        graph->refiner.GetContext(node);
+    CHECK(ic != nullptr);
+    CHECK_LT(output.index, ic->num_outputs());
+    const auto* shapes_and_types =
+        ic->output_handle_shapes_and_types(output.index);
+    if (shapes_and_types == nullptr) return "";
+
+    for (const auto& p : *shapes_and_types) {
+      auto* out_shape_and_type = handle_data.add_shape_and_type();
+      ic->ShapeHandleToProto(p.shape, out_shape_and_type->mutable_shape());
+      out_shape_and_type->set_dtype(p.dtype);
+    }
+  }
+  string result;
+  handle_data.SerializeToString(&result);
+  return result;
 }
 
 }  // namespace tensorflow

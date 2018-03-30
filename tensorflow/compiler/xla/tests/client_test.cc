@@ -36,7 +36,7 @@ namespace {
 
 class ClientTest : public ClientLibraryTestBase {};
 
-TEST_F(ClientTest, ExecuteWithLayout) {
+XLA_TEST_F(ClientTest, ExecuteWithLayout) {
   ComputationBuilder b(client_, TestName());
 
   std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
@@ -68,7 +68,7 @@ TEST_F(ClientTest, ExecuteWithLayout) {
   }
 }
 
-TEST_F(ClientTest, ExecuteWithTupleLayout) {
+XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   ComputationBuilder b(client_, TestName());
 
   b.Tuple({b.ConstantR2<int32>({{1, 2}, {3, 4}}),
@@ -90,9 +90,9 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
       auto result,
       client_->ExecuteAndTransfer(computation, {}, &execution_options));
   LiteralTestUtil::ExpectR2Equal<int32>({{1, 2}, {3, 4}},
-                                        result->tuple_literals(0));
+                                        LiteralView::Create(*result, {0}));
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
-                                        result->tuple_literals(1));
+                                        LiteralView::Create(*result, {1}));
 
   EXPECT_TRUE(ShapeUtil::IsTuple(result->shape()));
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result->shape()));
@@ -107,7 +107,8 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
                                      /*minor_to_major=*/{1, 0})));
 }
 
-TEST_F(ClientTest, DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(ExecuteParallel))) {
+XLA_TEST_F(ClientTest,
+        DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(ExecuteParallel))) {
   Computation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 
