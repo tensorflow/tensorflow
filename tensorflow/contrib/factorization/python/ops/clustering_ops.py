@@ -41,8 +41,9 @@ from tensorflow.python.platform import resource_loader
 _clustering_ops = loader.load_op_library(
     resource_loader.get_path_to_datafile('_clustering_ops.so'))
 
-# Euclidean distance between vectors U and V is defined as \\(||U - V||_F\\) which is
-# the square root of the sum of the absolute squares of the elements difference.
+# Euclidean distance between vectors U and V is defined as \\(||U - V||_F\\)
+# which is the square root of the sum of the absolute squares of the elements
+# difference.
 SQUARED_EUCLIDEAN_DISTANCE = 'squared_euclidean'
 # Cosine distance between vectors U and V is defined as
 # \\(1 - (U \dot V) / (||U||_F ||V||_F)\\)
