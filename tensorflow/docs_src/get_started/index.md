@@ -3,8 +3,13 @@
 TensorFlow is a tool for machine learning. While it contains a wide range of
 functionality, TensorFlow is mainly designed for deep neural network models.
 
-TensorFlow provides many APIs. This section focuses on the high-level APIs.
-If you are new to TensorFlow, begin by reading one of the following documents:
+The easiest way to get started with tensorflow is using Eager Execution.
+
+  * @{$get_started/eager}, is for anyone new to  machine learning or TensorFlow.
+
+TensorFlow provides many APIs. The remainder of this section focuses on the
+Estimator API which provide scalable, high-performance models.
+To get started with Estimators begin by reading one of the following documents:
 
   * @{$get_started/get_started_for_beginners}, which is aimed at readers
     new to machine learning.
