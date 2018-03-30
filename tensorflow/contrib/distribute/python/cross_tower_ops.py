@@ -22,6 +22,7 @@ import six
 
 from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import values as value_lib
+from tensorflow.python.client import device_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -231,7 +232,7 @@ class ReductionToOneDeviceCrossTowerOps(CrossTowerOps):
 def _group_value_by_device(per_device_values):
   """Group values into sublists by their devices.
 
-  This grouping is needed to call the allreduce library.
+  This grouping is needed to call the all-reduce library.
 
   Args:
     per_device_values: a list of PerDevice obejcts.
@@ -251,10 +252,20 @@ def _group_value_by_device(per_device_values):
 
 
 def _ungroup_and_make_mirrored(grouped_reduced, destinations, method_string):
-  """Ungroup results from allreduce and make Mirrored objects.
+  """Ungroup results from all-reduce and make Mirrored objects.
 
-  Each allreduce result would be divided by the number of destinations before
+  Each all-reduce result will be divided by the number of destinations before
   Mirrored objects are created if method_string is "mean".
+
+  Args:
+    grouped_reduced: a list of lists, each sublist has components for each
+      device, paired with a None. It is the result from
+      cross_tower_utils.aggregate_gradients_using*.
+    destinations: a list of device strings for returned Mirrored objects.
+    method_string: "mean" or "sum".
+
+  Returns:
+    a list of Mirrored objects.
   """
   index = [{} for _ in range(len(grouped_reduced[0]))]
   for d, per_device_reduced in enumerate(grouped_reduced):
@@ -266,23 +277,171 @@ def _ungroup_and_make_mirrored(grouped_reduced, destinations, method_string):
   return [value_lib.Mirrored(v) for v in index]
 
 
+class ConcatAndSplitPacker(object):
+  """Concatenate and split tensors for reduction."""
+
+  def __init__(self, num_packs=1):
+    """Initialize the ConcatAndSplitPacker object.
+
+    Args:
+      num_packs: specifies the number of split packs that will be
+        formed.
+
+    Raises:
+      ValueError: if num_packs is not greater than 0.
+    """
+    if num_packs <= 0:
+      raise ValueError("num_packs must be greater than zero.")
+    self.num_packs = num_packs
+
+  def pack(self, grouped_grads_and_vars):
+    """Pack tensors."""
+    self.grouped_grads_and_vars = grouped_grads_and_vars
+    self.all_tower_shapes = []
+    self.all_tower_sizes = []
+
+    device_grad_packs = []
+    for tower_grads_and_vars in grouped_grads_and_vars:
+      with ops.colocate_with(tower_grads_and_vars[0][0]):
+        # Flatten all the grads.
+        flat_grads = [
+            array_ops.reshape(g, [-1]) for g, _ in tower_grads_and_vars
+        ]
+        # Remember the original shape of all the grads.
+        tower_shapes = [array_ops.shape(g) for g, _ in tower_grads_and_vars]
+        # Remember the original sizes of all the grads.
+        tower_sizes = [array_ops.size(g) for g, _ in tower_grads_and_vars]
+        # Concat all the flat grads into a big flat tensor.
+        concat_grads = array_ops.concat(flat_grads, 0)
+
+        # Split the big tensor into num_splits packs. In cases where the
+        # total size is not divisible num_splits, the last pack gets
+        # more elements.
+        # TODO(zhengxq): it is also possible to optimize away all the concat
+        # as well.
+        num_splits = self.num_packs
+        total_grad_size = array_ops.size(concat_grads)
+        split_size = total_grad_size // num_splits
+        split_size_last = total_grad_size - split_size * (num_splits - 1)
+        split_sizes = [split_size] * (num_splits - 1) + [split_size_last]
+        grad_packs = array_ops.split(concat_grads, split_sizes)
+
+        # Ready to aggregate the repacked gradients, with fake variables.
+        # TODO(zhengxq): It is hacky to have to use fake variables.
+        # We should remove the need for variables in
+        # aggregate_gradients_using*.
+        device_grad_packs.append(zip(grad_packs, [None] * num_splits))
+        self.all_tower_shapes.append(tower_shapes)
+        self.all_tower_sizes.append(tower_sizes)
+
+    return device_grad_packs
+
+  def unpack(self, summed_device_grad_packs):
+    """Reverse the pack."""
+    aggregated_device_grads = []
+    for (summed_tower_grad_packs,
+         tower_grads_and_vars, tower_shapes, tower_sizes) in zip(
+             summed_device_grad_packs, self.grouped_grads_and_vars,
+             self.all_tower_shapes, self.all_tower_sizes):
+      # pylint: enable=line-too-long
+      # Reverse the packing operations in the previous steps. Form the
+      # summed gradients back into their original shapes.
+      with ops.colocate_with(summed_tower_grad_packs[0][0]):
+        # Form a list of the summed grad packs.
+        device_grad_packs = [g for g, _ in summed_tower_grad_packs]
+
+        # Concat them back into a big flat tensor.
+        device_grads_concat = array_ops.concat(device_grad_packs, 0)
+
+        # Split the tensors back into their original sizes.
+        grads_with_sizes = array_ops.split(device_grads_concat, tower_sizes)
+
+        # Reshape the tensors back into their original shapes.
+        grads_with_shapes = [
+            array_ops.reshape(grad, shape)
+            for shape, grad in zip(tower_shapes, grads_with_sizes)
+        ]
+
+        # Form the list with the original list of variables.
+        summed_tower_grads = [
+            (g, v) for g, (_, v) in zip(grads_with_shapes, tower_grads_and_vars)
+        ]
+        aggregated_device_grads.append(summed_tower_grads)
+    return aggregated_device_grads
+
+
+class AggregateSmallTensorPacker(object):
+  """Concatenate small gradient tensors together for reduction."""
+
+  def __init__(self,
+               agg_small_grads_max_bytes=1048576,
+               agg_small_grads_max_group=16):
+    """Initialize the AggregateSmallTensorPacker object.
+
+    Args:
+      agg_small_grads_max_bytes: largest tensor eligible for aggregation,
+        in number of bytes.
+      agg_small_grads_max_group: largest permitted aggregation of small
+        tensors.
+
+    Raises:
+      ValueError: if `agg_small_grads_max_bytes` or `agg_small_grads_max_group`
+        is not greater than 0.
+    """
+    if agg_small_grads_max_bytes <= 0 or agg_small_grads_max_group <= 0:
+      raise ValueError("agg_small_grads_max_bytes and agg_small_grads_max_group"
+                       " should both be greater than zero.")
+    self.agg_small_grads_max_bytes = agg_small_grads_max_bytes
+    self.agg_small_grads_max_group = agg_small_grads_max_group
+
+  def pack(self, grouped_grads_and_vars):
+    """Aggregate small tensors."""
+    if (self.agg_small_grads_max_bytes > 0 and
+        self.agg_small_grads_max_group > 0):
+      tower_grads, self.packing = cross_tower_utils.pack_small_tensors(
+          grouped_grads_and_vars,
+          max_bytes=self.agg_small_grads_max_bytes,
+          max_group=self.agg_small_grads_max_group)
+    return tower_grads
+
+  def unpack(self, summed_device_grad_packs):
+    """Reverse the aggregation process."""
+    return cross_tower_utils.unpack_small_tensors(summed_device_grad_packs,
+                                                  self.packing)
+
+
 class AllReduceCrossTowerOps(CrossTowerOps):
   """Reduction using all reduce."""
 
-  def __init__(self, all_reduce_alg="nccl", gradient_repacking=1):
-    """Initialize this subclass of CrossTowerOps with allreduce.
+  def __init__(self,
+               all_reduce_alg="nccl",
+               num_packs=1,
+               agg_small_grads_max_bytes=0,
+               agg_small_grads_max_group=10):
+    """All-reduce implementation of CrossTowerOps.
 
-    Gradients would be repacked for more efficient cross-device transportation.
+    Before performing all-reduce, tensors will be repacked or aggregated for
+    more efficient cross-device transportation:
+      1) If `num_packs` is non-zero, pack values into
+        `num_packs` splits.
+      2) Otherwise, if `agg_small_grads_max_bytes` > 0 and
+        `agg_small_grads_max_group` > 0, aggregate values smaller than
+        `agg_small_grads_max_bytes` into groups with at most
+        `agg_small_grads_max_group` values.
+      3) Otherwise, no repacking or grouping will happen.
 
     Args:
-      all_reduce_alg: the allreduce algorithm to use, currently only "nccl" or
+      all_reduce_alg: the all-reduce algorithm to use, currently only "nccl" or
         "hierarchical_copy" are supported.
-      gradient_repacking: If zero, no gradient repacking would be done. If
-        non-zero value it specifies the number of split packs that will be
-        formed.
+      num_packs: see above.
+      agg_small_grads_max_bytes: see above.
+      agg_small_grads_max_group: see above.
+        tensors.
     """
     self.all_reduce_alg = all_reduce_alg
-    self.gradient_repacking = gradient_repacking
+    self.num_packs = num_packs
+    self.agg_small_grads_max_bytes = agg_small_grads_max_bytes
+    self.agg_small_grads_max_group = agg_small_grads_max_group
     super(AllReduceCrossTowerOps, self).__init__()
 
   def _reduce(self, method_string, per_device_value, destinations):
@@ -312,99 +471,115 @@ class AllReduceCrossTowerOps(CrossTowerOps):
 
   def _batch_all_reduce(self, method_string, per_device_values):
     """All reduce algorithm in a batch."""
-    logging.info("batch_all_reduce invoked for batches size = %d with algorithm"
-                 " = %s and gradient repacking = %d", len(per_device_values),
-                 self.all_reduce_alg, self.gradient_repacking)
     destinations = per_device_values[0].devices
     grouped = _group_value_by_device(per_device_values)
-    if self.gradient_repacking == 0:
-      if self.all_reduce_alg == "nccl":
-        reduced = cross_tower_utils.aggregate_gradients_using_nccl(grouped)
-      else:
-        # TODO(yuefengz): check that gpu ids in `destinations` are in ascending
-        # order.
-        reduced = (
-            cross_tower_utils.aggregate_gradients_using_hierarchical_copy(
-                destinations, grouped))
+    if self.num_packs > 0:
+      logging.info(
+          "batch_all_reduce invoked for batches size = %d with "
+          "algorithm = %s and num_packs = %d", len(per_device_values),
+          self.all_reduce_alg, self.num_packs)
+      tensor_packer = ConcatAndSplitPacker(self.num_packs)
+      device_grad_packs = tensor_packer.pack(grouped)
+    elif (self.agg_small_grads_max_bytes > 0 and
+          self.agg_small_grads_max_group > 0):
+      logging.info(
+          "batch_all_reduce invoked for batches size = %d with "
+          "algorithm = %s, agg_small_grads_max_bytes = %d and "
+          "agg_small_grads_max_group = %d", len(per_device_values),
+          self.all_reduce_alg, self.agg_small_grads_max_bytes,
+          self.agg_small_grads_max_group)
+      tensor_packer = AggregateSmallTensorPacker(100, 10)
+      device_grad_packs = tensor_packer.pack(grouped)
     else:
-      device_grad_packs = []
-      all_tower_shapes = []
-      all_tower_sizes = []
-      for tower_grads_and_vars in grouped:
-        with ops.colocate_with(tower_grads_and_vars[0][0]):
-          # Flatten all the grads.
-          flat_grads = [
-              array_ops.reshape(g, [-1]) for g, _ in tower_grads_and_vars
-          ]
-          # Remember the original shape of all the grads.
-          tower_shapes = [array_ops.shape(g) for g, _ in tower_grads_and_vars]
-          # Remember the original sizes of all the grads.
-          tower_sizes = [array_ops.size(g) for g, _ in tower_grads_and_vars]
-          # Concat all the flat grads into a big flat tensor.
-          concat_grads = array_ops.concat(flat_grads, 0)
+      logging.info(
+          "batch_all_reduce invoked for batches size = %d with algorithm = %s",
+          len(per_device_values), self.all_reduce_alg)
+      tensor_packer = None
+      device_grad_packs = grouped
 
-          # Split the big tensor into num_splits packs. In cases where the
-          # total size is not divisible num_splits, the last pack gets
-          # more elements.
-          # TODO(zhengxq): it is possible to optimize away the additional
-          # data movement by copying along the original variable boundary.
-          # TODO(zhengxq): it is also possible to optimize away all the concat
-          # as well.
-          num_splits = self.gradient_repacking
-          total_grad_size = array_ops.size(concat_grads)
-          split_size = total_grad_size // num_splits
-          split_size_last = total_grad_size - split_size * (num_splits - 1)
-          split_sizes = [split_size] * (num_splits - 1) + [split_size_last]
-          grad_packs = array_ops.split(concat_grads, split_sizes)
+    # The actual aggregation of the repacked gradients. Note that they are
+    # sharded among different aggregation trees. So it is important to strike
+    # the balance on num_splits.
+    if self.all_reduce_alg == "nccl":
+      reduced = cross_tower_utils.aggregate_gradients_using_nccl(
+          device_grad_packs)
+    else:
+      # TODO(yuefengz): check that gpu ids in `destinations` are in ascending
+      # order.
+      reduced = (
+          cross_tower_utils.aggregate_gradients_using_hierarchical_copy(
+              destinations, device_grad_packs))
 
-          # Ready to aggregate the repacked gradients, with fake variables.
-          # TODO(zhengxq): It is hacky to have to use fake variables.
-          # We should remove the need for variables in
-          # aggregate_gradients_using*.
-          device_grad_packs.append(zip(grad_packs, [None] * num_splits))
-          all_tower_shapes.append(tower_shapes)
-          all_tower_sizes.append(tower_sizes)
+    if tensor_packer:
+      reduced = tensor_packer.unpack(reduced)
 
-      # The actual aggregation of the repacked gradients. Note that they are
-      # sharded among different aggregation trees. So it is important to
-      # strike the balance on num_splits.
-      if self.all_reduce_alg == "nccl":
-        summed_device_grad_packs = (
-            cross_tower_utils.aggregate_gradients_using_nccl(device_grad_packs))
-      else:
-        summed_device_grad_packs = (
-            cross_tower_utils.aggregate_gradients_using_hierarchical_copy(
-                destinations, device_grad_packs))
-
-      aggregated_device_grads = []
-      for (summed_tower_grad_packs, tower_grads_and_vars, tower_shapes,
-           tower_sizes) in zip(summed_device_grad_packs, grouped,
-                               all_tower_shapes, all_tower_sizes):
-        # pylint: enable=line-too-long
-        # Reverse the packing operations in the previous steps. Form the
-        # summed gradients back into their original shapes.
-        with ops.colocate_with(summed_tower_grad_packs[0][0]):
-          # Form a list of the summed grad packs.
-          device_grad_packs = [g for g, _ in summed_tower_grad_packs]
-
-          # Concat them back into a big flat tensor.
-          device_grads_concat = array_ops.concat(device_grad_packs, 0)
-
-          # Split the tensors back into their original sizes.
-          grads_with_sizes = array_ops.split(device_grads_concat, tower_sizes)
-
-          # Reshape the tensors back into their original shapes.
-          grads_with_shapes = [
-              array_ops.reshape(grad, shape)
-              for shape, grad in zip(tower_shapes, grads_with_sizes)
-          ]
-
-          # Form the list with the original list of variables.
-          summed_tower_grads = [
-              (g, v)
-              for g, (_, v) in zip(grads_with_shapes, tower_grads_and_vars)
-          ]
-          aggregated_device_grads.append(summed_tower_grads)
-      reduced = aggregated_device_grads
     return _ungroup_and_make_mirrored(reduced, per_device_values[0].devices,
                                       method_string)
+
+
+_dgx1_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7],
+               [0, 5, 6, 7], [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6]]
+
+
+def _has_dgx1_like_links(gpu_links):
+  if not gpu_links:
+    return False
+  # TODO(yuefengz): figure out the right topology for hierarchial copy if
+  # number of gpus are less than 8.
+  if len(gpu_links) < 8:
+    return False
+  for i, (gpu_link, dgx1_link) in enumerate(zip(gpu_links, _dgx1_links)):
+    if (set(gpu_link) != set(dgx1_link) and
+        set(gpu_link) != set(dgx1_link + [i])):
+      return False
+  return True
+
+
+def _choose_all_reduce_algorithm(device_links):
+  if _has_dgx1_like_links(device_links):
+    logging.info("Configured hierarchical_copy with num_packs=%d",
+                 len(device_links))
+    return AllReduceCrossTowerOps(
+        "hierarchical_copy", num_packs=len(device_links))
+  else:
+    logging.info("Configured nccl all-reduce.")
+    return AllReduceCrossTowerOps("nccl", num_packs=1)
+
+
+def choose_the_best(devices, session_config=None):
+  """Find the best subclass of CrossTowerOps given a tensorflow session.
+
+  Args:
+    devices: a list of devices passed for distribute strategy.
+    session_config: a tensorflow session config or None. If None, it will make
+      deciesion based on all local devices.
+
+  Returns:
+    a subclass of CrossTowerOps.
+  """
+  requested_devices = set([device_util.canonicalize(d) for d in devices])
+  machine_devices = device_lib.list_local_devices(session_config=session_config)
+  using_devices = []
+  for d in machine_devices:
+    if device_util.canonicalize(d.name) in requested_devices:
+      using_devices.append(d)
+    else:
+      logging.info(
+          "Device is available but not used by distribute strategy: %s", d.name)
+
+  if len(using_devices) != len(requested_devices):
+    logging.warning("Not all devices in distribute strategy are visible by "
+                    "TensorFlow sessions.")
+    return ReductionToOneDeviceCrossTowerOps()
+
+  if any([d.device_type.lower() != "gpu" for d in using_devices]):
+    logging.warning("Not all devices in DistributionStrategy are visible to "
+                    "TensorFlow session.")
+    return ReductionToOneDeviceCrossTowerOps()
+
+  device_links = [[] for _ in range(len(using_devices))]
+  for i, device in enumerate(using_devices):
+    for link in device.locality.links.link:
+      device_links[i].append(link.device_id)
+
+  return _choose_all_reduce_algorithm(device_links)

@@ -101,22 +101,22 @@ class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
       mode=["graph", "eager"])
   allreduce_combinations = combinations.combine(
       cross_tower_ops=[
-          combinations.NamedObject("AllReduce",
-                                   cross_tower_ops_lib.AllReduceCrossTowerOps(
-                                       "nccl", 1)),
-          combinations.NamedObject("HierarchicalCopy",
-                                   cross_tower_ops_lib.AllReduceCrossTowerOps(
-                                       "hierarchical_copy", 8)),
-          combinations.NamedObject("AllReduceNoGradientRepacking",
-                                   cross_tower_ops_lib.AllReduceCrossTowerOps(
-                                       "nccl", 0)),
-          combinations.NamedObject("HierarchicalCopyNoGradientRepacking",
-                                   cross_tower_ops_lib.AllReduceCrossTowerOps(
-                                       "hierarchical_copy", 0))
+          combinations.NamedObject(
+              "AllReduce",
+              cross_tower_ops_lib.AllReduceCrossTowerOps("nccl", 1, 0, 0)),
+          combinations.NamedObject(
+              "HierarchicalCopy",
+              cross_tower_ops_lib.AllReduceCrossTowerOps(
+                  "hierarchical_copy", 8, 0, 0)),
+          combinations.NamedObject(
+              "AllReduceNoGradientRepacking",
+              cross_tower_ops_lib.AllReduceCrossTowerOps("nccl", 0, 0, 0)),
+          combinations.NamedObject(
+              "HierarchicalCopyAggregateSmallTensors",
+              cross_tower_ops_lib.AllReduceCrossTowerOps(
+                  "hierarchical_copy", 0, 100, 10))
       ],
-      distribution=[
-          combinations.mirrored_strategy_with_two_gpus
-      ],
+      distribution=[combinations.mirrored_strategy_with_two_gpus],
       mode=["graph", "eager"])
 
   @combinations.generate(reduction_to_one_combinations + allreduce_combinations)
@@ -179,6 +179,42 @@ class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
         self._assert_value_equal(
             cross_tower_ops.broadcast(constant_op.constant(1.), destinations),
             _fake_mirrored(1., destinations))
+
+  def testChooseAlgorithm(self):
+    device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7],
+                    [0, 5, 6, 7], [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6]]
+    result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
+    self.assertTrue(
+        isinstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps))
+    self.assertEqual(result.all_reduce_alg, "hierarchical_copy")
+    self.assertEqual(result.num_packs, 8)
+
+    # if there are only 4 devices
+    device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7]]
+    result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
+    self.assertTrue(
+        isinstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps))
+    self.assertEqual(result.all_reduce_alg, "nccl")
+    self.assertEqual(result.num_packs, 1)
+
+    # if devices links contain each device itself
+    device_links = [[0, 1, 2, 3, 4], [0, 1, 2, 3, 5], [0, 1, 2, 3, 6],
+                    [0, 1, 2, 3, 7], [0, 4, 5, 6, 7], [1, 4, 5, 6, 7],
+                    [2, 4, 5, 6, 7], [3, 4, 5, 6, 7]]
+    result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
+    self.assertTrue(
+        isinstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps))
+    self.assertEqual(result.all_reduce_alg, "hierarchical_copy")
+    self.assertEqual(result.num_packs, 8)
+
+    # if not dgx1-like links
+    device_links = [[0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7], [0, 5, 6, 7],
+                    [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6], [1, 2, 3, 4]]
+    result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
+    self.assertTrue(
+        isinstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps))
+    self.assertEqual(result.all_reduce_alg, "nccl")
+    self.assertEqual(result.num_packs, 1)
 
 
 if __name__ == "__main__":

@@ -1105,6 +1105,10 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     # in contrib.
     return dataset.make_one_shot_iterator()
 
+  def configure(self, session_config=None):
+    """Find the best configuration given a tensorflow session config."""
+    del session_config
+
   def _broadcast(self, tensor, destinations):
     if destinations is None:
       return tensor

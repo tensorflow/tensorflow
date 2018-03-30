@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections as pycoll
+
 from tensorflow.contrib import nccl
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -151,3 +154,186 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
     return (grad, v), has_nan_or_inf
   else:
     return (grad, v), None
+
+
+def extract_ranges(index_list, range_size_limit=32):
+  """Extract consecutive ranges and singles from index_list.
+
+  Args:
+    index_list: List of monotone increasing non-negative integers.
+    range_size_limit: Largest size range to return.  If a larger
+      consecutive range exists, it will be returned as multiple
+      ranges.
+
+  Returns:
+    (ranges, singles) where ranges is a list of [first, last] pairs of
+      consecutive elements in index_list, and singles is all of the
+      other elements, in original order.
+  """
+  if not index_list:
+    return [], []
+  first = index_list[0]
+  last = first
+  ranges = []
+  singles = []
+  for i in index_list[1:]:
+    if i == last + 1 and (last - first) <= range_size_limit:
+      last = i
+    else:
+      if last > first:
+        ranges.append([first, last])
+      else:
+        singles.append(first)
+      first = i
+      last = i
+  if last > first:
+    ranges.append([first, last])
+  else:
+    singles.append(first)
+  return ranges, singles
+
+
+GradPackTuple = pycoll.namedtuple('GradPackTuple', 'indices vars shapes')
+
+
+def pack_range(key, packing, grad_vars, rng):
+  """Form the concatenation of a specified range of gradient tensors.
+
+  Args:
+    key: Value under which to store meta-data in packing that will be used
+      later to restore the grad_var list structure.
+    packing: Dict holding data describing packed ranges of small tensors.
+    grad_vars: List of (grad, var) pairs for one tower.
+    rng: A pair of integers giving the first, last indices of a consecutive
+      range of tensors to be packed.
+
+  Returns:
+    A tensor that is the concatenation of all the specified small tensors.
+  """
+  to_pack = grad_vars[rng[0]:rng[1] + 1]
+  members = []
+  variables = []
+  restore_shapes = []
+  with ops.name_scope('pack'):
+    for g, v in to_pack:
+      variables.append(v)
+      restore_shapes.append(g.shape)
+      with ops.device(g.device):
+        members.append(array_ops.reshape(g, [-1]))
+    packing[key] = GradPackTuple(
+        indices=range(rng[0], rng[1] + 1),
+        vars=variables,
+        shapes=restore_shapes)
+    with ops.device(members[0].device):
+      return array_ops.concat(members, 0)
+
+
+def unpack_grad_tuple(gv, gpt):
+  """Unpack a previously packed collection of gradient tensors.
+
+  Args:
+    gv: A (grad, var) pair to be unpacked.
+    gpt: A GradPackTuple describing the packing operation that produced gv.
+
+  Returns:
+    A list of (grad, var) pairs corresponding to the values that were
+     originally packed into gv, maybe following subsequent operations like
+     reduction.
+  """
+  elt_widths = [x.num_elements() for x in gpt.shapes]
+  with ops.device(gv[0][0].device):
+    with ops.name_scope('unpack'):
+      splits = array_ops.split(gv[0], elt_widths)
+      unpacked_gv = []
+      for idx, s in enumerate(splits):
+        unpacked_gv.append((array_ops.reshape(s, gpt.shapes[idx]),
+                            gpt.vars[idx]))
+  return unpacked_gv
+
+
+def pack_small_tensors(tower_grads, max_bytes=0, max_group=0):
+  """Concatenate small gradient tensors together for reduction.
+
+  Args:
+    tower_grads: List of lists of (gradient, variable) tuples.
+    max_bytes: Int giving max number of bytes in a tensor that
+      may be considered small.
+    max_group: Int giving max number of small tensors that may be
+      concatenated into one new tensor.
+
+  Returns:
+    new_tower_grads, packing where new_tower_grads is identical to
+      tower_grads except that all feasible small_tensors have been removed
+      from their places and concatenated into larger tensors that are
+      now in the front of the list for each tower, and packing contains
+      the data necessary to restore the tower_grads structure.
+
+  Look through the first tower for gradients of the same type (float),
+  and small size, that are all sequential.  For each such group,
+  replace by a new tensor that is a flattened concatenation.  Note
+  that the corresponding variable will be absent, which doesn't matter
+  because it isn't used during all-reduce.
+
+  Requires:
+    Every gv_list in towers must have isomorphic structure including identical
+      tensor sizes and types.
+  """
+  small_indices = []
+  large_indices = []
+  for idx, (g, _) in enumerate(tower_grads[0]):
+    if g.dtype == dtypes.float32 and (4 * g.shape.num_elements()) <= max_bytes:
+      small_indices.append(idx)
+    else:
+      large_indices.append(idx)
+  small_ranges, small_singles = extract_ranges(
+      small_indices, range_size_limit=max_group)
+  large_indices = sorted(large_indices + small_singles)
+  num_gv = len(tower_grads[0])
+  packing = {}
+  if small_ranges:
+    new_tower_grads = []
+    for dev_idx, gv_list in enumerate(tower_grads):
+      assert len(gv_list) == num_gv
+      new_gv_list = []
+      for r in small_ranges:
+        key = '%d:%d' % (dev_idx, len(new_gv_list))
+        new_gv_list.append((pack_range(key, packing, gv_list, r),
+                            'packing_var_placeholder'))
+      for i in large_indices:
+        new_gv_list.append(gv_list[i])
+      new_tower_grads.append(new_gv_list)
+    return new_tower_grads, packing
+  else:
+    return tower_grads, None
+
+
+def unpack_small_tensors(tower_grads, packing):
+  """Undo the structure alterations to tower_grads done by pack_small_tensors.
+
+  Args:
+    tower_grads: List of List of (grad, var) tuples.
+    packing: A dict generated by pack_small_tensors describing the changes
+      it made to tower_grads.
+
+  Returns:
+    new_tower_grads: identical to tower_grads except that concatentations
+      of small tensors have been split apart and returned to their original
+      positions, paired with their original variables.
+  """
+  if not packing:
+    return tower_grads
+  new_tower_grads = []
+  num_devices = len(tower_grads)
+  num_packed = len(packing.keys()) // num_devices
+  for dev_idx, gv_list in enumerate(tower_grads):
+    gv_list = list(gv_list)
+    new_gv_list = gv_list[num_packed:]
+    for i in xrange(0, num_packed):
+      k = '%d:%d' % (dev_idx, i)
+      gpt = packing[k]
+      gv = unpack_grad_tuple(gv_list[i], gpt)
+      for gi, idx in enumerate(gpt.indices):
+        assert idx == gpt.indices[gi]
+        new_gv_list.insert(idx, gv[gi])
+    new_tower_grads.append(new_gv_list)
+  return new_tower_grads

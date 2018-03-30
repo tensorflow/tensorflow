@@ -859,6 +859,7 @@ class Estimator(object):
                                              saving_listeners)
 
   def _train_model_distributed(self, input_fn, hooks, saving_listeners):
+    self._distribution.configure(self._session_config)
     worker_hooks = []
     with ops.Graph().as_default() as g:
       with self._distribution.scope():
