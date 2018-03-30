@@ -358,7 +358,7 @@ class GmmAlgorithm(object):
     probs = array_ops.expand_dims(self._probs[shard_id], 0)
     # Membership weights are computed as:
     # $$w_{ik} = \frac{\alpha_k f(\mathbf{y_i}|\mathbf{\theta}_k)}$$
-    # $$              {\sum_{m=1}^{K}\alpha_mf(\mathbf{y_i}|\mathbf{\theta}_m)}$$
+    # $$            {\sum_{m=1}^{K}\alpha_mf(\mathbf{y_i}|\mathbf{\theta}_m)}$$
     # where "i" is the i-th example, "k" is the k-th mixture, theta are
     # the model parameters and y_i the observations.
     # These are defined for each shard.
