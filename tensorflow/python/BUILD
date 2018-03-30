@@ -4174,6 +4174,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_op",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
