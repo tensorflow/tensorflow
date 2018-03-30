@@ -13,18 +13,6 @@ load(
     "tf_kernel_library",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_cc_test(
     name = "graph_transferer_test",
     size = "small",

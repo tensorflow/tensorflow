@@ -144,10 +144,13 @@ load(
     "tf_cuda_tests_tags",
     "if_static",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+
+exports_files(["ops/ops.pbtxt"])
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -379,13 +382,13 @@ cc_library(
 )
 
 cc_library(
-    name = "session_message",
-    srcs = ["util/session_message.cc"],
-    hdrs = ["util/session_message.h"],
+    name = "stacktrace",
+    srcs = glob(["platform/*/stacktrace.h"]),
+    hdrs = ["platform/stacktrace.h"],
     deps = [
-        ":framework",
-        ":lib",
-        ":protos_all_cc",
+        ":abi",
+        ":lib_platform",
+        "//tensorflow/core/platform/default/build_config:stacktrace",
     ],
 )
 
@@ -394,8 +397,20 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
-        ":lib",
+        ":abi",
         ":lib_platform",
+        ":stacktrace",
+    ],
+)
+
+cc_library(
+    name = "session_message",
+    srcs = ["util/session_message.cc"],
+    hdrs = ["util/session_message.h"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":protos_all_cc",
     ],
 )
 
@@ -443,6 +458,7 @@ tf_cuda_library(
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
         "framework/cancellation.h",
+        "framework/collective.h",
         "framework/common_shape_fns.h",
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
         "framework/dataset.h",
@@ -613,6 +629,7 @@ tf_gen_op_libs(
     op_lib_names = [
         "batch_ops",
         "bitwise_ops",
+        "boosted_trees_ops",
         "candidate_sampling_ops",
         "checkpoint_ops",
         "control_flow_ops",
@@ -725,6 +742,7 @@ cc_library(
         ":audio_ops_op_lib",
         ":batch_ops_op_lib",
         ":bitwise_ops_op_lib",
+        ":boosted_trees_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":checkpoint_ops_op_lib",
         ":control_flow_ops_op_lib",
@@ -866,6 +884,7 @@ cc_library(
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:batch_kernels",
         "//tensorflow/core/kernels:bincount_op",
+        "//tensorflow/core/kernels:boosted_trees_ops",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:checkpoint_ops",
         "//tensorflow/core/kernels:control_flow_ops",
@@ -924,6 +943,9 @@ cc_library(
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_aggregate_ops",
+    ]) + if_cuda([
+        "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
+        "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
     ]),
 )
 
@@ -1624,6 +1646,7 @@ cc_library(
             "platform/**/env_time.cc",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/device_tracer.cc",
+            "platform/abi.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
         ],
@@ -1635,6 +1658,7 @@ cc_library(
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
+            "platform/abi.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
         ] +
@@ -1648,6 +1672,7 @@ cc_library(
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
+        ":abi",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
@@ -2157,6 +2182,11 @@ tf_cuda_library(
 CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/allocator_retry.h",
     "common_runtime/bfc_allocator.h",
+    "common_runtime/collective_executor_mgr.h",
+    "common_runtime/collective_param_resolver_local.h",
+    "common_runtime/collective_rma_local.h",
+    "common_runtime/device_resolver_local.h",
+    "common_runtime/buf_rendezvous.h",
     "common_runtime/build_graph_options.h",
     "common_runtime/constant_folding.h",
     "common_runtime/copy_tensor.h",
@@ -2195,7 +2225,11 @@ tf_cuda_library(
         "common_runtime/accumulate_n_optimizer.cc",
         "common_runtime/allocator_retry.cc",
         "common_runtime/bfc_allocator.cc",
+        "common_runtime/buf_rendezvous.cc",
         "common_runtime/build_graph_options.cc",
+        "common_runtime/collective_executor_mgr.cc",
+        "common_runtime/collective_param_resolver_local.cc",
+        "common_runtime/collective_rma_local.cc",
         "common_runtime/constant_folding.cc",
         "common_runtime/copy_tensor.cc",
         "common_runtime/costmodel_manager.cc",
@@ -2203,6 +2237,7 @@ tf_cuda_library(
         "common_runtime/device.cc",
         "common_runtime/device_factory.cc",
         "common_runtime/device_mgr.cc",
+        "common_runtime/device_resolver_local.cc",
         "common_runtime/device_set.cc",
         "common_runtime/executor.cc",
         "common_runtime/function.cc",
@@ -2810,6 +2845,11 @@ tf_cc_tests(
     name = "higher_level_tests",
     size = "small",
     srcs = [
+        "common_runtime/buf_rendezvous_test.cc",
+        "common_runtime/collective_executor_mgr_test.cc",
+        "common_runtime/collective_param_resolver_local_test.cc",
+        "common_runtime/collective_rma_local_test.cc",
+        "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
@@ -3230,6 +3270,18 @@ tf_cc_test(
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime_process_util_test",
+    size = "small",
+    srcs = ["common_runtime/process_util_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core_cpu_internal",
+        ":test",
+        ":test_main",
     ],
 )
 
@@ -3819,18 +3871,6 @@ cc_library(
 
 # -----------------------------------------------------------------------------
 # Google-internal targets go here (must be at the end).
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 alias(
     name = "android_srcs_no_runtime",

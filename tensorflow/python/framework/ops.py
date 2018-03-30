@@ -42,6 +42,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -295,6 +296,7 @@ class Tensor(_TensorLike):
 
     # Attributes used for C++ shape inference. Not inspected, only forwarded.
     # If set, will be a HandleData object from cpp_shape_inference.proto.
+    # TODO(b/74620627): remove when _USE_C_SHAPES is removed
     self._handle_data = None
     self._id = uid()
 
@@ -1663,6 +1665,9 @@ class Operation(object):
       self._control_inputs_val = control_input_ops
       self._node_def_val = copy.deepcopy(node_def)
       self._op_def_val = op_def
+    else:
+      # This will be set by self.inputs.
+      self._inputs_val = None
 
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
@@ -1936,6 +1941,8 @@ class Operation(object):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
     if self._c_op:
+      # Reset cached inputs.
+      self._inputs_val = None
       with errors.raise_exception_on_not_ok_status() as status:
         c_api.UpdateEdge(
             self._graph._c_graph,  # pylint: disable=protected-access
@@ -2052,15 +2059,18 @@ class Operation(object):
   def inputs(self):
     """The list of `Tensor` objects representing the data inputs of this op."""
     if self._c_op:
-      tf_outputs = c_api.GetOperationInputs(self._c_op)
-      # pylint: disable=protected-access
-      retval = [
-          self.graph._get_tensor_by_tf_output(tf_output)
-          for tf_output in tf_outputs
-      ]
-      # pylint: enable=protected-access
-      return Operation._InputList(retval)
-    return Operation._InputList(self._inputs_val)
+      if self._inputs_val is None:
+        tf_outputs = c_api.GetOperationInputs(self._c_op)
+        # pylint: disable=protected-access
+        retval = [
+            self.graph._get_tensor_by_tf_output(tf_output)
+            for tf_output in tf_outputs
+        ]
+        # pylint: enable=protected-access
+        self._inputs_val = Operation._InputList(retval)
+      return self._inputs_val
+    else:
+      return Operation._InputList(self._inputs_val)
 
   @property
   def _inputs(self):
@@ -2472,6 +2482,14 @@ def _set_shapes_for_outputs_c_api(op):
       shape_vector = [None if d == -1 else d for d in shape_vector]
       output.set_shape(tensor_shape.TensorShape(shape_vector))
 
+    serialized = c_api.ResourceHandleShapeAndType(op._graph._c_graph,
+                                                  output._as_tf_output())
+    if serialized:
+      output._handle_data = (
+          cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
+              compat.as_bytes(serialized)))
+    else:
+      output._handle_data = None
 
 # TODO(skyewm): remove this when _USE_C_API flag is removed.
 def _set_shapes_for_outputs(op):

@@ -73,6 +73,7 @@ py_library(
     deps = [
         ":array_ops",
         ":bitwise_ops",
+        ":boosted_trees_ops",
         ":check_ops",
         ":client",
         ":client_testlib",
@@ -298,6 +299,7 @@ cc_library(
     srcs = ["util/util.cc"],
     hdrs = ["util/util.h"],
     deps = [
+        ":safe_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//util/python:python_headers",
@@ -1374,6 +1376,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "boosted_trees_ops_gen",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:boosted_trees_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "summary_ops_gen",
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:summary_ops_op_lib"],
@@ -1619,6 +1629,19 @@ py_library(
         ":bitwise_ops_gen",
         ":framework",
         ":util",
+    ],
+)
+
+py_library(
+    name = "boosted_trees_ops",
+    srcs = ["ops/boosted_trees_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":boosted_trees_ops_gen",
+        ":framework",
+        ":ops",
+        ":training",
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
     ],
 )
 
@@ -3144,6 +3167,8 @@ tf_proto_library(
     srcs = ["framework/cpp_shape_inference.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
+    # TODO(b/74620627): remove when _USE_C_SHAPES is removed
+    visibility = ["//tensorflow:internal"],
 )
 
 py_test(
@@ -3228,6 +3253,7 @@ cuda_py_tests(
         ":client_testlib",
         ":framework_test_lib",
         ":platform_test",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -4144,6 +4170,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_op",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -4380,18 +4407,6 @@ py_test(
         ":nn_ops",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cuda_py_test(

@@ -121,6 +121,7 @@ bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
 bool IsSplitV(const NodeDef& node);
 bool IsSqrtGrad(const NodeDef& node);
+bool IsSquare(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);
 bool IsStackOp(const NodeDef& node);

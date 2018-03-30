@@ -88,8 +88,8 @@ class GANEstimator(estimator.Estimator):
           discriminator_fn=discriminator_fn,
           generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
           discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss,
-          generator_optimizer=tf.train.AdamOptimizier(0.1, 0.5),
-          discriminator_optimizer=tf.train.AdamOptimizier(0.1, 0.5))
+          generator_optimizer=tf.train.AdamOptimizer(0.1, 0.5),
+          discriminator_optimizer=tf.train.AdamOptimizer(0.1, 0.5))
 
       # Train estimator.
       gan_estimator.train(train_input_fn, steps)

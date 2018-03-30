@@ -91,17 +91,27 @@ class BaseSaverBuilder(object):
   class SaveSpec(object):
     """Class used to describe tensor slices that need to be saved."""
 
-    def __init__(self, tensor, slice_spec, name):
+    def __init__(self, tensor, slice_spec, name, dtype=None):
       """Creates a `SaveSpec` object.
 
       Args:
         tensor: the tensor to save or callable that produces a tensor to save.
         slice_spec: the slice to be saved. See `Variable.SaveSliceInfo`.
         name: the name to save the tensor under.
+        dtype: The data type of the Tensor. Required if `tensor` is callable.
+          Used for error checking in the restore op.
       """
       self._tensor = tensor
       self.slice_spec = slice_spec
       self.name = name
+      if callable(self._tensor):
+        if dtype is None:
+          raise AssertionError(
+              "When passing a callable `tensor` to a SaveSpec, an explicit "
+              "dtype must be provided.")
+        self.dtype = dtype
+      else:
+        self.dtype = tensor.dtype
 
     @property
     def tensor(self):
@@ -117,14 +127,27 @@ class BaseSaverBuilder(object):
         op: the "producer" object that this class wraps; it produces a list of
           tensors to save.  E.g., a "Variable" object saving its backing tensor.
         specs: a list of SaveSpec, each element of which describes one tensor to
-          save under this object.
+          save under this object. All Tensors must be on the same device.
         name: the name to save the object under.
       """
       self.op = op
       self.specs = specs
       self.name = name
-      # The device of this saveable. All tensors must be on the same device.
-      self.device = specs[0].tensor.device
+      self._device = None
+
+    @property
+    def device(self):
+      """The device for SaveSpec Tensors."""
+      # Note that SaveSpec.tensor runs Tensor-gathering ops when executing
+      # eagerly, making this call potentially very expensive.
+      #
+      # TODO(allenl): Consider another way to gather device information. Lower
+      # priority since this property isn't part of the normal save()/restore()
+      # workflow, but does come up when some alternative builders are passed to
+      # the Saver.
+      if self._device is None:
+        self._device = self.specs[0].tensor.device
+      return self._device
 
     def restore(self, restored_tensors, restored_shapes):
       """Restores this object from 'restored_tensors'.
@@ -148,7 +171,7 @@ class BaseSaverBuilder(object):
     """SaveableObject implementation that handles Variables."""
 
     def __init__(self, var, slice_spec, name):
-      spec = BaseSaverBuilder.SaveSpec(var, slice_spec, name)
+      spec = BaseSaverBuilder.SaveSpec(var, slice_spec, name, dtype=var.dtype)
       super(BaseSaverBuilder.VariableSaveable, self).__init__(var, [spec], name)
 
     def restore(self, restored_tensors, restored_shapes):
@@ -186,7 +209,8 @@ class BaseSaverBuilder(object):
         raise ValueError(
             "Saveable is neither a resource variable nor a read operation."
             " Got: %s" % repr(var))
-      spec = BaseSaverBuilder.SaveSpec(tensor, slice_spec, name)
+      spec = BaseSaverBuilder.SaveSpec(tensor, slice_spec, name,
+                                       dtype=var.dtype)
       super(BaseSaverBuilder.ResourceVariableSaveable, self).__init__(
           var, [spec], name)
 
@@ -295,7 +319,7 @@ class BaseSaverBuilder(object):
               filename_tensor,
               [spec.name],
               [spec.slice_spec],
-              [spec.tensor.dtype])[0])
+              [spec.dtype])[0])
 
     return tensors
   # pylint: enable=unused-argument
@@ -854,7 +878,7 @@ class BulkSaverBuilder(BaseSaverBuilder):
     restore_specs = []
     for saveable in saveables:
       for spec in saveable.specs:
-        restore_specs.append((spec.name, spec.slice_spec, spec.tensor.dtype))
+        restore_specs.append((spec.name, spec.slice_spec, spec.dtype))
 
     names, slices, dtypes = zip(*restore_specs)
     # Load all tensors onto CPU 0 for compatibility with existing code.
@@ -1924,12 +1948,22 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   else:
     meta_graph_def = meta_graph_or_file
 
-  meta_graph.import_scoped_meta_graph(meta_graph_def,
-                                      clear_devices=clear_devices,
-                                      import_scope=import_scope,
-                                      **kwargs)
+  imported_vars = meta_graph.import_scoped_meta_graph(
+      meta_graph_def,
+      clear_devices=clear_devices,
+      import_scope=import_scope,
+      **kwargs)
+
   if meta_graph_def.HasField("saver_def"):
-    return Saver(saver_def=meta_graph_def.saver_def, name=import_scope)
+    # Infer the scope that is prepended by `import_scoped_meta_graph`.
+    scope = import_scope
+    var_names = list(imported_vars.keys())
+    if var_names:
+      sample_key = var_names[0]
+      sample_var = imported_vars[sample_key]
+      scope = sample_var.name[:-len(sample_key)]
+
+    return Saver(saver_def=meta_graph_def.saver_def, name=scope)
   else:
     if variables._all_saveable_objects():  # pylint: disable=protected-access
       # Return the default saver instance for all graph variables.

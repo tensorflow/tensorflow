@@ -79,6 +79,7 @@ tensorflow/python/keras/_impl/keras/preprocessing
 tensorflow/python/keras/_impl/keras/utils
 tensorflow/python/keras/_impl/keras/wrappers
 tensorflow/python/kernel_tests
+tensorflow/python/kernel_tests/boosted_trees
 tensorflow/python/kernel_tests/distributions
 tensorflow/python/kernel_tests/linalg
 tensorflow/python/kernel_tests/random
@@ -159,6 +160,9 @@ tensorflow/contrib/data/python/ops
 tensorflow/contrib/decision_trees
 tensorflow/contrib/decision_trees/proto
 tensorflow/contrib/deprecated
+tensorflow/contrib/distribute
+tensorflow/contrib/distribute/python
+tensorflow/contrib/distribute/python/examples
 tensorflow/contrib/distributions
 tensorflow/contrib/distributions/python
 tensorflow/contrib/distributions/python/ops
@@ -341,6 +345,7 @@ tensorflow/contrib/nn/python/ops
 tensorflow/contrib/opt
 tensorflow/contrib/opt/python
 tensorflow/contrib/opt/python/training
+tensorflow/contrib/optimizer_v2
 tensorflow/contrib/pi_examples
 tensorflow/contrib/pi_examples/camera
 tensorflow/contrib/pi_examples/label_image

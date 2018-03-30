@@ -1431,6 +1431,63 @@ class BaseSession(SessionInterface):
         return tf_session.TF_PRun(
             self._session, handle, feed_dict, fetch_list, status)
 
+  # pylint: disable=protected-access
+  class _Callable(object):
+    """Experimental wrapper for the C++ `Session::MakeCallable()` API."""
+
+    def __init__(self, session, callable_options):
+      self._session = session
+      self._handle = None
+      options_ptr = tf_session.TF_NewBufferFromString(
+          compat.as_bytes(callable_options.SerializeToString()))
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if session._created_with_new_api:
+            self._handle = tf_session.TF_SessionMakeCallable(
+                session._session, options_ptr, status)
+          else:
+            self._handle = tf_session.TF_DeprecatedSessionMakeCallable(
+                session._session, options_ptr, status)
+      finally:
+        tf_session.TF_DeleteBuffer(options_ptr)
+
+    def __call__(self, *args):
+      # TODO(b/74355905): Support argument and return value nested structures,
+      # and tensor-like objects such as SparseTensors.
+      with errors.raise_exception_on_not_ok_status() as status:
+        if self._session._created_with_new_api:
+          return tf_session.TF_SessionRunCallable(
+              self._session._session, self._handle, args, status, None)
+        else:
+          return tf_session.TF_DeprecatedSessionRunCallable(
+              self._session._session, self._handle, args, status, None)
+
+    def __del__(self):
+      if self._handle is not None:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if self._session._created_with_new_api:
+            tf_session.TF_SessionReleaseCallable(
+                self._session._session, self._handle, status)
+          else:
+            tf_session.TF_DeprecatedSessionReleaseCallable(
+                self._session._session, self._handle, status)
+  # pylint: enable=protected-access
+
+  # TODO(b/74355905): Reimplement `Session.make_callable()` using this method
+  # where possible.
+  def _make_callable_from_options(self, callable_options):
+    """Returns a handle to a "callable" with the given options.
+
+    Args:
+      callable_options: A `CallableOptions` protocol buffer message describing
+        the computation that will be performed by the callable.
+
+    Returns:
+      A handle to the new callable.
+    """
+    self._extend_graph()
+    return BaseSession._Callable(self, callable_options)
+
 
 @tf_export('Session')
 class Session(BaseSession):
