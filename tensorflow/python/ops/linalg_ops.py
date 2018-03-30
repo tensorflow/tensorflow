@@ -548,7 +548,8 @@ def norm(tensor,
             ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
         perm_before = array_ops.concat(
-            [array_ops.setdiff1d(axes, positive_axis)[0], positive_axis], axis=0)
+            [array_ops.setdiff1d(axes, positive_axis)[0], positive_axis],
+            axis=0)
         perm_after = functional_ops.map_fn(
             lambda i: math_ops.cast(
                 array_ops.squeeze(
@@ -557,7 +558,9 @@ def norm(tensor,
         permed = array_ops.transpose(tensor, perm=perm_before)
         matrix_2_norm = array_ops.expand_dims(
             math_ops.reduce_max(
-                gen_linalg_ops.svd(permed, compute_uv=False)[0],
+                math_ops.cast(
+                    gen_linalg_ops.svd(permed, compute_uv=False)[0],
+                    dtype=dtypes.float32),
                 axis=-1,
                 keepdims=True),
             axis=-1)
