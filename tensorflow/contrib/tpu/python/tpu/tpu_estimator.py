@@ -2019,7 +2019,8 @@ class TPUEstimator(estimator_lib.Estimator):
                   host_ops,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator)),
-              ExamplesPerSecondHook(ctx.global_batch_size),
+              ExamplesPerSecondHook(ctx.global_batch_size,
+                                    output_dir=self.model_dir),
               InstallSignalHandlerHook(),
               training.LoggingTensorHook(
                   {
