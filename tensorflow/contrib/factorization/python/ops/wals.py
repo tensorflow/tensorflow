@@ -494,7 +494,7 @@ class WALSMatrixFactorization(estimator.Estimator):
           where the number of inner lists equal to the number of row factor
           shards and the elements in each inner list are the weights for the
           rows of that shard. In this case,
-          w_ij = unonbserved_weight + row_weights[i] * col_weights[j].
+          \\(w_ij = unonbserved_weight + row_weights[i] * col_weights[j]\\).
         - A non-negative scalar: This value is used for all row weights.
           Note that it is allowed to have row_weights as a list and col_weights
           as a scalar, or vice-versa.
