@@ -353,6 +353,42 @@ class AttentionWrapperTest(test.TestCase):
         attention_mechanism_depth=9,
         name='testLuongNotNormalized')
 
+  def testLuongScaledDType(self):
+    # Test case for GitHub issue 18099
+    for dtype in [np.float16, np.float32, np.float64]:
+      num_units = 128
+      encoder_outputs = array_ops.placeholder(dtype, shape=[64, None, 256])
+      encoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      decoder_inputs = array_ops.placeholder(dtype, shape=[64, None, 128])
+      decoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      batch_size = 64
+      attention_mechanism = wrapper.LuongAttention(
+          num_units=num_units,
+          memory=encoder_outputs,
+          memory_sequence_length=encoder_sequence_length,
+          scale=True,
+          dtype=dtype,
+      )
+      cell = rnn_cell.LSTMCell(num_units)
+      cell = wrapper.AttentionWrapper(cell, attention_mechanism)
+
+      helper = helper_py.TrainingHelper(decoder_inputs,
+                                        decoder_sequence_length)
+      my_decoder = basic_decoder.BasicDecoder(
+          cell=cell,
+          helper=helper,
+          initial_state=cell.zero_state(
+              dtype=dtype, batch_size=batch_size))
+
+      final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
+      self.assertTrue(
+          isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
+      self.assertEqual(final_outputs.rnn_output.dtype, dtype)
+      self.assertTrue(
+          isinstance(final_state, wrapper.AttentionWrapperState))
+      self.assertTrue(
+          isinstance(final_state.cell_state, rnn_cell.LSTMStateTuple))
+
   def testLuongScaled(self):
     create_attention_mechanism = functools.partial(
         wrapper.LuongAttention, scale=True)
