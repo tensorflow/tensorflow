@@ -1754,6 +1754,79 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
   EXPECT_EQ(6, found);
 }
 
+TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs_InfiniteLoop) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a =
+      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({2, 2})));
+  Output b = ops::Square(s.WithOpName("b"), a);
+  Output c = ops::Mul(s.WithOpName("c"), a, b);
+  Output d = ops::Shape(s.WithOpName("d"), a);
+  Output e = ops::Shape(s.WithOpName("e"), b);
+
+  auto f = ops::internal::BroadcastGradientArgs(s.WithOpName("f"), d, e);
+  Output o1 = ops::Identity(s.WithOpName("o1"), f.r0);
+  Output o2 = ops::Identity(s.WithOpName("o2"), f.r1);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // Run a second time to make sure the optimization is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(11, output.node_size());
+  int found = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "ConstantFolding/f-folded-1") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("^a", node.input(0));
+      EXPECT_EQ("^b", node.input(1));
+    } else if (node.name() == "d") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^a", node.input(0));
+    } else if (node.name() == "e") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^b", node.input(0));
+    } else if (node.name() == "o1") {
+      ++found;
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ConstantFolding/f-bcastargs-0", node.input(0));
+    } else if (node.name() == "o2") {
+      ++found;
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ConstantFolding/f-bcastargs-1", node.input(0));
+    } else if (node.name() == "ConstantFolding/f-bcastargs-0") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFolding/f-folded-1", node.input(0));
+      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
+    } else if (node.name() == "ConstantFolding/f-bcastargs-1") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFolding/f-folded-1", node.input(0));
+      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
+    }
+  }
+  EXPECT_EQ(7, found);
+}
+
 TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input =
