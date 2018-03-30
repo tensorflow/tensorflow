@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -1303,8 +1304,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // with image.type than with dst_type.
     if (DeviceNameUtils::SplitDeviceName(transpose->device(), &dontcare,
                                          &device) &&
-        (StringPiece(device).contains(DEVICE_CPU) ||
-         StringPiece(device).contains(DEVICE_GPU))) {
+        (str_util::StrContains(device, DEVICE_CPU) ||
+         str_util::StrContains(device, DEVICE_GPU))) {
       const NodeDef* cast = node_map_->GetNode(transpose->input(0));
       if (cast->op() == "Cast") {
         const NodeDef* input = node_map_->GetNode(cast->input(0));
