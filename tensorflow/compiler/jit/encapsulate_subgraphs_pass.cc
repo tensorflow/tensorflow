@@ -254,7 +254,8 @@ class Encapsulator {
 
     // Adds _RecvAtHost and _SendFromHost nodes, where needed, to graph_out.
     Status AddOutsideCompilationHostIONodes(
-        const string& subgraph_name,
+        const string& group_attribute, const string& subgraph_name,
+        const string& outside_compilation_attribute,
         const std::unordered_map<const Node*, Node*>& node_images,
         Graph* graph_out);
 
@@ -405,7 +406,9 @@ class Encapsulator {
 
     // Builds a _RecvAtHost node producing all the inputs of an
     // outside_compilation subgraph and stores it in oc_subgraph.recv_at_host.
-    Status AddRecvAtHostNode(const string& subgraph_name,
+    Status AddRecvAtHostNode(const string& group_attribute,
+                             const string& subgraph_name,
+                             const string& outside_compilation_attribute,
                              const string& oc_subgraph_name,
                              OutsideCompilationSubgraph* oc_subgraph,
                              Graph* graph_out);
@@ -414,8 +417,10 @@ class Encapsulator {
     // outside_compilation subgraph and stores it in oc_subgraph.send_from_host.
     Status AddSendFromHostNode(
         const std::unordered_map<const Node*, Node*>& node_images,
-        const string& subgraph_name, const string& oc_subgraph_name,
-        OutsideCompilationSubgraph* oc_subgraph, Graph* graph_out);
+        const string& group_attribute, const string& subgraph_name,
+        const string& outside_compilation_attribute,
+        const string& oc_subgraph_name, OutsideCompilationSubgraph* oc_subgraph,
+        Graph* graph_out);
 
     // The subgraph extracted from the input graph, suitable for being turned
     // into a FunctionDef. Inputs are fed by _Arg nodes, and outputs are
@@ -1114,7 +1119,8 @@ Status Encapsulator::Subgraph::AddHostComputeKeyPlaceholder(
 }
 
 Status Encapsulator::Subgraph::AddRecvAtHostNode(
-    const string& subgraph_name, const string& oc_subgraph_name,
+    const string& group_attribute, const string& subgraph_name,
+    const string& outside_compilation_attribute, const string& oc_subgraph_name,
     OutsideCompilationSubgraph* oc_subgraph, Graph* graph_out) {
   if (host_compute_key_placeholder_ == nullptr) {
     TF_RETURN_IF_ERROR(AddHostComputeKeyPlaceholder(oc_subgraph, graph_out));
@@ -1135,14 +1141,15 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
   NodeDefBuilder builder(strings::StrCat("outside_compilation_", subgraph_name,
                                          "_", oc_subgraph_name, "_recv"),
                          kRecvAtHostOp);
-  // TODO(misard) When we add replication the device placement will have to be
-  // redone.
   builder.Device(device_);
   builder.Attr("Toutputs", dtypes);
-  // TODO(misard) For now we only support TPU device 0.
+  // The correct device_ordinal will be inserted during replication in a
+  // subsequent rewrite.
   builder.Attr("device_ordinal", 0);
   builder.Attr("key", strings::StrCat("host_compute_channel_", subgraph_name,
                                       "_", oc_subgraph_name));
+  builder.Attr(group_attribute, subgraph_name);
+  builder.Attr(outside_compilation_attribute, oc_subgraph_name);
   builder.Input(host_compute_key_placeholder_->name(), 0, DT_STRING);
   Status s = builder.Finalize(&recv_def);
   if (!s.ok()) return s;
@@ -1163,7 +1170,8 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
 
 Status Encapsulator::Subgraph::AddSendFromHostNode(
     const std::unordered_map<const Node*, Node*>& node_images,
-    const string& subgraph_name, const string& oc_subgraph_name,
+    const string& group_attribute, const string& subgraph_name,
+    const string& outside_compilation_attribute, const string& oc_subgraph_name,
     OutsideCompilationSubgraph* oc_subgraph, Graph* graph_out) {
   if (host_compute_key_placeholder_ == nullptr) {
     TF_RETURN_IF_ERROR(AddHostComputeKeyPlaceholder(oc_subgraph, graph_out));
@@ -1188,14 +1196,15 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   NodeDefBuilder builder(strings::StrCat("outside_compilation_", subgraph_name,
                                          "_", oc_subgraph_name, "_send"),
                          kSendFromHostOp);
-  // TODO(misard) When we add replication the device placement will have to be
-  // redone.
   builder.Device(device_);
   builder.Attr("Tinputs", dtypes);
   builder.Attr("key", strings::StrCat("host_compute_channel_", subgraph_name,
                                       "_", oc_subgraph_name));
-  // TODO(misard) For now we only support TPU device 0.
+  // The correct device_ordinal will be inserted during replication in a
+  // subsequent rewrite.
   builder.Attr("device_ordinal", 0);
+  builder.Attr(group_attribute, subgraph_name);
+  builder.Attr(outside_compilation_attribute, oc_subgraph_name);
   builder.Input(inputs);
   builder.Input(host_compute_key_placeholder_->name(), 0, DT_STRING);
   Status s = builder.Finalize(&send_def);
@@ -1216,7 +1225,8 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
 }
 
 Status Encapsulator::Subgraph::AddOutsideCompilationHostIONodes(
-    const string& subgraph_name,
+    const string& group_attribute, const string& subgraph_name,
+    const string& outside_compilation_attribute,
     const std::unordered_map<const Node*, Node*>& node_images,
     Graph* graph_out) {
   for (auto& outside_compilation_subgraph_entry :
@@ -1226,14 +1236,16 @@ Status Encapsulator::Subgraph::AddOutsideCompilationHostIONodes(
         outside_compilation_subgraph_entry.second;
 
     if (!oc_subgraph.inputs.empty() || !oc_subgraph.control_inputs.empty()) {
-      TF_RETURN_IF_ERROR(
-          AddRecvAtHostNode(subgraph_name, oc_name, &oc_subgraph, graph_out));
+      TF_RETURN_IF_ERROR(AddRecvAtHostNode(group_attribute, subgraph_name,
+                                           outside_compilation_attribute,
+                                           oc_name, &oc_subgraph, graph_out));
     }
 
     if (!oc_subgraph.outputs_by_src.empty() ||
         !oc_subgraph.control_outputs.empty()) {
-      TF_RETURN_IF_ERROR(AddSendFromHostNode(node_images, subgraph_name,
-                                             oc_name, &oc_subgraph, graph_out));
+      TF_RETURN_IF_ERROR(AddSendFromHostNode(
+          node_images, group_attribute, subgraph_name,
+          outside_compilation_attribute, oc_name, &oc_subgraph, graph_out));
     }
   }
   return Status::OK();
@@ -1450,8 +1462,6 @@ Status Encapsulator::CopyNodesToOutputGraph(
             "Parallel checking is not supported when outside_compilation "
             "clusters are present.");
       }
-      image->ClearAttr(group_attribute_);
-      image->ClearAttr(outside_compilation_attribute_);
     }
     (*node_images)[node] = image;
   }
@@ -1477,7 +1487,8 @@ Status Encapsulator::AddOutsideCompilationHostIONodes(
     const string& subgraph_name = subgraph_entry.first;
     Subgraph& subgraph = subgraph_entry.second;
     TF_RETURN_IF_ERROR(subgraph.AddOutsideCompilationHostIONodes(
-        subgraph_name, node_images, graph_out));
+        group_attribute_, subgraph_name, outside_compilation_attribute_,
+        node_images, graph_out));
   }
   return Status::OK();
 }

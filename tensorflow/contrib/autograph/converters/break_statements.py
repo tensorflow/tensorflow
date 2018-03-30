@@ -27,7 +27,7 @@ from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
 class BreakCanonicalizationTransformer(transformer.Base):
-  """Canonicalizes continue statements into additional conditionals."""
+  """Canonicalizes break statements into additional conditionals."""
 
   def __init__(self, context):
     super(BreakCanonicalizationTransformer, self).__init__(context)

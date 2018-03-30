@@ -83,11 +83,6 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
-  const Status EqualOrFail(const Executable& executable) {
-    // TODO(b/62952745) Implement equality test on GPU executable.
-    return Unimplemented("Equality test on GPU executable is not implemented.");
-  }
-
  private:
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for

@@ -70,7 +70,6 @@ class StagingAreaOpsTest(test.TestCase):
           target_device=target,
           string_arg=ds_iterator_handle,
           buffer_size=3,
-          thread_pool_size=2,
           shared_name=buffer_name)
 
     with ops.device(device1):

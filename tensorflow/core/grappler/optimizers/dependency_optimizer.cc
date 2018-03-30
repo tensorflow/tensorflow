@@ -298,6 +298,15 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       input_nodes.push_back(input_node);
     }
 
+    // Make sure that we don't increase the number of edges that cross
+    // device boundaries.
+    if ((num_inputs == 1 && num_outputs > 1 &&
+         input_nodes[0]->device() != node->device()) ||
+        (num_inputs > 1 && num_outputs == 1 &&
+         output_nodes[0]->device() != node->device())) {
+      return;
+    }
+
     // TODO(rmlarsen): Not all device crossings are equally expensive.
     // Assign a cost to each based on device affinity and compute a
     // cost before and after.
@@ -316,6 +325,8 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       // unless they only have consumers on the same device as themselves.
       return;
     }
+
+    // Make sure we do not increase the number of device crossings.
     const int num_cross_before = num_cross_in + num_cross_out;
     int num_cross_after = 0;
     for (NodeDef* input_node : input_nodes) {
@@ -325,7 +336,6 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       }
     }
     if (num_cross_after > num_cross_before) {
-      // Avoid increasing the number of device crossings.
       return;
     }
 
@@ -518,10 +528,6 @@ Status DependencyOptimizer::TransitiveReduction() {
       if (longest_distance[target] > 1) {
         const int input_slot = control_output.second;
         control_edges_to_remove[target].emplace(input_slot, source);
-        //        VLOG(1) << "Removing edge from:\n"
-        //                << optimized_graph_->node(source).DebugString() <<
-        //                "\n\nto:\n\n"
-        //                << optimized_graph_->node(target).DebugString();
       }
     }
   }

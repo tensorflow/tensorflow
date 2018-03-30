@@ -926,7 +926,6 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   shape_refiner.set_disable_constant_propagation(true);
-  shape_refiner.set_function_library_for_shape_inference(&function_library);
   ImportGraphDefOptions options;
   // Graph optimization happens at the late stage of graph execution,
   // when colocation constraints are already validated previously and
