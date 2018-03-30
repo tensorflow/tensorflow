@@ -87,6 +87,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
+      resource_variable_ops.assign_variable_op(handle, 1)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Trying to read variable with wrong dtype. "
                                    "Expected float got int32."):

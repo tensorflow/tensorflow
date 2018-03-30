@@ -201,18 +201,24 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
   const tensorflow::Tensor* t = nullptr;
   status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
   if (!status->status.ok()) return nullptr;
+  tensorflow::TensorHandle* h_cpu = nullptr;
   if (!IsCPU(d)) {
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 tensorflow::strings::StrCat(
-                     "TFE_TensorHandle can be resolved iff it is on CPU (this "
-                     "handle is on ",
-                     d->name(),
-                     "). Consider using TFE_TensorHandleCopyToDevice to get a "
-                     "copy of the tensor on CPU")
-                     .c_str());
-    return nullptr;
+    status->status = h->handle->CopyToDevice(
+        h->handle->Context(), h->handle->Context()->HostCPU(), &h_cpu);
+    if (!status->status.ok()) {
+      return nullptr;
+    }
+    status->status = h_cpu->TensorAndDevice(&t, &d, &op_device);
+    if (!status->status.ok()) {
+      h_cpu->Unref();
+      return nullptr;
+    }
   }
-  return tensorflow::TF_TensorFromTensor(*t, status);
+  TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
+  if (h_cpu != nullptr) {
+    h_cpu->Unref();
+  }
+  return retval;
 }
 }  // extern "C"
 
@@ -258,17 +264,6 @@ void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  if (op->device == nullptr) {
-    // Questionable heuristic ...
-    // - If a device was explicitly set on the op, always use that.
-    // - If not, place on the first non-host device seen.
-    tensorflow::Device* d = nullptr;
-    // TODO(agarwal): This call may block if h is not ready. Avoid this if
-    // possible.
-    status->status = h->handle->Device(&d);
-    if (!status->status.ok()) return;
-    if (!IsCPU(d)) op->device = d;
-  }
   h->handle->Ref();
   op->inputs.push_back(h->handle);
   op->attrs.NumInputs(op->inputs.size());
@@ -436,10 +431,39 @@ void TFE_OpSetAttrFunctionList(TFE_Op* op, const char* attr_name,
 
 namespace {
 
+// Initializes the step stats if needed.
+void MaybeInitializeStepStats(tensorflow::StepStats* step_stats,
+                              tensorflow::EagerContext* ctx) {
+  // Lazily initialize the RunMetadata with information about all devices if
+  // this is the first call.
+  while (step_stats->dev_stats_size() < ctx->devices()->size()) {
+    int device_idx = step_stats->dev_stats_size();
+    auto* dev_stats = step_stats->add_dev_stats();
+    dev_stats->set_device(ctx->devices()->at(device_idx)->name());
+  }
+}
+
+int StepStatsDeviceIndex(tensorflow::StepStats* step_stats,
+                         tensorflow::EagerContext* ctx,
+                         tensorflow::Device* device) {
+  // Find the current device's index.
+  if (device == nullptr) {
+    device = ctx->HostCPU();
+  }
+  for (int i = 0; i < ctx->devices()->size(); ++i) {
+    if (ctx->devices()->at(i) == device ||
+        ctx->devices()->at(i)->name() == device->name()) {
+      return i;
+    }
+  }
+  // TODO(apassos) do not fall back to host CPU if device is unknown.
+  return 0;
+}
+
 tensorflow::Status ValidateInputTypeAndPlacement(
-    tensorflow::EagerContext* ctx, tensorflow::Device* host_device,
-    tensorflow::Device* op_device, TFE_Op* op,
-    const tensorflow::OpKernel* kernel) {
+    tensorflow::EagerContext* ctx, tensorflow::Device* op_device, TFE_Op* op,
+    const tensorflow::OpKernel* kernel, tensorflow::RunMetadata* run_metadata) {
+  tensorflow::Device* host_device = ctx->HostCPU();
   const tensorflow::MemoryTypeVector& memtypes = kernel->input_memory_types();
   if (memtypes.size() != op->inputs.size()) {
     return tensorflow::errors::InvalidArgument(
@@ -489,9 +513,22 @@ tensorflow::Status ValidateInputTypeAndPlacement(
       }
       // We are only here if the policy is warn or silent copies, so we should
       // trigger a copy.
+      auto pre_time = tensorflow::Env::Default()->NowMicros();
       tensorflow::TensorHandle* copied_tensor = nullptr;
       tensorflow::Status status = tensorflow::EagerCopyToDevice(
           handle, ctx, expected_device->name().c_str(), &copied_tensor);
+      if (run_metadata != nullptr) {
+        auto* step_stats = run_metadata->mutable_step_stats();
+        MaybeInitializeStepStats(step_stats, ctx);
+        // Record the sending on the source device for now.
+        int device_idx = StepStatsDeviceIndex(step_stats, ctx, handle_device);
+        auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
+        auto* node_stats = dev_stats->add_node_stats();
+        node_stats->set_node_name("_Send");
+        node_stats->set_all_start_micros(pre_time);
+        node_stats->set_op_end_rel_micros(
+            tensorflow::Env::Default()->NowMicros() - pre_time);
+      }
       if (!status.ok()) {
         if (copied_tensor != nullptr) copied_tensor->Unref();
         return tensorflow::errors::Internal(
@@ -785,8 +822,12 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     tensorflow::Device* input_op_device = nullptr;
     status->status = op->inputs[i]->OpDevice(&input_op_device);
     if (!status->status.ok()) return;
+    VLOG(2) << "for op " << op->name << " input " << i << " "
+            << tensorflow::DataTypeString(op->inputs[i]->dtype) << " "
+            << (input_op_device == nullptr ? "cpu" : input_op_device->name())
+            << " " << (op->device == nullptr ? "cpu" : op->device->name());
     if (op->inputs[i]->dtype == tensorflow::DT_RESOURCE &&
-        input_op_device != op->device) {
+        (input_op_device != op->device || input_op_device == nullptr)) {
       tensorflow::Device* d =
           input_op_device == nullptr ? ctx->context.HostCPU() : input_op_device;
       VLOG(1) << "Changing device of operation " << op->name << " to "
@@ -796,16 +837,13 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     }
   }
   tensorflow::Device* device = op->device;
-  if (!ctx->context.SoftPlacement() && device == nullptr) {
-    device = ctx->context.HostCPU();
-  }
 
   tensorflow::Fprint128 cache_key =
       op->attrs.CacheKey(device == nullptr ? "unspecified" : device->name());
   tensorflow::KernelAndDevice* kernel = ctx->context.GetCachedKernel(cache_key);
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
-    if (ctx->context.SoftPlacement() && device == nullptr) {
+    if (device == nullptr) {
       device = SelectDevice(ndef, ctx, status);
       if (!status->status.ok()) {
         return;
@@ -867,7 +905,9 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     device = kernel->device();
   }
   status->status = ValidateInputTypeAndPlacement(
-      &ctx->context, ctx->context.HostCPU(), device, op, kernel->kernel());
+      &ctx->context, device, op, kernel->kernel(),
+      ctx->context.ShouldStoreMetadata() ? ctx->context.RunMetadataProto()
+                                         : nullptr);
   if (!status->status.ok()) return;
   std::unique_ptr<tensorflow::NodeExecStats> maybe_stats;
   if (ctx->context.ShouldStoreMetadata()) {

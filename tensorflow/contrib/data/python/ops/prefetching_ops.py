@@ -36,7 +36,6 @@ def function_buffering_resource(string_arg,
                                 target_device,
                                 f,
                                 buffer_size,
-                                thread_pool_size=0,
                                 container="",
                                 shared_name=None,
                                 name=None):
@@ -48,7 +47,6 @@ def function_buffering_resource(string_arg,
       shared_name=shared_name,
       f=f,
       buffer_size=buffer_size,
-      thread_pool_size=thread_pool_size,
       container=container,
       name=name)
 
@@ -90,8 +88,7 @@ class _PrefetchToDeviceIterator(object):
           target_device=gen_dataset_ops.iterator_get_device(
               input_iterator._iterator_resource),
           string_arg=input_iterator_handle,
-          buffer_size=buffer_size,
-          thread_pool_size=0)
+          buffer_size=buffer_size)
 
   def get_next(self, name=None):
     """See @{tf.data.Iterator.get_next}."""

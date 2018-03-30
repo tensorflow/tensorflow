@@ -36,10 +36,6 @@ Status EagerExecute(EagerContext* ctx, Device* device,
                     const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
                     KernelAndDevice* kernel, NodeExecStats* maybe_stats,
                     TensorHandle** retvals, int num_retvals) {
-  if (!ctx->SoftPlacement() && device == nullptr) {
-    device = ctx->HostCPU();
-  }
-
   if (device == nullptr) {
     // TODO(apassos) debug how the assignment below might return a different
     // device from the one requested above.
@@ -100,7 +96,7 @@ Status EagerExecute(EagerContext* ctx, Device* device,
       d = nullptr;
     }
     if (retvals[i] == nullptr) {
-      retvals[i] = new TensorHandle(outputs[i], d, op_device);
+      retvals[i] = new TensorHandle(outputs[i], d, op_device, ctx);
     } else {
       retvals[i]->SetTensorAndDevice(outputs[i], d, op_device);
     }

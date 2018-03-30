@@ -15,32 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
-namespace tensorflow {
+#include "tensorflow/core/common_runtime/process_util.h"
 
-ContextDevicePlacementPolicy PlacementPolicy(
-    bool soft_placement, ContextDevicePlacementPolicy original_policy) {
-  if (!soft_placement) {
-    return original_policy;
-  }
-  if (original_policy == DEVICE_PLACEMENT_EXPLICIT ||
-      original_policy == DEVICE_PLACEMENT_SILENT_FOR_INT32) {
-    return DEVICE_PLACEMENT_SILENT;
-  }
-  return original_policy;
-}
+namespace tensorflow {
 
 EagerContext::EagerContext(const SessionOptions& opts,
                            ContextDevicePlacementPolicy default_policy,
                            bool async, std::unique_ptr<DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
-    : soft_placement_(opts.config.allow_soft_placement()),
-      policy_(PlacementPolicy(soft_placement_, default_policy)),
+    : policy_(default_policy),
       device_manager_(std::move(device_mgr)),
       devices_(device_manager_->ListDevices()),
       rendezvous_(rendezvous),
-      pflr_(new ProcessFunctionLibraryRuntime(device_manager_.get(), opts.env,
-                                              TF_GRAPH_DEF_VERSION,
-                                              &func_lib_def_, {})),
+      thread_pool_(NewThreadPoolFromSessionOptions(opts)),
+      pflr_(new ProcessFunctionLibraryRuntime(
+          device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
+          {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       async_default_(async) {
   if (async_default_) {

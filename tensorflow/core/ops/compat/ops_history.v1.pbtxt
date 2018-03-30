@@ -10341,6 +10341,342 @@ op {
   is_commutative: true
 }
 op {
+  name: "BoostedTreesCalculateBestGainsPerFeature"
+  input_arg {
+    name: "node_id_range"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "stats_summary_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "node_ids_list"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "gains_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "thresholds_list"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "left_node_contribs_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "right_node_contribs_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "l1"
+    type: "float"
+  }
+  attr {
+    name: "l2"
+    type: "float"
+  }
+  attr {
+    name: "tree_complexity"
+    type: "float"
+  }
+  attr {
+    name: "max_splits"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "BoostedTreesCreateEnsemble"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "stamp_token"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "tree_ensemble_serialized"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesDeserializeEnsemble"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "stamp_token"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "tree_ensemble_serialized"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesEnsembleResourceHandleOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesGetEnsembleStates"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "stamp_token"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "num_trees"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "num_finalized_trees"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "num_attempted_layers"
+    type: DT_INT32
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesMakeStatsSummary"
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "hessians"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "bucketized_features_list"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "stats_summary"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "max_splits"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "BoostedTreesPredict"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "bucketized_features"
+    type: DT_INT32
+    number_attr: "num_bucketized_features"
+  }
+  output_arg {
+    name: "logits"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_bucketized_features"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+  }
+  attr {
+    name: "max_depth"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesSerializeEnsemble"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "stamp_token"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "tree_ensemble_serialized"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesTrainingPredict"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "cached_tree_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "cached_node_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "bucketized_features"
+    type: DT_INT32
+    number_attr: "num_bucketized_features"
+  }
+  output_arg {
+    name: "partial_logits"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "tree_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "node_ids"
+    type: DT_INT32
+  }
+  attr {
+    name: "num_bucketized_features"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+  }
+  attr {
+    name: "max_depth"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesUpdateEnsemble"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "feature_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "gains"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "thresholds"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "left_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "right_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "max_depth"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "learning_rate"
+    type: "float"
+  }
+  attr {
+    name: "pruning_mode"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
   name: "BroadcastArgs"
   input_arg {
     name: "s0"
@@ -23332,6 +23668,18 @@ op {
       }
     }
   }
+}
+op {
+  name: "IsBoostedTreesEnsembleInitialized"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  is_stateful: true
 }
 op {
   name: "IsFinite"
