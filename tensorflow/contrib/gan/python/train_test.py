@@ -363,7 +363,8 @@ class GANLossTest(test.TestCase):
     model = create_gan_model_fn()
     loss = train.gan_loss(model)
     loss_gp = train.gan_loss(model,
-        gradient_penalty_weight=1.0, gradient_penalty_one_sided=one_sided)
+                             gradient_penalty_weight=1.0,
+                             gradient_penalty_one_sided=one_sided)
     self.assertTrue(isinstance(loss_gp, namedtuples.GANLoss))
 
     # Check values.
@@ -405,7 +406,8 @@ class GANLossTest(test.TestCase):
     self._test_grad_penalty_helper(create_infogan_model, one_sided=True)
 
   def test_grad_penalty_one_sided_callable_infogan(self):
-    self._test_grad_penalty_helper(create_callable_infogan_model, one_sided=True)
+    self._test_grad_penalty_helper(
+        create_callable_infogan_model, one_sided=True)
 
   def test_grad_penalty_one_sided_acgan(self):
     self._test_grad_penalty_helper(create_acgan_model, one_sided=True)

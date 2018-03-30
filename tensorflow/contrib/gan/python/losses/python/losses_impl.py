@@ -381,12 +381,12 @@ def wasserstein_gradient_penalty(
     # root. Note tf.norm does not add epsilon.
     slopes = math_ops.sqrt(gradient_squares + epsilon)
     penalties = slopes / target - 1.0
-    if one_sided is True:
-        penalties = math_ops.maximum(0., penalties)
+    if one_sided:
+      penalties = math_ops.maximum(0., penalties)
     penalties_squared = math_ops.square(penalties)
     penalty = losses.compute_weighted_loss(
-        penalties_squared, weights, scope=scope, loss_collection=loss_collection,
-        reduction=reduction)
+        penalties_squared, weights, scope=scope,
+        loss_collection=loss_collection, reduction=reduction)
 
     if add_summaries:
       summary.scalar('gradient_penalty_loss', penalty)
