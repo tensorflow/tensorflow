@@ -54,6 +54,9 @@
 
 ## Deprecations
 
+* TensorFlow 1.7 may be the last time we support Cuda versions below 8.0.
+  Starting with TensorFlow 1.8 release, 8.0 will be the minimum supported
+  version.
 * TensorFlow 1.7 may be the last time we support cuDNN versions below 6.0.
   Starting with TensorFlow 1.8 release, 6.0 will be the minimum supported
   version.
