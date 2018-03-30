@@ -23,14 +23,17 @@ import six
 
 from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras._impl.keras.engine import sequential
 from tensorflow.python.keras._impl.keras.engine import training
 from tensorflow.python.layers import core
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -108,14 +111,14 @@ class InterfaceTests(test.TestCase):
                          [0., 0.]], self.evaluate(bare_initializer))
     self.assertEqual("a_variable:0", obj.a_variable.name)
     self.assertEqual("duplicate:0", other_duplicate.name)
-    if context.in_graph_mode():
-      # The .name attribute may be globally influenced, but the checkpoint name
-      # won't be (tested below).
-      self.assertEqual("duplicate_1:0", duplicate.name)
-    else:
+    if context.executing_eagerly():
       # When executing eagerly, there's no uniquification of variable names. The
       # checkpoint name will be the same.
       self.assertEqual("duplicate:0", duplicate.name)
+    else:
+      # The .name attribute may be globally influenced, but the checkpoint name
+      # won't be (tested below).
+      self.assertEqual("duplicate_1:0", duplicate.name)
     named_variables, _ = checkpointable_utils._serialize_object_graph(obj)
     expected_checkpoint_names = (
         "a_variable/.ATTRIBUTES/VARIABLE_VALUE",
@@ -152,6 +155,50 @@ class InterfaceTests(test.TestCase):
     self.assertAllEqual([1., 1., 1.], self.evaluate(v2))
 
 
+class _MirroringSaveable(core_saver.BaseSaverBuilder.SaveableObject):
+
+  def __init__(self, primary_variable, mirrored_variable, name):
+    self._primary_variable = primary_variable
+    self._mirrored_variable = mirrored_variable
+    tensor = self._primary_variable.read_value()
+    spec = core_saver.BaseSaverBuilder.SaveSpec(
+        tensor=tensor,
+        slice_spec="",
+        name=name)
+    super(_MirroringSaveable, self).__init__(
+        tensor, [spec], name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    """Restore the same value into both variables."""
+    tensor, = restored_tensors
+    return control_flow_ops.group(
+        self._primary_variable.assign(tensor),
+        self._mirrored_variable.assign(tensor))
+
+
+class _OwnsMirroredVariables(checkpointable.CheckpointableBase):
+  """A Checkpointable object which returns a more complex SaveableObject."""
+
+  def __init__(self):
+    self.non_dep_variable = variable_scope.get_variable(
+        name="non_dep_variable", initializer=6., use_resource=True)
+    self.mirrored = variable_scope.get_variable(
+        name="mirrored", initializer=15., use_resource=True)
+
+  def _gather_saveables_for_checkpoint(self):
+    def _saveable_factory(name=self.non_dep_variable.name):
+      return _MirroringSaveable(
+          primary_variable=self.non_dep_variable,
+          mirrored_variable=self.mirrored,
+          name=name)
+    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+
+  # The Saver sorts by name before parsing, so we need a name property.
+  @property
+  def name(self):
+    return self.non_dep_variable.name
+
+
 class CheckpointingTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
@@ -165,7 +212,7 @@ class CheckpointingTests(test.TestCase):
     optimizer_step = training_util.get_or_create_global_step()
     root_checkpointable = checkpointable_utils.Checkpoint(
         optimizer=optimizer, model=model, optimizer_step=optimizer_step)
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       optimizer.minimize(
           lambda: model(input_value),
           global_step=optimizer_step)
@@ -261,6 +308,42 @@ class CheckpointingTests(test.TestCase):
             optimizer_node.slot_variables[0]
             .slot_variable_node_id].attributes[0].checkpoint_key)
 
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testMoreComplexSaveableReturned(self):
+    v = _OwnsMirroredVariables()
+    checkpoint = checkpointable_utils.Checkpoint(v=v)
+    test_dir = self.get_temp_dir()
+    prefix = os.path.join(test_dir, "ckpt")
+    self.evaluate(v.non_dep_variable.assign(42.))
+    save_path = checkpoint.save(prefix)
+    self.evaluate(v.non_dep_variable.assign(43.))
+    self.evaluate(v.mirrored.assign(44.))
+    checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
+    self.assertEqual(42., self.evaluate(v.non_dep_variable))
+    self.assertEqual(42., self.evaluate(v.mirrored))
+    self.evaluate(v.non_dep_variable.assign(44.))
+    save_path = checkpoint.save(prefix)
+    self.evaluate(v.non_dep_variable.assign(45.))
+    checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
+    self.assertEqual(44., self.evaluate(v.non_dep_variable))
+    self.assertEqual(44., self.evaluate(v.mirrored))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testMoreComplexSaveableReturnedWithGlobalName(self):
+    # The same object can also be saved using the name-based saver.
+    v = _OwnsMirroredVariables()
+    saver = core_saver.Saver(var_list=[v])
+    test_dir = self.get_temp_dir()
+    prefix = os.path.join(test_dir, "ckpt")
+    self.evaluate(v.non_dep_variable.assign(42.))
+    with self.test_session() as sess:
+      save_path = saver.save(sess, prefix)
+      self.evaluate(v.non_dep_variable.assign(43.))
+      self.evaluate(v.mirrored.assign(44.))
+      saver.restore(sess, save_path)
+      self.assertEqual(42., self.evaluate(v.non_dep_variable))
+      self.assertEqual(42., self.evaluate(v.mirrored))
+
   @test_util.run_in_graph_and_eager_modes()
   def testSaveRestore(self):
     model = MyModel()
@@ -268,7 +351,7 @@ class CheckpointingTests(test.TestCase):
     root_checkpointable = checkpointable_utils.Checkpoint(
         optimizer=optimizer, model=model)
     input_value = constant_op.constant([[3.]])
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       optimizer.minimize(
           lambda: model(input_value))
     else:
@@ -293,10 +376,14 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([42.], self.evaluate(model._named_dense.variables[1]))
     self.assertAllEqual(1, self.evaluate(root_checkpointable.save_counter))
     self.assertAllEqual([1.5], self.evaluate(m_bias_slot))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       return  # Restore-on-create is only supported when executing eagerly
     on_create_model = MyModel()
-    on_create_optimizer = adam.AdamOptimizer(0.001)
+    on_create_optimizer = adam.AdamOptimizer(
+        0.001,
+        # Preserve beta1_power and beta2_power when appying gradients so we can
+        # test that they've been restored correctly.
+        beta1=1.0, beta2=1.0)
     on_create_root = checkpointable_utils.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
@@ -313,8 +400,8 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
     self.assertAllEqual(optimizer_variables[2:],
                         self.evaluate(on_create_optimizer.variables()))
-    on_create_optimizer._create_slots(
-        [resource_variable_ops.ResourceVariable([1.])])
+    dummy_var = resource_variable_ops.ResourceVariable([1.])
+    on_create_optimizer.minimize(loss=dummy_var.read_value)
     status.assert_consumed()
     beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
     self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))
@@ -400,7 +487,7 @@ class CheckpointingTests(test.TestCase):
             optimizer.minimize,
             functools.partial(model, input_value),
             global_step=root.global_step)
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           train_fn = functools.partial(self.evaluate, train_fn())
         status.initialize_or_restore()
         for _ in range(num_training_steps):
@@ -451,6 +538,35 @@ class CheckpointingTests(test.TestCase):
     named_variables, _ = checkpointable_utils._serialize_object_graph(root)
     name, = named_variables.keys()
     self.assertEqual(name, "..ATTRIBUTES/a/.ATTRIBUTES/VARIABLE_VALUE")
+
+  def testAnonymousVarsInInit(self):
+
+    class Model(training.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.w = resource_variable_ops.ResourceVariable(0.0)
+        self.b = resource_variable_ops.ResourceVariable(0.0)
+        self.vars = [self.w, self.b]
+
+      def call(self, x):
+        return x * self.w + self.b
+
+    with context.eager_mode():
+      model = Model()
+      optimizer = adam.AdamOptimizer(learning_rate=0.05)
+      checkpoint_directory = self.get_temp_dir()
+      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+      checkpoint = checkpointable_utils.Checkpoint(
+          model=model, optimizer=optimizer)
+      for _ in range(2):
+        checkpoint.save(checkpoint_prefix)
+        with backprop.GradientTape() as tape:
+          loss = (constant_op.constant(1.)
+                  - model(constant_op.constant(1.))) ** 2
+        grad = tape.gradient(loss, model.vars)
+        optimizer.apply_gradients(
+            [(g, v) for g, v in zip(grad, model.vars)])
 
   @test_util.run_in_graph_and_eager_modes()
   def testLateDependencyTracking(self):
@@ -524,7 +640,9 @@ class CheckpointingTests(test.TestCase):
     root.var = checkpointable_utils.add_variable(
         root, name="var", initializer=0.)
     optimizer = adam.AdamOptimizer(0.1)
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      optimizer.minimize(root.var.read_value)
+    else:
       train_op = optimizer.minimize(root.var)
       # Note that `optimizer` has not been added as a dependency of
       # `root`. Create a one-off grouping so that slot variables for `root.var`
@@ -532,8 +650,6 @@ class CheckpointingTests(test.TestCase):
       self.evaluate(checkpointable_utils.gather_initializers(
           checkpointable_utils.Checkpoint(root=root, optimizer=optimizer)))
       self.evaluate(train_op)
-    else:
-      optimizer.minimize(root.var.read_value)
     self.evaluate(state_ops.assign(root.var, 12.))
     no_slots_path = checkpointable_utils.CheckpointableSaver(root).save(
         os.path.join(checkpoint_directory, "no_slots"))
@@ -561,7 +677,7 @@ class CheckpointingTests(test.TestCase):
     with self.assertRaisesRegexp(AssertionError, "beta1_power"):
       slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # Slot variables are only created with restoring initializers when
       # executing eagerly.
       self.assertEqual(14., self.evaluate(
@@ -569,7 +685,9 @@ class CheckpointingTests(test.TestCase):
     else:
       self.assertIs(new_root.optimizer.get_slot(name="m", var=new_root.var),
                     None)
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      new_root.optimizer.minimize(new_root.var.read_value)
+    else:
       train_op = new_root.optimizer.minimize(new_root.var)
       # The slot variable now exists; restore() didn't create it, but we should
       # now have a restore op for it.
@@ -577,8 +695,6 @@ class CheckpointingTests(test.TestCase):
       self.assertEqual(14., self.evaluate(
           new_root.optimizer.get_slot(name="m", var=new_root.var)))
       self.evaluate(train_op)
-    else:
-      new_root.optimizer.minimize(new_root.var.read_value)
     slot_status.assert_consumed()
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
@@ -778,6 +894,72 @@ class CheckpointingTests(test.TestCase):
         saver.save(checkpoint_prefix)
         self.assertEqual(before_ops, graph.get_operations())
 
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testCheckpointCleanup(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    obj = checkpointable.Checkpointable()
+    obj.var = variable_scope.get_variable(name="v", initializer=0.)
+    self.evaluate(checkpointable_utils.gather_initializers(obj))
+    saver = checkpointable_utils.Checkpoint(obj=obj)
+    for _ in range(10):
+      saver.save(checkpoint_prefix)
+    expected_filenames = ["checkpoint"]
+    for checkpoint_number in range(6, 11):
+      expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
+      expected_filenames.append(
+          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
+    six.assertCountEqual(
+        self,
+        expected_filenames,
+        os.listdir(checkpoint_directory))
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testCheckpointCleanupChangingVarList(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    obj = checkpointable.Checkpointable()
+    obj.var = variable_scope.get_variable(name="v", initializer=0.)
+    self.evaluate(checkpointable_utils.gather_initializers(obj))
+    checkpoint = checkpointable_utils.Checkpoint(obj=obj)
+    looped_variables = []
+    for iteration in range(10):
+      new_variable = resource_variable_ops.ResourceVariable(iteration)
+      self.evaluate(new_variable.initializer)
+      setattr(checkpoint, "var_%d" % iteration, new_variable)
+      checkpoint.save(checkpoint_prefix)
+      looped_variables.append(new_variable)
+    expected_filenames = ["checkpoint"]
+    # We've copied the saver each time, but checkpoint management should still
+    # be consistent.
+    for checkpoint_number in range(6, 11):
+      expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
+      expected_filenames.append(
+          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
+    six.assertCountEqual(
+        self,
+        expected_filenames,
+        os.listdir(checkpoint_directory))
+    for v in looped_variables:
+      self.evaluate(v.assign(314))
+    checkpoint.restore(checkpoint_prefix + "-6").run_restore_ops()
+    self.assertEqual(314, self.evaluate(checkpoint.var_9))
+    self.assertEqual(314, self.evaluate(checkpoint.var_8))
+    self.assertEqual(314, self.evaluate(checkpoint.var_6))
+    self.assertEqual(5, self.evaluate(checkpoint.var_5))
+    self.assertEqual(1, self.evaluate(checkpoint.var_1))
+    self.assertEqual(0, self.evaluate(checkpoint.var_0))
+    if context.executing_eagerly():
+      checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
+      self.assertEqual(9, self.evaluate(checkpoint.var_9))
+      self.assertEqual(8, self.evaluate(checkpoint.var_8))
+      self.assertEqual(1, self.evaluate(checkpoint.var_1))
+      self.assertEqual(0, self.evaluate(checkpoint.var_0))
+    else:
+      # Restoring into modified graphs is an error while graph building.
+      with self.assertRaises(NotImplementedError):
+        checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
+
   def testManyRestoresGraph(self):
     """Restores after the first should not modify the graph."""
     with context.graph_mode():
@@ -854,6 +1036,38 @@ class CheckpointingTests(test.TestCase):
             var=first_variable, name="m")))
         beta1_power, _ = optimizer._get_beta_accumulators()
         self.assertAllEqual(3., self.evaluate(beta1_power))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_sequential(self):
+    model = sequential.Sequential()
+    checkpoint = checkpointable_utils.Checkpoint(model=model)
+    model.add(core.Dense(4))
+    second_dense = core.Dense(5)
+    model.add(second_dense)
+    model(constant_op.constant([[1.]]))
+    checkpoint.restore(None).initialize_or_restore()
+    self.evaluate(second_dense.bias.assign(
+        constant_op.constant([1., 2., 3., 4., 5.])))
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.evaluate(second_dense.bias.assign(
+        constant_op.constant([5., 6., 7., 8., 9.])))
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    self.assertAllEqual([1., 2., 3., 4., 5.], self.evaluate(second_dense.bias))
+
+    deferred_sequential = sequential.Sequential()
+    deferred_sequential_checkpoint = checkpointable_utils.Checkpoint(
+        model=deferred_sequential)
+    status = deferred_sequential_checkpoint.restore(save_path)
+    deferred_sequential.add(core.Dense(4))
+    deferred_sequential(constant_op.constant([[1.]]))
+    deferred_second_dense = core.Dense(5)
+    deferred_sequential.add(deferred_second_dense)
+    deferred_sequential(constant_op.constant([[1.]]))
+    status.run_restore_ops()
+    self.assertAllEqual([1., 2., 3., 4., 5.],
+                        self.evaluate(deferred_second_dense.bias))
 
 
 class TemplateTests(test.TestCase):
@@ -993,20 +1207,21 @@ class CheckpointCompatibilityTests(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testLoadFromNameBasedSaver(self):
     """Save a name-based checkpoint, load it using the object-based API."""
-    save_path = self._write_name_based_checkpoint()
-    root = self._initialized_model()
-    self._set_sentinels(root)
-    with self.assertRaises(AssertionError):
+    with test_util.device(use_gpu=True):
+      save_path = self._write_name_based_checkpoint()
+      root = self._initialized_model()
+      self._set_sentinels(root)
+      with self.assertRaises(AssertionError):
+        self._check_sentinels(root)
+      object_saver = checkpointable_utils.CheckpointableSaver(root)
+      status = object_saver.restore(save_path)
+      with self.assertRaises(AssertionError):
+        status.assert_consumed()
+      status.run_restore_ops()
       self._check_sentinels(root)
-    object_saver = checkpointable_utils.CheckpointableSaver(root)
-    status = object_saver.restore(save_path)
-    with self.assertRaises(AssertionError):
-      status.assert_consumed()
-    status.run_restore_ops()
-    self._check_sentinels(root)
-    self._set_sentinels(root)
-    status.initialize_or_restore()
-    self._check_sentinels(root)
+      self._set_sentinels(root)
+      status.initialize_or_restore()
+      self._check_sentinels(root)
 
   # TODO(allenl): Test for the core name-based saver loading object-based
   # checkpoints once object-based checkpointing is in core.

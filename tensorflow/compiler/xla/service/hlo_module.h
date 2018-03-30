@@ -103,7 +103,7 @@ class HloModule {
     return config_.mutable_entry_computation_layout();
   }
 
-  ComputationLayout entry_computation_layout() const {
+  const ComputationLayout& entry_computation_layout() const {
     return config_.entry_computation_layout();
   }
 
@@ -172,7 +172,7 @@ class HloModule {
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
   static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
-      const HloModuleProto& module);
+      const HloModuleProto& module, const DebugOptions& debug_options);
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.

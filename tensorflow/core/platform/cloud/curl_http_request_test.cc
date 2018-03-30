@@ -476,9 +476,10 @@ TEST(CurlHttpRequestTest, PutRequest_WithoutBody) {
   EXPECT_TRUE(libcurl.is_initialized_);
   EXPECT_EQ("http://www.testuri.com", libcurl.url_);
   EXPECT_EQ("", libcurl.custom_request_);
-  EXPECT_EQ(2, libcurl.headers_->size());
+  EXPECT_EQ(3, libcurl.headers_->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
   EXPECT_EQ("Content-Length: 0", (*libcurl.headers_)[1]);
+  EXPECT_EQ("Transfer-Encoding: identity", (*libcurl.headers_)[2]);
   EXPECT_TRUE(libcurl.is_put_);
   EXPECT_EQ("", libcurl.posted_content_);
 }
@@ -517,9 +518,10 @@ TEST(CurlHttpRequestTest, PostRequest_WithoutBody) {
   EXPECT_TRUE(libcurl.is_initialized_);
   EXPECT_EQ("http://www.testuri.com", libcurl.url_);
   EXPECT_EQ("", libcurl.custom_request_);
-  EXPECT_EQ(2, libcurl.headers_->size());
+  EXPECT_EQ(3, libcurl.headers_->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
   EXPECT_EQ("Content-Length: 0", (*libcurl.headers_)[1]);
+  EXPECT_EQ("Transfer-Encoding: identity", (*libcurl.headers_)[2]);
   EXPECT_TRUE(libcurl.is_post_);
   EXPECT_EQ("", libcurl.posted_content_);
 }
@@ -632,6 +634,209 @@ TEST(CurlHttpRequestTest, ProgressIsStuck) {
       "'Operation was aborted by an application callback')\n\tPerforming "
       "request. Detailed error: ",
       status.error_message());
+}
+
+class TestStats : public HttpRequest::RequestStats {
+ public:
+  ~TestStats() override = default;
+
+  void RecordRequest(const HttpRequest* request, const string& uri,
+                     HttpRequest::RequestMethod method) override {
+    has_recorded_request_ = true;
+    record_request_request_ = request;
+    record_request_uri_ = uri;
+    record_request_method_ = method;
+  }
+
+  void RecordResponse(const HttpRequest* request, const string& uri,
+                      HttpRequest::RequestMethod method,
+                      const Status& result) override {
+    has_recorded_response_ = true;
+    record_response_request_ = request;
+    record_response_uri_ = uri;
+    record_response_method_ = method;
+    record_response_result_ = result;
+  }
+
+  const HttpRequest* record_request_request_ = nullptr;
+  string record_request_uri_ = "http://www.testuri.com";
+  HttpRequest::RequestMethod record_request_method_ =
+      HttpRequest::RequestMethod::kGet;
+
+  const HttpRequest* record_response_request_ = nullptr;
+  string record_response_uri_ = "http://www.testuri.com";
+  HttpRequest::RequestMethod record_response_method_ =
+      HttpRequest::RequestMethod::kGet;
+  Status record_response_result_;
+
+  bool has_recorded_request_ = false;
+  bool has_recorded_response_ = false;
+};
+
+class StatsTestFakeLibCurl : public FakeLibCurl {
+ public:
+  StatsTestFakeLibCurl(TestStats* stats, const string& response_content,
+                       uint64 response_code)
+      : FakeLibCurl(response_content, response_code), stats_(stats) {}
+  CURLcode curl_easy_perform(CURL* curl) override {
+    CHECK(!performed_request_);
+    performed_request_ = true;
+    stats_had_recorded_request_ = stats_->has_recorded_request_;
+    stats_had_recorded_response_ = stats_->has_recorded_response_;
+    return FakeLibCurl::curl_easy_perform(curl);
+  };
+
+  TestStats* stats_;
+  bool performed_request_ = false;
+  bool stats_had_recorded_request_;
+  bool stats_had_recorded_response_;
+};
+
+TEST(CurlHttpRequestTest, StatsGetSuccessful) {
+  TestStats stats;
+  StatsTestFakeLibCurl libcurl(&stats, "get response", 200);
+  CurlHttpRequest http_request(&libcurl);
+
+  std::vector<char> scratch;
+  scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
+  scratch.reserve(100);
+
+  http_request.SetRequestStats(&stats);
+
+  http_request.SetUri("http://www.testuri.com");
+  http_request.AddAuthBearerHeader("fake-bearer");
+  http_request.SetRange(100, 199);
+  http_request.SetResultBuffer(&scratch);
+  TF_EXPECT_OK(http_request.Send());
+
+  EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
+
+  // Check interaction with stats.
+  ASSERT_TRUE(stats.has_recorded_request_);
+  EXPECT_EQ(&http_request, stats.record_request_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_request_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kGet, stats.record_request_method_);
+
+  ASSERT_TRUE(stats.has_recorded_response_);
+  EXPECT_EQ(&http_request, stats.record_response_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kGet, stats.record_response_method_);
+  TF_EXPECT_OK(stats.record_response_result_);
+
+  // Check interaction with libcurl.
+  EXPECT_TRUE(libcurl.performed_request_);
+  EXPECT_TRUE(libcurl.stats_had_recorded_request_);
+  EXPECT_FALSE(libcurl.stats_had_recorded_response_);
+}
+
+TEST(CurlHttpRequestTest, StatsGetNotFound) {
+  TestStats stats;
+  StatsTestFakeLibCurl libcurl(&stats, "get other response", 404);
+  CurlHttpRequest http_request(&libcurl);
+
+  std::vector<char> scratch;
+  scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
+  scratch.reserve(100);
+
+  http_request.SetRequestStats(&stats);
+
+  http_request.SetUri("http://www.testuri.com");
+  http_request.AddAuthBearerHeader("fake-bearer");
+  http_request.SetRange(100, 199);
+  http_request.SetResultBuffer(&scratch);
+  Status s = http_request.Send();
+
+  // Check interaction with stats.
+  ASSERT_TRUE(stats.has_recorded_request_);
+  EXPECT_EQ(&http_request, stats.record_request_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_request_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kGet, stats.record_request_method_);
+
+  ASSERT_TRUE(stats.has_recorded_response_);
+  EXPECT_EQ(&http_request, stats.record_response_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kGet, stats.record_response_method_);
+  EXPECT_TRUE(errors::IsNotFound(stats.record_response_result_));
+  EXPECT_EQ(s, stats.record_response_result_);
+
+  // Check interaction with libcurl.
+  EXPECT_TRUE(libcurl.performed_request_);
+  EXPECT_TRUE(libcurl.stats_had_recorded_request_);
+  EXPECT_FALSE(libcurl.stats_had_recorded_response_);
+}
+
+TEST(CurlHttpRequestTest, StatsPost) {
+  TestStats stats;
+
+  FakeLibCurl libcurl("", 200);
+  CurlHttpRequest http_request(&libcurl);
+
+  http_request.SetRequestStats(&stats);
+
+  string content = "post body content";
+
+  http_request.SetUri("http://www.testuri.com");
+  http_request.SetPostFromBuffer(content.c_str(), content.size());
+  TF_EXPECT_OK(http_request.Send());
+
+  // Check interaction with stats.
+  ASSERT_TRUE(stats.has_recorded_request_);
+  EXPECT_EQ(&http_request, stats.record_request_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_request_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kPost, stats.record_request_method_);
+
+  ASSERT_TRUE(stats.has_recorded_response_);
+  EXPECT_EQ(&http_request, stats.record_response_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kPost, stats.record_response_method_);
+  TF_EXPECT_OK(stats.record_response_result_);
+}
+
+TEST(CurlHttpRequestTest, StatsDelete) {
+  TestStats stats;
+
+  FakeLibCurl libcurl("", 200);
+  CurlHttpRequest http_request(&libcurl);
+  http_request.SetRequestStats(&stats);
+  http_request.SetUri("http://www.testuri.com");
+  http_request.SetDeleteRequest();
+  TF_EXPECT_OK(http_request.Send());
+
+  // Check interaction with stats.
+  ASSERT_TRUE(stats.has_recorded_request_);
+  EXPECT_EQ(&http_request, stats.record_request_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_request_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kDelete, stats.record_request_method_);
+
+  ASSERT_TRUE(stats.has_recorded_response_);
+  EXPECT_EQ(&http_request, stats.record_response_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kDelete, stats.record_response_method_);
+  TF_EXPECT_OK(stats.record_response_result_);
+}
+
+TEST(CurlHttpRequestTest, StatsPut) {
+  TestStats stats;
+
+  FakeLibCurl libcurl("", 200);
+  CurlHttpRequest http_request(&libcurl);
+  http_request.SetRequestStats(&stats);
+  http_request.SetUri("http://www.testuri.com");
+  http_request.AddAuthBearerHeader("fake-bearer");
+  http_request.SetPutEmptyBody();
+  TF_EXPECT_OK(http_request.Send());
+
+  // Check interaction with stats.
+  ASSERT_TRUE(stats.has_recorded_request_);
+  EXPECT_EQ(&http_request, stats.record_request_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_request_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kPut, stats.record_request_method_);
+
+  ASSERT_TRUE(stats.has_recorded_response_);
+  EXPECT_EQ(&http_request, stats.record_response_request_);
+  EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
+  EXPECT_EQ(HttpRequest::RequestMethod::kPut, stats.record_response_method_);
+  TF_EXPECT_OK(stats.record_response_result_);
 }
 
 }  // namespace

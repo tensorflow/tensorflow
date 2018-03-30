@@ -89,14 +89,6 @@ def _safe_div(numerator, denominator, name="value"):
   Returns:
     The element-wise value of the numerator divided by the denominator.
   """
-  if isinstance(denominator, float):
-    if math_ops.equal(denominator, 0.0):
-      return ops.convert_to_tensor(0.0, dtype=numerator.dtype)
-    return math_ops.div(numerator, denominator)
-  if context.in_eager_mode() and denominator._rank() == 0:  # pylint: disable=protected-access
-    if math_ops.equal(denominator, 0.0):
-      return ops.convert_to_tensor(0.0, dtype=numerator.dtype)
-    return math_ops.div(numerator, denominator)
   return array_ops.where(
       math_ops.greater(denominator, 0),
       math_ops.div(numerator, array_ops.where(
@@ -144,7 +136,7 @@ def _num_present(losses, weights, per_batch=False):
       `[batch_size]`. Otherwise, a single scalar tensor is returned.
   """
   if ((isinstance(weights, float) and weights != 0.0) or
-      (context.in_eager_mode() and weights._rank() == 0  # pylint: disable=protected-access
+      (context.executing_eagerly() and weights._rank() == 0  # pylint: disable=protected-access
        and not math_ops.equal(weights, 0.0))):
     return _num_elements(losses)
   with ops.name_scope(None, "num_present", (losses, weights)) as scope:
@@ -202,6 +194,11 @@ def compute_weighted_loss(
   """
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
+    # Save the `reduction` argument for loss normalization when distributing
+    # to multiple towers.
+    # TODO(josh11b): Associate it with the returned op for more precision.
+    ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
+
     with ops.control_dependencies((
         weights_broadcast_ops.assert_broadcastable(weights, losses),)):
       losses = ops.convert_to_tensor(losses)

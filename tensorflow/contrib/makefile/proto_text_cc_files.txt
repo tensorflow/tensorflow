@@ -17,6 +17,7 @@ tensorflow/core/platform/env_time.cc
 tensorflow/core/platform/setround.cc
 tensorflow/core/platform/denormal.cc
 tensorflow/core/platform/default/tracing.cc
+tensorflow/core/platform/default/mutex.cc
 tensorflow/core/platform/default/logging.cc
 tensorflow/core/platform/cpu_info.cc
 tensorflow/core/lib/wav/wav_io.cc

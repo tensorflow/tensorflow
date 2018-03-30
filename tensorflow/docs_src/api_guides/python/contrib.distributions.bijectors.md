@@ -28,6 +28,5 @@ To apply a `Bijector`, use `distributions.TransformedDistribution`.
 *   @{tf.contrib.distributions.bijectors.Inline}
 *   @{tf.contrib.distributions.bijectors.Invert}
 *   @{tf.contrib.distributions.bijectors.PowerTransform}
-*   @{tf.contrib.distributions.bijectors.SigmoidCentered}
 *   @{tf.contrib.distributions.bijectors.SoftmaxCentered}
 *   @{tf.contrib.distributions.bijectors.Softplus}

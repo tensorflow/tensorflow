@@ -28,6 +28,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import googletest
 
 batch_norm = layers.batch_norm
@@ -56,10 +57,95 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         (array_ops.identity, 'Identity', True, 5000),
     ]
     for params in parameters_list:
-      test_fn(params[0], params[1], params[2], params[3])
+      # Test everything with resource variables and normal variables.
+      test_fn(params[0], params[1], params[2], params[3], False)
+      test_fn(params[0], params[1], params[2], params[3], True)
+
+  def _AssertCorrectQuantizedGraphWithoutBatchNorm(
+      self, graph, scope, layer, activation_op_name, with_bypass, delay,
+      use_resource):
+    quantization_node_name = 'FakeQuantWithMinMaxVars'
+    weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
+                                                quantization_node_name)
+    self.assertEqual(weights_quant.type, quantization_node_name)
+
+    # Assemble the expected inputs.
+    if use_resource:
+      expected_inputs = [
+          scope + '/weights_quant/FakeQuantWithMinMaxVars/ReadVariableOp',
+          scope + '/weights_quant/FakeQuantWithMinMaxVars/ReadVariableOp_1',
+      ]
+      if layer == 'DepthwiseConv2dNative':
+        expected_inputs.append(scope + '/depthwise/ReadVariableOp')
+      else:
+        expected_inputs.append(scope + '/' + layer + '/ReadVariableOp')
+    else:
+      expected_inputs = [
+          scope + '/weights_quant/AssignMinLast',
+          scope + '/weights_quant/AssignMaxLast',
+      ]
+      if layer == 'DepthwiseConv2dNative':
+        expected_inputs.append(scope + '/depthwise_weights/read')
+      else:
+        expected_inputs.append(scope + '/weights/read')
+
+    self._AssertInputOpsAre(weights_quant, expected_inputs)
+    if delay and delay > 0:
+      output_op_name = scope + '/weights_quant/delayed_quant/Switch_1'
+    else:
+      if layer == 'DepthwiseConv2dNative':
+        output_op_name = scope + '/depthwise'
+      else:
+        output_op_name = scope + '/' + layer
+
+    self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
+
+    if with_bypass:
+      conv_quant = graph.get_operation_by_name(scope + '/conv_quant/' +
+                                               quantization_node_name)
+      self.assertEqual(conv_quant.type, quantization_node_name)
+      if use_resource:
+        expected_inputs = [
+            scope + '/conv_quant/FakeQuantWithMinMaxVars/ReadVariableOp',
+            scope + '/conv_quant/FakeQuantWithMinMaxVars/ReadVariableOp_1',
+            scope + '/BiasAdd',
+        ]
+      else:
+        expected_inputs = [
+            scope + '/conv_quant/AssignMinEma',
+            scope + '/conv_quant/AssignMaxEma', scope + '/BiasAdd'
+        ]
+      self._AssertInputOpsAre(conv_quant, expected_inputs)
+      output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
+                        if delay else 'test/Add')
+      self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
+
+    act_quant = graph.get_operation_by_name('test/act_quant/' +
+                                            quantization_node_name)
+    self.assertEqual(act_quant.type, quantization_node_name)
+    if use_resource:
+      expected_inputs = [
+          'test/act_quant/FakeQuantWithMinMaxVars/ReadVariableOp',
+          'test/act_quant/FakeQuantWithMinMaxVars/ReadVariableOp_1',
+          'test/' + activation_op_name,
+      ]
+    else:
+      expected_inputs = [
+          'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
+          'test/' + activation_op_name
+      ]
+    self._AssertInputOpsAre(act_quant, expected_inputs)
+    output_op_name = ('test/act_quant/delayed_quant/Switch_1'
+                      if delay else 'control_dependency')
+    self._AssertOutputGoesToOps(act_quant, graph, [output_op_name])
+    self._AssertIdempotent(graph)
+
+  def testQuantize_Conv2dWithoutBatchNorm(self):
+    self._RunWithoutBatchNormTestOverParameters(
+        self._TestQuantize_Conv2dWithoutBatchNorm)
 
   def _TestQuantize_Conv2dWithoutBatchNorm(self, activation, activation_op_name,
-                                           with_bypass, delay):
+                                           with_bypass, delay, use_resource):
     """Tests quantization: inputs -> Conv2d no batch norm -> Activation.
 
     Args:
@@ -69,75 +155,44 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with_bypass: Bool, when true there is an extra connection added from
         inputs to just before Activation.
       delay: Int (optional), delay in number of steps until quantization starts.
+      use_resource: Bool, when true uses resource variables.
     """
     graph = ops.Graph()
     with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
       batch_size, height, width, depth = 5, 128, 128, 3
       inputs = array_ops.zeros((batch_size, height, width, depth))
       stride = 1 if with_bypass else 2
       out_depth = 3 if with_bypass else 32
       activation_fn = None if with_bypass else activation
       scope = 'test/test2' if with_bypass else 'test'
-      node = conv2d(inputs, out_depth, [5, 5], stride=stride, padding='SAME',
-                    weights_initializer=self._WeightInit(0.09),
-                    activation_fn=activation_fn, scope=scope)
+      node = conv2d(
+          inputs,
+          out_depth, [5, 5],
+          stride=stride,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=activation_fn,
+          scope=scope)
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
         node = activation(node, name='test/' + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
+
       quantize.Quantize(graph, True, quant_delay=delay)
 
-    quantization_node_name = 'FakeQuantWithMinMaxVars'
-    weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
-                                                quantization_node_name)
-    self.assertEqual(weights_quant.type, quantization_node_name)
-    expected_inputs = [
-        scope + '/weights_quant/AssignMinLast',
-        scope + '/weights_quant/AssignMaxLast', scope + '/weights/read'
-    ]
-    self._AssertInputOpsAre(weights_quant, expected_inputs)
-    if delay and delay > 0:
-      output_op_name = scope + '/weights_quant/delayed_quant/Switch_1'
-    else:
-      output_op_name = scope + '/Conv2D'
+    self._AssertCorrectQuantizedGraphWithoutBatchNorm(
+        graph, scope, 'Conv2D', activation_op_name, with_bypass, delay,
+        use_resource)
 
-    self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
-
-    if with_bypass:
-      conv_quant = graph.get_operation_by_name(scope + '/conv_quant/' +
-                                               quantization_node_name)
-      self.assertEqual(conv_quant.type, quantization_node_name)
-      expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/BiasAdd'
-      ]
-      self._AssertInputOpsAre(conv_quant, expected_inputs)
-      output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
-                        if delay else 'test/Add')
-      self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
-
-    act_quant = graph.get_operation_by_name('test/act_quant/' +
-                                            quantization_node_name)
-    self.assertEqual(act_quant.type, quantization_node_name)
-
-    expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
-        'test/' + activation_op_name
-    ]
-    self._AssertInputOpsAre(act_quant, expected_inputs)
-    output_op_name = ('test/act_quant/delayed_quant/Switch_1'
-                      if delay else 'control_dependency')
-    self._AssertOutputGoesToOps(act_quant, graph, [output_op_name])
-    self._TestIdempotent(graph)
-
-  def testQuantize_Conv2dWithoutBatchNorm(self):
+  def testQuantize_FCWithoutBatchNorm(self):
     self._RunWithoutBatchNormTestOverParameters(
-        self._TestQuantize_Conv2dWithoutBatchNorm)
+        self._TestQuantize_FCWithoutBatchNorm)
 
   def _TestQuantize_FCWithoutBatchNorm(self, activation, activation_op_name,
-                                       with_bypass, delay):
+                                       with_bypass, delay, use_resource):
     """Tests quantization: inputs -> FC no batch norm -> Activation.
 
     Args:
@@ -147,17 +202,22 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with_bypass: Bool, when true there is an extra connection added from
         inputs to just before Activation.
       delay: Int (optional), delay in number of steps until quantization starts.
+      use_resource: Bool, when true uses resource variables.
     """
     graph = ops.Graph()
     with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
       batch_size, depth = 5, 256
       inputs = array_ops.zeros((batch_size, depth))
       out_depth = 256 if with_bypass else 128
       activation_fn = None if with_bypass else activation
       scope = 'test/test2' if with_bypass else 'test'
-      node = fully_connected(inputs, out_depth,
-                             weights_initializer=self._WeightInit(0.03),
-                             activation_fn=activation_fn, scope=scope)
+      node = fully_connected(
+          inputs,
+          out_depth,
+          weights_initializer=self._WeightInit(0.03),
+          activation_fn=activation_fn,
+          scope=scope)
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
         node = activation(node, name='test/' + activation_op_name)
@@ -166,53 +226,16 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         array_ops.identity(node, name='control_dependency')
       quantize.Quantize(graph, True, quant_delay=delay)
 
-    quantization_node_name = 'FakeQuantWithMinMaxVars'
-    weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
-                                                quantization_node_name)
-    self.assertEqual(weights_quant.type, quantization_node_name)
-    expected_inputs = [
-        scope + '/weights_quant/AssignMinLast',
-        scope + '/weights_quant/AssignMaxLast', scope + '/weights/read'
-    ]
-    self._AssertInputOpsAre(weights_quant, expected_inputs)
-    if delay and delay > 0:
-      output_op_name = scope + '/weights_quant/delayed_quant/Switch_1'
-    else:
-      output_op_name = scope + '/MatMul'
-    self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
+    self._AssertCorrectQuantizedGraphWithoutBatchNorm(
+        graph, scope, 'MatMul', activation_op_name, with_bypass, delay,
+        use_resource)
 
-    if with_bypass:
-      conv_quant = graph.get_operation_by_name(scope + '/conv_quant/' +
-                                               quantization_node_name)
-      self.assertEqual(conv_quant.type, quantization_node_name)
-      expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/BiasAdd'
-      ]
-      self._AssertInputOpsAre(conv_quant, expected_inputs)
-      output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
-                        if delay else 'test/Add')
-      self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
-
-    act_quant = graph.get_operation_by_name('test/act_quant/' +
-                                            quantization_node_name)
-    self.assertEqual(act_quant.type, quantization_node_name)
-    expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
-        'test/' + activation_op_name
-    ]
-    self._AssertInputOpsAre(act_quant, expected_inputs)
-    output_op_name = ('test/act_quant/delayed_quant/Switch_1'
-                      if delay else 'control_dependency')
-    self._AssertOutputGoesToOps(act_quant, graph, [output_op_name])
-    self._TestIdempotent(graph)
-
-  def testQuantize_FCWithoutBatchNorm(self):
+  def testQuantize_DepthwiseConv2dWithoutBatchNorm(self):
     self._RunWithoutBatchNormTestOverParameters(
-        self._TestQuantize_FCWithoutBatchNorm)
+        self._TestQuantize_DepthwiseConv2dWithoutBatchNorm)
 
   def _TestQuantize_DepthwiseConv2dWithoutBatchNorm(
-      self, activation, activation_op_name, with_bypass, delay):
+      self, activation, activation_op_name, with_bypass, delay, use_resource):
     """Tests quantization: inputs -> DWConv2d no batch norm -> Activation.
 
     Args:
@@ -222,18 +245,25 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with_bypass: Bool, when true there is an extra connection added from
         inputs to just before Activation.
       delay: Int (optional), delay in number of steps until quantization starts.
+      use_resource: Bool, when true uses resource variables.
     """
     graph = ops.Graph()
     with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
       batch_size, height, width, depth = 5, 128, 128, 3
       inputs = array_ops.zeros((batch_size, height, width, depth))
       stride = 1 if with_bypass else 2
       activation_fn = None if with_bypass else activation
       scope = 'test/test2' if with_bypass else 'test'
-      node = separable_conv2d(inputs, None, [5, 5], stride=stride,
-                              depth_multiplier=1.0, padding='SAME',
-                              weights_initializer=self._WeightInit(0.09),
-                              activation_fn=activation_fn, scope=scope)
+      node = separable_conv2d(
+          inputs,
+          None, [5, 5],
+          stride=stride,
+          depth_multiplier=1.0,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=activation_fn,
+          scope=scope)
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
         node = activation(node, name='test/' + activation_op_name)
@@ -242,51 +272,9 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         array_ops.identity(node, name='control_dependency')
       quantize.Quantize(graph, True, quant_delay=delay)
 
-    quantization_node_name = 'FakeQuantWithMinMaxVars'
-    weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
-                                                quantization_node_name)
-    self.assertEqual(weights_quant.type, quantization_node_name)
-    expected_inputs = [
-        scope + '/weights_quant/AssignMinLast',
-        scope + '/weights_quant/AssignMaxLast',
-        scope + '/depthwise_weights/read'
-    ]
-    self._AssertInputOpsAre(weights_quant, expected_inputs)
-    if delay and delay > 0:
-      output_op_name = scope + '/weights_quant/delayed_quant/Switch_1'
-    else:
-      output_op_name = scope + '/depthwise'
-    self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
-
-    if with_bypass:
-      conv_quant = graph.get_operation_by_name(scope + '/conv_quant/' +
-                                               quantization_node_name)
-      self.assertEqual(conv_quant.type, quantization_node_name)
-      expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/BiasAdd'
-      ]
-      self._AssertInputOpsAre(conv_quant, expected_inputs)
-      output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
-                        if delay else 'test/Add')
-      self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
-
-    act_quant = graph.get_operation_by_name('test/act_quant/' +
-                                            quantization_node_name)
-    self.assertEqual(act_quant.type, quantization_node_name)
-    expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
-        'test/' + activation_op_name
-    ]
-    self._AssertInputOpsAre(act_quant, expected_inputs)
-    output_op_name = ('test/act_quant/delayed_quant/Switch_1'
-                      if delay else 'control_dependency')
-    self._AssertOutputGoesToOps(act_quant, graph, [output_op_name])
-    self._TestIdempotent(graph)
-
-  def testQuantize_DepthwiseConv2dWithoutBatchNorm(self):
-    self._RunWithoutBatchNormTestOverParameters(
-        self._TestQuantize_DepthwiseConv2dWithoutBatchNorm)
+    self._AssertCorrectQuantizedGraphWithoutBatchNorm(
+        graph, scope, 'DepthwiseConv2dNative', activation_op_name, with_bypass,
+        delay, use_resource)
 
   def _RunBatchNormTestOverParameters(self, test_fn):
     # TODO(suharshs): Use parameterized test once OSS TF supports it.
@@ -318,13 +306,88 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         (array_ops.identity, 'Identity', True, 5000, True)
     ]
     for params in parameters_list:
-      test_fn(params[0], params[1], params[2], params[3], params[4])
+      # Test everything with resource variables and normal variables.
+      test_fn(params[0], params[1], params[2], params[3], params[4], False)
+      test_fn(params[0], params[1], params[2], params[3], params[4], True)
+
+  def _AssertCorrectQuantizedGraphWithBatchNorm(self, graph, scope, layer,
+                                                activation_op_name, with_bypass,
+                                                delay, use_resource):
+    quantization_node_name = 'FakeQuantWithMinMaxVars'
+    weights_quant = graph.get_operation_by_name(
+        scope + '/weights_quant/' + quantization_node_name)
+    self.assertEqual(weights_quant.type, quantization_node_name)
+    if use_resource:
+      expected_inputs = [
+          scope + '/weights_quant/FakeQuantWithMinMaxVars/ReadVariableOp',
+          scope + '/weights_quant/FakeQuantWithMinMaxVars/ReadVariableOp_1',
+      ]
+    else:
+      expected_inputs = [
+          scope + '/weights_quant/' + 'AssignMinLast',
+          scope + '/weights_quant/' + 'AssignMaxLast'
+      ]
+    expected_inputs.append(scope + '/mul_fold')
+
+    self._AssertInputOpsAre(weights_quant, expected_inputs)
+    if layer == 'DepthwiseConv2dNative':
+      output_op_name = scope + ('/weights_quant/delayed_quant/Switch_1'
+                                if delay else '/depthwise_Fold')
+    else:
+      output_op_name = scope + ('/weights_quant/delayed_quant/Switch_1'
+                                if delay else '/' + layer + '_Fold')
+    self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
+
+    if with_bypass:
+      conv_quant = graph.get_operation_by_name(
+          scope + '/conv_quant/' + quantization_node_name)
+      self.assertEqual(conv_quant.type, quantization_node_name)
+
+      if use_resource:
+        expected_inputs = [
+            scope + '/conv_quant/FakeQuantWithMinMaxVars/ReadVariableOp',
+            scope + '/conv_quant/FakeQuantWithMinMaxVars/ReadVariableOp_1',
+        ]
+      else:
+        expected_inputs = [
+            scope + '/conv_quant/AssignMinEma',
+            scope + '/conv_quant/AssignMaxEma',
+        ]
+      expected_inputs.append(scope + '/add_fold')
+
+      self._AssertInputOpsAre(conv_quant, expected_inputs)
+      output_op_name = (
+          scope + '/conv_quant/delayed_quant/Switch_1' if delay else 'test/Add')
+      self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
+
+    act_quant = graph.get_operation_by_name(
+        'test/act_quant/' + quantization_node_name)
+    self.assertEqual(act_quant.type, quantization_node_name)
+
+    if use_resource:
+      expected_inputs = [
+          'test/act_quant/FakeQuantWithMinMaxVars/ReadVariableOp',
+          'test/act_quant/FakeQuantWithMinMaxVars/ReadVariableOp_1',
+      ]
+    else:
+      expected_inputs = [
+          'test/act_quant/AssignMinEma',
+          'test/act_quant/AssignMaxEma',
+      ]
+    expected_inputs.append('test/' + activation_op_name)
+
+    self._AssertInputOpsAre(act_quant, expected_inputs)
+    output_op_name = ('test/act_quant/delayed_quant/Switch_1'
+                      if delay else 'control_dependency')
+    self._AssertOutputGoesToOps(act_quant, graph, [output_op_name])
+    self._AssertIdempotent(graph)
 
   def testQuantize_Conv2dWithBatchNorm(self):
     self._RunBatchNormTestOverParameters(self._TestQuantize_Conv2dWithBatchNorm)
 
   def _TestQuantize_Conv2dWithBatchNorm(self, activation, activation_op_name,
-                                        with_bypass, delay, fused_batch_norm):
+                                        with_bypass, delay, fused_batch_norm,
+                                        use_resource):
     """Tests quantization: inputs -> Conv2d with batch norm -> Activation.
 
     Args:
@@ -335,9 +398,11 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         inputs to just before Activation.
       delay: Int (optional), delay in number of steps until quantization starts.
       fused_batch_norm: Bool, when true use FusedBatchNorm.
+      use_resource: Bool, when true uses resource variables.
     """
     graph = ops.Graph()
     with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
       batch_size, height, width, depth = 5, 128, 128, 3
       inputs = array_ops.zeros((batch_size, height, width, depth))
       stride = 1 if with_bypass else 2
@@ -354,7 +419,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           normalizer_params=self._BatchNormParams(fused_batch_norm),
           scope=scope)
 
-      # Manually add a bypass (optionaly) and an activation.
+      # Manually add a bypass (optional) and an activation.
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
 
@@ -367,50 +432,16 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       fold_batch_norms.FoldBatchNorms(graph, is_training=True)
       quantize.Quantize(graph, True, quant_delay=delay)
 
-    quantization_node_name = 'FakeQuantWithMinMaxVars'
-    weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
-                                                quantization_node_name)
-    self.assertEqual(weights_quant.type, quantization_node_name)
-    expected_inputs = [
-        scope + '/weights_quant/' + 'AssignMinLast',
-        scope + '/weights_quant/' + 'AssignMaxLast', scope + '/mul_fold'
-    ]
-    self._AssertInputOpsAre(weights_quant, expected_inputs)
-    output_op_name = scope + ('/weights_quant/delayed_quant/Switch_1'
-                              if delay else '/Conv2D_Fold')
-    self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
-
-    if with_bypass:
-      conv_quant = graph.get_operation_by_name(scope + '/conv_quant/' +
-                                               quantization_node_name)
-      self.assertEqual(conv_quant.type, quantization_node_name)
-      expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/add_fold'
-      ]
-      self._AssertInputOpsAre(conv_quant, expected_inputs)
-      output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
-                        if delay else 'test/Add')
-      self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
-
-    act_quant = graph.get_operation_by_name('test/act_quant/' +
-                                            quantization_node_name)
-    self.assertEqual(act_quant.type, quantization_node_name)
-    expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
-        'test/' + activation_op_name
-    ]
-    self._AssertInputOpsAre(act_quant, expected_inputs)
-    output_op_name = ('test/act_quant/delayed_quant/Switch_1'
-                      if delay else 'control_dependency')
-    self._AssertOutputGoesToOps(act_quant, graph, [output_op_name])
-    self._TestIdempotent(graph)
+      self._AssertCorrectQuantizedGraphWithBatchNorm(
+          graph, scope, 'Conv2D', activation_op_name, with_bypass, delay,
+          use_resource)
 
   def testQuantize_FCWithBatchNorm(self):
     self._RunBatchNormTestOverParameters(self._TestQuantize_FCWithBatchNorm)
 
   def _TestQuantize_FCWithBatchNorm(self, activation, activation_op_name,
-                                    with_bypass, delay, fused_batch_norm):
+                                    with_bypass, delay, fused_batch_norm,
+                                    use_resource):
     """Tests quantization: inputs -> FC with batch norm -> Activation.
 
     Args:
@@ -421,9 +452,11 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         inputs to just before Activation.
       delay: Int (optional), delay in number of steps until quantization starts.
       fused_batch_norm: Bool, when true use FusedBatchNorm.
+      use_resource: Bool, when true uses resource variables.
     """
     graph = ops.Graph()
     with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
       batch_size, depth = 5, 256
       inputs = array_ops.zeros((batch_size, depth))
       out_depth = 256 if with_bypass else 128
@@ -437,7 +470,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           normalizer_params=self._BatchNormParams(fused_batch_norm),
           scope=scope)
 
-      # Manually add a bypass (optionaly) and an activation.
+      # Manually add a bypass (optional) and an activation.
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
 
@@ -451,44 +484,9 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       quantize.Quantize(graph, True, quant_delay=delay)
 
-    quantization_node_name = 'FakeQuantWithMinMaxVars'
-    weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
-                                                quantization_node_name)
-    self.assertEqual(weights_quant.type, quantization_node_name)
-    expected_inputs = [
-        scope + '/weights_quant/' + 'AssignMinLast',
-        scope + '/weights_quant/' + 'AssignMaxLast', scope + '/mul_fold'
-    ]
-    self._AssertInputOpsAre(weights_quant, expected_inputs)
-    output_op_name = scope + ('/weights_quant/delayed_quant/Switch_1'
-                              if delay else '/MatMul_Fold')
-    self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
-
-    if with_bypass:
-      conv_quant = graph.get_operation_by_name(scope + '/conv_quant/' +
-                                               quantization_node_name)
-      self.assertEqual(conv_quant.type, quantization_node_name)
-      expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/add_fold'
-      ]
-      self._AssertInputOpsAre(conv_quant, expected_inputs)
-      output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
-                        if delay else 'test/Add')
-      self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
-
-    act_quant = graph.get_operation_by_name('test/act_quant/' +
-                                            quantization_node_name)
-    self.assertEqual(act_quant.type, quantization_node_name)
-    expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
-        'test/' + activation_op_name
-    ]
-    self._AssertInputOpsAre(act_quant, expected_inputs)
-    output_op_name = ('test/act_quant/delayed_quant/Switch_1'
-                      if delay else 'control_dependency')
-    self._AssertOutputGoesToOps(act_quant, graph, [output_op_name])
-    self._TestIdempotent(graph)
+    self._AssertCorrectQuantizedGraphWithBatchNorm(
+        graph, scope, 'MatMul', activation_op_name, with_bypass, delay,
+        use_resource)
 
   def testQuantize_DepthwiseConv2dWithBatchNorm(self):
     self._RunBatchNormTestOverParameters(
@@ -496,7 +494,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
   def _TestQuantize_DepthwiseConv2dWithBatchNorm(
       self, activation, activation_op_name, with_bypass, delay,
-      fused_batch_norm):
+      fused_batch_norm, use_resource):
     """Tests quantization: inputs -> DWConv2d with batch norm -> Activation.
 
     Args:
@@ -507,9 +505,11 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         inputs to just before Activation.
       delay: Int (optional), delay in number of steps until quantization starts.
       fused_batch_norm: Bool, when true use FusedBatchNorm.
+      use_resource: Bool, when true uses resource variables.
     """
     graph = ops.Graph()
     with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
       batch_size, height, width, depth = 5, 128, 128, 3
       inputs = array_ops.zeros((batch_size, height, width, depth))
       stride = 1 if with_bypass else 2
@@ -526,7 +526,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           normalizer_params=self._BatchNormParams(fused_batch_norm),
           scope=scope)
 
-      # Manually add a bypass (optionaly) and an activation.
+      # Manually add a bypass (optional) and an activation.
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
 
@@ -539,46 +539,11 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       fold_batch_norms.FoldBatchNorms(graph, is_training=True)
       quantize.Quantize(graph, True, quant_delay=delay)
 
-    quantization_node_name = 'FakeQuantWithMinMaxVars'
-    weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
-                                                quantization_node_name)
-    self.assertEqual(weights_quant.type, quantization_node_name)
-    expected_inputs = [
-        scope + '/weights_quant/' + 'AssignMinLast',
-        scope + '/weights_quant/' + 'AssignMaxLast', scope + '/mul_fold'
-    ]
-    self._AssertInputOpsAre(weights_quant, expected_inputs)
-    output_op_name = scope + ('/weights_quant/delayed_quant/Switch_1'
-                              if delay else '/depthwise_Fold')
-    self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
+      self._AssertCorrectQuantizedGraphWithBatchNorm(
+          graph, scope, 'DepthwiseConv2dNative', activation_op_name,
+          with_bypass, delay, use_resource)
 
-    if with_bypass:
-      conv_quant = graph.get_operation_by_name(scope + '/conv_quant/' +
-                                               quantization_node_name)
-      self.assertEqual(conv_quant.type, quantization_node_name)
-      expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/add_fold'
-      ]
-      self._AssertInputOpsAre(conv_quant, expected_inputs)
-      output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
-                        if delay else 'test/Add')
-      self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
-
-    act_quant = graph.get_operation_by_name('test/act_quant/' +
-                                            quantization_node_name)
-    self.assertEqual(act_quant.type, quantization_node_name)
-    expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
-        'test/' + activation_op_name
-    ]
-    self._AssertInputOpsAre(act_quant, expected_inputs)
-    output_op_name = ('test/act_quant/delayed_quant/Switch_1'
-                      if delay else 'control_dependency')
-    self._AssertOutputGoesToOps(act_quant, graph, [output_op_name])
-    self._TestIdempotent(graph)
-
-  def _TestIdempotent(self, graph):
+  def _AssertIdempotent(self, graph):
     # Ensure that calling the rewrite again doesn't change the graph.
     graph_def_before = str(graph.as_graph_def())
     with graph.as_default():
@@ -600,7 +565,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       stddev: Standard deviation of normal variable.
 
     Returns:
-      An initialized that initialzes with a truncated normal variable.
+      An initialized that initializes with a truncated normal variable.
     """
     return init_ops.truncated_normal_initializer(stddev=stddev)
 

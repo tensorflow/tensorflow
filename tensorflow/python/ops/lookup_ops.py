@@ -157,10 +157,10 @@ class InitializableLookupTableBase(LookupInterface):
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
-    if context.in_graph_mode():
-      name = table_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       name = context.context().scope_name
+    else:
+      name = table_ref.op.name.split("/")[-1]
     super(InitializableLookupTableBase,
           self).__init__(initializer.key_dtype, initializer.value_dtype,
                          name)
@@ -521,7 +521,7 @@ class TextFileInitializer(TableInitializerBase):
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g., if
     # it is a placeholder) then it does not make sense to track it as an asset.
-    if context.in_graph_mode() and constant_op.is_constant(filename):
+    if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 

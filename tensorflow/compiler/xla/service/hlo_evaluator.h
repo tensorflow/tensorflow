@@ -152,6 +152,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleTuple(HloInstruction* tuple) override;
 
+  Status HandleGather(HloInstruction* gather) override;
+
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleCopy(HloInstruction* copy) override;
@@ -160,7 +162,11 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCall(HloInstruction* call) override;
 
+  Status HandleFusion(HloInstruction* fusion) override;
+
   Status HandleWhile(HloInstruction* while_hlo) override;
+
+  Status HandleSelect(HloInstruction* select) override;
 
  private:
   // Returns the already-evaluated literal result for the instruction.

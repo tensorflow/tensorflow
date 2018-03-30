@@ -52,16 +52,14 @@ cc_library(
         ],
 )
 
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
+cc_library(
+    name = "xla_device_flags",
+    srcs = ["xla_device_flags.cc"],
+    hdrs = ["xla_device_flags.h"],
+    deps =
+        [
+            "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
         ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

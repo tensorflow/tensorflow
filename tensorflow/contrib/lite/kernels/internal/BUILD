@@ -149,6 +149,7 @@ cc_library(
         "common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_uint8.h",
+        "optimized/depthwiseconv_uint8_3x3_filter.h",
         "optimized/optimized_ops.h",
     ],
     copts = tflite_copts(),
@@ -212,7 +213,10 @@ cc_library(
         "compatibility.h",
         "quantization_util.h",
     ],
-    deps = [":round"],
+    deps = [
+        ":round",
+        ":types",
+    ],
 )
 
 cc_test(
@@ -427,15 +431,3 @@ cc_library(
 )
 
 exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

@@ -252,6 +252,21 @@ XLA_TEST_F(SelectAndScatterTest, R2S32) {
   ComputeAndCompareR2<int32>(&builder_, expected, {});
 }
 
+// Test for tie breaking rule in ge_f32_. When a tie is present, the operand
+// that has the lower lexicographical order (smaller index) should be chosen.
+XLA_TEST_F(SelectAndScatterTest, R2F32Tie) {
+  const auto operand = builder_.ConstantR2<float>(
+      {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}});
+  const auto source = builder_.ConstantR2<float>(
+      {{1.0f, 2.0f, 3.0f}, {4.f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}});
+  Array2D<float> expected(
+      {{12.f, 9.f, 0.f}, {15.f, 9.f, 0.f}, {0.f, 0.f, 0.f}});
+  builder_.SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3, 3},
+                            /*window_strides=*/{1, 1}, Padding::kSame, source,
+                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  ComputeAndCompareR2<float>(&builder_, expected, {}, ErrorSpec(1e-7));
+}
+
 // Similar to SelectAndScatterTest.R2S32 but the input is transposed.
 XLA_TEST_F(SelectAndScatterTest, ReshapeR2S32) {
   const auto operand = builder_.ConstantR2<int32>(

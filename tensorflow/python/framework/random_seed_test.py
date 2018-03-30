@@ -40,13 +40,13 @@ class RandomSeedTest(test.TestCase):
         ((2**31 - 1, 0), (0, 2**31 - 1)),  # Don't wrap to (0, 0) either
         ((0, 2**31 - 1), (0, 2**31 - 1)),  # Wrapping for the other argument
     ]
-    if context.in_graph_mode():
-      # 0 will be the default_graph._lastid.
-      test_cases.append(((1, None), (1, 0)))
-    else:
+    if context.executing_eagerly():
       # operation seed is random number generated based on global seed.
       # it's not tested due to possibility of platform or version difference.
       pass
+    else:
+      # 0 will be the default_graph._lastid.
+      test_cases.append(((1, None), (1, 0)))
     for tc in test_cases:
       tinput, toutput = tc[0], tc[1]
       random_seed.set_random_seed(tinput[0])

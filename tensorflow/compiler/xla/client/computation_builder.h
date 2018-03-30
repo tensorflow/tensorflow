@@ -104,15 +104,6 @@ class ComputationBuilder {
   // Retrieves the (inferred) result for the current computation's shape.
   StatusOr<ProgramShape> GetProgramShape();
 
-  // Checks that the operand has the given expected shape. Returns the operand
-  // if yes, fails with a CHECK error if no.
-  ComputationDataHandle CheckShape(const ComputationDataHandle& operand,
-                                   const Shape& expected_shape);
-
-  // Checks that the lhs and rhs results have the same shape.
-  void CheckSameShape(const ComputationDataHandle& lhs,
-                      const ComputationDataHandle& rhs);
-
   // Enqueues a constant with the value of the given literal onto the
   // computation.
   ComputationDataHandle ConstantLiteral(const Literal& literal);
@@ -509,6 +500,10 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   ComputationDataHandle Or(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
+  ComputationDataHandle Xor(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 

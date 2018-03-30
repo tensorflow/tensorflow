@@ -94,24 +94,22 @@ TF_Tensor* FloatTensor(float v) {
 // one cannot call ASSERT_* methods in non-void-returning functions (when
 // exceptions are disabled during compilation)
 void PlaceholderHelper(TF_Graph* graph, TF_Status* s, const char* name,
-                       TF_DataType dtype, TF_Operation** op) {
+                       TF_DataType dtype, const std::vector<int64_t>& dims,
+                       TF_Operation** op) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "Placeholder", name);
   TF_SetAttrType(desc, "dtype", dtype);
+  if (!dims.empty()) {
+    TF_SetAttrShape(desc, "shape", dims.data(), dims.size());
+  }
   *op = TF_FinishOperation(desc, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   ASSERT_NE(*op, nullptr);
 }
 
-TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name) {
+TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name,
+                          TF_DataType dtype, const std::vector<int64_t>& dims) {
   TF_Operation* op;
-  PlaceholderHelper(graph, s, name, TF_INT32, &op);
-  return op;
-}
-
-TF_Operation* PlaceholderFloat(TF_Graph* graph, TF_Status* s,
-                               const char* name) {
-  TF_Operation* op;
-  PlaceholderHelper(graph, s, name, TF_FLOAT, &op);
+  PlaceholderHelper(graph, s, name, dtype, dims, &op);
   return op;
 }
 

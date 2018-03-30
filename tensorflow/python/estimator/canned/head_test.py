@@ -842,6 +842,41 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
       }, summary_str, tol)
 
+  def test_train_with_optimizer(self):
+    n_classes = 3
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
+
+    logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
+    labels = np.array(((1,), (1,)), dtype=np.int64)
+    features = {'x': np.array(((42,),), dtype=np.int32)}
+    expected_train_result = 'my_train_op'
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        return string_ops.string_join(
+            [constant_op.constant(expected_train_result),
+             string_ops.as_string(loss, precision=2)])
+
+    # loss = sum(cross_entropy(labels, logits)) = sum(10, 0) = 10.
+    expected_loss = 10.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    tol = 1e-2
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      self.assertEqual(
+          six.b('{0:s}{1:.2f}'.format(expected_train_result, expected_loss)),
+          train_result)
+
   def test_train_summaries_with_head_name(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
@@ -1559,11 +1594,13 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         # loss_mean = loss/2 = 41./2 = 20.5
         keys.LOSS_MEAN: 20.5,
         keys.ACCURACY: 1./2,
+        keys.PRECISION: 1.,
+        keys.RECALL: 1./2,
         keys.PREDICTION_MEAN: 1./2,
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 0.74999905,
+        keys.AUC_PR: 1.,
     }
 
     # Assert spec contains expected tensors.
@@ -1602,11 +1639,13 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     expected_metric_keys = [
         '{}/some_binary_head'.format(metric_keys.MetricKeys.LOSS_MEAN),
         '{}/some_binary_head'.format(metric_keys.MetricKeys.ACCURACY),
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.PRECISION),
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.RECALL),
         '{}/some_binary_head'.format(metric_keys.MetricKeys.PREDICTION_MEAN),
         '{}/some_binary_head'.format(metric_keys.MetricKeys.LABEL_MEAN),
         '{}/some_binary_head'.format(metric_keys.MetricKeys.ACCURACY_BASELINE),
         '{}/some_binary_head'.format(metric_keys.MetricKeys.AUC),
-        '{}/some_binary_head'.format(metric_keys.MetricKeys.AUC_PR)
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.AUC_PR),
     ]
     self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
 
@@ -1637,11 +1676,13 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LOSS_MEAN: expected_unregularized_loss,
         keys.LOSS_REGULARIZATION: expected_regularization_loss,
         keys.ACCURACY: 1./2,
+        keys.PRECISION: 1.,
+        keys.RECALL: 1./2,
         keys.PREDICTION_MEAN: 1./2,
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 0.75,
+        keys.AUC_PR: 1.,
     }
 
     # Assert predictions, loss, and metrics.
@@ -1742,11 +1783,13 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     expected_metrics = {
         keys.LOSS_MEAN: 1.62652338 / 2.,
         keys.ACCURACY: 1./2,
+        keys.PRECISION: 1.,
+        keys.RECALL: .5,
         keys.PREDICTION_MEAN: 1./2,
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 0.74999905,
+        keys.AUC_PR: 1.,
         keys.ACCURACY_AT_THRESHOLD % thresholds[0]: 1.,
         keys.PRECISION_AT_THRESHOLD % thresholds[0]: 1.,
         keys.RECALL_AT_THRESHOLD % thresholds[0]: 1.,
@@ -1933,6 +1976,39 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
           # loss_mean = loss/2 = 41/2 = 20.5
           metric_keys.MetricKeys.LOSS_MEAN: 20.5,
       }, summary_str)
+
+  def test_train_with_optimizer(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    logits = np.array(((45,), (-41,),), dtype=np.float32)
+    labels = np.array(((1,), (1,),), dtype=np.float64)
+    expected_train_result = b'my_train_op'
+    features = {'x': np.array(((42,),), dtype=np.float32)}
+    # loss = sum(cross_entropy(labels, logits)) = sum(0, 41) = 41
+    expected_loss = 41.
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        with ops.control_dependencies((check_ops.assert_equal(
+            math_ops.to_float(expected_loss), math_ops.to_float(loss),
+            name='assert_loss'),)):
+          return constant_op.constant(expected_train_result)
+
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss)
+      self.assertEqual(expected_train_result, train_result)
 
   def test_train_summaries_with_head_name(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
@@ -2187,13 +2263,15 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LOSS_MEAN: 26.9615384615,
         # accuracy = (1*1 + .1*0 + 1.5*0)/(1 + .1 + 1.5) = 1/2.6 = .38461538461
         keys.ACCURACY: .38461538461,
+        keys.PRECISION: 1./2.5,
+        keys.RECALL: 1./1.1,
         # prediction_mean = (1*1 + .1*0 + 1.5*1)/(1 + .1 + 1.5) = 2.5/2.6
         #                 = .96153846153
         keys.PREDICTION_MEAN: .96153846153,
         keys.LABEL_MEAN: expected_label_mean,
         keys.ACCURACY_BASELINE: 1 - expected_label_mean,
         keys.AUC: .45454565,
-        keys.AUC_PR: .21923049,
+        keys.AUC_PR: .6737757325172424,
     }
 
     # Assert spec contains expected tensors.
@@ -2486,13 +2564,15 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     expected_metrics = {
         keys.LOSS_MEAN: expected_loss / np.sum(weights),
         keys.ACCURACY: (1.*0. + 1.5*1. + 2.*1. + 2.5*0.) / np.sum(weights),
+        keys.PRECISION: 2.0/3.0,
+        keys.RECALL: 2.0/4.5,
         keys.PREDICTION_MEAN: (1.*1 + 1.5*0 + 2.*1 + 2.5*0) / np.sum(weights),
         keys.LABEL_MEAN: (1.*0 + 1.5*0 + 2.*1 + 2.5*1) / np.sum(weights),
         keys.ACCURACY_BASELINE: (1.*0 + 1.5*0 + 2.*1 + 2.5*1) / np.sum(weights),
         # We cannot reliably calculate AUC with only 4 data points, but the
         # values should not change because of backwards-compatibility.
         keys.AUC: 0.5222,
-        keys.AUC_PR: 0.5119,
+        keys.AUC_PR: 0.7341,
     }
 
     tol = 1e-2
@@ -3063,6 +3143,40 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
           # loss_mean = loss/2 = 13/2 = 6.5
           metric_keys.MetricKeys.LOSS_MEAN: 6.5,
       }, summary_str)
+
+  def test_train_with_optimizer(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss()
+    self.assertEqual(1, head.logits_dimension)
+
+    # Create estimator spec.
+    logits = np.array(((45,), (41,),), dtype=np.float32)
+    labels = np.array(((43.,), (44.,),), dtype=np.float64)
+    expected_train_result = b'my_train_op'
+    features = {'x': np.array(((42.,),), dtype=np.float32)}
+    # loss = (43-45)^2 + (44-41)^2 = 4 + 9 = 13
+    expected_loss = 13
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        with ops.control_dependencies((check_ops.assert_equal(
+            math_ops.to_float(expected_loss), math_ops.to_float(loss),
+            name='assert_loss'),)):
+          return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss)
+      self.assertEqual(expected_train_result, train_result)
 
   def test_train_summaries_with_head_name(self):
     head = head_lib._regression_head_with_mean_squared_error_loss(

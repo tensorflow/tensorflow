@@ -127,8 +127,11 @@ See the @{$python/math_ops} guide.
 @@segment_min
 @@segment_max
 @@segment_mean
+@@to_complex128
+@@to_complex64
 @@unsorted_segment_sum
 @@unsorted_segment_max
+@@unsorted_segment_mean
 @@unsorted_segment_min
 @@unsorted_segment_prod
 @@unsorted_segment_sqrt_n
@@ -164,6 +167,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
+from tensorflow.python.platform import tf_logging as logging
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -177,6 +181,13 @@ linspace = gen_math_ops.lin_space
 
 arg_max = deprecation.deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+tf_export("arg_max")(arg_max)
+tf_export("arg_min")(arg_min)
+
+
+# This is set by resource_variable_ops.py. It is included in this way since
+# there is a circular dependency between math_ops and resource_variable_ops
+_resource_variable_type = None
 
 
 def _set_doc(doc):
@@ -326,7 +337,7 @@ def multiply(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
 
-multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Mul", "`tf.multiply`")
+multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "`tf.multiply`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
@@ -765,16 +776,18 @@ def cast(x, dtype, name=None):
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
-      return sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
+      x = sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
     else:
       # TODO(josh11b): If x is not already a Tensor, we could return
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.base_dtype == base_type:
-        return x
-      return gen_math_ops.cast(x, base_type, name=name)
+      if x.dtype.base_dtype != base_type:
+        x = gen_math_ops.cast(x, base_type, name=name)
+    if x.dtype.is_complex and base_type.is_floating:
+      logging.warn("Casting complex to real discards imaginary part.")
+    return x
 
 
 @tf_export("saturate_cast")
@@ -1179,11 +1192,16 @@ def floordiv(x, y, name=None):
 
 
 realdiv = gen_math_ops.real_div
+tf_export("realdiv")(realdiv)
 truncatediv = gen_math_ops.truncate_div
+tf_export("truncatediv")(truncatediv)
 # TODO(aselle): Rename this to floordiv when we can.
 floor_div = gen_math_ops.floor_div
+tf_export("floor_div")(floor_div)
 truncatemod = gen_math_ops.truncate_mod
+tf_export("truncatemod")(truncatemod)
 floormod = gen_math_ops.floor_mod
+tf_export("floormod", "mod")(floormod)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -2039,8 +2057,15 @@ def matmul(a,
     if transpose_b and adjoint_b:
       raise ValueError("Only one of transpose_b and adjoint_b can be True.")
 
-    a = ops.convert_to_tensor(a, name="a")
-    b = ops.convert_to_tensor(b, name="b")
+    if context.executing_eagerly():
+      if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
+        a = ops.convert_to_tensor(a, name="a")
+      if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
+        b = ops.convert_to_tensor(b, name="b")
+    else:
+      a = ops.convert_to_tensor(a, name="a")
+      b = ops.convert_to_tensor(b, name="b")
+
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
@@ -2073,8 +2098,9 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16:
-      # matmul currently doesn't handle bfloat16 inputs.
+    if (a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16 and
+        a.dtype != b.dtype):
+      # matmul currently doesn't handle mixed-precision inputs.
       use_sparse_matmul = True
     if use_sparse_matmul:
       ret = sparse_matmul(
@@ -2099,6 +2125,7 @@ def matmul(a,
 _OverrideBinaryOperatorHelper(matmul, "matmul")
 
 sparse_matmul = gen_math_ops.sparse_mat_mul
+tf_export("sparse_matmul")(sparse_matmul)
 
 
 @ops.RegisterStatistics("MatMul", "flops")
@@ -2274,7 +2301,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     return inputs[0]
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
-  elif context.in_eager_mode():
+  elif context.executing_eagerly():
     # TemporaryVariable not currently supported in eager mode; fall back
     # onto AddN for now.
     # TODO(frreiss) remove this once the lifetime of eager variables gets

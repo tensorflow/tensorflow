@@ -69,6 +69,17 @@ class BatchNormalizationTest
     CHECK_EQ(kY, input_array_.width());
   }
 
+  ComputationDataHandle CheckShape(ComputationBuilder* b,
+                                   const ComputationDataHandle& operand,
+                                   const Shape& expected_shape) const {
+    std::unique_ptr<Shape> actual_shape =
+        b->GetShape(operand).ConsumeValueOrDie();
+    CHECK(ShapeUtil::Equal(expected_shape, *actual_shape))
+        << "want " << ShapeUtil::HumanString(expected_shape) << " got "
+        << ShapeUtil::HumanString(*actual_shape);
+    return operand;
+  }
+
   static constexpr int64 kSamples = 3;
   static constexpr int64 kX = 1;
   static constexpr int64 kY = 1;
@@ -164,14 +175,15 @@ XLA_TEST_P(BatchNormalizationTest, VarianceToStddev) {
 XLA_TEST_P(BatchNormalizationTest, SpecComparisonForward) {
   ComputationBuilder builder(client_, "batch_normalize_per_spec");
   auto input_activations =
-      builder.CheckShape(builder.ConstantLiteral(input_literal_),
-                         ShapeUtil::MakeShape(F32, {3, 2, 1, 1}));
+      CheckShape(&builder, builder.ConstantLiteral(input_literal_),
+                 ShapeUtil::MakeShape(F32, {3, 2, 1, 1}));
   auto gamma = builder.ConstantR1<float>({1.0, 1.0});
   auto beta = builder.ConstantR1<float>({0.0, 0.0});
   Computation add = CreateScalarAddComputation(F32, &builder);
   // Reduce all dimensions except dimension 1.
   Shape TwoElementVectorF32 = ShapeUtil::MakeShape(F32, {2});
-  auto sum = builder.CheckShape(
+  auto sum = CheckShape(
+      &builder,
       builder.Reduce(input_activations, builder.ConstantR0<float>(0.0f), add,
                      /*dimensions_to_reduce=*/{0, 2, 3}),
       TwoElementVectorF32);
@@ -187,14 +199,16 @@ XLA_TEST_P(BatchNormalizationTest, SpecComparisonForward) {
   auto activation_deviations = builder.Sub(input_activations, set_means,
                                            /*broadcast_dimensions=*/{1});
   auto dev_squares = builder.SquareF32(activation_deviations);
-  auto sum_of_squares = builder.CheckShape(
+  auto sum_of_squares = CheckShape(
+      &builder,
       builder.Reduce(dev_squares, builder.ConstantR0<float>(0.0f), add,
                      /*dimensions_to_reduce=*/{0, 2, 3}),
       TwoElementVectorF32);
   auto variance = builder.Div(sum_of_squares, count);
   auto standard_deviation = builder.SqrtF32(variance);
-  auto standard_deviation_above_epsilon = builder.CheckShape(
-      builder.Gt(standard_deviation, epsilon), ShapeUtil::MakeShape(PRED, {2}));
+  auto standard_deviation_above_epsilon =
+      CheckShape(&builder, builder.Gt(standard_deviation, epsilon),
+                 ShapeUtil::MakeShape(PRED, {2}));
   auto gt_eps = builder.Select(standard_deviation_above_epsilon,
                                standard_deviation, epsilon2);
   auto normalization_factors = builder.ReciprocalF32(gt_eps);

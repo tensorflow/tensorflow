@@ -52,6 +52,7 @@ xla_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:session_proto",
     ],
 )
@@ -652,18 +653,6 @@ tf_cc_test(
 )
 
 # -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
 cc_header_only_library(

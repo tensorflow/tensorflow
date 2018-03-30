@@ -52,7 +52,7 @@ enum KernelType {
 struct OpData {
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
-  // be represented as a fixed point multipler plus a left shift.
+  // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
   int output_shift;
   // The range of the fused activation layer. For example for kNone and

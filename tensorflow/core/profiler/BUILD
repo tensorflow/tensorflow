@@ -4,21 +4,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
@@ -57,7 +42,6 @@ tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
     cc_api_version = 2,
-    go_api_version = 2,
     java_api_version = 2,
     protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],

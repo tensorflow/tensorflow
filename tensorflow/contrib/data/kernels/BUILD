@@ -10,6 +10,7 @@ cc_library(
     name = "prefetching_kernels",
     srcs = ["prefetching_kernels.cc"],
     deps = [
+        "//tensorflow/core:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
@@ -59,15 +60,4 @@ cc_library(
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

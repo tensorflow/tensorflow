@@ -98,6 +98,12 @@ from tensorflow.python.summary import summary
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
+# Import boosted trees ops to make sure the ops are registered (but unused).
+from tensorflow.python.ops import gen_boosted_trees_ops as _gen_boosted_trees_ops
+
+# Import cudnn rnn ops to make sure their ops are registered.
+from tensorflow.python.ops import gen_cudnn_rnn_ops as _
+
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -138,6 +144,10 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
+
+# Eager execution
+from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.framework.ops import enable_eager_execution
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -288,6 +298,12 @@ _allowed_symbols.extend([
     'COMPILER_VERSION',
     'CXX11_ABI_FLAG',
     'MONOLITHIC_BUILD',
+])
+
+# Eager execution
+_allowed_symbols.extend([
+    'enable_eager_execution',
+    'executing_eagerly',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly

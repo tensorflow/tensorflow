@@ -30,6 +30,7 @@ from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
 from tensorflow.contrib import data
 from tensorflow.contrib import deprecated
+from tensorflow.contrib import distribute
 from tensorflow.contrib import distributions
 from tensorflow.contrib import estimator
 from tensorflow.contrib import factorization
@@ -84,6 +85,7 @@ from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
 from tensorflow.contrib.lite.python import lite
+from tensorflow.contrib.optimizer_v2 import optimizer_v2_symbols as optimizer_v2
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs

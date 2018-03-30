@@ -360,7 +360,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Since we have already checked that weights are all there or none, we can
-  // check the existense of only one to the get the condition.
+  // check the existence of only one to get the condition.
   const bool use_cifg = (input_to_input_weights == nullptr);
   const bool use_peephole = (cell_to_output_weights != nullptr);
 

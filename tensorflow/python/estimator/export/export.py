@@ -21,17 +21,16 @@ from __future__ import print_function
 
 import collections
 import os
-import time
 
 import six
 
+from tensorflow.python.estimator import util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -329,13 +328,6 @@ def _log_signature_report(signature_def_map, excluded_signatures):
     logging.warn('Export includes no default signature!')
 
 
-# When we create a timestamped directory, there is a small chance that the
-# directory already exists because another worker is also writing exports.
-# In this case we just wait one second to get a new timestamp and try again.
-# If this fails several times in a row, then something is seriously wrong.
-MAX_DIRECTORY_CREATION_ATTEMPTS = 10
-
-
 def get_timestamped_export_dir(export_dir_base):
   """Builds a path to a new subdirectory within the base directory.
 
@@ -354,25 +346,7 @@ def get_timestamped_export_dir(export_dir_base):
     RuntimeError: if repeated attempts fail to obtain a unique timestamped
       directory name.
   """
-  attempts = 0
-  while attempts < MAX_DIRECTORY_CREATION_ATTEMPTS:
-    export_timestamp = int(time.time())
-
-    export_dir = os.path.join(
-        compat.as_bytes(export_dir_base),
-        compat.as_bytes(str(export_timestamp)))
-    if not gfile.Exists(export_dir):
-      # Collisions are still possible (though extremely unlikely): this
-      # directory is not actually created yet, but it will be almost
-      # instantly on return from this function.
-      return export_dir
-    time.sleep(1)
-    attempts += 1
-    logging.warn(
-        'Export directory {} already exists; retrying (attempt {}/{})'.format(
-            export_dir, attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
-  raise RuntimeError('Failed to obtain a unique export directory name after '
-                     '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
+  return util.get_timestamped_dir(export_dir_base)
 
 
 def get_temp_export_dir(timestamped_export_dir):

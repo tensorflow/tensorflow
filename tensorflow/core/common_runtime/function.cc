@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -141,6 +142,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
+                             thread::ThreadPool* default_thread_pool,
                              const OptimizerOptions& optimizer_options,
                              CustomKernelCreator custom_kernel_creator,
                              ProcessFunctionLibraryRuntime* parent);
@@ -194,6 +196,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const FunctionLibraryDefinition* const base_lib_def_;
   GraphOptimizer optimizer_;
   const CustomKernelCreator custom_kernel_creator_;
+  Executor::Args::Runner default_runner_;
   const string device_name_;
 
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
@@ -243,6 +246,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
+    thread::ThreadPool* default_thread_pool,
     const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent)
@@ -253,6 +257,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       base_lib_def_(lib_def),
       optimizer_(optimizer_options),
       custom_kernel_creator_(std::move(custom_kernel_creator)),
+      default_runner_(nullptr),
       device_name_(device_ == nullptr
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
                        : device_->name()),
@@ -264,6 +269,18 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
   create_kernel_ = [this](const NodeDef& ndef, OpKernel** kernel) {
     return CreateKernel(ndef, kernel);
   };
+  thread::ThreadPool* pool = nullptr;
+  if (device_ != nullptr) {
+    pool = device_->tensorflow_device_thread_pool();
+  }
+  if (pool == nullptr) {
+    pool = default_thread_pool;
+  }
+  if (pool != nullptr) {
+    default_runner_ = [pool](Executor::Args::Closure c) {
+      pool->Schedule(std::move(c));
+    };
+  }
 }
 
 FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
@@ -479,11 +496,26 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   InstantiateOptions options_copy(options);
   options_copy.target = device_name_;
   const string key = Canonicalize(function_name, attrs, options_copy);
-  *handle = parent_->GetHandle(key);
-  if (*handle != kInvalidHandle) {
+
+  {
     mutex_lock l(mu_);
-    items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
-    return Status::OK();
+    *handle = parent_->GetHandle(key);
+    if (*handle != kInvalidHandle) {
+      FunctionLibraryRuntime::LocalHandle handle_on_device =
+          parent_->GetHandleOnDevice(device_name_, *handle);
+      if (handle_on_device == kInvalidLocalHandle) {
+        return errors::Internal("LocalHandle not found for handle ", *handle,
+                                ".");
+      }
+      auto item_handle = items_.find(handle_on_device);
+      if (item_handle == items_.end()) {
+        return errors::Internal("LocalHandle ", handle_on_device,
+                                " for handle ", *handle,
+                                " not found in items.");
+      }
+      item_handle->second->Ref();
+      return Status::OK();
+    }
   }
 
   Status s;
@@ -536,6 +568,7 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   }
 
   LocalHandle h = parent_->GetHandleOnDevice(device_name_, handle);
+  CHECK_NE(h, kInvalidLocalHandle);
   mutex_lock l(mu_);
   CHECK_EQ(1, items_.count(h));
   Item* item = items_[h];
@@ -763,12 +796,16 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       done(status);
     };
   }
+
+  if (run_opts.runner == nullptr) {
+    run_opts.runner = &default_runner_;
+  }
+  DCHECK(run_opts.runner != nullptr);
+
   if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
     parent_->Run(run_opts, handle, args, rets, done);
     return;
   }
-
-  DCHECK(run_opts.runner != nullptr);
 
   Executor::Args* exec_args = new Executor::Args;
   // Inherit the step_id from the caller.
@@ -853,6 +890,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   if (!s.ok()) {
     done(s);
     return;
+  }
+  if (run_opts.runner == nullptr) {
+    run_opts.runner = &default_runner_;
   }
   DCHECK(run_opts.runner != nullptr);
 
@@ -942,21 +982,21 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
+    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent) {
   return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
-      device_mgr, env, device, graph_def_version, lib_def, optimizer_options,
-      std::move(custom_kernel_creator), parent));
+      device_mgr, env, device, graph_def_version, lib_def, thread_pool,
+      optimizer_options, std::move(custom_kernel_creator), parent));
 }
 
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
+    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
     ProcessFunctionLibraryRuntime* parent) {
   return NewFunctionLibraryRuntime(device_mgr, env, device, graph_def_version,
-                                   lib_def, optimizer_options,
+                                   lib_def, thread_pool, optimizer_options,
                                    GetCustomCreatorSingleton()->Get(), parent);
 }
 

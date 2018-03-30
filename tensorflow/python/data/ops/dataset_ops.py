@@ -91,7 +91,7 @@ class Dataset(object):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
           "execution is enabled.")
@@ -111,6 +111,24 @@ class Dataset(object):
                                  self.output_types, self.output_shapes,
                                  self.output_classes)
 
+  def __iter__(self):
+    """Creates an `Iterator` for enumerating the elements of this dataset.
+
+    The returned iterator implements the Python iterator protocol and therefore
+    can only be used in eager mode.
+
+    Returns:
+      An `Iterator` over the elements of this dataset.
+
+    Raises:
+      RuntimeError: If eager execution is enabled.
+    """
+    if context.executing_eagerly():
+      return iterator_ops.EagerIterator(self)
+    else:
+      raise RuntimeError("dataset.__iter__() is only supported when eager "
+                         "execution is enabled.")
+
   def make_one_shot_iterator(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
@@ -119,14 +137,9 @@ class Dataset(object):
 
     Returns:
       An `Iterator` over the elements of this dataset.
-
-    Raises:
-      RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
-      raise RuntimeError(
-          "dataset.make_one_shot_iterator is not supported when eager "
-          "execution is enabled.")
+    if context.executing_eagerly():
+      return iterator_ops.EagerIterator(self)
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
     @function.Defun(capture_by_value=True)
@@ -550,7 +563,7 @@ class Dataset(object):
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
-        maximum number elements that will be buffered when prefetching.
+        maximum number of elements that will be buffered when prefetching.
 
     Returns:
       Dataset: A `Dataset`.
@@ -774,11 +787,31 @@ class Dataset(object):
   def padded_batch(self, batch_size, padded_shapes, padding_values=None):
     """Combines consecutive elements of this dataset into padded batches.
 
-    Like `Dataset.dense_to_sparse_batch()`, this method combines
-    multiple consecutive elements of this dataset, which might have
-    different shapes, into a single element. The tensors in the
-    resulting element have an additional outer dimension, and are
-    padded to the respective shape in `padded_shapes`.
+    This transformation combines multiple consecutive elements of the input
+    dataset into a single element. Like @{tf.data.Dataset.batch}, the tensors
+    in the resulting element have an additional outer dimension, which will be
+    `batch_size` for all but the last element, and `N % batch_size` for the
+    last element (where `N` is the number of elements in this dataset). Unlike
+    @{tf.data.Dataset.batch}, the elements may have different shapes for some
+    of their components, and this transformation will pad each component to
+    the respective shape in `padding_shapes`. The `padding_shapes` argument
+    determines the resulting shape for each dimension of each component in an
+    output element:
+
+    * If the dimension is a constant (e.g. `tf.Dimension(37)`), the component
+      will be padded out to that length in that dimension.
+    * If the dimension is unknown (e.g. `tf.Dimension(None)`), the component
+      will be padded out to the maximum length of all elements in that
+      dimension.
+
+    NOTE: If the number of elements (`N`) in this dataset is not an exact
+    multiple of `batch_size`, the final batch contain smaller tensors with
+    shape `N % batch_size` in the batch dimension. If your program depends on
+    the batches having the same shape, consider using the
+    @{tf.contrib.data.padded_batch_and_drop_remainder} transformation instead.
+
+    See also @{tf.contrib.data.dense_to_sparse_batch}, which combines elements
+    that may have different shapes into a @{tf.SparseTensor}.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1917,47 +1950,13 @@ class FlatMapDataset(Dataset):
     return self._output_types
 
 
-class InterleaveDataset(Dataset):
+class InterleaveDataset(FlatMapDataset):
   """A `Dataset` that maps a function over its input and interleaves the result.
   """
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
-    super(InterleaveDataset, self).__init__()
-    self._input_dataset = input_dataset
-
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
-    def tf_map_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      if _should_unpack_args(nested_args):
-        dataset = map_func(*nested_args)
-      else:
-        dataset = map_func(nested_args)
-
-      if not isinstance(dataset, Dataset):
-        raise TypeError("`map_func` must return a `Dataset` object.")
-
-      self._output_classes = dataset.output_classes
-      self._output_types = dataset.output_types
-      self._output_shapes = dataset.output_shapes
-
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-    self._map_func = tf_map_func
-    self._map_func.add_to_graph(ops.get_default_graph())
-
+    super(InterleaveDataset, self).__init__(input_dataset, map_func)
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
@@ -1966,26 +1965,14 @@ class InterleaveDataset(Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.interleave_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,
+        self._map_func.captured_inputs,  # pylint: disable=protected-access
         self._cycle_length,
         self._block_length,
-        f=self._map_func,
+        f=self._map_func,  # pylint: disable=protected-access
         output_types=nest.flatten(
             sparse.as_dense_types(self.output_types, self.output_classes)),
         output_shapes=nest.flatten(
             sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
 
 
 class FilterDataset(Dataset):
@@ -2056,6 +2043,8 @@ class PrefetchDataset(Dataset):
     """See `Dataset.prefetch()` for details."""
     super(PrefetchDataset, self).__init__()
     self._input_dataset = input_dataset
+    if buffer_size is None:
+      buffer_size = -1  # This is the sentinel for auto-tuning.
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
 

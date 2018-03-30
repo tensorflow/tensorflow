@@ -83,7 +83,8 @@ class TensorListStack : public OpKernel {
                                         DataTypeString(l->element_dtype)));
     OP_REQUIRES(c, l->element_shape.IsFullyDefined(),
                 errors::InvalidArgument("Tried to stack elements from a list "
-                                        "with non-fully-defined shape."));
+                                        "with non-fully-defined shape: ",
+                                        l->element_shape.DebugString()));
     if (num_elements_ != -1) {
       OP_REQUIRES(c, l->tensors.size() == num_elements_,
                   errors::InvalidArgument("Operation expected a list with ",
@@ -159,15 +160,13 @@ class TensorListFromTensor : public OpKernel {
       tmp_shape.RemoveDim(0);
       OP_REQUIRES(c, tmp.CopyFrom(tmp, tmp_shape),
                   errors::Unknown("Unexpected shape error."));
-      if (tmp.IsAligned() || !DataTypeCanUseMemcpy(DataTypeToEnum<T>::value)) {
-        output_list.tensors.push_back(tmp);
-      } else {
-        Tensor aligned;
-        OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
-        aligned.flat<T>().device(c->eigen_device<Device>()) =
-            tmp.unaligned_flat<T>();
-        output_list.tensors.push_back(aligned);
-      }
+      // TODO(apassos) maybe not always align; but weird compiler bugs seem to
+      // prevent this.
+      Tensor aligned;
+      OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
+      aligned.flat<T>().device(c->eigen_device<Device>()) =
+          tmp.unaligned_flat<T>();
+      output_list.tensors.push_back(aligned);
     }
     output_tensor->scalar<Variant>()() = std::move(output_list);
   }

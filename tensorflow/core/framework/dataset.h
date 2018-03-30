@@ -305,6 +305,14 @@ class IteratorContext {
     return params_.allocator_getter(attrs);
   }
 
+  std::function<Allocator*(AllocatorAttributes)> allocator_getter() {
+    return params_.allocator_getter;
+  }
+
+  std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter() {
+    return params_.stats_aggregator_getter;
+  }
+
  private:
   Params params_;
 };

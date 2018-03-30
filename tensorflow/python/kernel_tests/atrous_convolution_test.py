@@ -83,14 +83,14 @@ class AtrousConvolutionTest(test.TestCase):
     checks = []
 
     def add_check(check, *args, **kwargs):
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         args_val, kwargs_val = self.evaluate([args, kwargs])
         check(*args_val, **kwargs_val)
       else:
         checks.append((check, args, kwargs))
 
     yield add_check
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       all_values = self.evaluate([[args, kwargs] for _, args, kwargs in checks])
       for (check, _, _), (args, kwargs) in zip(checks, all_values):
         check(*args, **kwargs)
