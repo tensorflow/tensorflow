@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -39,6 +40,10 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
           inp = AsControlDependency(inp);
         }
       }
+    } else if (IsCheckNumerics(node)) {
+      // Replace with Identity op which will be pruned later.
+      node.set_op("Identity");
+      node.mutable_attr()->erase("message");
     }
   }
   return Status::OK();
