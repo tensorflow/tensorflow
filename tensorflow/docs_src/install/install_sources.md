@@ -133,30 +133,21 @@ The following NVIDIA <i>hardware</i> must be installed on your system:
 
 The following NVIDIA <i>software</i> must be installed on your system:
 
-  * NVIDIA's Cuda Toolkit (>= 7.0). We recommend version 9.0.
+  * [CUDA Toolkit](http://nvidia.com/cuda) (>= 7.0). We recommend version 9.0.
     For details, see
-    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/#axzz4VZnqTJ2A).
-    Ensure that you append the relevant Cuda pathnames to the
+    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
+    Ensure that you append the relevant CUDA pathnames to the
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
-  * The NVIDIA drivers associated with NVIDIA's Cuda Toolkit.
-  * cuDNN (>= v3). We recommend version 6.0. For details, see
-    [NVIDIA's documentation](https://developer.nvidia.com/cudnn),
-    particularly the description of appending the appropriate pathname
-    to your `LD_LIBRARY_PATH` environment variable.
+  * [GPU drivers](http://nvidia.com/driver) supporting your version of the CUDA
+    Toolkit.
+  * [cuDNN SDK](http://developer.nvidia.com/cudnn) (>= v3). We recommend version 7.0. For details, see
+    [NVIDIA's documentation](http://docs.nvidia.com/deeplearning/sdk/cudnn-install/).
+  * [CUPTI](http://docs.nvidia.com/cuda/cupti/) ships with the CUDA Toolkit, but
+    you also need to append its path to the `LD_LIBRARY_PATH` environment
+    variable:
 
-Finally, you must also install `libcupti` which for Cuda Toolkit >= 8.0 you do via
-
-<pre> $ <b>sudo apt-get install cuda-command-line-tools</b> </pre>
-
-and add its path to your `LD_LIBRARY_PATH` environment variable:
-
-<pre> $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b> </pre>
-
-For Cuda Toolkit <= 7.5, you install `libcupti-dev` by invoking the following command:
-
-<pre> $ <b>sudo apt-get install libcupti-dev</b> </pre>
-
+    <pre> $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b> </pre>
 
 ### Next
 
@@ -240,8 +231,8 @@ such as compiler flags. You must run this script *prior* to
 creating the pip package and installing TensorFlow.
 
 If you wish to build TensorFlow with GPU, `configure` will ask
-you to specify the version numbers of Cuda and cuDNN. If several
-versions of Cuda or cuDNN are installed on your system, explicitly select
+you to specify the version numbers of CUDA and cuDNN. If several
+versions of CUDA or cuDNN are installed on your system, explicitly select
 the desired version instead of relying on the default.
 
 One of the questions that `configure` will ask is as follows:
@@ -289,12 +280,12 @@ Do you wish to build TensorFlow with CUDA support? [y/N] <b>Y</b>
 CUDA support will be enabled for TensorFlow
 Do you want to use clang as CUDA compiler? [y/N]
 nvcc will be used as CUDA compiler
-Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 9.0]: <b>9.0</b>
+Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 9.0]: <b>9.0</b>
 Please specify the location where CUDA 9.0 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
 Please specify which gcc should be used by nvcc as the host compiler. [Default is /usr/bin/gcc]:
 Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 7.0]: <b>7</b>
 Please specify the location where cuDNN 7 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
-Please specify a list of comma-separated Cuda compute capabilities you want to build with.
+Please specify a list of comma-separated CUDA compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
 [Default is: "3.5,5.2"]: <b>3.0</b>
@@ -304,14 +295,14 @@ Configuration finished
 </pre>
 
 If you told `configure` to build for GPU support, then `configure`
-will create a canonical set of symbolic links to the Cuda libraries
-on your system.  Therefore, every time you change the Cuda library paths,
+will create a canonical set of symbolic links to the CUDA libraries
+on your system.  Therefore, every time you change the CUDA library paths,
 you must rerun the `configure` script before re-invoking
 the <code>bazel build</code> command.
 
 Note the following:
 
-  * Although it is possible to build both Cuda and non-Cuda configs
+  * Although it is possible to build both CUDA and non-CUDA configs
     under the same source tree, we recommend running `bazel clean` when
     switching between these two configurations in the same source tree.
   * If you don't run the `configure` script *before* running the
@@ -359,10 +350,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.6.0 on Linux:
+for TensorFlow 1.7.0rc1 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.6.0-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.7.0rc1-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation
@@ -459,6 +450,8 @@ Stack Overflow and specify the `tensorflow` tag.
 **Linux**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.7.0rc1</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.10.0</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.7.0rc1</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.9.0</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.6.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.9.0</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow_gpu-1.6.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.9.0</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.5.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.8.0</td><td>N/A</td><td>N/A</td></tr>
@@ -478,6 +471,7 @@ Stack Overflow and specify the `tensorflow` tag.
 **Mac**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.7.0rc1</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.10.1</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.6.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.8.1</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.5.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.8.1</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.4.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.5.4</td><td>N/A</td><td>N/A</td></tr>
@@ -492,6 +486,8 @@ Stack Overflow and specify the `tensorflow` tag.
 **Windows**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.7.0rc1</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.7.0rc1</td><td>GPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.6.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow_gpu-1.6.0</td><td>GPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.5.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>

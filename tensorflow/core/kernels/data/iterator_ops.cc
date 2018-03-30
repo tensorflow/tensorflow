@@ -867,7 +867,7 @@ class IteratorGetNextOp : public AsyncOpKernel {
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     thread_pool_->Schedule(std::bind(
-        [this, ctx, iterator](DoneCallback done) {
+        [ctx, iterator](DoneCallback done) {
           std::vector<Tensor> components;
           bool end_of_sequence = false;
 

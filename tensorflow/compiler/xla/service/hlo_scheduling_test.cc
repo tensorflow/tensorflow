@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -87,6 +88,106 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   module_sequence[entry_computation] = {iter, data, tuple, while_op};
   EXPECT_EQ(56,
             MinimumMemoryForSequence(module_sequence, size_fn).ValueOrDie());
+}
+
+class HloSchedulingTest : public HloTestBase {};
+
+TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
+  // Tests scheduling of the following HLO code:
+  //
+  //   %ab = abs(%param)
+  //   %exp = exp(%param)
+  //   %add = add(%ab, %exp)
+  //   %negate = negate(%exp)
+  //   %sub = subtract(%add, %negate)
+  //
+  // %add should be scheduled before %negate because %add is the last (and only)
+  // use of %ab. Scheduling %add first then frees up %ab's buffer.
+  const Shape vec = ShapeUtil::MakeShape(xla::F32, {42});
+  auto builder = HloComputation::Builder(TestName());
+  auto param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, vec, "param"));
+  auto ab = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec, HloOpcode::kAbs, param));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec, HloOpcode::kExp, param));
+
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(vec, HloOpcode::kAdd, ab, exp));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec, HloOpcode::kNegate, exp));
+  auto sub = builder.AddInstruction(
+      HloInstruction::CreateBinary(vec, HloOpcode::kSubtract, add, negate));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      SequentialHloOrdering::HloModuleSequence sequence,
+      CreateMemoryMinimizingSequence(*module, [](const LogicalBuffer& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape());
+      }));
+  // Verify that all instructions are in the sequence.
+  EXPECT_EQ(module->entry_computation()->instruction_count(),
+            sequence.at(module->entry_computation()).size());
+
+  // The first instruction should be the parameter and the last the root "sub".
+  EXPECT_EQ(param, sequence.at(module->entry_computation()).front());
+  EXPECT_EQ(sub, sequence.at(module->entry_computation()).back());
+
+  SequentialHloOrdering ordering(module.get(), sequence);
+  EXPECT_TRUE(ordering.ExecutesBefore(add, negate));
+}
+
+TEST_F(HloSchedulingTest, ListSchedulerHandlesAliasing) {
+  const char* module_str = R"(
+HloModule test_aliasing_module
+
+ENTRY root {
+  param = s32[1000] parameter(0)
+  p0 = s32[1000] copy(param)
+  p1 = s32[1000] copy(param)
+  t = (s32[1000], s32[1000]) tuple(p0, p1)
+  a = s32[1000] get-tuple-element(t), index=0
+  b = s32[1000] get-tuple-element(t), index=1
+  c = s32[1000] add(a, b)
+  d = s32[1000] add(c, b)
+  e = s32[1000] add(c, c)
+  f = s32[1000] add(e, e)
+  ROOT result = (s32[1000], s32[1000], s32[1000]) tuple(d, e, f)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(module_str));
+
+  auto size_fn = [](const LogicalBuffer& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      SequentialHloOrdering::HloModuleSequence sequence,
+      CreateMemoryMinimizingSequence(*module, size_fn, ListMemoryScheduler));
+  // Verify that all instructions are in the sequence.
+  EXPECT_EQ(module->entry_computation()->instruction_count(),
+            sequence.at(module->entry_computation()).size());
+
+  std::unordered_map<string, const HloInstruction*> instructions_by_name;
+  for (const HloInstruction* instruction :
+       sequence.at(module->entry_computation())) {
+    instructions_by_name[instruction->name()] = instruction;
+  }
+
+  // The first instruction should be the parameter and the last the root.
+  EXPECT_EQ(instructions_by_name.at("param"),
+            sequence.at(module->entry_computation()).front());
+  EXPECT_EQ(instructions_by_name.at("result"),
+            sequence.at(module->entry_computation()).back());
+
+  // Instructions "d" and "e" will both be schedulable at the same time, but
+  // instruction "d" allows us to free the buffer of "p1", so the list scheduler
+  // should prefer it.
+  SequentialHloOrdering ordering(module.get(), sequence);
+  EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("d"),
+                                      instructions_by_name.at("e")));
 }
 
 }  // namespace

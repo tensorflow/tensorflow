@@ -49,24 +49,21 @@ _concat = rnn_cell_impl._concat
 
 
 def _transpose_batch_time(x):
-  """Transpose the batch and time dimensions of a Tensor.
+  """Transposes the batch and time dimensions of a Tensor.
 
-  Retains as much of the static shape information as possible.
+  If the input tensor has rank < 2 it returns the original tensor. Retains as
+  much of the static shape information as possible.
 
   Args:
-    x: A tensor of rank 2 or higher.
+    x: A Tensor.
 
   Returns:
     x transposed along the first two dimensions.
-
-  Raises:
-    ValueError: if `x` is rank 1 or lower.
   """
   x_static_shape = x.get_shape()
   if x_static_shape.ndims is not None and x_static_shape.ndims < 2:
-    raise ValueError(
-        "Expected input tensor %s to have rank at least 2, but saw shape: %s" %
-        (x, x_static_shape))
+    return x
+
   x_rank = array_ops.rank(x)
   x_t = array_ops.transpose(
       x, array_ops.concat(
@@ -867,7 +864,7 @@ def raw_rnn(cell, loop_fn,
 
   ```python
   time = tf.constant(0, dtype=tf.int32)
-  (finished, next_input, initial_state, _, loop_state) = loop_fn(
+  (finished, next_input, initial_state, emit_structure, loop_state) = loop_fn(
       time=time, cell_output=None, cell_state=None, loop_state=None)
   emit_ta = TensorArray(dynamic_size=True, dtype=initial_state.dtype)
   state = initial_state
@@ -878,7 +875,7 @@ def raw_rnn(cell, loop_fn,
         loop_state=loop_state)
     # Emit zeros and copy forward state for minibatch entries that are finished.
     state = tf.where(finished, state, next_state)
-    emit = tf.where(finished, tf.zeros_like(emit), emit)
+    emit = tf.where(finished, tf.zeros_like(emit_structure), emit)
     emit_ta = emit_ta.write(time, emit)
     # If any new minibatch entries are marked as finished, mark these.
     finished = tf.logical_or(finished, next_finished)
@@ -938,10 +935,15 @@ def raw_rnn(cell, loop_fn,
       and `emit_output`: the output to store for this iteration.
 
       Note that `emit_output` should be a `Tensor` or (possibly nested)
-      tuple of tensors with shapes and structure matching `cell.output_size`
-      and `cell_output` above.  The parameter `cell_state` and output
-      `next_cell_state` may be either a single or (possibly nested) tuple
-      of tensors.  The parameter `loop_state` and
+      tuple of tensors which is aggregated in the `emit_ta` inside the
+      `while_loop`. For the first call to `loop_fn`, the `emit_output`
+      corresponds to the `emit_structure` which is then used to determine the
+      size of the `zero_tensor` for the `emit_ta` (defaults to
+      `cell.output_size`). For the subsequent calls to the `loop_fn`, the
+      `emit_output` corresponds to the actual output tensor
+      that is to be aggregated in the `emit_ta`. The parameter `cell_state`
+      and output `next_cell_state` may be either a single or (possibly nested)
+      tuple of tensors.  The parameter `loop_state` and
       output `next_loop_state` may be either a single or (possibly nested) tuple
       of `Tensor` and `TensorArray` objects.  This last parameter
       may be ignored by `loop_fn` and the return value may be `None`.  If it

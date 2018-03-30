@@ -69,7 +69,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
     HloInstruction* padding =
         computation->AddInstruction(HloInstruction::CreateConstant(
             MakeUnique<Literal>(Literal::Zero(element_type))));
-    input = CreatePadHlo(input, padding, padding_config).ValueOrDie();
+    input = MakePadHlo(input, padding, padding_config).ValueOrDie();
   }
 
   if (window_util::HasNegativePadding(conv_window)) {
@@ -92,8 +92,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
           std::max<int64>(0LL, -conv_window.dimensions(i).padding_high());
     }
 
-    input = CreateSliceHlo(input, start_indices, limit_indices, strides)
-                .ValueOrDie();
+    input =
+        MakeSliceHlo(input, start_indices, limit_indices, strides).ValueOrDie();
   }
 
   return input;
@@ -126,7 +126,7 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   HloInstruction* padding =
       computation->AddInstruction(HloInstruction::CreateConstant(
           MakeUnique<Literal>(Literal::Zero(element_type))));
-  return CreatePadHlo(kernel, padding, padding_config).ValueOrDie();
+  return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
 }
 }  // namespace
 
@@ -238,7 +238,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
       computation->AddInstruction(HloInstruction::CreateConstant(
           MakeUnique<Literal>(Literal::Zero(input->shape().element_type()))));
   HloInstruction* padded_input =
-      CreatePadHlo(input, padding, input_padding_config).ValueOrDie();
+      MakePadHlo(input, padding, input_padding_config).ValueOrDie();
 
   // The shape of the backward_conv CustomCall is a tuple (conv_result,
   // scratch_buffer).  Extract out the shape of conv_result.

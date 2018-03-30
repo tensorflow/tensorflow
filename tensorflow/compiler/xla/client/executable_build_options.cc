@@ -84,6 +84,36 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_resource_update_count(
 
 int ExecutableBuildOptions::resource_update_count() const {
   return resource_update_count_;
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_dump_optimized_hlo_proto_to(
+    tensorflow::StringPiece dirpath) {
+  dump_optimized_hlo_proto_to_ = dirpath.ToString();
+  return *this;
+}
+
+const tensorflow::gtl::optional<string>&
+ExecutableBuildOptions::dump_optimized_hlo_proto_to() const {
+  return dump_optimized_hlo_proto_to_;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_dump_per_pass_hlo_proto_to(
+    tensorflow::StringPiece dirpath) {
+  dump_per_pass_hlo_proto_to_ = dirpath.ToString();
+  return *this;
+}
+
+const tensorflow::gtl::optional<string>&
+ExecutableBuildOptions::dump_per_pass_hlo_proto_to() const {
+  return dump_per_pass_hlo_proto_to_;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_hlo_profile(bool enabled) {
+  hlo_profile_ = enabled;
+  return *this;
+}
+
+tensorflow::gtl::optional<bool> ExecutableBuildOptions::hlo_profile() const {
+  return hlo_profile_;
 }
 
 }  // namespace xla

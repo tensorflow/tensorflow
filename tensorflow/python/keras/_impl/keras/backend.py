@@ -3373,7 +3373,7 @@ def categorical_crossentropy(target, output, from_logits=False):
         target * math_ops.log(output),
         axis=len(output.get_shape()) - 1)
   else:
-    return nn.softmax_cross_entropy_with_logits(labels=target, logits=output)
+    return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
 
 
 @tf_export('keras.backend.sparse_categorical_crossentropy')

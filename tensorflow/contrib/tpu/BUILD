@@ -119,6 +119,8 @@ py_library(
     srcs = ["python/profiler/__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_pb2_grpc",
+        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_proto_py",
         "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
         "//tensorflow/python:util",
     ],
@@ -225,7 +227,6 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 tf_py_test(
@@ -272,15 +273,13 @@ tf_py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
+tf_py_test(
+    name = "tpu_estimator_signals_test",
+    size = "small",
+    srcs = ["python/tpu/tpu_estimator_signals_test.py"],
+    additional_deps = [
+        ":tpu_estimator",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
 )

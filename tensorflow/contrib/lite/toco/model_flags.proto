@@ -96,11 +96,13 @@ message RnnState {
 // model that does not already contain such MinMax information.
 message ArraysExtraInfo {
   message Entry {
-    // Next ID to use: 5.
+    // Next ID to use: 7.
     optional string name = 1;
     optional float min = 2;
     optional float max = 3;
     optional IODataType data_type = 4;
+    optional InputArrayShape shape = 5;
+    optional float constant_float_value = 6;
   }
   repeated Entry entries = 1;
 }

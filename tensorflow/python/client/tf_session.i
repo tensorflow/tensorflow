@@ -419,6 +419,25 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
   $result = new_result;
 }
 
+%typemap(in, numinputs=0) int64_t* out_handle (int64_t out_handle) {
+  $1 = &out_handle;
+}
+
+%typemap(argout) int64_t* out_handle {
+  $result = PyLong_FromLongLong(*$1);
+}
+
+%typemap(in) int64_t handle {
+  if (!PyLong_Check($input)) {
+    SWIG_exception_fail(
+        SWIG_TypeError,
+        tensorflow::strings::Printf(
+            "Expected a python long for conversion to callable handle but got %s",
+            Py_TYPE($input)->tp_name).c_str());
+  }
+  $1 = PyLong_AsLongLong($input);
+}
+
 // TODO(skyewm): SWIG emits a warning for the const char* in TF_WhileParams,
 // skip for now
 %ignore TF_WhileParams;
@@ -451,6 +470,17 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 %unignore TF_SessionPRun_wrapper;
 // See comment for "%noexception TF_SessionRun_wrapper;"
 %noexception TF_SessionPRun_wrapper;
+
+%unignore TF_DeprecatedSessionMakeCallable;
+%unignore TF_SessionMakeCallable;
+%unignore TF_DeprecatedSessionRunCallable;
+%unignore TF_SessionRunCallable;
+%unignore TF_DeprecatedSessionReleaseCallable;
+%unignore TF_SessionReleaseCallable;
+
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_DeprecatedSessionRunCallable;
+%noexception TF_SessionRunCallable;
 
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;
@@ -723,6 +753,7 @@ def TF_Reset(target, containers=None, config=None):
 %unignore TF_TryEvaluateConstant_wrapper;
 %noexception TF_TryEvaluateConstant_wrapper;
 %unignore ExtendSession;
+%unignore ResourceHandleShapeAndType;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

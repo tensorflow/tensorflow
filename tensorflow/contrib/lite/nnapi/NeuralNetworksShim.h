@@ -22,7 +22,7 @@ limitations under the License.
 
 // helpers
 
-#define NNAPI_LOG(format, ...) printf(format "\n", __VA_ARGS__);
+#define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
 #define LOAD_FUNCTION(name) \
   static name##_fn fn = reinterpret_cast<name##_fn>(loadFunction(#name));
 #define EXECUTE_FUNCTION(...) \

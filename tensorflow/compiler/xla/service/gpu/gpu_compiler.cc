@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
@@ -164,6 +165,9 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true,
           /*use_fusion=*/false);
+
+      // Rewrite gather ops into smaller ones.
+      pass.AddPass<GatherExpander>();
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
@@ -667,6 +671,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   if (module->config().hlo_profiling_enabled()) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
+    cost_analysis.set_bytes_per_second(
+        stream_exec->GetDeviceDescription().memory_bandwidth());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
     profile_printer =

@@ -33,13 +33,23 @@ namespace {
 template <typename T>
 bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > std::numeric_limits<RealType>::max() ||
-      value < std::numeric_limits<RealType>::min()) {
+  if (value > static_cast<double>(std::numeric_limits<RealType>::max()) ||
+      value < static_cast<double>(std::numeric_limits<RealType>::min())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);
   return true;
 }
+
+// Is 'node' an operator that consumes only the shape of its input, not the
+// data itself?
+// TODO(ezhulenev): move to op_types.h. Requires to break circular dependency.
+// TODO(ezhulenev): what about Identity passing tensor to Shape consumer?
+bool IsShapeConsumer(const NodeDef& node) {
+  const string& op = node.op();
+  return op == "Shape" || op == "ShapeN" || op == "Rank" || op == "Size";
+}
+
 }  // namespace
 
 NodeMap::NodeMap(GraphDef* graph) {
@@ -270,6 +280,22 @@ int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   return num_outputs;
 }
 
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_data_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    if (IsShapeConsumer(*output)) continue;
+
+    for (int i = 0; i < output->input_size(); ++i) {
+      const string& input = output->input(i);
+      if (!IsControlInput(input) && NodeName(input) == node.name()) {
+        ++num_data_outputs;
+        break;
+      }
+    }
+  }
+  return num_data_outputs;
+}
+
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
 DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
@@ -447,8 +473,8 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
         "Expected scalar tensor, got num_elements = ", tensor->NumElements());
   }
   switch (dtype) {
-    // TODO(rmlarsen): Handle DT_HALF.
-    //    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_BFLOAT16);
     HANDLE_CASE(DT_BOOL);
     HANDLE_CASE(DT_FLOAT);
     HANDLE_CASE(DT_DOUBLE);

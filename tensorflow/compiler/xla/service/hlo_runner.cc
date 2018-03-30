@@ -52,10 +52,9 @@ namespace {
 // Creates an HloModule from the given proto.
 StatusOr<std::unique_ptr<HloModule>> HloProtoToModule(
     const HloProto& proto, const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig config,
-      HloModule::CreateModuleConfigFromProto(proto.hlo_module()));
-  config.set_debug_options(debug_options);
+  TF_ASSIGN_OR_RETURN(HloModuleConfig config,
+                      HloModule::CreateModuleConfigFromProto(proto.hlo_module(),
+                                                             debug_options));
   TF_ASSIGN_OR_RETURN(auto module,
                       HloModule::CreateFromProto(proto.hlo_module(), config));
   return std::move(module);
@@ -158,8 +157,8 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> result,
-      executable->ExecuteOnStream(&service_run_options, argument_buffer_ptrs,
-                                  /*hlo_execution_profile=*/nullptr));
+      executable->ExecuteOnStreamWrapper(
+          &service_run_options, /*profile=*/nullptr, argument_buffer_ptrs));
 
   // Create a ScopedShapedBuffer of the result to manage deallocation. This will
   // deallocate all the device memory when it goes out of scope.

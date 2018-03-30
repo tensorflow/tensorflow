@@ -114,7 +114,6 @@ py_test(
     name = "utils_test",
     srcs = ["utils_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         "//tensorflow/contrib/kfac/python/ops:utils",
         "//tensorflow/contrib/tpu",
@@ -155,16 +154,4 @@ py_test(
         "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

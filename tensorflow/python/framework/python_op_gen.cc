@@ -78,7 +78,7 @@ bool IsPythonReserved(const string& s) {
 bool IsOpWithUnderscorePrefix(const string& s) {
   static const std::set<string>* const kUnderscoreOps = new std::set<string>(
       {// Lowercase built-in functions and types in Python, from:
-       // [x for x in dir(__builtins__) if x[0].islower()]
+       // [x for x in dir(__builtins__) if x[0].islower()] except "round".
        // These need to be excluded so they don't conflict with actual built-in
        // functions since we use '*' imports.
        "abs", "all", "any", "apply", "bin", "bool", "buffer", "bytearray",
@@ -90,18 +90,15 @@ bool IsOpWithUnderscorePrefix(const string& s) {
        "iter", "len", "license", "list", "locals", "long", "map", "max",
        "memoryview", "min", "next", "object", "oct", "open", "ord", "pow",
        "print", "property", "quit", "range", "raw_input", "reduce", "reload",
-       "repr", "reversed", "round", "set", "setattr", "slice", "sorted",
-       "staticmethod", "str", "sum", "super", "tuple", "type", "unichr",
-       "unicode", "vars", "xrange", "zip",
+       "repr", "reversed", "set", "setattr", "slice", "sorted", "staticmethod",
+       "str", "sum", "super", "tuple", "type", "unichr", "unicode", "vars",
+       "xrange", "zip",
        // These have the same name as ops defined in Python and might be used
        // incorrectly depending on order of '*' imports.
        // TODO(annarev): reduce usage of '*' imports and remove these from the
        // list.
        "fused_batch_norm", "histogram_fixed_width", "stack",
-       "batch_norm_with_global_normalization",
-       // TODO(annarev): replace these ops in the next change.
-       "broadcast_gradient_args", "concat", "enter", "histogram_summary",
-       "ref_enter", "ref_identity", "scalar_summary"});
+       "batch_norm_with_global_normalization"});
   return kUnderscoreOps->count(s) > 0;
 }
 
@@ -451,7 +448,7 @@ string AttrValueToPython(const string& type, const AttrValue& value,
     return TensorToPython(value.tensor());
   } else if (type == "func") {
     return StringToPython(value.func().name());
-  } else if (StringPiece(type).starts_with("list(")) {
+  } else if (str_util::StartsWith(type, "list(")) {
     return strings::StrCat("[", AttrListToPython(value, dtype_module), "]");
   } else {
     return "?";

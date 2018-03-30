@@ -414,8 +414,7 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   EXPECT_THAT(root, op::Add(rng1, rng2));
 }
 
-// TODO(b/28245743): Handle impure functions correctly in CSE.
-TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
+TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   // Test that two calls to an impure function are not commoned. RNG
   // is the source of the impurity.
 
@@ -458,14 +457,16 @@ TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(op::Map(), op::Map()));
 
+  VLOG(3) << "before: " << module->ToString();
+
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
+
+  VLOG(3) << "after: " << module->ToString();
 
   EXPECT_EQ(4, computation->instruction_count());
   root = computation->root_instruction();
-  auto operand = root->operand(0)->operand(0);
-  EXPECT_THAT(operand, op::Map());
-  EXPECT_THAT(root, op::Add(operand, operand));
+  EXPECT_THAT(root, op::Add(op::Map(op::Constant()), op::Map(op::Constant())));
 }
 
 }  // namespace

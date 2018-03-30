@@ -104,6 +104,21 @@ class GroupByWindowTest(test.TestCase):
       self.assertAllEqual([0, 0, 0], sess.run(get_next))
       self.assertAllEqual([1], sess.run(get_next))
 
+  def testEmpty(self):
+    iterator = (
+        dataset_ops.Dataset.range(4).apply(
+            grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Window size must be greater than zero, but got 0."):
+        print(sess.run(get_next))
+
   def testReduceFuncError(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
 
@@ -467,6 +482,31 @@ class BucketBySequenceLength(test.TestCase):
     self.assertEqual(sum(batch_sizes_val), sum(batch_sizes))
     self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
     self.assertEqual(sorted(boundaries), sorted(lengths_val))
+
+  def testTupleElements(self):
+
+    def elements_gen():
+      text = [[1, 2, 3], [3, 4, 5, 6, 7], [1, 2], [8, 9, 0, 2, 3]]
+      label = [1, 2, 1, 2]
+      for x, y in zip(text, label):
+        yield (x, y)
+
+    def element_length_fn(x, y):
+      del y
+      return array_ops.shape(x)[0]
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator=elements_gen,
+        output_shapes=(tensor_shape.TensorShape([None]),
+                       tensor_shape.TensorShape([])),
+        output_types=(dtypes.int32, dtypes.int32))
+    dataset = dataset.apply(grouping.bucket_by_sequence_length(
+        element_length_func=element_length_fn,
+        bucket_batch_sizes=[2, 2, 2],
+        bucket_boundaries=[0, 8]))
+    shapes = dataset.output_shapes
+    self.assertEqual([None, None], shapes[0].as_list())
+    self.assertEqual([None], shapes[1].as_list())
 
 
 if __name__ == "__main__":

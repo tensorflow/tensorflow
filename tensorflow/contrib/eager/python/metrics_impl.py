@@ -109,6 +109,18 @@ class Metric(checkpointable.CheckpointableBase):
       pos = scope.name.rfind(scope_name)
       self._name = name + scope.name[pos + len(scope_name):]
       self._scope = scope
+
+    # Ensures that if the user calls build directly we still set self._built to
+    # True to prevent variables from being recreated.
+    self._build = self.build
+
+    def actual_build(*args, **kwargs):
+      self._build(*args, **kwargs)
+      self._built = True
+    self.build = actual_build
+    self.build.__doc__ = self._build.__doc__
+
+    # Captures construction scope for proper initialization.
     if context.executing_eagerly():
       self._construction_scope = context.eager_mode
     else:

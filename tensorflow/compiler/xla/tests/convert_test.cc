@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/casts.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -175,6 +176,24 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
     expected[i] = static_cast<float>(arg[i]);
   }
   ComputeAndCompareR1<float>(&builder, expected, {arg_data.get()});
+}
+
+XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
+  ComputationBuilder builder(client_, TestName());
+  std::vector<float> arg{0.0f,        1.0f,          16777216.0f,
+                         16777218.0f, 2147483647.0f, 4294967040.0f};
+  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<float>({arg});
+  auto arg_param = builder.Parameter(0, arg_literal->shape(), "arg_param");
+  std::unique_ptr<GlobalData> arg_data =
+      client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
+
+  builder.ConvertElementType(arg_param, U32);
+
+  std::vector<uint32> expected(arg.size());
+  for (int64 i = 0; i < arg.size(); ++i) {
+    expected[i] = static_cast<uint32>(arg[i]);
+  }
+  ComputeAndCompareR1<uint32>(&builder, expected, {arg_data.get()});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
@@ -366,5 +385,44 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
 
   ComputeAndCompareR1<half>(&builder, expected_output, {dot_lhs_handle.get()});
 }
+
+XLA_TEST_F(ConvertTest, ConvertC64ToC64) {
+  ComputationBuilder builder(client_, TestName());
+  std::vector<complex64> x = {{42.0f, 64.0f}};
+  builder.ConvertElementType(builder.ConstantR1<complex64>(x), C64);
+  ComputeAndCompareR1<complex64>(&builder, x, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(ConvertTest, ConvertS64S64) {
+  ComputationBuilder builder(client_, TestName());
+  std::vector<int64> x = {{-42, 64}};
+  builder.ConvertElementType(builder.ConstantR1<int64>(x), S64);
+  ComputeAndCompareR1<int64>(&builder, x, {});
+}
+
+XLA_TEST_F(ConvertTest, ConvertU64U64) {
+  ComputationBuilder builder(client_, TestName());
+  std::vector<uint64> x = {{42, 64}};
+  builder.ConvertElementType(builder.ConstantR1<uint64>(x), U64);
+  ComputeAndCompareR1<uint64>(&builder, x, {});
+}
+
+XLA_TEST_F(ConvertTest, ConvertU64S64) {
+  ComputationBuilder builder(client_, TestName());
+  std::vector<uint64> unsigned_x = {{42, UINT64_MAX}};
+  builder.ConvertElementType(builder.ConstantR1<uint64>(unsigned_x), S64);
+  std::vector<int64> signed_x = {{42, -1}};
+  ComputeAndCompareR1<int64>(&builder, signed_x, {});
+}
+
+XLA_TEST_F(ConvertTest, ConvertS64U64) {
+  ComputationBuilder builder(client_, TestName());
+  std::vector<int64> signed_x = {{42, -1, INT64_MIN}};
+  builder.ConvertElementType(builder.ConstantR1<int64>(signed_x), U64);
+  std::vector<uint64> unsigned_x = {
+      {42, UINT64_MAX, tensorflow::MathUtil::IPow<uint64>(2, 63)}};
+  ComputeAndCompareR1<uint64>(&builder, unsigned_x, {});
+}
+
 }  // namespace
 }  // namespace xla

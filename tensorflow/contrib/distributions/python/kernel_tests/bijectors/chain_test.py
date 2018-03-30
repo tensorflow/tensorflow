@@ -66,12 +66,10 @@ class ChainBijectorTest(test.TestCase):
   def testShapeGetters(self):
     with self.test_session():
       bijector = Chain([
-          SoftmaxCentered(
-              event_ndims=1, validate_args=True),
-          SoftmaxCentered(
-              event_ndims=0, validate_args=True)
+          SoftmaxCentered(validate_args=True),
+          SoftmaxCentered(validate_args=True),
       ])
-      x = tensor_shape.TensorShape([])
+      x = tensor_shape.TensorShape([1])
       y = tensor_shape.TensorShape([2 + 1])
       self.assertAllEqual(y, bijector.forward_event_shape(x))
       self.assertAllEqual(

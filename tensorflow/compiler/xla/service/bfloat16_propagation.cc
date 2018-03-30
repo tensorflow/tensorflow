@@ -606,8 +606,10 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
         continue;
       }
       if (!ShapeUtil::Equal(hlo->literal().shape(), hlo->shape())) {
-        TF_ASSIGN_OR_RETURN(auto converted_literal,
-                            hlo->literal().ConvertToShape(hlo->shape()));
+        TF_ASSIGN_OR_RETURN(
+            auto converted_literal,
+            hlo->literal().ConvertToShape(hlo->shape(),
+                                          /*round_f32_to_bf16=*/true));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
@@ -623,6 +625,27 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
   if (needs_dce) {
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module).status());
+  }
+  return Status::OK();
+}
+
+Status BFloat16Propagation::RemoveNoopConversions(HloModule* module) {
+  for (auto computation : module->computations()) {
+    for (auto hlo : computation->MakeInstructionPostOrder()) {
+      if (hlo->opcode() != HloOpcode::kConvert) {
+        continue;
+      }
+      auto source = hlo->mutable_operand(0);
+      if (!ShapeUtil::Equal(source->shape(), hlo->shape())) {
+        continue;
+      }
+      const bool is_root = hlo == computation->root_instruction();
+      TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(source));
+      if (is_root) {
+        computation->set_root_instruction(source);
+      }
+      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(hlo));
+    }
   }
   return Status::OK();
 }
@@ -677,6 +700,10 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
   // defining instruction's shape has changed. So we need to adjust the output
   // shapes of instructions according to the HLO values they refer to.
   TF_RETURN_IF_ERROR(ResolveInconsistencyOfAliasingBuffers(module));
+
+  // This pass could have turned an F32 -> BF16 conversion to a no-op (BF16 ->
+  // BF16), so we remove them now.
+  TF_RETURN_IF_ERROR(RemoveNoopConversions(module));
   return true;
 }
 

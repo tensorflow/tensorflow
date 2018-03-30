@@ -35,6 +35,7 @@ from google.protobuf import text_format
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
@@ -2164,7 +2165,13 @@ class MetaGraphTest(test.TestCase):
       # Build and run the gradients of the while loop. We use this below to
       # verify that the gradients are correct with an imported MetaGraphDef.
       grad = gradients_impl.gradients([output], [var])
-      with session.Session() as sess:
+      # Turn off constant folding to avoid breaking testNestedControlFlowSerDes.
+      # It appears that a missing control dependency in the gradient graph
+      # causes the fetch node to not be triggered.
+      no_constfold_config = config_pb2.ConfigProto()
+      no_constfold_config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      with session.Session(config=no_constfold_config) as sess:
         sess.run(init_op)
         expected_grad_value = sess.run(grad)
 
@@ -2181,7 +2188,7 @@ class MetaGraphTest(test.TestCase):
 
       init_op = variables.global_variables_initializer()
 
-      with session.Session() as sess:
+      with session.Session(config=no_constfold_config) as sess:
         sess.run(init_op)
         actual_grad_value = sess.run(grad)
         self.assertEqual(expected_grad_value, actual_grad_value)
@@ -2327,6 +2334,38 @@ class MetaGraphTest(test.TestCase):
     with session.Session(graph=graph) as sess:
       new_saver = saver_module.import_meta_graph(
           filename + ".meta", graph=graph, import_scope="new_model")
+      new_saver.restore(sess, filename)
+      sess.run(["new_model/optimize"], {
+          "new_model/image:0": np.random.random([1, 784]),
+          "new_model/label:0": np.random.randint(
+              10, size=[1, 10])
+      })
+
+  def testImportIntoImplicitNamescope(self):
+    # Test that we can import a meta graph into an implicit namescope.
+    test_dir = self._get_test_dir("import_into_namescope")
+    filename = os.path.join(test_dir, "ckpt")
+    image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
+    label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
+    with session.Session() as sess:
+      weights = variables.Variable(
+          random_ops.random_uniform([784, 10]), name="weights")
+      bias = variables.Variable(array_ops.zeros([10]), name="bias")
+      logit = nn_ops.relu(math_ops.matmul(image, weights) + bias, name="logits")
+      nn_ops.softmax(logit, name="prediction")
+      cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
+                                                      logits=logit, name="cost")
+      adam.AdamOptimizer().minimize(cost, name="optimize")
+      saver = saver_module.Saver()
+      sess.run(variables.global_variables_initializer())
+      saver.save(sess, filename)
+
+    graph = ops_lib.Graph()
+    with session.Session(graph=graph) as sess:
+      with ops_lib.name_scope("new_model"):
+        new_saver = saver_module.import_meta_graph(
+            filename + ".meta", graph=graph)
+
       new_saver.restore(sess, filename)
       sess.run(["new_model/optimize"], {
           "new_model/image:0": np.random.random([1, 784]),
@@ -2872,11 +2911,11 @@ class _OwnsAVariableSimple(checkpointable.CheckpointableBase):
 class _MirroringSaveable(
     saver_module.BaseSaverBuilder.ResourceVariableSaveable):
 
-  def __init__(self, primary_variable, mirrored_variable):
+  def __init__(self, primary_variable, mirrored_variable, name):
     self._primary_variable = primary_variable
     self._mirrored_variable = mirrored_variable
     super(_MirroringSaveable, self).__init__(
-        self._primary_variable, "", self._primary_variable.name)
+        self._primary_variable, "", name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into both variables."""
@@ -2896,10 +2935,12 @@ class _OwnsMirroredVariables(checkpointable.CheckpointableBase):
         name="mirrored", initializer=15., use_resource=True)
 
   def _gather_saveables_for_checkpoint(self):
-    saveable = _MirroringSaveable(
-        primary_variable=self.non_dep_variable,
-        mirrored_variable=self.mirrored)
-    return {checkpointable.VARIABLE_VALUE_KEY: saveable}
+    def _saveable_factory(name=self.non_dep_variable.name):
+      return _MirroringSaveable(
+          primary_variable=self.non_dep_variable,
+          mirrored_variable=self.mirrored,
+          name=name)
+    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   # The Saver sorts by name before parsing, so we need a name property.
   @property
@@ -2938,6 +2979,37 @@ class CheckpointableCompatibilityTests(test.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual(42., self.evaluate(v.non_dep_variable))
       self.assertEqual(42., self.evaluate(v.mirrored))
+
+  def testSingleTensorEvaluation(self):
+
+    class _CountingSaveable(saver_module.BaseSaverBuilder.SaveableObject):
+
+      def __init__(self, name):
+        self.eval_count = 0
+        def _tensor():
+          self.eval_count += 1
+          return constant_op.constant([1.])
+        dummy_op = constant_op.constant([2.])
+        super(_CountingSaveable, self).__init__(
+            dummy_op,
+            [saver_module.BaseSaverBuilder.SaveSpec(
+                _tensor, "", name, dtype=dummy_op.dtype)],
+            name)
+
+      def restore(self, restored_tensors, restored_shapes):
+        """Restore the same value into both variables."""
+        pass
+
+    with context.eager_mode():
+      v = _CountingSaveable("foo")
+      saver = saver_module.Saver(var_list=[v])
+      test_dir = self.get_temp_dir()
+      prefix = os.path.join(test_dir, "ckpt")
+      with self.test_session() as sess:
+        save_path = saver.save(sess, prefix)
+        self.assertEqual(1, v.eval_count)
+        saver.restore(sess, save_path)
+        self.assertEqual(1, v.eval_count)
 
 
 if __name__ == "__main__":

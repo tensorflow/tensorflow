@@ -340,8 +340,14 @@ class Literal {
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
+  //
+  // round_f32_to_bf16: if true, converting F32 elements to BF16 uses rounding
+  // instead of truncation; otherwise, truncation is used.
+  //
+  // TODO(b/69266521): remove the round_to_bfloat16 flag when rounding becomes
+  // the default behavior.
   StatusOr<std::unique_ptr<Literal>> ConvertToShape(
-      const Shape& dest_shape) const;
+      const Shape& dest_shape, bool round_f32_to_bf16 = false) const;
 
   // Creates a scalar literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
@@ -478,6 +484,11 @@ class Literal {
   // int64.  This literal must be an array.
   StatusOr<int64> GetIntegralAsS64(
       tensorflow::gtl::ArraySlice<int64> multi_index) const;
+
+  // As Set(), but truncates `value` to the literal element type before storing.
+  // This literal must be an array.
+  Status SetIntegralAsS64(tensorflow::gtl::ArraySlice<int64> multi_index,
+                          int64 value);
 
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>

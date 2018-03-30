@@ -185,7 +185,7 @@ TEST_F(ScatterUpdateOpTest, Error_WrongDimsIndices) {
   Status s = RunOpKernel();
   EXPECT_TRUE(StringPiece(s.ToString())
                   .contains("Must have updates.shape = indices.shape + "
-                            "params.shape[1:], got "))
+                            "params.shape[1:] or updates.shape = [], got "))
       << s;
 }
 
@@ -202,7 +202,7 @@ TEST_F(ScatterUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
   Status s = RunOpKernel();
   EXPECT_TRUE(StringPiece(s.ToString())
                   .contains("Must have updates.shape = indices.shape + "
-                            "params.shape[1:], got "))
+                            "params.shape[1:] or updates.shape = [], got "))
 
       << s;
 }
@@ -219,7 +219,7 @@ TEST_F(ScatterUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   Status s = RunOpKernel();
   EXPECT_TRUE(StringPiece(s.ToString())
                   .contains("Must have updates.shape = indices.shape + "
-                            "params.shape[1:], got "))
+                            "params.shape[1:] or updates.shape = [], got "))
       << s;
 }
 
@@ -300,6 +300,20 @@ static void BM_ScatterDivInt64(int iters, int embedding_size) {
   BM_ScatterHelper<int64>(iters, embedding_size, "ScatterDiv");
 }
 
+static void BM_ScatterMinInt32(int iters, int embedding_size) {
+  BM_ScatterHelper<int32>(iters, embedding_size, "ScatterMin");
+}
+static void BM_ScatterMinInt64(int iters, int embedding_size) {
+  BM_ScatterHelper<int64>(iters, embedding_size, "ScatterMin");
+}
+
+static void BM_ScatterMaxInt32(int iters, int embedding_size) {
+  BM_ScatterHelper<int32>(iters, embedding_size, "ScatterMax");
+}
+static void BM_ScatterMaxInt64(int iters, int embedding_size) {
+  BM_ScatterHelper<int64>(iters, embedding_size, "ScatterMax");
+}
+
 BENCHMARK(BM_ScatterUpdateInt32)
     ->Arg(1)
     ->Arg(10)
@@ -331,6 +345,12 @@ BENCHMARK(BM_ScatterMulInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 
 BENCHMARK(BM_ScatterDivInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 BENCHMARK(BM_ScatterDivInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+
+BENCHMARK(BM_ScatterMinInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+BENCHMARK(BM_ScatterMinInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+
+BENCHMARK(BM_ScatterMaxInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+BENCHMARK(BM_ScatterMaxInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 
 }  // namespace
 }  // namespace tensorflow

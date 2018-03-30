@@ -38,16 +38,15 @@ def _flatten_tensors(tensors):
     shape: the original shape of each element of input tensors
 
   Raises:
-    ValueError: tensors are empty or non-isomorphic.
+    ValueError: tensors are empty or non-isomorphic or have unknown shape.
   """
   if not tensors:
     raise ValueError("tensors cannot be empty")
   shape = tensors[0].shape
   for tensor in tensors:
     shape = shape.merge_with(tensor.shape)
-  if shape.ndims is None:
-    raise ValueError("At least one of the tensors in 'tensors' must have "
-                     "statically known rank.")
+  if not shape.is_fully_defined():
+    raise ValueError("Tensors must have statically known shape.")
   if len(shape) != 1:
     reshaped = []
     for t in tensors:

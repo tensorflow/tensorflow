@@ -86,7 +86,10 @@ bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsNextIteration(const NodeDef& node);
+bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
+bool IsPack(const NodeDef& node);
+bool IsNeg(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
@@ -118,6 +121,7 @@ bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
 bool IsSplitV(const NodeDef& node);
 bool IsSqrtGrad(const NodeDef& node);
+bool IsSquare(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);
 bool IsStackOp(const NodeDef& node);
@@ -151,7 +155,11 @@ bool IsCommutative(const NodeDef& node);
 bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
+
 bool ModifiesFrameInfo(const NodeDef& node);
+
+// Returns true if the op is known to write to one or more of its inputs.
+bool ModifiesInputsInPlace(const NodeDef& node);
 
 // Returns true if the op is an element-wise involution, i.e. if it is its
 // own inverse such that f(f(x)) == x.

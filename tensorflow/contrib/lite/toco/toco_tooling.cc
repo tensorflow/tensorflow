@@ -94,6 +94,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
+  transformations->Add(new IdentifyPRelu);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
@@ -288,6 +289,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   if (output_format == TENSORFLOW_GRAPHDEF) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
+
+  // Fix any issues with IO edges. This must happen after any transform that
+  // may modify the structure of the edges.
+  FixEdgeArrays(model);
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 

@@ -29,7 +29,9 @@ void IncrementUsageCounter(TfLiteContext* context) {
   if (ptr == nullptr) {
     ptr = new RefCountedGemmContext;
     ptr->gemm_context_ = new gemmlowp::GemmContext();
-    ptr->gemm_context_->set_max_num_threads(context->recommended_num_threads);
+    if (context->recommended_num_threads != -1) {
+      ptr->gemm_context_->set_max_num_threads(context->recommended_num_threads);
+    }
     ptr->num_references_ = 0;
     context->gemm_context = ptr;
   }
@@ -57,6 +59,12 @@ gemmlowp::GemmContext* GetFromContext(TfLiteContext* context) {
         "Call to GetFromContext() not preceded by IncrementUsageCounter()");
   }
   return ptr->gemm_context_;
+}
+
+void SetNumThreads(TfLiteContext* context, int num_threads) {
+  IncrementUsageCounter(context);
+  GetFromContext(context)->set_max_num_threads(num_threads);
+  DecrementUsageCounter(context);
 }
 
 }  // namespace gemm_support

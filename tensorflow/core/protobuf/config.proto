@@ -67,9 +67,7 @@ message GPUOptions {
   // set or set to 0, gets set to a non-zero default.
   int32 polling_active_delay_usecs = 6;
 
-  // In the event polling loop sleep this many millisconds between
-  // PollEvents calls, when the queue is empty.  If value is not
-  // set or set to 0, gets set to a non-zero default.
+  // This field is deprecated and ignored.
   int32 polling_inactive_delay_msecs = 7;
 
   // Force all tensors to be gpu_compatible. On a GPU-enabled TensorFlow,

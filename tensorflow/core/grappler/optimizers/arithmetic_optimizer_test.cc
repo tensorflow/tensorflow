@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -29,6 +30,22 @@ namespace tensorflow {
 namespace grappler {
 
 namespace {
+
+constexpr char kHoistFactorOptimizerMul[] =
+    "ArithmeticOptimizer/HoistCommonFactor_Mul_";
+
+constexpr char kHoistFactorOptimizerAdd[] =
+    "ArithmeticOptimizer/HoistCommonFactor_Add_";
+
+// Optimized name of outer Mul node by HoistCommonFactorOutOfAggregation
+string HoistMulName(const string& name) {
+  return AddPrefixToNodeName(name, kHoistFactorOptimizerMul, "");
+}
+
+// Optimized name of inner Add node by HoistCommonFactorOutOfAggregation
+string HoistAddName(const string& name) {
+  return AddPrefixToNodeName(name, kHoistFactorOptimizerAdd, "");
+}
 
 string OptimizedName(const string& name) {
   return AddPrefixToNodeName(name, kArithmeticOptimizer);
@@ -61,15 +78,29 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
   }
 
+  // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
+  void OptimizeTwice(ArithmeticOptimizer* optimizer, GrapplerItem* item,
+                     GraphDef* output) {
+    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+    item->graph.Swap(output);
+    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+  }
+
   // TODO(ezhulenev): Make private. After migration to stages each test
   // should explicitly enable required optimization for tests isolation
   void DisableAllStages(ArithmeticOptimizer* optimizer) {
     ArithmeticOptimizer::ArithmeticOptimizerOptions options;
+    options.enable_try_simplify_and_replace = false;
     options.combine_add_to_addn = false;
-    options.remove_inverse_transpose = false;
+    options.hoist_common_factor_out_of_aggregation = false;
+    options.remove_identity_transpose = false;
     options.remove_redundant_bitcast = false;
     options.remove_redundant_cast = false;
     optimizer->options_ = options;
+  }
+
+  void DisableAddToAddNCombining(ArithmeticOptimizer* optimizer) {
+    optimizer->options_.combine_add_to_addn = false;
   }
 
   void EnableOnlyAddToAddNCombining(ArithmeticOptimizer* optimizer) {
@@ -77,9 +108,14 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.combine_add_to_addn = true;
   }
 
-  void EnableOnlyRemoveInverseTranspose(ArithmeticOptimizer* optimizer) {
+  void EnableOnlyHoistCommonFactor(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
-    optimizer->options_.remove_inverse_transpose = true;
+    optimizer->options_.hoist_common_factor_out_of_aggregation = true;
+  }
+
+  void EnableOnlyRemoveIdentityTranspose(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_identity_transpose = true;
   }
 
   void EnableOnlyRemoveRedundantBitcast(ArithmeticOptimizer* optimizer) {
@@ -90,6 +126,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void EnableOnlyRemoveRedundantCast(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.remove_redundant_cast = true;
+  }
+
+  void EnableOnlyRemoveNegation(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_negation = true;
   }
 };
 
@@ -117,6 +158,8 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
+  EXPECT_EQ(1, tensors_expected.size());
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   // Run the optimizer twice to make sure the rewrite is idempotent.
@@ -132,6 +175,10 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ(2, new_div.input_size());
   EXPECT_EQ("c1", new_div.input(0));
   EXPECT_EQ("c1", new_div.input(1));
+
+  auto tensors = EvaluateNodes(output, item.fetch, {});
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<double>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
@@ -396,59 +443,66 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   }
 
   ArithmeticOptimizer optimizer;
-  DisableAllStages(&optimizer);
+  DisableAddToAddNCombining(&optimizer);
 
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  // Mul(p,
+  //     Add_6(Add_4(Const(2), Const(2)),
+  //           Add_5(Const(2), Const(2))))
+  NodeMap node_map(&output);
 
   EXPECT_EQ(17, output.node_size());
-  // The graph gets optimized to
-  // Mul(p,
-  //     Add(Add(Const(2), Const(2)),
-  //         Add(Const(2), Const(2))))
-  EXPECT_EQ(17, output.node_size());
-  for (const auto& node : output.node()) {
-    if ("id" == node.name()) {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ(OptimizedName("Add_6_hoist_mul"), node.input(0));
-    } else if (OptimizedName("Add_6_hoist_mul") == node.name()) {
-      EXPECT_EQ("Mul", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("Placeholder", node.input(0));
-      EXPECT_EQ(OptimizedName("Add_6_hoist_add"), node.input(1));
-    } else if (OptimizedName("Add_6_hoist_add") == node.name()) {
-      EXPECT_EQ("Add", node.op());
-      EXPECT_EQ(3, node.input_size());
-      EXPECT_EQ(OptimizedName("Add_4_hoist_add"), node.input(0));
-      EXPECT_EQ(OptimizedName("Add_5_hoist_add"), node.input(1));
-      EXPECT_EQ("^Placeholder", node.input(2));
-    } else if (OptimizedName("Add_4_hoist_add") == node.name()) {
-      EXPECT_EQ("Add", node.op());
-      EXPECT_EQ(3, node.input_size());
-      EXPECT_EQ(OptimizedName("Add_const"), node.input(0));
-      EXPECT_EQ(OptimizedName("Add_1_const"), node.input(1));
-      EXPECT_EQ("^Placeholder", node.input(2));
-    } else if (OptimizedName("Add_5_hoist_add") == node.name()) {
-      EXPECT_EQ("Add", node.op());
-      EXPECT_EQ(3, node.input_size());
-      EXPECT_EQ(OptimizedName("Add_const"), node.input(0));
-      EXPECT_EQ(OptimizedName("Add_1_const"), node.input(1));
-      EXPECT_EQ("^Placeholder", node.input(2));
-    } else if (OptimizedName("Add_const") == node.name()) {
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^Placeholder", node.input(0));
-    } else if (OptimizedName("Add_1_const") == node.name()) {
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^Placeholder", node.input(0));
-    }
-  }
+
+  const NodeDef* id_node = node_map.GetNode("id");
+  ASSERT_TRUE(id_node != nullptr);
+  EXPECT_EQ(1, id_node->input_size());
+  EXPECT_EQ(HoistMulName("Add_6"), id_node->input(0));
+
+  const NodeDef* mul_node = node_map.GetNode(HoistMulName("Add_6"));
+  ASSERT_TRUE(mul_node != nullptr);
+  EXPECT_EQ(2, mul_node->input_size());
+  EXPECT_EQ("Placeholder", mul_node->input(0));
+  EXPECT_EQ(HoistAddName("Add_6"), mul_node->input(1));
+
+  const NodeDef* add_6_node = node_map.GetNode(HoistAddName("Add_6"));
+  ASSERT_TRUE(add_6_node != nullptr);
+  EXPECT_EQ(3, add_6_node->input_size());
+  EXPECT_EQ(HoistAddName("Add_4"), add_6_node->input(0));
+  EXPECT_EQ(HoistAddName("Add_5"), add_6_node->input(1));
+  EXPECT_EQ("^Placeholder", add_6_node->input(2));
+
+  const NodeDef* add_4_node = node_map.GetNode(HoistAddName("Add_4"));
+  ASSERT_TRUE(add_4_node != nullptr);
+  EXPECT_EQ("Add", add_4_node->op());
+  EXPECT_EQ(3, add_4_node->input_size());
+  EXPECT_EQ(OptimizedName("Add_const"), add_4_node->input(0));
+  EXPECT_EQ(OptimizedName("Add_1_const"), add_4_node->input(1));
+  EXPECT_EQ("^Placeholder", add_4_node->input(2));
+
+  const NodeDef* add_5_node = node_map.GetNode(HoistAddName("Add_5"));
+  ASSERT_TRUE(add_5_node != nullptr);
+  EXPECT_EQ("Add", add_5_node->op());
+  EXPECT_EQ(3, add_5_node->input_size());
+  EXPECT_EQ(OptimizedName("Add_const"), add_5_node->input(0));
+  EXPECT_EQ(OptimizedName("Add_1_const"), add_5_node->input(1));
+  EXPECT_EQ("^Placeholder", add_5_node->input(2));
+
+  const NodeDef* add_const_node = node_map.GetNode(OptimizedName("Add_const"));
+  ASSERT_TRUE(add_const_node != nullptr);
+  EXPECT_EQ("Const", add_const_node->op());
+  EXPECT_EQ(1, add_const_node->input_size());
+  EXPECT_EQ("^Placeholder", add_const_node->input(0));
+
+  const NodeDef* add_1_const_node =
+      node_map.GetNode(OptimizedName("Add_1_const"));
+  ASSERT_TRUE(add_1_const_node != nullptr);
+  EXPECT_EQ("Const", add_1_const_node->op());
+  EXPECT_EQ(1, add_1_const_node->input_size());
+  EXPECT_EQ("^Placeholder", add_1_const_node->input(0));
 }
 
 TEST_F(ArithmeticOptimizerTest, HoistFactor) {
@@ -469,31 +523,46 @@ TEST_F(ArithmeticOptimizerTest, HoistFactor) {
                                    ops::Add(s.WithOpName("add"), mul1, mul2));
 
       GrapplerItem item;
+      item.fetch = {"id"};
       TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
       ArithmeticOptimizer optimizer;
+      EnableOnlyHoistCommonFactor(&optimizer);
+
       GraphDef output;
-      Status status = optimizer.Optimize(nullptr, item, &output);
-      TF_EXPECT_OK(status);
-      // Run the optimizer twice to make sure the rewrite is idempotent.
-      item.graph.Swap(&output);
-      status = optimizer.Optimize(nullptr, item, &output);
-      TF_EXPECT_OK(status);
+      OptimizeTwice(&optimizer, &item, &output);
+
+      // We expect the following rewrite(s) to occur:
+      //
+      //        Add                 Mul
+      //      /    \               /   \
+      //    Mul    Mul       ->   x    Add
+      //    / \    / \                 / \
+      //   x  y1  y2  x              y1   y2
+      //
+      // If "root" op is AddN and shapes does not match, this rewrite is not
+      // possible and graph should stay intact.
+      NodeMap node_map(&output);
 
       if (use_addn && !matching_shapes) {
         VerifyGraphsMatch(item.graph, output, __LINE__);
       } else {
         EXPECT_EQ(9, output.node_size());
-        const NodeDef& new_add = output.node(8);
-        EXPECT_EQ(OptimizedName("add_hoist_add"), new_add.name());
-        EXPECT_EQ("y1", new_add.input(0));
-        EXPECT_EQ("y2", new_add.input(1));
-        const NodeDef& new_mul = output.node(7);
-        EXPECT_EQ(OptimizedName("add_hoist_mul"), new_mul.name());
-        EXPECT_EQ("x", new_mul.input(0));
-        EXPECT_EQ(OptimizedName("add_hoist_add"), new_mul.input(1));
-        const NodeDef& new_id = output.node(6);
-        EXPECT_EQ("id", new_id.name());
-        EXPECT_EQ(OptimizedName("add_hoist_mul"), new_id.input(0));
+
+        const NodeDef* new_add_node = node_map.GetNode(HoistAddName("add"));
+        ASSERT_TRUE(new_add_node != nullptr) << "Hoisted Add node not found";
+        EXPECT_EQ("y1", new_add_node->input(0));
+        EXPECT_EQ("y2", new_add_node->input(1));
+
+        const NodeDef* new_mul_node = node_map.GetNode(HoistMulName("add"));
+        ASSERT_TRUE(new_mul_node != nullptr) << "Hoisted Mul node not found";
+        EXPECT_EQ("x", new_mul_node->input(0));
+        EXPECT_EQ(new_add_node->name(), new_mul_node->input(1));
+
+        const NodeDef* id_node = node_map.GetNode("id");
+        ASSERT_TRUE(id_node != nullptr) << "Id node not found";
+        EXPECT_EQ("id", id_node->name());
+        EXPECT_EQ(HoistMulName("add"), id_node->input(0));
       }
     }
   }
@@ -819,7 +888,7 @@ TEST_F(ArithmeticOptimizerTest, NoReorderTransposeCast) {
   EXPECT_EQ(1, num_transposes);
 }
 
-TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
+TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =
       ops::Const(s.WithOpName("inputs_shape"), {8, 3, 28, 28}, {4});
@@ -827,18 +896,21 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
       ops::RandomUniform(s.WithOpName("inputs"), inputs_shape, DT_FLOAT);
   Output perm1 = ops::Const(s.WithOpName("perm1"), {0, 2, 3, 1}, {4});
   Output perm2 = ops::Const(s.WithOpName("perm2"), {0, 3, 1, 2}, {4});
+  Output perm3 = ops::Const(s.WithOpName("perm2"), {0, 1, 2, 3}, {4});
   Output transpose1 = ops::Transpose(s.WithOpName("transpose1"), inputs, perm1);
   Output transpose2 =
       ops::Transpose(s.WithOpName("transpose2"), transpose1, perm2);
-  Output outputs = ops::Identity(s.WithOpName("outputs"), transpose2);
+  Output transpose3 = ops::Transpose(s.WithOpName("transpose3"), inputs, perm3);
+  Output id1 = ops::Identity(s.WithOpName("id1"), transpose2);
+  Output id2 = ops::Identity(s.WithOpName("id2"), transpose3);
 
   GrapplerItem item;
-  item.fetch = {"outputs"};
+  item.fetch = {"id1", "id2"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveInverseTranspose(&optimizer);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   std::set<string> nodes_after_optimization;
@@ -846,10 +918,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
     nodes_after_optimization.insert(node.name());
   }
   EXPECT_EQ(nodes_after_optimization,
-            std::set<string>({"inputs_shape", "inputs", "outputs"}));
+            std::set<string>({"id1", "id2", "inputs_shape", "inputs"}));
 }
 
-TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
+TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesMultipleOutputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =
       ops::Const(s.WithOpName("inputs_shape"), {8, 9, 28, 28}, {4});
@@ -870,7 +942,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveInverseTranspose(&optimizer);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   for (const NodeDef& node : output.node()) {
@@ -898,7 +970,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveInverseTranspose(&optimizer);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   NodeMap node_map(&output);
@@ -926,7 +998,7 @@ TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveInverseTranspose(&optimizer);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(6, output.node_size());
@@ -1214,7 +1286,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
   EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "outputs"));
 }
 
-TEST_F(ArithmeticOptimizerTest, AddOpsRewriteCollapseAddsOfIdenticalShape) {
+TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfIdenticalShape) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   tensorflow::Scope sx = s.NewSubScope("x");
   tensorflow::Scope sy = s.NewSubScope("y");
@@ -1249,8 +1321,9 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteCollapseAddsOfIdenticalShape) {
   NodeMap node_map(&output);
 
   // check add tree was replaced with AddN
-  const NodeDef* collapsed_add = CHECK_NOTNULL(
-      node_map.GetNode("y/ArithmeticOptimizer/AddOpsGroup_Add_abc_Add_ab"));
+  const NodeDef* collapsed_add =
+      node_map.GetNode("y/ArithmeticOptimizer/AddOpsRewrite_Add_abc_Add_ab");
+  ASSERT_TRUE(collapsed_add != nullptr);
 
   EXPECT_EQ("AddN", collapsed_add->op());
   EXPECT_EQ(3, collapsed_add->input_size());
@@ -1259,12 +1332,13 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteCollapseAddsOfIdenticalShape) {
   EXPECT_EQ("c", collapsed_add->input(2));
 
   // check output was re-wired to new node
-  const NodeDef* updated_outputs = CHECK_NOTNULL(node_map.GetNode("outputs"));
+  const NodeDef* updated_outputs = node_map.GetNode("outputs");
+  ASSERT_TRUE(updated_outputs != nullptr);
 
   EXPECT_EQ(collapsed_add->name(), updated_outputs->input(0));
 }
 
-TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
+TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MultiplePasses) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto a = ops::Variable(s.WithOpName("a"), {2, 2}, DT_FLOAT);
@@ -1306,8 +1380,9 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
   NodeMap node_map(&output);
 
   // check left Add subtree replaced with AddN
-  const NodeDef* collapsed_left = CHECK_NOTNULL(
-      node_map.GetNode("ArithmeticOptimizer/AddOpsGroup_Add_abc_Add_ab"));
+  const NodeDef* collapsed_left =
+      node_map.GetNode("ArithmeticOptimizer/AddOpsRewrite_Add_abc_Add_ab");
+  ASSERT_TRUE(collapsed_left != nullptr);
 
   EXPECT_EQ("AddN", collapsed_left->op());
   EXPECT_EQ(3, collapsed_left->input_size());
@@ -1316,8 +1391,9 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
   EXPECT_EQ("c", collapsed_left->input(2));
 
   // check right Add subtree replaced with AddN
-  const NodeDef* collapsed_right = CHECK_NOTNULL(
-      node_map.GetNode("ArithmeticOptimizer/AddOpsGroup_Add_xyz_Add_xy"));
+  const NodeDef* collapsed_right =
+      node_map.GetNode("ArithmeticOptimizer/AddOpsRewrite_Add_xyz_Add_xy");
+  ASSERT_TRUE(collapsed_right != nullptr);
 
   EXPECT_EQ("AddN", collapsed_right->op());
   EXPECT_EQ(3, collapsed_right->input_size());
@@ -1326,7 +1402,8 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
   EXPECT_EQ("z", collapsed_right->input(2));
 
   // check that Mul inputs re-wired to new Nodes
-  const NodeDef* updated_mul = CHECK_NOTNULL(node_map.GetNode("Mul"));
+  const NodeDef* updated_mul = node_map.GetNode("Mul");
+  ASSERT_TRUE(updated_mul != nullptr);
 
   EXPECT_EQ("Mul", updated_mul->op());
   EXPECT_EQ(2, updated_mul->input_size());
@@ -1334,7 +1411,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
   EXPECT_EQ(collapsed_right->name(), updated_mul->input(1));
 }
 
-TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddInputThroughMultiplePaths) {
+TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddInputMultipleTimes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto a = ops::Variable(s.WithOpName("a"), {2, 2}, DT_FLOAT);
@@ -1367,8 +1444,9 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddInputThroughMultiplePaths) {
   NodeMap node_map(&output);
 
   // check Add tree replaced with AddN
-  const NodeDef* collapsed_add = CHECK_NOTNULL(node_map.GetNode(
-      "ArithmeticOptimizer/AddOpsGroup_Add_all_Add_ab_Add_bc"));
+  const NodeDef* collapsed_add = node_map.GetNode(
+      "ArithmeticOptimizer/AddOpsRewrite_Add_all_Add_ab_Add_bc");
+  ASSERT_TRUE(collapsed_add != nullptr);
 
   EXPECT_EQ("AddN", collapsed_add->op());
   EXPECT_EQ(4, collapsed_add->input_size());
@@ -1376,6 +1454,132 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddInputThroughMultiplePaths) {
   EXPECT_EQ("b", collapsed_add->input(1));
   EXPECT_EQ("b", collapsed_add->input(2));
   EXPECT_EQ("c", collapsed_add->input(3));
+}
+
+TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfSymbolicallyEqualShape) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  // unknown input shape propagated symbolically through the graph
+  auto input = ops::Variable(s.WithOpName("input"), {-1, 2}, DT_FLOAT);
+
+  // [a, b, c] have symbolically equal shapes
+  auto a = ops::Sqrt(s.WithOpName("a"), input);
+  auto b = ops::Square(s.WithOpName("b"), input);
+  auto c = ops::Round(s.WithOpName("c"), input);
+
+  // [add_ab, add_abc] shape must be inferred from inputs
+  auto add_ab = ops::Add(s.WithOpName("Add_ab"), a, b);
+  auto add_abc = ops::Add(s.WithOpName("Add_abc"), add_ab, c);
+
+  auto outputs = ops::Identity(s.WithOpName("outputs"), add_abc);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyAddToAddNCombining(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  //     +
+  //    / \
+  //   +   c      -->    AddN(a, b, c)
+  //  / \
+  // a   b
+  EXPECT_EQ(6, output.node_size());
+
+  NodeMap node_map(&output);
+
+  // check add tree was replaced with AddN
+  const NodeDef* collapsed_add =
+      node_map.GetNode("ArithmeticOptimizer/AddOpsRewrite_Add_abc_Add_ab");
+  ASSERT_TRUE(collapsed_add != nullptr);
+  EXPECT_EQ("AddN", collapsed_add->op());
+  EXPECT_EQ(3, collapsed_add->input_size());
+  EXPECT_EQ("a", collapsed_add->input(0));
+  EXPECT_EQ("b", collapsed_add->input(1));
+  EXPECT_EQ("c", collapsed_add->input(2));
+
+  // check output was re-wired to new node
+  const NodeDef* updated_outputs = node_map.GetNode("outputs");
+  ASSERT_TRUE(updated_outputs != nullptr);
+  EXPECT_EQ(collapsed_add->name(), updated_outputs->input(0));
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Variable(s.WithOpName("x"), {2, 2}, DT_FLOAT);
+  auto y = ops::Variable(s.WithOpName("y"), {2, 2}, DT_FLOAT);
+  Output neg_x = ops::Neg(s.WithOpName("Neg_x"), x);
+  Output neg_y = ops::Neg(s.WithOpName("Neg_y"), y);
+  Output add_x_y = ops::Add(s.WithOpName("Add_x_y"), x, y);
+  Output add_negx_y = ops::Add(s.WithOpName("Add_negx_y"), neg_x, y);
+  Output add_x_negy = ops::Add(s.WithOpName("Add_x_negy"), x, neg_y);
+  Output add_negx_negy = ops::Add(s.WithOpName("Add_negx_negy"), neg_x, neg_y);
+  Output sub_x_y = ops::Sub(s.WithOpName("Sub_x_y"), x, y);
+  Output sub_negx_y = ops::Sub(s.WithOpName("Sub_negx_y"), neg_x, y);
+  Output sub_x_negy = ops::Sub(s.WithOpName("Sub_x_negy"), x, neg_y);
+  Output sub_negx_negy = ops::Sub(s.WithOpName("Sub_negx_negy"), neg_x, neg_y);
+  auto add_all = ops::AddN(s.WithOpName("add_all"),
+                           {add_x_y, add_negx_y, add_x_negy, add_negx_negy,
+                            sub_x_y, sub_negx_y, sub_x_negy, sub_negx_negy});
+
+  GrapplerItem item;
+  item.fetch = {"add_all"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveNegation(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  int found = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "Add_negx_y") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("^Neg_x", node.input(2));
+    } else if (node.name() == "Add_x_negy") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("^Neg_y", node.input(2));
+    } else if (node.name() == "Add_negx_negy") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("Neg_y", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("^Neg_x", node.input(2));
+    } else if (node.name() == "Sub_x_negy") {
+      ++found;
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("^Neg_y", node.input(2));
+    } else if (node.name() == "Sub_negx_negy") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(4, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("^Neg_y", node.input(2));
+      EXPECT_EQ("^Neg_x", node.input(3));
+    }
+  }
+  EXPECT_EQ(5, found);
 }
 
 }  // namespace grappler
