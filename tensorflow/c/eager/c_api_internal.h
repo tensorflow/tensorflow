@@ -50,8 +50,7 @@ struct TFE_ContextOptions {
   TF_SessionOptions session_options;
   // true if async execution is enabled.
   bool async = false;
-  TFE_ContextDevicePlacementPolicy policy{
-      TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32};
+  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_SILENT};
 };
 
 struct TFE_Context {
@@ -71,7 +70,7 @@ struct TFE_Context {
 struct TFE_TensorHandle {
   TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
                    tensorflow::Device* op_device)
-      : handle(new tensorflow::TensorHandle(t, d, op_device)) {}
+      : handle(new tensorflow::TensorHandle(t, d, op_device, nullptr)) {}
 
   TFE_TensorHandle(tensorflow::uint64 node_id, tensorflow::DataType dtype,
                    tensorflow::EagerContext* ctx)

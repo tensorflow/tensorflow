@@ -23,6 +23,7 @@ import re
 
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.training import distribute
 
 
 def collect(val, collections, default_collections):
@@ -40,6 +41,16 @@ def collect(val, collections, default_collections):
 
 
 _INVALID_TAG_CHARACTERS = re.compile(r'[^-/\w\.]')
+
+
+def skip_summary():
+  # If using multiple towers in distributed strategy, skip summaries on all
+  # towers except the first one (tower_id=0).
+  # TODO(priyag): Add a new optional argument that will provide multiple
+  # alternatives to override default behavior. (e.g. run on last tower,
+  # compute sum or mean across towers).
+  tower_context = distribute.get_tower_context()
+  return tower_context and tower_context.tower_id > 0
 
 
 def clean_tag(name):

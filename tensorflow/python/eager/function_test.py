@@ -26,7 +26,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -377,23 +376,23 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(f(constant_op.constant(1.0)), 2.0)
 
   def testGradientOfGatherWithDefun(self):
+    with ops.device('cpu:0'):
+      v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
 
-    v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+      def sum_gather():
+        return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
 
-    def sum_gather():
-      return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
+      grad_fn = backprop.implicit_grad(sum_gather)
+      gradient = grad_fn()
+      defun_grad_fn = backprop.implicit_grad(function.defun(sum_gather))
+      defun_gradient = defun_grad_fn()
+      self.assertEqual(len(gradient), len(defun_gradient))
 
-    grad_fn = backprop.implicit_grad(sum_gather)
-    gradient = grad_fn()
-    defun_grad_fn = backprop.implicit_grad(function.defun(sum_gather))
-    defun_gradient = defun_grad_fn()
-    self.assertEqual(len(gradient), len(defun_gradient))
-
-    gradient = gradient[0][0]
-    defun_gradient = defun_gradient[0][0]
-    self.assertAllEqual(gradient.values, defun_gradient.values)
-    self.assertAllEqual(gradient.indices, defun_gradient.indices)
-    self.assertAllEqual(gradient.dense_shape, defun_gradient.dense_shape)
+      gradient = gradient[0][0]
+      defun_gradient = defun_gradient[0][0]
+      self.assertAllEqual(gradient.values, defun_gradient.values)
+      self.assertAllEqual(gradient.indices, defun_gradient.indices)
+      self.assertAllEqual(gradient.dense_shape, defun_gradient.dense_shape)
 
   def testReturningIndexedSlicesWithDefun(self):
 
@@ -476,9 +475,7 @@ class FunctionTest(test.TestCase):
     reshape = function.defun(array_ops.reshape)
     value = constant_op.constant([1., 2.])
     shape = constant_op.constant([2, 1]).gpu()
-    with self.assertRaises(errors.InvalidArgumentError):
-      with ops.device('gpu:0'):
-        reshape(value, shape)
+    reshape(value, shape)  # No error is raised
 
   def testDifferentiableFunctionNoneOutputs(self):
 

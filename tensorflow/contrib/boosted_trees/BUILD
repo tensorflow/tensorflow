@@ -119,7 +119,7 @@ py_library(
 
 py_test(
     name = "gbdt_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/training/functions/gbdt_batch_test.py"],
     srcs_version = "PY2AND3",
     tags = [

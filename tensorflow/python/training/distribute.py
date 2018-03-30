@@ -23,8 +23,11 @@ import threading
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_util
 from tensorflow.python.util import nest
 
@@ -99,6 +102,7 @@ _update_device = threading.local()
 
 
 def get_update_device():
+  """Get the current device if in a `DistributionStrategy.update()` call."""
   try:
     return _update_device.current
   except AttributeError:
@@ -284,17 +288,22 @@ def _require_distribution_strategy_scope(distribution_strategy):
 class _CurrentDistributionContext(object):
   """Context manager for setting the `DistributionStrategy` and var creator."""
 
-  def __init__(self, distribution_strategy, var_creator_scope):
+  def __init__(self, distribution_strategy, var_creator_scope, var_scope=None):
     self._context = _CrossTowerThreadMode(distribution_strategy)
     self._var_creator_scope = var_creator_scope
+    self._var_scope = var_scope
 
   def __enter__(self):
     _push_per_thread_mode(self._context)
+    if self._var_scope:
+      self._var_scope.__enter__()
     self._var_creator_scope.__enter__()
     return self._context.distribution_strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
     self._var_creator_scope.__exit__(exception_type, exception_value, traceback)
+    if self._var_scope:
+      self._var_scope.__exit__(exception_type, exception_value, traceback)
     _pop_per_thread_mode()
 
 
@@ -406,19 +415,19 @@ class DistributionStrategy(object):
     different across devices, and "Mirrored" when the value are the same.
   * Unwrapping and merging: Consider calling a function `fn` on
     multiple devices, like `call_for_each_tower(fn, w)` with an
-    argument `w that is a wrapped value. This means `w` will have a
+    argument `w` that is a wrapped value. This means `w` will have a
     map taking tower device `d0` to `w0`, tower device `d1` to `w1`,
     etc. `call_for_each_tower()` unwraps `w` before calling `fn`, so
     it calls `fn(w0)` on `d0`, `fn(w1)` on `d1`, etc.  It then merges
     the return values from `fn()`, which can possibly result in
     wrapped values. For example, let's say `fn()` returns a tuple with
-    three components: (x, a, v0) from tower 0, (x, b, v1) on tower 1,
+    three components: `(x, a, v0)` from tower 0, `(x, b, v1)` on tower 1,
     etc. If the first component is the same object `x` from every
     tower, then the first component of the merged result will also be
     `x`. If the second component is different (`a`, `b`, ...)  from
     each tower, then the merged value will have a wrapped map from
     tower device to the different values. If the third component is
-    the members of a mirrored variable (`v` maps `d0` to `v0, `d1` to
+    the members of a mirrored variable (`v` maps `d0` to `v0`, `d1` to
     `v1`, etc.), then the merged result will be that mirrored variable
     (`v`).
   * Tower context vs. Cross-tower context: _tower context_ is when we
@@ -553,8 +562,18 @@ class DistributionStrategy(object):
       kwargs["use_resource"] = True
       return self._create_variable(*args, **kwargs)
 
+    def disable_partitioned_variables(getter, *args, **kwargs):
+      if kwargs.pop("partitioner", None) is not None:
+        tf_logging.log_first_n(
+            tf_logging.WARN, "Partitioned variables are disabled when using "
+            "DistributionStrategy.", 1)
+      return getter(*args, **kwargs)
+
     return _CurrentDistributionContext(
-        self, variable_scope.variable_creator_scope(creator_with_resource_vars))
+        self, variable_scope.variable_creator_scope(creator_with_resource_vars),
+        variable_scope.variable_scope(
+            variable_scope.get_variable_scope(),
+            custom_getter=disable_partitioned_variables))
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.
@@ -951,6 +970,10 @@ class DistributionStrategy(object):
   def _worker_device_index(self):
     raise NotImplementedError("must be implemented in descendants")
 
+  def configure(self, session_config=None):
+    """Find the best configuration given a tensorflow session config."""
+    del session_config
+
 
 # A note about the difference between the context managers
 # `TowerContext` (defined here) and `_CurrentDistributionContext`
@@ -1082,6 +1105,16 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     return _CurrentDistributionContext(
         self, variable_scope.variable_creator_scope(creator))
 
+  def tower_local_var_scope(self, reduce_method):
+    """Does not set to resource variables."""
+    def create_tower_local_variable(next_creator, *args, **kwargs):
+      _require_distribution_strategy_scope(self)
+      kwargs["tower_local_reduce_method"] = reduce_method
+      return next_creator(*args, **kwargs)
+
+    _require_distribution_strategy_scope(self)
+    return variable_scope.variable_creator_scope(create_tower_local_variable)
+
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""
     _require_distribution_strategy_scope(self)
@@ -1155,6 +1188,24 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     raise RuntimeError("worker_device_index() method unsupported by "
                        "_DefaultDistributionStrategy.")
 
+# ------------------------------------------------------------------------------
+# Common operations
+
+
+def increment_var(v, amount=1):
+  """`v += amount`, distributed-aware version."""
+  def update(vu):
+    if isinstance(vu, resource_variable_ops.ResourceVariable):
+      return vu.assign_add(amount, read_value=False)
+    else:
+      return state_ops.assign_add(vu, amount)
+
+  def merge_fn(dist, vm):
+    return dist.group(dist.update(vm, update))
+
+  tower_context = get_tower_context()
+  return tower_context.merge_call(merge_fn, v)
+
 
 # ------------------------------------------------------------------------------
 # Singletons
@@ -1163,3 +1214,20 @@ _default_distribution_strategy = _DefaultDistributionStrategy()
 _default_tower_context = TowerContext(
     _default_distribution_strategy, tower_id=0)
 _default_tower_mode = _DefaultTowerThreadMode()
+
+
+# ------------------------------------------------------------------------------
+# We haven't yet implemented deserialization for DistributedVariables.
+# So here we catch any attempts to deserialize variables
+# when using distribution strategies.
+# pylint: disable=protected-access
+def _from_proto_fn(v, import_scope=None):
+  if has_distribution_strategy():
+    raise NotImplementedError(
+        "Deserialization of variables is not yet supported when using"
+        "distributed strategies.")
+  else:
+    resource_variable_ops._from_proto_fn(v, import_scope=import_scope)
+
+resource_variable_ops._from_proto_fn = _from_proto_fn
+# pylint: enable=protected-access

@@ -47,6 +47,11 @@ The @{$roadmap$Roadmap} summarizes plans for upcoming additions to TensorFlow.
 For news and updates from around the universe of TensorFlow projects, follow
 [@tensorflow](https://twitter.com/tensorflow) on Twitter.
 
+### Blog
+
+We post regularly to the [TensorFlow Blog](http://blog.tensorflow.org/),
+with content from the TensorFlow team and the best articles from the community.
+
 ### YouTube
 
 Our [YouTube Channel](http://youtube.com/tensorflow/) focuses on machine learing
@@ -55,7 +60,6 @@ and AI with TensorFlow. On it we have a number of new shows, including:
 - TensorFlow Meets: meet with community contributors to learn and share what they're doing
 - Ask TensorFlow: the team answers the best questions tagged #AskTensorFlow from social media 
 - Coding TensorFlow: short bites with tips for success with TensorFlow
-
 
 ## Community Support
 
