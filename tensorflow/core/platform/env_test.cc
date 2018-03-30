@@ -373,9 +373,8 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
 
   EXPECT_TRUE(env->CreateUniqueFileName(&filename, suffix));
 
-  StringPiece str(filename);
-  EXPECT_TRUE(str.starts_with(prefix));
-  EXPECT_TRUE(str.ends_with(suffix));
+  EXPECT_TRUE(str_util::StartsWith(filename, prefix));
+  EXPECT_TRUE(str_util::EndsWith(filename, suffix));
 }
 
 }  // namespace tensorflow

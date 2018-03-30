@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -87,7 +88,7 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) {
     // Don't turn Identity nodes following Switch into NoOp or remove them
     // if it requires anchoring a control dependencies the Switch node, which
     // is not valid.
-    if (StringPiece(node.name()).starts_with(kConstantFoldingCtrl)) {
+    if (str_util::StartsWith(node.name(), kConstantFoldingCtrl)) {
       // TODO(rmlarsen): Try to remove this artificial contraint.
       return false;
     }
