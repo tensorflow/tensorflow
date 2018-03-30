@@ -4092,12 +4092,46 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
 inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
                      int16* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
-  // This is a copy of the reference implementation. We do not currently have a
-  // properly optimized version.
   const int flat_size = RequiredBufferSizeForDims(output_dims);
   TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
 
   for (int i = 0; i < flat_size; i++) {
+  }
+
+  int c = 0;
+  const int16* input_data_ptr = input_data;
+  int16* output_data_ptr = output_data;
+#ifdef GEMMLOWP_NEON
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
+
+    for (; c <= flat_size - 16; c += 16) {
+      F3 input0 = F3::FromRaw(vld1q_s16(input_data_ptr));
+      F3 input1 = F3::FromRaw(vld1q_s16(input_data_ptr + 8));
+      F0 output0 = gemmlowp::logistic(input0);
+      F0 output1 = gemmlowp::logistic(input1);
+      vst1q_s16(output_data_ptr, output0.raw());
+      vst1q_s16(output_data_ptr + 8, output1.raw());
+
+      input_data_ptr += 16;
+      output_data_ptr += 16;
+    }
+    for (; c <= flat_size - 8; c += 8) {
+      F3 input = F3::FromRaw(vld1q_s16(input_data_ptr));
+      F0 output = gemmlowp::logistic(input);
+      vst1q_s16(output_data_ptr, output.raw());
+
+      input_data_ptr += 8;
+      output_data_ptr += 8;
+    }
+  }
+#endif
+  {
     // F0 uses 0 integer bits, range [-1, 1].
     // This is the return type of math functions such as tanh, logistic,
     // whose range is in [-1, 1].
@@ -4105,9 +4139,14 @@ inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
     // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
     using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
 
-    const F3 input = F3::FromRaw(input_data[i]);
-    F0 output = gemmlowp::logistic(input);
-    output_data[i] = output.raw();
+    for (; c < flat_size; ++c) {
+      F3 input = F3::FromRaw(*input_data_ptr);
+      F0 output = gemmlowp::logistic(input);
+      *output_data_ptr = output.raw();
+
+      ++input_data_ptr;
+      ++output_data_ptr;
+    }
   }
 }
 
@@ -4274,9 +4313,6 @@ inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
                  int input_left_shift, int16* output_data,
                  const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Tanh/Int16");
-  // This is a copy of the reference implementation. We do not currently have a
-  // properly optimized version.
-
   // Support for shifts is limited until we have a parameterized version of
   // SaturatingRoundingMultiplyByPOT().
   TFLITE_DCHECK_GE(input_left_shift, 0);
@@ -4285,25 +4321,91 @@ inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
   const int flat_size = RequiredBufferSizeForDims(output_dims);
   TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
 
-  // F0 uses 0 integer bits, range [-1, 1].
-  // This is the return type of math functions such as tanh, logistic,
-  // whose range is in [-1, 1].
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-  using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+  int c = 0;
+  const int16* input_data_ptr = input_data;
+  int16* output_data_ptr = output_data;
+#ifdef GEMMLOWP_NEON
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
 
-  if (input_left_shift == 0) {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(input_data[i]);
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
+    if (input_left_shift == 0) {
+      for (; c <= flat_size - 16; c += 16) {
+        F3 input0 = F3::FromRaw(vld1q_s16(input_data_ptr));
+        F3 input1 = F3::FromRaw(vld1q_s16(input_data_ptr + 8));
+        F0 output0 = gemmlowp::tanh(input0);
+        F0 output1 = gemmlowp::tanh(input1);
+        vst1q_s16(output_data_ptr, output0.raw());
+        vst1q_s16(output_data_ptr + 8, output1.raw());
+
+        input_data_ptr += 16;
+        output_data_ptr += 16;
+      }
+      for (; c <= flat_size - 8; c += 8) {
+        F3 input = F3::FromRaw(vld1q_s16(input_data_ptr));
+        F0 output = gemmlowp::tanh(input);
+        vst1q_s16(output_data_ptr, output.raw());
+
+        input_data_ptr += 8;
+        output_data_ptr += 8;
+      }
+    } else {
+      for (; c <= flat_size - 16; c += 16) {
+        F3 input0 = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            vld1q_s16(input_data_ptr)));
+        F3 input1 = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            vld1q_s16(input_data_ptr + 8)));
+        F0 output0 = gemmlowp::tanh(input0);
+        F0 output1 = gemmlowp::tanh(input1);
+        vst1q_s16(output_data_ptr, output0.raw());
+        vst1q_s16(output_data_ptr + 8, output1.raw());
+
+        input_data_ptr += 16;
+        output_data_ptr += 16;
+      }
+      for (; c <= flat_size - 8; c += 8) {
+        F3 input = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            vld1q_s16(input_data_ptr)));
+        F0 output = gemmlowp::tanh(input);
+        vst1q_s16(output_data_ptr, output.raw());
+
+        input_data_ptr += 8;
+        output_data_ptr += 8;
+      }
     }
-  } else {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(
-          gemmlowp::SaturatingRoundingMultiplyByPOT<1>(input_data[i]));
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
+  }
+#endif
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+
+    if (input_left_shift == 0) {
+      for (; c < flat_size; ++c) {
+        F3 input = F3::FromRaw(*input_data_ptr);
+        F0 output = gemmlowp::tanh(input);
+        *output_data_ptr = output.raw();
+
+        ++input_data_ptr;
+        ++output_data_ptr;
+      }
+    } else {
+      for (; c < flat_size; ++c) {
+        F3 input = F3::FromRaw(
+            gemmlowp::SaturatingRoundingMultiplyByPOT<1>(*input_data_ptr));
+        F0 output = gemmlowp::tanh(input);
+        *output_data_ptr = output.raw();
+
+        ++input_data_ptr;
+        ++output_data_ptr;
+      }
     }
   }
 }

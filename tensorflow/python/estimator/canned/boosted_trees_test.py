@@ -195,7 +195,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
             feature_column.numeric_column('f_%d' % i, dtype=dtypes.float32),
             BUCKET_BOUNDARIES) for i in range(NUM_FEATURES)
     }
-    self._tree_hparams = boosted_trees.TreeHParams(
+    self._tree_hparams = boosted_trees._TreeHParams(  # pylint:disable=protected-access
         n_trees=2,
         max_depth=2,
         learning_rate=0.1,

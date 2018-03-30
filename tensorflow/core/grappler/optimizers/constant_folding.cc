@@ -483,6 +483,11 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
     return Status::OK();
   }
 
+  // Don't optimize this again if it was already optimized and folded.
+  if (OptimizedNodeExists(node, "-folded-1") ||
+      OptimizedNodeExists(node, "-folded-2")) {
+    return Status::OK();
+  }
   int64 min_id = 0;
   BCast::Vec shape1;
   if (!ExtractShape(*shape_node1, properties, &shape1, &min_id)) {
@@ -547,6 +552,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
 
   const DataType type = node.attr().at("T").type();
   NodeDef* out[2];
+  bool created_const = false;
   for (int j = 0; j < 2; ++j) {
     int reduction_indices = reduce_dims[j].size();
     Tensor value(type, TensorShape({reduction_indices}));
@@ -570,17 +576,20 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
           AddControlDependency(node.name(), graph_, node_map_.get());
       *out[j]->add_input() = ctrl_dep;
       node_map_->AddOutput(NodeName(ctrl_dep), const_name);
+      created_const = true;
     }
   }
 
-  const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
-  for (NodeDef* output : outputs) {
-    for (int k = 0; k < output->input_size(); ++k) {
-      int port;
-      string node_name = ParseNodeName(output->input(k), &port);
-      if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
-        *output->mutable_input(k) = out[port]->name();
-        node_map_->UpdateInput(output->name(), node_name, out[port]->name());
+  if (created_const) {
+    const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
+    for (NodeDef* output : outputs) {
+      for (int k = 0; k < output->input_size(); ++k) {
+        int port;
+        string node_name = ParseNodeName(output->input(k), &port);
+        if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
+          *output->mutable_input(k) = out[port]->name();
+          node_map_->UpdateInput(output->name(), node_name, out[port]->name());
+        }
       }
     }
   }
@@ -1237,7 +1246,8 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
     Status s = FoldNode(node, output);
     processed_nodes.insert(node->name());
     if (!s.ok()) {
-      VLOG(1) << "Failed to fold node " << node->name() << ": " << s;
+      VLOG(1) << "Failed to fold node " << node->DebugString()
+              << "\nError message: " << s;
     } else {
       for (auto& output : fanout) {
         if (IsFoldable(*output)) {
