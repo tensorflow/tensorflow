@@ -383,6 +383,7 @@ class AttentionWrapperTest(test.TestCase):
       final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
       self.assertTrue(
           isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
+      self.assertEqual(final_outputs.rnn_output.dtype, dtype)
       self.assertTrue(
           isinstance(final_state, wrapper.AttentionWrapperState))
       self.assertTrue(
