@@ -14,6 +14,12 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
 
+# We must check the bazel version before trying to parse any other BUILD
+# files, in case the parsing of those build files depends on the bazel
+# version we require here.
+load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
+check_bazel_version_at_least("0.10.0")
+
 load("//tensorflow:workspace.bzl", "tf_workspace")
 
 # Uncomment and update the paths in these entries to build the Android demo.

@@ -715,6 +715,11 @@ tensorflow::Status DotOpEmitter::Emit() {
   // which performs the sum-of-products (the reduction loop) before storing
   // the result in the output buffer.
 
+  // This routine assumes that the dot operation is not in a parallelized
+  // enclosing computation.
+  CHECK(
+      dot_.parent()->root_instruction()->outer_dimension_partitions().empty());
+
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
 

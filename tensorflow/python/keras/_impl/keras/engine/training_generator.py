@@ -112,42 +112,25 @@ def fit_generator(model,
   val_enqueuer = None
 
   try:
-    if do_validation:
-      if val_gen:
-        if workers > 0:
-          if isinstance(validation_data, Sequence):
-            val_enqueuer = OrderedEnqueuer(
-                validation_data, use_multiprocessing=use_multiprocessing)
-            if validation_steps is None:
-              validation_steps = len(validation_data)
-          else:
-            val_enqueuer = GeneratorEnqueuer(
-                validation_data,
-                use_multiprocessing=use_multiprocessing,
-                wait_time=wait_time)
-          val_enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-          validation_generator = val_enqueuer.get()
-        else:
-          validation_generator = validation_data
+    if do_validation and not val_gen:
+      # Prepare data for validation
+      if len(validation_data) == 2:
+        val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
+        val_sample_weight = None
+      elif len(validation_data) == 3:
+        val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
       else:
-        if len(validation_data) == 2:
-          val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-          val_sample_weight = None
-        elif len(validation_data) == 3:
-          val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
-        else:
-          raise ValueError(
-              '`validation_data` should be a tuple '
-              '`(val_x, val_y, val_sample_weight)` '
-              'or `(val_x, val_y)`. Found: ' + str(validation_data))
-        val_x, val_y, val_sample_weights = model._standardize_user_data(
-            val_x, val_y, val_sample_weight)
-        val_data = val_x + val_y + val_sample_weights
-        if model.uses_learning_phase and not isinstance(
-            K.learning_phase(), int):
-          val_data += [0]
-        for cbk in callbacks:
-          cbk.validation_data = val_data
+        raise ValueError(
+            '`validation_data` should be a tuple '
+            '`(val_x, val_y, val_sample_weight)` '
+            'or `(val_x, val_y)`. Found: ' + str(validation_data))
+      val_x, val_y, val_sample_weights = model._standardize_user_data(
+          val_x, val_y, val_sample_weight)
+      val_data = val_x + val_y + val_sample_weights
+      if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+        val_data += [0.]
+      for cbk in callbacks:
+        cbk.validation_data = val_data
 
     if workers > 0:
       if is_sequence:
@@ -163,7 +146,10 @@ def fit_generator(model,
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
-      output_generator = generator
+      if is_sequence:
+        output_generator = iter(generator)
+      else:
+        output_generator = generator
 
     callback_model.stop_training = False
     # Construct epoch logs.
@@ -218,7 +204,12 @@ def fit_generator(model,
         if steps_done >= steps_per_epoch and do_validation:
           if val_gen:
             val_outs = evaluate_generator(
-                model, validation_generator, validation_steps, workers=0)
+                model,
+                validation_data,
+                validation_steps,
+                workers=workers,
+                use_multiprocessing=use_multiprocessing,
+                max_queue_size=max_queue_size)
           else:
             # No need for try/except because
             # data has already been validated.
@@ -297,7 +288,10 @@ def evaluate_generator(model,
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
-      output_generator = generator
+      if is_sequence:
+        output_generator = iter(generator)
+      else:
+        output_generator = generator
 
     while steps_done < steps:
       generator_output = next(output_generator)
@@ -387,7 +381,10 @@ def predict_generator(model,
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
-      output_generator = generator
+      if is_sequence:
+        output_generator = iter(generator)
+      else:
+        output_generator = generator
 
     if verbose == 1:
       progbar = Progbar(target=steps)

@@ -29,6 +29,8 @@ limitations under the License.
 
 namespace toco {
 
+using tflite::QuantizationParams;
+
 enum class OperatorType {
   kNone,
   // General-purpose neural network operators.
@@ -63,6 +65,7 @@ enum class OperatorType {
   kRelu,
   kRelu1,
   kRelu6,
+  kPRelu,
   kSoftmax,
   kLogSoftmax,
   kSub,
@@ -564,6 +567,18 @@ struct Relu6Operator : Operator {
   Relu6Operator() : Operator(OperatorType::kRelu6) {}
 };
 
+// PRelu
+//   f(x) = alpha * x for x < 0, f(x) = x for x >= 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: the alpha array
+//
+// Equivalent to keras.layers.PReLU.
+struct PReluOperator : Operator {
+  PReluOperator() : Operator(OperatorType::kPRelu) {}
+};
+
 // Element-wise Logistic operator:
 //   x -> Logistic(x) = 1 / (1 + exp(-x))
 //
@@ -846,19 +861,29 @@ struct SqueezeOperator : Operator {
 };
 
 // Inputs:
-//   inputs[0]: required: the input activations array
-//   inputs[1]: required: the Conv weights
-//   channel.
+//   inputs[0]: required: the output shape
+//   inputs[1]: required: the weights
+//   inputs[2]: required: the input activations array
+//   NOTE: The input activations is NOT the first input.
+//
 //
 // Outputs:
 //   outputs[0]: required: the output activations array
 //
 // TensorFlow equivalent: Conv2DBackpropInput
 struct TransposeConvOperator : Operator {
+  enum Inputs {
+    OUTPUT_SHAPE = 0,
+    WEIGHTS = 1,
+    DATA_INPUT = 2,
+  };
+
   TransposeConvOperator() : Operator(OperatorType::kTransposeConv) {}
   Padding padding;
   int stride_width = 0;
   int stride_height = 0;
+  // Dilation is possible with transpose convolution, but Tensorflow does not
+  // currently support it, so we omit it.
 };
 
 // Given a tensor input, this operation calculates element-wise exponential
@@ -1452,22 +1477,6 @@ struct Alloc {
 inline bool operator<(const Alloc& a, const Alloc& b) {
   return a.start < b.start;
 }
-
-// Quantization parameters, determining the mapping of quantized values
-// to real values (i.e. determining how quantized values are mathematically
-// interpreted).
-//
-// The correspondence is as follows:
-//
-//   real_value = scale * (quantized_value - zero_point);
-//
-// In other words, zero_point designates which quantized value corresponds to
-// the real 0 value, and scale designates the difference between the real values
-// corresponding to consecutive quantized values differing by 1.
-struct QuantizationParams {
-  int32 zero_point = 0;
-  double scale = 0.;
-};
 
 class Shape {
  public:

@@ -489,10 +489,10 @@ class _DefinedFunction(object):
 
     # Adds this function into 'g'.
     # pylint: disable=protected-access
-    if context.in_graph_mode():
-      g._add_function(self)
-    else:
+    if context.executing_eagerly():
       context.context().add_function_def(self.definition)
+    else:
+      g._add_function(self)
     # pylint: enable=protected-access
 
     # Ensures related sub-routines are defined in 'g', too.
@@ -933,6 +933,12 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
       attrs["_XlaScope"] = attr_value_pb2.AttrValue(
           s=("function_%s" % func_name).encode())
     # pylint: enable=protected-access
+
+  kwargs_keys = list(kwargs.keys())
+  for key in kwargs_keys:
+    if key.startswith("experimental_"):
+      attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(kwargs[key]))
+      del kwargs[key]
 
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())

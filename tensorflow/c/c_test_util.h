@@ -46,12 +46,10 @@ TF_Tensor* DoubleTensor(double v);
 
 TF_Tensor* FloatTensor(float v);
 
-// TODO(hongm): Change Placeholder() to take in a TF_DataType parameter, and
-// unify with PlaceholderFloat.
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
-                          const char* name = "feed");
-TF_Operation* PlaceholderFloat(TF_Graph* graph, TF_Status* s,
-                               const char* name = "feed");
+                          const char* name = "feed",
+                          TF_DataType dtype = TF_INT32,
+                          const std::vector<int64_t>& dims = {});
 
 TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
                     const char* name = "const");

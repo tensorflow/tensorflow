@@ -204,7 +204,7 @@ def make_template_internal(name_,
   if kwargs:
     func_ = tf_decorator.make_decorator(func_, functools.partial(
         func_, **kwargs))
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if unique_name_ is not None:
       raise ValueError(
           "unique_name_ cannot be used when eager exeuction is enabled.")
@@ -364,7 +364,7 @@ class Template(checkpointable.CheckpointableBase):
     """
     def _call_next_creator_renaming_initializer(initializer, **inner_kwargs):
       inner_kwargs.pop("name")  # Ignored; this is the scope-stripped name which
-                                # we don't want to propagate.
+      # we don't want to propagate.
       return next_creator(
           initial_value=initializer,
           name=name,
@@ -583,7 +583,7 @@ class _EagerTemplateVariableStore(object):
       if self._variable_scope_name is None:
         raise RuntimeError("A variable scope must be set before an "
                            "_EagerTemplateVariableStore object exits.")
-      self._eager_variable_store._store.close_variable_subscopes(  # pylint: disable=protected-access
+      variable_scope.get_variable_scope_store().close_variable_subscopes(
           self._variable_scope_name)
 
   def _variables_in_scope(self, variable_list):
@@ -647,7 +647,7 @@ class EagerTemplate(Template):
     Raises:
       RuntimeError: if eager execution is not enabled.
     """
-    if not context.in_eager_mode():
+    if not context.executing_eagerly():
       raise RuntimeError(
           "{} objects can only be used when eager execution is enabled, use "
           "tf.Template for graph construction".

@@ -665,7 +665,7 @@ def least_squares_discriminator_loss(
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
     add_summaries=False):
-  """Least squares generator loss.
+  """Least squares discriminator loss.
 
   This loss comes from `Least Squares Generative Adversarial Networks`
   (https://arxiv.org/abs/1611.04076).

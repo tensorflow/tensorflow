@@ -10,18 +10,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_kernel_library",
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    "tf_cc_test",
 )
 
 cc_library(
@@ -114,6 +103,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "slide_dataset_op",
+    srcs = ["slide_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:batch_util",
+    ],
+)
+
+tf_kernel_library(
     name = "padded_batch_dataset_op",
     srcs = ["padded_batch_dataset_op.cc"],
     deps = [
@@ -162,6 +164,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
 )
@@ -281,11 +284,31 @@ tf_kernel_library(
     ],
 )
 
+cc_library(
+    name = "prefetch_autotuner",
+    srcs = ["prefetch_autotuner.cc"],
+    hdrs = ["prefetch_autotuner.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "prefetch_autotuner_test",
+    srcs = ["prefetch_autotuner_test.cc"],
+    deps = [
+        ":prefetch_autotuner",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "prefetch_dataset_op",
     srcs = ["prefetch_dataset_op.cc"],
     deps = [
         ":dataset",
+        ":prefetch_autotuner",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -537,6 +560,7 @@ tf_kernel_library(
         ":scan_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
+        ":slide_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":sql_dataset_ops",
         ":stats_aggregator_ops",

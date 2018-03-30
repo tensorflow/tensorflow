@@ -25,6 +25,12 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
 
 _allowed_symbols = [
+    'sequence_categorical_column_with_hash_bucket',
+    'sequence_categorical_column_with_identity',
+    'sequence_categorical_column_with_vocabulary_list',
+    'sequence_categorical_column_with_vocabulary_file',
+    'sequence_input_layer',
+    'sequence_numeric_column',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

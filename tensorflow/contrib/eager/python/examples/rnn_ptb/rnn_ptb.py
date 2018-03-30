@@ -38,6 +38,8 @@ import tensorflow as tf
 from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
 from tensorflow.contrib.eager.python import tfe
 
+layers = tf.keras.layers
+
 
 class RNN(tf.keras.Model):
   """A static RNN.
@@ -74,14 +76,14 @@ class RNN(tf.keras.Model):
 
   def _add_cells(self, cells):
     # "Magic" required for keras.Model classes to track all the variables in
-    # a list of tf.layers.Layer objects.
+    # a list of Layer objects.
     # TODO(ashankar): Figure out API so user code doesn't have to do this.
     for i, c in enumerate(cells):
       setattr(self, "cell-%d" % i, c)
     return cells
 
 
-class Embedding(tf.layers.Layer):
+class Embedding(layers.Layer):
   """An Embedding layer."""
 
   def __init__(self, vocab_size, embedding_dim, **kwargs):
@@ -132,7 +134,7 @@ class PTBModel(tf.keras.Model):
     else:
       self.rnn = RNN(hidden_dim, num_layers, self.keep_ratio)
 
-    self.linear = tf.layers.Dense(
+    self.linear = layers.Dense(
         vocab_size, kernel_initializer=tf.random_uniform_initializer(-0.1, 0.1))
     self._output_shape = [-1, embedding_dim]
 

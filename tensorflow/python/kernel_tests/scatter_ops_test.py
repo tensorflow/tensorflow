@@ -38,9 +38,19 @@ def _NumpyAdd(ref, indices, updates):
     ref[indx] += updates[i]
 
 
+def _NumpyAddScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] += update
+
+
 def _NumpySub(ref, indices, updates):
   for i, indx in np.ndenumerate(indices):
     ref[indx] -= updates[i]
+
+
+def _NumpySubScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] -= update
 
 
 def _NumpyMul(ref, indices, updates):
@@ -48,14 +58,49 @@ def _NumpyMul(ref, indices, updates):
     ref[indx] *= updates[i]
 
 
+def _NumpyMulScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] *= update
+
+
 def _NumpyDiv(ref, indices, updates):
   for i, indx in np.ndenumerate(indices):
     ref[indx] /= updates[i]
 
 
+def _NumpyDivScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] /= update
+
+
+def _NumpyMin(ref, indices, updates):
+  for i, indx in np.ndenumerate(indices):
+    ref[indx] = np.minimum(ref[indx], updates[i])
+
+
+def _NumpyMinScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] = np.minimum(ref[indx], update)
+
+
+def _NumpyMax(ref, indices, updates):
+  for i, indx in np.ndenumerate(indices):
+    ref[indx] = np.maximum(ref[indx], updates[i])
+
+
+def _NumpyMaxScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] = np.maximum(ref[indx], update)
+
+
 def _NumpyUpdate(ref, indices, updates):
   for i, indx in np.ndenumerate(indices):
     ref[indx] = updates[i]
+
+
+def _NumpyUpdateScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] = update
 
 
 _TF_OPS_TO_NUMPY = {
@@ -64,12 +109,29 @@ _TF_OPS_TO_NUMPY = {
     state_ops.scatter_sub: _NumpySub,
     state_ops.scatter_mul: _NumpyMul,
     state_ops.scatter_div: _NumpyDiv,
+    state_ops.scatter_min: _NumpyMin,
+    state_ops.scatter_max: _NumpyMax,
+}
+
+_TF_OPS_TO_NUMPY_SCALAR = {
+    state_ops.scatter_update: _NumpyUpdateScalar,
+    state_ops.scatter_add: _NumpyAddScalar,
+    state_ops.scatter_sub: _NumpySubScalar,
+    state_ops.scatter_mul: _NumpyMulScalar,
+    state_ops.scatter_div: _NumpyDivScalar,
+    state_ops.scatter_min: _NumpyMinScalar,
+    state_ops.scatter_max: _NumpyMaxScalar,
 }
 
 
 class ScatterTest(test.TestCase):
 
-  def _VariableRankTest(self, tf_scatter, vtype, itype, repeat_indices=False):
+  def _VariableRankTest(self,
+                        tf_scatter,
+                        vtype,
+                        itype,
+                        repeat_indices=False,
+                        updates_are_scalar=False):
     np.random.seed(8)
     with self.test_session(use_gpu=True):
       for indices_shape in (), (2,), (3, 7), (3, 4, 7):
@@ -89,8 +151,11 @@ class ScatterTest(test.TestCase):
                                   indices[np.random.randint(size // 2)])
             np.random.shuffle(indices)
           indices = indices.reshape(indices_shape)
-          updates = _AsType(
-              np.random.randn(*(indices_shape + extra_shape)), vtype)
+          if updates_are_scalar:
+            updates = _AsType(np.random.randn(), vtype)
+          else:
+            updates = _AsType(
+                np.random.randn(*(indices_shape + extra_shape)), vtype)
 
           # Clips small values to avoid division by zero.
           def clip_small_values(x):
@@ -101,7 +166,10 @@ class ScatterTest(test.TestCase):
 
           # Scatter via numpy
           new = old.copy()
-          np_scatter = _TF_OPS_TO_NUMPY[tf_scatter]
+          if updates_are_scalar:
+            np_scatter = _TF_OPS_TO_NUMPY_SCALAR[tf_scatter]
+          else:
+            np_scatter = _TF_OPS_TO_NUMPY[tf_scatter]
           np_scatter(new, indices, updates)
           # Scatter via tensorflow
           ref = variables.Variable(old)
@@ -109,25 +177,35 @@ class ScatterTest(test.TestCase):
           tf_scatter(ref, indices, updates).eval()
           self.assertAllClose(ref.eval(), new)
 
-  def _VariableRankTests(self, tf_scatter, repeat_indices=False):
+  def _VariableRankTests(self,
+                         tf_scatter,
+                         repeat_indices=False,
+                         updates_are_scalar=False):
     for vtype in (np.float32, np.float64):
       for itype in (np.int32, np.int64):
-        self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices)
+        self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices,
+                               updates_are_scalar)
 
   def testVariableRankUpdate(self):
-    self._VariableRankTests(state_ops.scatter_update)
+    self._VariableRankTests(state_ops.scatter_update, False)
 
   def testVariableRankAdd(self):
-    self._VariableRankTests(state_ops.scatter_add)
+    self._VariableRankTests(state_ops.scatter_add, False)
 
   def testVariableRankSub(self):
-    self._VariableRankTests(state_ops.scatter_sub)
+    self._VariableRankTests(state_ops.scatter_sub, False)
 
   def testVariableRankMul(self):
-    self._VariableRankTests(state_ops.scatter_mul)
+    self._VariableRankTests(state_ops.scatter_mul, False)
 
   def testVariableRankDiv(self):
-    self._VariableRankTests(state_ops.scatter_div)
+    self._VariableRankTests(state_ops.scatter_div, False)
+
+  def testVariableRankMin(self):
+    self._VariableRankTests(state_ops.scatter_min, False)
+
+  def testVariableRankMax(self):
+    self._VariableRankTests(state_ops.scatter_max, False)
 
   def testRepeatIndicesAdd(self):
     self._VariableRankTests(state_ops.scatter_add, True)
@@ -140,6 +218,51 @@ class ScatterTest(test.TestCase):
 
   def testRepeatIndicesDiv(self):
     self._VariableRankTests(state_ops.scatter_div, True)
+
+  def testRepeatIndicesMin(self):
+    self._VariableRankTests(state_ops.scatter_min, True)
+
+  def testRepeatIndicesMax(self):
+    self._VariableRankTests(state_ops.scatter_max, True)
+
+  def testVariableRankUpdateScalar(self):
+    self._VariableRankTests(state_ops.scatter_update, False, True)
+
+  def testVariableRankAddScalar(self):
+    self._VariableRankTests(state_ops.scatter_add, False, True)
+
+  def testVariableRankSubScalar(self):
+    self._VariableRankTests(state_ops.scatter_sub, False, True)
+
+  def testVariableRankMulScalar(self):
+    self._VariableRankTests(state_ops.scatter_mul, False, True)
+
+  def testVariableRankDivScalar(self):
+    self._VariableRankTests(state_ops.scatter_div, False, True)
+
+  def testVariableRankMinScalar(self):
+    self._VariableRankTests(state_ops.scatter_min, False, True)
+
+  def testVariableRankMaxScalar(self):
+    self._VariableRankTests(state_ops.scatter_max, False, True)
+
+  def testRepeatIndicesAddScalar(self):
+    self._VariableRankTests(state_ops.scatter_add, True, True)
+
+  def testRepeatIndicesSubScalar(self):
+    self._VariableRankTests(state_ops.scatter_sub, True, True)
+
+  def testRepeatIndicesMulScalar(self):
+    self._VariableRankTests(state_ops.scatter_mul, True, True)
+
+  def testRepeatIndicesDivScalar(self):
+    self._VariableRankTests(state_ops.scatter_div, True, True)
+
+  def testRepeatIndicesMinScalar(self):
+    self._VariableRankTests(state_ops.scatter_min, True, True)
+
+  def testRepeatIndicesMaxScalar(self):
+    self._VariableRankTests(state_ops.scatter_max, True, True)
 
   def testBooleanScatterUpdate(self):
     if not test.is_gpu_available():

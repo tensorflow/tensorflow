@@ -560,5 +560,25 @@ TEST_F(ReshapeMoverTest, MultiplePasses) {
       op::Reshape(op::Add(param2, op::Reshape(op::Add(param0, param1)))));
 }
 
+TEST_F(ReshapeMoverTest, SinkTransposeAcrossBroadcastScalar) {
+  const string hlo_string = R"(
+    HloModule TransposeMulInversedTransposeModule
+    ENTRY TransposeMulInversedTranspose {
+      src0 = f32[1,20,8,32]{3,2,1,0} parameter(0)
+      transpose0 = f32[1,8,20,32]{3,2,1,0} transpose(src0), dimensions={0,2,1,3}
+      src1 = f32[] parameter(1)
+      broadcast0 = f32[1,8,20,32]{3,2,1,0} broadcast(src1), dimensions={}
+      ROOT multiply0 = f32[1,8,20,32]{3,2,1,0} multiply(transpose0, broadcast0)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string.c_str());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(module().entry_computation()->root_instruction(),
+              op::Transpose(op::Multiply()));
+}
+
 }  // namespace
 }  // namespace xla

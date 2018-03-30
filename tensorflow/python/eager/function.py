@@ -112,7 +112,7 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
   """
   del as_ref  # Unused.
 
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return value
 
   default_graph = ops.get_default_graph()
@@ -295,7 +295,7 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       _register(fn)
     self.definition = function_def
     self.name = function_def.signature.name
@@ -438,7 +438,14 @@ class GraphModeFunction(object):
     all_args = args + self._extra_inputs
     signature = self._forward_fdef.signature
     ctx = context.context()
-    if ctx.in_graph_mode():
+    if ctx.executing_eagerly():
+      outputs = execute.execute(
+          str(signature.name),
+          num_outputs=len(signature.output_arg),
+          inputs=all_args,
+          attrs=None,
+          ctx=ctx)
+    else:
       g = ops.get_default_graph()
       g._add_function(self._forward_fdef)  # pylint: disable=protected-access
       op = g.create_op(
@@ -453,13 +460,6 @@ class GraphModeFunction(object):
           outputs, (ops.Tensor, type(None))) else list(outputs)
       for i, s in enumerate(self._output_shapes):
         outputs[i].set_shape(s)
-    else:
-      outputs = execute.execute(
-          str(signature.name),
-          num_outputs=len(signature.output_arg),
-          inputs=all_args,
-          attrs=None,
-          ctx=ctx)
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
 
@@ -530,7 +530,14 @@ class GraphModeFunction(object):
       return self._backprop_call(tensor_inputs)
 
     ctx = context.context()
-    if ctx.in_graph_mode():
+    if ctx.executing_eagerly():
+      result = execute.execute(
+          str(self._func_name),
+          num_outputs=self._num_outputs,
+          inputs=tensor_inputs + self._extra_inputs,
+          attrs=None,
+          ctx=ctx)
+    else:
       g = ops.get_default_graph()
       self.add_to_graph(g)
       signature = self._function_def.definition.signature
@@ -547,13 +554,6 @@ class GraphModeFunction(object):
         return op
       for i, s in enumerate(self._output_shapes):
         result[i].set_shape(s)
-    else:
-      result = execute.execute(
-          str(self._func_name),
-          num_outputs=self._num_outputs,
-          inputs=tensor_inputs + self._extra_inputs,
-          attrs=None,
-          ctx=ctx)
 
     return self._build_call_outputs(result)
 
@@ -666,7 +666,7 @@ def _defun_internal(name, func, args, kwds):
                      if x not in all_ignored_ops)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     for f in tmp_graph._functions.values():  # pylint: disable=protected-access
       # TODO(ashankar): What about the gradient registry?
       _register(f._c_func)  # pylint: disable=protected-access
@@ -906,7 +906,7 @@ class AutomaticControlDependencies(object):
     return tensor
 
   def __enter__(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return self
     # This code assumes no other thread is adding ops to the graph while
     # we're adding ops to the graph.
@@ -977,7 +977,7 @@ class AutomaticControlDependencies(object):
       merge_for_resource[o] = new_merge[0].op
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return
 
     if self._graph is not ops.get_default_graph():

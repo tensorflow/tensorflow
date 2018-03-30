@@ -532,8 +532,7 @@ class Orthogonal(Initializer):
     q, r = linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
     d = array_ops.diag_part(r)
-    ph = d / math_ops.abs(d)
-    q *= ph
+    q *= math_ops.sign(d)
     if num_rows < num_cols:
       q = array_ops.matrix_transpose(q)
     return self.gain * array_ops.reshape(q, shape)
@@ -579,7 +578,11 @@ class ConvolutionDeltaOrthogonal(Initializer):
     a = random_ops.random_normal([shape[-1], shape[-1]],
                                  dtype=dtype, seed=self.seed)
     # Compute the qr factorization
-    q, _ = linalg_ops.qr(a, full_matrices=False)
+    q, r = linalg_ops.qr(a, full_matrices=False)
+    # Make Q uniform
+    d = array_ops.diag_part(r)
+    # ph = d / math_ops.abs(d)
+    q *= math_ops.sign(d)
     q = q[:shape[-2], :]
     q *= math_ops.sqrt(math_ops.cast(self.gain, dtype=dtype))
     if len(shape) == 3:

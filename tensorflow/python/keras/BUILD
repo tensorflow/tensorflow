@@ -8,6 +8,12 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+config_setting(
+    name = "empty_condition",
+    values = {"define": "UNUSED=unused"},
+)
 
 py_library(
     name = "keras",
@@ -126,7 +132,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
+        "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -165,7 +175,6 @@ py_library(
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/saved_model",
-        "@six_archive//:six",
     ],
 )
 
@@ -393,11 +402,10 @@ py_test(
 
 py_test(
     name = "convolutional_recurrent_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/layers/convolutional_recurrent_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
-    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -604,6 +612,7 @@ py_test(
         "no_windows",
         "noasan",  # times out
         "notsan",
+        "optonly",  # times out
     ],
     deps = [
         ":keras",
@@ -648,16 +657,17 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "multi_gpu_utils_test",
-    size = "medium",
     srcs = ["_impl/keras/utils/multi_gpu_utils_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["multi_gpu"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "guitar",
+        "multi_gpu",
     ],
 )
 
@@ -766,6 +776,9 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/engine/topology_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -854,16 +867,4 @@ py_library(
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

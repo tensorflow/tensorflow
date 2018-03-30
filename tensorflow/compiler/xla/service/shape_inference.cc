@@ -193,7 +193,10 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
 
   const Shape& accumulator_shape = reducer_shape.result();
   if (ShapeUtil::Rank(accumulator_shape) != 0) {
-    return InvalidArgument("Reduction function must have rank 0.");
+    return InvalidArgument(
+        "Reduction function must have rank 0 (rank %lld reduction function "
+        "given).",
+        ShapeUtil::Rank(accumulator_shape));
   }
 
   // Check that the accumulator can be passed in as the first argument.
@@ -301,12 +304,17 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 
 /* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
     HloOpcode opcode, const HloInstruction* operand) {
+  return InferUnaryOpShape(opcode, operand->shape());
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
+    HloOpcode opcode, const Shape& shape) {
   // There is no copy operation at the proto level, so handle copy explicitly.
   if (opcode == HloOpcode::kCopy) {
-    return operand->shape();
+    return shape;
   }
 
-  return InferUnaryOpShape(OpcodeToUnaryOperation(opcode), operand->shape());
+  return InferUnaryOpShape(OpcodeToUnaryOperation(opcode), shape);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
@@ -942,6 +950,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
+    HloOpcode opcode, const Shape& lhs, const Shape& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return InferBinaryOpShape(OpcodeToBinaryOperation(opcode), lhs, rhs,
+                            broadcast_dimensions);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
     BinaryOperation operation, const Shape& lhs, const Shape& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   VLOG(2) << tensorflow::strings::Printf(
@@ -1023,8 +1038,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
     HloOpcode opcode, const HloInstruction* lhs, const HloInstruction* rhs,
     const HloInstruction* ehs) {
-  return InferTernaryOpShape(OpcodeToTernaryOperation(opcode), lhs->shape(),
-                             rhs->shape(), ehs->shape());
+  return InferTernaryOpShape(opcode, lhs->shape(), rhs->shape(), ehs->shape());
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
+    HloOpcode opcode, const Shape& lhs, const Shape& rhs, const Shape& ehs) {
+  return InferTernaryOpShape(OpcodeToTernaryOperation(opcode), lhs, rhs, ehs);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
@@ -1051,6 +1070,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (const HloInstruction* operand : operands) {
     operand_shapes.push_back(&operand->shape());
   }
+  return InferVariadicOpShape(opcode, operand_shapes);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferVariadicOpShape(
+    HloOpcode opcode,
+    tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
   return InferVariadicOpShape(OpcodeToVariadicOperation(opcode),
                               operand_shapes);
 }
@@ -2092,8 +2117,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "Dynamic slice start number of dimensions %lld (%s) must match rank "
-        "%lld of slice input (%s).",
+        "Dynamic update slice start number of dimensions %lld (%s) must match "
+        "rank %lld of slice input (%s).",
         start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
         ShapeUtil::Rank(operand_shape),
         ShapeUtil::HumanString(operand_shape).c_str());
@@ -2394,7 +2419,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred).c_str());
   }
-  if (ShapeUtil::SameDimensions(pred, on_true) || ShapeUtil::Rank(pred) == 0) {
+  if (ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
+      ShapeUtil::Rank(pred) == 0) {
     // By this stage we know that pred's element type is PRED. Therefore, this
     // check restricts pred to be a PRED scalar, or a PRED array with the same
     // dimensions as on_true and on_false.

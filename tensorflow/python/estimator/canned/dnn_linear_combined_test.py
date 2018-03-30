@@ -26,7 +26,7 @@ import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.estimator import warm_starting_util
+from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import dnn_linear_combined
 from tensorflow.python.estimator.canned import dnn_testing_utils
 from tensorflow.python.estimator.canned import linear_testing_utils
@@ -866,7 +866,7 @@ class DNNLinearCombinedWarmStartingTest(test.TestCase):
                 learning_rate=0.0),
             # The provided regular expression will only warm-start the deep
             # portion of the model.
-            warm_start_from=warm_starting_util.WarmStartSettings(
+            warm_start_from=estimator.WarmStartSettings(
                 ckpt_to_initialize_from=dnn_lc_classifier.model_dir,
                 vars_to_warm_start='.*(dnn).*')))
 

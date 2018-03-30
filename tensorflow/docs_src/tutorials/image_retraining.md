@@ -115,7 +115,7 @@ process is progressing. The training's objective is to make the loss as small as
 possible, so you can tell if the learning is working by keeping an eye on
 whether the loss keeps trending downwards, ignoring the short-term noise.
 
-By default this script will run 4,000 training steps. Each step chooses ten
+By default this script will run 4,000 training steps. Each step chooses 100
 images at random from the training set, finds their bottlenecks from the cache,
 and feeds them into the final layer to get predictions. Those predictions are
 then compared against the actual labels to update the final layer's weights

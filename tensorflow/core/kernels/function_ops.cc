@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -143,6 +144,11 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
                                                RetvalOp);
+REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<ResourceHandle>("T")
+                            .HostMemory("input"),
+                        RetvalOp);
 #undef REGISTER
 
 class PassOn : public OpKernel {
@@ -307,11 +313,30 @@ class RemoteCallOp : public AsyncOpKernel {
     AttrValueMap attr_values = func_.attr();
     FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
     instantiate_opts.target = target_device;
+
+    FunctionTarget function_target = {target_device, lib};
+
     FunctionLibraryRuntime::Handle handle;
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         lib->Instantiate(func_.name(), AttrSlice(&attr_values),
-                                          instantiate_opts, &handle),
-                         done);
+    {
+      mutex_lock l(mu_);
+      auto cached_entry = handle_cache_.find(function_target);
+      if (cached_entry != handle_cache_.end()) {
+        handle = cached_entry->second;
+      } else {
+        VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
+        port::Tracing::TraceMe activity(strings::StrCat(
+            "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            lib->Instantiate(func_.name(), AttrSlice(&attr_values),
+                             instantiate_opts, &handle),
+            done);
+        auto insert_result = handle_cache_.insert({function_target, handle});
+        CHECK(insert_result.second) << "Insert unsuccessful.";
+        VLOG(1) << "Instantiated " << func_.name() << " on " << target_device
+                << ", resulting in handle: " << handle << " flr: " << lib;
+      }
+    }
 
     OpInputList arguments;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
@@ -330,22 +355,33 @@ class RemoteCallOp : public AsyncOpKernel {
       args.push_back(argument);
     }
     auto* rets = new std::vector<Tensor>;
-    lib->Run(opts, handle, args, rets, [rets, done, ctx](const Status& status) {
-      if (!status.ok()) {
-        ctx->SetStatus(status);
-      } else {
-        for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, (*rets)[i]);
-        }
-      }
-      delete rets;
-      done();
-    });
+    auto* trace = new port::Tracing::TraceMe(strings::StrCat(
+        "RemoteCall: Run: ", func_.name(), " on ", target_device));
+    VLOG(1) << "Running " << func_.name() << " on " << target_device
+            << " with handle: " << handle;
+    lib->Run(opts, handle, args, rets,
+             [rets, trace, done, ctx](const Status& status) {
+               if (!status.ok()) {
+                 ctx->SetStatus(status);
+               } else {
+                 for (size_t i = 0; i < rets->size(); ++i) {
+                   ctx->set_output(i, (*rets)[i]);
+                 }
+               }
+               delete rets;
+               delete trace;
+               done();
+             });
   }
 
  private:
-  string target_;
   NameAttrList func_;
+
+  mutex mu_;
+  typedef std::pair<string, FunctionLibraryRuntime*> FunctionTarget;
+  std::map<FunctionTarget, FunctionLibraryRuntime::Handle> handle_cache_
+      GUARDED_BY(mu_);
+
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteCallOp);
 };
 

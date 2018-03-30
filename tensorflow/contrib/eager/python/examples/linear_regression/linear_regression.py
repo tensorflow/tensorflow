@@ -32,6 +32,8 @@ import tensorflow as tf
 
 import tensorflow.contrib.eager as tfe
 
+layers = tf.keras.layers
+
 
 class LinearModel(tf.keras.Model):
   """A TensorFlow linear regression model."""
@@ -39,7 +41,7 @@ class LinearModel(tf.keras.Model):
   def __init__(self):
     """Constructs a LinearModel object."""
     super(LinearModel, self).__init__()
-    self._hidden_layer = tf.layers.Dense(1)
+    self._hidden_layer = layers.Dense(1)
 
   def call(self, xs):
     """Invoke the linear model.
@@ -54,7 +56,7 @@ class LinearModel(tf.keras.Model):
 
 
 def mean_square_loss(model, xs, ys):
-  return tf.reduce_mean(tf.square(model(xs) - ys))
+  return tf.reduce_mean(tf.square(tf.subtract(model(xs), ys)))
 
 
 def fit(model, dataset, optimizer, verbose=False, logdir=None):
