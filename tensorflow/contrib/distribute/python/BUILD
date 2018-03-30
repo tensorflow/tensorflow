@@ -340,21 +340,6 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "simple_estimator_example",
-    srcs = ["simple_estimator_example.py"],
-    deps = [
-        ":mirrored_strategy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:training",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/estimator:model_fn",
-    ],
-)
-
 py_library(
     name = "cross_tower_utils",
     srcs = ["cross_tower_utils.py"],

@@ -162,6 +162,7 @@ tensorflow/contrib/decision_trees/proto
 tensorflow/contrib/deprecated
 tensorflow/contrib/distribute
 tensorflow/contrib/distribute/python
+tensorflow/contrib/distribute/python/examples
 tensorflow/contrib/distributions
 tensorflow/contrib/distributions/python
 tensorflow/contrib/distributions/python/ops
