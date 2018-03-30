@@ -1022,7 +1022,8 @@ class ExecutorState {
     int total_input_tensors = 0;
     std::vector<const Node*>* nodes = nullptr;
 
-    // Lock ordering: ExecutorState.mu_ < mu.
+    // Lock ordering: ExecutorState.mu_ < mu;
+    // during structured traversal: parent_frame->mu < mu.
     mutex mu;
 
     void InitializeFrameInfo(const string& enter_name) {
@@ -2333,8 +2334,9 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
   FrameState* parent_frame = frame->parent_frame;
   const int64 parent_iter = frame->parent_iter;
   if (parent_frame != nullptr) {
-    mutex_lock paranet_frame_lock(parent_frame->mu);
+    mutex_lock parent_frame_lock(parent_frame->mu);
     // Propagate all the dead exits to the parent frame.
+    mutex_lock this_frame_lock(frame->mu);
     for (const Node* node : frame->dead_exits) {
       auto parent_iter_state = parent_frame->GetIteration(parent_iter);
       for (const Edge* e : node->out_edges()) {
