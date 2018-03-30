@@ -17,3 +17,14 @@ py_binary(
         "//tensorflow:tensorflow_py",
     ],
 )
+
+py_binary(
+    name = "simple_tfkeras_example",
+    srcs = [
+        "simple_tfkeras_example.py",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
