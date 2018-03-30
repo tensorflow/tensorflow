@@ -558,9 +558,7 @@ def norm(tensor,
         permed = array_ops.transpose(tensor, perm=perm_before)
         matrix_2_norm = array_ops.expand_dims(
             math_ops.reduce_max(
-                math_ops.cast(
-                    gen_linalg_ops.svd(permed, compute_uv=False)[0],
-                    dtype=dtypes.float32),
+                math_ops.abs(gen_linalg_ops.svd(permed, compute_uv=False)[0]),
                 axis=-1,
                 keepdims=True),
             axis=-1)
