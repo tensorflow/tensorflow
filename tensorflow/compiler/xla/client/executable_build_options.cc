@@ -84,6 +84,7 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_resource_update_count(
 
 int ExecutableBuildOptions::resource_update_count() const {
   return resource_update_count_;
+}
 
 ExecutableBuildOptions& ExecutableBuildOptions::set_dump_optimized_hlo_proto_to(
     tensorflow::StringPiece dirpath) {

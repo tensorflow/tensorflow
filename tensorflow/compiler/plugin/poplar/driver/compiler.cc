@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -217,6 +218,7 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
   pipeline.AddPass<Inliner>();
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
           [](const Shape&, const Shape&) { return false; });
+  pipeline.AddPass<ZeroSizedHloElimination>();
   //pipeline.AddPass<TupleSimplifier>();
   //pipeline.AddPass<WhileLoopSimplifier>();
   pipeline.AddPass<HloConstantFolding>();

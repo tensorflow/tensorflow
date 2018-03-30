@@ -43,8 +43,10 @@ class IpuDevice : public XlaDevice {
  public:
   IpuDevice(const SessionOptions& options,
             const DeviceAttributes& attrs, int device_ordinal,
-            const DeviceType& jit_device_name, se::Platform* platform) :
-      XlaDevice(options, attrs, device_ordinal, jit_device_name, platform),
+            const DeviceType& jit_device_name, se::Platform* platform,
+            bool transfer_as_literal) :
+      XlaDevice(options, attrs, device_ordinal, jit_device_name, platform,
+                transfer_as_literal),
       ordinal_(device_ordinal) {}
 
   virtual ~IpuDevice() {
@@ -120,7 +122,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
         target_type_name);
 
     auto* device = new IpuDevice(options, attrs, ordinal,
-                                 DeviceType(DEVICE_IPU_XLA_JIT), p);
+                                 DeviceType(DEVICE_IPU_XLA_JIT), p, false);
 
     devices->push_back(device);
   }
