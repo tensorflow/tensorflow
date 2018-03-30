@@ -491,7 +491,7 @@ class GradientPenaltyTest(test.TestCase, _PenaltyTest):
             self._kwargs['generator_inputs'],
             self._kwargs['discriminator_fn'],
             self._kwargs['discriminator_scope'],
-            mode='one_sided')
+            one_sided=True)
         self.assertEqual(generated_data.dtype, loss.dtype)
 
         with self.test_session() as sess:

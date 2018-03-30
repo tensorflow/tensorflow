@@ -359,11 +359,11 @@ class GANLossTest(test.TestCase):
     self.assertGreater(len(ops.get_collection(ops.GraphKeys.SUMMARIES)), 0)
 
   # Test gradient penalty option.
-  def _test_grad_penalty_helper(self, create_gan_model_fn, mode='two_sided'):
+  def _test_grad_penalty_helper(self, create_gan_model_fn, one_sided=False):
     model = create_gan_model_fn()
     loss = train.gan_loss(model)
     loss_gp = train.gan_loss(model,
-        gradient_penalty_weight=1.0, gradient_penalty_mode=mode)
+        gradient_penalty_weight=1.0, gradient_penalty_one_sided=one_sided)
     self.assertTrue(isinstance(loss_gp, namedtuples.GANLoss))
 
     # Check values.
@@ -396,22 +396,22 @@ class GANLossTest(test.TestCase):
     self._test_grad_penalty_helper(create_callable_acgan_model)
 
   def test_grad_penalty_one_sided_gan(self):
-    self._test_grad_penalty_helper(create_gan_model, mode='one_sided')
+    self._test_grad_penalty_helper(create_gan_model, one_sided=True)
 
   def test_grad_penalty_one_sided_callable_gan(self):
-    self._test_grad_penalty_helper(create_callable_gan_model, mode='one_sided')
+    self._test_grad_penalty_helper(create_callable_gan_model, one_sided=True)
 
   def test_grad_penalty_one_sided_infogan(self):
-    self._test_grad_penalty_helper(create_infogan_model, mode='one_sided')
+    self._test_grad_penalty_helper(create_infogan_model, one_sided=True)
 
   def test_grad_penalty_one_sided_callable_infogan(self):
-    self._test_grad_penalty_helper(create_callable_infogan_model, mode='one_sided')
+    self._test_grad_penalty_helper(create_callable_infogan_model, one_sided=True)
 
   def test_grad_penalty_one_sided_acgan(self):
-    self._test_grad_penalty_helper(create_acgan_model, mode='one_sided')
+    self._test_grad_penalty_helper(create_acgan_model, one_sided=True)
 
   def test_grad_penalty_one_sided_callable_acgan(self):
-    self._test_grad_penalty_helper(create_callable_acgan_model, mode='one_sided')
+    self._test_grad_penalty_helper(create_callable_acgan_model, one_sided=True)
 
   # Test mutual information penalty option.
   def _test_mutual_info_penalty_helper(self, create_gan_model_fn):
