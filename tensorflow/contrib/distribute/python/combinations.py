@@ -255,6 +255,10 @@ one_device_strategy = NamedDistribution(
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
     mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"]), 1)
+mirrored_strategy_without_prefetch = NamedDistribution(
+    "MirroredCPUAndGPUNoPrefetch",
+    mirrored_strategy.MirroredStrategy(
+        ["/gpu:0", "/cpu:0"], prefetch_on_device=False), 1)
 mirrored_strategy_with_two_gpus = NamedDistribution(
     "Mirrored2GPUs",
     mirrored_strategy.MirroredStrategy(["/gpu:0", "/gpu:1"]), 2)

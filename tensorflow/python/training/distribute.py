@@ -27,6 +27,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_util
 from tensorflow.python.util import nest
 
@@ -287,17 +288,22 @@ def _require_distribution_strategy_scope(distribution_strategy):
 class _CurrentDistributionContext(object):
   """Context manager for setting the `DistributionStrategy` and var creator."""
 
-  def __init__(self, distribution_strategy, var_creator_scope):
+  def __init__(self, distribution_strategy, var_creator_scope, var_scope=None):
     self._context = _CrossTowerThreadMode(distribution_strategy)
     self._var_creator_scope = var_creator_scope
+    self._var_scope = var_scope
 
   def __enter__(self):
     _push_per_thread_mode(self._context)
+    if self._var_scope:
+      self._var_scope.__enter__()
     self._var_creator_scope.__enter__()
     return self._context.distribution_strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
     self._var_creator_scope.__exit__(exception_type, exception_value, traceback)
+    if self._var_scope:
+      self._var_scope.__exit__(exception_type, exception_value, traceback)
     _pop_per_thread_mode()
 
 
@@ -556,8 +562,18 @@ class DistributionStrategy(object):
       kwargs["use_resource"] = True
       return self._create_variable(*args, **kwargs)
 
+    def disable_partitioned_variables(getter, *args, **kwargs):
+      if kwargs.pop("partitioner", None) is not None:
+        tf_logging.log_first_n(
+            tf_logging.WARN, "Partitioned variables are disabled when using "
+            "DistributionStrategy.", 1)
+      return getter(*args, **kwargs)
+
     return _CurrentDistributionContext(
-        self, variable_scope.variable_creator_scope(creator_with_resource_vars))
+        self, variable_scope.variable_creator_scope(creator_with_resource_vars),
+        variable_scope.variable_scope(
+            variable_scope.get_variable_scope(),
+            custom_getter=disable_partitioned_variables))
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.
@@ -954,6 +970,10 @@ class DistributionStrategy(object):
   def _worker_device_index(self):
     raise NotImplementedError("must be implemented in descendants")
 
+  def configure(self, session_config=None):
+    """Find the best configuration given a tensorflow session config."""
+    del session_config
+
 
 # A note about the difference between the context managers
 # `TowerContext` (defined here) and `_CurrentDistributionContext`
@@ -1104,10 +1124,6 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     # TODO(josh11b): Support for this when executing eagerly is currently only
     # in contrib.
     return dataset.make_one_shot_iterator()
-
-  def configure(self, session_config=None):
-    """Find the best configuration given a tensorflow session config."""
-    del session_config
 
   def _broadcast(self, tensor, destinations):
     if destinations is None:

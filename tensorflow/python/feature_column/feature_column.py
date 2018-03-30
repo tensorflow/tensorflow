@@ -148,6 +148,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import template
@@ -451,7 +452,8 @@ def linear_model(features,
     if cols_to_vars is not None:
       # Add the bias to cols_to_vars as well, converting the Variable or
       # PartitionedVariable to a list of Variable's.
-      if isinstance(bias, variables.Variable):
+      if (isinstance(bias, variables.Variable) or
+          resource_variable_ops.is_resource_variable(bias)):
         cols_to_vars['bias'] = [bias]
       else:  # Must be a PartitionedVariable.
         cols_to_vars['bias'] = list(bias)

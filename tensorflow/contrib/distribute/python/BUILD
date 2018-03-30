@@ -260,6 +260,32 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "estimator_integration_test",
+    srcs = ["estimator_integration_test.py"],
+    additional_deps = [
+        ":combinations",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/optimizer_v2:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:dnn_linear_combined",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
+)
+
 py_library(
     name = "single_loss_example",
     srcs = ["single_loss_example.py"],

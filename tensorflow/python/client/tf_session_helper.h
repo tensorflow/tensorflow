@@ -59,6 +59,31 @@ void TF_Run_wrapper(TF_DeprecatedSession* session, const TF_Buffer* run_options,
                     const NameVector& target_nodes, TF_Status* out_status,
                     PyObjectVector* out_values, TF_Buffer* run_outputs);
 
+// Python wrappers for the `Session::MakeCallable()` API.
+void TF_DeprecatedSessionMakeCallable(TF_DeprecatedSession* session,
+                                      const TF_Buffer* callable_options,
+                                      int64_t* out_handle,
+                                      TF_Status* out_status);
+void TF_SessionMakeCallable(TF_Session* session,
+                            const TF_Buffer* callable_options,
+                            int64_t* out_handle, TF_Status* out_status);
+
+// Python wrappers for the `Session::RunCallable()` API.
+void TF_DeprecatedSessionRunCallable(TF_DeprecatedSession* session,
+                                     int64_t handle, PyObject* feed_values,
+                                     TF_Status* out_status,
+                                     PyObjectVector* out_values,
+                                     TF_Buffer* run_metadata);
+void TF_SessionRunCallable(TF_Session* session, int64_t handle,
+                           PyObject* feed_values, TF_Status* out_status,
+                           PyObjectVector* out_values, TF_Buffer* run_metadata);
+
+// Python wrappers for the `Session::ReleaseCallable()` API.
+void TF_DeprecatedSessionReleaseCallable(TF_DeprecatedSession* session,
+                                         int64_t handle, TF_Status* out_status);
+void TF_SessionReleaseCallable(TF_Session* session, int64_t handle,
+                               TF_Status* out_status);
+
 // Set up the graph with the intended feeds and fetches for partial run.
 // *out_handle is owned by the caller.
 //
