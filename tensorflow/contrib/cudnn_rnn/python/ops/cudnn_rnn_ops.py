@@ -86,19 +86,19 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
 
   Cudnn compatible GRU (from Cudnn library user guide):
   ```python
-  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
-  u_t = sigma(x_t * W_u + h_t-1 * R_u + b_Wu + b_Ru)  # update gate
-  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
-  h_t = (1 - u_t) .* h'_t + u_t .* h_t-1
+  $$r_t = sigma(x_t * W_r + h_t-1 * R_h + b_{Wr} + b_{Rr})\  \text{# reset gate}$$
+  $$u_t = sigma(x_t * W_u + h_t-1 * R_u + b_{Wu} + b_{Ru})\  \text{# update gate}$$
+  $$h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_{Rh}) + b_{Wh})\  \text{# new memory gate}$$
+  $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
   ```
 
   Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
   ```python
-  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
+  \\(h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_{Wh})\\)  # new memory gate
   ```
   which is not equivalent to Cudnn GRU: in addition to the extra bias term b_Rh,
   ```python
-  r .* (h * R) != (r .* h) * R
+  \\(r .* (h * R) != (r .* h) * R\\)
   ```
   """
 
