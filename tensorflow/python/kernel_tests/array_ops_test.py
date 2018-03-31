@@ -780,6 +780,14 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       grad = GradSliceChecker(self, sess, var, np.array(8))
       _ = grad[tuple()]
 
+  def testInt64Indices(self):
+    with self.test_session(use_gpu=True) as sess:
+      a = math_ops.range(3)
+      index = constant_op.constant(1, dtype=dtypes.int64)
+      b = 2 * a[index]
+      grad, = gradients_impl.gradients(b, a)
+      self.assertAllEqual(sess.run(grad), [0, 2, 0])
+
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
   """Test varied index types and host located memory."""
