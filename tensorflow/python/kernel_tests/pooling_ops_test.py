@@ -811,12 +811,9 @@ class PoolingTest(test.TestCase):
       self.assertAllCloseAccordingToType(
           cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
-  def testMaxPoolingWithArgmax(self):
-    # MaxPoolWithArgMax is implemented only on CUDA.
-    if not test.is_gpu_available(cuda_only=True):
-      return
+  def _testMaxPoolingWithArgmax(self, use_gpu):
     tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session(use_gpu=use_gpu) as sess:
       t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
       out_op, argmax_op = nn_ops.max_pool_with_argmax(
           t,
@@ -830,14 +827,15 @@ class PoolingTest(test.TestCase):
       self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0])
       self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5])
 
-  def testMaxPoolingGradWithArgmax(self):
-    # MaxPoolWithArgMax is implemented only on CUDA.
-    if not test.is_gpu_available(cuda_only=True):
-      return
+  def testMaxPoolingWithArgmax(self):
+    for use_gpu in [True, False]:
+      self._testMaxPoolingWithArgmax(use_gpu)
+
+  def _testMaxPoolingGradWithArgmax(self, use_gpu):
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0]
     tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
-    with self.test_session(use_gpu=True):
+    with self.test_session(use_gpu=use_gpu):
       orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
       t = constant_op.constant(tensor_input, shape=[1, 2, 2, 1])
       argmax = constant_op.constant(
@@ -852,6 +850,10 @@ class PoolingTest(test.TestCase):
       out = out_op.eval().flatten()
       self.assertAllClose(out,
                           [11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0])
+
+  def testMaxPoolingGradWithArgmax(self):
+    for use_gpu in [True, False]:
+      self._testMaxPoolingGradWithArgmax(use_gpu)
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
