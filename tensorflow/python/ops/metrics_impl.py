@@ -2633,11 +2633,10 @@ def root_mean_squared_error(labels,
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
   mse, update_mse_op = mean_squared_error(labels, predictions, weights, None,
-                                          None, name or
-                                          'root_mean_squared_error')
+                                          None, name='mean_squared_error')
 
-  rmse = math_ops.sqrt(mse)
-  update_rmse_op = math_ops.sqrt(update_mse_op)
+  rmse = math_ops.sqrt(mse, name=name or 'root_mean_squared_error')
+  update_rmse_op = math_ops.sqrt(update_mse_op, name=name or 'root_mean_squared_error')
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, rmse)
