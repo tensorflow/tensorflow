@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Classes for different algortihms of reduction and broadcasting."""
+"""Classes for different algorithms of reduction and broadcasting."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -155,7 +155,7 @@ class CrossTowerOps(object):
     Args:
       method_string: either 'sum' or 'mean' specifying the reduction method.
       value_destination_pairs: a list or a tuple of tuples of PerDevice objects
-        and destinations. If a destionation is None, then the destinations
+        and destinations. If a destination is None, then the destinations
         are set to match the devices of the input PerDevice object.
 
     Returns:
