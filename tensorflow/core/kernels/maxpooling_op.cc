@@ -565,7 +565,7 @@ class MaxPoolingGradGradOp : public OpKernel {
     //    tensor_out_as_matrix with the corresponding values in
     //    top_diff_as_matrix.
     auto shard = [&params, &in_mat, &out_mat, &top_diff_mat, &bottom_diff_mat](
-        int64 start, int64 limit) {
+                     int64 start, int64 limit) {
       const int32 depth = params.depth;
       const int32 in_rows = params.tensor_in_rows;
       const int32 in_cols = params.tensor_in_cols;
