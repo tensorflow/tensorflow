@@ -46,7 +46,7 @@ def make_fn(shared_variable_store, device_id):
   error.
   Additionally, we de-uniquify variable names before checking for matches. This
   helps re-use variables which are intended to be the same but have different
-  names due to variable uniquificaton happening upstream. Since this might
+  names due to variable uniquification happening upstream. Since this might
   mean we may have multiple variables with the same canonical name, we store
   them in a list per canonical name and return them in the same order as well.
 
