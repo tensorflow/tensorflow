@@ -333,7 +333,6 @@ struct ApplyAdaMaxNonCuda {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
                   typename TTypes<T>::ConstScalar beta1_power,
-                  typename TTypes<T>::ConstScalar beta2_power,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstScalar beta1,
                   typename TTypes<T>::ConstScalar beta2,
@@ -2793,18 +2792,14 @@ class ApplyAdaMaxOp : public OpKernel {
             "Attempting to use uninitialized variables: ", requested_input(2)));
 
     const Tensor& beta1_power = ctx->input(3);
-    const Tensor& beta2_power = ctx->input(4);
-    const Tensor& lr = ctx->input(5);
-    const Tensor& beta1 = ctx->input(6);
-    const Tensor& beta2 = ctx->input(7);
-    const Tensor& epsilon = ctx->input(8);
+    const Tensor& lr = ctx->input(4);
+    const Tensor& beta1 = ctx->input(5);
+    const Tensor& beta2 = ctx->input(6);
+    const Tensor& epsilon = ctx->input(7);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power.shape()),
                 errors::InvalidArgument("beta1_power is not a scalar: ",
                                         beta1_power.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_power.shape()),
-                errors::InvalidArgument("beta2_power is not a scalar: ",
-                                        beta2_power.shape().DebugString()));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar : ",
                                         lr.shape().DebugString()));
@@ -2818,7 +2813,7 @@ class ApplyAdaMaxOp : public OpKernel {
                 errors::InvalidArgument("epsilon is not a scalar: ",
                                         epsilon.shape().DebugString()));
 
-    const Tensor& grad = ctx->input(9);
+    const Tensor& grad = ctx->input(8);
     OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
                 errors::InvalidArgument("var and m do not have the same shape",
                                         var.shape().DebugString(), " ",
@@ -2836,7 +2831,7 @@ class ApplyAdaMaxOp : public OpKernel {
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyAdaMax<Device, T>()(
         device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
-        beta1_power.scalar<T>(), beta2_power.scalar<T>(), lr.scalar<T>(),
+        beta1_power.scalar<T>(), lr.scalar<T>(),
         beta1.scalar<T>(), beta2.scalar<T>(), epsilon.scalar<T>(),
         grad.flat<T>());
 
@@ -2873,7 +2868,6 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T>::Flat var,       \
       typename TTypes<T>::Flat m, typename TTypes<T>::Flat v, \
       typename TTypes<T>::ConstScalar beta1_power,            \
-      typename TTypes<T>::ConstScalar beta2_power,            \
       typename TTypes<T>::ConstScalar lr,                     \
       typename TTypes<T>::ConstScalar beta1,                  \
       typename TTypes<T>::ConstScalar beta2,                  \

@@ -105,12 +105,11 @@ class AdaMaxOptimizerTest(test.TestCase):
         self.assertAllClose([1.0, 2.0, 3.0], var0.eval())
         self.assertAllClose([4.0, 5.0, 6.0], var1.eval())
 
-        beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power = opt._get_beta_accumulators()
 
         # Run 3 steps of AdaMax
         for t in range(1, 4):
           self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
           update.run()
 
           var0_np, m0, v0 = adamax_sparse_update_numpy(
@@ -195,11 +194,9 @@ class AdaMaxOptimizerTest(test.TestCase):
         opt = adamax.AdaMaxOptimizer()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         opt_variables = opt.variables()
-        beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power = opt._get_beta_accumulators()
         self.assertTrue(beta1_power is not None)
-        self.assertTrue(beta2_power is not None)
         self.assertIn(beta1_power, opt_variables)
-        self.assertIn(beta2_power, opt_variables)
 
         with ops.Graph().as_default():
           # Shouldn't return non-slot variables from other graphs.
@@ -211,7 +208,7 @@ class AdaMaxOptimizerTest(test.TestCase):
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))
           self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
-        beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power = opt._get_beta_accumulators()
 
         # Run 3 steps of AdaMax
         for t in range(1, 4):
@@ -222,8 +219,6 @@ class AdaMaxOptimizerTest(test.TestCase):
 
           self.assertAllCloseAccordingToType(0.9**(t + 1),
                                              self.evaluate(beta1_power))
-          self.assertAllCloseAccordingToType(0.999**(t + 1),
-                                             self.evaluate(beta2_power))
 
           var0_np, m0, v0 = adamax_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adamax_update_numpy(var1_np, grads1_np, t, m1, v1)
@@ -265,12 +260,11 @@ class AdaMaxOptimizerTest(test.TestCase):
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
 
-        beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power = opt._get_beta_accumulators()
 
         # Run 3 steps of AdaMax
         for t in range(1, 4):
           self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
           update.run()
 
           var0_np, m0, v0 = adamax_update_numpy(var0_np, grads0_np, t, m0, v0)
@@ -299,7 +293,7 @@ class AdaMaxOptimizerTest(test.TestCase):
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
-        beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power = opt._get_beta_accumulators()
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
@@ -308,7 +302,6 @@ class AdaMaxOptimizerTest(test.TestCase):
         # Run 3 steps of intertwined AdaMax1 and AdaMax2.
         for t in range(1, 4):
           self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
           if t % 2 == 0:
             update1.run()
           else:
