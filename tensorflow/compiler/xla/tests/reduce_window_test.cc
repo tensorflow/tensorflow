@@ -277,6 +277,23 @@ TEST_P(ReduceWindowTest, PrimeWindowsInReductionDimension) {
                            DefaultErrorSpec());
 }
 
+TEST_P(ReduceWindowTest, ReduceAlongLaneDimension) {
+  Array4D<float> input_array(19, 17, 8, 256);
+  input_array.FillWithMinorDimNum();
+
+  const auto input_data_handle =
+      CreateConstantFromArray(input_array, &builder_);
+
+  Padding padding = Padding::kSame;
+  ReduceWindowAdd(input_data_handle, {1, 1, 1, 11}, {1, 1, 1, 1}, padding);
+
+  auto result = ReferenceUtil::ReduceWindow4DAdd(
+      input_array, 0.0f, {1, 1, 1, 11}, {1, 1, 1, 1}, padding);
+
+  ComputeAndCompareLiteral(&builder_, *Literal::CreateFromArray(*result), {},
+                           DefaultErrorSpec());
+}
+
 // Tests a reduction function that is not a simple add/min/max/etc.
 XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
   Array4D<float> input_array(1, 2, 2, 1);
