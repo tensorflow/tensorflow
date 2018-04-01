@@ -52,6 +52,16 @@ bool CanBeRoot(HloOpcode opcode) {
   }
 }
 
+StatusOr<std::vector<Shape>> GetOperandShapes(
+    tensorflow::gtl::ArraySlice<XlaOp> operands) {
+  std::vector<Shape> operand_shapes;
+  for (const XlaOp& operand : operands) {
+    TF_ASSIGN_OR_RETURN(const Shape& shape, operand.GetShape());
+    operand_shapes.push_back(shape);
+  }
+  return operand_shapes;
+}
+
 }  // namespace
 
 StatusOr<Shape> XlaBuilder::GetShape(const XlaOp& op) const {
@@ -362,11 +372,7 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
   return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
-    std::vector<Shape> operand_shapes;
-    for (const auto& operand : operands) {
-      TF_ASSIGN_OR_RETURN(const Shape& shape, operand.GetShape());
-      operand_shapes.push_back(shape);
-    }
+    TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
     c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                 [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
@@ -457,7 +463,21 @@ XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
 
 XlaOp XlaBuilder::ConcatInDim(tensorflow::gtl::ArraySlice<XlaOp> operands,
                               int64 dimension) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
+    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferConcatOpShape(operand_shape_ptrs, dimension));
+
+    instr.add_dimensions(dimension);
+
+    return AddInstruction(std::move(instr), HloOpcode::kConcatenate, operands);
+  }());
 }
 
 XlaOp XlaBuilder::Pad(const XlaOp& operand, const XlaOp& padding_value,
@@ -508,11 +528,7 @@ XlaOp XlaBuilder::Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements) {
   return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
-    std::vector<Shape> operand_shapes;
-    for (const XlaOp& e : elements) {
-      TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(e));
-      operand_shapes.push_back(shape);
-    }
+    TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(elements));
     c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                 [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
