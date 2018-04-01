@@ -375,6 +375,7 @@ tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
+    tags = ["no_oss"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
