@@ -25,6 +25,7 @@ from tensorflow.contrib.signal.python.ops import mel_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 # mel spectrum constants and functions.
@@ -174,13 +175,17 @@ class LinearToMelTest(test.TestCase):
         rewritten_graph = test_util.grappler_optimize(g, [mel_matrix])
         self.assertEqual(1, len(rewritten_graph.node))
 
-  def test_num_spectrogram_bins(self):
+  def test_num_spectrogram_bins_dynamic(self):
     with self.test_session(use_gpu=True):
+      num_spectrogram_bins = array_ops.placeholder(shape=(),
+                                                   dtype=dtypes.int32)
       mel_matrix_np = spectrogram_to_mel_matrix(
           20, 129, 8000.0, 125.0, 3800.0)
       mel_matrix = mel_ops.linear_to_mel_weight_matrix(
-          20, constant_op.constant(129), 8000.0, 125.0, 3800.0)
-      self.assertAllClose(mel_matrix_np, mel_matrix.eval(), atol=3e-6)
+          20, num_spectrogram_bins, 8000.0, 125.0, 3800.0)
+      self.assertAllClose(
+          mel_matrix_np,
+          mel_matrix.eval(feed_dict={num_spectrogram_bins: 129}), atol=3e-6)
 
 
 if __name__ == "__main__":
