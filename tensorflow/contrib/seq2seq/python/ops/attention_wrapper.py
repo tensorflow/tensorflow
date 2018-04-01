@@ -472,7 +472,7 @@ def _bahdanau_score(processed_query, keys, normalize):
     # Scalar used in weight normalization
     g = variable_scope.get_variable(
         "attention_g", dtype=dtype,
-        initializer=math.sqrt((1. / num_units)))
+        initializer=init_ops.constant_initializer(math.sqrt((1. / num_units))), shape=())
     # Bias added prior to the nonlinearity
     b = variable_scope.get_variable(
         "attention_b", [num_units], dtype=dtype,
