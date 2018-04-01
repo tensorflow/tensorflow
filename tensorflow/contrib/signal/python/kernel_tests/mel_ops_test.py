@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.signal.python.kernel_tests import test_util
 from tensorflow.contrib.signal.python.ops import mel_ops
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
