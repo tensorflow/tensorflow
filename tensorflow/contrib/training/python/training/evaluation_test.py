@@ -421,9 +421,8 @@ class EvaluateRepeatedlyTest(test.TestCase):
     self.assertEqual(final_values['my_var'], expected_value)
 
   def _create_names_to_metrics(self, predictions, labels):
-    accuracy0, update_op0 = metric_ops.streaming_accuracy(predictions, labels)
-    accuracy1, update_op1 = metric_ops.streaming_accuracy(
-        predictions + 1, labels)
+    accuracy0, update_op0 = metrics.accuracy(labels, predictions)
+    accuracy1, update_op1 = metrics.accuracy(labels, predictions + 1)
 
     names_to_values = {'Accuracy': accuracy0, 'Another_accuracy': accuracy1}
     names_to_updates = {'Accuracy': update_op0, 'Another_accuracy': update_op1}
