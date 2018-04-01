@@ -149,7 +149,7 @@ struct ApplyAdaMax {
                   typename TTypes<T>::ConstScalar beta1,
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstFlat grad, bool use_nesterov);
+                  typename TTypes<T>::ConstFlat grad);
 };
 
 template <typename Device, typename T>

@@ -751,7 +751,6 @@ REGISTER_OP("ApplyAdaMax")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
     });
@@ -769,7 +768,6 @@ REGISTER_OP("ResourceApplyAdaMax")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
     });
