@@ -281,6 +281,41 @@ class AttentionWrapperTest(test.TestCase):
             expected_final_alignment_history,
             final_alignment_history_info)
 
+  def testBahdanauNormalizedDType(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      num_units = 128
+      encoder_outputs = array_ops.placeholder(dtype, shape=[64, None, 256])
+      encoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      decoder_inputs = array_ops.placeholder(dtype, shape=[64, None, 128])
+      decoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      batch_size = 64
+      attention_mechanism = wrapper.BahdanauAttention(
+          num_units=num_units,
+          memory=encoder_outputs,
+          memory_sequence_length=encoder_sequence_length,
+          normalize=True,
+          dtype=dtype,
+      )
+      cell = rnn_cell.LSTMCell(num_units)
+      cell = wrapper.AttentionWrapper(cell, attention_mechanism)
+
+      helper = helper_py.TrainingHelper(decoder_inputs,
+                                        decoder_sequence_length)
+      my_decoder = basic_decoder.BasicDecoder(
+          cell=cell,
+          helper=helper,
+          initial_state=cell.zero_state(
+              dtype=dtype, batch_size=batch_size))
+
+      final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
+      self.assertTrue(
+          isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
+      self.assertEqual(final_outputs.rnn_output.dtype, dtype)
+      self.assertTrue(
+          isinstance(final_state, wrapper.AttentionWrapperState))
+      self.assertTrue(
+          isinstance(final_state.cell_state, rnn_cell.LSTMStateTuple))
+
   def testBahdanauNotNormalized(self):
     create_attention_mechanism = wrapper.BahdanauAttention
 
