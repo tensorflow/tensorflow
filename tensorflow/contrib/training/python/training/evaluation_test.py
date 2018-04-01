@@ -27,7 +27,6 @@ import numpy as np
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.losses.python.losses import loss_ops
-from tensorflow.contrib.metrics.python.ops import metric_ops
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.contrib.training.python.training import training
 from tensorflow.core.protobuf import config_pb2
