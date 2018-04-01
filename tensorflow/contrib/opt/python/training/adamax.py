@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -85,14 +86,35 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
     super(AdaMaxOptimizer, self).__init__(learning_rate, beta1, beta2,
                                           epsilon, use_locking, name)
 
+  def _get_beta_accumulators(self):
+    if context.in_graph_mode():
+      graph = ops.get_default_graph()
+    else:
+      graph = None
+    return self._get_non_slot_variable("beta1_power", graph=graph)
+
+  def _create_slots(self, var_list):
+    # Create the beta1 accumulators on the same device as the first
+    # variable. Sort the var_list to make sure this device is consistent across
+    # workers (these need to go on the same PS, otherwise some updates are
+    # silently ignored).
+    first_var = min(var_list, key=lambda x: x.name)
+    self._create_non_slot_variable(initial_value=self._beta1,
+                                   name="beta1_power",
+                                   colocate_with=first_var)
+
+    # Create slots for the first and second moments.
+    for v in var_list:
+      self._zeros_slot(v, "m", self._name)
+      self._zeros_slot(v, "v", self._name)
+
   def _apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
-    beta1_power, beta2_power = self._get_beta_accumulators()
+    beta1_power = self._get_beta_accumulators()
     return training_ops.apply_ada_max(
         var, m, v,
         math_ops.cast(beta1_power, var.dtype.base_dtype),
-        math_ops.cast(beta2_power, var.dtype.base_dtype),
         math_ops.cast(self._lr_t, var.dtype.base_dtype),
         math_ops.cast(self._beta1_t, var.dtype.base_dtype),
         math_ops.cast(self._beta2_t, var.dtype.base_dtype),
@@ -102,11 +124,10 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
   def _resource_apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
-    beta1_power, beta2_power = self._get_beta_accumulators()
+    beta1_power = self._get_beta_accumulators()
     return training_ops.resource_apply_ada_max(
         var.handle, m.handle, v.handle,
         math_ops.cast(beta1_power, grad.dtype.base_dtype),
-        math_ops.cast(beta2_power, grad.dtype.base_dtype),
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta1_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_t, grad.dtype.base_dtype),
@@ -115,9 +136,8 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
 
   def _apply_sparse_shared(self, grad, var, indices,
                            scatter_add, scatter_update):
-    beta1_power, beta2_power = self._get_beta_accumulators()
+    beta1_power = self._get_beta_accumulators()
     beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
-    beta2_power = math_ops.cast(beta2_power, var.dtype.base_dtype)
     lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
     beta1_t = math_ops.cast(self._beta1_t, var.dtype.base_dtype)
     beta2_t = math_ops.cast(self._beta2_t, var.dtype.base_dtype)
@@ -159,3 +179,13 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
     return self._apply_sparse_shared(
         grad, var, indices,
         self._resource_scatter_add, self._resource_scatter_update)
+
+  def _finish(self, update_ops, name_scope):
+    # Update the power accumulators.
+    with ops.control_dependencies(update_ops):
+      beta1_power = self._get_beta_accumulators()
+      with ops.colocate_with(beta1_power):
+        update_beta1 = beta1_power.assign(
+          beta1_power * self._beta1_t, use_locking=self._use_locking)
+    return control_flow_ops.group(*update_ops + [update_beta1],
+                                  name=name_scope)

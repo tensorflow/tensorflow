@@ -25,12 +25,6 @@ Must be a scalar.
 END
   }
   in_arg {
-    name: "beta2_power"
-    description: <<END
-Must be a scalar.
-END
-  }
-  in_arg {
     name: "lr"
     description: <<END
 Scaling factor. Must be a scalar.
