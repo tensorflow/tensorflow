@@ -120,6 +120,7 @@ void *PoplarExecutor::Allocate(uint64 size) {
   void* raw_buf = new char[size + sizeof(TensorControl)];
   TensorControl* allocated = new (raw_buf) TensorControl();
   allocated->size = size;
+  allocated->ref_count = 1;
   allocated->on_device = false;
   allocated->input_handle.clear();
   allocated->output_handle.clear();
@@ -139,13 +140,19 @@ void *PoplarExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
 
 void PoplarExecutor::Deallocate(DeviceMemoryBase *mem) {
   if (!mem->is_sub_buffer()) {
+    bool free = false;
     TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
     {
       std::lock_guard <std::recursive_mutex> g(mutex_);
-      allocations_.remove(tc);
+      if (--tc->ref_count == 0) {
+        allocations_.remove(tc);
+        free = true;
+      }
     }
-    tc->~TensorControl();
-    delete[] static_cast<char *>(mem->opaque());
+    if (free) {
+      tc->~TensorControl();
+      delete[] static_cast<char *>(mem->opaque());
+    }
   }
 }
 
@@ -357,10 +364,12 @@ PoplarExecutor::AllocateSingleOutput(xla::DeviceMemoryAllocator* allocator,
   auto it(map.find(n));
   if (it != map.end()) {
     // The output is an in-place update of one of the inputs
+    // TODO: is this a multi-threading bug?
     se::DeviceMemoryBase buf(args[it->second]);
     TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
     tc->size = size;
     tc->on_device = true;
+    tc->ref_count++;
     tc->output_handle = GetOutputCopyHandle(n);
     tc->output_convertor = GetOutputConversionFunction(shape);
     return std::make_tuple(buf, n+1);
@@ -415,7 +424,10 @@ PoplarExecutor::RemapArgs(const xla::Shape& shape,
                           const OutputMap& map,
                           const Args& args) {
   if (shape.element_type() != xla::TUPLE) {
-    return std::make_tuple(args[map.at(n)], n+1);
+    se::DeviceMemoryBase buf = args[map.at(n)];
+    TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
+    tc->ref_count++;
+    return std::make_tuple(buf, n+1);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void *)));
     TensorControl *tc = reinterpret_cast<TensorControl *>(Allocate(size));
@@ -447,7 +459,6 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
   tc->input_handle.clear();
   if (profile_io_) {
     AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "", 0);
-
   }
   return port::Status::OK();
 }

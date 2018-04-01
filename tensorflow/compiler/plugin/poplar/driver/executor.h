@@ -231,6 +231,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
  private:
   struct TensorControl {
     size_t size = 0;
+    unsigned int ref_count = 0;
     bool on_device = false;
     std::string input_handle;
     std::string output_handle;
