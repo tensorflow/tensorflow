@@ -119,9 +119,9 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
 
   Args:
     num_mel_bins: Python int. How many bands in the resulting mel spectrum.
-    num_spectrogram_bins: Python int. How many bins there are in the source
-      spectrogram data, which is understood to be `fft_size // 2 + 1`, i.e. the
-      spectrogram only contains the nonredundant FFT bins.
+    num_spectrogram_bins: An integer `Tensor`. How many bins there are in the
+      source spectrogram data, which is understood to be `fft_size // 2 + 1`,
+      i.e. the spectrogram only contains the nonredundant FFT bins.
     sample_rate: Python float. Samples per second of the input signal used to
       create the spectrogram. We need this to figure out the actual frequencies
       for each spectrogram bin, which dictates how they are mapped into the mel
