@@ -195,16 +195,19 @@ def create_api_files(output_files):
   """
   module_name_to_file_path = {}
   for output_file in output_files:
+    # Convert path separators to '/' for easier parsing below.
+    normalized_output_file = output_file.replace(os.sep, '/')
     if _API_DIR not in output_file:
       raise ValueError(
           'Output files must be in api/ directory, found %s.' % output_file)
     # Get the module name that corresponds to output_file.
     # First get module directory under _API_DIR.
     module_dir = os.path.dirname(
-        output_file[output_file.rfind(_API_DIR)+len(_API_DIR):])
+        normalized_output_file[
+            normalized_output_file.rfind(_API_DIR)+len(_API_DIR):])
     # Convert / to .
     module_name = module_dir.replace('/', '.').strip('.')
-    module_name_to_file_path[module_name] = output_file
+    module_name_to_file_path[module_name] = os.path.normpath(output_file)
 
   # Create file for each expected output in genrule.
   for module, file_path in module_name_to_file_path.items():
@@ -241,6 +244,16 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
       'outputs', metavar='O', type=str, nargs='+',
-      help='Python files that we expect this script to output.')
+      help='If a single file is passed in, then we we assume it contains a '
+      'semicolon-separated list of Python files that we expect this script to '
+      'output. If multiple files are passed in, then we assume output files '
+      'are listed directly as arguments.')
   args = parser.parse_args()
-  main(args.outputs)
+  if len(args.outputs) == 1:
+    # If we only get a single argument, then it must be a file containing
+    # list of outputs.
+    with open(args.outputs[0]) as output_list_file:
+      outputs = [line.strip() for line in output_list_file.read().split(';')]
+  else:
+    outputs = args.outputs
+  main(outputs)
