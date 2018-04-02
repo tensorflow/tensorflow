@@ -409,6 +409,16 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
 bool ModifiesInputsInPlace(const NodeDef& node) {
   // Some nodes do in-place updates on regular tensor inputs.
   string op_name = node.op();
+
+  // Ops that modify resource variables effectively modify one of their inputs.
+  if (op_name == "AssignVariableOp" || op_name == "AssignAddVariableOp" ||
+      op_name == "AssignSubVariableOp" || op_name == "ResourceScatterUpdate" ||
+      op_name == "ResourceScatterAdd" || op_name == "ResourceScatterSub" ||
+      op_name == "ResourceScatterMul" || op_name == "ResourceScatterDiv" ||
+      op_name == "ResourceScatterMin" || op_name == "ResourceScatterMax") {
+    return false;
+  }
+
   std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
   if (str_util::StrContains(op_name, "inplace")) {
     return true;
