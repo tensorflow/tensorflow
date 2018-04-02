@@ -229,9 +229,8 @@ string AssetManagerFileSystem::NormalizeDirectoryPath(const string& fname) {
 }
 
 string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
-  string output(name);
-  StringPiece piece(output);
-  piece.Consume(prefix_);
+  StringPiece piece(name);
+  str_util::ConsumePrefix(&piece, prefix_);
   return piece.ToString();
 }
 
