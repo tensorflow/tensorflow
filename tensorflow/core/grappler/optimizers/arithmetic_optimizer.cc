@@ -1344,19 +1344,18 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     int output_pos = 0;
     string input_node_name = ParseNodeName(node->input(0), &output_pos);
     const NodeDef* input = node_map_->GetNode(input_node_name);
-    if (input->op() == "Reshape") {
+    if (input->op() == "Reshape" && !HasControlInputs(*input)) {
       reshape->set_input(0, input->input(0));
       node_map_->UpdateInput(reshape->name(), input->name(), input->input(0));
       nodes_to_simplify->PushBack(reshape);
       return reshape->name();
     }
 
-    // If the reshape is a no-op, forward its input to its consumers. This is
-    // considered aggressive, because users may state that the placeholder
-    // outputs tensors of shape [M, N] while feeding it with tensors of shape
-    // [M*N] (or worse). The reshape nodes are then necessary to update the
-    // tensor metadata to the required shape.
-    if (ReshapeIsIdentity(*reshape, *input, output_pos, *graph_properties_)) {
+    // If the reshape is a no-op, forward its input to its consumers, unless it
+    // anchors a control dependency since we want to make sure that control
+    // dependency is triggered.
+    if (ReshapeIsIdentity(*reshape, *input, output_pos, *graph_properties_) &&
+        !HasControlInputs(*reshape)) {
       return reshape->input(0);
     }
   }
