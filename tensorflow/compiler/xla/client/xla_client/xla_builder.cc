@@ -543,7 +543,12 @@ XlaOp XlaBuilder::Collapse(const XlaOp& operand,
 }
 
 void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
-  UnimplementedOp();
+  NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = ShapeUtil::MakeNil();
+    *instr.mutable_literal() = Literal::CreateR1U8(tag)->ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kTrace, {operand});
+  });
 }
 
 XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
