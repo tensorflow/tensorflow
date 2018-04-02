@@ -51,11 +51,11 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
 
     ```
     $$t <- t + 1$$
-    $$lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)$$
+    $$lr_t <- \text{learning_rate} * \sqrt{(1 - beta_2^t) / (1 - beta_1^t)}$$
 
-    $$m_t <- beta1 * m_{t-1} + (1 - beta1) * g$$
-    $$v_t <- beta2 * v_{t-1} + (1 - beta2) * g * g$$
-    $$variable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)$$
+    $$m_t <- beta_1 * m_{t-1} + (1 - beta_1) * g$$
+    $$v_t <- beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
+    $$variable <- variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
     ```
 
     The default value of 1e-8 for epsilon might not be a good default in
