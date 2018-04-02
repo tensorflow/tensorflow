@@ -52,7 +52,7 @@ def get_seed(seed):
       seed2 = array_ops.where(
           math_ops.logical_and(
               math_ops.equal(seed, 0), math_ops.equal(seed2, 0)),
-          constant_op.constant(2**31 - 1, dtype=dtypes.int64),
+          constant_op.constant(pow(2, 31) - 1, dtype=dtypes.int64),
           seed2,
           name=scope)
   return seed, seed2
