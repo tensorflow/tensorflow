@@ -96,7 +96,7 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       output_memory_types_(context->output_memory_types().begin(),
                            context->output_memory_types().end()),
       graph_def_version_(context->graph_def_version()),
-      is_internal_(StringPiece(type_string()).starts_with("_")),
+      is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,
