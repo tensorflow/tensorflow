@@ -69,7 +69,13 @@ class ArithmeticOptimizer : public GraphOptimizer {
     // optimization level by default.
     static ArithmeticOptimizerOptions Default(
         RewriterConfig::Toggle opt_level) {
-      return ArithmeticOptimizerOptions();
+      ArithmeticOptimizerOptions options;
+      // TODO(ezhulenev): enable combine_add_to_addn by default after 1.8
+      // release cut
+      if (opt_level == RewriterConfig::AGGRESSIVE) {
+        options.combine_add_to_addn = true;
+      }
+      return options;
     }
   };
 

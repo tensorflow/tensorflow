@@ -251,6 +251,7 @@ cc_library(
         ":constant_folding",
         ":graph_optimizer",
         ":graph_optimizer_stage",
+        ":symbolic_shapes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -260,6 +261,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
+        "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
 
