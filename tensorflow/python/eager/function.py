@@ -36,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import compat
@@ -111,7 +112,7 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
   """
   del as_ref  # Unused.
 
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return value
 
   default_graph = ops.get_default_graph()
@@ -162,31 +163,15 @@ class CapturingGraph(ops.Graph):
       op_def=None,
       compute_shapes=True,
       compute_device=True):
-    # TODO(apassos) probably control flow has to be handled delicately here as
-    # in if a resource is accessed inside a control flow context we need the
-    # control dependency to point to something outside the context which is
-    # guaranteed to happen after the access.
-    #
     # TODO(apassos) this should do some form of alias analysis as ops which
     # forward the resources such as Identity and Switch can cause serialization
     # to fail.
-    resource_inputs = set()
-    control_inputs = set()
     for i, inp in enumerate(inputs):
       if inp.graph is not self:
         inputs[i] = capture_value(self.captures, inp, inp.dtype, inp.op.name)
-      inp = inputs[i]
-      if inp.dtype == dtypes_module.resource:
-        if inp.name in self._last_op_using_resource_tensor:
-          control_inputs.add(self._last_op_using_resource_tensor[inp.name])
-        resource_inputs.add(inp.name)
-    with self.control_dependencies(list(control_inputs)):
-      op = super(CapturingGraph, self).create_op(
-          op_type, inputs, dtypes, input_types, name, attrs, op_def,
-          compute_shapes, compute_device)
-    for name in resource_inputs:
-      self._last_op_using_resource_tensor[name] = op
-    return op
+    return super(CapturingGraph, self).create_op(
+        op_type, inputs, dtypes, input_types, name, attrs, op_def,
+        compute_shapes, compute_device)
 
 
 # TODO(apassos): it'd be really nice if we could scope this registration.
@@ -196,33 +181,66 @@ ops.register_tensor_conversion_function(
     ops.EagerTensor, _convert_to_graph_tensor, priority=-1)
 
 
-class _CapturingContext(object):
-  """Tracks references to Tensors outside this context while it is active."""
+# pylint: disable=invalid-name
+class HelperContext(object):
+  """ControlFlowContext with a customizable AddOp method."""
 
-  def __init__(self):
-    # known_ops are ops which are created while this context is active
-    self.known_ops = set()
+  def __init__(self, add_op_internal):
+    self._add_op_internal = add_op_internal
+    self._values = set()  # control flow code sometimes updates this.
 
-    # captured_tensors are all tensors referenced to by ops in this context but
-    # not produced in it
-    self.captured_tensors = set()
+  def _AddOpInternal(self, op):
+    self._add_op_internal(op)
+
+  @property
+  def outer_context(self):
+    return self._outer_context
+
+  def GetWhileContext(self):
+    if self._outer_context:
+      return self._outer_context.GetWhileContext()
+
+  def IsWhileContext(self):
+    return False
+
+  def IsCondContext(self):
+    return False
+
+  def IsXLAContext(self):
+    return False
 
   def AddOp(self, op):  # pylint: disable=invalid-name
-    if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
-      raise ValueError("tfe.defun cannot capture variables created without "
-                       "using tf.get_variable. Op: %s" % op)
-    self.known_ops.add(op)
-    for i in op.inputs:
-      if i.op not in self.known_ops:
-        self.captured_tensors.add(i)
+    self._AddOpInternal(op)
+    if self._outer_context:
+      self._outer_context.AddOp(op)
+
+  def AddName(self, _):
+    pass
+
+  def AddInnerOp(self, op):
+    self._AddOpInternal(op)
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
+
+  def AddValue(self, val):
+    if self._outer_context:
+      return self._outer_context.AddValue(val)
+    else:
+      return val
 
   def __enter__(self):
+    # pylint: disable=protected-access
     self._g = ops.get_default_graph()
-    self._old = self._g._get_control_flow_context()  # pylint: disable=protected-access
-    self._g._set_control_flow_context(self)  # pylint: disable=protected-access
+    self._outer_context = self._g._get_control_flow_context()
+    self._g._set_control_flow_context(self)
+    self._nested_contexts = (
+        self._outer_context._nested_contexts
+        if self._outer_context is not None else None)
+    # pylint: enable=protected-access
 
-  def __exit__(self, _, __, ___):  # pylint: disable=invalid-name
-    self._g._set_control_flow_context(self._old)  # pylint: disable=protected-access
+  def __exit__(self, *_):
+    self._g._set_control_flow_context(self._outer_context)  # pylint: disable=protected-access
+# pylint: enable=invalid-name
 
 
 def _forward_name(n):
@@ -277,7 +295,7 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       _register(fn)
     self.definition = function_def
     self.name = function_def.signature.name
@@ -368,7 +386,20 @@ class GraphModeFunction(object):
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
     with self._graph.as_default(), context.graph_mode():
-      c = _CapturingContext()
+      c_known_ops = set()
+      c_captured_tensors = set()
+
+      def add_op_internal(op):
+        if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
+          raise ValueError("tfe.defun cannot capture variables created without "
+                           "using tf.get_variable. Op: %s" % op)
+        c_known_ops.add(op)
+        for i in op.inputs:
+          if i.op not in c_known_ops:
+            c_captured_tensors.add(i)
+
+      c = HelperContext(add_op_internal)
+
       with c:
         filtered_outputs = [x for x in self._returns if x is not None]
         self._out_grad_placeholders = [
@@ -382,7 +413,7 @@ class GraphModeFunction(object):
         grad for grad in _flatten(in_gradients) if grad is not None)
     output_shapes = tuple(grad.shape for grad in backward_outputs)
 
-    captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
+    captures = list(sorted(c_captured_tensors, key=lambda x: x.name))
     forward_name = _forward_name(self._func_name)
     self._forward_fdef = _EagerDefinedFunction(
         forward_name, self._graph, self._ops, self._input_placeholders,
@@ -395,7 +426,7 @@ class GraphModeFunction(object):
     # means rerunning the function-defining code will always define the same
     # function, which is useful if we serialize this etc.
     function_def_ops = tuple(x
-                             for x in sorted(c.known_ops, key=lambda x: x.name)
+                             for x in sorted(c_known_ops, key=lambda x: x.name)
                              if x not in all_ignored_ops)
     bname = _backward_name(self._func_name)
     self._backward_function = GraphModeFunction(
@@ -407,7 +438,14 @@ class GraphModeFunction(object):
     all_args = args + self._extra_inputs
     signature = self._forward_fdef.signature
     ctx = context.context()
-    if ctx.in_graph_mode():
+    if ctx.executing_eagerly():
+      outputs = execute.execute(
+          str(signature.name),
+          num_outputs=len(signature.output_arg),
+          inputs=all_args,
+          attrs=None,
+          ctx=ctx)
+    else:
       g = ops.get_default_graph()
       g._add_function(self._forward_fdef)  # pylint: disable=protected-access
       op = g.create_op(
@@ -422,13 +460,6 @@ class GraphModeFunction(object):
           outputs, (ops.Tensor, type(None))) else list(outputs)
       for i, s in enumerate(self._output_shapes):
         outputs[i].set_shape(s)
-    else:
-      outputs = execute.execute(
-          str(signature.name),
-          num_outputs=len(signature.output_arg),
-          inputs=all_args,
-          attrs=None,
-          ctx=ctx)
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
 
@@ -499,7 +530,14 @@ class GraphModeFunction(object):
       return self._backprop_call(tensor_inputs)
 
     ctx = context.context()
-    if ctx.in_graph_mode():
+    if ctx.executing_eagerly():
+      result = execute.execute(
+          str(self._func_name),
+          num_outputs=self._num_outputs,
+          inputs=tensor_inputs + self._extra_inputs,
+          attrs=None,
+          ctx=ctx)
+    else:
       g = ops.get_default_graph()
       self.add_to_graph(g)
       signature = self._function_def.definition.signature
@@ -516,13 +554,6 @@ class GraphModeFunction(object):
         return op
       for i, s in enumerate(self._output_shapes):
         result[i].set_shape(s)
-    else:
-      result = execute.execute(
-          str(self._func_name),
-          num_outputs=self._num_outputs,
-          inputs=tensor_inputs + self._extra_inputs,
-          attrs=None,
-          ctx=ctx)
 
     return self._build_call_outputs(result)
 
@@ -590,13 +621,15 @@ def _defun_internal(name, func, args, kwds):
     for collection in curr_graph.collections:
       tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
           collection)
-    with tmp_graph.as_default():
+    with tmp_graph.as_default(), AutomaticControlDependencies() as a:
       func_inputs = _get_defun_inputs(args)
 
       def convert(x):
         if x is None:
           return None
-        return ops.convert_to_tensor_or_indexed_slices(x)
+        x = ops.convert_to_tensor_or_indexed_slices(x)
+        x = a.mark_as_return(x)
+        return x
 
       with capture_tensors(captures):
         this_tape = tape.push_new_tape()
@@ -633,7 +666,7 @@ def _defun_internal(name, func, args, kwds):
                      if x not in all_ignored_ops)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     for f in tmp_graph._functions.values():  # pylint: disable=protected-access
       # TODO(ashankar): What about the gradient registry?
       _register(f._c_func)  # pylint: disable=protected-access
@@ -841,10 +874,39 @@ class AutomaticControlDependencies(object):
     self._returned_tensors = set()
 
   def mark_as_return(self, tensor):
+    """Acts like identity but marks the `Tensor` as a return value.
+
+    This will possibly return a copy of the `Tensor`. Usage:
+
+    ```
+      with AutomaticControlDependencies() as a:
+       ...
+       t = a.mark_as_return(t)
+      _ = ...(t...)  # i.e. it's safe to use t here
+    ```
+
+    Args:
+      tensor: the `Tensor` to be marked
+
+    Returns:
+      a copy of the `Tensor`.
+    """
+    if isinstance(tensor, ops.IndexedSlices):
+      values = array_ops.identity(tensor.values)
+      indices = array_ops.identity(tensor.indices)
+      self._returned_tensors.add(indices)
+      self._returned_tensors.add(values)
+      return ops.IndexedSlices(values, indices, dense_shape=tensor.dense_shape)
+    # We want to make the return values depend on the stateful operations, but
+    # we don't want to introduce a cycle, so we make the return value the result
+    # of a new identity operation that the stateful operations definitely don't
+    # depend on.
+    tensor = array_ops.identity(tensor)
     self._returned_tensors.add(tensor)
+    return tensor
 
   def __enter__(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return self
     # This code assumes no other thread is adding ops to the graph while
     # we're adding ops to the graph.
@@ -915,7 +977,7 @@ class AutomaticControlDependencies(object):
       merge_for_resource[o] = new_merge[0].op
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return
 
     if self._graph is not ops.get_default_graph():
@@ -962,7 +1024,8 @@ class AutomaticControlDependencies(object):
     for op in new_operations:
       control_inputs = set()
       # Ensure stateful ops run
-      if self._graph._registered_ops[op.type].is_stateful:  # pylint: disable=protected-access
+      if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access
+          or self._graph._registered_ops[op.type].is_stateful):  # pylint: disable=protected-access
         ops_which_must_run.add(op)
       # Ignore switches (they're handled separately)
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
@@ -998,9 +1061,10 @@ class AutomaticControlDependencies(object):
 
     # Ensure all ops which must run do run
     for r in self._returned_tensors:
-      r.op._add_control_inputs(  # pylint: disable=protected-access
-          [o for o in ops_which_must_run
-           if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
+      if ops_which_must_run:
+        r.op._add_control_inputs(  # pylint: disable=protected-access
+            [o for o in ops_which_must_run
+             if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
 
 
 def automatic_control_dependencies(f):
@@ -1020,8 +1084,7 @@ def automatic_control_dependencies(f):
   def wrapper(*args, **kwds):
     with AutomaticControlDependencies() as a:
       result = f(*args, **kwds)
-      for t in nest.flatten(result):
-        a.mark_as_return(t)
-      return result
+      result_flat = [a.mark_as_return(t) for t in nest.flatten(result)]
+      return nest.pack_sequence_as(result, result_flat)
 
   return tf_decorator.make_decorator(f, wrapper)

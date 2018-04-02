@@ -209,6 +209,11 @@ template <>
   return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs);
 }
 template <>
+::testing::AssertionResult CompareEqual<Eigen::half>(Eigen::half lhs,
+                                                     Eigen::half rhs) {
+  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs);
+}
+template <>
 ::testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
   return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
 }

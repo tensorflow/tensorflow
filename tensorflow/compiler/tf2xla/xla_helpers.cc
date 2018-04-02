@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
@@ -271,6 +272,22 @@ Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
       one_hot_bool, builder->Broadcast(on_value, output_shape.dim_sizes()),
       builder->Broadcast(off_value, output_shape.dim_sizes()));
   return Status::OK();
+}
+
+DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
+  if (dtype == DT_BFLOAT16) {
+    return DT_FLOAT;
+  }
+  return dtype;
+}
+
+xla::ComputationDataHandle XlaHelpers::ConvertElementType(
+    xla::ComputationBuilder* const builder,
+    const xla::ComputationDataHandle& operand,
+    const DataType new_element_type) {
+  xla::PrimitiveType convert_to;
+  TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));
+  return builder->ConvertElementType(operand, convert_to);
 }
 
 }  // end namespace tensorflow

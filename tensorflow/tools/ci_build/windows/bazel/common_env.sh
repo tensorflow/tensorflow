@@ -34,6 +34,9 @@ export BAZEL_SH=${BAZEL_SH:-"C:/tools/msys64/usr/bin/bash"}
 
 export PYTHON_BASE_PATH="${PYTHON_DIRECTORY:-Program Files/Anaconda3}"
 
+# Set the path to find bazel.
+export PATH="/c/tools/bazel/:$PATH"
+
 # Set Python path for ./configure
 export PYTHON_BIN_PATH="C:/${PYTHON_BASE_PATH}/python.exe"
 export PYTHON_LIB_PATH="C:/${PYTHON_BASE_PATH}/lib/site-packages"

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -153,6 +152,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_inst->set_metadata(batch_norm->metadata());
     added_instructions.push_back(added_inst);
     return added_inst;
   };
@@ -334,6 +334,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_inst->set_metadata(batch_norm->metadata());
     added_instructions.push_back(added_inst);
     return added_inst;
   };
@@ -419,6 +420,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_inst->set_metadata(batch_norm->metadata());
     added_instructions.push_back(added_inst);
     return added_inst;
   };

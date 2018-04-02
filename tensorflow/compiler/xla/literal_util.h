@@ -262,6 +262,11 @@ class Literal {
                        tensorflow::gtl::ArraySlice<int64> dest_base,
                        tensorflow::gtl::ArraySlice<int64> copy_size);
 
+  // Copies one element from src_literal[src_index] to (*this)[dest_index].
+  Status CopyElementFrom(const Literal& src_literal,
+                         tensorflow::gtl::ArraySlice<int64> src_index,
+                         tensorflow::gtl::ArraySlice<int64> dest_index);
+
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
   // elements are moved into the new Literals; no data is copied. Upon return
@@ -332,6 +337,17 @@ class Literal {
   // conversion is not possible. This literal must be array-shaped.
   StatusOr<std::unique_ptr<Literal>> Convert(
       PrimitiveType primitive_dest_type) const;
+
+  // Converts this literal to the given shape. Returns an error is the
+  // conversion is not possible.
+  //
+  // round_f32_to_bf16: if true, converting F32 elements to BF16 uses rounding
+  // instead of truncation; otherwise, truncation is used.
+  //
+  // TODO(b/69266521): remove the round_to_bfloat16 flag when rounding becomes
+  // the default behavior.
+  StatusOr<std::unique_ptr<Literal>> ConvertToShape(
+      const Shape& dest_shape, bool round_f32_to_bf16 = false) const;
 
   // Creates a scalar literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
@@ -451,6 +467,9 @@ class Literal {
   template <typename NativeT>
   NativeT GetFirstElement() const;
 
+  // Returns a literal scalar representing the first element.
+  Literal GetFirstScalarLiteral() const;
+
   // As Get(), but determines the correct type and converts the value
   // into text.
   string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index,
@@ -465,6 +484,11 @@ class Literal {
   // int64.  This literal must be an array.
   StatusOr<int64> GetIntegralAsS64(
       tensorflow::gtl::ArraySlice<int64> multi_index) const;
+
+  // As Set(), but truncates `value` to the literal element type before storing.
+  // This literal must be an array.
+  Status SetIntegralAsS64(tensorflow::gtl::ArraySlice<int64> multi_index,
+                          int64 value);
 
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
@@ -601,6 +625,9 @@ class Literal {
   //
   // This literal must have a dense layout.
   bool IsAllComplex(complex64 value) const;
+
+  // Literal consists entirely of the first element of the literal.
+  bool IsAllFirst() const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
@@ -1263,7 +1290,7 @@ Status Literal::Populate(const FnType& generator) {
     int64 minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
-    auto init_function = [&](const std::vector<int64>& indexes) {
+    auto init_function = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
       const int64 index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -77,7 +78,7 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // correct optimizations.
 Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
                      const ItemConfig& cfg) {
-  if (!cfg.apply_optimizations && !cfg.inline_functions) {
+  if (!cfg.apply_optimizations && !cfg.erase_noinline_attributes) {
     return Status::OK();
   }
 
@@ -87,7 +88,7 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   // Make a local copy of graph def, because we need to change some things.
   GraphDef graph_def(graph_def_arg);
 
-  if (cfg.inline_functions && cfg.erase_noinline_attributes) {
+  if (cfg.erase_noinline_attributes) {
     // TF optimizer doesn't inline functions with "_noinline" attribute,
     // so let's go over the function library and erase it.
     for (auto& func : *graph_def.mutable_library()->mutable_function()) {
@@ -112,7 +113,6 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   } else {
     optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L0);
   }
-  optimizer_opts->set_do_function_inlining(cfg.inline_functions);
 
   // Create the function library runtime.
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
@@ -138,7 +138,7 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   // The default values of attributes might have been stripped by the optimizer.
   // Add them back.
   return AddDefaultAttrsToGraphDef(output_graph_def, *graphptr->op_registry(),
-                                   0);
+                                   0, true);
 }
 
 // Applies the same graph pruning logic to the graph as Session.Run in TF.
@@ -150,6 +150,27 @@ Status PruneGraph(GrapplerItem* item) {
   TF_RETURN_IF_ERROR(pruner.Optimize(cluster, *item, &pruned_graph));
   item->graph = std::move(pruned_graph);
   return Status::OK();
+}
+
+// Replace any unknown dimensions in a shape with
+// cfg.placeholder_unknown_output_shape_dim if it is no less than 0.
+Status ReplaceUnknownShapeDim(const ItemConfig& cfg,
+                              const TensorShapeProto& shape_pb_in,
+                              TensorShapeProto* shape_pb_out,
+                              TensorShape* shape_out) {
+  std::vector<int32> dims;
+  for (const auto& dim_proto : shape_pb_in.dim()) {
+    if (cfg.placeholder_unknown_output_shape_dim >= 0 &&
+        dim_proto.size() == -1) {
+      dims.push_back(cfg.placeholder_unknown_output_shape_dim);
+      shape_pb_out->add_dim()->set_size(
+          cfg.placeholder_unknown_output_shape_dim);
+    } else {
+      dims.push_back(std::max<int32>(1, dim_proto.size()));
+      shape_pb_out->add_dim()->set_size(dim_proto.size());
+    }
+  }
+  return TensorShapeUtils::MakeShape(dims.data(), dims.size(), shape_out);
 }
 
 }  // namespace
@@ -168,12 +189,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   // Fill in feed nodes from config, if any provided.
   for (const auto& feed_node : cfg.feed_nodes) {
     const string feed_name = NodeName(feed_node);
-    if (feed_name.empty()) {
-      LOG(ERROR) << "Invalid feed node name " << feed_node
-                 << ", skipping this input.";
-      return nullptr;
-    }
-    VLOG(1) << "Will use feed node " << feed_name;
     new_item->feed.emplace_back(feed_name, Tensor());
   }
 
@@ -182,17 +197,119 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const CollectionDef& nodes = meta_graph.collection_def().at("train_op");
     if (nodes.has_node_list()) {
       for (const auto& node : nodes.node_list().value()) {
-        const string name = NodeName(node);
-        if (name.empty()) {
-          LOG(ERROR) << "Invalid fetch node name " << node
-                     << ", skipping this input";
-          return nullptr;
-        }
-        VLOG(1) << "Will use fetch node " << name;
-        new_item->fetch.push_back(name);
+        new_item->fetch.push_back(NodeName(node));
       }
     }
   }
+
+  // Detect feed and fetch nodes from signature defs. Signatures may share same
+  // inputs or outputs.
+  std::unordered_set<string> signature_feed_nodes;
+  std::unordered_set<string> signature_fetch_nodes;
+  for (const auto& name_and_signature : meta_graph.signature_def()) {
+    for (const auto& name_and_input : name_and_signature.second.inputs()) {
+      const TensorInfo& input = name_and_input.second;
+      if (input.has_coo_sparse()) {
+        // Define the shapes following the comment of CooSparse.
+        // TODO(yuefengz): we probably want to use different dim values for the
+        // three tensors of a SparseTensor.
+        int64 dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
+        TensorShape shape_1d({dim});
+        TensorShape shape_2d({dim, dim});
+
+        if (gtl::InsertIfNotPresent(
+                &signature_feed_nodes,
+                NodeName(input.coo_sparse().values_tensor_name()))) {
+          Tensor value_tensor(input.dtype(), shape_1d);
+          InitializeTensor(input.dtype(), &value_tensor);
+          new_item->feed.emplace_back(
+              NodeName(input.coo_sparse().values_tensor_name()), value_tensor);
+        }
+        if (gtl::InsertIfNotPresent(
+                &signature_feed_nodes,
+                NodeName(input.coo_sparse().indices_tensor_name()))) {
+          Tensor indices_tensor(DT_INT64, shape_2d);
+          InitializeTensor(input.dtype(), &indices_tensor);
+          new_item->feed.emplace_back(
+              NodeName(input.coo_sparse().indices_tensor_name()),
+              indices_tensor);
+        }
+        if (gtl::InsertIfNotPresent(
+                &signature_feed_nodes,
+                NodeName(input.coo_sparse().dense_shape_tensor_name()))) {
+          Tensor dense_shape_tensor(DT_INT64, shape_1d);
+          InitializeTensor(input.dtype(), &dense_shape_tensor);
+          new_item->feed.emplace_back(
+              NodeName(input.coo_sparse().dense_shape_tensor_name()),
+              dense_shape_tensor);
+        }
+      } else {
+        if (gtl::InsertIfNotPresent(&signature_feed_nodes,
+                                    NodeName(input.name()))) {
+          TensorShape shape;
+          TensorShapeProto shape_proto;
+          Status s = ReplaceUnknownShapeDim(cfg, input.tensor_shape(),
+                                            &shape_proto, &shape);
+          if (!s.ok()) {
+            LOG(ERROR) << "Invalid shape for signature input " << input.name()
+                       << ": " << s << ", skipping this input";
+            return nullptr;
+          }
+
+          Tensor fake_input(input.dtype(), shape);
+          InitializeTensor(input.dtype(), &fake_input);
+          new_item->feed.emplace_back(NodeName(input.name()), fake_input);
+        }
+      }
+    }
+    for (const auto& name_and_output : name_and_signature.second.outputs()) {
+      const TensorInfo& output = name_and_output.second;
+      if (output.has_coo_sparse()) {
+        if (gtl::InsertIfNotPresent(
+                &signature_fetch_nodes,
+                NodeName(output.coo_sparse().values_tensor_name()))) {
+          new_item->fetch.push_back(
+              NodeName(output.coo_sparse().values_tensor_name()));
+        }
+        if (gtl::InsertIfNotPresent(
+                &signature_fetch_nodes,
+                NodeName(output.coo_sparse().indices_tensor_name()))) {
+          new_item->fetch.push_back(
+              NodeName(output.coo_sparse().indices_tensor_name()));
+        }
+        if (gtl::InsertIfNotPresent(
+                &signature_fetch_nodes,
+                NodeName(output.coo_sparse().dense_shape_tensor_name()))) {
+          new_item->fetch.push_back(
+              NodeName(output.coo_sparse().dense_shape_tensor_name()));
+        }
+      } else {
+        if (gtl::InsertIfNotPresent(&signature_fetch_nodes,
+                                    NodeName(output.name()))) {
+          new_item->fetch.push_back(NodeName(output.name()));
+        }
+      }
+    }
+  }
+
+  for (const auto& feed : new_item->feed) {
+    if (feed.first.empty()) {
+      LOG(ERROR) << "Invalid feed node name skipping this input";
+      return nullptr;
+    } else {
+      VLOG(1) << "Will use feed node " << feed.first;
+    }
+  }
+
+  for (const auto& fetch : new_item->fetch) {
+    if (fetch.empty()) {
+      LOG(ERROR) << "Invalid fetch node name skipping this input";
+      return nullptr;
+    } else {
+      VLOG(1) << "Will use fetch node " << fetch;
+    }
+  }
+
   if (new_item->fetch.empty()) {
     LOG(ERROR) << "Failed to detect the fetch node(s), skipping this input";
     return nullptr;
@@ -296,6 +413,14 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     }
   }
 
+  // Add each node referenced in a collection to the list of nodes to keep.
+  for (const auto& col : meta_graph.collection_def()) {
+    const CollectionDef& collection = col.second;
+    for (const string& node : collection.node_list().value()) {
+      new_item->keep_ops.push_back(NodeName(node));
+    }
+  }
+
   for (auto& node : *new_item->graph.mutable_node()) {
     if (IsPlaceholder(node) && node.op() != "PlaceholderWithDefault") {
       if (node.attr().count("dtype") == 0) {
@@ -317,20 +442,8 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       // shape is not empty if the shape is partially defined.
       TensorShape shape;
       TensorShapeProto shape_proto;
-      std::vector<int32> dims;
-      for (const auto& dim_proto : node.attr().at("shape").shape().dim()) {
-        if (cfg.placeholder_unknown_output_shape_dim >= 0 &&
-            dim_proto.size() == -1) {
-          dims.push_back(cfg.placeholder_unknown_output_shape_dim);
-          shape_proto.add_dim()->set_size(
-              cfg.placeholder_unknown_output_shape_dim);
-        } else {
-          dims.push_back(std::max<int32>(1, dim_proto.size()));
-          shape_proto.add_dim()->set_size(dim_proto.size());
-        }
-      }
-      Status make_shape_status =
-          TensorShapeUtils::MakeShape(dims.data(), dims.size(), &shape);
+      Status make_shape_status = ReplaceUnknownShapeDim(
+          cfg, node.attr().at("shape").shape(), &shape_proto, &shape);
       if (!make_shape_status.ok()) {
         LOG(ERROR) << "Invalid shape for placeholder " << node.name() << ": "
                    << make_shape_status << ", skipping this input";
@@ -370,7 +483,9 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
 
       if (cfg.feed_nodes.empty()) {
         // No specific feed nodes were given. Assume all placeholders are fed.
-        new_item->feed.emplace_back(node.name(), fake_input);
+        if (signature_feed_nodes.count(node.name()) == 0) {
+          new_item->feed.emplace_back(node.name(), fake_input);
+        }
       } else if (cfg.feed_nodes.count(node.name()) > 0) {
         // If specific feed nodes were given, only update their tensors.
         auto it = find_if(new_item->feed.begin(), new_item->feed.end(),
@@ -454,7 +569,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       &new_item->graph,
       FunctionLibraryDefinition(OpRegistry::Global(),
                                 new_item->graph.library()),
-      0);
+      0, true);
   if (!attr_status.ok()) {
     LOG(ERROR) << "Failed to instantiate default attribute values: "
                << attr_status.error_message();
@@ -507,114 +622,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       return nullptr;
     }
   }
-  return new_item;
-}
-
-std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
-    const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr,
-    const FunctionDefLibrary& library) {
-  if (func.signature().name().empty()) {
-    LOG(ERROR) << "function name must be specified.";
-    return nullptr;
-  }
-  std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
-  new_item->id = func.signature().name();
-
-  std::unordered_map<string, string> port_map;
-
-  // Add the function inputs as placeholder
-  for (const auto& inp : func.signature().input_arg()) {
-    NodeDef* ph = new_item->graph.add_node();
-    ph->set_name(inp.name());
-    ph->set_op("Placeholder");
-    if (inp.type() != DT_INVALID) {
-      (*ph->mutable_attr())["T"].set_type(inp.type());
-    } else {
-      auto it = func_attr.find(inp.type_attr());
-      if (it == func_attr.end()) {
-        LOG(ERROR) << "Unknown type attribute " << inp.type_attr()
-                   << " for function input " << inp.name();
-        return nullptr;
-      } else {
-        (*ph->mutable_attr())["T"] = it->second;
-      }
-    }
-    port_map[inp.name()] = inp.name();
-  }
-
-  // Add the function body to the graph.
-  FunctionLibraryDefinition func_def(OpRegistry::Global(), library);
-
-  for (const NodeDef& node : func.node_def()) {
-    NodeDef* new_node = new_item->graph.add_node();
-    *new_node = node;
-    // Replace the placeholder attribute values with the specified value.
-    for (auto& attr : *new_node->mutable_attr()) {
-      const string& ph_name = attr.second.placeholder();
-      auto it = func_attr.find(ph_name);
-      if (it != func_attr.end()) {
-        attr.second = it->second;
-      }
-    }
-
-    // Functions use a custom format to encode connectivity. Map these custom
-    // strings to regular ones.
-    const OpRegistrationData* registration;
-    Status status = func_def.LookUp(node.op(), &registration);
-    if (!status.ok()) {
-      LOG(ERROR) << "Op " << node.op() << " not registered: " << status;
-      return nullptr;
-    }
-
-    tensorflow::NameRangeMap inputs;
-    tensorflow::NameRangeMap outputs;
-    status = tensorflow::NameRangesForNode(node, registration->op_def, &inputs,
-                                           &outputs);
-    if (!status.ok()) {
-      LOG(ERROR) << "Op " << node.op() << " invalid: " << status;
-      return nullptr;
-    }
-    for (const auto& name_range : outputs) {
-      string port_prefix =
-          strings::StrCat(node.name(), ":", name_range.first, ":");
-      int index_start = name_range.second.first;
-      int index_end = name_range.second.second;
-      for (int i = index_start; i < index_end; ++i) {
-        string port_id = strings::StrCat(port_prefix, i - index_start);
-        string port_name = strings::StrCat(node.name(), ":", i);
-        port_map[port_id] = port_name;
-      }
-    }
-  }
-
-  for (auto& node : *new_item->graph.mutable_node()) {
-    // Rewrite the inputs to use the normal naming convention.
-    for (int i = 0; i < node.input_size(); ++i) {
-      const string& input = node.input(i);
-      if (IsControlInput(input)) {
-        // No need to remap control dependencies.
-        continue;
-      } else {
-        auto it = port_map.find(input);
-        if (it == port_map.end()) {
-          LOG(ERROR) << "Unknown input: " << input;
-          return nullptr;
-        }
-        node.set_input(i, it->second);
-      }
-    }
-  }
-
-  // Add the function outputs to the list of fetch nodes.
-  for (const auto& out : func.signature().output_arg()) {
-    new_item->fetch.emplace_back(out.name());
-  }
-  // Add the function inputs to the list of feeds.
-  for (const auto& inp : func.signature().input_arg()) {
-    new_item->feed.emplace_back(inp.name(), Tensor());
-  }
-
   return new_item;
 }
 

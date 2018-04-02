@@ -55,7 +55,7 @@ const char kUsageHeader[] =
     "\n";
 
 Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
-  if (StringPiece(fname).ends_with(".pbtxt")) {
+  if (str_util::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
   } else {
     return ReadBinaryProto(Env::Default(), fname, proto);

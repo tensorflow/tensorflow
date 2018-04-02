@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.util import tf_inspect
 
 
@@ -145,7 +146,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     np.testing.assert_allclose(output, actual_output, rtol=1e-3)
 
   # test training mode (e.g. useful for dropout tests)
-  model.compile('rmsprop', 'mse')
+  model.compile(RMSPropOptimizer(0.01), 'mse')
   model.train_on_batch(input_data, actual_output)
 
   # test as first layer in Sequential API
@@ -180,10 +181,6 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
     np.testing.assert_allclose(output, actual_output, rtol=1e-3)
-
-  # test training mode (e.g. useful for dropout tests)
-  model.compile('rmsprop', 'mse')
-  model.train_on_batch(input_data, actual_output)
 
   # for further checks in the caller function
   return actual_output

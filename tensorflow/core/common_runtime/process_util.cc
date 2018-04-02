@@ -46,6 +46,20 @@ thread::ThreadPool* ComputePool(const SessionOptions& options) {
   return compute_pool;
 }
 
+int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
+  const int32 t = options.config.inter_op_parallelism_threads();
+  if (t != 0) return t;
+  // Default to using the number of cores available in the process.
+  return port::NumSchedulableCPUs();
+}
+
+thread::ThreadPool* NewThreadPoolFromSessionOptions(
+    const SessionOptions& options) {
+  const int32 num_threads = NumInterOpThreadsFromSessionOptions(options);
+  VLOG(1) << "Direct session inter op parallelism threads: " << num_threads;
+  return new thread::ThreadPool(options.env, "Compute", num_threads);
+}
+
 void SchedClosure(std::function<void()> closure) {
   if (port::Tracing::IsActive()) {
     const uint64 id = port::Tracing::UniqueId();

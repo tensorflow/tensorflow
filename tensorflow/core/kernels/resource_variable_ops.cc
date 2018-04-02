@@ -253,6 +253,7 @@ class AssignVariableOp : public OpKernel {
     std::unique_ptr<Tensor> input_alias =
         context->forward_input(1, dtype_, value.shape(), DEVICE_MEMORY, attr);
     mutex_lock ml(*variable->mu());
+    variable->is_initialized = true;
     if (input_alias) {
       *variable->tensor() = *input_alias;
       return;
@@ -350,7 +351,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
     Var* variable = nullptr;
     OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
                                 context, HandleFromInput(context, 0), &variable,
-                                [this, context](Var** ptr) {
+                                [](Var** ptr) {
                                   // Created on host.
                                   *ptr = new Var(DT_VARIANT);
                                   return Status::OK();
@@ -363,7 +364,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                     DataTypeString(DT_VARIANT)));
 
     mutex_lock ml(*variable->mu());
-
+    variable->is_initialized = true;
     *variable->tensor() = Tensor(DT_VARIANT, value.shape());
     const auto elements_in = value.flat<Variant>();
     auto elements_out = variable->tensor()->flat<Variant>();
@@ -373,7 +374,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
       OP_REQUIRES_OK(context, VariantDeviceCopy(
                                   VariantDeviceCopyDirection::DEVICE_TO_DEVICE,
                                   elements_in(i), &elements_out(i), copy_fn));
-    };
+    }
   }
 
  private:
@@ -462,8 +463,29 @@ TF_CALL_int64(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
+class VarIsInitializedOp : public OpKernel {
+ public:
+  explicit VarIsInitializedOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* context) override {
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output));
+    auto output_tensor = output->tensor<bool, 0>();
+    Var* variable = nullptr;
+    Status s = LookupResource(context, HandleFromInput(context, 0), &variable);
+    if (!s.ok()) {
+      output_tensor() = false;
+      return;
+    }
+    core::ScopedUnref su(variable);
+    mutex_lock ml(*variable->mu());
+    output_tensor() = variable->is_initialized;
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
-                        IsResourceInitialized<Var>);
+                        VarIsInitializedOp);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
@@ -481,6 +503,7 @@ class ResourceGatherOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     Var* v = nullptr;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    core::ScopedUnref su(v);
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
     // situation where a write to the same variable will see a
@@ -586,7 +609,7 @@ class ResourceScatterUpdateOp : public OpKernel {
                                 DataTypeString(DataTypeToEnum<Index>::v()),
                                 " indexing: ", N_big, " > ",
                                 std::numeric_limits<Index>::max()));
-    const Index N = static_cast<Index>(indices.NumElements());
+    const Index N = static_cast<Index>(N_big);
     OP_REQUIRES(
         c, params->dim_size(0) <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.shape[0] too large for ",
@@ -597,16 +620,35 @@ class ResourceScatterUpdateOp : public OpKernel {
     if (N > 0) {
       auto indices_flat = indices.flat<Index>();
       auto params_flat = params->flat_outer_dims<T>();
-      auto updates_flat = updates.shaped<T, 2>({N, updates.NumElements() / N});
+      if (TensorShapeUtils::IsScalar(updates.shape())) {
+        const auto update = updates.scalar<T>();
 
-      functor::ScatterFunctor<Device, T, Index, op> functor;
-      const Index bad_i = functor(c, c->template eigen_device<Device>(),
-                                  params_flat, updates_flat, indices_flat);
-      OP_REQUIRES(c, bad_i < 0,
-                  errors::InvalidArgument(
-                      "indices", SliceDebugString(indices.shape(), bad_i),
-                      " = ", indices_flat(bad_i), " is not in [0, ",
-                      params->dim_size(0), ")"));
+        functor::ScatterScalarFunctor<Device, T, Index, op> functor;
+        const Index bad_i = functor(c, c->template eigen_device<Device>(),
+                                    params_flat, update, indices_flat);
+        OP_REQUIRES(c, bad_i < 0,
+                    errors::InvalidArgument(
+                        "indices", SliceDebugString(indices.shape(), bad_i),
+                        " = ", indices_flat(bad_i), " is not in [0, ",
+                        params->dim_size(0), ")"));
+      } else {
+        int64 num_updates = updates.NumElements();
+        OP_REQUIRES(c, num_updates % N == 0,
+                    errors::InvalidArgument(
+                        "shape of indices (", indices.shape().DebugString(),
+                        ") is not compatible with the shape of updates (",
+                        updates.shape().DebugString(), ")"));
+        auto updates_flat = updates.shaped<T, 2>({N, num_updates / N});
+
+        functor::ScatterFunctor<Device, T, Index, op> functor;
+        const Index bad_i = functor(c, c->template eigen_device<Device>(),
+                                    params_flat, updates_flat, indices_flat);
+        OP_REQUIRES(c, bad_i < 0,
+                    errors::InvalidArgument(
+                        "indices", SliceDebugString(indices.shape(), bad_i),
+                        " = ", indices_flat(bad_i), " is not in [0, ",
+                        params->dim_size(0), ")"));
+      }
     }
   }
 };
@@ -624,35 +666,51 @@ class ResourceScatterUpdateOp : public OpKernel {
   REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
   REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
 
-// TODO(apassos) add the other types here.
-#define REGISTER_SCATTER_ARITHEMTIC(type, dev)                \
+#define REGISTER_SCATTER_ARITHMETIC(type, dev)                \
   REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd",    \
                           scatter_op::UpdateOp::ADD);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterSub",    \
+                          scatter_op::UpdateOp::SUB);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterMul",    \
+                          scatter_op::UpdateOp::MUL);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterDiv",    \
+                          scatter_op::UpdateOp::DIV);         \
   REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterUpdate", \
                           scatter_op::UpdateOp::ASSIGN);
+#define REGISTER_SCATTER_MINMAX(type, dev)                 \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterMin", \
+                          scatter_op::UpdateOp::MIN);      \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterMax", \
+                          scatter_op::UpdateOp::MAX);
 
 // Registers CPU kernels.
-#define REGISTER_SCATTER_ARITHEMTIC_CPU(type) \
-  REGISTER_SCATTER_ARITHEMTIC(type, CPU);
+#define REGISTER_SCATTER_ARITHMETIC_CPU(type) \
+  REGISTER_SCATTER_ARITHMETIC(type, CPU);
+#define REGISTER_SCATTER_MINMAX_CPU(type) REGISTER_SCATTER_MINMAX(type, CPU);
 
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHEMTIC_CPU);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_CPU);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_CPU);
 
 REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);
 
 // Registers GPU kernels.
 #if GOOGLE_CUDA
-#define REGISTER_SCATTER_ARITHEMTIC_GPU(type) \
-  REGISTER_SCATTER_ARITHEMTIC(type, GPU);
+#define REGISTER_SCATTER_ARITHMETIC_GPU(type) \
+  REGISTER_SCATTER_ARITHMETIC(type, GPU);
+#define REGISTER_SCATTER_MINMAX_GPU(type) REGISTER_SCATTER_MINMAX(type, GPU);
 
 #define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHEMTIC_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHMETIC_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_MINMAX_GPU);
 
 #endif  // GOOGLE_CUDA
 
-#undef REGISTER_SCATTER_ARITHEMTIC
-#undef REGISTER_SCATTER_ARITHEMTIC_CPU
+#undef REGISTER_SCATTER_ARITHMETIC
+#undef REGISTER_SCATTER_ARITHMETIC_CPU
+#undef REGISTER_SCATTER_MINMAX
+#undef REGISTER_SCATTER_MINMAX_CPU
 #undef REGISTER_SCATTER_KERNEL
 #undef REGISTER_SCATTER_KERNEL_INDEX
 

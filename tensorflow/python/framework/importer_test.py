@@ -39,6 +39,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -355,6 +356,39 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(c.outputs, [])
       self.assertEqual(d._input_types, [dtypes.int32_ref, dtypes.int32])
       self.assertEqual(d.outputs, [])
+
+  def testResources(self):
+    # Produce GraphDef containing a ops producing and consuming resources.
+    graph = ops.Graph()
+    with graph.as_default():
+      var = resource_variable_ops.ResourceVariable(1.0)
+      var_assign = var.assign(2.0)
+      # Use an op that requires handle shape to be set.
+      var_shape = resource_variable_ops.variable_shape(var.handle)
+      init = variables.global_variables_initializer()
+    graph_def = graph.as_graph_def()
+
+    # Import the GraphDef.
+    with ops.Graph().as_default():
+      # pylint: disable=unused-variable
+      imported_var, imported_assign, imported_shape, imported_init = (
+          importer.import_graph_def(
+              graph_def,
+              return_elements=[var.name, var_assign.name, var_shape.name,
+                               init.name]))
+
+      # Make sure the handle shape is set on the imported variable.
+      new_var_shape = resource_variable_ops.variable_shape(imported_var)
+      # pylint: enable=unused-variable
+
+      # Run the imported graph.
+      # TODO(b/76173421): make this work (currently DCHECKS)
+      # with self.test_session() as sess:
+      #   sess.run(imported_init)
+      #   self.assertEqual(sess.run(imported_var), 1.0)
+      #   self.assertEqual(sess.run(imported_assign), 2.0)
+      #   self.assertEqual(list(sess.run(imported_shape)), [])
+      #   self.assertEqual(list(sess.run(new_var_shape)), [])
 
   def testWhileLoop(self):
     # Produce GraphDef containing while loop.
@@ -679,6 +713,49 @@ class ImportGraphDefTest(test.TestCase):
       self.assertProtoEquals(
           "list { s: 'loc:@imported_graph/A' }",
           b.node_def.attr["_class"])
+
+  def testColocationAndDevice(self):
+    # A and B are colocated, device set on A.
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' device: '/device:CPU:0' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(original_graph_def,
+                                       return_elements=["A", "B"],
+                                       name="")
+      self.assertEqual(a.device, "/device:CPU:0")
+      self.assertEqual(b.device, "/device:CPU:0")
+      self.assertEqual(a.colocation_groups(), [b"loc:@A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@A"])
+
+    # A and B are colocated, device set on B.
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'B' op: 'None' device: '/device:CPU:0' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(original_graph_def,
+                                       return_elements=["A", "B"],
+                                       name="")
+      # TODO(skyewm): this behavior seems inconsistent with the above. Why is
+      # B's device ignored?
+      self.assertEqual(a.device, "")
+      self.assertEqual(b.device, "")
+      self.assertEqual(a.colocation_groups(), [b"loc:@A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@A"])
 
   def testColocationWithDeviceFn(self):
     original_graph_def = self._MakeGraphDef("""

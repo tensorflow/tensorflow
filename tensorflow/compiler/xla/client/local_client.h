@@ -69,7 +69,7 @@ class LocalExecutable {
   // of the computation.
   tensorflow::Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutableRunOptions& options, const Backend& backend);
+      const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
@@ -120,6 +120,15 @@ class LocalClient : public Client {
   // the given argument layouts and options.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const Computation& computation,
+      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+      const ExecutableBuildOptions& options);
+
+  // Build and return a LocalExecutable object. The executable is compiled using
+  // the given XlaComputation, argument layouts and options.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<LocalExecutable>> Compile(
+      const XlaComputation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
       const ExecutableBuildOptions& options);
 

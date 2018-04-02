@@ -301,10 +301,6 @@ bool IsComparisonOp(const NodeDef& node) {
   return is_compare;
 }
 
-bool IsLogicalOp(const NodeDef& node) {
-  return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
-}
-
 bool IsReduceOp(const NodeDef& node) {
   return IsSum(node) || IsMean(node) || IsProd(node) || IsMax(node) ||
          IsMin(node) || IsAll(node) || IsAny(node);
@@ -355,7 +351,7 @@ std::vector<int> DataInputPos(const NodeDef& node) {
   if (IsBetainc(node) || IsSelect(node)) {
     return {0, 1, 2};
   }
-  if (IsShapeN(node) || IsIdentityN(node) || IsAddN(node)) {
+  if (IsShapeN(node) || IsIdentityN(node) || IsAddN(node) || IsMerge(node)) {
     return NonControlInputs(node);
   }
   if (IsConcat(node)) {
@@ -551,8 +547,8 @@ class NodeProcessor : public GraphProcessor {
     string device;
     string not_used;
     if (DeviceNameUtils::SplitDeviceName(device_name, &not_used, &device) &&
-        (StringPiece(str_util::Lowercase(device)))
-            .contains(str_util::Lowercase(DEVICE_GPU))) {
+        str_util::StrContains(str_util::Lowercase(device),
+                              str_util::Lowercase(DEVICE_GPU))) {
       return true;
     }
     return false;
@@ -1160,9 +1156,11 @@ class AgnosticNodeProcessor : public NodeProcessor {
     std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
     std::deque<NodeDef*> queue;
     auto data_node_pos = DataInputPos(node);
+    std::unordered_set<string> visited;
     for (const auto& pos : data_node_pos) {
       auto input_node = node_map_->GetNode(node.input(pos));
       queue.push_back(input_node);
+      visited.insert(input_node->name());
     }
     // The code will exit this while loop in one iteration in most cases, as the
     // graph is already topologically sorted.
@@ -1181,7 +1179,10 @@ class AgnosticNodeProcessor : public NodeProcessor {
         auto current_node_pos = DataInputPos(*current_node);
         for (const auto& pos : current_node_pos) {
           auto input_node = node_map_->GetNode(current_node->input(pos));
-          queue.push_back(input_node);
+          if (visited.find(input_node->name()) == visited.end()) {
+            queue.push_back(input_node);
+            visited.insert(input_node->name());
+          }
         }
       }
     }

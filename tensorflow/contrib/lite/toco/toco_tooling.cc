@@ -52,12 +52,14 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialStackToReshape);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
   transformations->Add(new ResolveTransposeAttributes);
+  transformations->Add(new PropagateActivationFunctionIntoConstants);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
   transformations->Add(new RemoveTensorFlowAssert);
@@ -76,6 +78,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
+  transformations->Add(new ResolveConstantGather);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
@@ -87,9 +90,11 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyDilatedConv);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
+  transformations->Add(new IdentifyPRelu);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
@@ -101,6 +106,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
   transformations->Add(new ResolveConstantFakeQuant);
+  transformations->Add(new UnpartitionEmbeddingLookup);
 }
 
 bool SupportsQuantization(FileFormat format) {
@@ -198,7 +204,8 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   const IODataType inference_type = toco_flags.inference_type();
 
   const bool quantize_output =
-      SupportsQuantization(output_format) && inference_type == QUANTIZED_UINT8;
+      SupportsQuantization(output_format) &&
+      (inference_type == QUANTIZED_UINT8 || inference_type == QUANTIZED_INT16);
 
   if (quantize_output) {
     QCHECK_NE(toco_flags.inference_input_type(), FLOAT)
@@ -234,7 +241,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   }
   transformations.Add(new ConvertPureConvToDepthwise);
   if (SupportsLstmCell(output_format)) {
-    transformations.Add(new IdentifyLstmCell);
+    if (!toco_flags.debug_disable_recurrent_cell_fusion()) {
+      transformations.Add(new IdentifyLstmCell);
+    }
     if (output_format == TFLITE) {
       transformations.Add(new toco::SplitLstmCellInputs);
     } else {
@@ -280,6 +289,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   if (output_format == TENSORFLOW_GRAPHDEF) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
+
+  // Fix any issues with IO edges. This must happen after any transform that
+  // may modify the structure of the edges.
+  FixEdgeArrays(model);
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 

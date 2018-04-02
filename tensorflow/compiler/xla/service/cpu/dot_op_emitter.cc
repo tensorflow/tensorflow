@@ -715,6 +715,11 @@ tensorflow::Status DotOpEmitter::Emit() {
   // which performs the sum-of-products (the reduction loop) before storing
   // the result in the output buffer.
 
+  // This routine assumes that the dot operation is not in a parallelized
+  // enclosing computation.
+  CHECK(
+      dot_.parent()->root_instruction()->outer_dimension_partitions().empty());
+
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
 
@@ -919,6 +924,12 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
+    case F16:
+      fn_name = multi_threaded_eigen
+                    ? runtime::kEigenMatMulF16SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF16SymbolName;
+      float_type = ir_builder_->getHalfTy();
+      break;
     case F32:
       fn_name = multi_threaded_eigen
                     ? runtime::kEigenMatMulF32SymbolName
@@ -1051,7 +1062,8 @@ static bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   // The inputs and the output must
   // 1) be matrices with no padding, and
   // 2) have an allowed element type.
-  return output_shape.element_type() == F32 &&
+  PrimitiveType output_primitive_type = output_shape.element_type();
+  return (output_primitive_type == F32 || output_primitive_type == F16) &&
          IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape);
 }

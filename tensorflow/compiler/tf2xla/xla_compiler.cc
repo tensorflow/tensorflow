@@ -365,6 +365,13 @@ Status BuildComputation(
               return a->arg_num() < b->arg_num();
             });
 
+  // Attach a common operator name as metadata. This has no semantic effect — it
+  // merely makes the HLO graph more readable when visualized via TensorBoard,
+  // since TensorBoard forms groups out of operators with similar names.
+  xla::OpMetadata retval_metadata;
+  retval_metadata.set_op_name("XLA_Retvals");
+  builder->SetOpMetadata(retval_metadata);
+
   for (const XlaResource* resource : arg_resources) {
     const XlaCompiler::Argument& arg = args[resource->arg_num()];
     const int core = arg_cores[resource->arg_num()];
@@ -412,6 +419,8 @@ Status BuildComputation(
 
   // Builds the XLA computation.
   builder->Tuple(elems);
+  builder->ClearOpMetadata();
+
   xla::StatusOr<xla::Computation> computation_status = builder->Build();
   if (!computation_status.ok()) {
     return computation_status.status();
@@ -514,6 +523,13 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
+  // Attach a common operator name as metadata. This has no semantic effect — it
+  // merely makes the HLO graph more readable when visualized via TensorBoard,
+  // since TensorBoard forms groups out of operators with similar names.
+  xla::OpMetadata arg_metadata;
+  arg_metadata.set_op_name("XLA_Args");
+  builder->SetOpMetadata(arg_metadata);
+
   // Build parameter handles for non-constant arguments.
   std::vector<xla::ComputationDataHandle> arg_handles(input_mapping->size());
   if (use_tuple_arg) {
@@ -552,6 +568,8 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
+  builder->ClearOpMetadata();
+
   // Fill in the handles in non-constant arguments.
   VLOG(2) << "XLA computation inputs:";
   for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
@@ -580,6 +598,48 @@ Status XlaCompiler::BuildArguments(
   }
 
   return Status::OK();
+}
+
+Status XlaCompiler::CompileSingleOp(
+    const XlaCompiler::CompileOptions& options, string const& name,
+    OpKernelContext* ctx, const std::vector<XlaCompiler::Argument>& args,
+    CompilationResult* result) {
+  // TODO(b/74182462): We implement this by creating a new dummy Graph including
+  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Status status;
+  // First create the actual node we care about computing.
+  Node* main_node = graph->AddNode(ctx->op_kernel().def(), &status);
+  TF_RETURN_IF_ERROR(status);
+
+  // Create dummy _Arg nodes. Link these to `node` and also via a control
+  // dependency edge to the _SOURCE node.
+  for (int64 i = 0; i < ctx->num_inputs(); ++i) {
+    Node* node;
+    string name = strings::StrCat(ctx->op_kernel().name(), "_", i, "_arg");
+    Status status = NodeBuilder(name, "_Arg")
+                        .ControlInput(graph->source_node())
+                        .Attr("T", ctx->input_dtype(i))
+                        .Attr("index", i)
+                        .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+    graph->AddEdge(node, 0, main_node, i);
+  }
+
+  // Similarly with return values, create dummy _Retval nodes fed by `node`.
+  for (int64 i = 0; i < ctx->num_outputs(); ++i) {
+    Node* node;
+    string name = strings::StrCat(ctx->op_kernel().name(), "_", i, "_retval");
+    Status status = NodeBuilder(name, "_Retval")
+                        .Input(main_node, i)
+                        .Attr("T", ctx->expected_output_dtype(i))
+                        .Attr("index", i)
+                        .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+  }
+
+  return CompileGraph(options, name, std::move(graph), args, result);
 }
 
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
@@ -656,6 +716,14 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanString(result->xla_output_shape);
 
+  // Copy the host transfer metadata to the result.
+  for (const auto& send : host_compute_sends_) {
+    *result->host_compute_metadata.add_device_to_host() = send.second;
+  }
+  for (const auto& recv : host_compute_recvs_) {
+    *result->host_compute_metadata.add_host_to_device() = recv.second;
+  }
+
   // Tensorflow expects a major-to-minor order of results.
   xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
 
@@ -687,6 +755,61 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Channel: " << key << " " << channel->DebugString();
+  return Status::OK();
+}
+
+namespace {
+
+void SetTransfer(const string& key, gtl::ArraySlice<DataType> types,
+                 gtl::ArraySlice<TensorShape> shapes,
+                 tf2xla::HostTransferMetadata* transfer) {
+  transfer->set_key(key);
+  CHECK(types.size() == shapes.size());
+  for (int i = 0; i < types.size(); ++i) {
+    tf2xla::TensorMetadata* metadata = transfer->add_metadata();
+    metadata->set_type(types[i]);
+    shapes[i].AsProto(metadata->mutable_shape());
+  }
+}
+
+}  // namespace
+
+Status XlaCompiler::SetDeviceToHostMetadata(
+    const string& key, gtl::ArraySlice<DataType> types,
+    gtl::ArraySlice<TensorShape> shapes) {
+  if (host_compute_sends_.find(key) != host_compute_sends_.end()) {
+    return errors::InvalidArgument(
+        "Duplicate calls to SetDeviceToHostMetadata with key ", key);
+  }
+  tf2xla::HostTransferMetadata& transfer = host_compute_sends_[key];
+  SetTransfer(key, types, shapes, &transfer);
+  return Status::OK();
+}
+
+Status XlaCompiler::GetDeviceToHostShapes(
+    const string& key, std::vector<TensorShape>* shapes) const {
+  const auto iter = host_compute_sends_.find(key);
+  if (iter == host_compute_sends_.end()) {
+    return errors::InvalidArgument(
+        "No host compute send shapes registered for key ", key);
+  }
+  shapes->clear();
+  for (int i = 0; i < iter->second.metadata_size(); ++i) {
+    TensorShape shape(iter->second.metadata(i).shape());
+    shapes->push_back(shape);
+  }
+  return Status::OK();
+}
+
+Status XlaCompiler::SetHostToDeviceMetadata(
+    const string& key, gtl::ArraySlice<DataType> types,
+    gtl::ArraySlice<TensorShape> shapes) {
+  if (host_compute_recvs_.find(key) != host_compute_sends_.end()) {
+    return errors::InvalidArgument(
+        "Duplicate calls to SetHostToDeviceMetadata with key ", key);
+  }
+  tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
+  SetTransfer(key, types, shapes, &transfer);
   return Status::OK();
 }
 

@@ -23,6 +23,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow:experimental_tensorflow_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:lib",
@@ -40,16 +41,4 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:op_gen_lib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
