@@ -1,4 +1,4 @@
-# Get Started with Graph Execution
+# Getting Started for ML Beginners
 
 This document explains how to use machine learning to classify (categorize)
 Iris flowers by species.  This document dives deeply into the TensorFlow
@@ -13,11 +13,6 @@ If the following list describes you, then you are in the right place:
 If you are already familiar with basic machine learning concepts
 but are new to TensorFlow, read
 @{$premade_estimators$Getting Started with TensorFlow: for ML Experts}.
-
-If you'd like to learn a lot about the basics of Machine Learning,
-consider taking
-[Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/).
-
 
 ## The Iris classification problem
 
@@ -90,9 +85,6 @@ a number.  Here's the representation scheme:
 * 0 represents setosa
 * 1 represents versicolor
 * 2 represents virginica
-
-For a look at other examples of labels and examples, see the
-[ML Terminology section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/framing/ml-terminology).
 
 
 ## Models and training
@@ -263,13 +255,19 @@ CSV_COLUMN_NAMES = ['SepalLength', 'SepalWidth',
 
 ...
 
-def load_data(label_name='Species'):
+def maybe_download():
     """Parses the csv file in TRAIN_URL and TEST_URL."""
 
     # Create a local copy of the training set.
-    train_path = tf.keras.utils.get_file(fname=TRAIN_URL.split('/')[-1],
-                                         origin=TRAIN_URL)
+    train_path = tf.keras.utils.get_file(TRAIN_URL.split('/')[-1], TRAIN_URL)
+    test_path = tf.keras.utils.get_file(TEST_URL.split('/')[-1], TEST_URL)
     # train_path now holds the pathname: ~/.keras/datasets/iris_training.csv
+
+    return train_path, test_path
+
+def load_data(label_name='Species'):
+    """Returns the iris dataset as (train_x, train_y), (test_x, test_y)."""
+    train_path, test_path = maybe_download()
 
     # Parse the local CSV file.
     train = pd.read_csv(filepath_or_buffer=train_path,
@@ -279,18 +277,17 @@ def load_data(label_name='Species'):
     # train now holds a pandas DataFrame, which is data structure
     # analogous to a table.
 
-    # 1. Assign the DataFrame's labels (the right-most column) to train_label.
+    # 1. Assign the DataFrame's labels (the right-most column) to train_y.
     # 2. Delete (pop) the labels from the DataFrame.
-    # 3. Assign the remainder of the DataFrame to train_features
-    train_features, train_label = train, train.pop(label_name)
+    # 3. Assign the remainder of the DataFrame to train_x
+    train_x, train_y = train, train.pop(y_name)
 
     # Apply the preceding logic to the test set.
-    test_path = tf.keras.utils.get_file(TEST_URL.split('/')[-1], TEST_URL)
     test = pd.read_csv(test_path, names=CSV_COLUMN_NAMES, header=0)
-    test_features, test_label = test, test.pop(label_name)
+    test_x, test_y = test, test.pop(y_name)
 
     # Return four DataFrames.
-    return (train_features, train_label), (test_features, test_label)
+    return (train_x, train_y), (test_x, test_y)
 ```
 
 Keras is an open-sourced machine learning library; `tf.keras` is a TensorFlow
@@ -303,7 +300,7 @@ and test sets respectively:
 
 ```python
     # Call load_data() to parse the CSV file.
-    (train_feature, train_label), (test_feature, test_label) = load_data()
+    (train_x, train_y), (test_x, test_y) = load_data()
 ```
 
 Pandas is an open-source Python library leveraged by several
@@ -311,7 +308,7 @@ TensorFlow functions.  A pandas
 [**DataFrame**](https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.html)
 is a table with named columns headers and numbered rows.
 The features returned by `load_data` are packed in `DataFrames`.
-For example, the `test_feature` DataFrame looks as follows:
+For example, the `test_x` DataFrame looks as follows:
 
 ```none
     SepalLength  SepalWidth  PetalLength  PetalWidth
@@ -379,7 +376,7 @@ There are several categories of neural networks.
 We'll be using a [**fully connected neural
 network**](https://developers.google.com/machine-learning/glossary/#fully_connected_layer),
 which means that the neurons in one layer take inputs from *every* neuron in
-the previous layer.  For example, the following figure illustrates a
+the previous layer.  For example, the following figure illustrates a 
 fully connected neural network consisting of three hidden layers:
 
 *   The first hidden layer contains four neurons.
@@ -392,9 +389,6 @@ fully connected neural network consisting of three hidden layers:
 
 **A neural network with three hidden layers.**
 <p>&nbsp;</p>
-
-For a more detailed introduction to neural networks, see the
-[Introduction to Neural Nets section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/introduction-to-neural-networks/anatomy).
 
 To specify a model type, instantiate an
 [**Estimator**](https://developers.google.com/machine-learning/glossary/#Estimators)
@@ -459,14 +453,14 @@ will become very important.
 
 ### Train the model
 
-Instantiating a `tf.Estimator.DNNClassifier` creates a framework for learning
-the model. Basically, we've wired a network but haven't yet let data flow
-through it. To train the neural network, call the Estimator object's `train`
+Instantiating a `tf.Estimator.DNNClassifier` creates a framework for learning 
+the model. Basically, we've wired a network but haven't yet let data flow 
+through it. To train the neural network, call the Estimator object's `train` 
 method. For example:
 
 ```python
     classifier.train(
-        input_fn=lambda:train_input_fn(train_feature, train_label, args.batch_size),
+        input_fn=lambda:train_input_fn(train_x, train_y, args.batch_size),
         steps=args.train_steps)
 ```
 
@@ -490,11 +484,11 @@ def train_input_fn(features, labels, batch_size):
 
 We're passing the following arguments to `train_input_fn`:
 
-* `train_feature` is a Python dictionary in which:
+* `train_x` is a Python dictionary in which:
     * Each key is the name of a feature.
     * Each value is an array containing the values for each example in the
       training set.
-* `train_label` is an array containing the values of the label for every
+* `train_y` is an array containing the values of the label for every
   example in the training set.
 * `args.batch_size` is an integer defining the [**batch
   size**](https://developers.google.com/machine-learning/glossary/#batch_size).
@@ -570,15 +564,15 @@ of 0.5.  The following suggests a more effective model:
     <th colspan="1">Label</th>
     <th colspan="1">Prediction</th>
   </tr>
-  <tr> <td>5.9</td> <td>3.0</td> <td>4.3</td> <td>1.5</td> <td>1</td>
+  <tr> <td>5.9</td> <td>3.0</td> <td>4.3</td> <td>1.5</td> <td>1</td> 
           <td style="background-color:green">1</td></tr>
-  <tr> <td>6.9</td> <td>3.1</td> <td>5.4</td> <td>2.1</td> <td>2</td>
+  <tr> <td>6.9</td> <td>3.1</td> <td>5.4</td> <td>2.1</td> <td>2</td> 
           <td style="background-color:green">2</td></tr>
-  <tr> <td>5.1</td> <td>3.3</td> <td>1.7</td> <td>0.5</td> <td>0</td>
+  <tr> <td>5.1</td> <td>3.3</td> <td>1.7</td> <td>0.5</td> <td>0</td> 
           <td style="background-color:green">0</td></tr>
-  <tr> <td>6.0</td> <td>3.4</td> <td>4.5</td> <td>1.6</td> <td>1</td>
+  <tr> <td>6.0</td> <td>3.4</td> <td>4.5</td> <td>1.6</td> <td>1</td> 
           <td style="background-color:red">2</td></tr>
-  <tr> <td>5.5</td> <td>2.5</td> <td>4.0</td> <td>1.3</td> <td>1</td>
+  <tr> <td>5.5</td> <td>2.5</td> <td>4.0</td> <td>1.3</td> <td>1</td> 
           <td style="background-color:green">1</td></tr>
 </table>
 
@@ -641,10 +635,6 @@ Test set accuracy: 0.967
 
 An accuracy of 0.967 implies that our trained model correctly classified 29
 out of the 30 Iris species in the test set.
-
-To get a deeper understanding of different metrics for evaluating
-models, see the
-[Classification section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/classification).
 
 
 ### Predicting
@@ -738,6 +728,7 @@ Prediction is "Virginica" (97.9%), expected "Virginica"
 
 ## Summary
 
+<!--TODO(barryr): When MLCC is released, add pointers to relevant sections.-->
 This document provides a short introduction to machine learning.
 
 Because `premade_estimators.py` relies on high-level APIs, much of the
