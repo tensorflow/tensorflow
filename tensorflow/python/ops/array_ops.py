@@ -28,6 +28,7 @@ See the @{$python/array_ops} guide.
 @@saturate_cast
 @@broadcast_dynamic_shape
 @@broadcast_static_shape
+@@broadcast_to
 @@shape
 @@shape_n
 @@size
