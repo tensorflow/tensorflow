@@ -4489,6 +4489,22 @@ class Graph(object):
         return tf.matmul(tensor, tensor)
     ```
 
+    Also note that though execution of ops created under this scope will trigger
+    execution of the dependencies, the ops created under this scope might still
+    be pruned from a normal tensorflow graph. For example, in the following
+    snippet of code the dependencies are never executed:
+
+    ```python
+      loss = model.loss()
+      with tf.control_dependencies(dependencies):
+        loss = loss + tf.constant(1)  # note: dependencies ignored in the
+                                      # backward pass
+      return tf.gradients(loss, model.variables)
+    ```
+
+    This is because evaluating the gradient graph does not require evaluating
+    the constant(1) op created in the forward pass.
+
     Args:
       control_inputs: A list of `Operation` or `Tensor` objects which
         must be executed or computed before running the operations
