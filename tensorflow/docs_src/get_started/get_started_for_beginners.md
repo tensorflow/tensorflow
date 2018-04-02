@@ -14,8 +14,8 @@ If you are already familiar with basic machine learning concepts
 but are new to TensorFlow, read
 @{$premade_estimators$Getting Started with TensorFlow: for ML Experts}.
 
-If you'd like to learn a lot about the basics of Machine Learning, 
-consider taking    
+If you'd like to learn a lot about the basics of Machine Learning,
+consider taking
 [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/).
 
 
@@ -91,7 +91,7 @@ a number.  Here's the representation scheme:
 * 1 represents versicolor
 * 2 represents virginica
 
-For a look at other examples of labels and examples, see the    
+For a look at other examples of labels and examples, see the
 [ML Terminology section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/framing/ml-terminology).
 
 
@@ -398,7 +398,7 @@ fully connected neural network consisting of three hidden layers:
 **A neural network with three hidden layers.**
 <p>&nbsp;</p>
 
-For a more detailed introduction to neural networks, see the    
+For a more detailed introduction to neural networks, see the
 [Introduction to Neural Nets section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/introduction-to-neural-networks/anatomy).
 
 To specify a model type, instantiate an
@@ -464,9 +464,9 @@ will become very important.
 
 ### Train the model
 
-Instantiating a `tf.Estimator.DNNClassifier` creates a framework for learning 
-the model. Basically, we've wired a network but haven't yet let data flow 
-through it. To train the neural network, call the Estimator object's `train` 
+Instantiating a `tf.Estimator.DNNClassifier` creates a framework for learning
+the model. Basically, we've wired a network but haven't yet let data flow
+through it. To train the neural network, call the Estimator object's `train`
 method. For example:
 
 ```python
@@ -647,6 +647,9 @@ Test set accuracy: 0.967
 An accuracy of 0.967 implies that our trained model correctly classified 29
 out of the 30 Iris species in the test set.
 
+To get a deeper understanding of different metrics for evaluating  
+models, see the    
+[Classification section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/classification).
 
 ### Predicting
 
