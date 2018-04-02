@@ -809,13 +809,7 @@ class XlaBuilder {
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
-  XlaOp NoteErrorOrReturn(StatusOr<XlaOp>&& op) {
-    if (!op.ok()) {
-      NoteError(op.status());
-      return XlaOp();
-    }
-    return op.ConsumeValueOrDie();
-  }
+  XlaOp NoteErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
 
   // Helper method that creates an empty op and notes error.
   XlaOp UnimplementedOp();
