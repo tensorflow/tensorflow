@@ -460,6 +460,11 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
   $1 = PyLong_AsLongLong($input);
 }
 
+// Override default py3 behavior of attempting to encode into Unicode.
+%typemap(out) std::string tensorflow::ResourceHandleShapeAndType {
+  $result = PyBytes_FromStringAndSize($1.data(), $1.size());
+}
+
 // TODO(skyewm): SWIG emits a warning for the const char* in TF_WhileParams,
 // skip for now
 %ignore TF_WhileParams;
