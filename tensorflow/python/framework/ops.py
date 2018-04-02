@@ -3344,8 +3344,12 @@ class Graph(object):
     """
     self._check_not_finalized()
     ret = Operation(c_op, self)
-    assert ret.name not in self._names_in_use
-    self._names_in_use[ret.name] = 1
+    # If a name_scope was created with ret.name but no nodes were created in it,
+    # the name will still appear in _names_in_use even though the name hasn't
+    # been used. This is ok, just leave _names_in_use as-is in this case.
+    # TODO(skyewm): make the C API guarantee no name conflicts.
+    if ret.name not in self._names_in_use:
+      self._names_in_use[ret.name] = 1
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
