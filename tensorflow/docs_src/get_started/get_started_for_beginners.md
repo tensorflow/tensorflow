@@ -647,9 +647,10 @@ Test set accuracy: 0.967
 An accuracy of 0.967 implies that our trained model correctly classified 29
 out of the 30 Iris species in the test set.
 
-To get a deeper understanding of different metrics for evaluating  
-models, see the    
+To get a deeper understanding of different metrics for evaluating
+models, see the
 [Classification section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/classification).
+
 
 ### Predicting
 
@@ -742,7 +743,6 @@ Prediction is "Virginica" (97.9%), expected "Virginica"
 
 ## Summary
 
-<!--TODO(barryr): When MLCC is released, add pointers to relevant sections.-->
 This document provides a short introduction to machine learning.
 
 Because `premade_estimators.py` relies on high-level APIs, much of the
