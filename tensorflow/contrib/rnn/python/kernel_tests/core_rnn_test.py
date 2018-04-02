@@ -307,6 +307,14 @@ class LSTMTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  def testDType(self):
+    # Test case for GitHub issue 16228
+    # Not passing dtype in constructor results in default float32
+    lstm = rnn_cell.LSTMCell(10)
+    input_tensor = array_ops.ones([10, 50])
+    lstm.build(input_tensor.get_shape())
+    self.assertEqual(lstm._bias.dtype, dtypes.float32_ref)
+
   def testNoProjNoSharding(self):
     num_units = 3
     input_size = 5
