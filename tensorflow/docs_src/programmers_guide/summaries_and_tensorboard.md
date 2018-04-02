@@ -16,10 +16,17 @@ TensorBoard is fully configured, it looks like this:
   </iframe>
 </div>
 
-This tutorial is intended to get you started with simple TensorBoard usage.
-There are other resources available as well! The [TensorBoard's GitHub](https://github.com/tensorflow/tensorboard)
-has a lot more information on TensorBoard usage, including tips & tricks, and
-debugging information.
+This 30-minute tutorial is intended to get you started with simple TensorBoard
+usage. It assumes a basic understanding of TensorFlow.
+
+There are other resources available as well! The [TensorBoard GitHub](https://github.com/tensorflow/tensorboard)
+has a lot more information on using individual dashboards within TensorBoard
+including tips & tricks and debugging information.
+
+## Setup
+
+[Install TensorFlow](https://www.tensorflow.org/install/). Installing TensorFlow
+via pip should also automatically install TensorBoard.
 
 ## Serializing the data
 
@@ -76,7 +83,7 @@ data than you need, though. Instead, consider running the merged summary op
 every `n` steps.
 
 The code example below is a modification of the
-@{$layers$simple MNIST tutorial},
+[simple MNIST tutorial](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/mnist/mnist.py),
 in which we have added some summary ops, and run them every ten steps. If you
 run this and then launch `tensorboard --logdir=/tmp/tensorflow/mnist`, you'll be able
 to visualize statistics, such as how the weights or accuracy varied during
@@ -214,4 +221,5 @@ corner. Each tab represents a set of serialized data that can be visualized.
 For in depth information on how to use the *graph* tab to visualize your graph,
 see @{$graph_viz$TensorBoard: Graph Visualization}.
 
-For more usage information on TensorBoard in general, see the [TensorBoard's GitHub](https://github.com/tensorflow/tensorboard).
+For more usage information on TensorBoard in general, see the
+[TensorBoard GitHub](https://github.com/tensorflow/tensorboard).

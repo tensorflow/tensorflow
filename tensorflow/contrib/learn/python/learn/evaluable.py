@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""`Evaluable` interface."""
+"""`Evaluable` interface (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,6 +28,10 @@ import abc
 
 class Evaluable(object):
   """Interface for objects that are evaluatable by, e.g., `Experiment`.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
   """
   __metaclass__ = abc.ABCMeta
 

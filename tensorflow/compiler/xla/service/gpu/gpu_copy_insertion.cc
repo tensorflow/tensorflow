@@ -49,7 +49,7 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(bool changed, generic_copy_insertion.Run(module));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                      HloDataflowAnalysis::Run(module));
+                      HloDataflowAnalysis::Run(*module));
 
   // Make sure all operands of a library call are in memory instead of constants
   // in IR.

@@ -38,7 +38,8 @@ class LinearOperatorLowerTriangularTest(
     # matrix_triangular_solve.
     return [dtypes.float32, dtypes.float64]
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
+  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+    shape = list(build_info.shape)
     # Upper triangle will be nonzero, but ignored.
     # Use a diagonal that ensures this matrix is well conditioned.
     tril = linear_operator_test_util.random_tril_matrix(

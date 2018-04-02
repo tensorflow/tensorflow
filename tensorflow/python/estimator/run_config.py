@@ -47,6 +47,7 @@ _DEFAULT_REPLACEABLE_LIST = [
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
     'log_step_count_steps',
+    'distribute',
     'device_fn'
 ]
 
@@ -309,6 +310,7 @@ class RunConfig(object):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                log_step_count_steps=100,
+               distribute=None,
                device_fn=None):
     """Constructs a RunConfig.
 
@@ -354,7 +356,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'worker', 'index': 1}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
       assert config.num_ps_replicas == 2
@@ -372,7 +374,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'chief', 'index': 0}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == 'host0:2222'
       assert config.task_id == 0
       assert config.num_ps_replicas == 2
@@ -390,7 +392,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'evaluator', 'index': 0}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == ''
       assert config.evaluator_master == ''
       assert config.task_id == 0
@@ -432,12 +434,15 @@ class RunConfig(object):
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
-        global step/sec will be logged during training.
+        global step/sec and the loss will be logged during training.
+      distribute: an optional instance of
+        `tf.contrib.distribute.DistributionStrategy`. If specified,
+        then Estimator will distribute the user's model according to the policy
+        specified by that strategy.
       device_fn: A callable invoked for every `Operation` that takes the
         `Operation` and returns the device string. If `None`, defaults to
         the device function returned by `tf.train.replica_device_setter`
         with round-robin strategy.
-
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -474,6 +479,7 @@ class RunConfig(object):
         keep_checkpoint_max=keep_checkpoint_max,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         log_step_count_steps=log_step_count_steps,
+        distribute=distribute,
         device_fn=device_fn)
 
     self._init_distributed_setting_from_environment_var(tf_config)
@@ -695,12 +701,18 @@ class RunConfig(object):
     """Returns the platform defined (in TF_CONFIG) service dict."""
     return self._service
 
+  @property
+  def distribute(self):
+    """Returns the optional `tf.contrib.distribute.DistributionStrategy` object.
+    """
+    return self._distribute
+
   def replace(self, **kwargs):
     """Returns a new instance of `RunConfig` replacing specified properties.
 
     Only the properties in the following list are allowed to be replaced:
 
-      - `model_dir`.
+      - `model_dir`,
       - `tf_random_seed`,
       - `save_summary_steps`,
       - `save_checkpoints_steps`,
@@ -709,7 +721,8 @@ class RunConfig(object):
       - `keep_checkpoint_max`,
       - `keep_checkpoint_every_n_hours`,
       - `log_step_count_steps`,
-      - `device_fn`
+      - `distribute`,
+      - `device_fn`.
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

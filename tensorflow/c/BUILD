@@ -12,18 +12,15 @@ load(
     "tf_custom_op_library",
 )
 
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-
 # -----------------------------------------------------------------------------
 # Public targets
 
 filegroup(
     name = "headers",
-    srcs = ["c_api.h"],
+    srcs = [
+        "c_api.h",
+        "c_api_experimental.h",
+    ],
     visibility = ["//tensorflow:__subpackages__"],
 )
 
@@ -34,7 +31,13 @@ filegroup(
             "*.cc",
             "*.h",
         ],
-        exclude = ["*test*"],
+        exclude = [
+            "c_api_experimental.cc",
+            "c_api_experimental.h",
+            "python_api.cc",
+            "python_api.h",
+            "*test*",
+        ],
     ),
     visibility = ["//visibility:public"],
 )
@@ -101,6 +104,28 @@ tf_cuda_library(
     }),
 )
 
+tf_cuda_library(
+    name = "c_api_experimental",
+    srcs = [
+        "c_api_experimental.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api",
+        ":c_api_internal",
+        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
+        "//tensorflow/contrib/tpu:all_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 exports_files(
     [
         "version_script.lds",
@@ -148,7 +173,7 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api",
-        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
+        ":c_api_experimental",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
@@ -190,6 +215,27 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
+    ],
+)
+
+tf_cc_test(
+    name = "c_api_experimental_test",
+    size = "small",
+    srcs = ["c_api_experimental_test.cc"],
+    data = ["testdata/tf_record"],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":c_api_experimental",
+        ":c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -237,20 +283,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        # TODO(b/74620627): remove when _USE_C_SHAPES is removed
+        "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -62,7 +62,7 @@ class MnistEagerGanBenchmark(tf.test.Benchmark):
                         for _ in range(measure_batches)]
       measure_dataset = tf.data.Dataset.from_tensor_slices(measure_images)
 
-      tf.train.get_or_create_global_step()
+      step_counter = tf.train.get_or_create_global_step()
       with tf.device(device()):
         # Create the models and optimizers
         generator = mnist.Generator(data_format())
@@ -78,13 +78,15 @@ class MnistEagerGanBenchmark(tf.test.Benchmark):
           # warm up
           mnist.train_one_epoch(generator, discriminator, generator_optimizer,
                                 discriminator_optimizer,
-                                burn_dataset, log_interval=SUMMARY_INTERVAL,
+                                burn_dataset, step_counter,
+                                log_interval=SUMMARY_INTERVAL,
                                 noise_dim=NOISE_DIM)
           # measure
           start = time.time()
           mnist.train_one_epoch(generator, discriminator, generator_optimizer,
                                 discriminator_optimizer,
-                                measure_dataset, log_interval=SUMMARY_INTERVAL,
+                                measure_dataset, step_counter,
+                                log_interval=SUMMARY_INTERVAL,
                                 noise_dim=NOISE_DIM)
           self._report('train', start, measure_batches, batch_size)
 

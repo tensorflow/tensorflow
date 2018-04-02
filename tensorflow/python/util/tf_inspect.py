@@ -46,8 +46,10 @@ def getargspec(object):  # pylint: disable=redefined-builtin
 
 
 def getfullargspec(obj):  # pylint: disable=redefined-builtin
-  """TFDecorator-aware replacement for inspect.getfullargspec and fallback to
-  inspect.getargspec in Python 2.
+  """TFDecorator-aware replacement for `inspect.getfullargspec`/`getargspec`.
+
+  This wrapper uses `inspect.getfullargspec` if available and falls back to
+  `inspect.getargspec` in Python 2.
 
   Args:
     obj: A callable, possibly decorated.
@@ -134,6 +136,11 @@ def getmembers(object, predicate=None):  # pylint: disable=redefined-builtin
   return _inspect.getmembers(object, predicate)
 
 
+def getmodule(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.getmodule."""
+  return _inspect.getmodule(object)
+
+
 def getmro(cls):
   """TFDecorator-aware replacement for inspect.getmro."""
   return _inspect.getmro(cls)
@@ -142,6 +149,11 @@ def getmro(cls):
 def getsource(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.getsource."""
   return _inspect.getsource(tf_decorator.unwrap(object)[1])
+
+
+def isbuiltin(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.isbuiltin."""
+  return _inspect.isbuiltin(tf_decorator.unwrap(object)[1])
 
 
 def isclass(object):  # pylint: disable=redefined-builtin

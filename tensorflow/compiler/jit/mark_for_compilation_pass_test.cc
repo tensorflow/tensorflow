@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -519,11 +520,11 @@ TEST(XlaCompilationTest, IllegalCycle_UsefulErrorMessage) {
 
   Status status = MarkForCompilation(&graph);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.ToString())
-                  .contains("Edge from c to a would create a cycle.\n"
-                            "+-> a\n"
-                            "|   b\n"
-                            "+-- c\n"));
+  EXPECT_TRUE(str_util::StrContains(status.ToString(),
+                                    "Edge from c to a would create a cycle.\n"
+                                    "+-> a\n"
+                                    "|   b\n"
+                                    "+-- c\n"));
 }
 
 TEST(XlaCompilationTest, Retval) {

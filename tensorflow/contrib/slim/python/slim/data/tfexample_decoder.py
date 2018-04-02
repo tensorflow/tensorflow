@@ -124,7 +124,7 @@ class BoundingBox(ItemHandler):
     super(BoundingBox, self).__init__(self._full_keys)
 
   def tensors_to_item(self, keys_to_tensors):
-    """Maps the given dictionary of tensors to a contatenated list of bboxes.
+    """Maps the given dictionary of tensors to a concatenated list of bboxes.
 
     Args:
       keys_to_tensors: a mapping of TF-Example keys to parsed tensors.

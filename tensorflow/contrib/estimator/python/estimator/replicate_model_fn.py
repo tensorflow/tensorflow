@@ -110,7 +110,8 @@ def replicate_model_fn(model_fn,
   Certain algorithms were chosen for aggregating results of computations on
   multiple towers:
     - Losses from all towers are reduced according to `loss_reduction`.
-    - Gradients are reduced using sum for each trainable variable.
+    - Gradients from all towers are reduced according to `loss_reduction`
+      for each trainable variable.
     - `eval_metrics_ops` are reduced per metric using `reduce_mean`.
     - `EstimatorSpec.predictions` and `EstimatorSpec.export_outputs` are
       reduced using concatenation.
@@ -135,7 +136,7 @@ def replicate_model_fn(model_fn,
       the train_op argument of `EstimatorSpec`.
     loss_reduction: controls whether losses are summed or averaged.
     devices: Optional list of devices to replicate the model across.  This
-      argument can be used to replice only on the subset of available GPUs.
+      argument can be used to replicate only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
       If no GPUs are available, then the model is going to be placed on the CPU.
 

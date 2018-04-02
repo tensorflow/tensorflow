@@ -226,7 +226,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddParameterInstruction(
   return handle;
 }
 
-Status UserComputation::AddSendInstruction(const SendRequest& send_request) {
+StatusOr<ComputationDataHandle> UserComputation::AddSendInstruction(
+    const SendRequest& send_request) {
   tensorflow::mutex_lock lock(mutex_);
 
   // Check if the operand of the instruction is valid.
@@ -244,7 +245,7 @@ Status UserComputation::AddSendInstruction(const SendRequest& send_request) {
   VLOG(1) << "AddSendInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << send_request.ShortDebugString();
-  return Status::OK();
+  return handle;
 }
 
 StatusOr<ComputationDataHandle> UserComputation::AddRecvInstruction(
@@ -312,6 +313,36 @@ StatusOr<ComputationDataHandle> UserComputation::AddConstantInstruction(
 
   VLOG(1) << "AddConstantInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle();
+  return handle;
+}
+
+StatusOr<ComputationDataHandle> UserComputation::AddGatherInstruction(
+    const GatherRequest& gather_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* input_request,
+                      LookUpRequest(gather_request.input()));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* gather_indices_request,
+                      LookUpRequest(gather_request.gather_indices()));
+
+  TF_ASSIGN_OR_RETURN(
+      Shape shape,
+      ShapeInference::InferGatherShape(
+          input_request->output_shape(), gather_indices_request->output_shape(),
+          gather_request.dimension_numbers(),
+          AsInt64Slice(gather_request.window_bounds())));
+
+  const ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = shape;
+  *request.mutable_request()->mutable_gather_request() = gather_request;
+
+  VLOG(1) << "AddGatherInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << gather_request.ShortDebugString();
   return handle;
 }
 
@@ -1253,8 +1284,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
     TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
   }
 
-  if (tensorflow::StringPiece(custom_call_request.call_target_name())
-          .starts_with("$")) {
+  if (tensorflow::str_util::StartsWith(custom_call_request.call_target_name(),
+                                       "$")) {
     return InvalidArgument(
         "Invalid custom_call_target \"%s\": Call targets that start with '$' "
         "are reserved for internal use.",
@@ -1273,6 +1304,28 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
   VLOG(1) << "AddCustomCallInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << custom_call_request.ShortDebugString();
+  return handle;
+}
+
+StatusOr<ComputationDataHandle> UserComputation::AddHostComputeInstruction(
+    const HostComputeRequest& host_compute_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  for (const ComputationDataHandle& handle : host_compute_request.operands()) {
+    TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
+  }
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = host_compute_request.shape();
+  *request.mutable_request()->mutable_host_compute_request() =
+      host_compute_request;
+
+  VLOG(1) << "AddHostComputeInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << host_compute_request.ShortDebugString();
   return handle;
 }
 
@@ -1713,6 +1766,11 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kHostComputeRequest: {
+      *is_functional = false;
+      break;
+    }
+
     case OpRequest::kCallRequest: {
       const CallRequest& call_request = request.request().call_request();
       for (const ComputationDataHandle& handle : call_request.operands()) {
@@ -1987,6 +2045,16 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       PureFunctionalVisitor(session_computation, binary_op_request.lhs(),
                             num_parameters, visited, is_functional);
       PureFunctionalVisitor(session_computation, binary_op_request.rhs(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
+    case OpRequest::kGatherRequest: {
+      PureFunctionalVisitor(session_computation,
+                            request.request().gather_request().input(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            request.request().gather_request().gather_indices(),
                             num_parameters, visited, is_functional);
       break;
     }
@@ -2643,6 +2711,15 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kHostComputeRequest: {
+      const HostComputeRequest& hc_request =
+          request.request().host_compute_request();
+      for (const ComputationDataHandle& operand : hc_request.operands()) {
+        apply(operand);
+      }
+      break;
+    }
+
     case OpRequest::kDotRequest: {
       const DotRequest& dot_request = request.request().dot_request();
       apply(dot_request.rhs());
@@ -2681,6 +2758,13 @@ static void ForEachOperand(
     case OpRequest::kSendRequest: {
       const SendRequest& send_request = request.request().send_request();
       apply(send_request.operand());
+      break;
+    }
+
+    case OpRequest::kGatherRequest: {
+      const GatherRequest& gather_request = request.request().gather_request();
+      apply(gather_request.input());
+      apply(gather_request.gather_indices());
       break;
     }
 
@@ -3231,20 +3315,23 @@ void ComputationLowerer::Visit(
       HloInstruction* rhs = lookup_instruction(ternary_op_request.rhs());
       HloInstruction* ehs = lookup_instruction(ternary_op_request.ehs());
       auto hlo_opcode = TernaryOperationToHloOpcode(ternary_op_request.triop());
-
-      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
-        if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast() &&
+          !ShapeUtil::IsTuple(request.output_shape())) {
+        if (!ShapeUtil::IsTuple(lhs->shape()) &&
+            !ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
           // lhs side is being implicitly broadcast. Change to explicit.
           lhs =
               ImplicitBroadcastToExplicitBroadcast(lhs, request.output_shape());
         }
 
-        if (!ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
+        if (!ShapeUtil::IsTuple(rhs->shape()) &&
+            !ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
           rhs =
               ImplicitBroadcastToExplicitBroadcast(rhs, request.output_shape());
         }
 
-        if (!ShapeUtil::SameDimensions(request.output_shape(), ehs->shape())) {
+        if (!ShapeUtil::IsTuple(ehs->shape()) &&
+            !ShapeUtil::SameDimensions(request.output_shape(), ehs->shape())) {
           ehs =
               ImplicitBroadcastToExplicitBroadcast(ehs, request.output_shape());
         }
@@ -3296,6 +3383,22 @@ void ComputationLowerer::Visit(
       }
       hlo_instruction = add_instruction(HloInstruction::CreateCustomCall(
           cc_request.shape(), operands, cc_request.call_target_name()));
+      break;
+    }
+
+    case OpRequest::kHostComputeRequest: {
+      const HostComputeRequest& host_compute_request =
+          request.request().host_compute_request();
+      std::vector<HloInstruction*> operands;
+      for (const ComputationDataHandle& operand :
+           host_compute_request.operands()) {
+        operands.push_back(lookup_instruction(operand));
+      }
+      auto output_shape = host_compute_request.shape();
+      auto channel_name = host_compute_request.channel_name();
+      auto cost_estimate_ns = host_compute_request.cost_estimate_ns();
+      hlo_instruction = add_instruction(HloInstruction::CreateHostCompute(
+          output_shape, operands, channel_name, cost_estimate_ns));
       break;
     }
 
@@ -3398,6 +3501,20 @@ void ComputationLowerer::Visit(
       HloInstruction* send = add_instruction(HloInstruction::CreateSend(
           operand, send_request.channel_handle().handle()));
       hlo_instruction = add_instruction(HloInstruction::CreateSendDone(send));
+      break;
+    }
+
+    case OpRequest::kGatherRequest: {
+      const GatherRequest& gather_request = request.request().gather_request();
+      HloInstruction* input_operand =
+          lookup_instruction(gather_request.input());
+      HloInstruction* gather_indices_operand =
+          lookup_instruction(gather_request.gather_indices());
+      std::vector<int64> window_bounds;
+      c_copy(gather_request.window_bounds(), std::back_inserter(window_bounds));
+      hlo_instruction = add_instruction(HloInstruction::CreateGather(
+          request.output_shape(), input_operand, gather_indices_operand,
+          gather_request.dimension_numbers(), window_bounds));
       break;
     }
 

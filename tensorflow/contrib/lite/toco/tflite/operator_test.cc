@@ -107,6 +107,10 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogisticOperator>("LOGISTIC", OperatorType::kLogistic);
   CheckSimpleOperator<TanhOperator>("TANH", OperatorType::kTanh);
   CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
+  CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
+                                          OperatorType::kLogSoftmax);
+  CheckSimpleOperator<TensorFlowMaximumOperator>(
+      "MAXIMUM", OperatorType::kTensorFlowMaximum);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

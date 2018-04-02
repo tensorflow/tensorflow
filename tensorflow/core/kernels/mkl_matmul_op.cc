@@ -171,13 +171,13 @@ class MklMatMulOp : public OpKernel {
   // For detailed info about parameters, look at FP32 function description.
   void MklBlasGemm(bool transa, bool transb, const int m, const int n,
                    const int k, const complex64* a, const int lda,
-                   const complex64* b, const int ldb,
-                   complex64* c, int const ldc) {
+                   const complex64* b, const int ldb, complex64* c,
+                   int const ldc) {
     const MKL_Complex8 alpha = {1.0f, 0.0f};
     const MKL_Complex8 beta = {0.0f, 0.0f};
     cblas_cgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans,
-                m, n, k, &alpha, reinterpret_cast<const MKL_Complex8*>(a), lda,
+                transb ? CblasTrans : CblasNoTrans, m, n, k, &alpha,
+                reinterpret_cast<const MKL_Complex8*>(a), lda,
                 reinterpret_cast<const MKL_Complex8*>(b), ldb, &beta,
                 reinterpret_cast<MKL_Complex8*>(c), ldc);
   }
@@ -187,13 +187,13 @@ class MklMatMulOp : public OpKernel {
   // description.
   void MklBlasGemm(bool transa, bool transb, const int m, const int n,
                    const int k, const complex128* a, const int lda,
-                   const complex128* b, const int ldb,
-                   complex128* c, const int ldc) {
+                   const complex128* b, const int ldb, complex128* c,
+                   const int ldc) {
     const MKL_Complex16 alpha = {1.0, 0.0};
     const MKL_Complex16 beta = {0.0, 0.0};
     cblas_zgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans,
-                m, n, k, &alpha, reinterpret_cast<const MKL_Complex16*>(a), lda,
+                transb ? CblasTrans : CblasNoTrans, m, n, k, &alpha,
+                reinterpret_cast<const MKL_Complex16*>(a), lda,
                 reinterpret_cast<const MKL_Complex16*>(b), ldb, &beta,
                 reinterpret_cast<MKL_Complex16*>(c), ldc);
   }

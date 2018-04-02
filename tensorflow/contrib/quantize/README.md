@@ -1,9 +1,9 @@
+# Quantized Training Rewrites
+
 tf.contrib.quantize provides tools for transforming graphs to include ops to
 model quantization of weights, biases and activations during both training and
 inference. This is done using the
-[fake quantization op]
-(https://www.tensorflow.org/versions/r0.12/api_docs/python/array_ops/fake_quantization),
-which is described below:
+[fake quantization op](https://www.tensorflow.org/versions/r0.12/api_docs/python/array_ops/fake_quantization).
 
 Recent literature has shown that fixed point networks provide comparable
 performance to floating point networks [1]. This is achieved by modeling the
@@ -14,56 +14,52 @@ updated at high precision as this is needed to ensure sufficient precision in
 accumulating tiny adjustments to the parameters. However, for the forward pass,
 the parameters and activations are quantized to the desired lower precision.
 
-![drawing](g3doc/drawings/Fake_Quantization.jpg)
+## How to use the Rewrites
 
-###Forward pass
+tf.contrib.quantize provides two rewrites, one to train for quantization and
+one to create a [TensorFlow Lite](https://www.tensorflow.org/mobile/tflite/)
+compatible eval graph.
 
+```
+# Build forward pass of model.
+…
+loss = tf.losses.get_total_loss()
 
+# Call the training rewrite which rewrites the graph in-place with FakeQuantization nodes
+# and folds batchnorm for training.
+# It is often needed to finetune a floating point model for quantization with this training tool.
+# When training from scratch, quant_delay can be used to activate quantization after
+# training to convergence with the float graph, effectively finetuning the model.
+tf.contrib.quantize.create_training_graph(quant_delay=2000000)
 
+# Call backward pass optimizer as usual.
+optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+optimizer.minimize(loss)
+```
 
-\begin{equation*}
-f_Q(x) = \Delta\text{ }round\left(\frac{sat\left(x\right)-x_{min}}{\Delta}\right)
-\end{equation*}
+Additionally, the rewritten eval graph is non-trivially different from the
+training graph due the effects of quantization on batch normalization. Thus,
+we offer a separate rewrite for the eval_graph.
 
+```
+# Build eval model
+…
+logits = tf.nn.softmax_cross_entropy_with_logits(...)
 
-where
+# Call the eval rewrite which rewrites the graph in-place with FakeQuantization nodes
+# and fold batchnorm for eval.
+tf.contrib.quantize.create_eval_graph()
 
-$$
-\begin{equation*}
-sat(x) =
-\left\{
-	\begin{array}{ll}
-		x_{min}  & \mbox{if } x \le x_{min} \\
-		x & \mbox{if } x_{min} \leq x \leq x_{max} \\
-    x_{max} & \mbox{if } x_{max} \le x
-	\end{array}
-\right.
-\end{equation*}
-$$
+# Save the checkpoint and eval graph proto to disk for freezing and providing to TFLite.
+with open(eval_graph_file, ‘w’) as f:
+  f.write(str(g.as_graph_def()))
+saver = tf.train.Saver()
+saver.save(sess, checkpoint_name)
+```
 
-
-where $$\Delta$$ is the Quantizer Step size, given by
-$$\Delta =\frac{x_{max} - x_{min} }{255} $$ and $$x_{min} $$ and $$x_{max}$$ are
-the minimum and maximum values of the variable under consideration. Note that
-the rounding performed is deterministic and corresponds to asymmetric rounding,
-which is supported in almost all hardware platforms.
-
-###Backward pass
-For the backward pass, we model the quantizer as a piecewise linear block, with
-derivatives that are non-zero only in the linear region.
-
-
-
-\begin{equation*}
-\frac{df_Q(x)}{dx}=1, x_{min} \leq x \leq x_{max},\text{ 0  elsewhere }
-\end{equation*}
-
-Therefore, the backward pass through the quantizer reduces to passing through
-the gradients as long as the inputs to the quantizer are in the linear region.
-Otherwise, the gradients are set to zero.
-
-Note that the quantizer is fully specified by the min and max values of the
-variables being quantized.
+These rewrites are an active area of research and experimentation, so the
+rewrites and quantized training will likely not work across all models, though
+we hope to work towards generalizing these techniques.
 
 
 [1] P.Gysel, "HARDWARE-ORIENTED APPROXIMATION OF CONVOLUTIONAL

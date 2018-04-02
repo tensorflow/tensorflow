@@ -10,6 +10,7 @@ cc_library(
     name = "prefetching_kernels",
     srcs = ["prefetching_kernels.cc"],
     deps = [
+        "//tensorflow/core:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
@@ -29,23 +30,34 @@ cc_library(
 )
 
 cc_library(
-    name = "dataset_kernels",
+    name = "threadpool_dataset_op",
+    srcs = ["threadpool_dataset_op.cc"],
     deps = [
-        ":ignore_errors_dataset_op",
-        ":prefetching_kernels",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
+cc_library(
+    name = "unique_dataset_op",
+    srcs = ["unique_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
+    name = "dataset_kernels",
+    deps = [
+        ":ignore_errors_dataset_op",
+        ":prefetching_kernels",
+        ":threadpool_dataset_op",
+        ":unique_dataset_op",
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
 )

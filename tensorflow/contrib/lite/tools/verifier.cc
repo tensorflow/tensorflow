@@ -148,11 +148,52 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   // TODO(yichengfan): verify quantized tensors.
 }
 
+using flatbuffers::Offset;
+using flatbuffers::Vector;
+
+bool VerifyOperators(const Vector<Offset<Operator>>& operators,
+                     ErrorReporter* error_reporter) {
+  for (const auto& op : operators) {
+    if (!op->inputs()) {
+      ReportError(error_reporter, "Missing 'inputs' for operator.");
+      return false;
+    }
+    if (!op->outputs()) {
+      ReportError(error_reporter, "Missing 'outputs' for operator.");
+      return false;
+    }
+  }
+  return true;
+}
+
+bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
+  if (!model.subgraphs()) {
+    ReportError(error_reporter, "Missing 'subgraphs' section.");
+    return false;
+  }
+  for (const auto& subgraph : *model.subgraphs()) {
+    if (!subgraph->operators()) {
+      ReportError(error_reporter, "Missing 'operators' section in subgraph.");
+      return false;
+    }
+
+    if (!VerifyOperators(*subgraph->operators(), error_reporter)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Verifies tensors have valid properties and legit buffer if set.
 bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
   if (!model.subgraphs()) {
     return true;
   }
+  if (!model.buffers()) {
+    ReportError(error_reporter, "Missing 'buffers' section.");
+    return false;
+  }
+
   for (const auto& subgraph : *model.subgraphs()) {
     if (!subgraph->tensors()) {
       continue;
@@ -167,19 +208,23 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
         return false;
       }
       auto* buffer = model.buffers()->Get(tensor->buffer());
-      if (!buffer || !buffer->data()) {
+      if (!buffer) {
         ReportError(error_reporter, "Tensor buffer %d not set",
                     tensor->buffer());
         return false;
       }
 
-      if (tensor->type() == TensorType_STRING) {
-        if (!VerifyStringTensorBuffer(*buffer, error_reporter)) {
-          return false;
-        }
-      } else {
-        if (!VerifyNumericTensorBuffer(*tensor, *buffer, error_reporter)) {
-          return false;
+      // Many transient tensors don't have data in the flatbuffer. Their
+      // buffers will be allocated by the interpreter at run-time.
+      if (buffer->data()) {
+        if (tensor->type() == TensorType_STRING) {
+          if (!VerifyStringTensorBuffer(*buffer, error_reporter)) {
+            return false;
+          }
+        } else {
+          if (!VerifyNumericTensorBuffer(*tensor, *buffer, error_reporter)) {
+            return false;
+          }
         }
       }
     }
@@ -193,6 +238,13 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
     return true;
   }
   for (const auto& opcode : *model.operator_codes()) {
+    if (opcode->builtin_code() < BuiltinOperator_MIN ||
+        opcode->builtin_code() > BuiltinOperator_MAX) {
+      ReportError(error_reporter, "Operator id '%d' is out of range.",
+                  opcode->builtin_code());
+      return false;
+    }
+
     if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
       if (!resolver.FindOp(opcode->custom_code()->c_str())) {
         ReportError(error_reporter, "Unsupported custom op: %s",
@@ -221,6 +273,9 @@ bool Verify(const void* buf, size_t len, const OpResolver& resolver,
   }
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     ReportError(error_reporter, "Invalid model version %d", model->version());
+    return false;
+  }
+  if (!VerifySubGraphs(*model, error_reporter)) {
     return false;
   }
   if (!VerifyTensors(*model, error_reporter)) {

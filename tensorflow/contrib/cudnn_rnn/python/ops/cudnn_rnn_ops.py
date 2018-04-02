@@ -17,26 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
 from tensorflow.contrib.rnn.python.ops import lstm_ops
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
-
-_cudnn_rnn_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"
@@ -91,19 +86,23 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
 
   Cudnn compatible GRU (from Cudnn library user guide):
   ```python
-  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
-  u_t = sigma(x_t * W_u + h_t-1 * R_u + b_Wu + b_Ru)  # update gate
-  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
-  h_t = (1 - u_t) .* h'_t + u_t .* h_t-1
+  # reset gate
+  $$r_t = \sigma(x_t * W_r + h_t-1 * R_h + b_{Wr} + b_{Rr})$$
+  # update gate
+  $$u_t = \sigma(x_t * W_u + h_t-1 * R_u + b_{Wu} + b_{Ru})$$
+  # new memory gate
+  $$h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_{Rh}) + b_{Wh})$$
+  $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
   ```
 
   Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
   ```python
-  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
+  # new memory gate
+  \\(h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_{Wh})\\)
   ```
   which is not equivalent to Cudnn GRU: in addition to the extra bias term b_Rh,
   ```python
-  r .* (h * R) != (r .* h) * R
+  \\(r .* (h * R) != (r .* h) * R\\)
   ```
   """
 

@@ -222,6 +222,9 @@ class AttentionWrapperTest(test.TestCase):
           self.assertEqual(
               (None, batch_size, None),
               tuple(state_alignment_history.get_shape().as_list()))
+        nest.assert_same_structure(
+            cell.state_size,
+            cell.zero_state(batch_size, dtypes.float32))
         # Remove the history from final_state for purposes of the
         # remainder of the tests.
         final_state = final_state._replace(alignment_history=())  # pylint: disable=protected-access
@@ -349,6 +352,42 @@ class AttentionWrapperTest(test.TestCase):
         expected_final_state,
         attention_mechanism_depth=9,
         name='testLuongNotNormalized')
+
+  def testLuongScaledDType(self):
+    # Test case for GitHub issue 18099
+    for dtype in [np.float16, np.float32, np.float64]:
+      num_units = 128
+      encoder_outputs = array_ops.placeholder(dtype, shape=[64, None, 256])
+      encoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      decoder_inputs = array_ops.placeholder(dtype, shape=[64, None, 128])
+      decoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      batch_size = 64
+      attention_mechanism = wrapper.LuongAttention(
+          num_units=num_units,
+          memory=encoder_outputs,
+          memory_sequence_length=encoder_sequence_length,
+          scale=True,
+          dtype=dtype,
+      )
+      cell = rnn_cell.LSTMCell(num_units)
+      cell = wrapper.AttentionWrapper(cell, attention_mechanism)
+
+      helper = helper_py.TrainingHelper(decoder_inputs,
+                                        decoder_sequence_length)
+      my_decoder = basic_decoder.BasicDecoder(
+          cell=cell,
+          helper=helper,
+          initial_state=cell.zero_state(
+              dtype=dtype, batch_size=batch_size))
+
+      final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
+      self.assertTrue(
+          isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
+      self.assertEqual(final_outputs.rnn_output.dtype, dtype)
+      self.assertTrue(
+          isinstance(final_state, wrapper.AttentionWrapperState))
+      self.assertTrue(
+          isinstance(final_state.cell_state, rnn_cell.LSTMStateTuple))
 
   def testLuongScaled(self):
     create_attention_mechanism = functools.partial(
@@ -782,26 +821,31 @@ class AttentionWrapperTest(test.TestCase):
         wrapper.BahdanauAttention, wrapper.LuongAttention)
 
     expected_final_output = BasicDecoderOutput(
-        rnn_output=ResultSummary(
-            shape=(5, 3, 20), dtype=dtype('float32'), mean=0.11798714846372604),
-        sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=7.933333333333334))
+        rnn_output=ResultSummary(shape=(5, 3, 20),
+                                 dtype=dtype('float32'),
+                                 mean=0.11723966),
+        sample_id=ResultSummary(shape=(5, 3),
+                                dtype=dtype('int32'),
+                                mean=9.2666666666666675))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
-            c=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0036486709),
-            h=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0018835809)),
-        attention=ResultSummary(
-            shape=(5, 20), dtype=dtype('float32'), mean=0.11798714846372604),
+            c=ResultSummary(shape=(5, 9),
+                            dtype=dtype('float32'),
+                            mean=-0.003545674),
+            h=ResultSummary(shape=(5, 9),
+                            dtype=dtype('float32'),
+                            mean=-0.0018327223)),
+        attention=ResultSummary(shape=(5, 20),
+                                dtype=dtype('float32'),
+                                mean=0.11728073),
         time=3,
         alignments=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        alignment_history=(),
         attention_state=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
-        alignment_history=())
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)))
     expected_final_alignment_history = (
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125))

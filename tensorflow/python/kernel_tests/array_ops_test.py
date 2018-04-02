@@ -315,21 +315,39 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
             self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
             self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
 
+  # This test covers the axis validation in the shape function
+  # (no eval())
+  def testInvalidAxis(self):
+    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+    with self.assertRaisesRegexp(ValueError,
+                                 "is out of valid range"):
+      array_ops.reverse_v2(x_np, [-30])
+    with self.assertRaisesRegexp(ValueError,
+                                 "is out of valid range"):
+      array_ops.reverse_v2(x_np, [2])
+    with self.assertRaisesRegexp(ValueError,
+                                 "axis 0 specified more than once"):
+      array_ops.reverse_v2(x_np, [0, -2])
+
   # This is the version of reverse that uses axis indices rather than
   # bool tensors
   # TODO(b/32254538): Change this test to use array_ops.reverse
+  #
+  # Note: this test passes placeholder as constant axis is validated
+  # in shape function (see testInvalidAxis)
   def testInvalid(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+    axis = array_ops.placeholder(dtypes.int32)
     with self.test_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "is out of valid range"):
-        array_ops.reverse_v2(x_np, [-30]).eval()
+        array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [-30]})
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "is out of valid range"):
-        array_ops.reverse_v2(x_np, [2]).eval()
+        array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [2]})
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "axis 0 specified more than once"):
-        array_ops.reverse_v2(x_np, [0, -2]).eval()
+        array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [0, -2]})
 
   def testReverse1DimAuto(self):
     for dtype in [
@@ -890,7 +908,7 @@ class StridedSliceAssignChecker(object):
         var = resource_variable_ops.ResourceVariable(self.x)
       else:
         var = variables.Variable(self.x)
-      sess.run(variables.initialize_variables([var]))
+      sess.run(variables.variables_initializer([var]))
       val = sess.run(var[index].assign(value))
       # val_copy is used to check that tf.assign works equivalently to the
       # assign method above.
@@ -1024,6 +1042,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
+  @test_util.enable_c_shapes
   def testOneDimensionalDtypeWithoutMaxlen(self):
     with self.test_session():
       # test dtype and default maxlen:
@@ -1037,6 +1056,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           res.eval(),
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
+  @test_util.enable_c_shapes
   def testOneDimensionalWithoutMaxlen(self):
     with self.test_session():
       res = array_ops.sequence_mask(
@@ -1051,6 +1071,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
            [True, False, False, False],
            [True, True, True, True]])
 
+  @test_util.enable_c_shapes
   def testTwoDimensional(self):
     with self.test_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)
@@ -1223,7 +1244,7 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
     for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
       with self.test_session(use_gpu=True):
         x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
-        y = gen_array_ops._snapshot(x)
+        y = gen_array_ops.snapshot(x)
         self.assertAllEqual(y.eval(), [0, 1, 2, 3])
 
 

@@ -61,21 +61,21 @@ A subgraph can be created in several ways:
 
 * using a list of ops:
 
-```python
-my_sgv = ge.sgv(ops)
-```
+  ```python
+  my_sgv = ge.sgv(ops)
+  ```
 
 * from a name scope:
 
-```python
-my_sgv = ge.sgv_scope("foo/bar", graph=tf.get_default_graph())
-```
+  ```python
+  my_sgv = ge.sgv_scope("foo/bar", graph=tf.get_default_graph())
+  ```
 
 * using regular expression:
 
-```python
-my_sgv = ge.sgv("foo/.*/.*read$", graph=tf.get_default_graph())
-```
+  ```python
+  my_sgv = ge.sgv("foo/.*/.*read$", graph=tf.get_default_graph())
+  ```
 
 Note that the Graph Editor is meant to manipulate several graphs at the same
 time, typically during transform or copy operation. For that reason,

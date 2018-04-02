@@ -426,7 +426,7 @@ class ResizeBilinearTest(XLATestCase):
     with self.test_session() as sess, self.test_scope():
       dtype = dtype or np.float32
       grads = array_ops.placeholder(np.float32)
-      resized = gen_image_ops._resize_bilinear_grad(
+      resized = gen_image_ops.resize_bilinear_grad(
           grads,
           np.zeros([1, input_shape[0], input_shape[1], 1], dtype=dtype),
           align_corners=True)

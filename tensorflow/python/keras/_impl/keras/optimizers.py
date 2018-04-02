@@ -31,7 +31,9 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import optimizer as tf_optimizer_module
+from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -95,7 +97,26 @@ class Optimizer(object):
     raise NotImplementedError
 
   def get_gradients(self, loss, params):
+    """Returns gradients of `loss` with respect to `params`.
+
+    Arguments:
+        loss: Loss tensor.
+        params: List of variables.
+
+    Returns:
+        List of gradient tensors.
+
+    Raises:
+        ValueError: In case any gradient cannot be computed (e.g. if gradient
+          function not implemented).
+    """
     grads = K.gradients(loss, params)
+    if None in grads:
+      raise ValueError('An operation has `None` for gradient. '
+                       'Please make sure that all of your ops have a '
+                       'gradient defined (i.e. are differentiable). '
+                       'Common ops without gradient: '
+                       'K.argmax, K.round, K.eval.')
     if hasattr(self, 'clipnorm') and self.clipnorm > 0:
       norm = K.sqrt(sum([K.sum(K.square(g)) for g in grads]))
       grads = [clip_norm(g, self.clipnorm, norm) for g in grads]
@@ -120,6 +141,11 @@ class Optimizer(object):
         ValueError: in case of incompatible weight shapes.
     """
     params = self.weights
+    if len(params) != len(weights):
+      raise ValueError(
+          'Length of the specified weight list (' + str(len(weights)) +
+          ') does not match the number of weights '
+          'of the optimizer (' + str(len(params)) + ')')
     weight_value_tuples = []
     param_values = K.batch_get_value(params)
     for pv, p, w in zip(param_values, params, weights):
@@ -704,10 +730,27 @@ class TFOptimizer(Optimizer):
     return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
-    grads = self.optimizer.compute_gradients(loss, params)
-    self.updates = [K.update_add(self.iterations, 1)]
-    opt_update = self.optimizer.apply_gradients(
-        grads, global_step=self.iterations)
+    if distribute_lib.has_distribution_strategy():
+      self.updates = []
+
+      if not params:
+        # After the model vars have been created, the second call to get_updates
+        # is called with params as an empty list. This ensures that we call
+        # compute_gradients with params=None.
+        grads = self.optimizer.compute_gradients(loss)
+      else:
+        grads = self.optimizer.compute_gradients(loss, params)
+      global_step = training_util.get_global_step()
+      opt_update = self.optimizer.apply_gradients(grads, global_step)
+    else:
+      self.updates = [K.update_add(self.iterations, 1)]
+      if not params:
+        return self.updates
+
+      grads = self.optimizer.compute_gradients(loss, params)
+      opt_update = self.optimizer.apply_gradients(
+          grads, global_step=self.iterations)
+
     self.updates.append(opt_update)
     return self.updates
 

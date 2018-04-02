@@ -180,6 +180,8 @@ class _Conv(base.Layer):
           # bias_add when computing gradients. To use bias_add, we collapse Z
           # and Y into a single dimension to obtain a 4D input tensor.
           outputs_shape = outputs.shape.as_list()
+          if outputs_shape[0] is None:
+            outputs_shape[0] = -1
           outputs_4d = array_ops.reshape(outputs,
                                          [outputs_shape[0], outputs_shape[1],
                                           outputs_shape[2] * outputs_shape[3],
@@ -1664,7 +1666,7 @@ class Conv2DTranspose(Conv2D):
         padding=self.padding.upper(),
         data_format=utils.convert_data_format(self.data_format, ndim=4))
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # Infer the static output shape:
       out_shape = inputs.get_shape().as_list()
       out_shape[c_axis] = self.filters
@@ -1969,7 +1971,7 @@ class Conv3DTranspose(Conv3D):
         data_format=utils.convert_data_format(self.data_format, ndim=5),
         padding=self.padding.upper())
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # Infer the static output shape:
       out_shape = inputs.get_shape().as_list()
       out_shape[c_axis] = self.filters

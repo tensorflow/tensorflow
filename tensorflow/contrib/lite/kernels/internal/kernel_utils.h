@@ -35,6 +35,42 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
                   TfLiteFusedActivation activation,
                   float* hidden_state_ptr_batch, float* output_ptr_batch);
 
+// Performs an LSTM batch inference step for input specified by input_ptr_batch.
+// The LSTM cell is specified by the pointers to its weights (*_weights_ptr) and
+// biases (*_bias_ptr), and buffers (*_scratch), along with additional
+// parameters:
+//  - params: various LSTM params including activation, clipping, etc.,
+//  - n_batch: size of batch,
+//  - n_cell: number of cells (or units),
+//  - n_input: the input size,
+//  - n_output: the output size.
+//
+// The pointers to the cell and output state and the output are updated. Unless
+// projection is specified output and output state contain the same data.
+//
+// The pointers with the suffix "_batch" point to data aligned in batch_major
+// order, and each step processes batch_size many inputs from input_ptr_batch,
+// and updates batch_size many cell and output states.
+void LstmStep(
+    const float* input_ptr_batch, const float* input_to_input_weights_ptr,
+    const float* input_to_forget_weights_ptr,
+    const float* input_to_cell_weights_ptr,
+    const float* input_to_output_weights_ptr,
+    const float* recurrent_to_input_weights_ptr,
+    const float* recurrent_to_forget_weights_ptr,
+    const float* recurrent_to_cell_weights_ptr,
+    const float* recurrent_to_output_weights_ptr,
+    const float* cell_to_input_weights_ptr,
+    const float* cell_to_forget_weights_ptr,
+    const float* cell_to_output_weights_ptr, const float* input_gate_bias_ptr,
+    const float* forget_gate_bias_ptr, const float* cell_bias_ptr,
+    const float* output_gate_bias_ptr, const float* projection_weights_ptr,
+    const float* projection_bias_ptr, const TfLiteLSTMParams* params,
+    int n_batch, int n_cell, int n_input, int n_output, float* output_state_ptr,
+    float* cell_state_ptr, float* input_gate_scratch,
+    float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
+    float* output_ptr_batch);
+
 }  // namespace kernel_utils
 }  // namespace tflite
 #endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_KERNEL_UTILS_H_

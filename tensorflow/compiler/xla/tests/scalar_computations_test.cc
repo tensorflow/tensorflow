@@ -163,7 +163,7 @@ XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
   auto a = builder.Parameter(0, ShapeUtil::MakeShape(S64, {}), "a");
   builder.ConvertElementType(a, F32);
 
-  int64 value = 3LL << 32;
+  int64 value = 3LL << 35;
   std::unique_ptr<Literal> a_literal = Literal::CreateR0<int64>(value);
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(*a_literal).ConsumeValueOrDie();
@@ -860,12 +860,24 @@ XLA_TEST_F(ScalarComputationsTest, MinF32Below) {
   TestMinMax<float>(-100.1f, 3.1f, -100.1f, &ComputationBuilder::Min);
 }
 
+XLA_TEST_F(ScalarComputationsTest, MinPropagatesNan) {
+  SetFastMathDisabled(true);
+  TestMinMax<float>(NAN, 3.1f, NAN, &ComputationBuilder::Min);
+  TestMinMax<float>(-3.1f, NAN, NAN, &ComputationBuilder::Min);
+}
+
 XLA_TEST_F(ScalarComputationsTest, MaxF32Above) {
   TestMinMax<float>(10.1f, 3.1f, 10.1f, &ComputationBuilder::Max);
 }
 
 XLA_TEST_F(ScalarComputationsTest, MaxF32Below) {
   TestMinMax<float>(-100.1f, 3.1f, 3.1f, &ComputationBuilder::Max);
+}
+
+XLA_TEST_F(ScalarComputationsTest, MaxPropagatesNan) {
+  SetFastMathDisabled(true);
+  TestMinMax<float>(NAN, 3.1f, NAN, &ComputationBuilder::Max);
+  TestMinMax<float>(-3.1f, NAN, NAN, &ComputationBuilder::Max);
 }
 
 XLA_TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionF32) {
