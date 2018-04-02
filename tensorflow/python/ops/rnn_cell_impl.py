@@ -786,9 +786,9 @@ class LSTMCell(LayerRNNCell):
         initializer=self._initializer,
         partitioner=maybe_partitioner)
     if self.dtype is None:
-      initializer=init_ops.zeros_initializer
+      initializer = init_ops.zeros_initializer
     else:
-      initializer=init_ops.zeros_initializer(dtype=self.dtype)
+      initializer = init_ops.zeros_initializer(dtype=self.dtype)
     self._bias = self.add_variable(
         _BIAS_VARIABLE_NAME,
         shape=[4 * self._num_units],
