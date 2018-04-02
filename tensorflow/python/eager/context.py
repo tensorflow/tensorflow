@@ -86,6 +86,7 @@ class _EagerContext(threading.local):
     self.device_spec = pydev.DeviceSpec.from_string("")
     self.device_name = self.device_spec.to_string()
     self.mode = _default_mode
+    self.is_eager = _default_mode == EAGER_MODE
     self.scope_name = ""
     self.recording_summaries = False
     self.summary_writer_resource = None
@@ -283,9 +284,12 @@ class Context(object):
 
   @tf_contextlib.contextmanager
   def _mode(self, mode):
+    """A context manager to allow setting the mode to EAGER/GRAPH."""
     ctx = self._eager_context
     old_mode = ctx.mode
+    old_is_eager = ctx.is_eager
     ctx.mode = mode
+    ctx.is_eager = mode == EAGER_MODE
     if mode == EAGER_MODE:
       # Entering graph mode does not provide us with sufficient information to
       # record a context switch; graph-based context switches are only logged
@@ -294,13 +298,14 @@ class Context(object):
     try:
       yield
     finally:
+      ctx.is_eager = old_is_eager
       ctx.mode = old_mode
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
-    return self._eager_context.mode == EAGER_MODE
+    return self._eager_context.is_eager
 
   def scalar_cache(self):
     """Per-device cache for scalars."""
@@ -508,23 +513,19 @@ class Context(object):
     To retrieve the accumulated metadata call context.export_run_metadata()
     and to stop tracing call context.disable_run_metadata().
     """
-    if not self._context_handle:
-      self._initialize_handle_and_devices()
-    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._context_handle)
+    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
 
   @tf_contextlib.contextmanager
   def device_policy(self, policy):
-    if not self._context_handle:
-      self._initialize_handle_and_devices()
-    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
-        self._context_handle)
+    handle = self._handle
+    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(handle)
     pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
-        self._handle, policy)
+        handle, policy)
     try:
       yield
     finally:
       pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
-          self._handle, old)
+          handle, old)
 
   def disable_run_metadata(self):
     """Disables tracing of op execution via RunMetadata."""
@@ -572,6 +573,10 @@ def context():
   """Returns a singleton context object."""
   if _context is None:
     _initialize_context()
+  return _context
+
+
+def context_safe():
   return _context
 
 

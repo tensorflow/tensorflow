@@ -5343,6 +5343,10 @@ def enable_eager_execution(config=None, device_policy=None,
     raise ValueError(
         "tf.enable_eager_execution must be called at program startup.")
 
+  # Monkey patch to get rid of an unnecessary conditional since the context is
+  # now initialized.
+  context.context = context.context_safe
+
 
 def eager_run(main=None, argv=None):
   """Runs the program with an optional main function and argv list.

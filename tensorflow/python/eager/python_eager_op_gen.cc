@@ -367,7 +367,7 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
   // Handle graph-mode case
   strings::StrAppend(&result_,
                      "  _ctx = _context.context()\n"
-                     "  if not _ctx.executing_eagerly():\n",
+                     "  if not _ctx._eager_context.is_eager:\n",
                      function_setup,
                      "    _, _, _op = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn("        ");
@@ -712,9 +712,9 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 }
 
 void GenEagerPythonOp::AddEagerFastPathExecute() {
-  string fastpath_execute_params =
-      strings::StrCat("_ctx._handle, _ctx.device_name, \"", op_def_.name(),
-                      "\", ", "name, _ctx._post_execution_callbacks");
+  string fastpath_execute_params = strings::StrCat(
+      "_ctx._context_handle, _ctx._eager_context.device_name, \"",
+      op_def_.name(), "\", ", "name, _ctx._post_execution_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {
