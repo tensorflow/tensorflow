@@ -58,6 +58,16 @@ def time_series_regression_head(model,
                                    input_statistics_generator)
 
 
+class _NoStatePredictOutput(export_lib.PredictOutput):
+
+  def as_signature_def(self, receiver_tensors):
+    no_state_receiver_tensors = {
+        key: value for key, value in receiver_tensors.items()
+        if not key.startswith(feature_keys.State.STATE_PREFIX)}
+    return super(_NoStatePredictOutput, self).as_signature_def(
+        receiver_tensors=no_state_receiver_tensors)
+
+
 class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
   """See `time_series_regression_head`."""
 
@@ -167,7 +177,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                 export_lib.PredictOutput(
                     state_to_dictionary(filtering_outputs.end_state)),
             feature_keys.SavedModelLabels.COLD_START_FILTER:
-                export_lib.PredictOutput(
+                _NoStatePredictOutput(
                     state_to_dictionary(cold_filtering_outputs.end_state))
         },
         # Likely unused, but it is necessary to return `predictions` to satisfy
