@@ -392,8 +392,7 @@ void ProcessSpaceToDepthOperator(Model* model, SpaceToDepthOperator* op) {
                          depth * block_size * block_size}));
 }
 
-void ProcessFillOperator(Model* model, FillOperator* op) {
-  CHECK_EQ(op->inputs.size(), 2);
+void ProcessOpWithShapeInput(Model* model, Operator* op) {
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
@@ -1529,7 +1528,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
                                   static_cast<SpaceToDepthOperator*>(op));
       break;
     case OperatorType::kFill:
-      ProcessFillOperator(model, static_cast<FillOperator*>(op));
+      CHECK_EQ(op->inputs.size(), 2);
+      ProcessOpWithShapeInput(model, op);
       break;
     case OperatorType::kFullyConnected:
       ProcessFullyConnectedOperator(model,
@@ -1658,6 +1658,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       // DynamicPartition/DynamicStitch are currently only supported for
       // transforms that remove them, so we avoid propagating shapes through
       // them and let things settle once they've been removed.
+      break;
+    case OperatorType::kRandomUniform:
+      CHECK_EQ(op->inputs.size(), 1);
+      ProcessOpWithShapeInput(model, op);
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

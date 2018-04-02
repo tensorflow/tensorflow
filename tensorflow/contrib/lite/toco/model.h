@@ -60,6 +60,7 @@ enum class OperatorType {
   kMaxPool,
   kFakeQuant,
   kMul,
+  kRandomUniform,
   kRange,
   kRank,
   kRelu,
@@ -944,6 +945,13 @@ struct FloorDivOperator : Operator {
 // TensorFlow equivalent: FloorMod
 struct FloorModOperator : Operator {
   FloorModOperator() : Operator(OperatorType::kFloorMod) {}
+};
+
+struct RandomUniformOperator : Operator {
+  RandomUniformOperator() : Operator(OperatorType::kRandomUniform) {}
+  ArrayDataType dtype = ArrayDataType::kNone;
+  int64 seed;
+  int64 seed2;
 };
 
 // Creates a sequence of numbers that begins at start and extends by increments

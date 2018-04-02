@@ -1711,6 +1711,23 @@ void ConvertTopKV2Operator(const Model& model, const TopKV2Operator& src_op,
   (*topk_op->mutable_attr())["sorted"].set_b(true);
 }
 
+void ConvertRandomUniformOperator(const Model& model,
+                                  const RandomUniformOperator& src_op,
+                                  GraphDef* tensorflow_graph) {
+  CHECK(tensorflow_graph != nullptr);
+  auto* new_op = tensorflow_graph->add_node();
+  new_op->set_op("RandomUniform");
+  CHECK_EQ(src_op.inputs.size(), 1);
+  new_op->set_name(src_op.outputs[0]);
+  *new_op->add_input() = src_op.inputs[0];
+  const auto shape_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*new_op->mutable_attr())["T"].set_type(shape_type);
+  (*new_op->mutable_attr())["dtype"].set_type(
+      GetTensorFlowDataType(src_op.dtype));
+  (*new_op->mutable_attr())["seed"].set_i(src_op.seed);
+  (*new_op->mutable_attr())["seed2"].set_i(src_op.seed2);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -1896,6 +1913,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kTransposeConv) {
     ConvertTransposeConvOperator(
         model, static_cast<const TransposeConvOperator&>(src_op),
+        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kRandomUniform) {
+    ConvertRandomUniformOperator(
+        model, static_cast<const RandomUniformOperator&>(src_op),
         tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
