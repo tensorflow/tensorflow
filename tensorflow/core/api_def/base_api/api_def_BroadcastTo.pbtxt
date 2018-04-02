@@ -1,0 +1,22 @@
+op {
+  graph_op_name: "BroadcastTo"
+  in_arg {
+    name: "input"
+    description: <<END
+A Tensor to broadcast.
+END
+  }
+  in_arg {
+    name: "shape"
+    description: <<END
+An 1-D `int` Tensor. The shape of the desired output.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A Tensor.
+END
+  }
+  summary: "Repeat elements of an array"
+}

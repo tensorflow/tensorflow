@@ -434,14 +434,7 @@ REGISTER_OP("BroadcastTo")
 
       c->set_output(0, out);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Repeat elements of an array
-
-input: A Tensor to broadcast.
-shape: An 1-D `int` Tensor. The shape of the desired output.
-output: A Tensor.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 // TODO(josh11b): Remove the >= 2 constraint, once we can rewrite the graph
