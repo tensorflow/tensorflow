@@ -526,10 +526,15 @@ class PaddingTest(test.TestCase):
           "key_2": constant_op.constant([1.5, 2.5])  # length 2
       }
 
-      _, padded_seq = sqss._padding(sequences, 2)
-      with self.assertRaisesOpError(
-          ".*All sequence lengths must match, but received lengths.*"):
-        padded_seq["key_1"].eval()
+      if ops._USE_C_API:
+        with self.assertRaisesRegexp(
+            ValueError, "Fill dimensions must be >= 0"):
+          _, padded_seq = sqss._padding(sequences, 2)
+      else:
+        _, padded_seq = sqss._padding(sequences, 2)
+        with self.assertRaisesOpError(
+            ".*All sequence lengths must match, but received lengths.*"):
+          padded_seq["key_1"].eval()
 
   def testPadding(self):
     with ops.Graph().as_default() as g, self.test_session(graph=g):
