@@ -1802,8 +1802,9 @@ def streaming_sensitivity_at_specificity(predictions,
       name=name)
 
 
-@deprecated(None, 'Please switch to tf.metrics.precision_at_thresholds. Note that the '
-    'order of the labels and predictions arguments has been switched.')
+@deprecated(None,
+            'Please switch to tf.metrics.precision_at_thresholds. Note that '
+            'the order of the labels and predictions arguments are switched.')
 def streaming_precision_at_thresholds(predictions,
                                       labels,
                                       thresholds,
