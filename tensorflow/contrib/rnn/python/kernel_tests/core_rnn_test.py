@@ -315,6 +315,13 @@ class LSTMTest(test.TestCase):
     lstm.build(input_tensor.get_shape())
     self.assertEqual(lstm._bias.dtype, dtypes.float32_ref)
 
+    # Explicitly pass dtype in constructor
+    for dtype in ['float16', 'float32', 'float64']:
+      lstm = rnn_cell.LSTMCell(10, dtype=dtypes.as_dtype(dtype))
+      input_tensor = array_ops.ones([10, 50])
+      lstm.build(input_tensor.get_shape())
+      self.assertEqual(lstm._bias.dtype, dtypes.as_dtype(dtype+'_ref'))
+
   def testNoProjNoSharding(self):
     num_units = 3
     input_size = 5
