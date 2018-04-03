@@ -55,9 +55,9 @@ constexpr std::array<DataType, 9> kCpuAllTypes = {
     {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
      DT_COMPLEX64, DT_BOOL}};
 
-constexpr std::array<DataType, 9> kGpuAllTypes = {
+constexpr std::array<DataType, 10> kGpuAllTypes = {
     {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
-     DT_COMPLEX64, DT_BOOL}};
+     DT_COMPLEX64, DT_BOOL, DT_BFLOAT16}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.
