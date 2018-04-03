@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/python/client/tf_session_helper.h"
-#include "tensorflow/python/lib/core/py_exception_registry.h"
 
 // Helper function to convert a Python list of Tensors to a C++ vector of
 // TF_Outputs.
@@ -351,27 +350,6 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 %typemap(out) TF_Buffer (TF_GetOpList,TF_GetBuffer) {
   $result = PyBytes_FromStringAndSize(
       reinterpret_cast<const char*>($1.data), $1.length);
-}
-
-// Typemaps to automatically raise a Python exception from bad output TF_Status.
-// TODO(b/77295559): expand this to all TF_Status* output params and deprecate
-// raise_exception_on_not_ok_status (currently it only affects the C API).
-%typemap(in, numinputs=0) TF_Status* status (TF_Status* status) {
-  status = TF_NewStatus();
-  $1 = status;
-}
-
-%typemap(argout) TF_Status* status {
-  TF_Code code = TF_GetCode($1);
-  if (code != TF_OK) {
-    PyObject* exc = tensorflow::PyExceptionRegistry::Lookup(code);
-    // Arguments to OpError.
-    PyObject* exc_args = Py_BuildValue("sss", nullptr, nullptr, TF_Message($1));
-    TF_DeleteStatus($1);
-    SWIG_SetErrorObj(exc, exc_args);
-    SWIG_fail;
-  }
-  TF_DeleteStatus($1);
 }
 
 // Converts input Python list of wrapped TF_Outputs into a single array
@@ -784,7 +762,3 @@ def TF_Reset(target, containers=None, config=None):
 %include "tensorflow/python/client/tf_session_helper.h"
 
 %unignoreall
-
-// Clear "TF_Status* status" typemap so it doesn't affect other modules and
-// unexpectedly remove the TF_Status* argument from wrappers.
-%clear TF_Status* status;

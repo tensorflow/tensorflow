@@ -28,7 +28,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
@@ -224,24 +223,21 @@ class Context(object):
       assert self._context_devices is None
       opts = pywrap_tensorflow.TFE_NewContextOptions()
       try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          if self._config is not None:
-            config_str = self._config.SerializeToString()
-            pywrap_tensorflow.TFE_ContextOptionsSetConfig(
-                opts, config_str, len(config_str), status)
-          if self._device_policy is not None:
-            pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
-                opts, self._device_policy)
-          if self._execution_mode == ASYNC:
-            pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
-          self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
+        if self._config is not None:
+          config_str = self._config.SerializeToString()
+          pywrap_tensorflow.TFE_ContextOptionsSetConfig(opts, config_str)
+        if self._device_policy is not None:
+          pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
+              opts, self._device_policy)
+        if self._execution_mode == ASYNC:
+          pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
+        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       # Store list of devices
       self._context_devices = []
-      with errors.raise_exception_on_not_ok_status() as status:
-        device_list = pywrap_tensorflow.TFE_ContextListDevices(
-            self._context_handle, status)
+      device_list = pywrap_tensorflow.TFE_ContextListDevices(
+          self._context_handle)
       try:
         self._num_gpus = 0
         for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
@@ -412,9 +408,7 @@ class Context(object):
     if mode is None:
       mode = SYNC
     self._eager_context.execution_mode = mode
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._handle,
-                                                     mode == ASYNC, status)
+    pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._handle, mode == ASYNC)
 
   @tf_contextlib.contextmanager
   def execution_mode(self, mode):
@@ -428,8 +422,7 @@ class Context(object):
 
   def async_wait(self):
     """Waits for ops dispatched in ASYNC mode to finish."""
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.TFE_ContextAsyncWait(self._handle, status)
+    pywrap_tensorflow.TFE_ContextAsyncWait(self._handle)
 
   def async_clear_error(self):
     """Clears errors raised during ASYNC execution."""
@@ -449,11 +442,9 @@ class Context(object):
     Args:
       fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.TFE_ContextAddFunction(
-          self._handle,  # pylint: disable=protected-access
-          fn,
-          status)
+    pywrap_tensorflow.TFE_ContextAddFunction(
+        self._handle,  # pylint: disable=protected-access
+        fn)
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -465,12 +456,10 @@ class Context(object):
       fdef: A FunctionDef protocol buffer message.
     """
     fdef_string = fdef.SerializeToString()
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.TFE_ContextAddFunctionDef(
-          self._handle,  # pylint: disable=protected-access
-          fdef_string,
-          len(fdef_string),
-          status)
+    pywrap_tensorflow.TFE_ContextAddFunctionDef(
+        self._handle,  # pylint: disable=protected-access
+        fdef_string,
+        len(fdef_string))
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
@@ -545,9 +534,8 @@ class Context(object):
     if not self._context_handle:
       return None
     with c_api_util.tf_buffer() as buffer_:
-      with errors.raise_exception_on_not_ok_status() as status:
-        pywrap_tensorflow.TFE_ContextExportRunMetadata(
-            self._context_handle, buffer_, status)
+      pywrap_tensorflow.TFE_ContextExportRunMetadata(
+          self._context_handle, buffer_)
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     run_metadata = config_pb2.RunMetadata()
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
