@@ -28,6 +28,7 @@ from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 
 
 # TODO(rohanj): Add a python class that constructs resource in the __init__
@@ -77,10 +78,24 @@ class _PrefetchToDeviceIterator(object):
 
     @function.Defun(dtypes.string)
     def _prefetch_fn(handle):
+      """Prefetches one element from `input_iterator`."""
       remote_iterator = iterator_ops.Iterator.from_string_handle(
           handle, input_iterator.output_types, input_iterator.output_shapes,
           input_iterator.output_classes)
-      return remote_iterator.get_next()
+      ret = remote_iterator.get_next()
+
+      # Convert any `SparseTensorValue`s to `SparseTensor`s.
+      ret = nest.pack_sequence_as(ret, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else t for t in nest.flatten(ret)
+      ])
+
+      # Serialize any sparse tensors and convert result to tensors.
+      ret = nest.pack_sequence_as(ret, [
+          ops.convert_to_tensor(t)
+          for t in nest.flatten(sparse.serialize_sparse_tensors(ret))
+      ])
+      return nest.flatten(ret)
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
