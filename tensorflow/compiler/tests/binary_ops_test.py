@@ -232,11 +232,16 @@ class BinaryOpsTest(XLATestCase):
           expected=np.right_shift(lhs, rhs))
 
       if dtype in [np.int8, np.int16, np.int32, np.int64]:
-        lhs = np.array([-1, -5, -3, -14], dtype=dtype)
-        rhs = np.array([5, 0, 1, 11], dtype=dtype)
-        self._testBinary(
-            bitwise_ops.right_shift, lhs, rhs,
-            expected=np.right_shift(lhs, rhs))
+        lhs = np.array([-1, -5, -3, -14, -2], dtype=dtype)
+        rhs = np.array([5, 0, 1, 11, 36], dtype=dtype)
+        # HLO has saturating shift behavior.
+        bits = np.ceil(
+            np.log(np.iinfo(dtype).max - np.iinfo(dtype).min) / np.log(2))
+        expected = [
+            np.right_shift(l, r) if r < bits else np.sign(l)
+            for l, r in zip(lhs, rhs)
+        ]
+        self._testBinary(bitwise_ops.right_shift, lhs, rhs, expected=expected)
 
   def testNumericOps(self):
     for dtype in self.numeric_types:
@@ -255,12 +260,18 @@ class BinaryOpsTest(XLATestCase):
           np.array([[1], [2]], dtype=dtype),
           dtype(7),
           expected=np.array([[8], [9]], dtype=dtype))
+      self._testBinary(
+          math_ops.add,
+          np.array([0xffffffff, 0xfffffffff, 1, 1], dtype=np.int64),
+          np.array([1, 1, 0xffffffff, 0xfffffffff], dtype=np.int64),
+          expected=np.array(
+              [1 << 32, 1 << 36, 1 << 32, 1 << 36], dtype=np.int64))
 
       self._testBinary(
           math_ops.subtract,
-          np.array([1, 2], dtype=dtype),
-          np.array([10, 20], dtype=dtype),
-          expected=np.array([-9, -18], dtype=dtype))
+          np.array([1, 2, 100], dtype=dtype),
+          np.array([10, 20, -1], dtype=dtype),
+          expected=np.array([-9, -18, 101], dtype=dtype))
       self._testBinary(
           math_ops.subtract,
           dtype(5),
@@ -668,6 +679,11 @@ class BinaryOpsTest(XLATestCase):
           np.array([[10], [7], [2]], dtype=np.float32),
           np.float32(7),
           expected=np.array([[False], [False], [True]], dtype=np.bool))
+      self._testBinary(
+          less_op,
+          np.array([[10], [7], [2], [-1]], dtype=np.int64),
+          np.int64(7),
+          expected=np.array([[False], [False], [True], [True]], dtype=np.bool))
 
     for less_equal_op in [math_ops.less_equal, (lambda x, y: x <= y)]:
       self._testBinary(
@@ -685,6 +701,80 @@ class BinaryOpsTest(XLATestCase):
           np.array([[10], [7], [2]], dtype=np.float32),
           np.float32(7),
           expected=np.array([[False], [True], [True]], dtype=np.bool))
+
+  def testS64Comparisons(self):
+    for op in [(lambda x, y: x < y), (lambda x, y: x <= y),
+               (lambda x, y: x >= y), (lambda x, y: x > y)]:
+      lhs = np.array(
+          [
+              np.int64(0x000000007FFFFFFF),
+              np.int64(0x000000007FFFFFFF),
+              np.int64(0x0000000080000000),
+              np.int64(0x0000000080000000),
+              np.int64(0x0000000080000001),
+              np.int64(0x00000000FFFF0000),
+              np.int64(0x00000000FFFF0000),
+              np.int64(0x00000000FFFFFFFE),
+              np.int64(0x00000000FFFFFFFF),
+              np.int64(0x00000000FFFFFFFF),
+              np.int64(0x0000000100000000),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000002),
+              np.int64(-0x7FFFFFFF00000002),
+              np.int64(-0x7FFFFFFF00000002),
+              np.int64(-0x7FFFFFFF00000001),
+              np.int64(-0x7FFFFFFF00000001),
+              np.int64(-0x7FFFFFFF00000001),
+              np.int64(-0x7FFFFFFF00000001),
+              np.int64(0x7ffffffefff00010),
+              np.int64(0x7ffffffefff00010),
+              np.int64(-1),
+              np.int64(-1)
+          ],
+          dtype=np.int64)
+      rhs = np.array(
+          [
+              np.int64(0x000000007FFFFFFE),
+              np.int64(0x000000007FFFFFFF),
+              np.int64(0x000000007FFFFFFF),
+              np.int64(0x0000000080000000),
+              np.int64(0x0000000080000001),
+              np.int64(0x00000000FFFF0000),
+              np.int64(0x00000000FFFF0001),
+              np.int64(0x00000000FFFFFFFF),
+              np.int64(0x00000000FFFFFFFE),
+              np.int64(0x00000000FFFFFFFF),
+              np.int64(0x00000000FFFFFFFF),
+              np.int64(0x0000000100000001),
+              np.int64(0x0000000100000002),
+              np.int64(0x0000000100000003),
+              np.int64(0x0000000200000001),
+              np.int64(0x0000000200000002),
+              np.int64(0x0000000200000003),
+              np.int64(0x0000000300000001),
+              np.int64(0x0000000300000002),
+              np.int64(0x0000000300000003),
+              np.int64(0x00000000FFFFFFFF),
+              np.int64(-0x7FFFFFFF00000001),
+              np.int64(0x00000000FFFFFFFE),
+              np.int64(0x00000000FFFFFFFF),
+              np.int64(-0x7FFFFFFF00000002),
+              np.int64(-0x7FFFFFFF00000001),
+              np.int64(0x00000000FFFFFFFF),
+              np.int64(-0x7FFFFFFF00000001),
+              np.int64(-2),
+              np.int64(-1)
+          ],
+          dtype=np.int64)
+      expected = np.array([op(l, r) for l, r in zip(lhs, rhs)], dtype=np.bool)
+      self._testBinary(op, lhs, rhs, expected=expected)
 
   def testBroadcasting(self):
     """Tests broadcasting behavior of an operator."""

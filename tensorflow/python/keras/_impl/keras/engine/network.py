@@ -92,7 +92,9 @@ class Network(base_layer.Layer):
     self._expects_training_arg = False
 
     self.supports_masking = False
-    self.optimizer = None
+    if not hasattr(self, 'optimizer'):
+      # Don't reset optimizer if already set.
+      self.optimizer = None
 
     # Private attributes to implement compatibility with Layer.
     self._updates = []  # Used in symbolic mode only.
@@ -115,6 +117,7 @@ class Network(base_layer.Layer):
     self._inbound_nodes = []
 
   def _init_graph_network(self, inputs, outputs, name=None):
+    self._uses_inputs_arg = True
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, (list, tuple)):
       self.inputs = list(inputs)  # Tensor or list of tensors.
@@ -187,17 +190,6 @@ class Network(base_layer.Layer):
     # built.
     self.built = True
     self._is_graph_network = True
-
-    # # List of initial layers (1 to 1 mapping with self.inputs,
-    # # hence the same layer might appear twice)
-    # self._input_layers = []
-    # self._input_layers_node_indices = []
-    # self._input_layers_tensor_indices = []
-    # # list of layers (1 to 1 mapping with self.inputs,
-    # # hence the same layer might appear twice)
-    # self._output_layers = []
-    # self._output_layers_node_indices = []
-    # self._output_layers_tensor_indices = []
 
     self._input_layers = []
     self._output_layers = []
@@ -283,11 +275,15 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
-    if 'training' in tf_inspect.getargspec(self.call).args:
+    call_args = tf_inspect.getargspec(self.call).args
+    if 'training' in call_args:
       self._expects_training_arg = True
     else:
       self._expects_training_arg = False
-
+    if 'inputs' in call_args:
+      self._uses_inputs_arg = True
+    else:
+      self._uses_inputs_arg = False
     self.outputs = None
     self.inputs = None
     self.built = False
@@ -406,6 +402,7 @@ class Network(base_layer.Layer):
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
 
+    If `name` and `index` are both provided, `index` will take precedence.
     Indices are based on order of horizontal graph traversal (bottom-up).
 
     Arguments:
@@ -437,7 +434,7 @@ class Network(base_layer.Layer):
 
   @property
   def updates(self):
-    """Retrieve the network's updates.
+    """Retrieves the network's updates.
 
     Will only include updates that are either
     unconditional, or conditional on inputs to this model
@@ -517,7 +514,7 @@ class Network(base_layer.Layer):
 
   @property
   def losses(self):
-    """Retrieve the network's losses.
+    """Retrieves the network's losses.
 
     Will only include losses that are either
     unconditional, or conditional on inputs to this model
@@ -600,7 +597,7 @@ class Network(base_layer.Layer):
     return specs
 
   def call(self, inputs, training=None, mask=None):
-    """Call the model on new inputs.
+    """Calls the model on new inputs.
 
     In this case `call` just reapplies
     all ops in the graph to the new inputs
@@ -1030,7 +1027,7 @@ class Network(base_layer.Layer):
           layer(input_tensors, **kwargs)
 
     def process_layer(layer_data):
-      """Deserialize a layer, then call it on appropriate inputs.
+      """Deserializes a layer, then call it on appropriate inputs.
 
       Arguments:
           layer_data: layer config dict.
@@ -1087,7 +1084,7 @@ class Network(base_layer.Layer):
     return cls(inputs=input_tensors, outputs=output_tensors, name=name)
 
   def save(self, filepath, overwrite=True, include_optimizer=True):
-    """Save the model to a single HDF5 file.
+    """Saves the model to a single HDF5 file.
 
     The savefile includes:
         - The model architecture, allowing to re-instantiate the model.
@@ -1193,7 +1190,7 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
-    """Util hared between different serialization methods.
+    """Util shared between different serialization methods.
 
     Returns:
         Model config with Keras version information added.
@@ -1222,9 +1219,6 @@ class Network(base_layer.Layer):
     Returns:
         A JSON string.
     """
-    if not self._is_graph_network:
-      raise NotImplementedError
-
     def get_json_type(obj):
       # If obj is any numpy type
       if type(obj).__module__ == np.__name__:
@@ -1259,9 +1253,6 @@ class Network(base_layer.Layer):
     Raises:
         ImportError: if yaml module is not found.
     """
-    if not self._is_graph_network:
-      raise NotImplementedError
-
     if yaml is None:
       raise ImportError('Requires yaml module installed.')
     return yaml.dump(self._updated_config(), **kwargs)
@@ -1333,7 +1324,7 @@ def _make_node_key(layer_name, node_index):
 
 
 def _map_graph_network(inputs, outputs):
-  """Validate a network's topology and gather its layers and nodes.
+  """Validates a network's topology and gather its layers and nodes.
 
   Arguments:
     inputs: List of input tensors.

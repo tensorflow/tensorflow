@@ -34,7 +34,11 @@ from tensorflow.python.util import tf_inspect
 
 
 # A regular expression capturing a python identifier.
-IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
+IDENTIFIER_RE = r'[a-zA-Z_]\w*'
+
+
+class TFDocsError(Exception):
+  pass
 
 
 class _Errors(object):
@@ -117,6 +121,8 @@ SYMBOL_REFERENCE_RE = re.compile(
     \}
     """,
     flags=re.VERBOSE)
+
+AUTO_REFERENCE_RE = re.compile(r'`([a-zA-Z0-9_.]+?)`')
 
 
 class ReferenceResolver(object):
@@ -240,10 +246,25 @@ class ReferenceResolver(object):
     Returns:
       `string`, with "@{symbol}" references replaced by Markdown links.
     """
-    def one_ref(match):
-      return self._one_ref(match, relative_path_to_root)
 
-    return re.sub(SYMBOL_REFERENCE_RE, one_ref, string)
+    def strict_one_ref(match):
+      try:
+        return self._one_ref(match, relative_path_to_root)
+      except TFDocsError as e:
+        self.add_error(e.message)
+        return 'BAD_LINK'
+
+    string = re.sub(SYMBOL_REFERENCE_RE, strict_one_ref, string)
+
+    def sloppy_one_ref(match):
+      try:
+        return self._one_ref(match, relative_path_to_root)
+      except TFDocsError:
+        return match.group(0)
+
+    string = re.sub(AUTO_REFERENCE_RE, sloppy_one_ref, string)
+
+    return string
 
   def python_link(self, link_text, ref_full_name, relative_path_to_root,
                   code_ref=True):
@@ -307,14 +328,14 @@ class ReferenceResolver(object):
 
     Raises:
       RuntimeError: If `ref_full_name` is not documented.
+      TFDocsError: If the @{} syntax cannot be decoded.
     """
     master_name = self._duplicate_of.get(ref_full_name, ref_full_name)
 
     # Check whether this link exists
     if master_name not in self._all_names:
-      message = 'Cannot make link to "%s": Not in index.' % master_name
-      self.add_error(message)
-      return 'BROKEN_LINK'
+      raise TFDocsError(
+          'Cannot make link to "%s": Not in index.' % master_name)
 
     # If this is a member of a class, link to the class page with an anchor.
     ref_path = None
@@ -369,8 +390,8 @@ class ReferenceResolver(object):
             code_ref=not manual_link_text)
 
     # Error!
-    self.add_error('Did not understand "%s"' % match.group(0))
-    return 'BROKEN_LINK'
+    raise TFDocsError('Did not understand "%s"' % match.group(0),
+                      'BROKEN_LINK')
 
   def _doc_link(self, string, link_text, manual_link_text,
                 relative_path_to_root):
@@ -395,11 +416,10 @@ class ReferenceResolver(object):
     return self._doc_missing(string, hash_tag, link_text, manual_link_text,
                              relative_path_to_root)
 
-  def _doc_missing(self, string, unused_hash_tag, link_text,
+  def _doc_missing(self, string, unused_hash_tag, unused_link_text,
                    unused_manual_link_text, unused_relative_path_to_root):
     """Generate an error for unrecognized @{$...} references."""
-    self.add_error('Unknown Document "%s"' % string)
-    return link_text
+    raise TFDocsError('Unknown Document "%s"' % string)
 
   def _cc_link(self, string, link_text, unused_manual_link_text,
                relative_path_to_root):
@@ -416,8 +436,8 @@ class ReferenceResolver(object):
     elif string == 'tensorflow::ops::Const':
       ret = 'namespace/tensorflow/ops.md#const'
     else:
-      self.add_error('C++ reference not understood: "%s"' % string)
-      return 'TODO_C++:%s' % string
+      raise TFDocsError('C++ reference not understood: "%s"' % string)
+
     # relative_path_to_root gets you to api_docs/python, we go from there
     # to api_docs/cc, and then add ret.
     cc_relative_path = os.path.normpath(os.path.join(

@@ -1339,26 +1339,35 @@ BufferAssigner::MergeColocatedBufferSets(
   auto cannot_merge_buffer_sets = [&colocated_buffer_sets, &buffer_liveness,
                                    &buffer_size,
                                    &is_entry_parameter](int64 i, int64 j) {
-    for (auto& buffer_a : colocated_buffer_sets[i]) {
-      for (auto& buffer_b : colocated_buffer_sets[j]) {
-        // Do not merge if the set includes live outs or entry parameters.
-        if (buffer_liveness.MaybeLiveOut(*buffer_a) ||
-            is_entry_parameter(*buffer_a) ||
-            buffer_liveness.MaybeLiveOut(*buffer_b) ||
-            is_entry_parameter(*buffer_b)) {
-          return true;
-        }
-        // Do not merge if the buffers interfere with each other.
-        if (buffer_a->id() != buffer_b->id() &&
-            buffer_liveness.MayInterfere(*buffer_a, *buffer_b)) {
-          return true;
-        }
-        // Do not merge if the buffer sizes are different.
-        if (buffer_size(*buffer_a) != buffer_size(*buffer_b)) {
+    // Do not merge if one of the sets includes live outs or entry parameters.
+    for (int64 key : {i, j}) {
+      for (auto& buffer : colocated_buffer_sets[key]) {
+        if (buffer_liveness.MaybeLiveOut(*buffer) ||
+            is_entry_parameter(*buffer)) {
           return true;
         }
       }
     }
+
+    // Colocated sets satisfy the invariant that all buffers within a set have
+    // the same size. That means we need to check whether the size is the same
+    // between the two sets, but also that it's enough to look at just one
+    // buffer within each set.
+    if (buffer_size(**colocated_buffer_sets[i].begin()) !=
+        buffer_size(**colocated_buffer_sets[j].begin())) {
+      return true;
+    }
+
+    // Do not merge if some pair of buffers interferes with each other.
+    for (auto& buffer_a : colocated_buffer_sets[i]) {
+      for (auto& buffer_b : colocated_buffer_sets[j]) {
+        if (buffer_a->id() != buffer_b->id() &&
+            buffer_liveness.MayInterfere(*buffer_a, *buffer_b)) {
+          return true;
+        }
+      }
+    }
+
     return false;
   };
 

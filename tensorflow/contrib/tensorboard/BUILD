@@ -9,12 +9,10 @@ exports_files(["LICENSE"])
 
 # For platform specific build config
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
-    go_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -89,16 +87,4 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

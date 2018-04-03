@@ -86,7 +86,10 @@ tf_xla_py_test(
     # ArgMax needs CustomCall on CPU, which is not available in normal
     # (not precompiled) TensorFlow. The flag below excludes the CPU
     # backend.
-    disabled_backends = "cpu",
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -98,7 +101,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "binary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["binary_ops_test.py"],
     shard_count = 5,
     tags = [
@@ -315,6 +318,8 @@ tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
+    # Functions are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -370,6 +375,7 @@ tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
+    tags = ["no_oss"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -550,6 +556,8 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    # Stack ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -576,6 +584,8 @@ tf_xla_py_test(
     name = "tensor_array_ops_test",
     size = "small",
     srcs = ["tensor_array_ops_test.py"],
+    # TensorArray ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -825,18 +835,4 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

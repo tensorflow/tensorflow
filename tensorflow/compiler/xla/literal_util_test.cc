@@ -1702,7 +1702,7 @@ TEST_F(LiteralUtilTest, GetSparseElementAsString) {
   ASSERT_EQ(Literal::CreateSparse<half>(dimensions, indices,
                                         {half{1.0}, half{2.0}, half{3.0}})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(half{2.0}));
+            tensorflow::strings::StrCat(static_cast<float>(half{2.0})));
   ASSERT_EQ(
       Literal::CreateSparse<complex64>(
           dimensions, indices,

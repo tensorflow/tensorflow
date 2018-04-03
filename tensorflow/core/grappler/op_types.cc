@@ -72,11 +72,19 @@ bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
 bool IsComplexAbs(const NodeDef& node) { return node.op() == "ComplexAbs"; }
 
+bool IsConcat(const NodeDef& node) {
+  return node.op() == "Concat" || node.op() == "ConcatV2";
+}
+
 bool IsConcatOffset(const NodeDef& node) { return node.op() == "ConcatOffset"; }
 
 bool IsConstant(const NodeDef& node) { return node.op() == "Const"; }
 
 bool IsConj(const NodeDef& node) { return node.op() == "Conj"; }
+
+bool IsConjugateTranspose(const NodeDef& node) {
+  return node.op() == "ConjugateTranspose";
+}
 
 bool IsConv2D(const NodeDef& node) { return node.op() == "Conv2D"; }
 
@@ -144,6 +152,9 @@ bool IsHistogramSummary(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
+  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
+    return true;
+  }
   return op == "Identity" || op == "RefIdentity";
 }
 
@@ -201,6 +212,8 @@ bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
 
+bool IsNeg(const NodeDef& node) { return node.op() == "Neg"; }
+
 bool IsNoOp(const NodeDef& node) { return node.op() == "NoOp"; }
 
 bool IsNotEqual(const NodeDef& node) { return node.op() == "NotEqual"; }
@@ -209,6 +222,8 @@ bool IsNextIteration(const NodeDef& node) {
   const auto& op = node.op();
   return op == "NextIteration" || op == "RefNextIteration";
 }
+
+bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
 bool IsPad(const NodeDef& node) {
   const auto& op = node.op();
@@ -293,6 +308,8 @@ bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
 bool IsSplitV(const NodeDef& node) { return node.op() == "SplitV"; }
 
 bool IsSqrtGrad(const NodeDef& node) { return node.op() == "SqrtGrad"; }
+
+bool IsSquare(const NodeDef& node) { return node.op() == "Square"; }
 
 bool IsSquaredDifference(const NodeDef& node) {
   return node.op() == "SquaredDifference";
@@ -381,12 +398,17 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
       return false;
     }
   }
+  return !ModifiesInputsInPlace(node);
+}
+
+bool ModifiesInputsInPlace(const NodeDef& node) {
   // Some nodes do in-place updates on regular tensor inputs.
-  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace") ||
-      StringPiece(op_name).starts_with("Inplace")) {
-    return false;
+  string op_name = node.op();
+  std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
+  if (StringPiece(op_name).contains("inplace")) {
+    return true;
   }
-  return true;
+  return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
 }
 
 bool ModifiesFrameInfo(const NodeDef& node) {

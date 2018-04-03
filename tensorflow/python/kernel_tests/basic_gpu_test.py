@@ -33,7 +33,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
+from tensorflow.python.ops.gen_array_ops import broadcast_gradient_args
 from tensorflow.python.platform import test
 
 
@@ -157,7 +157,7 @@ class BroadcastSimpleTest(test.TestCase):
 
   def _GetGradientArgs(self, xs, ys):
     with self.test_session(use_gpu=True) as sess:
-      return sess.run(_broadcast_gradient_args(xs, ys))
+      return sess.run(broadcast_gradient_args(xs, ys))
 
   def testBroadcast(self):
     r0, r1 = self._GetGradientArgs([2, 3, 5], [1])

@@ -195,9 +195,9 @@ Status MaxPool3DGradHelper(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   MaxPool3DGrad::Attrs grad_attrs;
-  grad_attrs.DataFormat(data_format);
   auto dx = MaxPool3DGrad(scope, op.input(0), op.output(0), grad_inputs[0],
-                          ksize, strides, padding, grad_attrs);
+                          ksize, strides, padding,
+                          grad_attrs.DataFormat(data_format));
   grad_outputs->push_back(dx);
   return scope.status();
 }
@@ -216,10 +216,10 @@ Status AvgPoolGradHelper(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   internal::AvgPoolGrad::Attrs grad_attrs;
-  grad_attrs.DataFormat(data_format);
   auto dx =
       internal::AvgPoolGrad(scope, Shape(scope, op.input(0)), grad_inputs[0],
-                            ksize, strides, padding, grad_attrs);
+                            ksize, strides, padding,
+                            grad_attrs.DataFormat(data_format));
   grad_outputs->push_back(dx);
   return scope.status();
 }
@@ -238,9 +238,9 @@ Status AvgPool3DGradHelper(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   AvgPool3DGrad::Attrs grad_attrs;
-  grad_attrs.DataFormat(data_format);
   auto dx = AvgPool3DGrad(scope, Shape(scope, op.input(0)), grad_inputs[0],
-                          ksize, strides, padding, grad_attrs);
+                          ksize, strides, padding,
+                          grad_attrs.DataFormat(data_format));
   grad_outputs->push_back(dx);
   return scope.status();
 }

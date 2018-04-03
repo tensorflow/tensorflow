@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/compiler/xla/status.h"
@@ -498,6 +499,34 @@ auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
 template <typename C, typename Value>
 auto c_find(const C& c, Value&& value) -> decltype(std::begin(c)) {
   return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
+}
+
+template <typename Sequence>
+void c_reverse(Sequence& sequence) {
+  std::reverse(std::begin(sequence), std::end(sequence));
+}
+
+template <typename Sequence, typename T, typename BinaryOp>
+typename std::decay<T>::type c_accumulate(const Sequence& sequence, T&& init,
+                                          BinaryOp&& binary_op) {
+  return std::accumulate(std::begin(sequence), std::end(sequence),
+                         std::forward<T>(init),
+                         std::forward<BinaryOp>(binary_op));
+}
+
+template <typename C, typename Value>
+int64 FindIndex(const C& c, Value&& value) {
+  auto it = c_find(c, std::forward<Value>(value));
+  return std::distance(c.begin(), it);
+}
+
+// Returns true if `x` fits in 32-bits.
+template <typename T>
+bool IsInt32(T x) {
+  // Following conversion rules: "the value is unchanged if it can be
+  // represented in the destination type (and bit-field width); otherwise, the
+  // value is implementation-defined."
+  return static_cast<int32>(x) == x;
 }
 }  // namespace xla
 

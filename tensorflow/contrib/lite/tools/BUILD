@@ -46,7 +46,15 @@ tf_cc_binary(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 cc_library(
@@ -81,18 +89,6 @@ cc_library(
     srcs = ["mutable_op_resolver.cc"],
     hdrs = ["mutable_op_resolver.h"],
     deps = ["//tensorflow/contrib/lite:framework"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(

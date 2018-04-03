@@ -546,8 +546,8 @@ class RNN(Layer):
         raise ValueError('The initial state or constants of an RNN'
                          ' layer cannot be specified with a mix of'
                          ' Keras tensors and non-Keras tensors'
-                         '(a "Keras tensor" is a tensor that was'
-                         'returned by a Keras layer, or by `Input`)')
+                         ' (a "Keras tensor" is a tensor that was'
+                         ' returned by a Keras layer, or by `Input`)')
 
     if is_keras_tensor:
       # Compute the full input spec, including state and constants

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_PYTHON_API_H_
 #define TENSORFLOW_C_PYTHON_API_H_
 
+#include <string>
+
 #include "tensorflow/c/c_api.h"
 
 // These functions can be removed without notice. They exist to facilitate some
@@ -50,6 +52,11 @@ void SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
 // above mutation methods. This allows us to prevent modifications to nodes in
 // the graph after the session has been made aware of them.
 void ExtendSession(TF_Session* session, TF_Status* status);
+
+// Returns the serialized CppShapeInferenceResult::HandleData proto for
+// `output` if its a resource tensor, or otherwise returns the empty string.
+// TODO(b/74620627): remove when _USE_C_SHAPES is removed
+std::string ResourceHandleShapeAndType(TF_Graph* graph, TF_Output output);
 
 }  // namespace tensorflow
 

@@ -73,7 +73,7 @@ class TPUClusterResolver(ClusterResolver):
                zone=None,
                project=None,
                job_name='worker',
-               coordinator_name='coordinator',
+               coordinator_name=None,
                coordinator_address=None,
                credentials='default',
                service=None):

@@ -113,6 +113,33 @@ TEST_F(GraphPropertiesTest, StaticProperties) {
   }
 }
 
+TEST_F(GraphPropertiesTest, ClearProperties) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
+                                          cluster_->GetDeviceNames());
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  GraphProperties properties(item);
+  Status s = properties.InferStatically(true);
+  TF_CHECK_OK(s);
+
+  for (const auto& node : item.graph.node()) {
+    if (node.op() == "RandomStandardNormal") {
+      EXPECT_EQ(1, properties.GetInputProperties(node.name()).size());
+      const auto props = properties.GetOutputProperties(node.name());
+      properties.ClearOutputProperties(node.name());
+      const auto cleared_props = properties.GetOutputProperties(node.name());
+      EXPECT_TRUE(cleared_props.empty());
+    } else if (node.op() == "AddN") {
+      const auto in_props = properties.GetInputProperties(node.name());
+      EXPECT_EQ(1, in_props.size());
+      properties.ClearInputProperties(node.name());
+      const auto cleared_props = properties.GetInputProperties(node.name());
+      EXPECT_TRUE(cleared_props.empty());
+    }
+  }
+}
+
 TEST_F(GraphPropertiesTest, DynamicProperties) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
                                           cluster_->GetDeviceNames());
@@ -715,6 +742,8 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   EXPECT_EQ("float: [128,256]", PropToString(prop));
 }
 
+#if 0
+// Disabled for now since this doesnt' seem to work when functions are instantiated inside while loops. It's also unclear whether it's correct when the same function is instantiated twice.
 TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   // Test graph produced in python using:
   /*
@@ -748,6 +777,7 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   EXPECT_TRUE(shape.IsFullyDefined());
   EXPECT_FALSE(shape.unknown_rank());
 }
+#endif
 
 TEST_F(GraphPropertiesTest, SymbolicShapes) {
   // Build a simple graph with placeholders of unknown dimensions. These

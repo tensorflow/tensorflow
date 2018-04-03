@@ -34,6 +34,15 @@ limitations under the License.
 %unignore tensorflow::swig::IsSequence;
 %noexception tensorflow::swig::IsSequence;
 
+%unignore tensorflow::swig::IsNamedtuple;
+%noexception tensorflow::swig::IsNamedtuple;
+
+%unignore tensorflow::swig::SameNamedtuples;
+%noexception tensorflow::swig::SameNamedtuples;
+
+%unignore tensorflow::swig::AssertSameStructure;
+%noexception tensorflow::swig::AssertSameStructure;
+
 %unignore tensorflow::swig::Flatten;
 %noexception tensorflow::swig::Flatten;
 

@@ -83,7 +83,7 @@ data than you need, though. Instead, consider running the merged summary op
 every `n` steps.
 
 The code example below is a modification of the
-@{$layers$simple MNIST tutorial},
+[simple MNIST tutorial](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/mnist/mnist.py),
 in which we have added some summary ops, and run them every ten steps. If you
 run this and then launch `tensorboard --logdir=/tmp/tensorflow/mnist`, you'll be able
 to visualize statistics, such as how the weights or accuracy varied during

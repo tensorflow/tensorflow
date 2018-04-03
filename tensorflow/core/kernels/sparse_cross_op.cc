@@ -327,7 +327,7 @@ class SparseCrossOp : public OpKernel {
 
     typename CrossTraits<HASHED_OUTPUT, InternalType>::Updater updater(
         output_start_indices, indices_out, values_out);
-    auto do_work = [this, &columns, crosser, updater](int64 begin, int64 end) {
+    auto do_work = [&columns, crosser, updater](int64 begin, int64 end) {
       for (int b = begin; b < end; b++) {
         ProductIterator<InternalType> product_iterator(columns, b);
         int64 cross_count = 0;

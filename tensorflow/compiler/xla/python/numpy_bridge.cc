@@ -170,8 +170,7 @@ static string PyObjectCppStr(PyObject* o) {
   return ExtractStringAndDecref(s);
 }
 
-// Safely returns a repr of the given Python object o as a C++ string.
-static string PyObjectCppRepr(PyObject* o) {
+string PyObjectCppRepr(PyObject* o) {
   PyObject* r = PyObject_Repr(o);
   return ExtractStringAndDecref(r);
 }

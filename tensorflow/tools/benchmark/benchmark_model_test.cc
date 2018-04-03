@@ -64,8 +64,8 @@ TEST(BenchmarkModelTest, InitializeAndRun) {
   int64 time;
   int64 num_runs = 0;
   TF_ASSERT_OK(benchmark_model::TimeMultipleRuns(
-      0.0, 10, 0.0, {input}, {output_name}, session.get(), stats.get(), &time,
-      &num_runs));
+      0.0, 10, 0.0, {input}, {output_name}, {}, session.get(), stats.get(),
+      &time, &num_runs));
   ASSERT_EQ(num_runs, 10);
 }
 

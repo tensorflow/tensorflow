@@ -74,7 +74,7 @@ class GatherTreeOp : public OpKernel {
         ctx,
         step_ids_shape.dim_size(1) == max_sequence_lengths.shape().dim_size(0),
         errors::InvalidArgument("batch size dimensions step_ids.shape[1] and "
-                                "max_seqeuence_lengths.shape[0] must match.  "
+                                "max_sequence_lengths.shape[0] must match.  "
                                 "but shapes are: ",
                                 step_ids_shape.DebugString(), " and ",
                                 max_sequence_lengths.shape().DebugString()));

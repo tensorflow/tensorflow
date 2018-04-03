@@ -184,9 +184,7 @@ class BatchToSpaceOp : public XlaOpKernel {
  private:
   int block_size_;
 };
-REGISTER_XLA_OP(Name("BatchToSpace")
-                    .CompileTimeConstInput("crops")
-                    .CompileTimeConstInput("block_shape"),
+REGISTER_XLA_OP(Name("BatchToSpace").CompileTimeConstInput("crops"),
                 BatchToSpaceOp);
 
 }  // namespace

@@ -592,6 +592,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 // GPU definitions.
@@ -1090,11 +1091,17 @@ namespace functor {
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format); \
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
+DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T")
+                            .HostMemory("input_sizes"),
+                        Conv2DSlowBackpropInputOp<GPUDevice, double>);
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T")

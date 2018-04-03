@@ -50,15 +50,3 @@ tf_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
     data = [":invalid_op.so"],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

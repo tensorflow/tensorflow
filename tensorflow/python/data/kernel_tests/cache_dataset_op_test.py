@@ -297,6 +297,21 @@ class MemoryCacheDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(i2.get_next())
 
+  def testCacheTakeRepeat(self):
+    dataset = dataset_ops.Dataset.range(10).cache().take(5).repeat(2)
+    itr = dataset.make_one_shot_iterator()
+    n = itr.get_next()
+
+    expected_values = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]
+
+    with self.test_session() as sess:
+      for i, expected in enumerate(expected_values):
+        self.assertEqual(expected, sess.run(n),
+                         "Unexpected value at index %s" % i)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(itr.get_next())
+
 
 if __name__ == "__main__":
   test.main()

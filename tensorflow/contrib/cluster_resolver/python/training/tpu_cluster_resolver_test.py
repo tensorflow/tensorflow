@@ -117,7 +117,8 @@ class TPUClusterResolverTest(test.TestCase):
         zone=None,
         tpu=['test-tpu-1'],
         credentials=None,
-        service=self.mock_service_client(tpu_map=tpu_map))
+        service=self.mock_service_client(tpu_map=tpu_map),
+        coordinator_name='coordinator')
 
     actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
     expected_proto = """
@@ -170,6 +171,7 @@ class TPUClusterResolverTest(test.TestCase):
         project='test-project',
         zone='us-central1-c',
         tpu=['test-tpu-1'],
+        coordinator_name='coordinator',
         coordinator_address='10.128.1.5:10203',
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
@@ -196,6 +198,7 @@ class TPUClusterResolverTest(test.TestCase):
         project='test-project',
         zone='us-central1-c',
         tpu='test-tpu-1',
+        coordinator_name='coordinator',
         coordinator_address='10.128.1.5:10203',
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
@@ -239,7 +242,8 @@ class TPUClusterResolverTest(test.TestCase):
     tpu_cluster_resolver = TPUClusterResolver(
         tpu='test-tpu-1',
         credentials=None,
-        service=self.mock_service_client(tpu_map=tpu_map))
+        service=self.mock_service_client(tpu_map=tpu_map),
+        coordinator_name='coordinator')
 
     actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
     expected_proto = """

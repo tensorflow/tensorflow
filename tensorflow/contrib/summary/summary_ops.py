@@ -26,7 +26,6 @@ import time
 
 import six
 
-from tensorflow.contrib.summary import gen_summary_ops
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -35,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_summary_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
@@ -328,8 +328,12 @@ def summary_writer_function(name, tensor, function, family=None):
   Returns:
     The result of writing the summary.
   """
+  name_scope = ops.get_name_scope()
+  if name_scope:
+    # Add a slash to allow reentering the name scope.
+    name_scope += "/"
   def record():
-    with summary_op_util.summary_scope(
+    with ops.name_scope(name_scope), summary_op_util.summary_scope(
         name, family, values=[tensor]) as (tag, scope):
       with ops.control_dependencies([function(tag, scope)]):
         return constant_op.constant(True)
