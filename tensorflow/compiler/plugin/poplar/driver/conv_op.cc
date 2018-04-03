@@ -273,7 +273,6 @@ CreateConv2D(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   popconv::ConvOptions opts;
-  opts.cache = &res.convolution_cache;
   opts.pass = GetConvolutionPass(conv);
 
   popconv::ConvParams params;
@@ -289,7 +288,7 @@ CreateConv2D(poplar::Graph &graph,
   kernel = AddGroupsDimensionToWeights(params, kernel);
 
   auto out = popconv::convolution(graph, in, kernel, params, false, prog,
-                                  inst->name(), opts);
+                                  inst->name(), opts, &res.convolution_cache);
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -316,7 +315,6 @@ Create2DConvWithReverse(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   popconv::ConvOptions opts;
-  opts.cache = &res.convolution_cache;
   opts.pass = GetConvolutionPass(inst);
 
   popconv::ConvParams params;
@@ -332,7 +330,8 @@ Create2DConvWithReverse(poplar::Graph &graph,
   kernel = AddGroupsDimensionToWeights(params, kernel);
 
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
-                                            true, prog, conv->name(), opts);
+                                            true, prog, conv->name(), opts,
+                                            &res.convolution_cache);
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 

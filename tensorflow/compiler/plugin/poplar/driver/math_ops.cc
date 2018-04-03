@@ -305,10 +305,10 @@ CreateMatMulOp(poplar::Graph &graph,
   }
 
   poplin::MatMulOptions opts;
-  opts.cache = &res.dot_cache;
   opts.fullyConnectedPass = GetMatMulPass(inst);
 
-  out = poplin::matMul(graph, in0, in1, seq, inst->name());
+  out = poplin::matMul(graph, in0, in1, seq, inst->name(), opts,
+                       &res.dot_cache);
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 

@@ -171,11 +171,10 @@ AddConvolutionInput(poplar::Graph& graph,
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
-  popconv::ConvOptions opts;
-  opts.cache = &resources.convolution_cache;
-
   auto name = port::StrCat(inst->name(), "_input");
-  poplar::Tensor out = popconv::createInput(graph, params, name, opts);
+  popconv::ConvOptions opts;
+  poplar::Tensor out = popconv::createInput(graph, params, name, opts,
+                                            &resources.convolution_cache);
   return ShuffleConvolutionInputToTensorflow(conv_target, out);
 }
 
@@ -188,11 +187,10 @@ AddConvolutionWeights(poplar::Graph& graph,
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
-  popconv::ConvOptions opts;
-  opts.cache = &resources.convolution_cache;
-
   auto name = port::StrCat(inst->name(), "_weights");
-  poplar::Tensor out = popconv::createWeights(graph, params, name, opts);
+  popconv::ConvOptions opts;
+  poplar::Tensor out = popconv::createWeights(graph, params, name, opts,
+                                              &resources.convolution_cache);
 
   out = RemoveGroupsDimensionFromWeights(params, out);
 
@@ -206,12 +204,12 @@ AddLeftMatMul(poplar::Graph& graph,
               CompilerResources& resources) {
   poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
-  poplin::MatMulOptions opts;
-  opts.cache = &resources.dot_cache;
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
   auto name = port::StrCat(inst->name(), "_lhs");
-  return poplin::createMatMulInputLHS(graph,type,aShape,bShape, name, opts);
+  poplin::MatMulOptions opts;
+  return poplin::createMatMulInputLHS(graph,type,aShape,bShape, name, opts,
+                                      &resources.dot_cache);
 }
 
 static port::StatusOr<poplar::Tensor>
@@ -221,12 +219,12 @@ AddRightMatMul(poplar::Graph& graph,
               CompilerResources& resources) {
   poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
-  poplin::MatMulOptions opts;
-  opts.cache = &resources.dot_cache;
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
   auto name = port::StrCat(inst->name(), "_rhs");
-  return poplin::createMatMulInputRHS(graph,type,aShape,bShape, name, opts);
+  poplin::MatMulOptions opts;
+  return poplin::createMatMulInputRHS(graph,type,aShape,bShape, name, opts,
+                                      &resources.dot_cache);
 }
 
 
