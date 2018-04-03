@@ -160,6 +160,13 @@ class FunctionalOpsTest(test.TestCase):
                 values=constant_op.constant([0, 1, 2]),
                 dense_shape=[2, 2]))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testMapOverScalarErrors(self):
+    with self.assertRaisesRegexp(ValueError, "not scalars"):
+      functional_ops.map_fn(lambda x: x, [1, 2])
+    with self.assertRaisesRegexp(ValueError, "not a scalar"):
+      functional_ops.map_fn(lambda x: x, 1)
+
   def testMap_Scoped(self):
     with self.test_session() as sess:
 

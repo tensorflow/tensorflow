@@ -367,7 +367,15 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     dtype_flat = output_flatten(dtype)
 
     # Convert elems to tensor array. n may be known statically.
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    static_shape = elems_flat[0].shape
+    if static_shape.ndims is not None and static_shape.ndims < 1:
+      if len(elems_flat) == 1:
+        raise ValueError("elems must be a 1+ dimensional Tensor, not a scalar")
+      else:
+        raise ValueError(
+            "elements in elems must be 1+ dimensional Tensors, not scalars"
+        )
+    n = static_shape[0].value or array_ops.shape(elems_flat[0])[0]
 
     # TensorArrays are always flat
     elems_ta = [
