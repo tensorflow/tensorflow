@@ -112,11 +112,6 @@ from tensorflow.python.util.tf_export import tf_export
 newaxis = None
 tf_export("newaxis").export_constant(__name__, "newaxis")
 
-# TODO (yongtang): We export broadcast_to to
-# contrib.framework.broadcast_to for now. In the future
-# it could be exported directly as tf.broadcast_to.
-tf_export('contrib.framework.broadcast_to')(broadcast_to)
-
 # We override the 'slice' for the "slice" op, so we keep python's
 # existing 'slice' for later use in this module.
 _BaseSlice = slice

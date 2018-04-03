@@ -38,7 +38,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
 
   def testBroadcastToString(self):
     with self.test_session(use_gpu=True):
-      x = np.array(["1", "2", "3"], dtype=np.str)
+      x = np.array([b"1", b"2", b"3"])
       v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
       v_np = np.broadcast_to(x, [3, 3])
       self.assertAllEqual(v_tf.eval(), v_np)
