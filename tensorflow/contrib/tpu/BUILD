@@ -228,6 +228,7 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 tf_py_test(
