@@ -72,7 +72,7 @@ void PyInt64ListToVector(PyObject* py_int_seq, std::vector<int64_t>* vec) {
   int size = PySequence_Fast_GET_SIZE(py_int_seq);
   for (int i = 0; i < size; ++i) {
     PyObject* item = PySequence_Fast_GET_ITEM(py_int_seq, i);
-    vec->push_back(PyInt_AsLong(item));
+    vec->push_back(PyLong_AsLongLong(item));
   }
 }
 
