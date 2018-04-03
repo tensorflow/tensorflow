@@ -119,6 +119,7 @@ from tensorflow.python.framework.smart_cond import smart_constant_value
 from tensorflow.python.framework.tensor_spec import BoundedTensorSpec
 from tensorflow.python.framework.tensor_spec import TensorSpec
 from tensorflow.python.ops.array_ops import broadcast_to
+from tensorflow.python.ops.data_flow_ops import RecordInput
 from tensorflow.python.ops.init_ops import convolutional_delta_orthogonal
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_1d
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_2d
