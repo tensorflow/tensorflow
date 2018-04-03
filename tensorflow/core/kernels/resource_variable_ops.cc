@@ -250,9 +250,9 @@ class AssignVariableOp : public OpKernel {
 
     // Copying is unnecessary if we are the last user of the value
     // tensor, we can just adopt the input tensor's buffer instead.
-    std::unique_ptr<Tensor> input_alias =
-        context->forward_input(1, dtype_, value.shape(), DEVICE_MEMORY, attr);
-
+    std::unique_ptr<Tensor> input_alias = context->forward_input(
+        1, OpKernelContext::Params::kNoReservation /*output_index*/, dtype_,
+        value.shape(), DEVICE_MEMORY, attr);
     mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
     if (input_alias) {
@@ -370,11 +370,14 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
     // Copying is unnecessary if we are the last user of the value
     // tensor, we can just adopt the input tensor's buffer instead.
     // Note that Variant objects themselves always reside on host.
-    std::unique_ptr<Tensor> input_alias =
-        context->forward_input(1, DT_VARIANT, value.shape(), HOST_MEMORY, attr);
+    std::unique_ptr<Tensor> input_alias = context->forward_input(
+        1, OpKernelContext::Params::kNoReservation /*output_index*/, DT_VARIANT,
+        value.shape(), HOST_MEMORY, attr);
 
     mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
+    *variable->tensor() = Tensor(DT_VARIANT, value.shape());
+
     if (input_alias) {
       *variable->tensor() = *input_alias;
       return;
