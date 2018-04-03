@@ -61,6 +61,7 @@ py_test(
     name = "asserts_test",
     srcs = ["asserts_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":test_lib",
         "//tensorflow/python:client_testlib",
@@ -81,6 +82,7 @@ py_test(
     name = "builtin_functions_test",
     srcs = ["builtin_functions_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":test_lib",
         "//tensorflow/python:client_testlib",
@@ -92,6 +94,7 @@ py_test(
     size = "large",
     srcs = ["call_trees_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":test_lib",
         "//tensorflow/contrib/autograph/impl",

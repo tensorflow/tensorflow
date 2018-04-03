@@ -82,6 +82,7 @@ py_test(
     size = "small",
     srcs = ["plugins/trace/trace_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":trace",
         "//tensorflow/python:client_testlib",
