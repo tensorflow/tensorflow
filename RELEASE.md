@@ -9,6 +9,8 @@
 * Distributed Mutex / CriticalSection added to `tf.contrib.framework.CriticalSection`.
 * Better text processing with `tf.regex_replace`.
 * Easy, efficient sequence input with `tf.contrib.data.bucket_by_sequence_length`
+* Initial support for `tf.contrib.tensorrt` that enables native TensorRT in
+  TensorFlow.
 
 ## Bug Fixes and Other Changes
 * Accelerated Linear Algebra (XLA):
@@ -49,6 +51,15 @@
   * Constant folding pass is now deterministic.
   * Support `float16` `dtype` in `tf.linalg.*`.
   * Add `tf.estimator.export.TensorServingInputReceiver` that allows `tf.estimator.Estimator.export_savedmodel` to pass raw tensors to model functions.
+
+## Deprecations
+
+* TensorFlow 1.7 may be the last time we support Cuda versions below 8.0.
+  Starting with TensorFlow 1.8 release, 8.0 will be the minimum supported
+  version.
+* TensorFlow 1.7 may be the last time we support cuDNN versions below 6.0.
+  Starting with TensorFlow 1.8 release, 6.0 will be the minimum supported
+  version.
 
 ## Thanks to our Contributors
 
