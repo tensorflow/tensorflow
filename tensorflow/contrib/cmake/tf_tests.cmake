@@ -375,6 +375,7 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/user_ops/*_test.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/*_test.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/rnn/*_test.cc"
+    "${tensorflow_source_dir}/tensorflow/stream_executor/cuda/*_test.cc"
   )
 
   # exclude the ones we don't want
@@ -389,7 +390,7 @@ if (tensorflow_BUILD_CC_TESTS)
   )
 
   if (NOT tensorflow_ENABLE_GPU)
-    # exclude gpu tests if we are not buildig for gpu
+    # exclude gpu tests if we are not building for gpu
     set(tf_test_src_simple_exclude
       ${tf_test_src_simple_exclude}
       "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_allocator_retry_test.cc"
@@ -398,6 +399,7 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_event_mgr_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_stream_util_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/pool_allocator_test.cc"
+      "${tensorflow_source_dir}/tensorflow/stream_executor/cuda/cudnn_version_test.cc"
     )
   endif()
 
