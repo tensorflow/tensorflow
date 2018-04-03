@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -517,6 +518,7 @@ class BatchSequencesWithStatesTestWithCApi(BatchSequencesWithStatesTest):
     ops._USE_C_API = self._prev_value
 
 
+@test_util.with_c_api
 class PaddingTest(test.TestCase):
 
   def testPaddingInvalidLengths(self):
@@ -526,15 +528,10 @@ class PaddingTest(test.TestCase):
           "key_2": constant_op.constant([1.5, 2.5])  # length 2
       }
 
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            ValueError, "Fill dimensions must be >= 0"):
-          _, padded_seq = sqss._padding(sequences, 2)
-      else:
-        _, padded_seq = sqss._padding(sequences, 2)
-        with self.assertRaisesOpError(
-            ".*All sequence lengths must match, but received lengths.*"):
-          padded_seq["key_1"].eval()
+      _, padded_seq = sqss._padding(sequences, 2)
+      with self.assertRaisesOpError(
+          ".*All sequence lengths must match, but received lengths.*"):
+        padded_seq["key_1"].eval()
 
   def testPadding(self):
     with ops.Graph().as_default() as g, self.test_session(graph=g):
