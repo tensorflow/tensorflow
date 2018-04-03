@@ -638,9 +638,12 @@ def tf_cc_test(name,
       linkopts=select({
         clean_dep("//tensorflow:android"): [
             "-pie",
-          ],
+        ],
         clean_dep("//tensorflow:windows"): [],
         clean_dep("//tensorflow:windows_msvc"): [],
+        clean_dep("//tensorflow:darwin"): [
+            "-lm",
+        ],
         "//conditions:default": [
             "-lpthread",
             "-lm"
