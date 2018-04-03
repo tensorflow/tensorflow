@@ -2006,9 +2006,9 @@ void UseArraysExtraInfo(Model* model) {
       continue;
     }
     auto& array = model->GetArray(entry.name());
-    auto& minmax = array.GetOrCreateMinMax();
     if (entry.has_min() || entry.has_max()) {
       CHECK_EQ(entry.has_min(), entry.has_max());
+      auto& minmax = array.GetOrCreateMinMax();
       minmax.min = entry.min();
       minmax.max = entry.max();
     }
