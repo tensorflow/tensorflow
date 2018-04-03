@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 
+#include <string>
+
+#include "tensorflow/compiler/xla/util.h"
+
 namespace xla {
 
 HloProto MakeHloProto(const HloModule& module,
@@ -33,6 +37,37 @@ HloProto MakeHloProto(const HloModule& module) {
   HloProto proto;
   proto.mutable_hlo_module()->Swap(&proto_module);
   return proto;
+}
+
+StatusOr<std::vector<const Shape*>> EntryComputationParameterShapes(
+    const HloProto& hlo_proto) {
+  if (!hlo_proto.has_hlo_module()) {
+    return NotFound("HloProto missing HloModuleProto.");
+  }
+  if (!hlo_proto.hlo_module().has_program_shape()) {
+    return NotFound("HloProto missing program shape.");
+  }
+
+  std::vector<const Shape*> parameter_shapes;
+  const auto& program_shape = hlo_proto.hlo_module().program_shape();
+  for (const Shape& shape : program_shape.parameters()) {
+    parameter_shapes.push_back(&shape);
+  }
+  return parameter_shapes;
+}
+
+StatusOr<const Shape*> EntryComputationOutputShape(const HloProto& hlo_proto) {
+  if (!hlo_proto.has_hlo_module()) {
+    return NotFound("HloProto missing HloModuleProto.");
+  }
+  if (!hlo_proto.hlo_module().has_program_shape()) {
+    return NotFound("HloProto missing program shape.");
+  }
+  if (!hlo_proto.hlo_module().program_shape().has_result()) {
+    return NotFound("HloProto missing result in its program shape");
+  }
+
+  return &hlo_proto.hlo_module().program_shape().result();
 }
 
 }  // namespace xla

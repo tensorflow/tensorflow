@@ -248,28 +248,48 @@ void AllocateTransientArrays(Model* model,
        op_index++) {
     const auto& op = model->operators[op_index];
     // Allocate those arrays whose lifespan starts exactly here.
+    std::vector<string> arrays_to_allocate;
     for (const auto& input : op->inputs) {
       if (StartsAt(array_lifespans[input], op_index)) {
-        AllocateTransientArray(*model, input, &allocator,
-                               transient_data_alignment);
+        if (std::find(arrays_to_allocate.begin(), arrays_to_allocate.end(),
+                      input) == arrays_to_allocate.end()) {
+          arrays_to_allocate.push_back(input);
+        }
       }
     }
     for (const auto& output : op->outputs) {
       if (StartsAt(array_lifespans[output], op_index)) {
-        AllocateTransientArray(*model, output, &allocator,
-                               transient_data_alignment);
+        if (std::find(arrays_to_allocate.begin(), arrays_to_allocate.end(),
+                      output) == arrays_to_allocate.end()) {
+          arrays_to_allocate.push_back(output);
+        }
       }
     }
+    for (const string& array : arrays_to_allocate) {
+      AllocateTransientArray(*model, array, &allocator,
+                             transient_data_alignment);
+    }
+
     // Deallocate those arrays whose lifespan ends exactly here.
+    std::vector<string> arrays_to_deallocate;
     for (const auto& input : op->inputs) {
       if (EndsAt(array_lifespans[input], op_index)) {
-        DeallocateTransientArray(*model, input, &allocator);
+        if (std::find(arrays_to_deallocate.begin(), arrays_to_deallocate.end(),
+                      input) == arrays_to_deallocate.end()) {
+          arrays_to_deallocate.push_back(input);
+        }
       }
     }
     for (const auto& output : op->outputs) {
       if (EndsAt(array_lifespans[output], op_index)) {
-        DeallocateTransientArray(*model, output, &allocator);
+        if (std::find(arrays_to_deallocate.begin(), arrays_to_deallocate.end(),
+                      output) == arrays_to_deallocate.end()) {
+          arrays_to_deallocate.push_back(output);
+        }
       }
+    }
+    for (const string& array : arrays_to_deallocate) {
+      DeallocateTransientArray(*model, array, &allocator);
     }
   }
 

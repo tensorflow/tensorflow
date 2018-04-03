@@ -20,64 +20,66 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class GRULayerTest(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_return_sequences_GRU(self):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
     units = 2
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.GRU,
-          kwargs={'units': units,
-                  'return_sequences': True},
-          input_shape=(num_samples, timesteps, embedding_dim))
+    testing_utils.layer_test(
+        keras.layers.GRU,
+        kwargs={'units': units,
+                'return_sequences': True},
+        input_shape=(num_samples, timesteps, embedding_dim))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_dynamic_behavior_GRU(self):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
     units = 2
-    with self.test_session():
-      layer = keras.layers.GRU(units, input_shape=(None, embedding_dim))
-      model = keras.models.Sequential()
-      model.add(layer)
-      model.compile('sgd', 'mse')
-      x = np.random.random((num_samples, timesteps, embedding_dim))
-      y = np.random.random((num_samples, units))
-      model.train_on_batch(x, y)
+    layer = keras.layers.GRU(units, input_shape=(None, embedding_dim))
+    model = keras.models.Sequential()
+    model.add(layer)
+    model.compile(RMSPropOptimizer(0.01), 'mse')
+    x = np.random.random((num_samples, timesteps, embedding_dim))
+    y = np.random.random((num_samples, units))
+    model.train_on_batch(x, y)
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_dropout_GRU(self):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
     units = 2
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.GRU,
-          kwargs={'units': units,
-                  'dropout': 0.1,
-                  'recurrent_dropout': 0.1},
-          input_shape=(num_samples, timesteps, embedding_dim))
+    testing_utils.layer_test(
+        keras.layers.GRU,
+        kwargs={'units': units,
+                'dropout': 0.1,
+                'recurrent_dropout': 0.1},
+        input_shape=(num_samples, timesteps, embedding_dim))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_implementation_mode_GRU(self):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
     units = 2
-    with self.test_session():
-      for mode in [0, 1, 2]:
-        testing_utils.layer_test(
-            keras.layers.GRU,
-            kwargs={'units': units,
-                    'implementation': mode},
-            input_shape=(num_samples, timesteps, embedding_dim))
+    for mode in [0, 1, 2]:
+      testing_utils.layer_test(
+          keras.layers.GRU,
+          kwargs={'units': units,
+                  'implementation': mode},
+          input_shape=(num_samples, timesteps, embedding_dim))
 
   def test_statefulness_GRU(self):
     num_samples = 2

@@ -85,6 +85,10 @@ class HloModule {
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
+  // Performs a deep clone of the computation, by recursively cloning all
+  // the called computations as well.
+  HloComputation* DeepCloneComputation(HloComputation* computation);
+
   // Return a pointer to the entry computation of the module..
   const HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
@@ -99,7 +103,7 @@ class HloModule {
     return config_.mutable_entry_computation_layout();
   }
 
-  ComputationLayout entry_computation_layout() const {
+  const ComputationLayout& entry_computation_layout() const {
     return config_.entry_computation_layout();
   }
 
@@ -168,7 +172,7 @@ class HloModule {
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
   static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
-      const HloModuleProto& module);
+      const HloModuleProto& module, const DebugOptions& debug_options);
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.
@@ -182,11 +186,6 @@ class HloModule {
 
   // Returns a randomly generated uint64.
   uint64 RandomNew64() const;
-
-  // Returns the unique name for a computation in this module.
-  string GetUniqueCompuationName(const string& prefix) {
-    return computation_name_uniquer_.GetUniqueName(prefix);
-  }
 
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }

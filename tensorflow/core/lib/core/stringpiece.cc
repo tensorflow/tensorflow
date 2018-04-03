@@ -17,13 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <iostream>
-#include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
-
-size_t StringPieceHasher::operator()(StringPiece s) const {
-  return Hash64(s.data(), s.size());
-}
 
 std::ostream& operator<<(std::ostream& o, StringPiece piece) {
   o.write(piece.data(), piece.size());

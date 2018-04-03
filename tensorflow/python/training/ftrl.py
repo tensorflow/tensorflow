@@ -53,7 +53,7 @@ class FtrlOptimizer(optimizer.Optimizer):
       learning_rate: A float value or a constant float `Tensor`.
       learning_rate_power: A float value, must be less or equal to zero.
       initial_accumulator_value: The starting value for accumulators.
-        Only positive values are allowed.
+        Only zero or positive values are allowed.
       l1_regularization_strength: A float value, must be greater than or
         equal to zero.
       l2_regularization_strength: A float value, must be greater than or
@@ -84,9 +84,10 @@ class FtrlOptimizer(optimizer.Optimizer):
     """
     super(FtrlOptimizer, self).__init__(use_locking, name)
 
-    if initial_accumulator_value <= 0.0:
-      raise ValueError("initial_accumulator_value %f needs to be positive" %
-                       initial_accumulator_value)
+    if initial_accumulator_value < 0.0:
+      raise ValueError(
+          "initial_accumulator_value %f needs to be be positive or zero" %
+          initial_accumulator_value)
     if learning_rate_power > 0.0:
       raise ValueError("learning_rate_power %f needs to be negative or zero" %
                        learning_rate_power)

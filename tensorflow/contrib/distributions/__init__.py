@@ -24,6 +24,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops.autoregressive import *
+from tensorflow.contrib.distributions.python.ops.batch_reshape import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.cauchy import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
@@ -96,9 +97,10 @@ _allowed_symbols = [
     'ReparameterizationType',
     'Distribution',
     'Autoregressive',
-    'Binomial',
+    'BatchReshape',
     'Bernoulli',
     'Beta',
+    'Binomial',
     'BetaWithSoftplusConcentration',
     'Categorical',
     'Chi2',

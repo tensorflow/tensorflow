@@ -36,9 +36,8 @@ out the metrics values to stdout:
 
   # Choose the metrics to compute:
   names_to_values, names_to_updates = tf.contrib.metrics.aggregate_metric_map({
-      "accuracy": tf.contrib.metrics.streaming_accuracy(predictions, labels),
-      "mse": tf.contrib.metrics.streaming_mean_squared_error(
-        predictions, labels),
+      "accuracy": tf.metrics.accuracy(labels, predictions),
+      "mse": tf.metrics.mean_squared_error(labels, predictions),
   })
 
   # Define the summaries to write:
@@ -81,9 +80,8 @@ more summaries and call the evaluate_repeatedly method:
 
   # Choose the metrics to compute:
   names_to_values, names_to_updates = tf.contrib.metrics.aggregate_metric_map({
-      "accuracy": tf.contrib.metrics.streaming_accuracy(predictions, labels),
-      "mse": tf.contrib.metrics.streaming_mean_squared_error(
-          predictions, labels),
+      "accuracy": tf.metrics.accuracy(labels, predictions),
+      "mse": tf.metrics.mean_squared_error(labels, predictions),
   })
 
   # Define the summaries to write:

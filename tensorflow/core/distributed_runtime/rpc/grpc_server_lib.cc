@@ -106,7 +106,8 @@ GrpcServer::~GrpcServer() {
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func,
-    const WorkerCreationFunction& worker_func) {
+    const WorkerCreationFunction& worker_func,
+    const StatsPublisherFactory& stats_factory) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
@@ -218,7 +219,7 @@ Status GrpcServer::Init(
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
   master_env_.master_session_factory =
-      [config](
+      [config, stats_factory](
           SessionOptions options, const MasterEnv* env,
           std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
           std::unique_ptr<WorkerCacheInterface> worker_cache,
@@ -226,7 +227,7 @@ Status GrpcServer::Init(
         options.config.MergeFrom(config);
         return new MasterSession(options, env, std::move(remote_devs),
                                  std::move(worker_cache), std::move(device_set),
-                                 CreateNoOpStatsPublisher);
+                                 stats_factory);
       };
   master_env_.worker_cache_factory =
       [this](const WorkerCacheFactoryOptions& options,
@@ -239,6 +240,14 @@ Status GrpcServer::Init(
                         config.operation_timeout_in_ms());
 
   return Status::OK();
+}
+
+Status GrpcServer::Init(
+    ServiceInitFunction service_func,
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+    const WorkerCreationFunction& worker_func) {
+  return Init(std::move(service_func), rendezvous_mgr_func, worker_func,
+              CreateNoOpStatsPublisher);
 }
 
 Status GrpcServer::Init(

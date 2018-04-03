@@ -181,7 +181,7 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
     TypeError: if shape is incorrectly specified or unsupported.
   """
   ctx = context.context()
-  if not ctx.in_graph_mode():
+  if ctx.executing_eagerly():
     t = convert_to_eager_tensor(value, ctx, dtype)
     if shape is None:
       return t

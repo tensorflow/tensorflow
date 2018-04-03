@@ -191,9 +191,9 @@ class DeviceAssignment(object):
       logical_core: A tuple of three integers which represents a logical core.
     Returns:
       A sorted list of the replicas that are attached to that task and
-      loical_core.
+      logical_core.
     Raises:
-      ValueError: If no replica exisis in the task which contains the logical
+      ValueError: If no replica exists in the task which contains the logical
       core.
     """
     try:

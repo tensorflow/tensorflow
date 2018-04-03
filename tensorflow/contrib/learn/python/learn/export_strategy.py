@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""ExportStrategy class represents different flavors of model export."""
+"""ExportStrategy class represents different flavors of model export (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +26,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 
 __all__ = ['ExportStrategy']
 
@@ -29,6 +35,10 @@ class ExportStrategy(
     collections.namedtuple('ExportStrategy',
                            ['name', 'export_fn', 'strip_default_attrs'])):
   """A class representing a type of model export.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Typically constructed by a utility function specific to the exporter, such as
   `saved_model_export_utils.make_export_strategy()`.
@@ -56,6 +66,8 @@ class ExportStrategy(
         forward compatibility of the resulting `SavedModel`.
   """
 
+  @deprecated(None, 'Please switch to tf.estimator.train_and_evaluate, and use '
+              'tf.estimator.Exporter.')
   def __new__(cls, name, export_fn, strip_default_attrs=None):
     return super(ExportStrategy, cls).__new__(
         cls, name, export_fn, strip_default_attrs)

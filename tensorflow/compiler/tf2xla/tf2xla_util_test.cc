@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -33,7 +34,7 @@ namespace {
 
 void ExpectErrorContains(const Status& status, StringPiece str) {
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(StringPiece(status.error_message()).contains(str))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), str))
       << "expected error: " << status.error_message() << " to contain: " << str;
 }
 

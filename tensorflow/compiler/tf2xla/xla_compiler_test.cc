@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -257,10 +258,10 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
                             std::move(graph), args, &result);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
-      StringPiece(status.error_message()).contains("depends on a parameter"))
+      str_util::StrContains(status.error_message(), "depends on a parameter"))
       << status.error_message();
   EXPECT_TRUE(
-      StringPiece(status.error_message()).contains("[[Node: C = Reshape"))
+      str_util::StrContains(status.error_message(), "[[Node: C = Reshape"))
       << status.error_message();
 }
 
@@ -597,7 +598,8 @@ TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message()).contains("is not defined."))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
+                                    "is not defined."))
       << status.error_message();
 }
 
@@ -676,11 +678,12 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
 
   ASSERT_FALSE(status.ok());
   // Flib lookup failure.
-  EXPECT_TRUE(StringPiece(status.error_message()).contains("is not defined."))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
+                                    "is not defined."))
       << status.error_message();
   // Local flib lookup failure.
-  EXPECT_TRUE(
-      StringPiece(status.error_message()).contains("Attr T is not found"))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
+                                    "Attr T is not found"))
       << status.error_message();
 }
 

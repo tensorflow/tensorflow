@@ -28,14 +28,20 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
+// This method converts an already generated calibration graph which was used in
+// calibration runs to an inference graph
+tensorflow::Status ConvertCalibGraphToInferGraph(
+    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* new_graph_def);
+
 // max_batch_size: maximum batch size which can be used for inference for
 //                 optimization targets inference run with max batch size.
-// max_workspace_size_bytes: The upper bound of memory allowence for
+// max_workspace_size_bytes: The upper bound of memory allowance for
 //                 engine building.
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
-    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def);
+    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
+    int precision_mode, int minimum_segment_size);
 
 }  // namespace convert
 }  // namespace tensorrt

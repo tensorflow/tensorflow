@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -60,6 +61,9 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
       // Therefore, we return X.
       return;
     }
+
+    // This algorithm relies on denormals, so switch them back on locally.
+    port::ScopedDontFlushDenormal dont_flush_denormals;
 
     Eigen::SelfAdjointEigenSolver<Matrix> eig(
         inputs[0],

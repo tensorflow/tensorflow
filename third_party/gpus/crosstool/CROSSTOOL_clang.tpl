@@ -49,6 +49,7 @@ toolchain {
     flag_set {
       action: "c++-link-executable"
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         flag: "-lstdc++"
       }
@@ -75,6 +76,7 @@ toolchain {
     name: "alwayslink"
     flag_set {
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       action: "c++-link-executable"
       flag_group {
         flag: "-Wl,-no-as-needed"
@@ -116,6 +118,7 @@ toolchain {
     }
     flag_set {
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         flag: "-Wl,-z,relro,-z,now"
       }
@@ -161,6 +164,7 @@ toolchain {
     flag_set {
       action: "c++-link-executable"
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         # Stamp the binary with a unique identifier.
         flag: "-Wl,--build-id=md5"
@@ -176,6 +180,7 @@ toolchain {
       action: "c++-compile"
       action: "c++-link-executable"
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         flag:"-no-canonical-prefixes"
       }
@@ -199,6 +204,7 @@ toolchain {
     flag_set {
       action: "c++-link-executable"
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         flag: "-B/usr/bin/"
       }
@@ -246,6 +252,7 @@ toolchain {
     }
     flag_set {
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       action: "c++-link-executable"
       flag_group {
         flag: "-Wl,--gc-sections"

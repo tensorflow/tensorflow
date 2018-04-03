@@ -52,6 +52,7 @@ tf_cuda_cc_test(
         "manual",
         "multi_gpu",
         "no_oss",
+        "noguitar",
         "notap",
     ],
     deps =
@@ -136,18 +137,7 @@ cuda_py_test(
         "manual",
         "multi_gpu",
         "no_oss",
+        "noguitar",
         "notap",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

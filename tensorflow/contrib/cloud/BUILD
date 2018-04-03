@@ -14,18 +14,6 @@ load(
     "tf_py_test",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_gen_op_libs(
     op_lib_names = ["bigquery_reader_ops"],
     deps = [
