@@ -401,43 +401,56 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
   OpLevelCostEstimator estimator_;
 };
 
-// TODO(76227186): re-enable with output size check & test
-/*
 TEST_F(OpLevelCostEstimatorTest, TestGatherCosts) {
-OpContext op_context;
-SetCpuDevice(&op_context.op_info);
-op_context.op_info.set_op("Gather");
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Gather");
 
-// Huge first input shouldn't affect Gather execution and memory costs.
-DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
-DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
-DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
+  // Huge first input shouldn't affect Gather execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
 
-auto cost = estimator_.PredictCosts(op_context);
-EXPECT_EQ(Costs::Duration(130), cost.memory_time);
-EXPECT_EQ(Costs::Duration(16), cost.compute_time);
-EXPECT_EQ(Costs::Duration(146), cost.execution_time);
-EXPECT_FALSE(cost.inaccurate);
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(130), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(16), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(146), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, TestGatherCostsWithoutOutput) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Gather");
+
+  // Huge first input shouldn't affect Gather execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
+
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(0), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(0), cost.execution_time);
+  EXPECT_TRUE(cost.inaccurate);
 }
 
 TEST_F(OpLevelCostEstimatorTest, TestSliceCosts) {
-OpContext op_context;
-SetCpuDevice(&op_context.op_info);
-op_context.op_info.set_op("Slice");
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Slice");
 
-// Huge first input shouldn't affect Slice execution and memory costs.
-DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
-DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
-DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
-DescribeArbitraryRankOutput({10, 10}, DT_FLOAT, &op_context.op_info);
+  // Huge first input shouldn't affect Slice execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankOutput({10, 10}, DT_FLOAT, &op_context.op_info);
 
-auto cost = estimator_.PredictCosts(op_context);
-EXPECT_EQ(Costs::Duration(81), cost.memory_time);
-EXPECT_EQ(Costs::Duration(10), cost.compute_time);
-EXPECT_EQ(Costs::Duration(91), cost.execution_time);
-EXPECT_FALSE(cost.inaccurate);
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(81), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(10), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(91), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
 }
-*/
 
 TEST_F(OpLevelCostEstimatorTest, BiasAddExecutionTime) {
   auto cost = PredictCosts(DescribeBiasAdd(1000, 10));

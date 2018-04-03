@@ -202,12 +202,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
 
-      // TODO(76227186): re-enable with output size check & test
-      /*
       {kGather, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
       {kGatherV2, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
       {kSlice, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
-      */
 
       {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
@@ -1057,6 +1054,13 @@ Costs OpLevelCostEstimator::PredictGatherOrSlice(
   // Gather & Slice ops can have a very large input, but only access a small
   // part of it. For these op the size of the output determines the memory cost.
   const auto& op_info = op_context.op_info;
+
+  const int inputs_needed = op_info.op() == "Slice" ? 3 : 2;
+  if (op_info.outputs_size() == 0 || op_info.inputs_size() < inputs_needed) {
+    Costs costs = Costs::ZeroCosts();
+    costs.inaccurate = true;
+    return costs;
+  }
 
   bool unknown_shapes = false;
 
