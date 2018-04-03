@@ -43,7 +43,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
   an `M x N` matrix.
 
-  `LinearOperatorLowRankUpdate` represents `A = L + U D V^H`, where
+  `LinearOperatorLowRankUpdate` represents `\\(A = L + U D V^H\\)`, where
 
   ```
   L, is a LinearOperator representing [batch] M x N matrices
@@ -141,7 +141,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
                name="LinearOperatorLowRankUpdate"):
     """Initialize a `LinearOperatorLowRankUpdate`.
 
-    This creates a `LinearOperator` of the form `A = L + U D V^H`, with
+    This creates a `LinearOperator` of the form `\\(A = L + U D V^H\\)`, with
     `L` a `LinearOperator`, `U, V` both [batch] matrices, and `D` a [batch]
     diagonal matrix.
 
@@ -315,32 +315,32 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
   @property
   def u(self):
-    """If this operator is `A = L + U D V^H`, this is the `U`."""
+    """If this operator is `\\(A = L + U D V^H\\)`, this is the `U`."""
     return self._u
 
   @property
   def v(self):
-    """If this operator is `A = L + U D V^H`, this is the `V`."""
+    """If this operator is `\\(A = L + U D V^H\\)`, this is the `V`."""
     return self._v
 
   @property
   def is_diag_update_positive(self):
-    """If this operator is `A = L + U D V^H`, this hints `D > 0` elementwise."""
+    """If this operator is `\\(A = L + U D V^H\\)`, this hints `D > 0` elementwise."""
     return self._is_diag_update_positive
 
   @property
   def diag_update(self):
-    """If this operator is `A = L + U D V^H`, this is the diagonal of `D`."""
+    """If this operator is `\\(A = L + U D V^H\\)`, this is the diagonal of `D`."""
     return self._diag_update
 
   @property
   def diag_operator(self):
-    """If this operator is `A = L + U D V^H`, this is `D`."""
+    """If this operator is `\\(A = L + U D V^H\\)`, this is `D`."""
     return self._diag_operator
 
   @property
   def base_operator(self):
-    """If this operator is `A = L + U D V^H`, this is the `L`."""
+    """If this operator is `\\(A = L + U D V^H\\)`, this is the `L`."""
     return self._base_operator
 
   def _shape(self):
