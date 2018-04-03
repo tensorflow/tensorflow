@@ -250,6 +250,7 @@ XLA_TEST_P(SliceR1LargeTest, DoIt_S64) { Run<int64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
 
+
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
 // clang-format off
