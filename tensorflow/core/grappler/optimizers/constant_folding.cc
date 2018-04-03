@@ -1542,6 +1542,16 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
     NodeDef* node = optimized_graph->mutable_node(i);
 
+    if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
+      ReplaceOperationWithIdentity(1, node, optimized_graph);
+      continue;
+    }
+
+    if (IsSplitV(*node) && node->attr().at("num_split").i() == 1) {
+      ReplaceOperationWithIdentity(0, node, optimized_graph);
+      continue;
+    }
+
     // Remove Shuffle or Reverse op over scalar values.
     if (use_shape_info &&
         !properties->GetInputProperties(node->name()).empty() &&

@@ -140,6 +140,7 @@ bool IsTile(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsTruncateDiv(const NodeDef& node);
 bool IsTruncateMod(const NodeDef& node);
+bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 

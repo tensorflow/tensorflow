@@ -1335,6 +1335,82 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   EXPECT_EQ(2, out_idx.flat<int32>()(0));
 }
 
+TEST_F(ConstantFoldingTest, SplitRemoval) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 =
+      ops::Variable(scope.WithOpName("in1"), TensorShape({2}), DT_FLOAT);
+  Output in2 =
+      ops::Variable(scope.WithOpName("in2"), TensorShape({4}), DT_FLOAT);
+  auto split_dim = ops::Const(scope.WithOpName("split_dim"), {0}, {});
+  ops::Split s1(scope.WithOpName("s1"), split_dim, in1, 1);
+  ops::Split s2(scope.WithOpName("s2"), split_dim, in2, 2);
+
+  ops::Add out(scope.WithOpName("out"), s1[0], s2[0]);
+
+  GrapplerItem item;
+  item.fetch = {"out"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("split_dim", "Const", {}, {}, &want);
+  AddNode("s1", "Identity", {"in1", AsControlDependency("split_dim")}, {},
+          &want);
+  AddNode("s2", "Split", {"in2", "split_dim"}, {}, &want);
+  AddNode("out", "Add", {"s1", "s2"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, SplitVRemoval) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 =
+      ops::Variable(scope.WithOpName("in1"), TensorShape({2}), DT_FLOAT);
+  Output in2 =
+      ops::Variable(scope.WithOpName("in2"), TensorShape({5}), DT_FLOAT);
+  auto split_dim = ops::Const(scope.WithOpName("split_dim"), {0}, {});
+  auto size_splits1 = ops::Const(scope.WithOpName("size_splits1"), {2}, {1});
+  auto size_splits2 = ops::Const(scope.WithOpName("size_splits2"), {2, 3}, {2});
+  ops::SplitV s1(scope.WithOpName("s1"), in1, size_splits1, split_dim, 1);
+  ops::SplitV s2(scope.WithOpName("s2"), in2, size_splits2, split_dim, 2);
+
+  LOG(INFO) << s1.output.size();
+  LOG(INFO) << s2.output.size();
+  ops::Add out(scope.WithOpName("out"), s1[0], s2[0]);
+
+  GrapplerItem item;
+  item.fetch = {"out"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("split_dim", "Const", {}, {}, &want);
+  AddNode("size_splits1", "Const", {}, {}, &want);
+  AddNode("size_splits2", "Const", {}, {}, &want);
+  AddNode("s1", "Identity",
+          {"in1", AsControlDependency("size_splits1"),
+           AsControlDependency("split_dim")},
+          {}, &want);
+  AddNode("s2", "SplitV", {"in2", "size_splits2", "split_dim"}, {}, &want);
+  AddNode("out", "Add", {"s1", "s2"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
 TEST_F(ConstantFoldingTest, ShuffleReverseOnScalarRemoval) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
