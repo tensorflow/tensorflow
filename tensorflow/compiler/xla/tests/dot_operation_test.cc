@@ -55,7 +55,7 @@ using TypesF16F32F64CF64 =
 #endif
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
-TEST_F(DotOperationTest, DotOfInputTupleElem) {
+XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
   ComputationBuilder builder(client_, TestName());
 
   ComputationDataHandle param;
