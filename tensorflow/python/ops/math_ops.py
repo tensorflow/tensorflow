@@ -71,7 +71,6 @@ See the @{$python/math_ops} guide.
 @@igammac
 @@zeta
 @@polygamma
-@@polyval
 @@betainc
 @@rint
 @@diag
