@@ -118,6 +118,6 @@ from tensorflow.python.framework.tensor_spec import TensorSpec
 from tensorflow.python.ops.init_ops import convolutional_delta_orthogonal
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['nest']
+_allowed_symbols = ['nest', 'broadcast_to']
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
