@@ -30,11 +30,11 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True):
 
 def get_compute_sets_from_report(report):
   lines = report.split('\n')
-  return [x for x in lines if re.search('(\d+ execution.?)', x)]
+  return [x for x in lines if re.search('  Layer #\d+:', x)]
 
 def check_all_compute_sets_in_list(cs_list, whitelist):
   for cs in cs_list:
-    if len([x for x in whitelist if cs.startswith(x)]) == 0:
+    if len([x for x in whitelist if re.match("  Layer #\d+: "+x, cs)]) == 0:
       return False
   return True
 

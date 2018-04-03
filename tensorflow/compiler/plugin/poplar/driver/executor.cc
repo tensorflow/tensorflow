@@ -571,12 +571,12 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
       try {
         if (profile_execution_ && dump_report_) {
 
-          poplar::Engine::ReportOptions opts;
-          opts.doLayerWiseProfile = true;
-          // TODO enable this using flags? opts.showVariableStorage = true;
+          poplar::OptionFlags opts;
+          opts.set("doLayerWiseBreakdown", "true");
 
           std::stringstream stream;
-          engine->reportDynamic(stream, opts);
+          auto rep = engine->getExecutionReport(opts);
+          rep.printSummary(stream);
           AddEventRecord(tensorflow::IpuTraceEvent::EXECUTE,
                          stream.str(), 0);
         }

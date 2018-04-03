@@ -331,11 +331,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
 
     if (poplarExecutor->CompilerReportingEnabled()) {
-      poplar::Engine::ReportOptions opts;
-      opts.doLayerWiseProfile = true;
+      poplar::OptionFlags opts;
 
       std::stringstream stream;
-      engine->reportStatic(stream, opts);
+      auto rep = engine->getGraphReport(opts);
+      rep.printSummary(stream);
+
       poplarExecutor->AddCompilerReport(stream.str());
     }
   }
