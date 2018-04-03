@@ -138,7 +138,6 @@ genrule(
         "@zlib_archive//:zlib.h",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-        "@mkl//:LICENSE",
     ]),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
@@ -176,7 +175,6 @@ genrule(
         "@zlib_archive//:zlib.h",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-        "@mkl//:LICENSE",
     ]),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",

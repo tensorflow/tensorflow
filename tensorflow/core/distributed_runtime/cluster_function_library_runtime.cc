@@ -121,6 +121,8 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle) {
+  VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
+          << " (this: " << this << ")";
   WorkerInterface* wi =
       worker_session_->worker_cache->CreateWorker(options.target);
 
@@ -154,6 +156,9 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   *handle = function_data_.size();
   function_data_.push_back(FunctionData(resp.graph_handle(), options.target, wi,
                                         send_keys, recv_keys));
+  VLOG(1) << "CFLR::Instantiate: [Success] " << function_name << " on "
+          << options.target << " (this: " << this << ")"
+          << " with handle: " << *handle;
   return Status::OK();
 }
 

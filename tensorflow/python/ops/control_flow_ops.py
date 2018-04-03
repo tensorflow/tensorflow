@@ -196,7 +196,7 @@ def _Identity(data, name=None):
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
-      return gen_array_ops._ref_identity(data, name=name)
+      return gen_array_ops.ref_identity(data, name=name)
     else:
       return array_ops.identity(data, name=name)
   else:
@@ -264,10 +264,10 @@ def _Enter(data,
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
-      result = gen_control_flow_ops._ref_enter(
+      result = gen_control_flow_ops.ref_enter(
           data, frame_name, is_constant, parallel_iterations, name=name)
     else:
-      result = gen_control_flow_ops._enter(
+      result = gen_control_flow_ops.enter(
           data, frame_name, is_constant, parallel_iterations, name=name)
     if use_input_shape:
       result.set_shape(data.get_shape())
@@ -282,7 +282,7 @@ def _Enter(data,
         parallel_iterations=parallel_iterations,
         use_input_shape=use_input_shape,
         name=name)
-    indices = gen_control_flow_ops._enter(
+    indices = gen_control_flow_ops.enter(
         data.indices,
         frame_name,
         is_constant,
@@ -293,7 +293,7 @@ def _Enter(data,
     if isinstance(data, ops.IndexedSlices):
       dense_shape = data.dense_shape
       if dense_shape is not None:
-        dense_shape = gen_control_flow_ops._enter(
+        dense_shape = gen_control_flow_ops.enter(
             dense_shape,
             frame_name,
             is_constant,
@@ -303,7 +303,7 @@ def _Enter(data,
           dense_shape.set_shape(data.dense_shape.get_shape())
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = gen_control_flow_ops._enter(
+      dense_shape = gen_control_flow_ops.enter(
           data.dense_shape,
           frame_name,
           is_constant,
@@ -833,6 +833,9 @@ class GradLoopState(object):
     if outer_grad_state:
       outer_forward_ctxt = outer_grad_state.forward_context
     else:
+      if not hasattr(forward_ctxt, 'outer_context'):
+        raise ValueError("Failed to call gradients on a while loop without"
+                         "properly serializing graph via MetaGraphDef")
       outer_forward_ctxt = forward_ctxt.outer_context
 
     # Add the forward loop counter.
@@ -1467,7 +1470,10 @@ def ZerosLikeOutsideLoop(op, index):
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
-      return array_ops.zeros(zeros_shape, dtype=val.dtype)
+      # Ensure ops created within array_ops.zeros are dominated by switch in
+      # cond context.
+      with ops.control_dependencies([switch_val]):
+        return array_ops.zeros(zeros_shape, dtype=val.dtype)
     else:
       return array_ops.zeros_like(val, optimize=False)
 
@@ -3484,15 +3490,17 @@ def _case_create_default_action(predicates, actions):
   return default_action, other_predicates, other_actions
 
 
-def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name):
+def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
+                                       allow_python_preds):
   """Verifies input arguments for the case function.
 
   Args:
-    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor and a
-                   callable which returns a list of tensors.
+    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor,
+                   and a callable which returns a list of tensors.
     exclusive: True iff at most one predicate is allowed to evaluate to `True`.
     name: A name for the case operation.
-
+    allow_python_preds: if true, pred_fn_pairs may contain Python bools in
+                        addition to boolean Tensors
   Raises:
     TypeError: If `pred_fn_pairs` is not a list/dictionary.
     TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
@@ -3517,12 +3525,67 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name):
     if not isinstance(pred_fn_pair, _basetuple) or len(pred_fn_pair) != 2:
       raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")
     pred, fn = pred_fn_pair
-    if pred.dtype != dtypes.bool:
-      raise TypeError("pred must be of type bool: %s", pred.name)
+
+    if isinstance(pred, ops.Tensor):
+      if pred.dtype != dtypes.bool:
+        raise TypeError("pred must be Tensor of type bool: %s" % pred.name)
+    elif not allow_python_preds:
+      raise TypeError("pred must be a Tensor, got: %s" % pred)
+    elif not isinstance(pred, bool):
+      raise TypeError("pred must be a Tensor or bool, got: %s" % pred)
+
     if not callable(fn):
       raise TypeError("fn for pred %s must be callable." % pred.name)
+
   predicates, actions = zip(*pred_fn_pairs)
   return predicates, actions
+
+
+def _case_helper(cond_fn, pred_fn_pairs, default,
+                 exclusive, name, allow_python_preds=False, **cond_kwargs):
+  """Implementation of case that allows for different cond functions.
+
+  Args:
+    cond_fn: method that has signature and semantics of `cond` above.
+    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor, and a
+                   callable which returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
+    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
+    name: A name for this operation (optional).
+    allow_python_preds: if true, pred_fn_pairs may contain Python bools in
+                        addition to boolean Tensors
+    **cond_kwargs: keyword arguments that will be passed to `cond_fn`.
+
+  Returns:
+    The tensors returned by the first pair whose predicate evaluated to True, or
+    those returned by `default` if none does.
+
+  Raises:
+    TypeError: If `pred_fn_pairs` is not a list/dictionary.
+    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+  """
+  predicates, actions = _case_verify_and_canonicalize_args(
+      pred_fn_pairs, exclusive, name, allow_python_preds)
+  with ops.name_scope(name, "case", [predicates]):
+    if default is None:
+      default, predicates, actions = _case_create_default_action(
+          predicates, actions)
+    fn = default
+    # To eval conditions in direct order we create nested conditions in reverse:
+    #   cond_fn(c[0], true_fn=.., false_fn=cond_fn(c[1], ...))
+    for predicate, action in reversed(list(zip(predicates, actions))):
+      fn = functools.partial(
+          cond_fn, predicate, true_fn=action, false_fn=fn, **cond_kwargs)
+    if exclusive:
+      with ops.control_dependencies([
+          _assert_at_most_n_true(
+              predicates, n=1, msg="Input error: exclusive=True")
+      ]):
+        return fn()
+    else:
+      return fn()
 
 
 @tf_export("case")
@@ -3615,26 +3678,8 @@ def case(pred_fn_pairs,
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
   """
-  predicates, actions = _case_verify_and_canonicalize_args(
-      pred_fn_pairs, exclusive, name)
-  with ops.name_scope(name, "case", [predicates]):
-    if default is None:
-      default, predicates, actions = _case_create_default_action(
-          predicates, actions)
-    fn = default
-    # To eval conditions in direct order we create nested conditions in reverse:
-    #   cond(c[0], true_fn=.., false_fn=cond(c[1], ...))
-    for predicate, action in reversed(list(zip(predicates, actions))):
-      fn = functools.partial(
-          cond, predicate, true_fn=action, false_fn=fn, strict=strict)
-    if exclusive:
-      with ops.control_dependencies([
-          _assert_at_most_n_true(
-              predicates, n=1, msg="Input error: exclusive=True")
-      ]):
-        return fn()
-    else:
-      return fn()
+  return _case_helper(cond, pred_fn_pairs, default, exclusive, name,
+                      allow_python_preds=False, strict=strict)
 
 
 class XLAControlFlowContext(ControlFlowContext):

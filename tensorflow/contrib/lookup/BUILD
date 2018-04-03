@@ -46,17 +46,4 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     grpc_enabled = True,
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

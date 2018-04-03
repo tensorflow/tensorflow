@@ -6,18 +6,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "c_srcs",
     data = glob([
         "**/*.cc",
@@ -259,6 +247,7 @@ cc_library(
     hdrs = ["grpc_serialization_traits.h"],
     deps = [
         "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc_unsecure",
     ],
 )
 

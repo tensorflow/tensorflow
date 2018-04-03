@@ -49,7 +49,10 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
          type == OperatorType::kSpaceToDepth ||
-         type == OperatorType::kDepthToSpace || type == OperatorType::kLstmCell;
+         type == OperatorType::kStridedSlice ||
+         type == OperatorType::kDepthToSpace ||
+         type == OperatorType::kLstmCell || type == OperatorType::kGather ||
+         type == OperatorType::kTranspose || type == OperatorType::kMean;
 }
 
 template <ArrayDataType A>
@@ -62,8 +65,6 @@ std::unique_ptr<GenericBuffer> QuantizeBuffer(
       static_cast<const Buffer<ArrayDataType::kFloat>&>(buffer);
   auto* quantized_buffer = new Buffer<A>;
   quantized_buffer->data.resize(float_buffer.data.size());
-  const auto qmin = static_cast<int32>(std::numeric_limits<DataType<A>>::min());
-  const auto qmax = static_cast<int32>(std::numeric_limits<DataType<A>>::max());
   for (std::size_t i = 0; i < float_buffer.data.size(); i++) {
     const float src_val = float_buffer.data[i];
     double scaled_val;  // Astonishingly, using 'float' degrades accuracy just
@@ -75,9 +76,8 @@ std::unique_ptr<GenericBuffer> QuantizeBuffer(
     } else {
       scaled_val = quantization_params.zero_point + inverse_scale * src_val;
     }
-    const auto rounded_val = static_cast<int32>(std::round(scaled_val));
-    const auto clamped_val = std::min(qmax, std::max(qmin, rounded_val));
-    quantized_buffer->data[i] = static_cast<DataType<A>>(clamped_val);
+    quantized_buffer->data[i] =
+        tflite::SafeCast<DataType<A>>(std::round(scaled_val));
   }
   return std::unique_ptr<GenericBuffer>(quantized_buffer);
 }
@@ -510,9 +510,11 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
   //
   // Let us just guard this assumption by the following assertion:
   for (const auto& input : op.inputs) {
-    if (IsInputArray(*model, input)) {
-      const auto& input_array = model->GetArray(input);
-      CHECK(input_array.quantization_params);
+    const auto& input_array = model->GetArray(input);
+    if (IsInputArray(*model, input) &&
+        input_array.data_type == ArrayDataType::kFloat) {
+      CHECK(input_array.quantization_params)
+          << "Input array " << input << " is missing quantization_params";
     }
   }
   if (!SupportsQuantization(op)) {

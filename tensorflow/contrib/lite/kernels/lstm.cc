@@ -213,9 +213,9 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   // present.
   // 2) If projection weight is present, then projection bias is optional.
   // TODO(ghodrat): make sure this is correct.
-  const bool projecton_tensors_consistent =
+  const bool projection_tensors_consistent =
       ((projection_weights != nullptr) || (projection_bias == nullptr));
-  TF_LITE_ENSURE(context, projecton_tensors_consistent == true);
+  TF_LITE_ENSURE(context, projection_tensors_consistent == true);
 
   return kTfLiteOk;
 }
@@ -357,7 +357,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Since we have already checked that weights are all there or none, we can
-  // check the existense of only one to the get the condition.
+  // check the existence of only one to get the condition.
   const bool use_cifg = (input_to_input_weights == nullptr);
   const bool use_peephole = (cell_to_output_weights != nullptr);
 

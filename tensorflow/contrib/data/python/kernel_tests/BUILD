@@ -168,10 +168,10 @@ py_test(
     srcs = ["interleave_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_cuda_on_cpu_tap",
+        "manual",
         "no_oss",
         "no_pip",
-        "nomsan",
+        "notap",
     ],
     deps = [
         ":dataset_serialization_test",
@@ -477,10 +477,6 @@ py_test(
     size = "small",
     srcs = ["prefetching_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "no_oss",  # b/68785503
-    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/core:protos_all_py",
@@ -511,18 +507,4 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

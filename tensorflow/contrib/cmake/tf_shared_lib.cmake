@@ -100,8 +100,7 @@ if(WIN32)
 endif(WIN32)
 
 target_include_directories(tensorflow PUBLIC 
-    $<INSTALL_INTERFACE:include/>
-    $<INSTALL_INTERFACE:include/external/nsync/public>)
+    $<INSTALL_INTERFACE:include/>)
 
 install(TARGETS tensorflow EXPORT tensorflow_export
         RUNTIME DESTINATION bin
@@ -132,10 +131,6 @@ install(DIRECTORY ${tensorflow_source_dir}/tensorflow/stream_executor/
 # google protobuf headers
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src/google/
         DESTINATION include/google
-        FILES_MATCHING PATTERN "*.h")
-# nsync headers
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/nsync/
-        DESTINATION include/external/nsync
         FILES_MATCHING PATTERN "*.h")
 # Eigen directory
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/Eigen/

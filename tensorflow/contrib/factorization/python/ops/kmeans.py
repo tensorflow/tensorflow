@@ -26,6 +26,7 @@ from tensorflow.contrib.factorization.python.ops import clustering_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.export import export_output
+from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -105,24 +106,32 @@ class _InitializeClustersHook(session_run_hook.SessionRunHook):
         logging.info(e)
 
 
-def _parse_tensor_or_dict(features):
+def _parse_features_if_necessary(features, feature_columns):
   """Helper function to convert the input points into a usable format.
 
   Args:
-    features: The input points.
+    features: The input features.
+    feature_columns: An optionable iterable containing all the feature columns
+      used by the model. All items in the set should be feature column instances
+      that can be passed to `tf.feature_column.input_layer`. If this is None,
+      all features will be used.
 
   Returns:
-    If `features` is a dict of `k` features, each of which is a vector of `n`
-    scalars, the return value is a Tensor of shape `(n, k)` representing `n`
-    input points, where the items in the `k` dimension are sorted
-    lexicographically by `features` key. If `features` is not a dict, it is
-    returned unmodified.
+    If `features` is a dict of `k` features (optionally filtered by
+    `feature_columns`), each of which is a vector of `n` scalars, the return
+    value is a Tensor of shape `(n, k)` representing `n` input points, where the
+    items in the `k` dimension are sorted lexicographically by `features` key.
+    If `features` is not a dict, it is returned unmodified.
   """
-  if isinstance(features, dict):
-    keys = sorted(features.keys())
-    with ops.colocate_with(features[keys[0]]):
-      features = array_ops.concat([features[k] for k in keys], axis=1)
-  return features
+  if not isinstance(features, dict):
+    return features
+
+  if feature_columns:
+    return fc.input_layer(features, feature_columns)
+
+  keys = sorted(features.keys())
+  with ops.colocate_with(features[keys[0]]):
+    return array_ops.concat([features[k] for k in keys], axis=1)
 
 
 class _ModelFn(object):
@@ -130,7 +139,8 @@ class _ModelFn(object):
 
   def __init__(self, num_clusters, initial_clusters, distance_metric,
                random_seed, use_mini_batch, mini_batch_steps_per_iteration,
-               kmeans_plus_plus_num_retries, relative_tolerance):
+               kmeans_plus_plus_num_retries, relative_tolerance,
+               feature_columns):
     self._num_clusters = num_clusters
     self._initial_clusters = initial_clusters
     self._distance_metric = distance_metric
@@ -139,6 +149,7 @@ class _ModelFn(object):
     self._mini_batch_steps_per_iteration = mini_batch_steps_per_iteration
     self._kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
     self._relative_tolerance = relative_tolerance
+    self._feature_columns = feature_columns
 
   def model_fn(self, features, mode, config):
     """Model function for the estimator.
@@ -166,7 +177,7 @@ class _ModelFn(object):
     # input_points is a single Tensor. Therefore, the sharding functionality
     # in clustering_ops is unused, and some of the values below are lists of a
     # single item.
-    input_points = _parse_tensor_or_dict(features)
+    input_points = _parse_features_if_necessary(features, self._feature_columns)
 
     # Let N = the number of input_points.
     # all_distances: A list of one matrix of shape (N, num_clusters). Each value
@@ -316,7 +327,8 @@ class KMeansClustering(estimator.Estimator):
                mini_batch_steps_per_iteration=1,
                kmeans_plus_plus_num_retries=2,
                relative_tolerance=None,
-               config=None):
+               config=None,
+               feature_columns=None):
     """Creates an Estimator for running KMeans training and inference.
 
     This Estimator implements the following variants of the K-means algorithm:
@@ -362,11 +374,11 @@ class KMeansClustering(estimator.Estimator):
               than `num_clusters`, a TensorFlow runtime error occurs.
       distance_metric: The distance metric used for clustering. One of:
         * `KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE`: Euclidean distance
-             between vectors `u` and `v` is defined as `||u - v||_2` which is
-             the square root of the sum of the absolute squares of the elements'
-             difference.
+             between vectors `u` and `v` is defined as `\\(||u - v||_2\\)`
+             which is the square root of the sum of the absolute squares of
+             the elements' difference.
         * `KMeansClustering.COSINE_DISTANCE`: Cosine distance between vectors
-             `u` and `v` is defined as `1 - (u . v) / (||u||_2 ||v||_2)`.
+             `u` and `v` is defined as `\\(1 - (u . v) / (||u||_2 ||v||_2)\\)`.
       random_seed: Python integer. Seed for PRNG used to initialize centers.
       use_mini_batch: A boolean specifying whether to use the mini-batch k-means
         algorithm. See explanation above.
@@ -383,6 +395,10 @@ class KMeansClustering(estimator.Estimator):
         iterations. Stops learning if the loss changes less than this amount.
         This may not work correctly if `use_mini_batch=True`.
       config: See @{tf.estimator.Estimator}.
+      feature_columns: An optionable iterable containing all the feature columns
+        used by the model. All items in the set should be feature column
+        instances that can be passed to `tf.feature_column.input_layer`. If this
+        is None, all features will be used.
 
     Raises:
       ValueError: An invalid argument was passed to `initial_clusters` or
@@ -402,7 +418,8 @@ class KMeansClustering(estimator.Estimator):
         model_fn=_ModelFn(
             num_clusters, initial_clusters, distance_metric, random_seed,
             use_mini_batch, mini_batch_steps_per_iteration,
-            kmeans_plus_plus_num_retries, relative_tolerance).model_fn,
+            kmeans_plus_plus_num_retries, relative_tolerance,
+            feature_columns).model_fn,
         model_dir=model_dir,
         config=config)
 

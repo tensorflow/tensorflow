@@ -1654,9 +1654,11 @@ void ConvertSqueezeOperator(const Model& model, const SqueezeOperator& src_op,
   const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
   (*new_op->mutable_attr())["T"].set_type(params_type);
 
-  auto& squeeze_dims = (*new_op->mutable_attr())["squeeze_dims"];
-  for (int i : src_op.squeeze_dims) {
-    squeeze_dims.mutable_list()->add_i(i);
+  if (!src_op.squeeze_dims.empty()) {
+    auto& squeeze_dims = (*new_op->mutable_attr())["squeeze_dims"];
+    for (int i : src_op.squeeze_dims) {
+      squeeze_dims.mutable_list()->add_i(i);
+    }
   }
 }
 

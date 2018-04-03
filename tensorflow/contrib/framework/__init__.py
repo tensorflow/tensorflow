@@ -83,6 +83,7 @@ See the @{$python/contrib.framework} guide.
 @@load_linear_multiclass_bias_initializer
 @@load_variable_slot_initializer
 
+@@argsort
 @@py_func
 @@sort
 
@@ -90,6 +91,7 @@ See the @{$python/contrib.framework} guide.
 
 @@smart_cond
 @@smart_constant_value
+@@smart_case
 
 @@CriticalSection
 
@@ -108,6 +110,7 @@ from tensorflow.contrib.framework.python.ops import *
 
 from tensorflow.python.framework.ops import prepend_name_scope
 from tensorflow.python.framework.ops import strip_name_scope
+from tensorflow.python.framework.smart_cond import smart_case
 from tensorflow.python.framework.smart_cond import smart_cond
 from tensorflow.python.framework.smart_cond import smart_constant_value
 from tensorflow.python.framework.tensor_spec import BoundedTensorSpec

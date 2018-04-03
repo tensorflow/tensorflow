@@ -257,6 +257,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
                                                          physical_device_desc)),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
+      scoped_allocator_mgr_(new ScopedAllocatorMgr(name)),
       tf_gpu_id_(tf_gpu_id),
       sync_every_op_(sync_every_op),
       max_streams_(max_streams) {
@@ -838,6 +839,17 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
   } else {
     ReinitializeDevice(context, device, 0, allocator);
   }
+}
+
+Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
+                                             int64 step_id) {
+  if (attr.scope_id > 0) {
+    return scoped_allocator_mgr_->GetContainer(step_id)->GetInstance(
+        attr.scope_id);
+  }
+  LOG(FATAL) << "Unexpected call to BaseGPUDevice::GetScopedAllocator "
+             << "attr.scope_id = " << attr.scope_id;
+  return gpu_allocator_;
 }
 
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;

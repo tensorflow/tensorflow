@@ -22,14 +22,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import sys
-import tensorflow as tf
 
 
 def main():
   # Pip installs the binary in aux-bin off of main site-package install.
   # Just find it and exec, passing all arguments in the process.
   # TODO(aselle): it is unfortunate to use all of tensorflow to lookup binary.
-  binary = os.path.join(tf.__path__[0], 'aux-bin/toco')
-  os.execvp(binary, sys.argv)
+  print("""TOCO from pip install is currently not working on command line.
+Please use the python TOCO API or use
+bazel run tensorflow/contrib/lite:toco -- <args> from a TensorFlow source dir.
+""")
+  sys.exit(1)
+  # TODO(aselle): Replace this when we find a way to run toco without
+  # blowing up executable size.
+  # binary = os.path.join(tf.__path__[0], 'aux-bin/toco')
+  # os.execvp(binary, sys.argv)

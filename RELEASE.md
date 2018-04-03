@@ -1,3 +1,63 @@
+# Release 1.7.0
+
+## Major Features And Improvements
+* Eager mode is moving out of contrib, try `tf.enable_eager_execution()`.
+* Graph rewrites emulating fixed-point quantization compatible with TensorFlow Lite, supported by new `tf.contrib.quantize` package.
+* Easily customize gradient computation with `tf.custom_gradient`.
+* [TensorBoard Debugger Plugin](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md), the graphical user interface (GUI) of TensorFlow Debugger (tfdbg), is now in alpha.
+* Experimental support for reading a sqlite database as a `Dataset` with new `tf.contrib.data.SqlDataset`.
+* Distributed Mutex / CriticalSection added to `tf.contrib.framework.CriticalSection`.
+* Better text processing with `tf.regex_replace`.
+* Easy, efficient sequence input with `tf.contrib.data.bucket_by_sequence_length`
+
+## Bug Fixes and Other Changes
+* Accelerated Linear Algebra (XLA):
+  * Add `MaxPoolGradGrad` support for XLA
+  * CSE pass from Tensorflow is now disabled in XLA.
+* `tf.data`:
+  * `tf.data.Dataset`
+    * Add support for building C++ Dataset op kernels as external libraries, using the `tf.load_op_library()` mechanism.
+    * `Dataset.list_files()` now shuffles its output by default.
+    * `Dataset.shuffle(..., seed=tf.constant(0, dtype=tf.int64))` now yields the same sequence of elements as `Dataset.shuffle(..., seed=0)`.
+  * Add `num_parallel_reads` argument to `tf.data.TFRecordDataset`.
+* `tf.contrib`:
+  * `tf.contrib.bayesflow.halton_sequence` now supports randomization.
+  * Add support for scalars in `tf.contrib.all_reduce`.
+  * Add `effective_sample_size` to `tf.contrib.bayesflow.mcmc_diagnostics`.
+  * Add `potential_scale_reduction` to `tf.contrib.bayesflow.mcmc_diagnostics`.
+  * Add `BatchNormalization`, `Kumaraswamy` bijectors.
+  * Deprecate `tf.contrib.learn`. Please check contrib/learn/README.md for instructions on how to convert existing code.
+  * `tf.contrib.data`
+    * Remove deprecated `tf.contrib.data.Dataset`, `tf.contrib.data.Iterator`, `tf.contrib.data.FixedLengthRecordDataset`, `tf.contrib.data.TextLineDataset`, and `tf.contrib.data.TFRecordDataset` classes.
+    * Added `bucket_by_sequence_length`, `sliding_window_batch`, and `make_batched_features_dataset`
+  * Remove unmaintained `tf.contrib.ndlstm`. You can find it externally at https://github.com/tmbarchive/tfndlstm.
+  * Moved most of `tf.contrib.bayesflow` to its own repo: `tfp`
+* Other:
+  * tf.py_func now reports the full stack trace if an exception occurs.
+  * Integrate `TPUClusterResolver` with GKE's integration for Cloud TPUs.
+  * Add a library for statistical testing of samplers.
+  * Add Helpers to stream data from the GCE VM to a Cloud TPU.
+  * Integrate ClusterResolvers with TPUEstimator.
+  * Unify metropolis_hastings interface with HMC kernel.
+  * Move LIBXSMM convolutions to a separate --define flag so that they are disabled by default.
+  * Fix `MomentumOptimizer` lambda.
+  * Reduce `tfp.layers` boilerplate via programmable docstrings.
+  * Add `auc_with_confidence_intervals`, a method for computing the AUC and confidence interval with linearithmic time complexity.
+  * `regression_head` now accepts customized link function, to satisfy the usage that user can define their own link function if the `array_ops.identity` does not meet the requirement.
+  * Fix `initialized_value` and `initial_value` behaviors for `ResourceVariables` created from `VariableDef` protos.
+  * Add TensorSpec to represent the specification of Tensors.
+  * Constant folding pass is now deterministic.
+  * Support `float16` `dtype` in `tf.linalg.*`.
+  * Add `tf.estimator.export.TensorServingInputReceiver` that allows `tf.estimator.Estimator.export_savedmodel` to pass raw tensors to model functions.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4d55397500, Abe, Alistair Low, Andy Kernahan, Appledore, Ben, Ben Barsdell, Boris Pfahringer, Brad Wannow, Brett Koonce, Carl Thomé, cclauss, Chengzhi Chen, Chris Drake, Christopher Yeh, Clayne Robison, Codrut Grosu, Daniel Trebbien, Danny Goodman, David Goodwin, David Norman, Deron Eriksson, Donggeon Lim, Donny Viszneki, DosLin, DylanDmitri, Francisco Guerrero, Fred Reiss, gdh1995, Giuseppe, Glenn Weidner, gracehoney, Guozhong Zhuang, Haichen "Hc" Li, Harald Husum, harumitsu.nobuta, Henry Spivey, hsm207, Jekyll Song, Jerome, Jiongyan Zhang, jjsjann123, John Sungjin Park, Johnson145, JoshVarty, Julian Wolff, Jun Wang, June-One, Kamil Sindi, Kb Sriram, Kdavis-Mozilla, Kenji, lazypanda1, Liang-Chi Hsieh, Loo Rong Jie, Mahesh Bhosale, MandarJKulkarni, ManHyuk, Marcus Ong, Marshal Hayes, Martin Pool, matthieudelaro, mdfaijul, mholzel, Michael Zhou, Ming Li, Minmin Sun, Myungjoo Ham, MyungsungKwak, Naman Kamra, Peng Yu, Penghao Cen, Phil, Raghuraman-K, resec, Rohin Mohanadas, Sandeep N Gupta, Scott Tseng, seaotterman, Seo Sanghyeon, Sergei Lebedev, Ted Chang, terrytangyuan, Tim H, tkunic, Tod, vihanjain, Yan Facai (颜发才), Yin Li, Yong Tang, Yukun Chen, Yusuke Yamada
+
+
+
 # Release 1.6.0
 
 ## Breaking Changes

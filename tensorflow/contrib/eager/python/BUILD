@@ -70,6 +70,7 @@ cuda_py_test(
     srcs = ["datasets_test.py"],
     additional_deps = [
         ":datasets",
+        ":checkpointable_utils",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/python:dtypes",
@@ -79,6 +80,7 @@ cuda_py_test(
         "//tensorflow/python/data",
         "//tensorflow/python/eager:test",
     ],
+    tags = ["noguitar"],
 )
 
 py_library(
@@ -232,12 +234,15 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:io_ops",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
     ],
@@ -266,18 +271,9 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    tags = [
+        "no_oss",  # b/74395663
+        "no_windows",  # TODO: needs investigation on Windows
+        "notsan",
+    ],
 )

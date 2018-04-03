@@ -2,18 +2,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "scc",
     srcs = ["scc.cc"],
@@ -143,6 +131,22 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+tf_cc_test(
+    name = "grappler_test_test",
+    size = "small",
+    srcs = ["grappler_test_test.cc"],
+    deps = [
+        ":grappler_test",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:utils",
     ],
 )
