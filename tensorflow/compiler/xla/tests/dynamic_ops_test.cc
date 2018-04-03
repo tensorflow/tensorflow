@@ -18,9 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
@@ -112,10 +111,8 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   void TestR3Wrap() {
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
     RunR3<IndexT, DataT>(
-      {{{1, 2}, {3, 4}, {5, 6}},
-       {{7, 8}, {9, 10}, {11, 12}}},
-      {0, 2, 1}, {2, 1, 2},
-      {{{6, 5}}, {{12, 11}}});
+        {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {0, 2, 1},
+        {2, 1, 2}, {{{6, 5}}, {{12, 11}}});
   }
 
   template <typename IndexT, typename DataT>
@@ -137,9 +134,9 @@ class DynamicSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -163,9 +160,9 @@ class DynamicSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -189,9 +186,9 @@ class DynamicSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -359,9 +356,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -390,9 +387,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -421,9 +418,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -474,13 +471,13 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     }
 
     // Build dynamic slice computation.
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer input parameter.
-    ComputationDataHandle input;
+    XlaOp input;
     std::unique_ptr<GlobalData> input_data =
         CreateR3Parameter<T>(input_values, 0, "input_values", &builder, &input);
     // Initialize and transfer update parameter.
-    ComputationDataHandle update;
+    XlaOp update;
     std::unique_ptr<GlobalData> update_data = CreateR3Parameter<T>(
         update_values, 1, "update_values", &builder, &update);
     auto starts = builder.ConstantR1<int32>({index, 0, 0});
@@ -672,7 +669,7 @@ void BM_DynamicSlice(int num_iters) {
       TransferManager::GetForPlatform(platform).ValueOrDie();
   int device_ordinal = client->default_device_ordinal();
 
-  ComputationBuilder builder(client, "DynamicSlice");
+  XlaBuilder builder("DynamicSlice");
 
   // Create input as a constant: shape [1, 2, 3, 4]
   auto input_literal = Literal::CreateR4(

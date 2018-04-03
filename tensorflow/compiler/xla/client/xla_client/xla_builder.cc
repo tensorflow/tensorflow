@@ -489,7 +489,23 @@ XlaOp XlaBuilder::SliceInDim(const XlaOp& operand, int64 start_index,
 
 XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                                tensorflow::gtl::ArraySlice<int64> slice_sizes) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
+                        GetShape(start_indices));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferDynamicSliceShape(
+                            operand_shape, start_indices_shape, slice_sizes));
+
+    for (int64 size : slice_sizes) {
+      instr.add_dynamic_slice_sizes(size);
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicSlice,
+                          {operand, start_indices});
+  });
 }
 
 XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
