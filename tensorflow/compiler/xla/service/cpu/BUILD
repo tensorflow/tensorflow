@@ -670,6 +670,22 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "ir_emission_utils_test",
+    srcs = ["ir_emission_utils_test.cc"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+    ],
+)
+
 cc_library(
     name = "cpu_layout_assignment",
     srcs = ["cpu_layout_assignment.cc"],
@@ -899,18 +915,4 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

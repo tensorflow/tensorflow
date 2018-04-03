@@ -1385,8 +1385,9 @@ void Literal::EachCellAsString(
 }
 
 namespace {
-template <typename NativeSrcT, typename NativeDestT>
-std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
+template <typename NativeSrcT, typename NativeDestT, typename ConverterType>
+std::unique_ptr<Literal> ConvertBetweenNativeTypesWithConverter(
+    const Literal& src_literal, const ConverterType& converter) {
   CHECK(ShapeUtil::IsArray(src_literal.shape()));
   auto result_literal = MakeUnique<Literal>(ShapeUtil::ChangeElementType(
       src_literal.shape(),
@@ -1396,9 +1397,16 @@ std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
   int64 num_elements = src_literal.element_count();
 
   for (int64 i = 0; i < num_elements; ++i) {
-    dest_data[i] = static_cast<NativeDestT>(src_data[i]);
+    dest_data[i] = converter(src_data[i]);
   }
   return result_literal;
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
+  auto converter = [](NativeSrcT src) { return static_cast<NativeDestT>(src); };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
 }
 
 template <PrimitiveType primitive_src_type>
@@ -1463,6 +1471,9 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
 StatusOr<std::unique_ptr<Literal>> Literal::Convert(
     PrimitiveType primitive_dest_type) const {
   TF_RET_CHECK(ShapeUtil::IsArray(shape()));
+  if (shape().element_type() == primitive_dest_type) {
+    return CloneToUnique();
+  }
   switch (shape().element_type()) {
 #define CONVERT_IF_DEST_TYPE_MATCHES(type) \
   case (type):                             \
@@ -1489,8 +1500,16 @@ StatusOr<std::unique_ptr<Literal>> Literal::Convert(
 }
 
 StatusOr<std::unique_ptr<Literal>> Literal::ConvertToShape(
-    const Shape& dest_shape) const {
+    const Shape& dest_shape, bool round_f32_to_bf16) const {
   if (!ShapeUtil::IsTuple(dest_shape)) {
+    if (round_f32_to_bf16 && shape().element_type() == F32 &&
+        dest_shape.element_type() == BF16) {
+      auto converter = [](float src) {
+        return tensorflow::bfloat16::round_to_bfloat16(src);
+      };
+      return ConvertBetweenNativeTypesWithConverter<float, bfloat16>(*this,
+                                                                     converter);
+    }
     return Convert(dest_shape.element_type());
   }
   std::vector<Literal> elements;

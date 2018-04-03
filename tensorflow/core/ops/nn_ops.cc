@@ -266,7 +266,7 @@ REGISTER_OP("Conv2D")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -279,7 +279,7 @@ REGISTER_OP("Conv2DBackpropInput")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -301,7 +301,7 @@ REGISTER_OP("Conv2DBackpropFilter")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -1062,12 +1062,27 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
-      TF_RETURN_IF_ERROR(c->Merge(input, c->input(1), &input));
+      if (c->WithRank(c->input(0), 2, &input) == Status::OK() &&
+          c->Merge(input, c->input(1), &input) == Status::OK()) {
+        DimensionHandle batch_size = c->Dim(input, 0);
+        c->set_output(0, c->Vector(batch_size));
+        c->set_output(1, input);
+        return Status::OK();
+      }
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFn(c, 1));
 
-      DimensionHandle batch_size = c->Dim(input, 0);
+      if (!c->RankKnown(c->output(1))) {
+        return errors::InvalidArgument(
+            "Shape must be broadcasted with rank 2, but is rank is unknown.");
+      }
+
+      if (c->Rank(c->output(1)) != 2) {
+        return errors::InvalidArgument(
+            "Shape must be broadcasted with rank 2, but is rank ",
+            c->Rank(c->output(1)));
+      }
+      DimensionHandle batch_size = c->Dim(c->output(1), 0);
       c->set_output(0, c->Vector(batch_size));
-      c->set_output(1, input);
       return Status::OK();
     });
 
@@ -1155,9 +1170,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -1211,9 +1226,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument(
-            "Input must have last dimension > n = ", c->Value(n_dim),
-            " but is ", c->Value(last_dim));
+        return errors::InvalidArgument("Input must have last dimension > n = ",
+                                       c->Value(n_dim), " but is ",
+                                       c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor

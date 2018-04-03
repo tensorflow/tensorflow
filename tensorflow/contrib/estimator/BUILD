@@ -9,23 +9,12 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "estimator_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
         ":extenders",
@@ -35,6 +24,36 @@ py_library(
         ":multi_head",
         ":replicate_model_fn",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "boosted_trees",
+    srcs = ["python/estimator/boosted_trees.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:boosted_trees",
+    ],
+)
+
+py_test(
+    name = "boosted_trees_test",
+    size = "medium",
+    srcs = ["python/estimator/boosted_trees_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
+    deps = [
+        ":boosted_trees",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -175,6 +194,7 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:summary",
+        "//tensorflow/python:training",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:metric_keys",
@@ -292,6 +312,8 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
@@ -355,7 +377,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],
     additional_deps = [
-        "//third_party/py/absl/testing:parameterized",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:dnn",
         "//tensorflow/python/estimator:export_export",

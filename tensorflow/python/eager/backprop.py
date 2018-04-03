@@ -86,6 +86,14 @@ class _MockOp(object):
         return make_attr(typ, self.attrs[i + 1])
     raise KeyError(attr)
 
+  def _get_control_flow_context(self):
+    raise NotImplementedError(
+        "tf.GradientTape.gradients() does not support graph control flow "
+        "operations like tf.cond or tf.while at this time. Use tf.gradients() "
+        "instead. If you need this feature, please file a feature request at "
+        "https://github.com/tensorflow/tensorflow/issues/new"
+    )
+
 
 def _magic_gradient_function(op_name, attr_tuple, num_inputs,
                              inputs, outputs, out_grads):
@@ -163,8 +171,8 @@ def implicit_val_and_grad(f):
   """Returns a function which differentiates f with respect to variables.
 
   The wrapped function returns the value and the gradient of f when called with
-  the same arguments. The gradient is with respect to all TFE variables which
-  have `variable.watch()` called on them by f.
+  the same arguments. The gradient is with respect to all trainable TFE
+  variables accessed by `f`.
 
   This function is useful when the exact set of variables to differentiate with
   is not known ahead of time.
@@ -241,8 +249,8 @@ def implicit_grad(f):
   """Returns a function which differentiates f with respect to variables.
 
   The wrapped function returns the gradient of f when called with the same
-  arguments. The gradient is with respect to all TFE variables which have
-  `variable.watch()` called on them by f.
+  arguments. The gradient is with respect to all trainable TFE variables
+  accessed by `f`.
 
   This function is useful when the exact set of variables to differentiate with
   is not known ahead of time.
@@ -638,6 +646,13 @@ _default_vspace = imperative_grad.VSpace(
     ones=_ones)
 
 
+def _handle_or_self(x):
+  """If x is ResourceVariable, return its handle, else x."""
+  if isinstance(x, resource_variable_ops.ResourceVariable):
+    x = x.handle
+  return x
+
+
 @tf_export("GradientTape")
 class GradientTape(object):
   """Record operations for automatic differentiation.
@@ -645,10 +660,10 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Variables (created by `tf.contrib.eager.Variable` or @{tf.get_variable})
-  are automatically watched. Tensors can be manually watched by invoking the
-  `watch`
-  method on this context manager.
+  Trainable variables (created by `tf.contrib.eager.Variable` or
+  @{tf.get_variable}, trainable=True is default in both cases) are automatically
+  watched. Tensors can be manually watched by invoking the `watch` method on
+  this context manager.
 
   For example, consider the function `y = x * x`. The gradient at `x = 3.0` can
   be computed as:
@@ -715,9 +730,7 @@ class GradientTape(object):
       tensor: a Tensor or list of Tensors.
     """
     for t in nest.flatten(tensor):
-      if isinstance(t, resource_variable_ops.ResourceVariable):
-        t = t.handle
-      tape.watch(t)
+      tape.watch(_handle_or_self(t))
 
   def watched_variables(self):
     # Sorting variables by id, which is monotonically increasing in construction
@@ -731,14 +744,15 @@ class GradientTape(object):
 
     Args:
       target: Tensor to be differentiated.
-      sources: a list of Tensors or Variables. `target` will be differentiated
-        against elements in `sources`.
+      sources: a list or nested structure of Tensors or Variables. `target`
+        will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
         target. Defaults to None.
 
     Returns:
-      a list of Tensors (or IndexedSlices, or None), one for each element in
-      `sources`.
+      a list or nested structure of Tensors (or IndexedSlices, or None),
+      one for each element in `sources`. Returned structure is the same as
+      the structure of `sources`.
 
     Raises:
       RuntimeError: if called inside the context of the tape, or if called more
@@ -748,12 +762,15 @@ class GradientTape(object):
       raise RuntimeError("GradientTape.gradient can only be called once "
                          "on non-persistent tapes, and "
                          "only when the context manager has exited.")
-    sources = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
-               else x
-               for x in sources]
-    grad = imperative_grad.imperative_grad(
-        _default_vspace, self._tape, [target], sources,
+    flat_sources = nest.flatten(sources)
+    flat_sources = [_handle_or_self(x) for x in flat_sources]
+
+    flat_grad = imperative_grad.imperative_grad(
+        _default_vspace, self._tape, [target], flat_sources,
         output_gradients=output_gradients)
+
     if not self._persistent:
       self._tape = None
+
+    grad = nest.pack_sequence_as(sources, flat_grad)
     return grad

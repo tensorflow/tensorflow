@@ -134,9 +134,9 @@ def _FoldFusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
 
       nodes_modified_count = graph_editor.reroute_ts(bias_add_tensor,
                                                      match.output_tensor)
-      if nodes_modified_count != 1:
-        raise ValueError(
-            'Unexpected inputs to op: %s' % match.output_tensor.name)
+      if nodes_modified_count == 0:
+        raise ValueError('Folding batch norms failed, %s had no outputs.' %
+                         match.output_tensor.name)
 
 
 def _FindFusedBatchNorms(graph):

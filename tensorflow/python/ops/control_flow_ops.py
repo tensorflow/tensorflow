@@ -833,6 +833,9 @@ class GradLoopState(object):
     if outer_grad_state:
       outer_forward_ctxt = outer_grad_state.forward_context
     else:
+      if not hasattr(forward_ctxt, 'outer_context'):
+        raise ValueError("Failed to call gradients on a while loop without"
+                         "properly serializing graph via MetaGraphDef")
       outer_forward_ctxt = forward_ctxt.outer_context
 
     # Add the forward loop counter.

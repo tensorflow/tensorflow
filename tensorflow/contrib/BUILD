@@ -33,6 +33,7 @@ py_library(
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
         "//tensorflow/contrib/data",
+        "//tensorflow/contrib/distribute:distribute",
         "//tensorflow/contrib/deprecated:deprecated_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/eager/python:tfe",
@@ -51,7 +52,6 @@ py_library(
         "//tensorflow/contrib/image:single_image_random_dot_stereograms_py",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
-        "//tensorflow/contrib/kafka",
         "//tensorflow/contrib/keras",
         "//tensorflow/contrib/kernel_methods",
         "//tensorflow/contrib/kfac",
@@ -75,11 +75,12 @@ py_library(
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/contrib/optimizer_v2:optimizer_v2_py",
         "//tensorflow/contrib/periodic_resample:init_py",
         "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",
-        "//tensorflow/contrib/py2tf",
+        "//tensorflow/contrib/autograph",
         "//tensorflow/contrib/receptive_field:receptive_field_py",
         "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
@@ -110,7 +111,13 @@ py_library(
         "//tensorflow/python:util",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
-    ]),
+    ]) + select({
+        "//tensorflow:with_kafka_support_windows_override": [],
+        "//tensorflow:with_kafka_support": [
+            "//tensorflow/contrib/kafka",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -119,9 +126,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/coder:all_kernels",
-        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_kernels",
         "//tensorflow/contrib/data/kernels:dataset_kernels",
-        "//tensorflow/contrib/kafka:dataset_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
@@ -134,7 +139,13 @@ cc_library(
         "//tensorflow/contrib/text:all_kernels",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
         "//tensorflow/contrib/nccl:nccl_kernels",
-    ]),
+    ]) + select({
+        "//tensorflow:with_kafka_support_windows_override": [],
+        "//tensorflow:with_kafka_support": [
+            "//tensorflow/contrib/kafka:dataset_kernels",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -143,12 +154,10 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/coder:all_ops",
-        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_ops_op_lib",
         "//tensorflow/contrib/data:dataset_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
-        "//tensorflow/contrib/kafka:dataset_ops_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
         "//tensorflow/contrib/nccl:nccl_ops_op_lib",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_op_lib",
@@ -159,17 +168,11 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
         "//tensorflow/contrib/tpu:all_ops",
-    ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
+    ] + select({
+        "//tensorflow:with_kafka_support_windows_override": [],
+        "//tensorflow:with_kafka_support": [
+            "//tensorflow/contrib/kafka:dataset_ops_op_lib",
         ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+        "//conditions:default": [],
+    }),
 )

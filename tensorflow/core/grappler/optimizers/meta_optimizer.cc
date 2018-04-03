@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
@@ -84,6 +85,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(
         new DependencyOptimizer(cfg_.dependency_optimization()));
   }
+  if (optimizer == "debug_stripper") {
+    graph_optimizer.reset(new DebugStripper());
+  }
   return graph_optimizer;
 }
 
@@ -97,6 +101,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (cfg_.function_optimization() != RewriterConfig::OFF) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new FunctionOptimizer(cfg_.function_optimization())));
+    }
+    if (cfg_.debug_stripper() == RewriterConfig::ON) {
+      optimizers.push_back(
+          std::unique_ptr<GraphOptimizer>(new DebugStripper()));
     }
     if (cfg_.constant_folding() != RewriterConfig::OFF) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
@@ -136,8 +144,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   } else {
     const std::set<string> available_optimizers = {
-        "pruning",      "function",   "constfold", "layout",    "memory",
-        "autoparallel", "arithmetic", "loop",      "dependency"};
+        "pruning",    "function",      "constfold",  "layout",
+        "memory",     "autoparallel",  "arithmetic", "loop",
+        "dependency", "debug_stripper"};
     std::vector<string> custom_optimizer_names;
     for (const auto& optimizer_name : cfg_.optimizers()) {
       if (available_optimizers.find(optimizer_name) !=
@@ -238,6 +247,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.dependency_optimization() != RewriterConfig::OFF ||
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
+         cfg.debug_stripper() == RewriterConfig::ON ||
          !cfg.optimizers().empty();
 }
 

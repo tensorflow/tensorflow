@@ -1,4 +1,4 @@
-# TensorFlow Lite Demo for iOS
+# iOS Demo App
 
 The TensorFlow Lite demo is a camera app that continuously classifies whatever
 it sees from your device's back camera, using a quantized MobileNet model. These

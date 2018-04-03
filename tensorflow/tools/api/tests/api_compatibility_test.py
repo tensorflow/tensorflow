@@ -58,7 +58,7 @@ _UPDATE_GOLDENS_HELP = """
      have to be authorized by TensorFlow leads.
 """
 
-# DEFINE_boolean, verbose_diffs, default False:
+# DEFINE_boolean, verbose_diffs, default True:
 _VERBOSE_DIFFS_HELP = """
      If set to true, print line by line diffs on all libraries. If set to
      false, only print which libraries have differences.
@@ -286,7 +286,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
   parser.add_argument(
-      '--verbose_diffs', type=bool, default=False, help=_VERBOSE_DIFFS_HELP)
+      '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)
   FLAGS, unparsed = parser.parse_known_args()
 
   # Now update argv, so that unittest library does not get confused.

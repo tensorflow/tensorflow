@@ -842,6 +842,41 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
       }, summary_str, tol)
 
+  def test_train_with_optimizer(self):
+    n_classes = 3
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
+
+    logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
+    labels = np.array(((1,), (1,)), dtype=np.int64)
+    features = {'x': np.array(((42,),), dtype=np.int32)}
+    expected_train_result = 'my_train_op'
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        return string_ops.string_join(
+            [constant_op.constant(expected_train_result),
+             string_ops.as_string(loss, precision=2)])
+
+    # loss = sum(cross_entropy(labels, logits)) = sum(10, 0) = 10.
+    expected_loss = 10.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    tol = 1e-2
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      self.assertEqual(
+          six.b('{0:s}{1:.2f}'.format(expected_train_result, expected_loss)),
+          train_result)
+
   def test_train_summaries_with_head_name(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
@@ -1941,6 +1976,39 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
           # loss_mean = loss/2 = 41/2 = 20.5
           metric_keys.MetricKeys.LOSS_MEAN: 20.5,
       }, summary_str)
+
+  def test_train_with_optimizer(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    logits = np.array(((45,), (-41,),), dtype=np.float32)
+    labels = np.array(((1,), (1,),), dtype=np.float64)
+    expected_train_result = b'my_train_op'
+    features = {'x': np.array(((42,),), dtype=np.float32)}
+    # loss = sum(cross_entropy(labels, logits)) = sum(0, 41) = 41
+    expected_loss = 41.
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        with ops.control_dependencies((check_ops.assert_equal(
+            math_ops.to_float(expected_loss), math_ops.to_float(loss),
+            name='assert_loss'),)):
+          return constant_op.constant(expected_train_result)
+
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss)
+      self.assertEqual(expected_train_result, train_result)
 
   def test_train_summaries_with_head_name(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
@@ -3075,6 +3143,40 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
           # loss_mean = loss/2 = 13/2 = 6.5
           metric_keys.MetricKeys.LOSS_MEAN: 6.5,
       }, summary_str)
+
+  def test_train_with_optimizer(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss()
+    self.assertEqual(1, head.logits_dimension)
+
+    # Create estimator spec.
+    logits = np.array(((45,), (41,),), dtype=np.float32)
+    labels = np.array(((43.,), (44.,),), dtype=np.float64)
+    expected_train_result = b'my_train_op'
+    features = {'x': np.array(((42.,),), dtype=np.float32)}
+    # loss = (43-45)^2 + (44-41)^2 = 4 + 9 = 13
+    expected_loss = 13
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        with ops.control_dependencies((check_ops.assert_equal(
+            math_ops.to_float(expected_loss), math_ops.to_float(loss),
+            name='assert_loss'),)):
+          return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss)
+      self.assertEqual(expected_train_result, train_result)
 
   def test_train_summaries_with_head_name(self):
     head = head_lib._regression_head_with_mean_squared_error_loss(

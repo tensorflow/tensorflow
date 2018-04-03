@@ -35,9 +35,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -568,12 +566,20 @@ class MakeCsvDatasetTest(test.TestCase):
       dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64, dtypes.string
   ]
   COLUMNS = ["col%d" % i for i in range(len(COLUMN_TYPES))]
+  DEFAULT_VALS = [[], [], [], [], ["NULL"]]
+  DEFAULTS = [
+      constant_op.constant([], dtype=dtypes.int32),
+      constant_op.constant([], dtype=dtypes.int64),
+      constant_op.constant([], dtype=dtypes.float32),
+      constant_op.constant([], dtype=dtypes.float64),
+      constant_op.constant(["NULL"], dtype=dtypes.string)
+  ]
   LABEL = COLUMNS[0]
 
   def setUp(self):
     super(MakeCsvDatasetTest, self).setUp()
     self._num_files = 2
-    self._num_records = 7
+    self._num_records = 11
     self._test_filenames = self._create_files()
 
   def _csv_values(self, fileno, recordno):
@@ -588,49 +594,63 @@ class MakeCsvDatasetTest(test.TestCase):
   def _csv_record(self, fileno, recordno):
     return ",".join(str(v) for v in self._csv_values(fileno, recordno))
 
+  def _create_file(self, fileno, header=True, comment=True):
+    fn = os.path.join(self.get_temp_dir(), "csv_file%d.csv" % fileno)
+    f = open(fn, "w")
+    if header:
+      f.write(",".join(self.COLUMNS) + "\n")
+    for recno in range(self._num_records):
+      f.write(self._csv_record(fileno, recno) + "\n")
+      if comment:
+        f.write("# Some comment goes here. Should be ignored!\n")
+    f.close()
+    return fn
+
   def _create_files(self):
     filenames = []
     for i in range(self._num_files):
-      fn = os.path.join(self.get_temp_dir(), "csv_file%d.csv" % i)
-      filenames.append(fn)
-      f = open(fn, "w")
-      f.write(",".join(self.COLUMNS) + "\n")  # header line
-      for j in range(self._num_records):
-        f.write(self._csv_record(i, j) + "\n")
-        f.write("# Some comment goes here. Should be ignored!\n")
-      f.close()
+      filenames.append(self._create_file(i))
     return filenames
 
-  def _make_csv_dataset(self,
-                        filenames,
-                        defaults,
-                        label_key=LABEL,
-                        batch_size=1,
-                        num_epochs=1,
-                        shuffle=False,
-                        shuffle_seed=None):
+  def _make_csv_dataset(
+      self,
+      filenames,
+      defaults,
+      column_names=COLUMNS,
+      label_name=LABEL,
+      batch_size=1,
+      num_epochs=1,
+      shuffle=False,
+      shuffle_seed=None,
+      header=True,
+      comment="#",
+      na_value="",
+      default_float_type=dtypes.float32,
+  ):
     return readers.make_csv_dataset(
         filenames,
-        column_keys=self.COLUMNS,
-        column_defaults=defaults,
-        label_key=label_key,
         batch_size=batch_size,
+        column_names=column_names,
+        column_defaults=defaults,
+        label_name=label_name,
         num_epochs=num_epochs,
         shuffle=shuffle,
         shuffle_seed=shuffle_seed,
-        skip=1,
-        filter_fn=
-        lambda line: math_ops.not_equal(string_ops.substr(line, 0, 1), "#"),
+        header=header,
+        comment=comment,
+        na_value=na_value,
+        default_float_type=default_float_type,
     )
 
-  def _next_actual_batch(self, file_indices, batch_size, num_epochs):
+  def _next_actual_batch(self, file_indices, batch_size, num_epochs, defaults):
     features = {col: list() for col in self.COLUMNS}
     for _ in range(num_epochs):
       for i in file_indices:
         for j in range(self._num_records):
           values = self._csv_values(i, j)
-          if not values[-1]:
-            values[-1] = "NULL"  # null values in csv are interpreted as default
+          for n, v in enumerate(values):
+            if v == "":  # pylint: disable=g-explicit-bool-comparison
+              values[n] = defaults[n][0]
           values[-1] = values[-1].encode("utf-8")
 
           # Regroup lists by column instead of row
@@ -651,7 +671,8 @@ class MakeCsvDatasetTest(test.TestCase):
       sess,
       dataset,
       file_indices,
-      label_key=LABEL,
+      defaults=tuple(DEFAULT_VALS),
+      label_name=LABEL,
       batch_size=1,
       num_epochs=1,
   ):
@@ -659,11 +680,11 @@ class MakeCsvDatasetTest(test.TestCase):
     get_next = iterator.get_next()
 
     for expected_features in self._next_actual_batch(file_indices, batch_size,
-                                                     num_epochs):
+                                                     num_epochs, defaults):
       actual_features = sess.run(get_next)
 
-      if label_key is not None:
-        expected_labels = expected_features.pop(label_key)
+      if label_name is not None:
+        expected_labels = expected_features.pop(label_name)
         # Compare labels
         self.assertAllEqual(expected_labels, actual_features[1])
         actual_features = actual_features[0]  # Extract features dict from tuple
@@ -676,10 +697,7 @@ class MakeCsvDatasetTest(test.TestCase):
       sess.run(get_next)
 
   def test_make_csv_dataset(self):
-    defaults = [
-        constant_op.constant([], dtype=d) for d in self.COLUMN_TYPES[:-1]
-    ]
-    defaults.append(constant_op.constant(["NULL"], dtype=dtypes.string))
+    defaults = self.DEFAULTS
 
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
@@ -705,11 +723,26 @@ class MakeCsvDatasetTest(test.TestCase):
         self._verify_records(
             sess, dataset, range(self._num_files), batch_size=2, num_epochs=10)
 
+  def test_make_csv_dataset_with_bad_columns(self):
+    """Tests that exception is raised when input is malformed.
+    """
+    dupe_columns = self.COLUMNS[:-1] + self.COLUMNS[:1]
+    defaults = self.DEFAULTS
+
+    # Duplicate column names
+    with self.assertRaises(ValueError):
+      self._make_csv_dataset(
+          self._test_filenames, defaults, column_names=dupe_columns)
+
+    # Label key not one of column names
+    with self.assertRaises(ValueError):
+      self._make_csv_dataset(
+          self._test_filenames, defaults, label_name="not_a_real_label")
+
   def test_make_csv_dataset_with_no_label(self):
-    defaults = [
-        constant_op.constant([], dtype=d) for d in self.COLUMN_TYPES[:-1]
-    ]
-    defaults.append(constant_op.constant(["NULL"], dtype=dtypes.string))
+    """Tests that CSV datasets can be created when no label is specified.
+    """
+    defaults = self.DEFAULTS
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         # Read from both files. Make sure this works with no label key supplied.
@@ -718,16 +751,64 @@ class MakeCsvDatasetTest(test.TestCase):
             defaults,
             batch_size=2,
             num_epochs=10,
-            label_key=None)
+            label_name=None)
         self._verify_records(
             sess,
             dataset,
             range(self._num_files),
             batch_size=2,
             num_epochs=10,
-            label_key=None)
+            label_name=None)
+
+  def test_make_csv_dataset_with_no_comments(self):
+    """Tests that datasets can be created from CSV files with no header line.
+    """
+    defaults = self.DEFAULTS
+    file_without_header = self._create_file(
+        len(self._test_filenames), comment=False)
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        dataset = self._make_csv_dataset(
+            file_without_header,
+            defaults,
+            batch_size=2,
+            num_epochs=10,
+            comment=None,
+        )
+        self._verify_records(
+            sess,
+            dataset,
+            [len(self._test_filenames)],
+            batch_size=2,
+            num_epochs=10,
+        )
+
+  def test_make_csv_dataset_with_no_header(self):
+    """Tests that datasets can be created from CSV files with no header line.
+    """
+    defaults = self.DEFAULTS
+    file_without_header = self._create_file(
+        len(self._test_filenames), header=False)
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        dataset = self._make_csv_dataset(
+            file_without_header,
+            defaults,
+            batch_size=2,
+            num_epochs=10,
+            header=False,
+        )
+        self._verify_records(
+            sess,
+            dataset,
+            [len(self._test_filenames)],
+            batch_size=2,
+            num_epochs=10,
+        )
 
   def test_make_csv_dataset_with_types(self):
+    """Tests that defaults can be a dtype instead of a Tensor for required vals.
+    """
     defaults = [d for d in self.COLUMN_TYPES[:-1]]
     defaults.append(constant_op.constant(["NULL"], dtype=dtypes.string))
     with ops.Graph().as_default() as g:
@@ -735,10 +816,109 @@ class MakeCsvDatasetTest(test.TestCase):
         dataset = self._make_csv_dataset(self._test_filenames, defaults)
         self._verify_records(sess, dataset, range(self._num_files))
 
+  def test_make_csv_dataset_with_no_col_names(self):
+    """Tests that datasets can be created when column names are not specified.
+
+    In that case, we should infer the column names from the header lines.
+    """
+    defaults = self.DEFAULTS
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        # Read from both files. Exercise the `batch` and `num_epochs` parameters
+        # of make_csv_dataset and make sure they work.
+        dataset = self._make_csv_dataset(
+            self._test_filenames,
+            defaults,
+            column_names=None,
+            batch_size=2,
+            num_epochs=10)
+        self._verify_records(
+            sess, dataset, range(self._num_files), batch_size=2, num_epochs=10)
+
+  def test_make_csv_dataset_type_inference(self):
+    """Tests that datasets can be created when no defaults are specified.
+
+    In that case, we should infer the types from the first N records.
+    """
+    # Test that it works with standard test files (with comments, header, etc)
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        dataset = self._make_csv_dataset(
+            self._test_filenames, defaults=None, batch_size=2, num_epochs=10)
+        self._verify_records(
+            sess,
+            dataset,
+            range(self._num_files),
+            batch_size=2,
+            num_epochs=10,
+            defaults=[[], [], [], [], [""]])
+
+    # Test on a deliberately tricky file
+    fn = os.path.join(self.get_temp_dir(), "file.csv")
+    expected_dtypes = [
+        dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float32,
+        dtypes.string, dtypes.string
+    ]
+    rows = [[0, 0, 0, "NAN", "", "a"], [1, 2**31 + 1, 2**64, 123, "NAN", ""],
+            ['"123"', 2, 2**64, 123.4, "NAN", '"cd,efg"']]
+    expected = [[0, 0, 0, 0, "", "a"], [1, 2**31 + 1, 2**64, 123, "", ""],
+                [123, 2, 2**64, 123.4, "", "cd,efg"]]
+    for row in expected:
+      row[-1] = row[-1].encode("utf-8")  # py3 expects byte strings
+      row[-2] = row[-2].encode("utf-8")  # py3 expects byte strings
+    col_names = ["col%d" % i for i in range(len(expected_dtypes))]
+    with open(fn, "w") as f:
+      f.write(",".join(col_names))
+      f.write("\n")
+      for row in rows:
+        f.write(",".join([str(v) if v else "" for v in row]) + "\n")
+
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        dataset = self._make_csv_dataset(
+            fn,
+            defaults=None,
+            column_names=None,
+            batch_size=1,
+            num_epochs=1,
+            label_name=None,
+            na_value="NAN",
+            default_float_type=dtypes.float32,
+        )
+        features = dataset.make_one_shot_iterator().get_next()
+        # Check that types match
+        for i in range(len(expected_dtypes)):
+          assert features["col%d" % i].dtype == expected_dtypes[i]
+        for i in range(len(rows)):
+          assert sess.run(features) == dict(zip(col_names, expected[i]))
+
+    # With float64 as default type for floats
+    expected_dtypes = [
+        dtypes.int32, dtypes.int64, dtypes.float64, dtypes.float64,
+        dtypes.string, dtypes.string
+    ]
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        dataset = self._make_csv_dataset(
+            fn,
+            defaults=None,
+            column_names=None,
+            batch_size=1,
+            num_epochs=1,
+            label_name=None,
+            na_value="NAN",
+            default_float_type=dtypes.float64,
+        )
+        features = dataset.make_one_shot_iterator().get_next()
+        # Check that types match
+        for i in range(len(expected_dtypes)):
+          assert features["col%d" % i].dtype == expected_dtypes[i]
+        for i in range(len(rows)):
+          assert sess.run(features) == dict(zip(col_names, expected[i]))
+
   def test_make_csv_dataset_with_shuffle(self):
     total_records = self._num_files * self._num_records
-    defaults = [d for d in self.COLUMN_TYPES[:-1]]
-    defaults.append(constant_op.constant(["NULL"], dtype=dtypes.string))
+    defaults = self.DEFAULTS
     for batch_size in [1, 2]:
       with ops.Graph().as_default() as g:
         with self.test_session(graph=g) as sess:

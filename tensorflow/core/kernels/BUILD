@@ -920,6 +920,22 @@ tf_kernel_library(
     ]) + ARRAY_DEPS,
 )
 
+tf_kernel_library(
+    name = "cudnn_rnn_kernels",
+    srcs = ["cudnn_rnn_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:cudnn_rnn_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/kernels:bounds_check_lib",
+        "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
+    ],
+)
+
 tf_cc_test(
     name = "batch_norm_op_test",
     size = "small",
@@ -1663,6 +1679,43 @@ tf_kernel_library(
     deps = DATA_FLOW_DEPS + [
         ":batch_util",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "scoped_allocator_ops",
+    prefix = "scoped_allocator_ops",
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:scoped_allocator_ops_op_lib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "scoped_allocator_ops_test",
+    srcs = ["scoped_allocator_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),  #Required for benchmarking
+    deps = [
+        ":cwise_op",
+        ":dense_update_ops",
+        ":ops_testutil",
+        ":ops_util",
+        ":scoped_allocator_ops",
+        ":variable_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -2475,13 +2528,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "self_adjoint_eig_op",
     prefix = "self_adjoint_eig_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["//tensorflow/core:lib_internal"],
 )
 
 tf_kernel_library(
     name = "self_adjoint_eig_v2_op",
     prefix = "self_adjoint_eig_v2_op",
-    deps = LINALG_DEPS + if_cuda([
+    deps = LINALG_DEPS + ["//tensorflow/core:lib_internal"] + if_cuda([
         ":cast_op",
         ":cwise_op",
     ]),
@@ -5042,6 +5095,7 @@ filegroup(
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
+            "cudnn_rnn_ops.*",
             "lmdb_reader_op.*",
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",
@@ -5905,6 +5959,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
     ],
 )
 
@@ -5925,6 +5980,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
     ],
 )
 
@@ -5956,6 +6012,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
         "//third_party/mkl:intel_binary_blob",
         "@mkl_dnn",
     ],
@@ -5975,6 +6032,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_aggregate_ops",
     deps = MATH_DEPS + [
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
     ],
 )
 
@@ -5992,6 +6050,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_reshape_op",
     deps = ARRAY_DEPS + [
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
     ],
 )
 
@@ -6034,6 +6093,13 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "boosted_trees_ops",
+    deps = [
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_ops",
     ],
 )
 
@@ -6087,18 +6153,6 @@ tf_kernel_library(
 
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.

@@ -4,7 +4,7 @@ config_setting(
     name = "clang_linux_x86_64",
     values = {
         "cpu": "k8",
-        "define": "using_cuda_clang=true",
+        "define": "using_clang=true",
     },
 )
 

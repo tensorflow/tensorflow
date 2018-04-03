@@ -6,18 +6,6 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_cc")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_proto_library(
     name = "tpu_profiler_proto",
     srcs = ["tpu_profiler.proto"],
@@ -127,7 +115,5 @@ py_library(
     srcs = ["tpu_profiler_analysis_pb2_grpc.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_profiler_analysis_proto_py",
-    ],
+    deps = [":tpu_profiler_analysis_proto_py"],
 )

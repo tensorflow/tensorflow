@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -196,8 +197,6 @@ void SetSourceDataType(DataType dtype, NodeDef* node) {
 
 bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
 
-const char kOutputShapesAttr[] = "_output_shapes";
-
 // Shape is symbolically defined if it has a known rank, and each dimension is
 // defined, or is an unknown symbol (dim.size <= -2).
 bool ShapeIsSymbolicallyDefined(const TensorShapeProto& shape) {
@@ -234,16 +233,20 @@ bool ShapesSymbolicallyEqual(const OpInfo::TensorProperties& left,
 // Returns whether `reshape` is an identity op. The tensor that `reshape`
 // reshapes is the `output_pos`-th output of node `input`.
 bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
-                       const int output_pos) {
-  if (!reshape.attr().count(kOutputShapesAttr) ||
-      !input.attr().count(kOutputShapesAttr)) {
+                       const int output_pos,
+                       const GraphProperties& graph_properties) {
+  const std::vector<OpInfo::TensorProperties>& reshape_props =
+      graph_properties.GetOutputProperties(reshape.name());
+  const std::vector<OpInfo::TensorProperties>& input_props =
+      graph_properties.GetOutputProperties(input.name());
+  if (reshape_props.empty() || input_props.empty() ||
+      input_props.size() <= output_pos) {
     return false;
   }
 
-  PartialTensorShape src_shape(
-      input.attr().at(kOutputShapesAttr).list().shape(output_pos));
-  PartialTensorShape dst_shape(
-      reshape.attr().at(kOutputShapesAttr).list().shape(0));
+  const PartialTensorShape& src_shape = input_props[output_pos].shape();
+  const PartialTensorShape& dst_shape = reshape_props[0].shape();
+
   if (src_shape.unknown_rank() || dst_shape.unknown_rank()) {
     return false;
   }
@@ -256,7 +259,8 @@ bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
   // sizes.
   auto num_unknown_dim_sizes = [](const PartialTensorShape& partial_shape) {
     auto dim_sizes = partial_shape.dim_sizes();
-    return std::count(dim_sizes.begin(), dim_sizes.end(), -1);
+    return std::count_if(dim_sizes.begin(), dim_sizes.end(),
+                         [](int dim) { return dim < 0; });
   };
   int src_num_unknown_dim_sizes = num_unknown_dim_sizes(src_shape);
   int dst_num_unknown_dim_sizes = num_unknown_dim_sizes(dst_shape);
@@ -1085,6 +1089,25 @@ bool ArithmeticOptimizer::OptimizedNodeExists(const NodeDef& node,
   return node_map_->NodeExists(OptimizedNodeName(node, suffix));
 }
 
+namespace {
+
+bool FeedsInPlaceOp(const SimpleGraphView& graph_view, const NodeDef& node) {
+  const std::unordered_set<string> op_types_to_traverse = {
+      node.op(),    "Identity", "IdentityN", "Reshape",
+      "ExpandDims", "Enter",    "Switch",    "Merge"};
+  int node_idx = graph_view.index(node.name());
+  std::set<int> node_fanout;
+  graph_view.DepthFirstSearch(op_types_to_traverse, node_idx, &node_fanout);
+  for (int fanout : node_fanout) {
+    if (ModifiesInputsInPlace(graph_view.graph()->node(fanout))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -1104,6 +1127,11 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
 
 void ArithmeticOptimizer::DedupComputations() {
   bool stop = true;
+  SimpleGraphView graph_view;
+  if (!graph_view.Initialize(*optimized_graph_).ok()) {
+    LOG(WARNING) << "Failed to build SimpleGraphView.";
+    return;
+  }
   std::set<int> duplicates;
   do {
     stop = true;
@@ -1120,19 +1148,28 @@ void ArithmeticOptimizer::DedupComputations() {
       if (rep == node) {
         continue;
       }
+      // If either node feeds an inplace op, deduping them may cause data races.
+      // For example: If we dedup nodes initializing two independent inplace
+      // accumulations, they will write to the same buffer, clobbering each
+      // other's results.
+      if (FeedsInPlaceOp(graph_view, *rep) ||
+          FeedsInPlaceOp(graph_view, *node)) {
+        continue;
+      }
       const std::set<NodeDef*>& fanouts = node_map_->GetOutputs(node->name());
       for (NodeDef* fanout : fanouts) {
-        for (string& name : *fanout->mutable_input()) {
+        for (int i = 0; i < fanout->input_size(); ++i) {
+          string* name = fanout->mutable_input(i);
           int position;
-          const string nodename = ParseNodeName(name, &position);
+          const string nodename = ParseNodeName(*name, &position);
           if (nodename == node->name()) {
             // Update name in-place.
             if (position > 0) {
-              name = StrCat(rep->name(), ":", position);
+              *name = StrCat(rep->name(), ":", position);
             } else if (position == 0) {
-              name = rep->name();
+              *name = rep->name();
             } else {
-              name = StrCat("^", rep->name());
+              *name = StrCat("^", rep->name());
             }
             node_map_->AddOutput(rep->name(), fanout->name());
           }
@@ -1239,7 +1276,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // outputs tensors of shape [M, N] while feeding it with tensors of shape
     // [M*N] (or worse). The reshape nodes are then necessary to update the
     // tensor metadata to the required shape.
-    if (ReshapeIsIdentity(*reshape, *input, output_pos)) {
+    if (ReshapeIsIdentity(*reshape, *input, output_pos, *graph_properties_)) {
       return reshape->input(0);
     }
   }
@@ -1267,8 +1304,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // with image.type than with dst_type.
     if (DeviceNameUtils::SplitDeviceName(transpose->device(), &dontcare,
                                          &device) &&
-        (StringPiece(device).contains(DEVICE_CPU) ||
-         StringPiece(device).contains(DEVICE_GPU))) {
+        (str_util::StrContains(device, DEVICE_CPU) ||
+         str_util::StrContains(device, DEVICE_GPU))) {
       const NodeDef* cast = node_map_->GetNode(transpose->input(0));
       if (cast->op() == "Cast") {
         const NodeDef* input = node_map_->GetNode(cast->input(0));
@@ -1662,17 +1699,10 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   // Shapes are only needed in aggressive mode.
   graph_properties_.reset(new GraphProperties(item));
   TF_RETURN_IF_ERROR(graph_properties_->InferStatically(false));
-  // TODO(ezhulenev): Use GraphProperties to lookup tensor shapes directly
-  TF_RETURN_IF_ERROR(graph_properties_->AnnotateOutputShapes(optimized_graph_));
 
   // Perform the optimizations.
   DedupComputations();
   TF_RETURN_IF_ERROR(SimplifyArithmeticOps());
-
-  // Clear output shapes.
-  for (int i = 0; i < optimized_graph->node_size(); ++i) {
-    optimized_graph_->mutable_node(i)->mutable_attr()->erase(kOutputShapesAttr);
-  }
 
   return Status::OK();
 }

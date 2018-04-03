@@ -42,6 +42,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -295,6 +296,7 @@ class Tensor(_TensorLike):
 
     # Attributes used for C++ shape inference. Not inspected, only forwarded.
     # If set, will be a HandleData object from cpp_shape_inference.proto.
+    # TODO(b/74620627): remove when _USE_C_SHAPES is removed
     self._handle_data = None
     self._id = uid()
 
@@ -1663,6 +1665,9 @@ class Operation(object):
       self._control_inputs_val = control_input_ops
       self._node_def_val = copy.deepcopy(node_def)
       self._op_def_val = op_def
+    else:
+      # This will be set by self.inputs.
+      self._inputs_val = None
 
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
@@ -1936,6 +1941,8 @@ class Operation(object):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
     if self._c_op:
+      # Reset cached inputs.
+      self._inputs_val = None
       with errors.raise_exception_on_not_ok_status() as status:
         c_api.UpdateEdge(
             self._graph._c_graph,  # pylint: disable=protected-access
@@ -2052,15 +2059,18 @@ class Operation(object):
   def inputs(self):
     """The list of `Tensor` objects representing the data inputs of this op."""
     if self._c_op:
-      tf_outputs = c_api.GetOperationInputs(self._c_op)
-      # pylint: disable=protected-access
-      retval = [
-          self.graph._get_tensor_by_tf_output(tf_output)
-          for tf_output in tf_outputs
-      ]
-      # pylint: enable=protected-access
-      return Operation._InputList(retval)
-    return Operation._InputList(self._inputs_val)
+      if self._inputs_val is None:
+        tf_outputs = c_api.GetOperationInputs(self._c_op)
+        # pylint: disable=protected-access
+        retval = [
+            self.graph._get_tensor_by_tf_output(tf_output)
+            for tf_output in tf_outputs
+        ]
+        # pylint: enable=protected-access
+        self._inputs_val = Operation._InputList(retval)
+      return self._inputs_val
+    else:
+      return Operation._InputList(self._inputs_val)
 
   @property
   def _inputs(self):
@@ -2472,6 +2482,14 @@ def _set_shapes_for_outputs_c_api(op):
       shape_vector = [None if d == -1 else d for d in shape_vector]
       output.set_shape(tensor_shape.TensorShape(shape_vector))
 
+    serialized = c_api.ResourceHandleShapeAndType(op._graph._c_graph,
+                                                  output._as_tf_output())
+    if serialized:
+      output._handle_data = (
+          cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
+              compat.as_bytes(serialized)))
+    else:
+      output._handle_data = None
 
 # TODO(skyewm): remove this when _USE_C_API flag is removed.
 def _set_shapes_for_outputs(op):
@@ -2788,6 +2806,9 @@ class Graph(object):
     # being called inside function definitions behave as if they were seeing the
     # actual outside graph).
     self._graph_key = "grap-key-%d/" % (uid(),)
+    # A string with the last reduction method passed to
+    # losses.compute_weighted_loss(), or None.
+    self._last_loss_reduction = None
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
 
@@ -3455,12 +3476,12 @@ class Graph(object):
     ]
 
     for op in new_ops:
-      # The Python shape inference code does not support imported functions. It
-      # also needs access to op.inputs, which is why we call it here.
+      # Operations created by the C API always retrieve shapes from the C API so
+      # we preserve the shapes of ops created in import_graph_def (from the
+      # "_output_shapes" attr of the imported NodeDef).
       # TODO(b/74620627): move this back to _create_op_helper once _USE_C_SHAPES
       # is removed.
-      if not self._is_function(op.type) or _USE_C_SHAPES:
-        set_shapes_for_outputs(op)
+      _set_shapes_for_outputs_c_api(op)
       new_control_inputs = self._control_dependencies_for_inputs(op.inputs)
       # pylint: disable=protected-access
       op._add_control_inputs(new_control_inputs)
@@ -5411,7 +5432,7 @@ def get_name_scope():
   Returns:
     A string representing the current name scope.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return context.context().scope_name.rstrip("/")
   return get_default_graph().get_name_scope()
 
@@ -5863,6 +5884,9 @@ def strip_name_scope(name, export_scope):
     is None.
   """
   if export_scope:
+    if export_scope[-1] == "/":
+      export_scope = export_scope[:-1]
+
     try:
       # Strips export_scope/, export_scope///,
       # ^export_scope/, loc:@export_scope/.
@@ -5888,6 +5912,9 @@ def prepend_name_scope(name, import_scope):
     is None.
   """
   if import_scope:
+    if import_scope[-1] == "/":
+      import_scope = import_scope[:-1]
+
     try:
       str_to_replace = r"([\^]|loc:@|^)(.*)"
       return re.sub(str_to_replace, r"\1" + import_scope + r"/\2",

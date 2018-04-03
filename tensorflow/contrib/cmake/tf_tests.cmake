@@ -210,6 +210,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/graph_io_test.py"
     # Test is flaky on Windows GPU builds (b/38283730).
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/gmm_test.py"
+    # Disable following manual tag in BUILD.
+    "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/layers/convolutional_test.py"
+
   )
   if (WIN32)
     set(tf_test_src_py_exclude
@@ -281,6 +284,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_cluster_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/interleave_dataset_op_test.py"  # Deadlocks
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/sloppy_transformation_dataset_op_test.py"  # b/65430561
+      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/prefetching_ops_test.py"  # Segfaults on Windows.
       # tensor_forest tests (also note that we exclude the hybrid tests for now)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/count_extremely_random_stats_op_test.py"  # Results in wrong order.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.

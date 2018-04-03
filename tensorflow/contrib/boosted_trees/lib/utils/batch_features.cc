@@ -54,7 +54,7 @@ Status BatchFeatures::Initialize(
     TF_CHECK_AND_RETURN_IF_ERROR(
         dense_float_feature.dim_size(1) == 1,
         errors::InvalidArgument(
-            "Dense float features may not be multi-valent: dim_size(1) = ",
+            "Dense float features may not be multivalent: dim_size(1) = ",
             dense_float_feature.dim_size(1)));
     dense_float_feature_columns_.emplace_back(dense_float_feature);
   }

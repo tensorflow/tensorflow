@@ -101,22 +101,6 @@ filegroup(
 # LINT.ThenChange(//tensorflow/examples/android/download-models.gradle)
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-            "gradleBuild/**",
-            "libs/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "java_files",
     srcs = glob(["src/**/*.java"]),
 )

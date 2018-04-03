@@ -375,6 +375,7 @@ tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
+    tags = ["no_oss"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -542,7 +543,6 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["spacetobatch_op_test.py"],
     shard_count = 3,
-    tags = ["notsan"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -835,18 +835,4 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

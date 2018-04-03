@@ -21,6 +21,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/contrib/data/python/ops:shuffle_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
@@ -42,18 +43,4 @@ tf_custom_op_library(
 
 tf_gen_op_libs(
     op_lib_names = ["dataset_ops"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

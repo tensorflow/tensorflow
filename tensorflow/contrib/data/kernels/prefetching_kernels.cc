@@ -40,8 +40,7 @@ class FunctionBufferingResource : public ResourceBase {
                             const NameAttrList& func, int64 buffer_size,
                             const string& source_device,
                             const string& target_device,
-                            const std::vector<Tensor>& func_args,
-                            int64 thread_pool_size)
+                            const std::vector<Tensor>& func_args)
       : lib_(lib),
         pflr_(std::move(pflr)),
         func_(func),
@@ -52,28 +51,10 @@ class FunctionBufferingResource : public ResourceBase {
         handle_(kInvalidHandle),
         is_buffering_(false),
         end_of_sequence_(false),
-        cancelled_(false) {
-    if (thread_pool_size > 0) {
-      thread_pool_ = new thread::ThreadPool(Env::Default(), ThreadOptions(),
-                                            "buffer_resource", thread_pool_size,
-                                            false /* low_latency_hint */);
-      runner_ = [this](std::function<void()> c) {
-        thread_pool_->Schedule(std::move(c));
-      };
-    }
-  }
+        cancelled_(false) {}
 
   ~FunctionBufferingResource() override {
     Cancel();
-    {
-      mutex_lock l(mu_);
-      while (is_buffering_) {
-        cond_var_.wait(l);
-      }
-    }
-    if (thread_pool_ != nullptr) {
-      delete thread_pool_;
-    }
   }
 
   string DebugString() override {
@@ -107,6 +88,20 @@ class FunctionBufferingResource : public ResourceBase {
   void Cancel() LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     cancelled_ = true;
+    while (is_buffering_) {
+      cond_var_.wait(l);
+    }
+  }
+
+  // Cancels all pending operations and then clears out the state.
+  void Reset() LOCKS_EXCLUDED(mu_) {
+    Cancel();
+    mutex_lock l(mu_);
+    buffer_.clear();
+    requests_.clear();
+    is_buffering_ = false;
+    end_of_sequence_ = false;
+    cancelled_ = false;
   }
 
   // If the buffer has anything, runs `callback` on the first element in the
@@ -171,17 +166,12 @@ class FunctionBufferingResource : public ResourceBase {
       for (int i = 0; i < cancellation_callbacks.size(); ++i) {
         cancellation_callbacks[i](cancellation_buffer_elements[i]);
       }
-      // We only wait on cond_var_ in the destructor, so there would atmost be
-      // one waiter to notify.
-      cond_var_.notify_one();
+      cond_var_.notify_all();
       return;
     }
     FunctionLibraryRuntime::Options opts;
     // Copied from CapturedFunction::generate_step_id();
     opts.step_id = -std::abs(static_cast<int64>(random::New64()));
-    if (runner_ != nullptr) {
-      opts.runner = &runner_;
-    }
     opts.source_device = source_device_;
     AllocatorAttributes arg_alloc_attr;
     arg_alloc_attr.set_on_host(true);
@@ -200,13 +190,12 @@ class FunctionBufferingResource : public ResourceBase {
                   mutex_lock l(mu_);
                   BufferElement buffer_element;
                   buffer_element.status = status;
-                  if (!status.ok()) {
+                  if (status.ok()) {
+                    buffer_element.value.swap(*rets);
+                  } else {
                     end_of_sequence_ = true;
                     is_buffering_ = false;
-                    buffer_.push_back(std::move(buffer_element));
-                    return;
                   }
-                  buffer_element.value.swap(*rets);
                   buffer_.push_back(std::move(buffer_element));
                   if (!requests_.empty()) {
                     buffer_front = std::move(buffer_.front());
@@ -214,9 +203,16 @@ class FunctionBufferingResource : public ResourceBase {
                     callback = std::move(requests_.front());
                     requests_.pop_front();
                   }
-                  if (buffer_.size() < buffer_size_) {
+                  if (buffer_.size() < buffer_size_ && !end_of_sequence_) {
                     restart_buffering = true;
                   } else {
+                    // When the buffer is full, we don't want to call
+                    // FillBuffer() unless we're in cancellation phase in which
+                    // case FillBuffer() will do the final cleanup post
+                    // cancellation.
+                    if (cancelled_) {
+                      restart_buffering = true;
+                    }
                     is_buffering_ = false;
                   }
                 }
@@ -237,11 +233,9 @@ class FunctionBufferingResource : public ResourceBase {
   const string source_device_;
   const string target_device_;
   const std::vector<Tensor> func_args_;
-  thread::ThreadPool* thread_pool_ = nullptr;
   FunctionLibraryRuntime::Handle handle_ GUARDED_BY(mu_);
   std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
   std::deque<FunctionBufferCallback> requests_ GUARDED_BY(mu_);
-  std::function<void(std::function<void()>)> runner_ = nullptr;
   bool is_buffering_ GUARDED_BY(mu_);
   bool end_of_sequence_ GUARDED_BY(mu_);
   bool cancelled_ GUARDED_BY(mu_);
@@ -256,7 +250,6 @@ class FunctionBufferResourceHandleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("buffer_size", &buffer_size_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("container", &container_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("thread_pool_size", &thread_pool_size_));
   }
 
   ~FunctionBufferResourceHandleOp() override {
@@ -304,9 +297,10 @@ class FunctionBufferResourceHandleOp : public OpKernel {
                this](FunctionBufferingResource** ptr) {
                 *ptr = new FunctionBufferingResource(
                     clone_lib, std::move(pflr), func_, buffer_size_,
-                    source_device, target_device, func_args, thread_pool_size_);
+                    source_device, target_device, func_args);
                 return Status::OK();
               }));
+      core::ScopedUnref s(buffer);
       OP_REQUIRES_OK(ctx, buffer->Instantiate());
       initialized_ = true;
     }
@@ -325,7 +319,6 @@ class FunctionBufferResourceHandleOp : public OpKernel {
   int64 buffer_size_;
   string container_;
   string name_;
-  int64 thread_pool_size_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResource")
@@ -366,25 +359,27 @@ class FunctionBufferingResourceGetNextOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource<FunctionBufferingResource>(ctx, handle, &buffer),
         done);
-    core::ScopedUnref s(buffer);
 
     if (buffer->Finished()) {
+      buffer->Unref();
       ctx->SetStatus(errors::OutOfRange("end_of_sequence"));
       done();
       return;
     }
 
     FunctionBufferCallback callback =
-        [ctx, done](const BufferElement& buffer_element) {
+        [ctx, buffer, done](const BufferElement& buffer_element) {
           Status s = buffer_element.status;
           if (!s.ok()) {
             ctx->SetStatus(s);
+            buffer->Unref();
             done();
             return;
           }
           for (size_t i = 0; i < buffer_element.value.size(); ++i) {
             ctx->set_output(i, buffer_element.value[i]);
           }
+          buffer->Unref();
           done();
         };
     buffer->MaybeGet(std::move(callback));
@@ -405,5 +400,63 @@ REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceGetNext")
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceGetNextOp);
 #endif  // TENSORFLOW_USE_SYCL
+
+// Resets the FunctionBufferingResource, cancelling all pending requests and
+// clearing out the buffer.
+class FunctionBufferingResourceResetOp : public OpKernel {
+ public:
+  explicit FunctionBufferingResourceResetOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  ~FunctionBufferingResourceResetOp() override {}
+
+  void Compute(OpKernelContext* ctx) override {
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx,
+                   HandleFromInput(ctx, "function_buffer_resource", &handle));
+    FunctionBufferingResource* buffer = nullptr;
+    OP_REQUIRES_OK(
+        ctx, LookupResource<FunctionBufferingResource>(ctx, handle, &buffer));
+    core::ScopedUnref s(buffer);
+
+    buffer->Reset();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
+#endif  // TENSORFLOW_USE_SYCL
+
+class IteratorGetDeviceOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    // NOTE(mrry): We do not currently Validate that the handle
+    // corresponds to a real IteratorResource, because that symbol is
+    // not exposed from the framework library.
+    Tensor* device_name_t;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(0, TensorShape({}), &device_name_t));
+    // NOTE(mrry): Since the operation's input is a resource, we must be
+    // colocated with it, and so we can simply return the current device's
+    // name without looking at the input.
+    device_name_t->scalar<string>()() = ctx->device()->name();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("IteratorGetDevice").Device(DEVICE_CPU),
+                        IteratorGetDeviceOp);
 
 }  // namespace tensorflow

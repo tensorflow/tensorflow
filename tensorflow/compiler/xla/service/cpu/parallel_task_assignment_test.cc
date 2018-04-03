@@ -80,5 +80,39 @@ TEST_F(ParallelTaskAssignmentTest,
   EXPECT_FALSE(changed);
 }
 
+TEST_F(ParallelTaskAssignmentTest, RngOperationNotParallelized) {
+  const string hlo_string = R"(
+    HloModule TestTaskParallel_rng
+    ENTRY Rng {
+      src0 = f32[] parameter(0)
+      src1 = f32[] parameter(1)
+      ROOT rng0 = f32[1234567,2]{1,0} rng(f32[] src0, f32[] src1),
+      distribution=rng_uniform
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, cpu::ParallelTaskAssigner(
+                                            max_parallelism_, shape_size_func_)
+                                            .Run(&module()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ParallelTaskAssignmentTest, InfeedOutfeedOperationNotParallelized) {
+  const string hlo_string = R"(
+    HloModule TestTaskParallel_infeed_outfeed
+    ENTRY InfeedOutfeed {
+      infeed0 = u32[12345678,2]{1,0} infeed()
+      ROOT outfeed0 = u32[12345678,2]{1,0} outfeed(infeed0)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, cpu::ParallelTaskAssigner(
+                                            max_parallelism_, shape_size_func_)
+                                            .Run(&module()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

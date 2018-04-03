@@ -272,7 +272,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
     const ExecutionOptions* execution_options,
-    const UserComputation& user_computation) {
+    const UserComputation* user_computation) {
   auto config = MakeUnique<HloModuleConfig>(program_shape);
   auto* computation_layout = config->mutable_entry_computation_layout();
 
@@ -286,8 +286,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     // ProgramShape.
     if (!ShapeUtil::Compatible(*argument_shapes[i],
                                program_shape.parameters(i))) {
+      if (user_computation == nullptr) {
+        return InvalidArgument(
+            "Argument does not match shape of computation parameter %d: want "
+            "%s, got %s",
+            i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
+            ShapeUtil::HumanString(*argument_shapes[i]).c_str());
+      }
       return InvalidParameterArgument(
-          *user_computation.ParameterMetadata(i).value(),
+          *user_computation->ParameterMetadata(i).value(),
           "Argument does not match shape of computation parameter %d: want %s, "
           "got %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
@@ -330,7 +337,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutionOptions& execution_options,
-    const UserComputation& user_computation) {
+    const UserComputation* user_computation) {
   std::vector<const Shape*> argument_shapes;
   for (const auto* arg : arguments) {
     argument_shapes.push_back(&arg->on_host_shape());
@@ -778,7 +785,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(*program_shape, replicated_arguments.front(),
-                           request.execution_options(), *user_computation));
+                           request.execution_options(), user_computation));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
             << module_config->entry_computation_layout().ToString();
 
@@ -830,6 +837,11 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status Service::ExecuteGraphParallel(
+    const ExecuteGraphParallelRequest* arg, ExecuteParallelResponse* result) {
+  return Unimplemented("execute-graph-parallel is not yet implemented");
+}
+
 tensorflow::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                                              GetDeviceHandlesResponse* result) {
   const int64 available_device_count = execute_backend_->device_count();
@@ -854,6 +866,33 @@ tensorflow::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status Service::ExecuteOneToN(const ExecuteRequest* arg,
+                                          ExecuteResponse* result) {
+  ExecuteParallelRequest parallel_arg;
+  *parallel_arg.add_requests() = *arg;
+  ExecuteParallelResponse parallel_result;
+  TF_RETURN_IF_ERROR(ExecuteParallel(&parallel_arg, &parallel_result));
+  // The "result device" selection is a bit hacky, but better than assuming it
+  // is device 0. We have b/76035356 for restructuring the client API to clean
+  // up the current asymmetries and support more functionalities.
+  for (int64 i = 0; i < parallel_result.responses_size(); ++i) {
+    TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
+                        allocation_tracker_.ResolveForReplica(
+                            parallel_result.responses(i).output(), 0));
+    const Shape& shape = buffer->on_host_shape();
+    if (!ShapeUtil::IsEmptyTuple(shape)) {
+      *result = parallel_result.responses(i);
+      VLOG(3) << "Fetching result from device " << i << ": "
+              << ShapeUtil::HumanString(shape);
+      return Status::OK();
+    }
+  }
+  TF_RET_CHECK(parallel_result.responses_size() > 0);
+  *result = parallel_result.responses(0);
+  VLOG(1) << "Defaulting to device 0 result";
+  return Status::OK();
+}
+
 tensorflow::Status Service::Execute(const ExecuteRequest* arg,
                                     ExecuteResponse* result) {
   VLOG(1) << "running execute request: " << arg->ShortDebugString();
@@ -870,13 +909,7 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
 
   // If we received multiple device handles, we must partition the module.
   if (arg->execution_options().device_handles_size() > 1) {
-    ExecuteParallelRequest parallel_arg;
-    *parallel_arg.add_requests() = *arg;
-    ExecuteParallelResponse parallel_result;
-    TF_RETURN_IF_ERROR(ExecuteParallel(&parallel_arg, &parallel_result));
-    TF_RET_CHECK(parallel_result.responses_size() > 0);
-    *result = parallel_result.responses(0);
-    return Status::OK();
+    return ExecuteOneToN(arg, result);
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -894,7 +927,7 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(*program_shape, replicated_arguments.front(),
-                         arg->execution_options(), *user_computation));
+                         arg->execution_options(), user_computation));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -935,9 +968,66 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status Service::ExecuteGraph(const ExecuteGraphRequest* /*arg*/,
-                                         ExecuteResponse* /*result*/) {
-  return Unimplemented("execute-graph is not yet implemented");
+StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
+    const HloModuleProto& module_proto,
+    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+    se::StreamExecutor* executor, DeviceMemoryAllocator* device_allocator) {
+  VLOG(1) << Printf(
+      "BuildExecutable on service %p with serialized module proto: %s", this,
+      module_proto.name().c_str());
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(module_proto, *module_config));
+
+  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
+
+  TF_ASSIGN_OR_RETURN(
+      module, backend->compiler()->RunHloPasses(std::move(module), executor,
+                                                device_allocator));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      backend->compiler()->RunBackend(
+                          std::move(module), executor, device_allocator));
+
+  return std::move(executable);
+}
+
+tensorflow::Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
+                                         ExecuteResponse* result) {
+  VLOG(1) << "running execute-graph request";
+
+  if (!arg->has_computation()) {
+    return InvalidArgument("computations may not be empty");
+  }
+
+  // TODO(b/74197823): Handle partitioning.
+
+  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
+                                              SingleComputationDeviceHandle()));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+      ResolveAndValidateArguments(arg->arguments(), replicas));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(arg->computation().program_shape(),
+                                         replicated_arguments.front(),
+                                         arg->execution_options()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      BuildExecutable(arg->computation(), std::move(module_config),
+                      execute_backend_.get(),
+                      execute_backend_->default_stream_executor(),
+                      /*device_allocator=*/nullptr));
+
+  TF_ASSIGN_OR_RETURN(
+      *result->mutable_output(),
+      ExecuteAndRegisterResult(
+          executable.get(), replicated_arguments, execute_backend_.get(),
+          "result of " + arg->computation().name(), result->mutable_profile()));
+
+  VLOG(1) << "successfully completed 'execute-graph' request";
+  return tensorflow::Status::OK();
 }
 
 tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
@@ -967,7 +1057,7 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(*program_shape, replicated_arguments.front(),
-                         arg->execution_options(), *user_computation));
+                         arg->execution_options(), user_computation));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -1268,7 +1358,7 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                       CreateModuleConfig(program_shape, {}, execution_options,
-                                         *user_computation));
+                                         user_computation));
 
   // Exclude dead parameter instructions for the purpose of computing constants.
   TF_ASSIGN_OR_RETURN(
@@ -1343,6 +1433,29 @@ tensorflow::Status Service::GetComputationStats(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       computation_tracker_.BuildHloModule(versioned_handle, config));
+
+  hlo_graph_dumper::MaybeDumpHloModule(*module,
+                                       "computation statistics subject");
+
+  // Run HLO analysis to get the computation statistics.
+  HloCostAnalysis analysis(
+      execute_backend_->compiler()->ShapeSizeBytesFunction());
+
+  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
+
+  ComputationStats stats;
+  stats.set_flop_count(analysis.flop_count());
+  stats.set_transcendental_count(analysis.transcendental_count());
+  *result->mutable_stats() = stats;
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status Service::GetComputationGraphStats(
+    const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
+  HloModuleConfig config;
+  config.set_debug_options(arg->debug_options());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(arg->computation(), config));
 
   hlo_graph_dumper::MaybeDumpHloModule(*module,
                                        "computation statistics subject");

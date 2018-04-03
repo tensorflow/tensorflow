@@ -156,6 +156,7 @@ cc_library(
         "local_response_norm.cc",
         "lsh_projection.cc",
         "lstm.cc",
+        "maximum.cc",
         "mean.cc",
         "mfcc.cc",
         "mul.cc",
@@ -537,6 +538,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "maximum_test",
+    size = "small",
+    srcs = ["maximum_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "mean_test",
     size = "small",
     srcs = ["mean_test.cc"],
@@ -710,6 +723,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -908,18 +922,6 @@ tf_cc_test(
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tflite_portable_test_suite()

@@ -285,6 +285,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "dfs_hlo_visitor_with_default_test",
+    srcs = ["dfs_hlo_visitor_with_default_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_runner",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
@@ -623,6 +640,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
@@ -712,7 +730,6 @@ cc_library(
         ":computation_layout",
         ":device_memory_allocator",
         ":hlo",
-        ":hlo_cost_analysis",
         ":hlo_execution_profile",
         ":hlo_graph_dumper",
         ":pool",
@@ -1579,6 +1596,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -2631,18 +2649,4 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

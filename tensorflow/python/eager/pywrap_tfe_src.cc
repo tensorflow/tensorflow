@@ -1013,12 +1013,13 @@ static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
     tensorflow::int64 id = EagerTensor_id(tensor);
     const tensorflow::Tensor* tensor = nullptr;
-    const tensorflow::Status status = t->Tensor(&tensor);
+    const tensorflow::Status status = t->handle->Tensor(&tensor);
     if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
-      return tensorflow::eager::TapeTensor{id, t->dtype,
+      return tensorflow::eager::TapeTensor{id, t->handle->dtype,
                                            tensorflow::TensorShape({})};
     } else {
-      return tensorflow::eager::TapeTensor{id, t->dtype, tensor->shape()};
+      return tensorflow::eager::TapeTensor{id, t->handle->dtype,
+                                           tensor->shape()};
     }
   }
   tensorflow::int64 id = FastTensorId(tensor);
@@ -1371,11 +1372,15 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
   }
   if (!result.empty()) {
     PyObject* py_result = PyList_New(result.size());
+    tensorflow::gtl::FlatSet<PyObject*> seen_results(result.size());
     for (int i = 0; i < result.size(); ++i) {
       if (result[i] == nullptr) {
         Py_INCREF(Py_None);
         result[i] = Py_None;
+      } else if (seen_results.find(result[i]) != seen_results.end()) {
+        Py_INCREF(result[i]);
       }
+      seen_results.insert(result[i]);
       PyList_SET_ITEM(py_result, i, reinterpret_cast<PyObject*>(result[i]));
     }
     return py_result;
@@ -1404,16 +1409,33 @@ bool CheckInputsOk(PyObject* seq, int start_index,
     PyObject* item = PyTuple_GET_ITEM(seq, i + start_index);
     if (!op_def.input_arg(i).number_attr().empty() ||
         !op_def.input_arg(i).type_list_attr().empty()) {
-      // This item should be a list input.
-      if (!PyList_Check(item)) return false;
-      for (Py_ssize_t j = 0; j < PyList_Size(item); j++) {
-        PyObject* inner_item = PyList_GET_ITEM(item, j);
+      // This item should be a seq input.
+      if (!PySequence_Check(item)) {
+        VLOG(1) << "Falling back to slow path for Op \"" << op_def.name()
+                << "\", Input \"" << op_def.input_arg(i).name()
+                << "\" since we expected a sequence, but got "
+                << item->ob_type->tp_name;
+        return false;
+      }
+      for (Py_ssize_t j = 0; j < PySequence_Fast_GET_SIZE(item); j++) {
+        PyObject* inner_item = PySequence_Fast_GET_ITEM(item, j);
         if (!EagerTensor_CheckExact(inner_item) &&
             !CheckResourceVariable(inner_item)) {
+          VLOG(1)
+              << "Falling back to slow path for Op \"" << op_def.name()
+              << "\", Input \"" << op_def.input_arg(i).name() << "\", Index "
+              << j
+              << " since we expected an EagerTensor/ResourceVariable, but got "
+              << inner_item->ob_type->tp_name;
           return false;
         }
       }
     } else if (!EagerTensor_CheckExact(item) && !CheckResourceVariable(item)) {
+      VLOG(1)
+          << "Falling back to slow path for Op \"" << op_def.name()
+          << "\", Input \"" << op_def.input_arg(i).name()
+          << "\" since we expected an EagerTensor/ResourceVariable, but got "
+          << item->ob_type->tp_name;
       return false;
     }
   }
@@ -1725,11 +1747,11 @@ const char* GetDeviceName(PyObject* py_device_name) {
   return nullptr;
 }
 
-bool RaiseIfNotPyList(PyObject* list, const string& attr_name) {
-  if (!PyList_Check(list)) {
+bool RaiseIfNotPySequence(PyObject* seq, const string& attr_name) {
+  if (!PySequence_Check(seq)) {
     PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a list for attr %s, got %s instead",
-                           attr_name.data(), list->ob_type->tp_name)
+                    Printf("expected a sequence for attr %s, got %s instead",
+                           attr_name.data(), seq->ob_type->tp_name)
                         .data());
 
     return false;
@@ -1893,6 +1915,9 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
                               py_attr_value, &attr_list_sizes, status);
 
         if (TF_GetCode(status) != TF_OK) {
+          VLOG(1) << "Falling back to slow path for Op \"" << op_def->name()
+                  << "\" since we are unable to set the value for attr \""
+                  << attr.name() << "\" due to: " << TF_Message(status);
           RaiseFallbackException(TF_Message(status));
           return nullptr;
         }
@@ -1939,8 +1964,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex + i);
     if (!input_arg.number_attr().empty()) {
       // The item is a homogeneous list.
-      if (!RaiseIfNotPyList(input, input_arg.number_attr())) return nullptr;
-      Py_ssize_t len = PyList_Size(input);
+      if (!RaiseIfNotPySequence(input, input_arg.number_attr())) return nullptr;
+      Py_ssize_t len = PySequence_Fast_GET_SIZE(input);
 
       TFE_OpSetAttrInt(op, input_arg.number_attr().data(), len);
       if (op_exec_info.run_callbacks) {
@@ -1952,15 +1977,15 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
 
       if (len > 0) {
         // First item adds the type attr.
-        if (!AddInputToOp(op_exec_info, PyList_GET_ITEM(input, 0), &input_arg,
-                          flattened_attrs.get(), flattened_inputs.get(), op,
-                          status)) {
+        if (!AddInputToOp(op_exec_info, PySequence_Fast_GET_ITEM(input, 0),
+                          &input_arg, flattened_attrs.get(),
+                          flattened_inputs.get(), op, status)) {
           return nullptr;
         }
 
         for (Py_ssize_t j = 1; j < len; j++) {
           // Since the list is homogeneous, we don't need to re-add the attr.
-          if (!AddInputToOp(op_exec_info, PyList_GET_ITEM(input, j),
+          if (!AddInputToOp(op_exec_info, PySequence_Fast_GET_ITEM(input, j),
                             nullptr /* input_arg */,
                             nullptr /* flattened_attrs */,
                             flattened_inputs.get(), op, status)) {
@@ -1970,16 +1995,18 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       }
     } else if (!input_arg.type_list_attr().empty()) {
       // The item is a heterogeneous list.
-      if (!RaiseIfNotPyList(input, input_arg.type_list_attr())) return nullptr;
+      if (!RaiseIfNotPySequence(input, input_arg.type_list_attr())) {
+        return nullptr;
+      }
       const string& attr_name = input_arg.type_list_attr();
-      Py_ssize_t len = PyList_Size(input);
+      Py_ssize_t len = PySequence_Fast_GET_SIZE(input);
       tensorflow::gtl::InlinedVector<TF_DataType, 4> attr_value(len);
       PyObject* py_attr_value = nullptr;
       if (op_exec_info.run_callbacks) {
         py_attr_value = PyTuple_New(len);
       }
       for (Py_ssize_t j = 0; j < len; j++) {
-        PyObject* py_input = PyList_GET_ITEM(input, j);
+        PyObject* py_input = PySequence_Fast_GET_ITEM(input, j);
         tensorflow::Safe_PyObjectPtr py_eager_tensor;
         if (!ConvertToTensor(op_exec_info, py_input, &py_eager_tensor,
                              status)) {

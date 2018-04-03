@@ -154,14 +154,3 @@ tf_py_test(
     ],
     main = "python/ops/coder_ops_test.py",
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-)

@@ -75,7 +75,7 @@ def estimator_head_distribution_regression(make_distribution_fn,
 
 
 class _DistributionRegressionHead(_RegressionHead):
-  """Creates a _RegressionHead instance from an arbitray `Distribution`."""
+  """Creates a _RegressionHead instance from an arbitrary `Distribution`."""
 
   def __init__(self,
                make_distribution_fn,

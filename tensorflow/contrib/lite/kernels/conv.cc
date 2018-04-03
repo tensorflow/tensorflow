@@ -89,9 +89,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
   gemm_support::IncrementUsageCounter(context);
   eigen_support::IncrementUsageCounter(context);
-
-  data->run_multithreaded_kernel = context->recommended_num_threads != 1;
-
   return data;
 }
 
@@ -175,6 +172,8 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  data->run_multithreaded_kernel = context->recommended_num_threads != 1;
 
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(context, node));
 
