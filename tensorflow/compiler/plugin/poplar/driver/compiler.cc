@@ -113,11 +113,14 @@ public:
     parameter_shapes[inst->parameter_number()] = inst->shape();
 
     std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
+    std::vector<Shape> module_shapes;
 
     HloModule* module = inst->parent()->parent();
     ComputationLayout* layout = module->mutable_entry_computation_layout();
-    const Shape& mod_shape = layout->parameter_shape(inst->parameter_number());
-    std::vector<Shape> module_shapes = FlattenedXlaShape(mod_shape);
+    if (layout->parameter_count() > inst->parameter_number()) {
+      const Shape& mod_shape = layout->parameter_shape(inst->parameter_number());
+      module_shapes = FlattenedXlaShape(mod_shape);
+    }
 
     poplar::DataTransferOptions opt;
     opt.convertHalf = true;
@@ -129,10 +132,12 @@ public:
                                     resources_));
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
 
-      if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
-        // Host tensor needs to be host layout
-        out = ConvertFromDeviceLayout(module_shapes[i], out);
-        non_standard_parameter_layout.insert(inst);
+      if (module_shapes.size() > i) {
+        if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
+          // Host tensor needs to be host layout
+          out = ConvertFromDeviceLayout(module_shapes[i], out);
+          non_standard_parameter_layout.insert(inst);
+        }
       }
 
       graph_->createHostWrite(
@@ -371,12 +376,27 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::vector<perftools::gputools::StreamExecutor*>> execs,
+    std::vector<std::unique_ptr<HloModule>> modules,
+    std::vector<std::vector<perftools::gputools::StreamExecutor*>> stream_execs,
     DeviceMemoryAllocator* device_allocator) {
 
-  return tensorflow::errors::Unimplemented(
-          "Compilation of multiple HLO modules is not supported on Poplar.");
+  std::vector<std::unique_ptr<Executable>> result;
+  for (size_t i = 0; i < modules.size(); i++) {
+    if (stream_execs[i].size() != 1) {
+      return Unimplemented("Model partitioning not implemented for Poplar");
+    }
+
+    TF_ASSIGN_OR_RETURN(modules[i],
+        RunHloPasses(std::move(modules[i]), stream_execs[i][0],
+                     device_allocator));
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+    RunBackend(std::move(modules[i]), stream_execs[i][0], device_allocator));
+
+    result.push_back(std::move(executable));
+  }
+
+  return {std::move(result)};
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

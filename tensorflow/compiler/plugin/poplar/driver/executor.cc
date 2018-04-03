@@ -362,7 +362,7 @@ PoplarExecutor::AllocateSingleOutput(xla::DeviceMemoryAllocator* allocator,
                                      const Args& args) {
   int64 size(xla::ShapeUtil::ByteSizeOf(shape));
   auto it(map.find(n));
-  if (it != map.end()) {
+  if (it != map.end() && args.size() > n) {
     // The output is an in-place update of one of the inputs
     // TODO: is this a multi-threading bug?
     se::DeviceMemoryBase buf(args[it->second]);
