@@ -186,6 +186,6 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
       beta1_power = self._get_beta_accumulators()
       with ops.colocate_with(beta1_power):
         update_beta1 = beta1_power.assign(
-          beta1_power * self._beta1_t, use_locking=self._use_locking)
+            beta1_power * self._beta1_t, use_locking=self._use_locking)
     return control_flow_ops.group(*update_ops + [update_beta1],
                                   name=name_scope)
