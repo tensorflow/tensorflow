@@ -45,7 +45,7 @@ type SavedModel struct {
 // exported in other languages, such as using tf.saved_model.builder in Python.
 // See:
 // https://www.tensorflow.org/code/tensorflow/python/saved_model/
-func LoadSavedModel(exportDir string, tags []string, options *SessionOptions, runOptions *[]byte, metaGraph *[]byte) (*SavedModel, error) {
+func LoadSavedModel(exportDir string, tags []string, options *SessionOptions, runOptions []byte, metaGraph []byte) (*SavedModel, error) {
 	status := newStatus()
 	cOpt, doneOpt, err := options.c()
 	defer doneOpt()
@@ -61,28 +61,24 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions, ru
 	
 	var tfRunOptions *C.TF_Buffer
 	if runOptions != nil {
-		data := C.CBytes(*runOptions)
+		data := C.CBytes(runOptions)
 		defer C.free(data)
 
 		tfRunOptions = C.TF_NewBuffer()
 		tfRunOptions.data = data
-		tfRunOptions.length = C.size_t(len(*runOptions))
+		tfRunOptions.length = C.size_t(len(runOptions))
 		defer C.TF_DeleteBuffer(tfRunOptions)
-	} else {
-		tfRunOptions = nil
 	}
 
 	var tfMetaGraph *C.TF_Buffer
-	if (metaGraph != nil){
-		data := C.CBytes(*metaGraph)
+	if metaGraph != nil {
+		data := C.CBytes(metaGraph)
 		defer C.free(data)
 
 		tfMetaGraph = C.TF_NewBuffer()
 		tfMetaGraph.data = data
-		tfMetaGraph.length = C.size_t(len(*metaGraph))
+		tfMetaGraph.length = C.size_t(len(metaGraph))
 		defer C.TF_DeleteBuffer(tfMetaGraph)
-	} else{
-		metaGraph = nil
 	}
 	
 	// TODO(jhseu): Add support for run_options and meta_graph_def.
