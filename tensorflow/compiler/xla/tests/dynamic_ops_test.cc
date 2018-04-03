@@ -279,6 +279,15 @@ XLA_TEST_F(DynamicSliceTest, Int32R3Pred) {
 class DynamicUpdateSliceTest : public ClientLibraryTestBase {
  protected:
   template <typename IndexT, typename DataT>
+  void TestR0() {
+    // Disable algebraic simplifier, otherwise the op will be replaced by a
+    // constant.
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "algsimp");
+    RunR0<IndexT, DataT>(0, 123, {}, 123);
+  }
+
+  template <typename IndexT, typename DataT>
   void TestR1() {
     // Slice at dimension start.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {0},
@@ -336,6 +345,35 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     RunR3<IndexT, DataT>(
         {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {{{13}, {15}}},
         {1, 2, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 15}, {9, 10}, {11, 13}}});
+  }
+
+  template <typename IndexT, typename DataT>
+  void RunR0(int input_value_int, int update_value_int,
+             const std::vector<IndexT> slice_starts, int expected_value_int) {
+    Literal input_value =
+        std::move(*Literal::CreateR0(input_value_int)
+                       ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
+                       .ValueOrDie());
+    Literal update_value =
+        std::move(*Literal::CreateR0(update_value_int)
+                       ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
+                       .ValueOrDie());
+    Literal expected_value =
+        std::move(*Literal::CreateR0(expected_value_int)
+                       ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
+                       .ValueOrDie());
+
+    ComputationBuilder builder(client_, TestName());
+    // Initialize and transfer dynamic slice start indices parameter.
+    ComputationDataHandle starts;
+    std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
+        slice_starts, 0, "slice_starts", &builder, &starts);
+    // Build dynamic slice computation.
+    auto input = builder.ConstantLiteral(input_value);
+    auto update = builder.ConstantLiteral(update_value);
+    builder.DynamicUpdateSlice(input, update, starts);
+    // Run computation and compare against expected values.
+    ComputeAndCompareLiteral(&builder, expected_value, {start_data.get()});
   }
 
   template <typename IndexT, typename DataT>
@@ -496,6 +534,11 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     LOG(INFO) << name << ":" << literal->ToString();
   }
 };
+
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R0BF16) { TestR0<int32, bfloat16>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R0) { TestR0<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64R0) { TestR0<int64, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R0) { TestR0<uint64, float>(); }
 
 // TODO(b/71820067): The CPU parallel backend failed for this on 2018-01-10.
 XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_CPU_PARALLEL(Int32R1BF16)) {
