@@ -116,11 +116,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   const XlaDevice::Metadata* metadata;
   Status s = XlaDevice::GetMetadata(ctx, &metadata);
-
-  XlaTensorInfoManager* tensor_info_manager = nullptr;
-  if (s.ok()) {
-    tensor_info_manager = &metadata->tensor_info_manager();
-  }
+  bool allocate_xla_tensors = s.ok();
 
   // Get the platform_id_ for XLA_* devices.
   if (platform_id_ == nullptr) {
@@ -134,8 +130,23 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
-  // Builds an XLA allocator for the device.
-  XlaAllocator xla_allocator(client->platform(), ctx);
+  XlaAllocator local_xla_allocator(client->backend().platform(),
+                                   ctx->device()->GetAllocator({}));
+  xla::DeviceMemoryAllocator* xla_allocator;
+  // If we are on an XlaDevice, use the underlying XLA platform's allocator
+  // directly. We could use the StreamExecutor's allocator which may
+  // theoretically be more correct, but XLA returns a nice OOM message in a
+  // Status and StreamExecutor does not.
+  //
+  // Importantly we can't use ctx->device()->GetAllocator() as the allocator
+  // (which local_xla_allocator above uses) as on an XlaDevice, this is a
+  // dummy allocator that returns XlaTensor objects. The XlaCompiler needs a
+  // real allocator to allocate real buffers.
+  if (allocate_xla_tensors) {
+    xla_allocator = client->backend().memory_allocator();
+  } else {
+    xla_allocator = &local_xla_allocator;
+  }
 
   XlaCompiler::Options options;
   options.client = client;
@@ -143,7 +154,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == gpu::host::kHostPlatformId);
-  options.device_allocator = &xla_allocator;
+  options.device_allocator = xla_allocator;
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
@@ -159,14 +170,14 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "Executing XLA Computation...";
 
   XlaComputationLaunchContext launch_context(
-      num_resource_args_, client, &xla_allocator, tensor_info_manager);
+      num_resource_args_, client, xla_allocator, allocate_xla_tensors);
   launch_context.PopulateInputs(ctx, kernel, variables);
 
   // Execute the computation.
   VLOG(2) << "Executing computation.";
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
-  run_options.set_allocator(&xla_allocator);
+  run_options.set_allocator(xla_allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   Env* env = Env::Default();
   auto start_time = env->NowMicros();

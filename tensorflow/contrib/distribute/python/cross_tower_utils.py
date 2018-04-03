@@ -316,7 +316,7 @@ def unpack_small_tensors(tower_grads, packing):
       it made to tower_grads.
 
   Returns:
-    new_tower_grads: identical to tower_grads except that concatentations
+    new_tower_grads: identical to tower_grads except that concatenations
       of small tensors have been split apart and returned to their original
       positions, paired with their original variables.
   """

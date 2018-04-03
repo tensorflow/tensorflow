@@ -134,7 +134,7 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
               const string child_path = io::JoinPath(current_dir, children[i]);
               // In case the child_path doesn't start with the fixed_prefix then
               // we don't need to explore this path.
-              if (!StringPiece(child_path).starts_with(fixed_prefix)) {
+              if (!str_util::StartsWith(child_path, fixed_prefix)) {
                 children_dir_status[i] = Status(tensorflow::error::CANCELLED,
                                                 "Operation not needed");
               } else {
@@ -241,7 +241,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
       return status;
     }
     // Basename returns "" for / ending dirs.
-    if (!remaining_dir.ends_with("/")) {
+    if (!str_util::EndsWith(remaining_dir, "/")) {
       sub_dirs.push_back(io::Basename(remaining_dir));
     }
     remaining_dir = io::Dirname(remaining_dir);

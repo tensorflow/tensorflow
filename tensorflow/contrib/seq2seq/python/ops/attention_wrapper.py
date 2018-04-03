@@ -339,7 +339,8 @@ def _luong_score(query, keys, scale):
   if scale:
     # Scalar used in weight scaling
     g = variable_scope.get_variable(
-        "attention_g", dtype=dtype, initializer=1.)
+        "attention_g", dtype=dtype,
+        initializer=init_ops.ones_initializer, shape=())
     score = g * score
   return score
 
