@@ -1,35 +1,34 @@
 # Eager Execution
 
 TensorFlow's eager execution is an imperative programming environment that
-evaluates operations immediately, without an extra graph-building step.
-Operations return concrete values instead of constructing a computational graph
-to run later. This makes it easy to get started with TensorFlow, debug models,
-reduce boilerplate code, and is fun! To follow along with this guide, run the
-code samples below in an interactive `python` interpreter.
+evaluates operations immediately, without building graphs: operations return
+concrete values instead of constructing a computational graph to run later. This
+makes it easy to get started with TensorFlow and debug models, and it
+reduces boilerplate as well. To follow along with this guide, run the code
+samples below in an interactive `python` interpreter.
 
-Eager execution supports most TensorFlow operations and GPU acceleration.
-Automatic differentiation uses a dynamically-constructed tape instead of a static
-graph to compute gradients. Eager execution is a flexible machine learning
-platform for research and experimentation that provides:
+Eager execution is a flexible machine learning platform for research and
+experimentation, providing:
 
-* *An intuitive interface* —Structure your code naturally and use Python data
+* *An intuitive interface*—Structure your code naturally and use Python data
   structures. Quickly iterate on small models and small data.
-* *Easier debugging* —Call ops directly to inspect running models and test
+* *Easier debugging*—Call ops directly to inspect running models and test
   changes. Use standard Python debugging tools for immediate error reporting.
-* *Natural control flow* —Use Python control flow instead of graph control flow,
-  including support for dynamic models.
+* *Natural control flow*—Use Python control flow instead of graph control
+  flow, simplifying the specification of dynamic models.
 
-For a collection of examples running in eager execution, see:
+Eager execution supports most TensorFlow operations and GPU acceleration. For a
+collection of examples running in eager execution, see:
 [tensorflow/contrib/eager/python/examples](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/examples).
 
-Note: Some models may experience increased overhead with eager execution enabled.
-Performance improvements are ongoing, but please
+Note: Some models may experience increased overhead with eager execution
+enabled. Performance improvements are ongoing, but please
 [file a bug](https://github.com/tensorflow/tensorflow/issues) if you find a
 problem and share your benchmarks.
 
 ## Setup and basic usage
 
-Upgrade to TensorFlow 1.7 to include updates for eager execution:
+Upgrade to the latest version of TensorFlow:
 
 ```
 $ pip install --upgrade tensorflow
@@ -110,7 +109,7 @@ environments and is useful for writing code to [work with graphs](#work_with_gra
 import tensorflow.contrib.eager as tfe
 ```
 
-## Eager training
+## Updating model parameters
 
 ### Automatic differentiation
 
@@ -124,7 +123,7 @@ operations for computing gradients later.
 not tracing. Since different operations can occur during each call, all
 forward-pass operations get recorded to a "tape". To compute the gradient, play
 the tape backwards and then discard. A particular `tfe.GradientTape` can only
-be computed once, subsequent calls throw a runtime error.
+compute one gradient; subsequent calls throw a runtime error.
 
 ```py
 w = tfe.Variable([[1.0]])
@@ -415,7 +414,7 @@ result = model(batch)
 This example uses the
 [dataset.py module](https://github.com/tensorflow/models/blob/master/official/mnist/dataset.py)
 from the
-[TensorFlow MNIST example](https://github.com/tensorflow/models/tree/master/official/mnist),
+[TensorFlow MNIST example](https://github.com/tensorflow/models/tree/master/official/mnist);
 download this file to your local directory. Run the following to download the
 MNIST data files to your working directory and prepare a `tf.data.Dataset`
 for training:
