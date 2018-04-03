@@ -684,7 +684,7 @@ def convolution(
 
   ```
     output[b, x[0], ..., x[N-1], k] =
-        sum_{z[0], ..., z[N-1], q}
+        \\(sum_{z[0], ..., z[N-1], q}\\)
             filter[z[0], ..., z[N-1], q, k] *
             padded_input[b,
                          x[0]*strides[0] + dilation_rate[0]*z[0],
@@ -888,7 +888,7 @@ def pool(
 
   ```
     output[b, x[0], ..., x[N-1], c] =
-      REDUCE_{z[0], ..., z[N-1]}
+      \\(REDUCE_{z[0], ..., z[N-1]}\\)
         input[b,
               x[0] * strides[0] - pad_before[0] + dilation_rate[0]*z[0],
               ...
@@ -1063,7 +1063,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
   ```
   output[batch, height, width, out_channel] =
-      sum_{dheight, dwidth, in_channel} (
+      \\(sum_{dheight, dwidth, in_channel}\\) (
           filters[dheight, dwidth, in_channel, out_channel] *
           value[batch, height + rate*dheight, width + rate*dwidth, in_channel]
       )
@@ -1155,7 +1155,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
   Returns:
     A `Tensor` with the same type as `value`.
-    Output shape with `'VALID`` padding is:
+    Output shape with `'VALID'` padding is:
 
         [batch, height - 2 * (filter_width - 1),
          width - 2 * (filter_height - 1), out_channels].
@@ -1991,13 +1991,13 @@ def sparse_softmax_cross_entropy_with_logits(
 
   Args:
     _sentinel: Used to prevent positional parameters. Internal, do not use.
-    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
+    labels: `Tensor` of shape `[\\(d_0, d_1, ..., d_{r-1}\\)]` (where `r` is rank of
       `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
       must be an index in `[0, num_classes)`. Other values will raise an
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
-      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
+      `[\\(d_0, d_1, ..., d_{r-1}\\), num_classes]` and dtype `float32` or `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2593,7 +2593,7 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
   In detail, the grayscale morphological 2-D erosion is given by:
 
       output[b, y, x, c] =
-         min_{dy, dx} value[b,
+         \\(min_{dy, dx}\\) value[b,
                             strides[1] * y - rates[1] * dy,
                             strides[2] * x - rates[2] * dx,
                             c] -
