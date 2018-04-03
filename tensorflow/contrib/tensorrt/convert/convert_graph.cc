@@ -115,8 +115,8 @@ std::pair<string, int> ParseTensorName(string name, int default_idx = 0) {
   int idx = default_idx;
   size_t sep = name.find_last_of(':');
   if (sep != string::npos) {
-    name = name.substr(0, sep);
     idx = std::stoi(name.substr(sep + 1));
+    name = name.substr(0, sep);
   }
   return std::make_pair(name, idx);
 }
