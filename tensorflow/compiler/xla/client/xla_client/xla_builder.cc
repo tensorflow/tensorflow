@@ -81,7 +81,7 @@ StatusOr<Shape> XlaOp::GetShape() const {
 }
 
 XlaBuilder::XlaBuilder(const string& computation_name)
-    : name_(computation_name) {}
+    : name_(computation_name), unique_id_(GetUniqueId()) {}
 
 XlaBuilder::~XlaBuilder() {}
 
@@ -179,7 +179,6 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
   }
 
   HloComputationProto entry;
-  entry.set_name(name_);
 
   {
     int64 root_id;
@@ -193,9 +192,9 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
     entry.add_instructions()->Swap(&instruction);
   }
 
-  const int64 id = GetUniqueId();
-  entry.set_id(id);
-  XlaComputation computation(id);
+  entry.set_id(unique_id_);
+  entry.set_name(StrCat(name_, entry.id()));  // Ensure that the name is unique.
+  XlaComputation computation(entry.id());
   HloModuleProto* module = computation.mutable_proto();
   module->set_name(entry.name());
   module->set_id(entry.id());
@@ -407,12 +406,7 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
         ShapeInference::InferCallShape(operand_shape_ptrs,
                                        /*to_apply=*/called_program_shape));
 
-    // Add called computation.
-    instr.add_called_computation_ids(
-        computation.proto().entry_computation_id());
-    for (const HloComputationProto& e : computation.proto().computations()) {
-      embedded_.insert({e.id(), e});
-    }
+    AddCalledComputation(computation, &instr);
 
     return AddInstruction(std::move(instr), HloOpcode::kCall, operands);
   });
@@ -470,7 +464,22 @@ XlaOp XlaBuilder::Slice(const XlaOp& operand,
                         tensorflow::gtl::ArraySlice<int64> start_indices,
                         tensorflow::gtl::ArraySlice<int64> limit_indices,
                         tensorflow::gtl::ArraySlice<int64> strides) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferSliceShape(operand_shape, start_indices,
+                                        limit_indices, strides));
+    for (int i = 0; i < start_indices.size(); i++) {
+      auto* slice_config = instr.add_slice_dimensions();
+      slice_config->set_start(start_indices[i]);
+      slice_config->set_limit(limit_indices[i]);
+      slice_config->set_stride(strides[i]);
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kSlice, {operand});
+  });
 }
 
 XlaOp XlaBuilder::SliceInDim(const XlaOp& operand, int64 start_index,
@@ -485,7 +494,20 @@ XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
 
 XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                                      const XlaOp& start_indices) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& update_shape, GetShape(update));
+    TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
+                        GetShape(start_indices));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferDynamicUpdateSliceShape(
+                            operand_shape, update_shape, start_indices_shape));
+
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicUpdateSlice,
+                          {operand, update, start_indices});
+  });
 }
 
 XlaOp XlaBuilder::ConcatInDim(tensorflow::gtl::ArraySlice<XlaOp> operands,
@@ -620,12 +642,29 @@ XlaOp XlaBuilder::Lt(const XlaOp& lhs, const XlaOp& rhs,
 }
 
 XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
+
+    DotDimensionNumbers dimension_numbers;
+    dimension_numbers.add_lhs_contracting_dimensions(
+        lhs_shape.dimensions_size() == 1 ? 0 : 1);
+    dimension_numbers.add_rhs_contracting_dimensions(0);
+    return DotGeneral(lhs, rhs, dimension_numbers);
+  });
 }
 
 XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
                              const DotDimensionNumbers& dimension_numbers) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
+    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferDotOpShape(lhs_shape, rhs_shape,
+                                                        dimension_numbers));
+    *instr.mutable_dot_dimension_numbers() = dimension_numbers;
+    return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
+  });
 }
 
 XlaOp XlaBuilder::Conv(const XlaOp& lhs, const XlaOp& rhs,
@@ -860,7 +899,14 @@ XlaOp XlaBuilder::Pow(const XlaOp& lhs, const XlaOp& rhs,
 
 XlaOp XlaBuilder::ConvertElementType(const XlaOp& operand,
                                      PrimitiveType new_element_type) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferConvertShape(operand_shape, new_element_type));
+    return AddInstruction(std::move(instr), HloOpcode::kConvert, {operand});
+  });
 }
 
 XlaOp XlaBuilder::BitcastConvertType(const XlaOp& operand,
@@ -894,19 +940,64 @@ XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
   return UnimplementedOp();
 }
 
+XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
+                        tensorflow::gtl::ArraySlice<XlaOp> parameters,
+                        const Shape& shape) {
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    // Check the number of parameters per RNG distribution.
+    switch (distribution) {
+      case RandomDistribution::RNG_NORMAL:
+      case RandomDistribution::RNG_UNIFORM:
+        if (parameters.size() != 2) {
+          return InvalidArgument(
+              "RNG distribution (%s) expects 2 parameters, but got %ld",
+              RandomDistribution_Name(distribution).c_str(), parameters.size());
+        }
+        break;
+      default:
+        LOG(FATAL) << "unhandled distribution " << distribution;
+    }
+
+    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+    *instr.mutable_shape() = shape;
+
+    instr.set_distribution(distribution);
+
+    return AddInstruction(std::move(instr), HloOpcode::kRng, parameters);
+  });
+}
+
 XlaOp XlaBuilder::RngNormal(const XlaOp& mu, const XlaOp& sigma,
                             const Shape& shape) {
-  return UnimplementedOp();
+  return RngOp(RandomDistribution::RNG_NORMAL, {mu, sigma}, shape);
 }
 
 XlaOp XlaBuilder::RngUniform(const XlaOp& a, const XlaOp& b,
                              const Shape& shape) {
-  return UnimplementedOp();
+  return RngOp(RandomDistribution::RNG_UNIFORM, {a, b}, shape);
 }
 
 XlaOp XlaBuilder::While(const XlaComputation& condition,
                         const XlaComputation& body, const XlaOp& init) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    // Infer shape.
+    TF_ASSIGN_OR_RETURN(const auto& body_program_shape, body.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(const auto& condition_program_shape,
+                        condition.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(const Shape& init_shape, GetShape(init));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferWhileShape(condition_program_shape,
+                                        body_program_shape, init_shape));
+    // Body comes before condition computation in the vector.
+    AddCalledComputation(body, &instr);
+    AddCalledComputation(condition, &instr);
+    return AddInstruction(std::move(instr), HloOpcode::kWhile, {init});
+  });
 }
 
 XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& gather_indices,
@@ -926,7 +1017,27 @@ XlaOp XlaBuilder::Reduce(
     const XlaOp& operand, const XlaOp& init_value,
     const XlaComputation& computation,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& init_shape, GetShape(init_value));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferReduceShape(
+                            operand_shape, init_shape, dimensions_to_reduce,
+                            called_program_shape));
+
+    for (int64 dim : dimensions_to_reduce) {
+      instr.add_dimensions(dim);
+    }
+
+    AddCalledComputation(computation, &instr);
+
+    return AddInstruction(std::move(instr), HloOpcode::kReduce,
+                          {operand, init_value});
+  });
 }
 
 XlaOp XlaBuilder::ReduceAll(const XlaOp& operand, const XlaOp& init_value,
@@ -1109,10 +1220,10 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(
   instr.set_id(handle);
   instr.set_opcode(HloOpcodeString(opcode));
   if (instr.name().empty()) {
-    instr.set_name(StrCat(instr.opcode(), ".", handle));
+    instr.set_name(StrCat(instr.opcode(), ".", unique_id_, ".", handle));
   } else {
     // Append the handle to make sure the name is unique.
-    instr.set_name(StrCat(instr.name(), ".", handle));
+    instr.set_name(StrCat(instr.name(), ".", unique_id_, ".", handle));
   }
   for (const auto& operand : operands) {
     if (operand.builder_ == nullptr) {
@@ -1136,6 +1247,14 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(
 
   XlaOp op(handle, this);
   return op;
+}
+
+void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
+                                      HloInstructionProto* instr) {
+  instr->add_called_computation_ids(computation.proto().entry_computation_id());
+  for (const HloComputationProto& e : computation.proto().computations()) {
+    embedded_.insert({e.id(), e});
+  }
 }
 
 StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
