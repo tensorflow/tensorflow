@@ -112,6 +112,7 @@ py_library(
     deps = [
         ":contrib_op_loader",
         ":gen_dataset_ops",
+        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
