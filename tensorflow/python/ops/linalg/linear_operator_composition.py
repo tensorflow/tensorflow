@@ -120,8 +120,8 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     r"""Initialize a `LinearOperatorComposition`.
 
     `LinearOperatorComposition` is initialized with a list of operators
-    `[op_1,...,op_J]`.  For the `matmul` method to be well defined, the
-    composition `op_i.matmul(op_{i+1}(x))` must be defined.  Other methods have
+    `[\\(op_1,...,op_J\\)]`.  For the `matmul` method to be well defined, the
+    composition `op_i.matmul(\\(op_{i+1}(x)\\))` must be defined.  Other methods have
     similar constraints.
 
     Args:

@@ -275,7 +275,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
       self._check_shapes()
 
       # Pre-compute the so-called "capacitance" matrix
-      #   C := D^{-1} + V^H L^{-1} U
+      #   \\(C := D^{-1} + V^H L^{-1} U\\)
       self._capacitance = self._make_capacitance()
       if self._use_cholesky:
         self._chol_capacitance = linalg_ops.cholesky(self._capacitance)
@@ -380,10 +380,10 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
       return math_ops.exp(self.log_abs_determinant())
     # The matrix determinant lemma gives
     # https://en.wikipedia.org/wiki/Matrix_determinant_lemma
-    #   det(L + UDV^H) = det(D^{-1} + V^H L^{-1} U) det(D) det(L)
-    #                  = det(C) det(D) det(L)
+    #   \\(det(L + UDV^H) = det(D^{-1} + V^H L^{-1} U) det(D) det(L)\\)
+    #                  \\(= det(C) det(D) det(L)\\)
     # where C is sometimes known as the capacitance matrix,
-    #   C := D^{-1} + V^H L^{-1} U
+    #   \\(C := D^{-1} + V^H L^{-1} U\\)
     det_c = linalg_ops.matrix_determinant(self._capacitance)
     det_d = self.diag_operator.determinant()
     det_l = self.base_operator.determinant()
@@ -391,8 +391,8 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
   def _log_abs_determinant(self):
     # Recall
-    #   det(L + UDV^H) = det(D^{-1} + V^H L^{-1} U) det(D) det(L)
-    #                  = det(C) det(D) det(L)
+    #   \\(det(L + UDV^H) = det(D^{-1} + V^H L^{-1} U) det(D) det(L)\\)
+    #                  \\(= det(C) det(D) det(L)\\)
     log_abs_det_d = self.diag_operator.log_abs_determinant()
     log_abs_det_l = self.base_operator.log_abs_determinant()
 
@@ -413,13 +413,13 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
           "non-singular LinearOperator.")
     # The Woodbury formula gives:
     # https://en.wikipedia.org/wiki/Woodbury_matrix_identity
-    #   (L + UDV^H)^{-1}
-    #   = L^{-1} - L^{-1} U (D^{-1} + V^H L^{-1} U)^{-1} V^H L^{-1}
-    #   = L^{-1} - L^{-1} U C^{-1} V^H L^{-1}
-    # where C is the capacitance matrix, C := D^{-1} + V^H L^{-1} U
+    #   \\((L + UDV^H)^{-1}\\)
+    #   \\(= L^{-1} - L^{-1} U (D^{-1} + V^H L^{-1} U)^{-1} V^H L^{-1}\\)
+    #   \\(= L^{-1} - L^{-1} U C^{-1} V^H L^{-1}\\)
+    # where C is the capacitance matrix, \\(C := D^{-1} + V^H L^{-1} U\\)
     # Note also that, with ^{-H} being the inverse of the adjoint,
-    #   (L + UDV^H)^{-H}
-    #   = L^{-H} - L^{-H} V C^{-H} U^H L^{-H}
+    #   \\((L + UDV^H)^{-H}\\)
+    #  \\( = L^{-H} - L^{-H} V C^{-H} U^H L^{-H}\\)
     l = self.base_operator
     if adjoint:
       v = self.u
@@ -428,34 +428,34 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
       v = self.v
       u = self.u
 
-    # L^{-1} rhs
+    # \\(L^{-1} rhs\\)
     linv_rhs = l.solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
-    # V^H L^{-1} rhs
+    # \\(V^H L^{-1} rhs
     vh_linv_rhs = math_ops.matmul(v, linv_rhs, adjoint_a=True)
-    # C^{-1} V^H L^{-1} rhs
+    # \\(C^{-1} V^H L^{-1} rhs\\)
     if self._use_cholesky:
       capinv_vh_linv_rhs = linalg_ops.cholesky_solve(
           self._chol_capacitance, vh_linv_rhs)
     else:
       capinv_vh_linv_rhs = linalg_ops.matrix_solve(
           self._capacitance, vh_linv_rhs, adjoint=adjoint)
-    # U C^{-1} V^H M^{-1} rhs
+    # \\(U C^{-1} V^H M^{-1} rhs\\)
     u_capinv_vh_linv_rhs = math_ops.matmul(u, capinv_vh_linv_rhs)
-    # L^{-1} U C^{-1} V^H L^{-1} rhs
+    # \\(L^{-1} U C^{-1} V^H L^{-1} rhs\\)
     linv_u_capinv_vh_linv_rhs = l.solve(u_capinv_vh_linv_rhs, adjoint=adjoint)
 
-    # L^{-1} - L^{-1} U C^{-1} V^H L^{-1}
+    # \\(L^{-1} - L^{-1} U C^{-1} V^H L^{-1}\\)
     return linv_rhs - linv_u_capinv_vh_linv_rhs
 
   def _make_capacitance(self):
-    # C := D^{-1} + V^H L^{-1} U
+    # \\(C := D^{-1} + V^H L^{-1} U\\)
     # which is sometimes known as the "capacitance" matrix.
 
-    # L^{-1} U
+    # \\(L^{-1} U\\)
     linv_u = self.base_operator.solve(self.u)
-    # V^H L^{-1} U
+    # \\(V^H L^{-1} U\\)
     vh_linv_u = math_ops.matmul(self.v, linv_u, adjoint_a=True)
 
-    # D^{-1} + V^H L^{-1} V
+    # \\(D^{-1} + V^H L^{-1} V\\)
     capacitance = self._diag_inv_operator.add_to_tensor(vh_linv_u)
     return capacitance
