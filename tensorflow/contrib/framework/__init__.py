@@ -100,6 +100,8 @@ See the @{$python/contrib.framework} guide.
 
 @@BoundedTensorSpec
 @@TensorSpec
+
+@@RecordInput
 """
 
 from __future__ import absolute_import
