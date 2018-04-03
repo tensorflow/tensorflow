@@ -347,6 +347,7 @@ tf_cc_test(
         "encapsulate_subgraphs_pass_test.cc",
         "mark_for_compilation_pass_test.cc",
     ],
+    tags = ["nomsan"],  # TODO: b/77543571
     deps = [
         ":common",
         ":compilation_passes",
