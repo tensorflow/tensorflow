@@ -1916,6 +1916,7 @@ py_library(
         ":array_ops",
         ":dtypes",
         ":framework_ops",
+        ":functional_ops",
         ":linalg_ops_gen",
         ":math_ops",
         "//third_party/py/numpy",
