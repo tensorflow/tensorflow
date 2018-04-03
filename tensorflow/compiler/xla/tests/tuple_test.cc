@@ -518,7 +518,7 @@ class TupleHloTest : public HloTestBase {};
 
 // Disabled on CPU parallel because that's broken and will be removed soon.
 // Disabled on the interpreter because bitcast doesn't exist on the interpreter.
-TEST_F(TupleHloTest,
+XLA_TEST_F(TupleHloTest,
        DISABLED_ON_INTERPRETER(DISABLED_ON_CPU_PARALLEL(BitcastAfterGTE))) {
   const char* testcase = R"(
     HloModule m
