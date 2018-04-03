@@ -211,6 +211,7 @@ struct ParsedModelFlags {
   Arg<bool> allow_nonexistent_arrays = Arg<bool>(false);
   Arg<bool> allow_nonascii_arrays = Arg<bool>(false);
   Arg<string> arrays_extra_info_file;
+  Arg<string> model_flags_file;
 };
 
 // Flags that describe the operation you would like to do (what conversion
