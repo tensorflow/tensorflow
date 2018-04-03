@@ -74,7 +74,9 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
-  transformations->Add(new ReorderActivationFunctions);
+  transformations->Add(new MergeReshapeIntoPrecedingTranspose);
+  transformations->Add(new ReorderElementwiseUnary);
+  transformations->Add(new ReorderReshapeTranspose);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);

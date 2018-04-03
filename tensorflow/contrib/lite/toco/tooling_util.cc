@@ -1921,6 +1921,35 @@ bool IsDiscardableArray(const Model& model, const string& array_name) {
   return true;
 }
 
+bool ReshapeIsEquivalentToTranspose(const Model& model,
+                                    const TensorFlowReshapeOperator* op,
+                                    bool allow_extra_unary_dims) {
+  CHECK(!op->shape.empty());
+  CHECK(model.HasArray(op->inputs[0]));
+  CHECK(model.HasArray(op->outputs[0]));
+
+  const auto& input_array = model.GetArray(op->inputs[0]);
+  const auto& output_array = model.GetArray(op->outputs[0]);
+
+  CHECK(input_array.has_shape());
+  CHECK(output_array.has_shape());
+
+  std::vector<int> in_shape = input_array.shape().dims();
+  std::vector<int> out_shape = output_array.shape().dims();
+
+  // If the reshape changes the number of dimensions so it cannot be interpreted
+  // as a transpose.
+  if (!allow_extra_unary_dims && in_shape.size() != out_shape.size()) {
+    return false;
+  }
+
+  in_shape.erase(std::remove(in_shape.begin(), in_shape.end(), 1),
+                 in_shape.end());
+  out_shape.erase(std::remove(out_shape.begin(), out_shape.end(), 1),
+                  out_shape.end());
+  return in_shape == out_shape;
+}
+
 void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
