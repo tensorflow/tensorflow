@@ -233,3 +233,6 @@ TupleTest.TupleConstant POPLAR // Seems to generate invalid instructions
 TupleHloTest.BitcastAfterGTE POPLAR
 
 DotOperationTest.DotOfInputTupleElem POPLAR // dot of a tuple
+
+GatherOperationTest POPLAR // don't support Gather
+GatherClientLibraryTest POPLAR
