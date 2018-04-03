@@ -28,7 +28,6 @@ See the @{$python/array_ops} guide.
 @@saturate_cast
 @@broadcast_dynamic_shape
 @@broadcast_static_shape
-@@broadcast_to
 @@shape
 @@shape_n
 @@size
@@ -112,6 +111,11 @@ from tensorflow.python.util.tf_export import tf_export
 # Used for slicing to specify a new 1 size dimension
 newaxis = None
 tf_export("newaxis").export_constant(__name__, "newaxis")
+
+# TODO (yongtang): We export broadcast_to to
+# contrib.framework.broadcast_to for now. In the future
+# it could be exported directly as tf.broadcast_to.
+tf_export('contrib.framework.broadcast_to')(broadcast_to)
 
 # We override the 'slice' for the "slice" op, so we keep python's
 # existing 'slice' for later use in this module.
