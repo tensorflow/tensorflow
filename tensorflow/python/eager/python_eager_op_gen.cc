@@ -366,8 +366,8 @@ string GenEagerPythonOp::Code() {
 void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
   // Handle graph-mode case
   strings::StrAppend(&result_,
-                     "  _ctx = _context.context()\n"
-                     "  if not _ctx._eager_context.is_eager:\n",
+                     "  _ctx = _context._context\n"
+                     "  if _ctx is None or not _ctx._eager_context.is_eager:\n",
                      function_setup,
                      "    _, _, _op = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn("        ");
@@ -683,13 +683,14 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
     return true;
   }
 
-  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix), parameters);
+  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix),
+             strings::StrCat(parameters, ", ctx=None"));
   strings::StrAppend(
       &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
   strings::StrAppend(&result_, "  This is for function ", function_name_,
                      "\n  \"\"\"\n");
 
-  strings::StrAppend(&result_, "  _ctx = _context.context()\n");
+  strings::StrAppend(&result_, "  _ctx = ctx if ctx else _context.context()\n");
 
   string function_setup;
   if (!GetEagerFunctionSetup("  ", &function_setup)) {
@@ -755,6 +756,8 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   strings::StrAppend(&result_, "      ", "return _result\n");
 
   // Handle fallback.
+  if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
+  strings::StrAppend(&fallback_params, "ctx=_ctx");
   strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
   strings::StrAppend(
       &result_, "      ", "return ", function_name_, kEagerFallbackSuffix,
