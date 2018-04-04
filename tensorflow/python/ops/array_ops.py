@@ -2523,12 +2523,12 @@ def multi_one_hot(indices, depth_list, on_values_list=None,
     else:
       off_values_list = [None] * n_features
 
-    multi_tensor = one_hot(indices[:,0], depth_list[0], on_values_list[0],
+    multi_tensor = one_hot(indices[:, 0], depth_list[0], on_values_list[0],
                            off_values_list[0], dtype=dtypes.float32)
     tensor_list = [multi_tensor]
-    
+
     for col in range(1, n_features):
-      add = one_hot(indices[:,col], depth_list[col], on_values_list[col],
+      add = one_hot(indices[:, col], depth_list[col], on_values_list[col],
                     off_values_list[col], dtype=dtypes.float32)
       tensor_list.append(add)
 
