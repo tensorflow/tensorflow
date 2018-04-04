@@ -63,7 +63,7 @@ from tensorflow.python.util.tf_export import tf_export
 # calls to the C API. Currently disabled by default but can be manually enabled
 # in code or via the environment variable. This will be removed once all
 # functionality is supported and there's no performance penalty with it enabled.
-_USE_C_API = os.getenv("TF_C_API_GRAPH_CONSTRUCTION", "0") is not "0"
+_USE_C_API = os.getenv("TF_C_API_GRAPH_CONSTRUCTION", "1") is not "0"
 _USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "0") is not "0"
 
 
