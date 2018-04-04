@@ -67,7 +67,7 @@ class MaxNorm(Constraint):
 
   def __call__(self, w):
     norms = K.sqrt(
-        math_ops.reduce_sum(K.square(w), axis=self.axis, keepdims=True))
+        math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True))
     desired = K.clip(norms, 0, self.max_value)
     return w * (desired / (K.epsilon() + norms))
 
@@ -81,7 +81,7 @@ class NonNeg(Constraint):
   """
 
   def __call__(self, w):
-    return w * math_ops.cast(K.greater_equal(w, 0.), K.floatx())
+    return w * math_ops.cast(math_ops.greater_equal(w, 0.), K.floatx())
 
 
 @tf_export('keras.constraints.UnitNorm', 'keras.constraints.unit_norm')
@@ -108,7 +108,8 @@ class UnitNorm(Constraint):
   def __call__(self, w):
     return w / (
         K.epsilon() + K.sqrt(
-            math_ops.reduce_sum(K.square(w), axis=self.axis, keepdims=True)))
+            math_ops.reduce_sum(
+                math_ops.square(w), axis=self.axis, keepdims=True)))
 
   def get_config(self):
     return {'axis': self.axis}
@@ -152,7 +153,7 @@ class MinMaxNorm(Constraint):
 
   def __call__(self, w):
     norms = K.sqrt(
-        math_ops.reduce_sum(K.square(w), axis=self.axis, keepdims=True))
+        math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True))
     desired = (
         self.rate * K.clip(norms, self.min_value, self.max_value) +
         (1 - self.rate) * norms)

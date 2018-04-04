@@ -166,7 +166,7 @@ class AlphaDropout(Layer):
         scale = 1.0507009873554804934193349852946
         alpha_p = -alpha * scale
 
-        kept_idx = K.greater_equal(
+        kept_idx = math_ops.greater_equal(
             K.random_uniform(noise_shape, seed=seed), rate)
         kept_idx = math_ops.cast(kept_idx, K.floatx())
 

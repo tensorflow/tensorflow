@@ -77,11 +77,11 @@ class Masking(Layer):
     self.mask_value = mask_value
 
   def compute_mask(self, inputs, mask=None):
-    return K.any(K.not_equal(inputs, self.mask_value), axis=-1)
+    return K.any(math_ops.not_equal(inputs, self.mask_value), axis=-1)
 
   def call(self, inputs):
     boolean_mask = K.any(
-        K.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
+        math_ops.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
     return inputs * math_ops.cast(boolean_mask, inputs.dtype)
 
   def compute_output_shape(self, input_shape):
@@ -416,7 +416,8 @@ class Reshape(Layer):
     return tensor_shape.TensorShape(output_shape)
 
   def call(self, inputs):
-    return K.reshape(inputs, (array_ops.shape(inputs)[0],) + self.target_shape)
+    return array_ops.reshape(inputs,
+                             (array_ops.shape(inputs)[0],) + self.target_shape)
 
   def get_config(self):
     config = {'target_shape': self.target_shape}
@@ -469,7 +470,7 @@ class Permute(Layer):
     return tensor_shape.TensorShape(output_shape)
 
   def call(self, inputs):
-    return K.permute_dimensions(inputs, (0,) + self.dims)
+    return array_ops.transpose(inputs, perm=(0,) + self.dims)
 
   def get_config(self):
     config = {'dims': self.dims}

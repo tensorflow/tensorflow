@@ -147,7 +147,7 @@ class PReLU(Layer):
     if K.backend() == 'theano':
       neg = (
           K.pattern_broadcast(self.alpha, self.param_broadcast) *
-          (inputs - K.abs(inputs)) * 0.5)
+          (inputs - math_ops.abs(inputs)) * 0.5)
     else:
       neg = -self.alpha * K.relu(-inputs)
     return pos + neg
@@ -233,7 +233,8 @@ class ThresholdedReLU(Layer):
     self.theta = K.cast_to_floatx(theta)
 
   def call(self, inputs, mask=None):
-    return inputs * math_ops.cast(K.greater(inputs, self.theta), K.floatx())
+    return inputs * math_ops.cast(
+        math_ops.greater(inputs, self.theta), K.floatx())
 
   def get_config(self):
     config = {'theta': float(self.theta)}

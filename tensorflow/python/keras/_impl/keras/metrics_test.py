@@ -107,9 +107,8 @@ class KerasMetricsTest(test.TestCase):
                 completion of the batch.
         """
         y_true = math_ops.cast(y_true, 'int32')
-        y_pred = math_ops.cast(keras.backend.round(y_pred), 'int32')
-        correct_preds = math_ops.cast(
-            keras.backend.equal(y_pred, y_true), 'int32')
+        y_pred = math_ops.cast(math_ops.round(y_pred), 'int32')
+        correct_preds = math_ops.cast(math_ops.equal(y_pred, y_true), 'int32')
         true_pos = math_ops.cast(
             math_ops.reduce_sum(correct_preds * y_true), 'int32')
         current_true_pos = self.true_positives * 1

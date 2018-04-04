@@ -214,7 +214,7 @@ class TimeDistributed(Wrapper):
       # Shape: (num_samples * timesteps, ...). And track the
       # transformation in self._input_map.
       input_uid = tf_layers_util.object_list_uid(inputs)
-      inputs = K.reshape(inputs, (-1,) + input_shape[2:])
+      inputs = array_ops.reshape(inputs, (-1,) + input_shape[2:])
       self._input_map[input_uid] = inputs
       # (num_samples * timesteps, ...)
       y = self.layer.call(inputs, **kwargs)
@@ -222,7 +222,7 @@ class TimeDistributed(Wrapper):
         uses_learning_phase = y._uses_learning_phase
       # Shape: (num_samples, timesteps, ...)
       output_shape = self.compute_output_shape(input_shape).as_list()
-      y = K.reshape(y, (-1, input_length) + tuple(output_shape[2:]))
+      y = array_ops.reshape(y, (-1, input_length) + tuple(output_shape[2:]))
 
     # Apply activity regularizer if any:
     if (hasattr(self.layer, 'activity_regularizer') and

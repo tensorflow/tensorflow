@@ -119,7 +119,8 @@ class Optimizer(object):
                        'Common ops without gradient: '
                        'K.argmax, K.round, K.eval.')
     if hasattr(self, 'clipnorm') and self.clipnorm > 0:
-      norm = K.sqrt(sum([math_ops.reduce_sum(K.square(g)) for g in grads]))
+      norm = K.sqrt(
+          sum([math_ops.reduce_sum(math_ops.square(g)) for g in grads]))
       grads = [clip_norm(g, self.clipnorm, norm) for g in grads]
     if hasattr(self, 'clipvalue') and self.clipvalue > 0:
       grads = [K.clip(g, -self.clipvalue, self.clipvalue) for g in grads]
@@ -288,7 +289,7 @@ class RMSprop(Optimizer):
 
     for p, g, a in zip(params, grads, accumulators):
       # update accumulator
-      new_a = self.rho * a + (1. - self.rho) * K.square(g)
+      new_a = self.rho * a + (1. - self.rho) * math_ops.square(g)
       self.updates.append(state_ops.assign(a, new_a))
       new_p = p - lr * g / (K.sqrt(new_a) + self.epsilon)
 
@@ -349,7 +350,7 @@ class Adagrad(Optimizer):
                                                 K.dtype(self.decay))))
 
     for p, g, a in zip(params, grads, accumulators):
-      new_a = a + K.square(g)  # update accumulator
+      new_a = a + math_ops.square(g)  # update accumulator
       self.updates.append(state_ops.assign(a, new_a))
       new_p = p - lr * g / (K.sqrt(new_a) + self.epsilon)
 
@@ -414,7 +415,7 @@ class Adadelta(Optimizer):
 
     for p, g, a, d_a in zip(params, grads, accumulators, delta_accumulators):
       # update accumulator
-      new_a = self.rho * a + (1. - self.rho) * K.square(g)
+      new_a = self.rho * a + (1. - self.rho) * math_ops.square(g)
       self.updates.append(state_ops.assign(a, new_a))
 
       # use the new accumulator and the *old* delta_accumulator
@@ -428,7 +429,7 @@ class Adadelta(Optimizer):
       self.updates.append(state_ops.assign(p, new_p))
 
       # update delta_accumulator
-      new_d_a = self.rho * d_a + (1 - self.rho) * K.square(update)
+      new_d_a = self.rho * d_a + (1 - self.rho) * math_ops.square(update)
       self.updates.append(state_ops.assign(d_a, new_d_a))
     return self.updates
 
@@ -494,7 +495,8 @@ class Adam(Optimizer):
 
     t = math_ops.cast(self.iterations, K.floatx()) + 1
     lr_t = lr * (
-        K.sqrt(1. - K.pow(self.beta_2, t)) / (1. - K.pow(self.beta_1, t)))
+        K.sqrt(1. - math_ops.pow(self.beta_2, t)) /
+        (1. - math_ops.pow(self.beta_1, t)))
 
     ms = [K.zeros(K.int_shape(p), dtype=K.dtype(p)) for p in params]
     vs = [K.zeros(K.int_shape(p), dtype=K.dtype(p)) for p in params]
@@ -506,9 +508,9 @@ class Adam(Optimizer):
 
     for p, g, m, v, vhat in zip(params, grads, ms, vs, vhats):
       m_t = (self.beta_1 * m) + (1. - self.beta_1) * g
-      v_t = (self.beta_2 * v) + (1. - self.beta_2) * K.square(g)
+      v_t = (self.beta_2 * v) + (1. - self.beta_2) * math_ops.square(g)
       if self.amsgrad:
-        vhat_t = K.maximum(vhat, v_t)
+        vhat_t = math_ops.maximum(vhat, v_t)
         p_t = p - lr_t * m_t / (K.sqrt(vhat_t) + self.epsilon)
         self.updates.append(state_ops.assign(vhat, vhat_t))
       else:
@@ -583,7 +585,7 @@ class Adamax(Optimizer):
                                                 K.dtype(self.decay))))
 
     t = math_ops.cast(self.iterations, K.floatx()) + 1
-    lr_t = lr / (1. - K.pow(self.beta_1, t))
+    lr_t = lr / (1. - math_ops.pow(self.beta_1, t))
 
     shapes = [K.int_shape(p) for p in params]
     # zero init of 1st moment
@@ -595,7 +597,7 @@ class Adamax(Optimizer):
     for p, g, m, u in zip(params, grads, ms, us):
 
       m_t = (self.beta_1 * m) + (1. - self.beta_1) * g
-      u_t = K.maximum(self.beta_2 * u, K.abs(g))
+      u_t = math_ops.maximum(self.beta_2 * u, math_ops.abs(g))
       p_t = p - lr_t * m_t / (u_t + self.epsilon)
 
       self.updates.append(state_ops.assign(m, m_t))
@@ -666,10 +668,11 @@ class Nadam(Optimizer):
 
     # Due to the recommendations in [2], i.e. warming momentum schedule
     momentum_cache_t = self.beta_1 * (
-        1. - 0.5 * (K.pow(K.cast_to_floatx(0.96), t * self.schedule_decay)))
+        1. - 0.5 *
+        (math_ops.pow(K.cast_to_floatx(0.96), t * self.schedule_decay)))
     momentum_cache_t_1 = self.beta_1 * (
         1. - 0.5 *
-        (K.pow(K.cast_to_floatx(0.96), (t + 1) * self.schedule_decay)))
+        (math_ops.pow(K.cast_to_floatx(0.96), (t + 1) * self.schedule_decay)))
     m_schedule_new = self.m_schedule * momentum_cache_t
     m_schedule_next = self.m_schedule * momentum_cache_t * momentum_cache_t_1
     self.updates.append((self.m_schedule, m_schedule_new))
@@ -685,8 +688,8 @@ class Nadam(Optimizer):
       g_prime = g / (1. - m_schedule_new)
       m_t = self.beta_1 * m + (1. - self.beta_1) * g
       m_t_prime = m_t / (1. - m_schedule_next)
-      v_t = self.beta_2 * v + (1. - self.beta_2) * K.square(g)
-      v_t_prime = v_t / (1. - K.pow(self.beta_2, t))
+      v_t = self.beta_2 * v + (1. - self.beta_2) * math_ops.square(g)
+      v_t_prime = v_t / (1. - math_ops.pow(self.beta_2, t))
       m_t_bar = (
           1. - momentum_cache_t) * g_prime + momentum_cache_t_1 * m_t_prime
 

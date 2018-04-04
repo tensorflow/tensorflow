@@ -510,7 +510,8 @@ class RNN(Layer):
     # shape of initial_state = (samples, timesteps, input_dim)
     initial_state = math_ops.reduce_sum(initial_state, axis=(1, 2))
     # shape of initial_state = (samples,)
-    initial_state = K.expand_dims(initial_state)  # (samples, 1)
+    initial_state = array_ops.expand_dims(initial_state, axis=-1)
+    # shape of initial_state = (samples, 1)
     if hasattr(self.cell.state_size, '__len__'):
       return [K.tile(initial_state, [1, dim]) for dim in self.cell.state_size]
     else:
@@ -2357,7 +2358,8 @@ class Recurrent(Layer):
     # shape of initial_state = (samples, timesteps, input_dim)
     initial_state = math_ops.reduce_sum(initial_state, axis=(1, 2))
     # shape of initial_state = (samples,)
-    initial_state = K.expand_dims(initial_state)  # (samples, 1)
+    initial_state = array_ops.expand_dims(initial_state, axis=-1)
+    # shape of initial_state = (samples, 1)
     initial_state = K.tile(initial_state, [1,
                                            self.units])  # (samples, output_dim)
     initial_state = [initial_state for _ in range(len(self.states))]
