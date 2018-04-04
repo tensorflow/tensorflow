@@ -298,7 +298,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     #   core_run_config.RunConfig.__init__(self)
     # so instead of breaking compatibility with that assumption, we
     # just manually initialize this field:
-    self._distribute = None
+    self._train_distribute = None
 
     gpu_options = config_pb2.GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
