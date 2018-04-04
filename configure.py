@@ -484,6 +484,8 @@ def set_cc_opt_flags(environ_cp):
   if is_ppc64le():
     # gcc on ppc64le does not support -march, use mcpu instead
     default_cc_opt_flags = '-mcpu=native'
+  elif is_windows():
+    default_cc_opt_flags = '/arch:AVX'
   else:
     default_cc_opt_flags = '-march=native'
   question = ('Please specify optimization flags to use during compilation when'
@@ -494,7 +496,7 @@ def set_cc_opt_flags(environ_cp):
   for opt in cc_opt_flags.split():
     write_to_bazelrc('build:opt --copt=%s' % opt)
   # It should be safe on the same build host.
-  if not is_ppc64le():
+  if not is_ppc64le() and not is_windows():
     write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
   # TODO(mikecase): Remove these default defines once we are able to get
