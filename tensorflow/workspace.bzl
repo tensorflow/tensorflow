@@ -48,7 +48,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_linux",
       urls = [
-          "https://mirror.bazel.build/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
           "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
       ],
       sha256 = "feacc3d82565c1231470359b42c696236fae873704e0b013436afba5fd4fd30f",
@@ -58,7 +58,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_windows",
       urls = [
-          "https://mirror.bazel.build/intel/mkl-dnn/releases/download/v0.12/mklml_win_2018.0.1.20171227.zip",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.12/mklml_win_2018.0.1.20171227.zip",
           "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_win_2018.0.1.20171227.zip"
       ],
       sha256 = "24bae8d7b22b431a654acadea43f2243c46ae6b1e5a73a4a936825f31d284ee4",
@@ -68,7 +68,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_darwin",
       urls = [
-          "https://mirror.bazel.build/intel/mkl-dnn/releases/download/v0.12/mklml_mac_2018.0.1.20171227.tgz",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.12/mklml_mac_2018.0.1.20171227.tgz",
           "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_mac_2018.0.1.20171227.tgz"
       ],
       sha256 = "0e954ec6fd3dc5e37f64c4043f6b5613dd687558da3df1028b3b7c29ff5cf77f",
