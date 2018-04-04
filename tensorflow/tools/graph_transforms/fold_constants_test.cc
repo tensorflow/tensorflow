@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
@@ -209,10 +210,10 @@ class ConstantFoldingTest : public ::testing::Test {
     for (const NodeDef& node : graph_def.node()) {
       const StringPiece name(node.name());
       const int occurrence_count = folded_node_map.count(node.name());
-      if (name.ends_with("expect_removed")) {
+      if (str_util::EndsWith(name, "expect_removed")) {
         EXPECT_EQ(0, occurrence_count) << "node.name()=" << node.name();
       }
-      if (name.ends_with("expect_remains")) {
+      if (str_util::EndsWith(name, "expect_remains")) {
         EXPECT_EQ(1, occurrence_count) << "node.name()=" << node.name();
       }
     }

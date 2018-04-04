@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/memmapped_file_system.pb.h"
 
@@ -242,7 +243,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
-  return StringPiece(filename).starts_with(kMemmappedPackagePrefix);
+  return str_util::StartsWith(filename, kMemmappedPackagePrefix);
 }
 
 namespace {
