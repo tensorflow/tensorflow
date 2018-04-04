@@ -661,7 +661,7 @@ def _get_arg_spec(func):
                                   varargs=argspec.varargs,
                                   varkw=argspec.varkw,
                                   defaults=tuple(argspec_defaults),
-                                  kwonlyargs=[], kwonlydefaults={},
+                                  kwonlyargs=[], kwonlydefaults=None,
                                   annotations={})
   else:  # Regular function or method, getargspec will work fine.
     return tf_inspect.getfullargspec(func)

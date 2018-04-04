@@ -79,7 +79,7 @@ def getfullargspec(obj):  # pylint: disable=redefined-builtin
           varkw=argspecs.keywords,
           defaults=argspecs.defaults,
           kwonlyargs=[],
-          kwonlydefaults={},
+          kwonlydefaults=None,
           annotations={})
       return fullargspecs
   else:
