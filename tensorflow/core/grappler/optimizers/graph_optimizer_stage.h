@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/grappler/utils/frame.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -45,21 +44,16 @@ const NodeScopeAndName ParseNodeScopeAndName(const string& node_name);
 struct GraphOptimizerContext {
   GraphOptimizerContext(const std::unordered_set<string>* nodes_to_preserve,
                         GraphDef* optimized_graph,
-                        GraphProperties* graph_properties, NodeMap* node_map,
-                        FrameMap* frame_map)
+                        GraphProperties* graph_properties, NodeMap* node_map)
       : nodes_to_preserve(nodes_to_preserve),
         optimized_graph(optimized_graph),
         graph_properties(graph_properties),
-        node_map(node_map),
-        frame_map(frame_map) {}
+        node_map(node_map) {}
 
   const std::unordered_set<string>* nodes_to_preserve;
   GraphDef* optimized_graph;
   GraphProperties* graph_properties;
   NodeMap* node_map;
-  // TODO(ezhulenev): it seems that frame_map is only relevant for loop
-  // optimizer? Move it to loop-optimizer specific context extension.
-  FrameMap* frame_map;
 };
 
 Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,

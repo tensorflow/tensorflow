@@ -520,26 +520,23 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
 
   const NodeDef* add_6_node = node_map.GetNode(HoistAddName("Add_6"));
   ASSERT_NE(add_6_node, nullptr);
-  EXPECT_EQ(3, add_6_node->input_size());
+  EXPECT_EQ(2, add_6_node->input_size());
   EXPECT_EQ(HoistAddName("Add_4"), add_6_node->input(0));
   EXPECT_EQ(HoistAddName("Add_5"), add_6_node->input(1));
-  EXPECT_EQ("^Placeholder", add_6_node->input(2));
 
   const NodeDef* add_4_node = node_map.GetNode(HoistAddName("Add_4"));
   ASSERT_NE(add_4_node, nullptr);
   EXPECT_EQ("Add", add_4_node->op());
-  EXPECT_EQ(3, add_4_node->input_size());
+  EXPECT_EQ(2, add_4_node->input_size());
   EXPECT_EQ(OptimizedName("Add_const"), add_4_node->input(0));
   EXPECT_EQ(OptimizedName("Add_1_const"), add_4_node->input(1));
-  EXPECT_EQ("^Placeholder", add_4_node->input(2));
 
   const NodeDef* add_5_node = node_map.GetNode(HoistAddName("Add_5"));
   ASSERT_NE(add_5_node, nullptr);
   EXPECT_EQ("Add", add_5_node->op());
-  EXPECT_EQ(3, add_5_node->input_size());
+  EXPECT_EQ(2, add_5_node->input_size());
   EXPECT_EQ(OptimizedName("Add_const"), add_5_node->input(0));
   EXPECT_EQ(OptimizedName("Add_1_const"), add_5_node->input(1));
-  EXPECT_EQ("^Placeholder", add_5_node->input(2));
 
   const NodeDef* add_const_node = node_map.GetNode(OptimizedName("Add_const"));
   ASSERT_NE(add_const_node, nullptr);
