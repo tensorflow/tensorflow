@@ -502,12 +502,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = [
-        "manual",
-        "noasan",
-        "noguitar",
-        "optonly",
-    ],
 )
 
 cuda_py_test(
