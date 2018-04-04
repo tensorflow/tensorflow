@@ -31,7 +31,7 @@ if six.PY3:
 else:
   FullArgSpec = namedtuple(
       'FullArgSpec', ['args', 'varargs', 'varkw', 'defaults',
-      'kwonlyargs', 'kwonlydefaults', 'annotations'])
+                      'kwonlyargs', 'kwonlydefaults', 'annotations'])
 
 
 def currentframe():
