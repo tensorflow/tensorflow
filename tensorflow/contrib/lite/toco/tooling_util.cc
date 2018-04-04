@@ -2027,11 +2027,12 @@ void UseArraysExtraInfo(Model* model) {
     }
     if (entry.has_constant_float_value()) {
       CHECK(array.has_shape());
-      CHECK(array.data_type == ArrayDataType::kFloat);
-      auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
-      data.resize(RequiredBufferSizeForShape(array.shape()));
-      for (float& f : data) {
-        f = entry.constant_float_value();
+      if (array.data_type == ArrayDataType::kFloat) {
+        auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
+        data.resize(RequiredBufferSizeForShape(array.shape()));
+        for (float& f : data) {
+          f = entry.constant_float_value();
+        }
       }
     }
   }
