@@ -139,6 +139,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras._impl.keras.engine import training
+from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -458,6 +460,154 @@ def linear_model(features,
       else:  # Must be a PartitionedVariable.
         cols_to_vars['bias'] = list(bias)
     return predictions
+
+
+class _FCLinearWrapper(base.Layer):
+  """Wraps a _FeatureColumn in a layer for use in a linear model.
+
+  See `linear_model` above.
+  """
+
+  def __init__(self,
+               feature_column,
+               units=1,
+               sparse_combiner='sum',
+               weight_collections=None,
+               trainable=True,
+               name=None,
+               **kwargs):
+    super(_FCLinearWrapper, self).__init__(
+        trainable=trainable, name=name, **kwargs)
+    self._feature_column = feature_column
+    self._units = units
+    self._sparse_combiner = sparse_combiner
+    self._weight_collections = weight_collections
+    self._state = {}
+
+  def build(self, _):
+    self._state = self._feature_column._create_state(  # pylint: disable=protected-access
+        self._weight_collections, self.add_variable)
+
+    if isinstance(self._feature_column, _CategoricalColumn):
+      weight = self.add_variable(
+          name='weights',
+          shape=(self._feature_column._num_buckets, self._units),  # pylint: disable=protected-access
+          initializer=init_ops.zeros_initializer(),
+          trainable=self.trainable)
+    else:
+      num_elements = self._feature_column._variable_shape.num_elements()  # pylint: disable=protected-access
+      weight = self.add_variable(
+          name='weights',
+          shape=[num_elements, self._units],
+          initializer=init_ops.zeros_initializer(),
+          trainable=self.trainable)
+    ops.add_to_collections(self._weight_collections, weight)
+    self._weight_var = weight
+    self.built = True
+
+  def call(self, builder):
+    weighted_sum = _create_weighted_sum(
+        column=self._feature_column,
+        builder=builder,
+        units=self._units,
+        sparse_combiner=self._sparse_combiner,
+        weight_collections=self._weight_collections,
+        trainable=self.trainable,
+        weight_var=self._weight_var,
+        state=self._state)
+    return weighted_sum
+
+
+class _BiasLayer(base.Layer):
+  """A layer for the bias term.
+  """
+
+  def __init__(self,
+               units=1,
+               trainable=True,
+               weight_collections=None,
+               name=None,
+               **kwargs):
+    super(_BiasLayer, self).__init__(trainable=trainable, name=name, **kwargs)
+    self._units = units
+    self._weight_collections = weight_collections
+
+  def build(self, _):
+    self._bias_variable = self.add_variable(
+        'bias_weights',
+        shape=[self._units],
+        initializer=init_ops.zeros_initializer(),
+        trainable=self.trainable)
+    ops.add_to_collections(self._weight_collections, self._bias_variable)
+    self.built = True
+
+  def call(self, _):
+    return self._bias_variable
+
+
+class _LinearModel(training.Model):
+  """Creates a linear model using feature columns.
+  """
+
+  def __init__(self,
+               feature_columns,
+               units=1,
+               sparse_combiner='sum',
+               weight_collections=None,
+               trainable=True,
+               name=None,
+               **kwargs):
+    super(_LinearModel, self).__init__(name=name, **kwargs)
+    self._feature_columns = _clean_feature_columns(feature_columns)
+    self._weight_collections = list(weight_collections or [])
+    if ops.GraphKeys.MODEL_VARIABLES not in self._weight_collections:
+      self._weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+
+    column_layers = {}
+    for column in sorted(self._feature_columns, key=lambda x: x.name):
+      with variable_scope.variable_scope(
+          None, default_name=column._var_scope_name) as vs:  # pylint: disable=protected-access
+        column_name = vs.name
+      column_layer = _FCLinearWrapper(column, units, sparse_combiner,
+                                      self._weight_collections, trainable,
+                                      column_name, **kwargs)
+      column_layers[column_name] = column_layer
+    self._column_layers = self._add_layers(column_layers)
+    self._bias_layer = _BiasLayer(
+        units=units,
+        trainable=trainable,
+        weight_collections=self._weight_collections,
+        name='bias_layer',
+        **kwargs)
+
+  def call(self, features):
+    for column in self._feature_columns:
+      if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
+        raise ValueError(
+            'Items of feature_columns must be either a '
+            '_DenseColumn or _CategoricalColumn. Given: {}'.format(column))
+    weighted_sums = []
+    ordered_columns = []
+    builder = _LazyBuilder(features)
+    for layer in sorted(self._column_layers.values(), key=lambda x: x.name):
+      ordered_columns.append(layer._feature_column)  # pylint: disable=protected-access
+      weighted_sum = layer(builder)
+      weighted_sums.append(weighted_sum)
+
+    _verify_static_batch_size_equality(weighted_sums, ordered_columns)
+    predictions_no_bias = math_ops.add_n(
+        weighted_sums, name='weighted_sum_no_bias')
+    predictions = nn_ops.bias_add(
+        predictions_no_bias, self._bias_layer(builder), name='weighted_sum')  # pylint: disable=not-callable
+    return predictions
+
+  def _add_layers(self, layers):
+    # "Magic" required for keras.Model classes to track all the variables in
+    # a list of layers.Layer objects.
+    # TODO(ashankar): Figure out API so user code doesn't have to do this.
+    for name, layer in layers.items():
+      setattr(self, 'layer-%s' % name, layer)
+    return layers
 
 
 def _transform_features(features, feature_columns):
@@ -1713,6 +1863,7 @@ def _create_weighted_sum(column,
                          sparse_combiner,
                          weight_collections,
                          trainable,
+                         weight_var=None,
                          state=None):
   """Creates a weighted sum for a dense or sparse column for linear_model."""
   if isinstance(column, _CategoricalColumn):
@@ -1722,7 +1873,8 @@ def _create_weighted_sum(column,
         units=units,
         sparse_combiner=sparse_combiner,
         weight_collections=weight_collections,
-        trainable=trainable)
+        trainable=trainable,
+        weight_var=weight_var)
   else:
     return _create_dense_column_weighted_sum(
         column=column,
@@ -1730,6 +1882,7 @@ def _create_weighted_sum(column,
         units=units,
         weight_collections=weight_collections,
         trainable=trainable,
+        weight_var=weight_var,
         state=state)
 
 
@@ -1738,6 +1891,7 @@ def _create_dense_column_weighted_sum(column,
                                       units,
                                       weight_collections,
                                       trainable,
+                                      weight_var=None,
                                       state=None):
   """Create a weighted sum of a dense column for linear_model."""
   if state is not None:
@@ -1754,12 +1908,15 @@ def _create_dense_column_weighted_sum(column,
   num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
   batch_size = array_ops.shape(tensor)[0]
   tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
-  weight = variable_scope.get_variable(
-      name='weights',
-      shape=[num_elements, units],
-      initializer=init_ops.zeros_initializer(),
-      trainable=trainable,
-      collections=weight_collections)
+  if weight_var is not None:
+    weight = weight_var
+  else:
+    weight = variable_scope.get_variable(
+        name='weights',
+        shape=[num_elements, units],
+        initializer=init_ops.zeros_initializer(),
+        trainable=trainable,
+        collections=weight_collections)
   return math_ops.matmul(tensor, weight, name='weighted_sum')
 
 
@@ -1809,8 +1966,13 @@ class _CategoricalColumn(_FeatureColumn):
     pass
 
 
-def _create_categorical_column_weighted_sum(
-    column, builder, units, sparse_combiner, weight_collections, trainable):
+def _create_categorical_column_weighted_sum(column,
+                                            builder,
+                                            units,
+                                            sparse_combiner,
+                                            weight_collections,
+                                            trainable,
+                                            weight_var=None):
   """Create a weighted sum of a categorical column for linear_model."""
   sparse_tensors = column._get_sparse_tensors(  # pylint: disable=protected-access
       builder,
@@ -1824,12 +1986,15 @@ def _create_categorical_column_weighted_sum(
     weight_tensor = sparse_ops.sparse_reshape(
         weight_tensor, [array_ops.shape(weight_tensor)[0], -1])
 
-  weight = variable_scope.get_variable(
-      name='weights',
-      shape=(column._num_buckets, units),  # pylint: disable=protected-access
-      initializer=init_ops.zeros_initializer(),
-      trainable=trainable,
-      collections=weight_collections)
+  if weight_var is not None:
+    weight = weight_var
+  else:
+    weight = variable_scope.get_variable(
+        name='weights',
+        shape=(column._num_buckets, units),  # pylint: disable=protected-access
+        initializer=init_ops.zeros_initializer(),
+        trainable=trainable,
+        collections=weight_collections)
   return _safe_embedding_lookup_sparse(
       weight,
       id_tensor,

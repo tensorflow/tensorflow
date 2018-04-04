@@ -694,7 +694,8 @@ class Layer(checkpointable.CheckpointableBase):
               self._dtype = input_list[0].dtype.base_dtype.name
             except AttributeError:
               pass
-          input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
+          if all(hasattr(x, 'get_shape') for x in input_list):
+            input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
           self.build(input_shapes)
         try:
           # Note: not all sub-classes of Layer call Layer.__init__ (especially
