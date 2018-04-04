@@ -28,6 +28,7 @@ from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.layers import utils as tf_layers_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -209,7 +210,7 @@ class TimeDistributed(Wrapper):
       # We can go with reshape-based implementation for performance.
       input_length = input_shape[1]
       if not input_length:
-        input_length = K.shape(inputs)[1]
+        input_length = array_ops.shape(inputs)[1]
       # Shape: (num_samples * timesteps, ...). And track the
       # transformation in self._input_map.
       input_uid = tf_layers_util.object_list_uid(inputs)

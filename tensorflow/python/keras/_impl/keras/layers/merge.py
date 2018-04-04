@@ -23,6 +23,7 @@ from __future__ import print_function
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -137,7 +138,7 @@ class _Merge(Layer):
         for x in inputs:
           x_ndim = K.ndim(x)
           if x_ndim is None:
-            x_shape = K.shape(x)
+            x_shape = array_ops.shape(x)
             batch_size = x_shape[0]
             new_shape = K.concatenate([x_shape[1:], K.expand_dims(batch_size)])
             x_transposed = K.reshape(x,
@@ -159,8 +160,8 @@ class _Merge(Layer):
         if transposed:
           # If inputs have been transposed, we have to transpose the output too.
           if y_ndim is None:
-            y_shape = K.shape(y)
-            y_ndim = K.shape(y_shape)[0]
+            y_shape = array_ops.shape(y)
+            y_ndim = array_ops.shape(y_shape)[0]
             batch_size = y_shape[y_ndim - 1]
             new_shape = K.concatenate(
                 [K.expand_dims(batch_size), y_shape[:y_ndim - 1]])
@@ -418,7 +419,7 @@ class Concatenate(_Merge):
     for input_i, mask_i in zip(inputs, mask):
       if mask_i is None:
         # Input is unmasked. Append all 1s to masks,
-        masks.append(K.ones_like(input_i, dtype='bool'))
+        masks.append(array_ops.ones_like(input_i, dtype='bool'))
       elif K.ndim(mask_i) < K.ndim(input_i):
         # Mask is smaller than the input, expand it
         masks.append(K.expand_dims(mask_i))

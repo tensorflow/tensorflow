@@ -37,6 +37,7 @@ from tensorflow.python.keras._impl.keras.losses import sparse_categorical_crosse
 from tensorflow.python.keras._impl.keras.losses import squared_hinge
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -47,15 +48,15 @@ def binary_accuracy(y_true, y_pred):
 
 @tf_export('keras.metrics.categorical_accuracy')
 def categorical_accuracy(y_true, y_pred):
-  return K.cast(
+  return math_ops.cast(
       K.equal(K.argmax(y_true, axis=-1), K.argmax(y_pred, axis=-1)), K.floatx())
 
 
 def sparse_categorical_accuracy(y_true, y_pred):
-  return K.cast(
+  return math_ops.cast(
       K.equal(
-          K.max(y_true, axis=-1), K.cast(K.argmax(y_pred, axis=-1),
-                                         K.floatx())), K.floatx())
+          K.max(y_true, axis=-1),
+          math_ops.cast(K.argmax(y_pred, axis=-1), K.floatx())), K.floatx())
 
 
 @tf_export('keras.metrics.top_k_categorical_accuracy')
@@ -66,7 +67,8 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 @tf_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   return K.mean(
-      K.in_top_k(y_pred, K.cast(K.max(y_true, axis=-1), 'int32'), k), axis=-1)
+      K.in_top_k(y_pred, math_ops.cast(K.max(y_true, axis=-1), 'int32'), k),
+      axis=-1)
 
 
 # Aliases

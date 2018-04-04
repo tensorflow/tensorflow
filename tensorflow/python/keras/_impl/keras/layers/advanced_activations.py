@@ -26,6 +26,7 @@ from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -232,7 +233,7 @@ class ThresholdedReLU(Layer):
     self.theta = K.cast_to_floatx(theta)
 
   def call(self, inputs, mask=None):
-    return inputs * K.cast(K.greater(inputs, self.theta), K.floatx())
+    return inputs * math_ops.cast(K.greater(inputs, self.theta), K.floatx())
 
   def get_config(self):
     config = {'theta': float(self.theta)}

@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import losses
+from tensorflow.python.ops import math_ops
 
 
 def check_num_samples(ins,
@@ -436,7 +437,7 @@ def weighted_masked_objective(fn):
     score_array = fn(y_true, y_pred)
     if mask is not None:
       # Cast the mask to floatX to avoid float64 upcasting in theano
-      mask = K.cast(mask, K.floatx())
+      mask = math_ops.cast(mask, K.floatx())
       # mask should have the same shape as score_array
       score_array *= mask
       #  the loss per batch should be proportional
@@ -450,7 +451,7 @@ def weighted_masked_objective(fn):
       weight_ndim = K.ndim(weights)
       score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
       score_array *= weights
-      score_array /= K.mean(K.cast(K.not_equal(weights, 0), K.floatx()))
+      score_array /= K.mean(math_ops.cast(K.not_equal(weights, 0), K.floatx()))
     return K.mean(score_array)
 
   return weighted

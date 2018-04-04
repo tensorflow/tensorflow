@@ -23,6 +23,7 @@ import six
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.layers.base import Layer
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
@@ -46,7 +47,7 @@ def softmax(x, axis=-1):
     return K.softmax(x)
   elif ndim > 2:
     e = K.exp(x - K.max(x, axis=axis, keepdims=True))
-    s = K.sum(e, axis=axis, keepdims=True)
+    s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
     return e / s
   else:
     raise ValueError('Cannot apply softmax to a tensor that is 1D')

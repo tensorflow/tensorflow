@@ -31,6 +31,7 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
@@ -118,7 +119,7 @@ class Optimizer(object):
                        'Common ops without gradient: '
                        'K.argmax, K.round, K.eval.')
     if hasattr(self, 'clipnorm') and self.clipnorm > 0:
-      norm = K.sqrt(sum([K.sum(K.square(g)) for g in grads]))
+      norm = K.sqrt(sum([math_ops.reduce_sum(K.square(g)) for g in grads]))
       grads = [clip_norm(g, self.clipnorm, norm) for g in grads]
     if hasattr(self, 'clipvalue') and self.clipvalue > 0:
       grads = [K.clip(g, -self.clipvalue, self.clipvalue) for g in grads]
@@ -204,20 +205,20 @@ class SGD(Optimizer):
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
-    self.updates = [K.update_add(self.iterations, 1)]
+    self.updates = [state_ops.assign_add(self.iterations, 1)]
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
-                 (1. + self.decay * K.cast(self.iterations,
-                                           K.dtype(self.decay))))
+      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+          1. / (1. + self.decay * math_ops.cast(self.iterations,
+                                                K.dtype(self.decay))))
     # momentum
     shapes = [K.int_shape(p) for p in params]
     moments = [K.zeros(shape) for shape in shapes]
     self.weights = [self.iterations] + moments
     for p, g, m in zip(params, grads, moments):
       v = self.momentum * m - lr * g  # velocity
-      self.updates.append(K.update(m, v))
+      self.updates.append(state_ops.assign(m, v))
 
       if self.nesterov:
         new_p = p + self.momentum * v - lr * g
@@ -228,7 +229,7 @@ class SGD(Optimizer):
       if getattr(p, 'constraint', None) is not None:
         new_p = p.constraint(new_p)
 
-      self.updates.append(K.update(p, new_p))
+      self.updates.append(state_ops.assign(p, new_p))
     return self.updates
 
   def get_config(self):
@@ -277,25 +278,25 @@ class RMSprop(Optimizer):
     grads = self.get_gradients(loss, params)
     accumulators = [K.zeros(K.int_shape(p), dtype=K.dtype(p)) for p in params]
     self.weights = accumulators
-    self.updates = [K.update_add(self.iterations, 1)]
+    self.updates = [state_ops.assign_add(self.iterations, 1)]
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
-                 (1. + self.decay * K.cast(self.iterations,
-                                           K.dtype(self.decay))))
+      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+          1. / (1. + self.decay * math_ops.cast(self.iterations,
+                                                K.dtype(self.decay))))
 
     for p, g, a in zip(params, grads, accumulators):
       # update accumulator
       new_a = self.rho * a + (1. - self.rho) * K.square(g)
-      self.updates.append(K.update(a, new_a))
+      self.updates.append(state_ops.assign(a, new_a))
       new_p = p - lr * g / (K.sqrt(new_a) + self.epsilon)
 
       # Apply constraints.
       if getattr(p, 'constraint', None) is not None:
         new_p = p.constraint(new_p)
 
-      self.updates.append(K.update(p, new_p))
+      self.updates.append(state_ops.assign(p, new_p))
     return self.updates
 
   def get_config(self):
@@ -339,24 +340,24 @@ class Adagrad(Optimizer):
     shapes = [K.int_shape(p) for p in params]
     accumulators = [K.zeros(shape) for shape in shapes]
     self.weights = accumulators
-    self.updates = [K.update_add(self.iterations, 1)]
+    self.updates = [state_ops.assign_add(self.iterations, 1)]
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
-                 (1. + self.decay * K.cast(self.iterations,
-                                           K.dtype(self.decay))))
+      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+          1. / (1. + self.decay * math_ops.cast(self.iterations,
+                                                K.dtype(self.decay))))
 
     for p, g, a in zip(params, grads, accumulators):
       new_a = a + K.square(g)  # update accumulator
-      self.updates.append(K.update(a, new_a))
+      self.updates.append(state_ops.assign(a, new_a))
       new_p = p - lr * g / (K.sqrt(new_a) + self.epsilon)
 
       # Apply constraints.
       if getattr(p, 'constraint', None) is not None:
         new_p = p.constraint(new_p)
 
-      self.updates.append(K.update(p, new_p))
+      self.updates.append(state_ops.assign(p, new_p))
     return self.updates
 
   def get_config(self):
@@ -403,18 +404,18 @@ class Adadelta(Optimizer):
     accumulators = [K.zeros(shape) for shape in shapes]
     delta_accumulators = [K.zeros(shape) for shape in shapes]
     self.weights = accumulators + delta_accumulators
-    self.updates = [K.update_add(self.iterations, 1)]
+    self.updates = [state_ops.assign_add(self.iterations, 1)]
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
-                 (1. + self.decay * K.cast(self.iterations,
-                                           K.dtype(self.decay))))
+      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+          1. / (1. + self.decay * math_ops.cast(self.iterations,
+                                                K.dtype(self.decay))))
 
     for p, g, a, d_a in zip(params, grads, accumulators, delta_accumulators):
       # update accumulator
       new_a = self.rho * a + (1. - self.rho) * K.square(g)
-      self.updates.append(K.update(a, new_a))
+      self.updates.append(state_ops.assign(a, new_a))
 
       # use the new accumulator and the *old* delta_accumulator
       update = g * K.sqrt(d_a + self.epsilon) / K.sqrt(new_a + self.epsilon)
@@ -424,11 +425,11 @@ class Adadelta(Optimizer):
       if getattr(p, 'constraint', None) is not None:
         new_p = p.constraint(new_p)
 
-      self.updates.append(K.update(p, new_p))
+      self.updates.append(state_ops.assign(p, new_p))
 
       # update delta_accumulator
       new_d_a = self.rho * d_a + (1 - self.rho) * K.square(update)
-      self.updates.append(K.update(d_a, new_d_a))
+      self.updates.append(state_ops.assign(d_a, new_d_a))
     return self.updates
 
   def get_config(self):
@@ -483,15 +484,15 @@ class Adam(Optimizer):
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
-    self.updates = [K.update_add(self.iterations, 1)]
+    self.updates = [state_ops.assign_add(self.iterations, 1)]
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
-                 (1. + self.decay * K.cast(self.iterations,
-                                           K.dtype(self.decay))))
+      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+          1. / (1. + self.decay * math_ops.cast(self.iterations,
+                                                K.dtype(self.decay))))
 
-    t = K.cast(self.iterations, K.floatx()) + 1
+    t = math_ops.cast(self.iterations, K.floatx()) + 1
     lr_t = lr * (
         K.sqrt(1. - K.pow(self.beta_2, t)) / (1. - K.pow(self.beta_1, t)))
 
@@ -509,19 +510,19 @@ class Adam(Optimizer):
       if self.amsgrad:
         vhat_t = K.maximum(vhat, v_t)
         p_t = p - lr_t * m_t / (K.sqrt(vhat_t) + self.epsilon)
-        self.updates.append(K.update(vhat, vhat_t))
+        self.updates.append(state_ops.assign(vhat, vhat_t))
       else:
         p_t = p - lr_t * m_t / (K.sqrt(v_t) + self.epsilon)
 
-      self.updates.append(K.update(m, m_t))
-      self.updates.append(K.update(v, v_t))
+      self.updates.append(state_ops.assign(m, m_t))
+      self.updates.append(state_ops.assign(v, v_t))
       new_p = p_t
 
       # Apply constraints.
       if getattr(p, 'constraint', None) is not None:
         new_p = p.constraint(new_p)
 
-      self.updates.append(K.update(p, new_p))
+      self.updates.append(state_ops.assign(p, new_p))
     return self.updates
 
   def get_config(self):
@@ -573,15 +574,15 @@ class Adamax(Optimizer):
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
-    self.updates = [K.update_add(self.iterations, 1)]
+    self.updates = [state_ops.assign_add(self.iterations, 1)]
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
-                 (1. + self.decay * K.cast(self.iterations,
-                                           K.dtype(self.decay))))
+      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+          1. / (1. + self.decay * math_ops.cast(self.iterations,
+                                                K.dtype(self.decay))))
 
-    t = K.cast(self.iterations, K.floatx()) + 1
+    t = math_ops.cast(self.iterations, K.floatx()) + 1
     lr_t = lr / (1. - K.pow(self.beta_1, t))
 
     shapes = [K.int_shape(p) for p in params]
@@ -597,15 +598,15 @@ class Adamax(Optimizer):
       u_t = K.maximum(self.beta_2 * u, K.abs(g))
       p_t = p - lr_t * m_t / (u_t + self.epsilon)
 
-      self.updates.append(K.update(m, m_t))
-      self.updates.append(K.update(u, u_t))
+      self.updates.append(state_ops.assign(m, m_t))
+      self.updates.append(state_ops.assign(u, u_t))
       new_p = p_t
 
       # Apply constraints.
       if getattr(p, 'constraint', None) is not None:
         new_p = p.constraint(new_p)
 
-      self.updates.append(K.update(p, new_p))
+      self.updates.append(state_ops.assign(p, new_p))
     return self.updates
 
   def get_config(self):
@@ -659,9 +660,9 @@ class Nadam(Optimizer):
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
-    self.updates = [K.update_add(self.iterations, 1)]
+    self.updates = [state_ops.assign_add(self.iterations, 1)]
 
-    t = K.cast(self.iterations, K.floatx()) + 1
+    t = math_ops.cast(self.iterations, K.floatx()) + 1
 
     # Due to the recommendations in [2], i.e. warming momentum schedule
     momentum_cache_t = self.beta_1 * (
@@ -689,8 +690,8 @@ class Nadam(Optimizer):
       m_t_bar = (
           1. - momentum_cache_t) * g_prime + momentum_cache_t_1 * m_t_prime
 
-      self.updates.append(K.update(m, m_t))
-      self.updates.append(K.update(v, v_t))
+      self.updates.append(state_ops.assign(m, m_t))
+      self.updates.append(state_ops.assign(v, v_t))
 
       p_t = p - self.lr * m_t_bar / (K.sqrt(v_t_prime) + self.epsilon)
       new_p = p_t
@@ -699,7 +700,7 @@ class Nadam(Optimizer):
       if getattr(p, 'constraint', None) is not None:
         new_p = p.constraint(new_p)
 
-      self.updates.append(K.update(p, new_p))
+      self.updates.append(state_ops.assign(p, new_p))
     return self.updates
 
   def get_config(self):
@@ -743,7 +744,7 @@ class TFOptimizer(Optimizer):
       global_step = training_util.get_global_step()
       opt_update = self.optimizer.apply_gradients(grads, global_step)
     else:
-      self.updates = [K.update_add(self.iterations, 1)]
+      self.updates = [state_ops.assign_add(self.iterations, 1)]
       if not params:
         return self.updates
 

@@ -24,6 +24,7 @@ import six
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -66,7 +67,7 @@ def hinge(y_true, y_pred):
 
 @tf_export('keras.losses.categorical_hinge')
 def categorical_hinge(y_true, y_pred):
-  pos = K.sum(y_true * y_pred, axis=-1)
+  pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = K.max((1. - y_true) * y_pred, axis=-1)
   return K.maximum(0., neg - pos + 1.)
 
@@ -117,7 +118,7 @@ def binary_crossentropy(y_true, y_pred):
 def kullback_leibler_divergence(y_true, y_pred):
   y_true = K.clip(y_true, K.epsilon(), 1)
   y_pred = K.clip(y_pred, K.epsilon(), 1)
-  return K.sum(y_true * K.log(y_true / y_pred), axis=-1)
+  return math_ops.reduce_sum(y_true * K.log(y_true / y_pred), axis=-1)
 
 
 @tf_export('keras.metrics.poisson', 'keras.losses.poisson')
@@ -129,7 +130,7 @@ def poisson(y_true, y_pred):
 def cosine_proximity(y_true, y_pred):
   y_true = K.l2_normalize(y_true, axis=-1)
   y_pred = K.l2_normalize(y_pred, axis=-1)
-  return -K.sum(y_true * y_pred, axis=-1)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=-1)
 
 
 # Aliases.

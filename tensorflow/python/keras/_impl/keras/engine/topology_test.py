@@ -783,7 +783,7 @@ class TopologyConstructionTest(test.TestCase):
   def test_activity_regularization_with_model_composition(self):
 
     def reg(x):
-      return keras.backend.sum(x)
+      return math_ops.reduce_sum(x)
 
     net_a_input = keras.Input((2,))
     net_a = net_a_input
