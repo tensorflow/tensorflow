@@ -83,14 +83,6 @@ class ConstantFoldingTest : public GrapplerTest {
   }
 };
 
-template <DataType DTYPE>
-Tensor GetRandomTensor(const TensorShape& shape) {
-  typedef typename EnumToDataType<DTYPE>::Type T;
-  Tensor tensor(DTYPE, shape);
-  tensor.flat<T>() = tensor.flat<T>().random();
-  return tensor;
-}
-
 TEST_F(ConstantFoldingTest, SimpleFolding) {
   // Build a simple graph with a few trivially prunable ops.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -380,11 +372,11 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ(2, t.tensor_shape().dim(1).size());
       }
     }
-    auto a_t = GetRandomTensor<DT_FLOAT>(TensorShape({3, 2}));
-    auto b_t = GetRandomTensor<DT_FLOAT>(TensorShape({2, 3}));
-    auto x_t = GetRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-    auto y_t = GetRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-    auto bias_t = GetRandomTensor<DT_FLOAT>(TensorShape({2}));
+    auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 2}));
+    auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 3}));
+    auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+    auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+    auto bias_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2}));
 
     auto tensors_expected = EvaluateNodes(
         item.graph, item.fetch,
