@@ -190,6 +190,10 @@ std::vector<TF_Output> GetOperationInputs(TF_Operation* oper);
 std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
     TF_Operation* oper);
 
+// Retrieves the control outputs of this operation.
+std::vector<TF_Operation*> TF_OperationGetControlOutputs_wrapper(
+    TF_Operation* oper);
+
 // Retrieves the op names of the consumers of `oper_out`. The returned strings
 // have the lifetime of the underlying TF_Graph.
 std::vector<const char*> TF_OperationOutputConsumers_wrapper(

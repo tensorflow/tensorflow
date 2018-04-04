@@ -2114,6 +2114,30 @@ class Operation(object):
       return self._control_inputs_val
 
   @property
+  def _control_outputs(self):
+    """The `Operation` objects which have a control dependency on this op.
+
+    Before any of the ops in self._control_outputs can execute tensorflow will
+    ensure self has finished executing.
+
+    Returns:
+      A list of `Operation` objects.
+
+    """
+    if self._c_op:
+      control_c_ops = c_api.TF_OperationGetControlOutputs_wrapper(self._c_op)
+      # pylint: disable=protected-access
+      return [
+          self.graph._get_operation_by_name_unsafe(
+              c_api.TF_OperationName(c_op)) for c_op in control_c_ops
+      ]
+      # pylint: enable=protected-access
+    else:
+      # TODO(apassos) this should be less inefficient.
+      return [o for o in self._graph.get_operations()
+              if self in o.control_inputs]
+
+  @property
   def _control_inputs(self):
     logging.warning("Operation._control_inputs is private, use "
                     "Operation.control_inputs instead. "
