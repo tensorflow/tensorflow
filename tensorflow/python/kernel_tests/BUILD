@@ -2519,7 +2519,10 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
     ],
     shard_count = 5,
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "optonly",  # b/77589990
+    ],
 )
 
 cuda_py_test(
