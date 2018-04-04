@@ -1289,6 +1289,19 @@ class MaxToKeepTest(test.TestCase):
           all_model_checkpoint_paths=[s2, s1],
           save_dir=save_dir)
 
+      # Create a new saver with a smaller value of max_to_keep.
+      save4 = saver_module.Saver({"v": v}, max_to_keep=1)
+      checkpoint_state = saver_module.get_checkpoint_state(save_dir)
+      s4 = save4.save(sess, os.path.join(save_dir, "s4"))
+      checkpoint_state = saver_module.get_checkpoint_state(save_dir)
+      self.assertCheckpointState(
+          model_checkpoint_path=s4,
+          all_model_checkpoint_paths=[s4],
+          save_dir=save_dir)
+
+ 
+
+
   def testSharded(self):
     save_dir = self._get_test_dir("max_to_keep_sharded")
 

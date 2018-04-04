@@ -1422,14 +1422,14 @@ class Saver(object):
     if not self.saver_def.max_to_keep:
       return
     # Remove first from list if the same name was used before.
-    for p in self._last_checkpoints:
+    for p in list(self._last_checkpoints):
       if latest_save_path == self._CheckpointFilename(p):
         self._last_checkpoints.remove(p)
     # Append new path to list
     self._last_checkpoints.append((latest_save_path, time.time()))
 
     # If more than max_to_keep, remove oldest.
-    if len(self._last_checkpoints) > self.saver_def.max_to_keep:
+    while len(self._last_checkpoints) > self.saver_def.max_to_keep:
       self._checkpoints_to_be_deleted.append(self._last_checkpoints.pop(0))
 
   def _MaybeDeleteOldCheckpoints(self, meta_graph_suffix="meta"):
@@ -1445,7 +1445,7 @@ class Saver(object):
     Args:
       meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
     """
-    if self._checkpoints_to_be_deleted:
+    while self._checkpoints_to_be_deleted:
       p = self._checkpoints_to_be_deleted.pop(0)
       # Do not delete the file if we keep_checkpoint_every_n_hours is set and we
       # have reached N hours of training.
@@ -1453,7 +1453,7 @@ class Saver(object):
       if should_keep:
         self._next_checkpoint_time += (
             self.saver_def.keep_checkpoint_every_n_hours * 3600)
-        return
+        continue
 
       # Otherwise delete the files.
       try:
