@@ -657,12 +657,12 @@ def _get_arg_spec(func):
           argspec_defaults.pop(i-first_default_arg)
         else:
           first_default_arg -= 1
-    # NOTE Some fields from FullArgSpec were removed here.
-    # Add them back if needed in the future.
     return tf_inspect.FullArgSpec(args=argspec_args,
                                   varargs=argspec.varargs,
                                   varkw=argspec.varkw,
-                                  defaults=tuple(argspec_defaults))
+                                  defaults=tuple(argspec_defaults),
+                                  kwonlyargs=[], kwonlydefaults={},
+                                  annotations={})
   else:  # Regular function or method, getargspec will work fine.
     return tf_inspect.getfullargspec(func)
 
