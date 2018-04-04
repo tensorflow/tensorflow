@@ -67,7 +67,7 @@ class FinalBeamSearchDecoderOutput(
   Args:
     predicted_ids: The final prediction. A tensor of shape
       `[batch_size, T, beam_width]` (or `[T, batch_size, beam_width]` if
-      `output_time_major` is True). Beams are ordered from best to worst.
+      `output_time_major` is True). Search states are ordered from best to worst.
     beam_search_decoder_output: An instance of `BeamSearchDecoderOutput` that
       describes the state of the beam search.
   """
@@ -123,7 +123,7 @@ def tile_batch(t, multiplier, name=None):
 
 
 def gather_tree_from_array(t, parent_ids, sequence_length):
-  """Calculates the full beams for `TensorArray`s.
+  """Calculates the full search states for `TensorArray`s.
 
   Args:
     t: A stacked `TensorArray` of size `max_time` that contains `Tensor`s of
@@ -134,13 +134,13 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
 
   Returns:
     A `Tensor` which is a stacked `TensorArray` of the same size and type as
-    `t` and where beams are sorted in each `Tensor` according to `parent_ids`.
+    `t` and where search states are sorted in each `Tensor` according to `parent_ids`.
   """
   max_time = parent_ids.shape[0].value or array_ops.shape(parent_ids)[0]
   batch_size = parent_ids.shape[1].value or array_ops.shape(parent_ids)[1]
   beam_width = parent_ids.shape[2].value or array_ops.shape(parent_ids)[2]
 
-  # Generate beam ids that will be reordered by gather_tree.
+  # Generate search state ids that will be reordered by gather_tree.
   beam_ids = array_ops.expand_dims(
       array_ops.expand_dims(math_ops.range(beam_width), 0), 0)
   beam_ids = array_ops.tile(beam_ids, [max_time, batch_size, 1])
@@ -285,7 +285,7 @@ class BeamSearchDecoder(decoder.Decoder):
       start_tokens: `int32` vector shaped `[batch_size]`, the start tokens.
       end_token: `int32` scalar, the token that marks end of decoding.
       initial_state: A (possibly nested tuple of...) tensors and TensorArrays.
-      beam_width:  Python integer, the number of beams.
+      beam_width:  Python integer, the number of search states.
       output_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
         `tf.layers.Dense`.  Optional layer to apply to the RNN output prior
         to storing the result or sampling.
@@ -366,7 +366,7 @@ class BeamSearchDecoder(decoder.Decoder):
 
   @property
   def tracks_own_finished(self):
-    """The BeamSearchDecoder shuffles its beams and their finished state.
+    """The BeamSearchDecoder shuffles its search states and their finished state.
 
     For this reason, it conflicts with the `dynamic_decode` function's
     tracking of finished states.  Setting this property to true avoids
@@ -433,7 +433,7 @@ class BeamSearchDecoder(decoder.Decoder):
       final_state: An instance of BeamSearchDecoderState. Passed through to the
         output.
       sequence_lengths: An `int64` tensor shaped `[batch_size, beam_width]`.
-        The sequence lengths determined for each beam during decode.
+        The sequence lengths determined for each search state during decode.
         **NOTE** These are ignored; the updated sequence lengths are stored in
         `final_state.lengths`.
 
@@ -443,7 +443,7 @@ class BeamSearchDecoder(decoder.Decoder):
       final_state: The same input instance of `BeamSearchDecoderState`.
     """
     del sequence_lengths
-    # Get max_sequence_length across all beams for each batch.
+    # Get max_sequence_length across all search states for each batch.
     max_sequence_lengths = math_ops.to_int32(
         math_ops.reduce_max(final_state.lengths, axis=1))
     predicted_ids = beam_search_ops.gather_tree(
@@ -461,7 +461,7 @@ class BeamSearchDecoder(decoder.Decoder):
     return outputs, final_state
 
   def _merge_batch_beams(self, t, s=None):
-    """Merges the tensor from a batch of beams into a batch by beams.
+    """Merges the tensor from a batch of search states into a batch by beams.
 
     More exactly, t is a tensor of dimension [batch_size, beam_width, s]. We
     reshape this into [batch_size*beam_width, s]
@@ -491,7 +491,7 @@ class BeamSearchDecoder(decoder.Decoder):
     return reshaped_t
 
   def _split_batch_beams(self, t, s=None):
-    """Splits the tensor from a batch by beams into a batch of beams.
+    """Splits the tensor from a batch by beams into a batch of search states.
 
     More exactly, t is a tensor of dimension [batch_size*beam_width, s]. We
     reshape this into [batch_size, beam_width, s]
@@ -532,7 +532,7 @@ class BeamSearchDecoder(decoder.Decoder):
     return reshaped_t
 
   def _maybe_split_batch_beams(self, t, s):
-    """Maybe splits the tensor from a batch by beams into a batch of beams.
+    """Maybe splits the tensor from a batch by beams into a batch of search states.
 
     We do this so that we can use nest and not run into problems with shapes.
 
@@ -557,7 +557,7 @@ class BeamSearchDecoder(decoder.Decoder):
       return t
 
   def _maybe_merge_batch_beams(self, t, s):
-    """Splits the tensor from a batch by beams into a batch of beams.
+    """Splits the tensor from a batch by beams into a batch of search states.
 
     More exactly, `t` is a tensor of dimension `[batch_size * beam_width] + s`,
     then we reshape it to `[batch_size, beam_width] + s`.
@@ -581,7 +581,7 @@ class BeamSearchDecoder(decoder.Decoder):
       return t
 
   def _maybe_sort_array_beams(self, t, parent_ids, sequence_length):
-    """Maybe sorts beams within a `TensorArray`.
+    """Maybe sorts search states within a `TensorArray`.
 
     Args:
       t: A `TensorArray` of size `max_time` that contains `Tensor`s of shape
@@ -591,7 +591,7 @@ class BeamSearchDecoder(decoder.Decoder):
       sequence_length: The sequence length of shape `[batch_size, beam_width]`.
 
     Returns:
-      A `TensorArray` where beams are sorted in each `Tensor` or `t` itself if
+      A `TensorArray` where search states are sorted in each `Tensor` or `t` itself if
       it is not a `TensorArray` or does not meet shape requirements.
     """
     if not isinstance(t, tensor_array_ops.TensorArray):
@@ -676,7 +676,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
 
   Args:
     time: Beam search time step, should start at 0. At time 0 we assume
-      that all beams are equal and consider only the first beam for
+      that all search states are equal and consider only the first search state for
       continuations.
     logits: Logits at the current time step. A tensor of shape
       `[batch_size, beam_width, vocab_size]`
@@ -685,7 +685,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
     beam_state: Current state of the beam search.
       An instance of `BeamSearchDecoderState`.
     batch_size: The batch size for this input.
-    beam_width: Python int.  The size of the beams.
+    beam_width: Python int.  The size of the search states.
     end_token: The int32 end token.
     length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
 
@@ -704,7 +704,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   step_log_probs = _mask_probs(step_log_probs, end_token, previously_finished)
   total_probs = array_ops.expand_dims(beam_state.log_probs, 2) + step_log_probs
 
-  # Calculate the continuation lengths by adding to all continuing beams.
+  # Calculate the continuation lengths by adding to all continuing search states.
   vocab_size = logits.shape[-1].value or array_ops.shape(logits)[-1]
   lengths_to_add = array_ops.one_hot(
       indices=array_ops.fill([batch_size, beam_width], end_token),
@@ -717,17 +717,17 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   new_prediction_lengths = (
       lengths_to_add + array_ops.expand_dims(prediction_lengths, 2))
 
-  # Calculate the scores for each beam
+  # Calculate the scores for each search state
   scores = _get_scores(
       log_probs=total_probs,
       sequence_lengths=new_prediction_lengths,
       length_penalty_weight=length_penalty_weight)
 
   time = ops.convert_to_tensor(time, name="time")
-  # During the first time step we only consider the initial beam
+  # During the first time step we only consider the initial search state
   scores_flat = array_ops.reshape(scores, [batch_size, -1])
 
-  # Pick the next beams according to the specified successors function
+  # Pick the next search state according to the specified successors function
   next_beam_size = ops.convert_to_tensor(
       beam_width, dtype=dtypes.int32, name="beam_width")
   next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=next_beam_size)
@@ -767,10 +767,10 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       name="next_beam_finished")
 
   # Calculate the length of the next predictions.
-  # 1. Finished beams remain unchanged.
-  # 2. Beams that are now finished (EOS predicted) have their length
+  # 1. Finished search states remain unchanged.
+  # 2. Search states that are now finished (EOS predicted) have their length
   #    increased by 1.
-  # 3. Beams that are not yet finished have their length increased by 1.
+  # 3. Search states that are not yet finished have their length increased by 1.
   lengths_to_add = math_ops.to_int64(math_ops.logical_not(previously_finished))
   next_prediction_len = _tensor_gather_helper(
       gather_indices=next_beam_ids,
@@ -856,8 +856,8 @@ def _length_penalty(sequence_lengths, penalty_factor):
 def _mask_probs(probs, eos_token, finished):
   """Masks log probabilities.
 
-  The result is that finished beams allocate all probability mass to eos and
-  unfinished beams remain unchanged.
+  The result is that finished search states allocate all probability mass to eos and
+  unfinished search states remain unchanged.
 
   Args:
     probs: Log probabilities of shape `[batch_size, beam_width, vocab_size]`
@@ -868,7 +868,7 @@ def _mask_probs(probs, eos_token, finished):
 
   Returns:
     A tensor of shape `[batch_size, beam_width, vocab_size]`, where unfinished
-    beams stay unchanged and finished beams are replaced with a tensor with all
+    search states stay unchanged and finished search states are replaced with a tensor with all
     probability on the EOS token.
   """
   vocab_size = array_ops.shape(probs)[2]
