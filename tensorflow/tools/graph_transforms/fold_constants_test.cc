@@ -370,6 +370,46 @@ class ConstantFoldingTest : public ::testing::Test {
     EXPECT_EQ(0, node_map.count("b"));
     EXPECT_EQ(1, node_map.count("c"));
   }
+
+  void TestMaxConstantSizeInBytes() {
+    auto root = tensorflow::Scope::NewRootScope();
+
+    const int width = 100;
+
+    Tensor a_data(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&a_data, 1.0f);
+    Output a_const = ::tensorflow::ops::Const(
+        root.WithOpName("a_expect_remains"), Input::Initializer(a_data));
+
+    Tensor b_data(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&b_data, 1.0f);
+    Output b_const = ::tensorflow::ops::Const(
+        root.WithOpName("b_expect_remains"), Input::Initializer(b_data));
+
+    Output add = ::tensorflow::ops::Add(root.WithOpName("add_expect_remains"),
+                                        a_const, b_const);
+
+    Output placeholder = ::tensorflow::ops::Placeholder(
+        root.WithOpName("placeholder_expect_remains"), DT_FLOAT);
+
+    Output mul = ::tensorflow::ops::Mul(
+        root.WithOpName("output_expect_remains"), add, placeholder);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    Tensor placeholder_tensor(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&placeholder_tensor, 1.0f);
+
+    // Setting the maximum constant size to 10 bytes should stop the constant
+    // folding at add(a, b) that would have yielded a constant of
+    // 100*sizeof(float) bytes.
+    graph_transforms::TransformFuncContext context;
+    context.params["max_constant_size_in_bytes"] = {"10"};
+    TestConstantFolding(graph_def,
+                        {{"placeholder_expect_remains", placeholder_tensor}},
+                        {}, {"output_expect_remains"}, context);
+  }
 };
 
 TEST_F(ConstantFoldingTest, TestSimpleAdd) { TestSimpleAdd(); }
@@ -392,6 +432,10 @@ TEST_F(ConstantFoldingTest, TestRemoveUnusedNodes) { TestRemoveUnusedNodes(); }
 
 TEST_F(ConstantFoldingTest, TestRemoveUnusedNodesMultipleOutputs) {
   TestRemoveUnusedNodesMultipleOutputs();
+}
+
+TEST_F(ConstantFoldingTest, TestMaxConstantSizeInBytes) {
+  TestMaxConstantSizeInBytes();
 }
 
 }  // namespace graph_transforms
