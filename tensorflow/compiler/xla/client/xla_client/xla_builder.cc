@@ -45,6 +45,7 @@ int64 GetUniqueId() {
 bool CanBeRoot(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       return false;
@@ -1127,11 +1128,43 @@ XlaOp XlaBuilder::ReducePrecision(const XlaOp& operand, const int exponent_bits,
 }
 
 void XlaBuilder::Send(const XlaOp& operand, const ChannelHandle& handle) {
-  UnimplementedOp();
+  NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    // Send instruction produces a tuple of {aliased operand, U32 context}.
+    TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
+    *instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
+    instr.set_channel_id(handle.handle());
+    TF_ASSIGN_OR_RETURN(
+        XlaOp send,
+        AddInstruction(std::move(instr), HloOpcode::kSend, {operand}));
+
+    HloInstructionProto send_done_instr;
+    *send_done_instr.mutable_shape() = ShapeUtil::MakeNil();
+    send_done_instr.set_channel_id(handle.handle());
+    return AddInstruction(std::move(send_done_instr), HloOpcode::kSendDone,
+                          {send});
+  });
 }
 
 XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    // Recv instruction produces a tuple of {receive buffer, U32 context}.
+    *instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
+    instr.set_channel_id(handle.handle());
+    TF_ASSIGN_OR_RETURN(XlaOp recv,
+                        AddInstruction(std::move(instr), HloOpcode::kRecv, {}));
+
+    HloInstructionProto recv_done_instr;
+    *recv_done_instr.mutable_shape() = shape;
+    recv_done_instr.set_channel_id(handle.handle());
+    return AddInstruction(std::move(recv_done_instr), HloOpcode::kRecvDone,
+                          {recv});
+  });
 }
 
 StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand,
