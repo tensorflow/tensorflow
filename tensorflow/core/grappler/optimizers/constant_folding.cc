@@ -773,7 +773,7 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   // the case of a merge node that propagate the first inputs that becomes
   // available, and therefore only requires a single constant input to be
   // foldable.
-  bool has_constant_input = false;
+  bool merge_has_constant_input = false;
   const bool is_merge = IsMerge(node);
   for (const auto& input : node.input()) {
     if (IsControlInput(input)) {
@@ -784,21 +784,20 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
       return false;
     }
     bool is_const = IsReallyConstant(*input_node);
-    if (!is_const && !is_merge) {
+    if (is_const) {
+      // Don't fold strings constants for now since this causes problems with
+      // checkpointing.
+      if (input_node->attr().at("dtype").type() == DT_STRING) {
+        return false;
+      }
+      // Special case: If a Merge node has at least one constant input that
+      // does not depend on a control input, we can fold it.
+      merge_has_constant_input |= !HasControlInputs(*input_node);
+    } else if (!is_merge) {
       return false;
     }
-    // Don't fold strings constants for now since this causes problems with
-    // checkpointing.
-    if (is_const && input_node->attr().at("dtype").type() == DT_STRING) {
-      return false;
-    }
-    has_constant_input |= is_const;
   }
-  if (is_merge) {
-    return has_constant_input;
-  }
-
-  return true;
+  return !is_merge || merge_has_constant_input;
 }
 
 namespace {
@@ -1714,9 +1713,11 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
     }
 
     // Move constants past Enter.
-    // TODO(rmlarsen): Reenable when we fix the root cause of b/76008022
-    if (opt_level_ == RewriterConfig::AGGRESSIVE && IsEnter(*node) &&
-        node->input_size() > 0) {
+    if (IsEnter(*node) && node->input_size() > 0) {
+      if (node->attr().count("is_constant") == 0 ||
+          !node->attr().at("is_constant").b()) {
+        continue;
+      }
       const string& node_name = node->name();
       const NodeDef* input = node_map_->GetNode(node->input(0));
       if (input != nullptr && IsReallyConstant(*input) &&
@@ -1745,7 +1746,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
           node_map_->AddOutput(node_name, new_node->name());
           for (NodeDef* consumer : consumers) {
             for (int i = 0; i < consumer->input_size(); ++i) {
-              if (consumer->input(i) == node_name) {
+              if (NodeName(consumer->input(i)) == node_name) {
                 node_map_->UpdateInput(consumer->name(), node_name,
                                        new_node->name());
                 consumer->set_input(i, new_node->name());

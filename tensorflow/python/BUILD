@@ -4844,6 +4844,29 @@ py_test(
 )
 
 cuda_py_test(
+    name = "constant_folding_test",
+    size = "medium",
+    srcs = [
+        "grappler/constant_folding_test.py",
+    ],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":array_ops",
+        ":control_flow_ops",
+        ":dtypes",
+        ":functional_ops",
+        ":math_ops",
+        ":ops",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    tags = [
+        "grappler",
+    ],
+)
+
+cuda_py_test(
     name = "layout_optimizer_test",
     size = "medium",
     srcs = [

@@ -1256,6 +1256,10 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   ops::Merge m1(scope.WithOpName("m1"), {x, const1, const2});
   ops::Merge m2(scope.WithOpName("m2"), {const1, const3});
   ops::Merge m3(scope.WithOpName("m3"), {x, y});
+  // m4 is not foldable because the only constant input
+  // has a control input, so we cannot know if it will be
+  // triggered.
+  ops::Merge m4(scope.WithOpName("m4"), {x, const1});
 
   ops::Identity out1(scope.WithOpName("out1"), m1.output);
   ops::Identity idx1(scope.WithOpName("idx1"), m1.value_index);
@@ -1263,9 +1267,11 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   ops::Identity idx2(scope.WithOpName("idx2"), m2.value_index);
   ops::Identity out3(scope.WithOpName("out3"), m3.output);
   ops::Identity idx3(scope.WithOpName("idx3"), m3.value_index);
+  ops::Identity out4(scope.WithOpName("out4"), m4.output);
+  ops::Identity idx4(scope.WithOpName("idx4"), m4.value_index);
 
   GrapplerItem item;
-  item.fetch = {"out1", "idx1", "out2", "idx2", "out3", "idx3"};
+  item.fetch = {"out1", "idx1", "out2", "idx2", "out3", "idx3", "out4", "idx4"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
   ConstantFolding optimizer(nullptr /* cpu_device */);
@@ -1273,6 +1279,7 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
+  EXPECT_EQ(19, output.node_size());
   int found_nodes = 0;
   for (const auto& node : output.node()) {
     if (node.name() == "out1") {
@@ -1309,10 +1316,18 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("m3:1", node.input(0));
       ++found_nodes;
+    } else if (node.name() == "out4") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("m4", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "idx4") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("m4:1", node.input(0));
+      ++found_nodes;
     }
   }
   // Make sure the graph contains all the nodes we're expecting.
-  EXPECT_EQ(6, found_nodes);
+  EXPECT_EQ(8, found_nodes);
 
   std::vector<string> fetch = {"out1", "idx1"};
   auto tensors = EvaluateNodes(output, fetch);
@@ -2320,6 +2335,10 @@ TEST_F(ConstantFoldingTest, Enter) {
   GrapplerItem item;
   AttrValue frame_name;
   frame_name.set_s("foo");
+  AttrValue is_constant_true;
+  is_constant_true.set_b(true);
+  AttrValue is_constant_false;
+  is_constant_false.set_b(false);
   AttrValue type;
   type.set_type(DT_FLOAT);
   AttrValue value;
@@ -2330,19 +2349,31 @@ TEST_F(ConstantFoldingTest, Enter) {
   GraphDef& graph = item.graph;
   AddNode("x", "Placeholder", {}, {{"T", type}}, &graph);
   AddNode("c1", "Const", {"^x"}, {{"value", value}, {"dtype", type}}, &graph);
-  AddNode("enter1", "Enter", {"x"}, {{"T", type}, {"frame_name", frame_name}},
+  AddNode("enter1", "Enter", {"x"},
+          {{"T", type},
+           {"frame_name", frame_name},
+           {"is_constant", is_constant_true}},
           &graph);
-  AddNode("enter2", "Enter", {"c1"}, {{"T", type}, {"frame_name", frame_name}},
+  AddNode("enter2", "Enter", {"c1"},
+          {{"T", type},
+           {"frame_name", frame_name},
+           {"is_constant", is_constant_true}},
+          &graph);
+  AddNode("enter3", "Enter", {"c1"},
+          {{"T", type},
+           {"frame_name", frame_name},
+           {"is_constant", is_constant_false}},
           &graph);
   AddNode("id1", "Identity", {"enter1"}, {{"T", type}}, &graph);
   AddNode("id2", "Identity", {"enter2"}, {{"T", type}}, &graph);
   AddNode("id3", "Identity", {"enter2"}, {{"T", type}}, &graph);
+  AddNode("id4", "Identity", {"enter3"}, {{"T", type}}, &graph);
   item.fetch.push_back("id1");
   item.fetch.push_back("id2");
   item.fetch.push_back("id3");
+  item.fetch.push_back("id4");
 
-  ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
-                            nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -2351,7 +2382,7 @@ TEST_F(ConstantFoldingTest, Enter) {
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(7, output.node_size());
+  EXPECT_EQ(9, output.node_size());
   for (const NodeDef& node : output.node()) {
     if (node.name() == "id1") {
       EXPECT_EQ("Identity", node.op());
@@ -2362,6 +2393,11 @@ TEST_F(ConstantFoldingTest, Enter) {
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("^enter2", node.input(0));
+    }
+    if (node.name() == "id4") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("enter3", node.input(0));
     }
   }
 }
