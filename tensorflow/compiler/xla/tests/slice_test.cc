@@ -214,6 +214,9 @@ class SliceR1Test : public ClientLibraryTestBase,
   }
 };
 
+// A version of SliceR1Test used to label and disable 'large' tests
+class SliceR1LargeTest : public SliceR1Test {};
+
 string SliceR1TestDataToString(const ::testing::TestParamInfo<R1Spec>& data) {
   const R1Spec& spec = data.param;
   return ::tensorflow::strings::Printf("%lld_%lld_%lld_%lld", spec.input_dim0,
@@ -233,7 +236,20 @@ XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64>(GetParam()); }
 
+XLA_TEST_P(SliceR1LargeTest, DoIt_F32) { Run<float>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_F64) { Run<double>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_U32) { Run<uint32>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_S32) { Run<int32>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_U64) { Run<uint64>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_S64) { Run<int64>(GetParam()); }
+
 XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
+
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
@@ -242,12 +258,6 @@ INSTANTIATE_TEST_CASE_P(
     SliceR1TestInstantiation,
     SliceR1Test,
     ::testing::Values(
-// TODO(b/69425338): This uses too much memory on GPU.
-#ifndef XLA_TEST_BACKEND_GPU
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1},
-#endif
         R1Spec{10, 0, 0, 1},
         R1Spec{10, 7, 7, 1},
         R1Spec{10, 0, 5, 1},
@@ -282,6 +292,20 @@ INSTANTIATE_TEST_CASE_P(
     ),
     SliceR1TestDataToString
 );
+
+// TODO(b/69425338): This uses too much memory on GPU.
+#ifndef XLA_TEST_BACKEND_GPU
+INSTANTIATE_TEST_CASE_P(
+    SliceR1TestBigSlicesInstantiation,
+    SliceR1LargeTest,
+    ::testing::Values(
+          R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
+          R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
+          R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1}
+    ),
+    SliceR1TestDataToString
+);
+#endif
 
 INSTANTIATE_TEST_CASE_P(
     SliceStridedR1TestInstantiation,

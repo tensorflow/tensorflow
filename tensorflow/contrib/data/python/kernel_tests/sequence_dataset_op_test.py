@@ -100,6 +100,12 @@ class SequenceDatasetSerializationTest(
     # Test repeat empty dataset
     self.run_core_tests(lambda: self._build_repeat_dataset(-1, 0), None, 0)
 
+  def testInvalidRepeat(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      self.run_core_tests(lambda: self._build_repeat_dataset([1, 2], 0),
+                          None, 0)
+
 
 if __name__ == "__main__":
   test.main()
