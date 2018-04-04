@@ -241,6 +241,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
                          1.99f,
                          2.0f,
                          2.01f,
+                         2147483648.f,
                          -0.5f,
                          -0.99f,
                          -1.0f,
