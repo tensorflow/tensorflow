@@ -44,7 +44,7 @@ go_library(
         "//tensorflow/c:headers",  # C library header
     ],
     cgo = True,
-    clinkopts = ["-L/usr/local/lib -ltensorflow"],
+    clinkopts = ["-ltensorflow"],
     copts = ["-Itensorflow/go"],
     importpath = "github.com/tensorflow/tensorflow/tensorflow/go",
     visibility = ["//visibility:public"],
