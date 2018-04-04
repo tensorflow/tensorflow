@@ -18,7 +18,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/env_var.h"
@@ -113,7 +112,7 @@ string ToString(libraryPropertyType type) {
     case PATCH_LEVEL:
       return "PATCH_LEVEL";
     default:
-      return absl::StrCat(
+      return port::StrCat(
           "<unknown libraryPropertyType: ", static_cast<int>(type), ">");
   }
 }
@@ -375,7 +374,7 @@ port::Status GetCudnnProperty(libraryPropertyType type, int* value) {
   cudnnStatus_t status = cudnnGetProperty(type, value);
   if (status != CUDNN_STATUS_SUCCESS) {
     const string error =
-        absl::StrCat("cudnnGetProperty failed for type: ", ToString(type),
+        port::StrCat("cudnnGetProperty failed for type: ", ToString(type),
                      " with status: ", ToString(status));
     LOG(ERROR) << error;
     return port::Status{port::error::INTERNAL, error};
@@ -419,7 +418,7 @@ port::Status CudnnSupport::Init() {
     CudnnVersion loaded_version;
     TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&loaded_version));
     if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
-      const tensorflow::string error = absl::StrCat(
+      const tensorflow::string error = port::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
           " but source was compiled with: ", source_version.ToString(),
           ".  CuDNN library major and minor version needs to match or have "
