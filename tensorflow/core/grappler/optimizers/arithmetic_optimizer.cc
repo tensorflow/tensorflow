@@ -1667,34 +1667,24 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
                                   &frame_map_);
   const ArithmeticOptimizerContext ctx_ext(&nodes_to_simplify);
 
-  std::vector<std::unique_ptr<ArithmeticOptimizerStage>> stages;
+  // Stop pipeline after first stage returning non-empty simplified tensor name.
+  const auto stop = [](const string& result) { return !result.empty(); };
+  GraphOptimizerStagePipeline<string> pipeline(stop);
 
-  if (options_.combine_add_to_addn) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new AddOpsRewriteStage(ctx, ctx_ext)));
-  }
-  if (options_.hoist_common_factor_out_of_aggregation) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new HoistCommonFactorOutOfAggregation(ctx, ctx_ext)));
-  }
-  if (options_.remove_identity_transpose) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveIdentityTranspose(ctx, ctx_ext)));
-  }
-  if (options_.remove_redundant_bitcast) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveRedundantBitcastStage(ctx, ctx_ext)));
-  }
-  if (options_.remove_redundant_cast) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveRedundantCastStage(ctx, ctx_ext)));
-  }
-  if (options_.remove_negation) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveNegationStage(ctx, ctx_ext)));
-  }
+  if (options_.combine_add_to_addn)
+    pipeline.AddStage<AddOpsRewriteStage>(ctx, ctx_ext);
+  if (options_.hoist_common_factor_out_of_aggregation)
+    pipeline.AddStage<HoistCommonFactorOutOfAggregation>(ctx, ctx_ext);
+  if (options_.remove_identity_transpose)
+    pipeline.AddStage<RemoveIdentityTranspose>(ctx, ctx_ext);
+  if (options_.remove_redundant_bitcast)
+    pipeline.AddStage<RemoveRedundantBitcastStage>(ctx, ctx_ext);
+  if (options_.remove_redundant_cast)
+    pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
+  if (options_.remove_negation)
+    pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
 
-  VLOG(1) << "Simplify arithmetic ops using " << stages.size()
+  VLOG(1) << "Simplify arithmetic ops using " << pipeline.NumStages()
           << " arithmetic optimization stages";
 
   while (!nodes_to_simplify.Empty()) {
@@ -1707,20 +1697,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
     }
 
     // if it was not simplified try to run it through all configured stages
-    if (simplified_tensor.empty()) {
-      for (auto& stage : stages) {
-        if (stage->IsSupported(node)) {
-          TF_RETURN_IF_ERROR(stage->TrySimplify(node, &simplified_tensor));
-          if (!simplified_tensor.empty()) {
-            break;
-          }
-        }
+    if (!stop(simplified_tensor)) {
+      bool optimized = pipeline.PassThroughAllStages(node, &simplified_tensor);
+      if (!optimized) {
+        continue;
       }
-    }
-
-    // if it's still empty go to the next Node
-    if (simplified_tensor.empty()) {
-      continue;
     }
 
     // re-wire consumers of an old node to the new one
