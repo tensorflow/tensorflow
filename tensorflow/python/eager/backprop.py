@@ -31,7 +31,6 @@ from tensorflow.python.eager import imperative_grad
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -50,12 +49,10 @@ def op_attr_type(op_type, attr_name):
   try:
     return _op_attr_type_cache[(op_type, attr_name)]
   except KeyError:
-    with errors.raise_exception_on_not_ok_status() as status:
-      h = context.context()._handle  # pylint: disable=protected-access
-      attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(
-          h, op_type, attr_name, status)
-    _op_attr_type_cache[(op_type, attr_name)] = attr_type
-    return attr_type
+    h = context.context()._handle  # pylint: disable=protected-access
+    attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(h, op_type, attr_name)
+  _op_attr_type_cache[(op_type, attr_name)] = attr_type
+  return attr_type
 
 
 def make_attr(attr_type, value):

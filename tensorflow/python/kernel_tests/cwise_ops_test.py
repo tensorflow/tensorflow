@@ -2165,5 +2165,47 @@ class AccumulateTest(test.TestCase):
         math_ops.accumulate_n([a], tensor_dtype=np.int32)
 
 
+class PolyvalTest(test.TestCase):
+
+  def _runtest(self, dtype, degree):
+    x = np.random.rand(2, 2).astype(dtype)
+    coeffs = [np.random.rand(2, 2).astype(dtype) for _ in range(degree + 1)]
+    np_val = np.polyval(coeffs, x)
+    with self.test_session():
+      tf_val = math_ops.polyval(coeffs, x)
+      self.assertAllClose(np_val, tf_val.eval())
+
+  def testSimple(self):
+    for dtype in [
+        np.int32, np.float32, np.float64, np.complex64, np.complex128
+    ]:
+      for degree in range(5):
+        self._runtest(dtype, degree)
+
+  def testBroadcast(self):
+    dtype = np.float32
+    degree = 3
+    shapes = [(1,), (2, 1), (1, 2), (2, 2)]
+    for x_shape in shapes:
+      for coeff_shape in shapes:
+        x = np.random.rand(*x_shape).astype(dtype)
+        coeffs = [
+            np.random.rand(*coeff_shape).astype(dtype)
+            for _ in range(degree + 1)
+        ]
+        np_val = np.polyval(coeffs, x)
+        with self.test_session():
+          tf_val = math_ops.polyval(coeffs, x)
+          self.assertAllClose(np_val, tf_val.eval())
+
+  def testEmpty(self):
+    x = np.random.rand(2, 2).astype(np.float32)
+    coeffs = []
+    np_val = np.polyval(coeffs, x)
+    with self.test_session():
+      tf_val = math_ops.polyval(coeffs, x)
+      self.assertAllClose(np_val, tf_val.eval())
+
+
 if __name__ == "__main__":
   test.main()

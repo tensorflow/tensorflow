@@ -3491,7 +3491,6 @@ void ComputationLowerer::Visit(
       HloInstruction* operand = lookup_instruction(trace_request.operand());
       hlo_instruction = add_instruction(
           HloInstruction::CreateTrace(trace_request.tag(), operand));
-      operand->set_tracing(hlo_instruction);
       break;
     }
 

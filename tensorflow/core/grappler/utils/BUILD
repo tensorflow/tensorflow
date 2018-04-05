@@ -181,3 +181,28 @@ tf_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
+
+cc_library(
+    name = "colocation",
+    srcs = ["colocation.cc"],
+    hdrs = ["colocation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+tf_cc_test(
+    name = "colocation_test",
+    size = "small",
+    srcs = ["colocation_test.cc"],
+    deps = [
+        ":colocation",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)

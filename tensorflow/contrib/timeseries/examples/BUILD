@@ -25,7 +25,10 @@ py_test(
     srcs = ["predict_test.py"],
     data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # b/67513579
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "notsan",  # b/67513579
+    ],
     deps = [
         ":predict",
         "//tensorflow/python:client_testlib",

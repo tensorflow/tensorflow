@@ -252,6 +252,48 @@ TEST_P(ReduceWindowTest, AmongMajor2DimsMediumSize) {
                            DefaultErrorSpec());
 }
 
+// Tests the super windowing logic w.r.t handling prime number of windows in a
+// major dimension with reduction.
+TEST_P(ReduceWindowTest, PrimeWindowsInReductionDimension) {
+  Array4D<float> input_array(15, 15, 4, 128);
+  input_array.FillRandom(2.f, 4.f);
+
+  int win_len = 3;
+  int win_stride = 2;
+
+  const auto input_data_handle =
+      CreateConstantFromArray(input_array, &builder_);
+
+  Padding padding = Padding::kSame;
+  // Reduce only along the x and y dimensions, according to the win_len.
+  ReduceWindowAdd(input_data_handle, {win_len, win_len, 1, 1},
+                  {win_stride, win_stride, 1, 1}, padding);
+
+  auto result = ReferenceUtil::ReduceWindow4DAdd(
+      input_array, 0.0f, {win_len, win_len, 1, 1},
+      {win_stride, win_stride, 1, 1}, padding);
+
+  ComputeAndCompareLiteral(&builder_, *Literal::CreateFromArray(*result), {},
+                           DefaultErrorSpec());
+}
+
+TEST_P(ReduceWindowTest, ReduceAlongLaneDimension) {
+  Array4D<float> input_array(19, 17, 8, 256);
+  input_array.FillWithMinorDimNum();
+
+  const auto input_data_handle =
+      CreateConstantFromArray(input_array, &builder_);
+
+  Padding padding = Padding::kSame;
+  ReduceWindowAdd(input_data_handle, {1, 1, 1, 11}, {1, 1, 1, 1}, padding);
+
+  auto result = ReferenceUtil::ReduceWindow4DAdd(
+      input_array, 0.0f, {1, 1, 1, 11}, {1, 1, 1, 1}, padding);
+
+  ComputeAndCompareLiteral(&builder_, *Literal::CreateFromArray(*result), {},
+                           DefaultErrorSpec());
+}
+
 // Tests a reduction function that is not a simple add/min/max/etc.
 XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
   Array4D<float> input_array(1, 2, 2, 1);

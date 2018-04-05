@@ -387,7 +387,10 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   """
   if context.executing_eagerly() and not isinstance(
       input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
-    return np.prod(ops.convert_to_tensor(input)._shape_tuple())  # pylint: disable=protected-access
+    input = ops.convert_to_tensor(input)
+    np_out_type = out_type.as_numpy_dtype
+    num_elements = np.prod(input._shape_tuple(), dtype=np_out_type)  # pylint: disable=protected-acces:
+    return ops.convert_to_tensor(num_elements, dtype=out_type)
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
                           sparse_tensor.SparseTensorValue)):

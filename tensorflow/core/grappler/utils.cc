@@ -255,6 +255,14 @@ int NumOutputs(const NodeDef& node, GraphDef* graph) {
   return num_outputs;
 }
 
+bool HasControlInputs(const NodeDef& node) {
+  int num_inputs = node.input_size();
+  if (num_inputs > 0 && IsControlInput(node.input(num_inputs - 1))) {
+    return true;
+  }
+  return false;
+}
+
 int NumNonControlInputs(const NodeDef& node) {
   int num_inputs = node.input_size();
   for (const string& input : node.input()) {

@@ -32,9 +32,13 @@ import java.util.Map;
 final class NativeInterpreterWrapper implements AutoCloseable {
 
   NativeInterpreterWrapper(String modelPath) {
+    this(modelPath, /* numThreads= */ -1);
+  }
+
+  NativeInterpreterWrapper(String modelPath, int numThreads) {
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModel(modelPath, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle, errorHandle, /* numThreads= */ -1);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle, numThreads);
     isMemoryAllocated = true;
   }
 
@@ -44,11 +48,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
    * NativeInterpreterWrapper}.
    */
   NativeInterpreterWrapper(MappedByteBuffer mappedByteBuffer) {
-    modelByteBuffer = mappedByteBuffer;
-    errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
-    modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle, errorHandle, /* numThreads= */ -1);
-    isMemoryAllocated = true;
+    this(mappedByteBuffer, /* numThreads= */ -1);
   }
 
   /**

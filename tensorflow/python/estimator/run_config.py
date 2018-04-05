@@ -44,7 +44,7 @@ _DEFAULT_REPLACEABLE_LIST = [
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
     'log_step_count_steps',
-    'distribute'
+    'train_distribute'
 ]
 
 _SAVE_CKPT_ERR = (
@@ -302,7 +302,7 @@ class RunConfig(object):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                log_step_count_steps=100,
-               distribute=None):
+               train_distribute=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -426,10 +426,10 @@ class RunConfig(object):
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
         global step/sec and the loss will be logged during training.
-      distribute: an optional instance of
+      train_distribute: an optional instance of
         `tf.contrib.distribute.DistributionStrategy`. If specified,
-        then Estimator will distribute the user's model according to the policy
-        specified by that strategy.
+        then Estimator will distribute the user's model during training,
+        according to the policy specified by that strategy.
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -466,7 +466,7 @@ class RunConfig(object):
         keep_checkpoint_max=keep_checkpoint_max,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         log_step_count_steps=log_step_count_steps,
-        distribute=distribute)
+        train_distribute=train_distribute)
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
@@ -678,10 +678,10 @@ class RunConfig(object):
     return self._service
 
   @property
-  def distribute(self):
+  def train_distribute(self):
     """Returns the optional `tf.contrib.distribute.DistributionStrategy` object.
     """
-    return self._distribute
+    return self._train_distribute
 
   def replace(self, **kwargs):
     """Returns a new instance of `RunConfig` replacing specified properties.
@@ -697,7 +697,7 @@ class RunConfig(object):
       - `keep_checkpoint_max`,
       - `keep_checkpoint_every_n_hours`,
       - `log_step_count_steps`,
-      - `distribute`.
+      - `train_distribute`.
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

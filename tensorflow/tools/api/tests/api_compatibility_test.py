@@ -145,6 +145,9 @@ class ApiCompatibilityTest(test.TestCase):
       verbose_diff_message = ''
       # First check if the key is not found in one or the other.
       if key in only_in_expected:
+        # TODO(annarev): remove once we switch to using tf_export decorators.
+        if key == 'tensorflow.math':
+          continue
         diff_message = 'Object %s expected but not found (removed). %s' % (
             key, additional_missing_object_message)
         verbose_diff_message = diff_message
@@ -228,6 +231,13 @@ class ApiCompatibilityTest(test.TestCase):
         _FileNameToKey(filename): _ReadFileToProto(filename)
         for filename in golden_file_list
     }
+
+    # TODO(annarev): remove once we switch to using tf_export decorators.
+    tf_module = golden_proto_dict['tensorflow'].tf_module
+    for i in range(len(tf_module.member)):
+      if tf_module.member[i].name == 'math':
+        del tf_module.member[i]
+        break
 
     # Diff them. Do not fail if called with update.
     # If the test is run to update goldens, only report diffs but do not fail.
