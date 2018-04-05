@@ -402,9 +402,10 @@ void ReadModelFlagsFromCommandLineFlags(
 
   if (parsed_model_flags.arrays_extra_info_file.specified()) {
     string arrays_extra_info_file_contents;
-    port::file::GetContents(parsed_model_flags.arrays_extra_info_file.value(),
-                            &arrays_extra_info_file_contents,
-                            port::file::Defaults());
+    CHECK(port::file::GetContents(
+              parsed_model_flags.arrays_extra_info_file.value(),
+              &arrays_extra_info_file_contents, port::file::Defaults())
+              .ok());
     ParseFromStringEitherTextOrBinary(arrays_extra_info_file_contents,
                                       model_flags->mutable_arrays_extra_info());
   }
