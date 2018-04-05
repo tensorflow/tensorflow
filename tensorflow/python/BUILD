@@ -427,6 +427,7 @@ tf_cc_shared_object(
             "-lm",
         ],
         "//tensorflow:darwin": [],
+        "//tensorflow:windows": [],
     }),
     deps = [
         "//tensorflow/core:framework_headers_lib",

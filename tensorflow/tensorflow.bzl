@@ -304,6 +304,7 @@ def tf_cc_shared_object(
           clean_dep("//tensorflow:darwin"): [
               "-Wl,-install_name,@rpath/" + name.split("/")[-1],
           ],
+          clean_dep("//tensorflow:windows"): [],
           "//conditions:default": [
               "-Wl,-soname," + name.split("/")[-1],
           ],
@@ -929,6 +930,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if 'linkstatic' not in kwargs or kwargs['linkstatic'] != 1:
     enable_text_relocation_linkopt = select({
           clean_dep("//tensorflow:darwin"): [],
+          clean_dep("//tensorflow:windows"): [],
           "//conditions:default": ['-Wl,-z,notext'],})
     if 'linkopts' in kwargs:
       kwargs['linkopts'] += enable_text_relocation_linkopt
