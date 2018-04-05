@@ -761,8 +761,8 @@ parts:
 3. Finalization: (optionally) perform any final operation to compute metric
 values. For example, computing means, mins, maxes, etc.
 
-For example, to compute `mean_absolute_error`, two variables, a `count` and
-`total` variable are *initialized* to zero. During *aggregation*, we observed
+For example, to compute `mean_absolute_error`, two variables (`count` and
+`total`) are *initialized* to zero. During *aggregation*, we observed
 some set of predictions and labels, compute their absolute differences and add
 the total to `total`. Each time we observe another value,
 `count` is incremented. Finally, during *finalization*, `total` is divided
