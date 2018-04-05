@@ -3343,6 +3343,10 @@ tf_py_wrap_cc(
         "util/transform_graph.i",
         "util/util.i",
     ],
+    win_def_file = select({
+        "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
+        "//conditions:default": None,
+    }),
     deps = [
         ":bfloat16_lib",
         ":cost_analyzer_lib",
