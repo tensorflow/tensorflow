@@ -35,6 +35,7 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
+_DEFAULT_NCCL_VERSION = '1.3'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
@@ -1105,6 +1106,81 @@ def set_tf_tensorrt_install_path(environ_cp):
   write_action_env_to_bazelrc('TF_TENSORRT_VERSION', tf_tensorrt_version)
 
 
+def set_tf_nccl_install_path(environ_cp):
+  """Set NCCL_INSTALL_PATH and TF_NCCL_VERSION.
+
+  Args:
+    environ_cp: copy of the os.environ.
+
+  Raises:
+    ValueError: if this method was called under non-Linux platform.
+    UserInputError: if user has provided invalid input multiple times.
+  """
+  if not is_linux():
+    raise ValueError('Currently NCCL is only supported on Linux platforms.')
+
+  ask_nccl_version = (
+      'Please specify the NCCL version you want to use. '
+      '[Leave empty to default to NCCL %s]: ') % _DEFAULT_NCCL_VERSION
+
+  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
+    tf_nccl_version = get_from_env_or_user_or_default(
+        environ_cp, 'TF_NCCL_VERSION', ask_nccl_version, _DEFAULT_NCCL_VERSION)
+    tf_nccl_version = reformat_version_sequence(str(tf_nccl_version), 1)
+
+    if tf_nccl_version == '1':
+      break  # No need to get install path, NCCL 1 is a GitHub repo.
+
+    # TODO(csigg): Look with ldconfig first if we can find the library in paths
+    # like /usr/lib/x86_64-linux-gnu and the header file in the corresponding
+    # include directory. This is where the NCCL .deb packages install them.
+    # Then ask the user if we should use that. Instead of a single
+    # NCCL_INSTALL_PATH, pass separate NCCL_LIB_PATH and NCCL_HDR_PATH to
+    # nccl_configure.bzl
+    default_nccl_path = environ_cp.get('CUDA_TOOLKIT_PATH')
+    ask_nccl_path = (r'Please specify the location where NCCL %s library is '
+                     'installed. Refer to README.md for more details. [Default '
+                     'is %s]:') % (tf_nccl_version, default_nccl_path)
+    nccl_install_path = get_from_env_or_user_or_default(
+        environ_cp, 'NCCL_INSTALL_PATH', ask_nccl_path, default_nccl_path)
+
+    # Result returned from "read" will be used unexpanded. That make "~"
+    # unusable. Going through one more level of expansion to handle that.
+    nccl_install_path = os.path.realpath(os.path.expanduser(nccl_install_path))
+    if is_windows() or is_cygwin():
+      nccl_install_path = cygpath(nccl_install_path)
+
+    if is_windows():
+      nccl_lib_path = 'lib/x64/nccl.lib'
+    elif is_linux():
+      nccl_lib_path = 'lib/libnccl.so.%s' % tf_nccl_version
+    elif is_macos():
+      nccl_lib_path = 'lib/libnccl.%s.dylib' % tf_nccl_version
+
+    nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
+    nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
+    if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
+      # Set NCCL_INSTALL_PATH
+      environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
+      write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
+      break
+
+    # Reset and Retry
+    print('Invalid path to NCCL %s toolkit, %s or %s not found. Please use the '
+          'O/S agnostic package of NCCL 2' % (tf_nccl_version, nccl_lib_path,
+                                              nccl_hdr_path))
+
+    environ_cp['TF_NCCL_VERSION'] = ''
+  else:
+    raise UserInputError('Invalid TF_NCCL setting was provided %d '
+                         'times in a row. Assuming to be a scripting mistake.' %
+                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
+
+  # Set TF_NCCL_VERSION
+  environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
+  write_action_env_to_bazelrc('TF_NCCL_VERSION', tf_nccl_version)
+
+
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
 
@@ -1441,6 +1517,7 @@ def main():
     set_tf_cudnn_version(environ_cp)
     if is_linux():
       set_tf_tensorrt_install_path(environ_cp)
+    set_tf_nccl_install_path(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
     if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
         'LD_LIBRARY_PATH') != '1':

@@ -141,6 +141,7 @@ filegroup(
         "@kafka//:LICENSE",
         "@libxsmm_archive//:LICENSE",
         "@lmdb//:LICENSE",
+        "@local_config_nccl//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@grpc//third_party/nanopb:LICENSE.txt",
         "@grpc//third_party/address_sorting:LICENSE",
@@ -157,8 +158,6 @@ filegroup(
         "@org_python_pypi_backports_weakref//:LICENSE",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-    ]) + if_not_windows([
-        "@nccl_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
 
