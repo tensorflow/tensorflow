@@ -466,8 +466,8 @@ def model_to_estimator(keras_model=None,
       keras_model_fn, model_dir=model_dir, config=config)
 
   # Pass the config into keras backend's default session.
-  with session.Session(config=estimator._session_config) as sess:
-    K.set_session(sess)
+  sess = session.Session(config=estimator._session_config)
+  K.set_session(sess)
 
   keras_weights = keras_model.get_weights()
   if keras_model._is_graph_network:

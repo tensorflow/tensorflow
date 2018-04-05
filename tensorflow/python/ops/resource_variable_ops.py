@@ -171,7 +171,9 @@ class ResourceVariable(variables.Variable):
   to see all modifications to the value of the variable which happen in any
   operation on which the read_value depends on (either directly, indirectly, or
   via a control dependency) and guaranteed to not see any modification to the
-  value of the variable on which the read_value operation does not depend on.
+  value of the variable from operations that depend on the read_value operation.
+  Updates from operations that have no dependency relationship to the read_value
+  operation might or might not be visible to read_value.
 
   For example, if there is more than one assignment to a ResourceVariable in
   a single session.run call there is a well-defined value for each operation

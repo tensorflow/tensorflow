@@ -85,6 +85,8 @@ class MemmappedFileSystem : public FileSystem {
   Status NewAppendableFile(const string& fname,
                            std::unique_ptr<WritableFile>* result) override;
   Status GetChildren(const string& dir, std::vector<string>* r) override;
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override;
   Status DeleteFile(const string& f) override;
   Status CreateDir(const string& d) override;
   Status DeleteDir(const string& d) override;

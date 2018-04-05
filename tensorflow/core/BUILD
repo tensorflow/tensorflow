@@ -349,6 +349,7 @@ cc_library(
         "platform/env.h",
         "platform/env_time.h",
         "platform/file_system.h",
+        "platform/file_system_helper.h",
         "platform/fingerprint.h",
         "platform/init_main.h",
         "platform/logging.h",

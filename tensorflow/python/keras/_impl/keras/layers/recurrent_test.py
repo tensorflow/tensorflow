@@ -24,6 +24,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
 
 
@@ -395,8 +398,8 @@ class RNNTest(test.TestCase):
 
     # Test `get_losses_for` and `losses`
     x = keras.Input((None, 1))
-    loss_1 = keras.backend.sum(x)
-    loss_2 = keras.backend.sum(cells[0].kernel)
+    loss_1 = math_ops.reduce_sum(x)
+    loss_2 = math_ops.reduce_sum(cells[0].kernel)
     cells[0].add_loss(loss_1, inputs=x)
     cells[0].add_loss(loss_2)
     self.assertEqual(len(layer.losses), 2)
@@ -410,10 +413,10 @@ class RNNTest(test.TestCase):
     layer.build((None, None, 1))
 
     x = keras.Input((None, 1))
-    update_1 = keras.backend.update_add(
-        cells[0].kernel, x[0, 0, 0] * cells[0].kernel)
-    update_2 = keras.backend.update_add(
-        cells[0].kernel, keras.backend.ones_like(cells[0].kernel))
+    update_1 = state_ops.assign_add(cells[0].kernel,
+                                    x[0, 0, 0] * cells[0].kernel)
+    update_2 = state_ops.assign_add(cells[0].kernel,
+                                    array_ops.ones_like(cells[0].kernel))
     cells[0].add_update(update_1, inputs=x)
     cells[0].add_update(update_2)
     self.assertEqual(len(layer.updates), 2)

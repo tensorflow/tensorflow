@@ -178,7 +178,7 @@ def binary_classification_head(
 
 def regression_head(weight_column=None,
                     label_dimension=1,
-                    loss_reduction=losses.Reduction.SUM,
+                    loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
                     loss_fn=None,
                     inverse_link_fn=None,
                     name=None):
@@ -218,7 +218,9 @@ def regression_head(weight_column=None,
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
-      reduce training loss over batch. Defaults to `SUM`.
+      reduce training loss over batch and label dimension. Defaults to
+      `SUM_OVER_BATCH_SIZE`, namely weighted sum of losses divided by
+      `batch size * label_dimension`. See `tf.losses.Reduction`.
     loss_fn: Optional loss function. Defaults to `mean_squared_error`.
     inverse_link_fn: Optional inverse link function, also known as 'mean
       function'. Defaults to identity.
@@ -243,7 +245,7 @@ def regression_head(weight_column=None,
 def poisson_regression_head(
     weight_column=None,
     label_dimension=1,
-    loss_reduction=losses.Reduction.SUM,
+    loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
     compute_full_loss=True,
     name=None):
   """Creates a `_Head` for poisson regression using `tf.nn.log_poisson_loss`.
@@ -275,7 +277,9 @@ def poisson_regression_head(
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
-      reduce training loss over batch. Defaults to `SUM`.
+      reduce training loss over batch and label dimension. Defaults to
+      `SUM_OVER_BATCH_SIZE`, namely weighted sum of losses divided by
+      `batch size * label_dimension`. See `tf.losses.Reduction`.
     compute_full_loss: Whether to include the constant `log(z!)` term in
       computing the poisson loss. See `tf.nn.log_poisson_loss` for the full
       documentation.

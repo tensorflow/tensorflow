@@ -825,6 +825,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
       builder.Attr("key",
                    strings::StrCat("host_compute_channel_", subgraph_name, "_",
                                    oc_subgraph_name));
+      builder.Attr("_outside_compilation_subgraph", oc_subgraph_name);
       Status s = builder.Finalize(&host_compute_def);
       if (!s.ok()) return s;
 

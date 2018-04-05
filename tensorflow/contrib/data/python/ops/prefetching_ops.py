@@ -28,6 +28,7 @@ from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 
 
 # TODO(rohanj): Add a python class that constructs resource in the __init__
@@ -67,28 +68,77 @@ def function_buffering_resource_reset(function_buffer_resource, name=None):
 
 # pylint: disable=protected-access
 class _PrefetchToDeviceIterator(object):
-  """A replacement for @{tf.data.Iterator} that prefetches to another device."""
+  """A replacement for @{tf.data.Iterator} that prefetches to another device.
 
-  def __init__(self, input_dataset, device, buffer_size):
+  Args:
+    input_dataset: The input dataset
+    one_shot: If true, we make a one shot iterator that's already initialized.
+    device: A fully specified device string where we want to prefetch to
+    buffer_size: Size of the prefetching buffer.
+    shared_name: (Optional.) If non-empty, the returned iterator will be
+        shared under the given name across multiple sessions that share the
+        same devices (e.g. when using a remote server).
+
+  Returns:
+    An Iterator type object.
+  """
+
+  def __init__(self,
+               input_dataset,
+               one_shot,
+               device,
+               buffer_size,
+               shared_name=None):
     self._input_dataset = input_dataset
     self._get_next_call_count = 0
-    input_iterator = input_dataset.make_one_shot_iterator()
-    input_iterator_handle = input_iterator.string_handle()
+    self._one_shot = one_shot
+    if shared_name is None:
+      shared_name = ""
+
+    if self._one_shot:
+      self._input_iterator = input_dataset.make_one_shot_iterator()
+    else:
+      self._input_iterator = iterator_ops.Iterator.from_structure(
+          self._input_dataset.output_types, self._input_dataset.output_shapes,
+          shared_name, self._input_dataset.output_classes)
+    input_iterator_handle = self._input_iterator.string_handle()
 
     @function.Defun(dtypes.string)
     def _prefetch_fn(handle):
+      """Prefetches one element from `input_iterator`."""
       remote_iterator = iterator_ops.Iterator.from_string_handle(
-          handle, input_iterator.output_types, input_iterator.output_shapes,
-          input_iterator.output_classes)
-      return remote_iterator.get_next()
+          handle, self._input_iterator.output_types,
+          self._input_iterator.output_shapes,
+          self._input_iterator.output_classes)
+      ret = remote_iterator.get_next()
+
+      # Convert any `SparseTensorValue`s to `SparseTensor`s.
+      ret = nest.pack_sequence_as(ret, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else t for t in nest.flatten(ret)
+      ])
+
+      # Serialize any sparse tensors and convert result to tensors.
+      ret = nest.pack_sequence_as(ret, [
+          ops.convert_to_tensor(t)
+          for t in nest.flatten(sparse.serialize_sparse_tensors(ret))
+      ])
+      return nest.flatten(ret)
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
           f=_prefetch_fn,
           target_device=gen_dataset_ops.iterator_get_device(
-              input_iterator._iterator_resource),
+              self._input_iterator._iterator_resource),
           string_arg=input_iterator_handle,
-          buffer_size=buffer_size)
+          buffer_size=buffer_size,
+          shared_name=shared_name)
+
+    if not self._one_shot:
+      reset_op = function_buffering_resource_reset(self._buffering_resource)
+      with ops.control_dependencies([reset_op]):
+        self._initializer = self._input_iterator.make_initializer(
+            self._input_dataset)
 
   def get_next(self, name=None):
     """See @{tf.data.Iterator.get_next}."""
@@ -113,6 +163,12 @@ class _PrefetchToDeviceIterator(object):
     return ret
 
   @property
+  def initializer(self):
+    if self._one_shot:
+      raise NotImplementedError("Can't initialize a one_shot_iterator")
+    return self._initializer
+
+  @property
   def output_classes(self):
     return self._input_dataset.output_classes
 
@@ -135,13 +191,19 @@ class _PrefetchToDeviceDataset(dataset_ops.Dataset):
     self._buffer_size = buffer_size if buffer_size is not None else 1
 
   def make_one_shot_iterator(self):
-    return _PrefetchToDeviceIterator(self._input_dataset, self._device,
-                                     self._buffer_size)
+    return _PrefetchToDeviceIterator(
+        self._input_dataset,
+        one_shot=True,
+        device=self._device,
+        buffer_size=self._buffer_size)
 
   def make_initializable_iterator(self, shared_name=None):
-    raise NotImplementedError("`prefetch_to_device()` is not currently "
-                              "compatible with initializable iterators. Use "
-                              "`make_one_shot_iterator()` instead.")
+    return _PrefetchToDeviceIterator(
+        self._input_dataset,
+        one_shot=False,
+        device=self._device,
+        buffer_size=self._buffer_size,
+        shared_name=shared_name)
 
   def _as_variant_tensor(self):
     # TODO(mrry): Raise this error earlier (e.g. when one of the Dataset

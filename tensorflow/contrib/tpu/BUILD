@@ -159,6 +159,7 @@ py_library(
     name = "tpu_lib",
     srcs = [
         "python/tpu/__init__.py",
+        "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
@@ -214,6 +215,7 @@ tf_py_test(
         ":datasets",
     ],
     grpc_enabled = True,
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -227,12 +229,24 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 tf_py_test(
     name = "tpu_sharding_test",
     size = "small",
     srcs = ["python/tpu/tpu_sharding_test.py"],
+    additional_deps = [
+        ":tpu",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+    ],
+)
+
+tf_py_test(
+    name = "bfloat16_test",
+    size = "small",
+    srcs = ["python/tpu/bfloat16_test.py"],
     additional_deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",

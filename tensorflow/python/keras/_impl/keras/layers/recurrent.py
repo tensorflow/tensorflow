@@ -33,6 +33,9 @@ from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
@@ -503,9 +506,12 @@ class RNN(Layer):
 
   def get_initial_state(self, inputs):
     # build an all-zero tensor of shape (samples, output_dim)
-    initial_state = K.zeros_like(inputs)  # (samples, timesteps, input_dim)
-    initial_state = K.sum(initial_state, axis=(1, 2))  # (samples,)
-    initial_state = K.expand_dims(initial_state)  # (samples, 1)
+    initial_state = array_ops.zeros_like(inputs)
+    # shape of initial_state = (samples, timesteps, input_dim)
+    initial_state = math_ops.reduce_sum(initial_state, axis=(1, 2))
+    # shape of initial_state = (samples,)
+    initial_state = array_ops.expand_dims(initial_state, axis=-1)
+    # shape of initial_state = (samples, 1)
     if hasattr(self.cell.state_size, '__len__'):
       return [K.tile(initial_state, [1, dim]) for dim in self.cell.state_size]
     else:
@@ -631,7 +637,7 @@ class RNN(Layer):
     if self.stateful:
       updates = []
       for i in range(len(states)):
-        updates.append(K.update(self.states[i], states[i]))
+        updates.append(state_ops.assign(self.states[i], states[i]))
       self.add_update(updates, inputs)
 
     if self.return_sequences:
@@ -907,8 +913,7 @@ class SimpleRNNCell(Layer):
     prev_output = states[0]
     if 0 < self.dropout < 1 and self._dropout_mask is None:
       self._dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs,
-                                 K.shape(inputs)[-1]),
+          _generate_dropout_ones(inputs, array_ops.shape(inputs)[-1]),
           self.dropout,
           training=training)
     if (0 < self.recurrent_dropout < 1 and
@@ -1309,8 +1314,7 @@ class GRUCell(Layer):
 
     if 0 < self.dropout < 1 and self._dropout_mask is None:
       self._dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs,
-                                 K.shape(inputs)[-1]),
+          _generate_dropout_ones(inputs, array_ops.shape(inputs)[-1]),
           self.dropout,
           training=training,
           count=3)
@@ -1793,8 +1797,7 @@ class LSTMCell(Layer):
   def call(self, inputs, states, training=None):
     if 0 < self.dropout < 1 and self._dropout_mask is None:
       self._dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs,
-                                 K.shape(inputs)[-1]),
+          _generate_dropout_ones(inputs, array_ops.shape(inputs)[-1]),
           self.dropout,
           training=training,
           count=4)
@@ -2176,7 +2179,7 @@ class LSTM(RNN):
 
 
 def _generate_dropout_ones(inputs, dims):
-  return K.ones((K.shape(inputs)[0], dims))
+  return K.ones((array_ops.shape(inputs)[0], dims))
 
 
 def _generate_dropout_mask(ones, rate, training=None, count=1):
@@ -2351,9 +2354,12 @@ class Recurrent(Layer):
 
   def get_initial_state(self, inputs):
     # build an all-zero tensor of shape (samples, output_dim)
-    initial_state = K.zeros_like(inputs)  # (samples, timesteps, input_dim)
-    initial_state = K.sum(initial_state, axis=(1, 2))  # (samples,)
-    initial_state = K.expand_dims(initial_state)  # (samples, 1)
+    initial_state = array_ops.zeros_like(inputs)
+    # shape of initial_state = (samples, timesteps, input_dim)
+    initial_state = math_ops.reduce_sum(initial_state, axis=(1, 2))
+    # shape of initial_state = (samples,)
+    initial_state = array_ops.expand_dims(initial_state, axis=-1)
+    # shape of initial_state = (samples, 1)
     initial_state = K.tile(initial_state, [1,
                                            self.units])  # (samples, output_dim)
     initial_state = [initial_state for _ in range(len(self.states))]
@@ -2456,7 +2462,7 @@ class Recurrent(Layer):
     if self.stateful:
       updates = []
       for i in range(len(states)):
-        updates.append(K.update(self.states[i], states[i]))
+        updates.append(state_ops.assign(self.states[i], states[i]))
       self.add_update(updates, inputs)
 
     # Properly set learning phase

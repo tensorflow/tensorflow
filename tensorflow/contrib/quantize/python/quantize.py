@@ -416,7 +416,9 @@ def _InsertQuantOp(context,
   # name_prefix starts with 'TPUReplicate/loop/'; without dropping it
   # variables are created as TPUReplicate/loop/TPUReplicate/loop/..., which
   # breaks things later.
-  name_prefix = common.DropStringPrefix(name_prefix, ops.get_name_scope() + '/')
+  name_scope = ops.get_name_scope()
+  if name_scope:
+    name_prefix = common.DropStringPrefix(name_prefix, name_scope + '/')
 
   inputs = producer.outputs[0]
   # Prevent ops from being quantized multiple times. Bypass ops can sometimes

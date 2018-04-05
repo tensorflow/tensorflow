@@ -928,6 +928,13 @@ class HloInstruction {
   const HloSharding& sharding_or_default(const HloSharding& default_) const {
     return sharding_ ? *sharding_ : default_;
   }
+  // Returns the sharding unique device, if any.
+  tensorflow::gtl::optional<int64> sharding_unique_device() const {
+    if (sharding_ == nullptr || !sharding_->HasUniqueDevice()) {
+      return tensorflow::gtl::optional<int64>();
+    }
+    return sharding_->UniqueDevice().ValueOrDie();
+  }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
