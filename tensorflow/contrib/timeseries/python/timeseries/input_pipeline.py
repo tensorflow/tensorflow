@@ -270,7 +270,7 @@ class NumpyReader(TimeSeriesReader):
   def read_full(self):
     """Returns `Tensor` versions of the full Numpy arrays."""
     features = dataset_ops.Dataset.from_tensors(
-      self._features).repeat().make_one_shot_iterator().get_next()
+        self._features).repeat().make_one_shot_iterator().get_next()
     # TimeSeriesInputFn expect just a batch dimension
     return {feature_name: array_ops.squeeze(feature_value, axis=0)
             for feature_name, feature_value in features.items()}
