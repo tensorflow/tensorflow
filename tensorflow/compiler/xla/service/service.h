@@ -300,8 +300,6 @@ class Service : public ServiceInterface {
   Service(const ServiceOptions& options,
           std::unique_ptr<Backend> execute_backend);
 
-  static StatusOr<std::unique_ptr<Backend>> CreateComputeConstantBackend();
-
   // Resolves the given argument handles in the allocation tracker and returns
   // the corresponding allocations for every replica. The function also verifies
   // that each allocation matches the execution platform and device ordinal of
@@ -437,8 +435,6 @@ class Service : public ServiceInterface {
   CompilationCache compilation_cache_;
 
   // Backend to compile and execute computations on.
-  //
-  // TODO(b/28616830): Support multiple backends for execution.
   std::unique_ptr<Backend> execute_backend_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Service);

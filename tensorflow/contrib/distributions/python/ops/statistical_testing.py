@@ -12,7 +12,114 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Statistical test assertions calibrated for their error rates."""
+"""Statistical test assertions calibrated for their error rates.
+
+Statistical tests have an inescapable probability of error: a correct
+sampler can still fail a test by chance, and an incorrect sampler can
+still pass a test by chance.  This library is about bounding both of
+those error rates.  This requires admitting a task-specific notion of
+"discrepancy": Correct code will fail rarely, code that misbehaves by
+more than the discrepancy will pass rarely, and nothing reliable can
+be said about code that misbehaves, but misbehaves by less than the
+discrepancy.
+
+# Example
+
+Consider testing that the mean of a scalar probability distribution P
+is some expected constant.  Suppose the support of P is the interval
+`[0, 1]`.  Then you might do this:
+
+```python
+tfd = tf.contrib.distributions
+
+expected_mean = ...
+num_samples = 5000
+samples = ... draw 5000 samples from P
+
+# Check that the mean looks right
+check1 = tfd.assert_true_mean_equal_by_dkwm(
+    samples, low=0., high=1., expected=expected_mean,
+    false_fail_rate=1e-6)
+
+# Check that the difference in means detectable with 5000 samples is
+# small enough
+check2 = tf.assert_less(
+    tfd.min_discrepancy_of_true_means_detectable_by_dkwm(
+        num_samples, low=0., high=1.0,
+        false_fail_rate=1e-6, false_pass_rate=1e-6),
+    0.01)
+
+# Be sure to execute both assertion ops
+sess.run([check1, check2])
+```
+
+The second assertion is an instance of experiment design.  It's a
+deterministic computation (independent of the code under test) that
+checks that `5000` samples is enough to reliably resolve mean
+differences of `0.01` or more.  Here "reliably" means that if the code
+under test is correct, the probability of drawing an unlucky sample
+that causes this test to fail is at most 1e-6; and if the code under
+test is incorrect enough that its true mean is 0.01 more or less than
+expected, then the probability of drawing a "lucky" sample that causes
+the test to false-pass is also at most 1e-6.
+
+# Overview
+
+Every function in this library can be characterized in terms of:
+
+- The property being tested, such as the full density of the
+  distribution under test, or just its true mean, or a single
+  Bernoulli probability, etc.
+
+- The relation being asserted, e.g., whether the mean is less, more,
+  or equal to the given expected value.
+
+- The stochastic bound being relied upon, such as the
+  [Dvoretzky-Kiefer-Wolfowitz-Massart inequality]
+  (https://en.wikipedia.org/wiki/CDF-based_nonparametric_confidence_interval)
+  or the CDF of the binomial distribution (for assertions about
+  Bernoulli probabilities).
+
+- The number of sample sets in the statistical test.  For example,
+  testing equality of means has a one-sample variant, where the
+  expected mean is given exactly, and a two-sample variant, where the
+  expected mean is itself given by a set of samples (e.g., from an
+  alternative algorithm).
+
+- What operation(s) of the test are to be performed.  Each test has
+  three of these:
+
+  1. `assert` executes the test.  Specifically, it creates a TF op that
+     produces an error if it has enough evidence to prove that the
+     property under test is violated.  These functions depend on the
+     desired false failure rate, because that determines the sizes of
+     appropriate confidence intervals, etc.
+
+  2. `min_discrepancy` computes the smallest difference reliably
+     detectable by that test, given the sample count and error rates.
+     What it's a difference of is test-specific.  For example, a test
+     for equality of means would make detection guarantees about the
+     difference the true means.
+
+  3. `min_num_samples` computes the minimum number of samples needed
+     to reliably detect a given discrepancy with given error rates.
+
+  The latter two are for experimental design, and are meant to be
+  usable either interactively or inline in the overall test method.
+
+This library follows a naming convention, to make room for every
+combination of the above.  A name mentions the operation first, then
+the property, then the relation, then the bound, then, if the test
+takes more than one set of samples, a token indicating this.  For
+example, `assert_true_mean_equal_by_dkwm` (which is implicitly
+one-sample).  Each name is a grammatically sound noun phrase (or verb
+phrase, for the asserts).
+
+# Asymptotic properties
+
+The number of samples needed tends to scale as `O(1/discrepancy**2)` and
+as `O(log(1/error_rate))`.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -40,7 +147,7 @@ __all__ = [
 
 
 def _batch_sort_vector(x, ascending=True, name=None):
-  with ops.name_scope(name, "sort_each_row", [x]):
+  with ops.name_scope(name, "_batch_sort_vector", [x]):
     x = ops.convert_to_tensor(x, name="x")
     n = array_ops.shape(x)[-1]
     if ascending:
