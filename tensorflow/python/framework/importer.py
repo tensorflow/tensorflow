@@ -487,6 +487,7 @@ def import_graph_def(graph_def,
         try:
           results = c_api.TF_GraphImportGraphDefWithResults(
               graph._c_graph, serialized, options)  # pylint: disable=protected-access
+          results = c_api_util.ScopedTFImportGraphDefResults(results)
         except errors.InvalidArgumentError as e:
           # Convert to ValueError for backwards compatibility.
           raise ValueError(str(e))
@@ -515,7 +516,7 @@ def import_graph_def(graph_def,
     # they are likely to be due to a typo.
     missing_unused_input_keys = (
         c_api.TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
-            results))
+            results.results))
     if missing_unused_input_keys:
       missing_unused_input_keys = [
           compat.as_str(s) for s in missing_unused_input_keys
@@ -527,7 +528,7 @@ def import_graph_def(graph_def,
     if return_elements is None:
       return None
     else:
-      return _GatherReturnElements(return_elements, graph, results)
+      return _GatherReturnElements(return_elements, graph, results.results)
 
   else:
     g = graph
