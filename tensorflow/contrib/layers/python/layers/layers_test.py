@@ -310,6 +310,17 @@ class BiasAddTest(test.TestCase):
 
 class ConvolutionTest(test.TestCase):
 
+  def testInvalidShape(self):
+    with self.test_session():
+      images_2d = random_ops.random_uniform((5, 7, 9, 3), seed=1)
+      with self.assertRaisesRegexp(
+          ValueError, 'Convolution expects input with rank 5, got 4'):
+        layers_lib.convolution3d(images_2d, 32, 3)
+      images_3d = random_ops.random_uniform((5, 6, 7, 9, 3), seed=1)
+      with self.assertRaisesRegexp(
+          ValueError, 'Convolution expects input with rank 4, got 5'):
+        layers_lib.convolution2d(images_3d, 32, 3)
+
   def testInvalidDataFormat(self):
     height, width = 7, 9
     with self.test_session():
