@@ -34,9 +34,7 @@ class RandomFourierFeatureMapper(dkm.DenseKernelMapper):
   r"""Class that implements Random Fourier Feature Mapping (RFFM) in TensorFlow.
 
   The RFFM mapping is used to approximate the Gaussian (RBF) kernel:
-  ```
   $$(exp(-||x-y||_2^2 / (2 * \sigma^2))$$
-  ```
 
   The implementation of RFFM is based on the following paper:
   "Random Features for Large-Scale Kernel Machines" by Ali Rahimi and Ben Recht.
