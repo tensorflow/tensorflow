@@ -354,6 +354,13 @@ CreateIfOp(poplar::Graph &graph,
            const xla::Shape& output,
            TensorMap& tensor_map);
 
+port::StatusOr<poplar::program::Program>
+CreateZeroPadOp(poplar::Graph &graph,
+                CompilerResources& res,
+                const HloInstruction *inst,
+                const xla::Shape& output,
+                TensorMap& tensor_map);
+
 /* Optimization tests */
 
 bool

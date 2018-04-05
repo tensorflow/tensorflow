@@ -15,6 +15,7 @@
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
 #include <popops/DynamicSlice.hpp>
+#include <popops/Pad.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -267,6 +268,31 @@ CreateWideConstant(poplar::Graph &graph,
                                              res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
+  return seq;
+}
+
+port::StatusOr<poplar::program::Program>
+CreateZeroPadOp(poplar::Graph &graph,
+                CompilerResources& res,
+                const HloInstruction *inst,
+                const xla::Shape& output,
+                TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
+  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const PaddingConfig& cfg(root->padding_config());
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+
+  std::vector<std::ptrdiff_t> paddingLower;
+  std::vector<std::ptrdiff_t> paddingUpper;
+  for (auto& d : cfg.dimensions()) {
+    paddingLower.push_back(d.edge_padding_low());
+    paddingUpper.push_back(d.edge_padding_high());
+  }
+  out = popops::pad(graph, out, paddingLower, paddingUpper);
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
 }
 

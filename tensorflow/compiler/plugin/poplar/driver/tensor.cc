@@ -34,7 +34,6 @@ limitations under the License.
 
 #include <poplar/Engine.hpp>
 #include <poputil/TileMapping.hpp>
-#include <popops/Pad.hpp>
 
 namespace sep = ::perftools::gputools::poplarplugin;
 
@@ -617,19 +616,6 @@ PadTensor(const PaddingConfig& cfg,
   }
 
   return out;
-}
-
-port::StatusOr<poplar::Tensor>
-PadWithConstantZero(poplar::Graph& graph,
-                    const PaddingConfig& cfg,
-                    const poplar::Tensor &in) {
-  std::vector<std::ptrdiff_t> paddingLower;
-  std::vector<std::ptrdiff_t> paddingUpper;
-  for (auto& d : cfg.dimensions()) {
-    paddingLower.push_back(d.edge_padding_low());
-    paddingUpper.push_back(d.edge_padding_high());
-  }
-  return popops::pad(graph, in, paddingLower, paddingUpper);
 }
 
 port::StatusOr<poplar::Tensor>

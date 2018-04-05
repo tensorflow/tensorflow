@@ -49,6 +49,32 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace poplarplugin {
 
+typedef port::StatusOr<poplar::program::Program> (*FusedCallFn)(
+    poplar::Graph&, CompilerResources&, const HloInstruction*,
+    const xla::Shape&, TensorMap&);
+
+static std::map<std::string, FusedCallFn> fused_call_map = {
+    {"const_slice_update", CreateSliceUpdateOp},
+    {"const_slice", CreateSliceOp},
+    {"relu", CreateReluOp},
+    {"relugrad", CreateReluGradOp},
+    {"sigmoid", CreateSigmoidOp},
+    {"sigmoidgrad", CreateSigmoidGradOp},
+    {"biasadd", CreateBiasAddOp},
+    {"trunc_norm_scale_add", TruncatedNormalScale},
+    {"trunc_norm", TruncatedNormal},
+    {"norm_scale_add", RandomNormalScale},
+    {"uniform_scale_add", RandomUniformScale},
+    {"norm", RandomNormal},
+    {"uniform", RandomUniform},
+    {"avgpool", CreatePoplibsWindowReduction},
+    {"wide_const", CreateWideConstant},
+    {"depthwise_conv", CreateConv2D},
+    {"conv_with_reverse", Create2DConvWithReverse},
+    {"bias_apply", ConvBiasApply},
+    {"zero_pad", CreateZeroPadOp},
+};
+
 BaseVisitor::BaseVisitor(poplar::Graph* graph,
                          CompilerResources& res)
         : graph_(graph),
@@ -247,183 +273,17 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
     auto end = comp->name().find('.');
     std::string name = comp->name().substr(8, end-8);
 
-    if (name == "const_slice_update") {
+    if (fused_call_map.count(name) == 1) {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
-                          CreateSliceUpdateOp(*graph_,
-                                              resources_,
-                                              inst,
-                                              GetOutputShape(inst),
-                                              tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "const_slice") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateSliceOp(*graph_,
-                                        resources_,
-                                        inst,
-                                        GetOutputShape(inst),
-                                        tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "relu") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateReluOp(*graph_,
-                                       resources_,
-                                       inst,
-                                       GetOutputShape(inst),
-                                       tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "relugrad") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateReluGradOp(*graph_,
-                                           resources_,
-                                           inst,
-                                           GetOutputShape(inst),
-                                           tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "sigmoid") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateSigmoidOp(*graph_,
-                                          resources_,
-                                          inst,
-                                          GetOutputShape(inst),
-                                          tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "sigmoidgrad") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateSigmoidGradOp(*graph_,
-                                              resources_,
-                                              inst,
-                                              GetOutputShape(inst),
-                                              tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "biasadd") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateBiasAddOp(*graph_,
-                                          resources_,
-                                          inst,
-                                          GetOutputShape(inst),
-                                          tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "zero_pad") {
-      const HloInstruction* root = inst->to_apply()->root_instruction();
-      const PaddingConfig& cfg(root->padding_config());
-      poplar::Tensor out;
-      TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
-      TF_ASSIGN_OR_RETURN(out, PadWithConstantZero(*graph_, cfg, out));
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-      return Status::OK();
-    } else if (name == "trunc_norm_scale_add") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-        TruncatedNormalScale(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
-      sequence.add(prog);
-    }
-    else if (name == "trunc_norm") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          TruncatedNormal(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
-      sequence.add(prog);
-    }
-    else if (name == "norm_scale_add") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          RandomNormalScale(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
-      sequence.add(prog);
-    }
-    else if (name == "uniform_scale_add") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          RandomUniformScale(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
-      sequence.add(prog);
-    }
-    else if (name == "norm") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          RandomNormal(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
-      sequence.add(prog);
-    }
-    else if (name == "uniform") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          RandomUniform(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
-      sequence.add(prog);
-    }
-    else if (name == "avgpool") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreatePoplibsWindowReduction(*graph_,
-                                                       resources_,
-                                                       inst,
-                                                       GetOutputShape(inst),
-                                                       tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "wide_const") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateWideConstant(*graph_,
-                                             resources_,
-                                             inst,
-                                             GetOutputShape(inst),
-                                             tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "depthwise_conv") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateConv2D(*graph_,
-                                       resources_,
-                                       inst,
-                                       GetOutputShape(inst),
-                                       tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else if (name == "conv_with_reverse") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          Create2DConvWithReverse(*graph_,
+                          fused_call_map.at(name)(*graph_,
                                                   resources_,
                                                   inst,
                                                   GetOutputShape(inst),
                                                   tensor_map));
       sequence.add(prog);
       return Status::OK();
-    }
-    else if (name == "bias_apply") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          ConvBiasApply(*graph_,
-                                        resources_,
-                                        inst,
-                                        GetOutputShape(inst),
-                                        tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
-    else {
+    } else {
       return port::Status(port::error::FAILED_PRECONDITION,
                           port::StrCat("Unrecognized special call op ",
                                        inst->name(), ": ", name));
