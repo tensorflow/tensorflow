@@ -508,6 +508,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:colocation",
         "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
