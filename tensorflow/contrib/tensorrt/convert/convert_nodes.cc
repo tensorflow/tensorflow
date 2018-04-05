@@ -443,7 +443,9 @@ class Converter {
        * 2) Control dependency inputs contain caret at the beginning and we
        *    remove this and annotate the edge as a control dependency.
        ************************************************************************/
-      string name = input_name[0] == '^' ? input_name.substr(1) : input_name;
+      // skip control nodes
+      if (input_name[0] == '^' ) continue;
+      string name =  input_name;
       auto first = name.find_first_of(':');
       if (first != string::npos && first + 2 == name.size() &&
           name[first + 1] == '0')
