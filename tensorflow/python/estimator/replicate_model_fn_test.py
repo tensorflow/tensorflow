@@ -27,7 +27,6 @@ import six
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import replicate_model_fn
-from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.estimator.canned import prediction_keys
@@ -594,8 +593,7 @@ class UseTowerEstimatorWithoutReplication(test_util.TensorFlowTestCase):
         loss=loss,
         eval_metric_ops=metrics,
         predictions={'probabilities': predictions},
-        train_op=optimizer.minimize(
-            loss, global_step=training.get_global_step()))
+        train_op=optimizer.minimize(loss))
 
   @property
   def params(self):
@@ -614,9 +612,8 @@ class UseTowerEstimatorWithoutReplication(test_util.TensorFlowTestCase):
       estimator = estimator_lib.Estimator(
           model_fn=self.model_fn,
           model_dir=tempfile.mkdtemp(),
-          params=self.params,
-          config=run_config.RunConfig(save_checkpoints_steps=1))
-      estimator.train(train_input_fn, steps=2)
+          params=self.params)
+      estimator.train(train_input_fn, steps=1)
 
       self.assertEqual(7.0, estimator.get_variable_value('c'))
 
