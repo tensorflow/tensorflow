@@ -4,29 +4,28 @@
 
 [TOC]
 
-TensorFlow debugger (**tfdbg**) is a specialized debugger for TensorFlow. It
-lets you view the internal structure and states of running TensorFlow graphs
-during training and inference, which is difficult to debug with general-purpose
-debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
+`tfdbg` is a specialized debugger for TensorFlow. It lets you view the internal
+structure and states of running TensorFlow graphs during training and inference,
+which is difficult to debug with general-purpose debuggers such as Python's `pdb`
+due to TensorFlow's computation-graph paradigm.
 
-> NOTE: TensorFlow debugger uses a
-> [curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based
-> text user interface. On Mac OS X, the `ncurses` library is required and can
-> be installed with `brew install homebrew/dupes/ncurses`. On Windows, curses
-> isn't as well supported, so a
-> [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based interface can
-> be used with tfdbg by installing `pyreadline` with pip.
-> If you use Anaconda3, you can install it with a command
-> such as `"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`.
-> Unofficial Windows curses packages can be downloaded
-> [here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
-> installed using `pip install <your_version>.whl`, however curses on Windows
-> may not work as reliably as curses on Linux or Mac.
+This guide focuses on the command-line interface (CLI) of `tfdbg`. For guide on
+how to use the graphical user interface (GUI) of tfdbg, i.e., the
+**TensorBoard Debugger Plugin**, please visit
+[its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
 
-> NOTE: This guide focuses on the command-line interface (CLI) of tfdbg. For
-> guide on how to use the graphical user interface (GUI) of tfdbg, i.e., the
-> **TensorBoard Debugger Plugin**, please visit
-> [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
+Note: The TensorFlow debugger uses a
+[curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based text
+user interface. On Mac OS X, the `ncurses` library is required and can be
+installed with `brew install homebrew/dupes/ncurses`. On Windows, curses isn't as
+well supported, so a [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based
+interface can be used with tfdbg by installing `pyreadline` with `pip`. If you
+use Anaconda3, you can install it with a command such as
+`"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`. Unofficial
+Windows curses packages can be downloaded
+[here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
+installed using `pip install <your_version>.whl`, however curses on Windows may
+not work as reliably as curses on Linux or Mac.
 
 This tutorial demonstrates how to use the **tfdbg** CLI to debug the appearance
 of [`nan`s](https://en.wikipedia.org/wiki/NaN)
