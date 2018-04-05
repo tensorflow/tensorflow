@@ -69,6 +69,11 @@ class SequenceDatasetSerializationTest(
     # Take nothing
     self.run_core_tests(lambda: self._build_take_dataset(0), None, 0)
 
+  def testInvalidTake(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      self.run_core_tests(lambda: self._build_take_dataset([1, 2]), None, 0)
+
   def _build_repeat_dataset(self, count, take_count=3):
     components = (np.arange(10),)
     return dataset_ops.Dataset.from_tensor_slices(components).take(
