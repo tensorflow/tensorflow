@@ -1520,14 +1520,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       arg_dim_counts[dim] = arg_dimensions[dim];
     }
 
-    // Create mapping from result index to arg index.
-    const int64 result_rank = ShapeUtil::Rank(result->shape());
-    int64 result_dim = 0;
-    std::vector<int64> result_to_arg_index(result_rank);
+    // Map each dimension in the result to a dimension in arg that isn't
+    // being reduced.
+    std::vector<int64> result_to_arg_index;
     for (int64 i = 0; i < arg_dimensions.size(); ++i) {
       if (arg_dim_steps[i] == 0) {
-        result_to_arg_index[result_dim] = i;
-        ++result_dim;
+        result_to_arg_index.push_back(i);
       }
     }
 
@@ -1542,6 +1540,20 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             base[result_to_arg_index[i]] = multi_index[i];
           }
 
+          // When the reduction is addition of floats, accumulate in a double
+          // for better precision. Also, avoid creating Literals for the
+          // intermediate results; it's much faster.
+          if (ShapeUtil::ElementIsFloating(init_literal.shape()) &&
+              IsScalarAdd(function)) {
+            double computed_result = 0;
+            auto func = [&](ArraySlice<int64> input_index) {
+              computed_result += arg_literal.Get<float>(input_index);
+              return true;
+            };
+            ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,
+                                    arg_dim_steps, func);
+            return static_cast<ReturnT>(computed_result);
+          }
           auto func = [&](ArraySlice<int64> input_index) {
             auto curr_val = arg_literal.Get<ReturnT>(input_index);
 
@@ -1554,24 +1566,36 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator.Evaluate<const Literal*>(*function, args)
                     .ConsumeValueOrDie();
-            // Clear visit states so that the we can use the evaluate again on
+            // Clear visit states so that we can use the evaluator again on
             // the same computation.
             embedded_evaluator.ResetVisitStates();
-
             // Assign computed result to result_val.
             result_val = computed_result->Get<ReturnT>({});
-
             return true;
           };
-
+          // Computes one element of the result, reducing all dimensions that
+          // contribute to that element.
           ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,
                                   arg_dim_steps, func);
-
           return result_val;
         }));
 
     parent_->evaluated_[reduce] = std::move(result);
     return Status::OK();
+  }
+
+  bool IsScalarAdd(HloComputation* computation) {
+    HloInstruction* instruction = computation->root_instruction();
+    if (instruction->opcode() == HloOpcode::kAdd &&
+        computation->num_parameters() == 2) {
+      const HloInstruction* lhs = instruction->operand(0);
+      const HloInstruction* rhs = instruction->operand(1);
+      return lhs->opcode() == HloOpcode::kParameter &&
+             ShapeUtil::IsScalar(lhs->shape()) &&
+             rhs->opcode() == HloOpcode::kParameter &&
+             ShapeUtil::IsScalar(rhs->shape()) && lhs != rhs;
+    }
+    return false;
   }
 
   Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override {

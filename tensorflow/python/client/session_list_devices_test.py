@@ -23,7 +23,6 @@ from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.client import session
-from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -42,21 +41,13 @@ class SessionListDevicesTestMethods(object):
 
   def testInvalidDeviceNumber(self):
     opts = tf_session.TF_NewSessionOptions()
-    with errors.raise_exception_on_not_ok_status() as status:
-      c_session = tf_session.TF_NewSession(
-          ops.get_default_graph()._c_graph, opts, status)
-      raw_device_list = tf_session.TF_SessionListDevices(
-          c_session, status)
+    c_session = tf_session.TF_NewSession(ops.get_default_graph()._c_graph, opts)
+    raw_device_list = tf_session.TF_SessionListDevices(c_session)
     size = tf_session.TF_DeviceListCount(raw_device_list)
-    # Test that invalid device numbers return -1 rather than a Swig-wrapped
-    # pointer.
-    status_no_exception = c_api_util.ScopedTFStatus()
-    memory = tf_session.TF_DeviceListMemoryBytes(
-        raw_device_list, size, status_no_exception)
-    self.assertEqual(memory, -1)
+    with self.assertRaises(errors.InvalidArgumentError):
+      tf_session.TF_DeviceListMemoryBytes(raw_device_list, size)
     tf_session.TF_DeleteDeviceList(raw_device_list)
-    with errors.raise_exception_on_not_ok_status() as status:
-      tf_session.TF_CloseSession(c_session, status)
+    tf_session.TF_CloseSession(c_session)
 
   def testListDevicesGrpcSession(self):
     server = server_lib.Server.create_local_server()

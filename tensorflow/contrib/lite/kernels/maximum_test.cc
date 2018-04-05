@@ -71,6 +71,20 @@ TEST(MaximumOpTest, FloatTest) {
       ElementsAreArray(ArrayFloatNear({1.0, 0.0, 1.0, 12.0, -2.0, -1.43})));
 }
 
+TEST(MaximumOpTest, FloatWithBroadcastTest) {
+  std::initializer_list<float> data1 = {1.0, 0.0, -1.0, -2.0, -1.44, 11.0};
+  std::initializer_list<float> data2 = {0.5, 2.0};
+  MaximumOpModel m({TensorType_FLOAT32, {3, 1, 2}}, {TensorType_FLOAT32, {2}},
+                   TensorType_FLOAT32);
+  m.SetInput1<float>(data1);
+  m.SetInput2<float>(data2);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1, 2}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear({1.0, 2.0, 0.5, 2.0, 0.5, 11.0})));
+}
+
 }  // namespace
 }  // namespace tflite
 

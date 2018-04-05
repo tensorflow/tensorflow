@@ -1081,6 +1081,42 @@ class DataFormatDimMapTest(test_lib.TestCase):
     self._test([1, -3, -2], [2, 2, 3])
     self._test([[1, -3], [1, -1]], [[2, 2], [2, 1]])
 
+  def testNHWCtoNCHW(self):
+    x_val = [1, -3, -2]
+    y_val_expected = [2, 2, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="NCHW")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testNHWCtoHWNC(self):
+    x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
+    y_val_expected = [2, 0, 1, 3, 2, 0, 1, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="HWNC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testNHWCtoWHCN(self):
+    x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
+    y_val_expected = [3, 1, 0, 2, 3, 1, 0, 2]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="WHCN")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testArbitraryASCII(self):
+    x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
+    y_val_expected = [3, 2, 1, 0, 3, 2, 1, 0]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="qwer", dst_format="rewq")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
 
 class DataFormatVectorPermuteTest(test_lib.TestCase):
 

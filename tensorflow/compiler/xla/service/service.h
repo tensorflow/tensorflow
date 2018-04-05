@@ -278,6 +278,20 @@ class Service : public ServiceInterface {
       const ExecutionOptions& execution_options,
       const UserComputation* user_computation = nullptr);
 
+  // Picks a parallel response and fills the result.
+  Status PickParallelResponse(const ExecuteParallelResponse& parallel_result,
+                              ExecuteResponse* result);
+
+  // Prepare the executors for executing parallel.
+  StatusOr<std::vector<perftools::gputools::StreamExecutor*>> GetExecutors(
+      const ExecutionOptions& execution_options, int64 requests_size,
+      int64 request_index) const;
+
+  // Prepare the arguments for executing parallel.
+  StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(
+      const ExecutionOptions& execution_options,
+      tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments);
+
  protected:
   friend class LocalExecutable;
 
@@ -334,6 +348,12 @@ class Service : public ServiceInterface {
       Backend* backend,
       std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
       DeviceMemoryAllocator* device_allocator);
+  StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
+      const std::vector<const HloModuleProto*>& module_protos,
+      std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+      Backend* backend,
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
+      DeviceMemoryAllocator* device_allocator);
 
   // Similar to BuildExecutable, but look in the compilation cache for the
   // executable first. If the executable is not in the cache, it is built and
@@ -377,6 +397,8 @@ class Service : public ServiceInterface {
   // The N devices are expected to all return an empty tuple, but one, which
   // will be the result of this computation.
   tensorflow::Status ExecuteOneToN(const ExecuteRequest* arg,
+                                   ExecuteResponse* result);
+  tensorflow::Status ExecuteOneToN(const ExecuteGraphRequest* arg,
                                    ExecuteResponse* result);
 
   // Convenience function which checks whether the given shape_with_layout

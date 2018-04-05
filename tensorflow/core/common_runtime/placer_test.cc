@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -262,9 +263,9 @@ class PlacerTest : public ::testing::Test {
                 ->attributes()                                          \
                 .device_type())
 
-#define EXPECT_DEVICE_CONTAINS(g, name, device_substr)                        \
-  EXPECT_TRUE(StringPiece(GetNodeByName((g), (name))->assigned_device_name()) \
-                  .contains(device_substr))
+#define EXPECT_DEVICE_CONTAINS(g, name, device_substr) \
+  EXPECT_TRUE(::tensorflow::str_util::StrContains(     \
+      GetNodeByName((g), (name))->assigned_device_name(), device_substr))
 
 // Test that a graph with no constraints will successfully assign nodes to the
 // "best available" device (i.e. prefer GPU over CPU).
@@ -488,11 +489,10 @@ TEST_F(PlacerTest, TestAssignedGpuDeviceToCpuDevice) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INTERNAL, s.code());
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains(
-              "Assigned device '/job:a/replica:0/task:0/device:fakegpu:0' "
-              "does not have registered OpKernel support for TestInput"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "Assigned device '/job:a/replica:0/task:0/device:fakegpu:0' "
+      "does not have registered OpKernel support for TestInput"));
 }
 
 // Test that graphs with reference connections are correctly placed.
@@ -541,15 +541,15 @@ TEST_F(PlacerTest, TestReferenceConnection) {
   {
     Status s = ReferenceTestHelper("VariableCPU", "AssignGPU", "FakeCPU");
     EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-    EXPECT_TRUE(StringPiece(s.error_message())
-                    .contains("no device type supports both of those nodes"));
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(), "no device type supports both of those nodes"));
   }
   TF_EXPECT_OK(ReferenceTestHelper("VariableGPU", "TestAssign", "FakeGPU"));
   {
     Status s = ReferenceTestHelper("VariableGPU", "AssignCPU", "FakeCPU");
     EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-    EXPECT_TRUE(StringPiece(s.error_message())
-                    .contains("no device type supports both of those nodes"));
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(), "no device type supports both of those nodes"));
   }
   TF_EXPECT_OK(ReferenceTestHelper("VariableGPU", "AssignGPU", "FakeGPU"));
 }
@@ -760,8 +760,9 @@ TEST_F(PlacerTest, TestInvalidMultipleColocationGroups) {
   }
 
   Status s = Place(&g);
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("Cannot colocate nodes 'foo' and 'in' because no "
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(),
+                            "Cannot colocate nodes 'foo' and 'in' because no "
                             "device type supports both of those nodes and the "
                             "other nodes colocated with them"));
 }
@@ -824,11 +825,11 @@ TEST_F(PlacerTest, TestColocationGroupWithUnsatisfiableReferenceConnections) {
   }
 
   Status s = Place(&g);
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains("Cannot colocate nodes 'var3' and 'assign3' because no "
-                    "device type supports both of those nodes and the other "
-                    "nodes colocated with them."));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "Cannot colocate nodes 'var3' and 'assign3' because no "
+      "device type supports both of those nodes and the other "
+      "nodes colocated with them."));
 }
 
 TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
@@ -888,7 +889,7 @@ TEST_F(PlacerTest, TestEmptyDeviceSet) {
 
   Status s = Place(&g, &empty);
   EXPECT_TRUE(
-      StringPiece(s.error_message()).contains("No devices are registered"));
+      str_util::StrContains(s.error_message(), "No devices are registered"));
 }
 
 // Test that placement fails when the requested device forces an
@@ -913,16 +914,17 @@ TEST_F(PlacerTest, TestHeterogeneousDeviceSetFailure) {
   heterogeneous.AddDevice(cpu.get());
   Status s = Place(&g, &heterogeneous);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("colocated with a group of nodes that required "
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(),
+                            "colocated with a group of nodes that required "
                             "incompatible device"));
 
   // The error message should contain information that indicates which
   // op types have which registered device types.
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("VariableGPU: FakeGPU"))
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "VariableGPU: FakeGPU"))
       << s;
   EXPECT_TRUE(
-      StringPiece(s.error_message()).contains("TestAssign: FakeGPU FakeCPU"))
+      str_util::StrContains(s.error_message(), "TestAssign: FakeGPU FakeCPU"))
       << s;
 }
 
@@ -937,7 +939,7 @@ TEST_F(PlacerTest, TestUnknownDevice) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("/job:foo"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "/job:foo"));
 }
 
 // Test that placement fails when the combination of partial
@@ -952,7 +954,7 @@ TEST_F(PlacerTest, TestUnknownMergedDevice) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("/job:foo"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "/job:foo"));
 }
 
 // Test that placement fails when the previously-assigned device for a
@@ -969,9 +971,9 @@ TEST_F(PlacerTest, TestUnknownAssignedDevice) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INTERNAL, s.code());
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains("Assigned device '/job:foo' does not match any device"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "Assigned device '/job:foo' does not match any device"));
 }
 
 // Test that placement fails when an op with no registered kernels is
@@ -986,12 +988,11 @@ TEST_F(PlacerTest, TestNoKernelsRegistered) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "No OpKernel was registered to support Op 'VariableNoKernels'"));
   EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains(
-              "No OpKernel was registered to support Op 'VariableNoKernels'"));
-  EXPECT_TRUE(
-      StringPiece(s.error_message()).contains("<no registered kernels>"));
+      str_util::StrContains(s.error_message(), "<no registered kernels>"));
 }
 
 // Test that placement fails when a kernel is registered but no known
@@ -1011,10 +1012,10 @@ TEST_F(PlacerTest, TestNoDevicesRegistered) {
 
   Status s = Place(&g, &cpu_only);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("No OpKernel was registered to support "
-                            "Op 'VariableGPU'"));
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("device='FakeGPU'"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "No OpKernel was registered to support Op 'VariableGPU'"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "device='FakeGPU'"));
 }
 
 // Test that placement fails when a requested device is malformed.
@@ -1028,8 +1029,8 @@ TEST_F(PlacerTest, TestMalformedDeviceSpecification) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("Malformed device specification '/foo:bar'"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(), "Malformed device specification '/foo:bar'"));
 }
 
 // Test that placement fails when a previously-assigned device is malformed.
@@ -1045,8 +1046,8 @@ TEST_F(PlacerTest, TestMalformedAssignedDevice) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INTERNAL, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("Malformed assigned device '/foo:bar'"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "Malformed assigned device '/foo:bar'"));
 }
 
 // Test that placement fails when a device was previously assigned to
@@ -1063,9 +1064,8 @@ TEST_F(PlacerTest, TestNonUniqueAssignedDevice) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INTERNAL, s.code());
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains("Assigned device '/job:a' does not match any device"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(), "Assigned device '/job:a' does not match any device"));
 }
 
 // Test that ops request to be placed on non-existent devices will be relocated
@@ -1099,7 +1099,7 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
   SessionOptions options;
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("/device:fakegpu:11"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:fakegpu:11"));
 }
 
 // Test that placement fails when a node requests an explicit device that is not
@@ -1116,10 +1116,10 @@ TEST_F(PlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
   SessionOptions options;
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("/device:fakecpu:0"));
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains("no supported kernel for fakecpu devices is available"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:fakecpu:0"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "no supported kernel for fakecpu devices is available"));
 }
 
 // Test that placement fails when a node requests an explicit device that is not
@@ -1137,9 +1137,9 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("was explicitly assigned to /job:foo/replica:17 "
-                            "but available devices"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "was explicitly assigned to /job:foo/replica:17 but available devices"));
 }
 
 TEST_F(PlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
@@ -1205,8 +1205,8 @@ TEST_F(PlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("Cannot colocate nodes 'var' and 'assign'"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(), "Cannot colocate nodes 'var' and 'assign'"));
 }
 
 // Test that a generator node follows its consumers (where there are several

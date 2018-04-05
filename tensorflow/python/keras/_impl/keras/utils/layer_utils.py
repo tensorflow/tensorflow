@@ -35,7 +35,7 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  return int(np.sum([K.count_params(p) for p in set(weights)]))
+  return int(np.sum([np.prod(p.get_shape().as_list()) for p in set(weights)]))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):
@@ -193,8 +193,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   else:
     trainable_count = count_params(model.trainable_weights)
 
-  non_trainable_count = int(
-      np.sum([K.count_params(p) for p in set(model.non_trainable_weights)]))
+  non_trainable_count = count_params(model.non_trainable_weights)
 
   print_fn('Total params: {:,}'.format(trainable_count + non_trainable_count))
   print_fn('Trainable params: {:,}'.format(trainable_count))

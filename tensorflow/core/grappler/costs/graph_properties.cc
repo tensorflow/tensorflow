@@ -1011,6 +1011,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
     }
     // Skip any information that comes from fed nodes.
     if (fed_ports.find(node->name()) != fed_ports.end()) {
+      VLOG(2) << "Skipping feed node shape: " << node->name();
       continue;
     }
     for (const auto& merged_shapes : node_ctx->MergedShapes()) {

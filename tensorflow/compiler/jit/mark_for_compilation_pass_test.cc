@@ -138,7 +138,7 @@ TEST(XlaCompilationTest, CompilableCycles) {
   EXPECT_EQ(clusters["A"], clusters["C"]);
 }
 
-TEST(XlaCompilationTest, UnsupportedTypes) {
+TEST(XlaCompilationTest, Complex128Unsupported) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   GraphDef graphdef;
   {
@@ -156,6 +156,27 @@ TEST(XlaCompilationTest, UnsupportedTypes) {
   TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
   EXPECT_TRUE(clusters.empty());
+}
+
+TEST(XlaCompilationTest, HalfSupported) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Tensor t(DT_HALF, TensorShape());
+    t.scalar<Eigen::half>()() = static_cast<Eigen::half>(0.0f);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_HALF)
+                                         .WithAttr("value", t));
+    Node* b = ops::UnaryOp("Neg", a, builder.opts().WithName("B"));
+    ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
+    TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
+  }
+
+  TF_ASSERT_OK(MarkForCompilation(&graph));
+  auto clusters = GetClusters(*graph);
+  EXPECT_FALSE(clusters.empty());
 }
 
 TEST(XlaCompilationTest, ConcatWithConstArg) {

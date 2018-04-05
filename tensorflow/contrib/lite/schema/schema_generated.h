@@ -3702,14 +3702,30 @@ flatbuffers::Offset<LogSoftmaxOptions> CreateLogSoftmaxOptions(flatbuffers::Flat
 
 struct CastOptionsT : public flatbuffers::NativeTable {
   typedef CastOptions TableType;
-  CastOptionsT() {
+  TensorType in_data_type;
+  TensorType out_data_type;
+  CastOptionsT()
+      : in_data_type(TensorType_FLOAT32),
+        out_data_type(TensorType_FLOAT32) {
   }
 };
 
 struct CastOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef CastOptionsT NativeTableType;
+  enum {
+    VT_IN_DATA_TYPE = 4,
+    VT_OUT_DATA_TYPE = 6
+  };
+  TensorType in_data_type() const {
+    return static_cast<TensorType>(GetField<int8_t>(VT_IN_DATA_TYPE, 0));
+  }
+  TensorType out_data_type() const {
+    return static_cast<TensorType>(GetField<int8_t>(VT_OUT_DATA_TYPE, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_IN_DATA_TYPE) &&
+           VerifyField<int8_t>(verifier, VT_OUT_DATA_TYPE) &&
            verifier.EndTable();
   }
   CastOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3720,6 +3736,12 @@ struct CastOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct CastOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
+  void add_in_data_type(TensorType in_data_type) {
+    fbb_.AddElement<int8_t>(CastOptions::VT_IN_DATA_TYPE, static_cast<int8_t>(in_data_type), 0);
+  }
+  void add_out_data_type(TensorType out_data_type) {
+    fbb_.AddElement<int8_t>(CastOptions::VT_OUT_DATA_TYPE, static_cast<int8_t>(out_data_type), 0);
+  }
   explicit CastOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3733,8 +3755,12 @@ struct CastOptionsBuilder {
 };
 
 inline flatbuffers::Offset<CastOptions> CreateCastOptions(
-    flatbuffers::FlatBufferBuilder &_fbb) {
+    flatbuffers::FlatBufferBuilder &_fbb,
+    TensorType in_data_type = TensorType_FLOAT32,
+    TensorType out_data_type = TensorType_FLOAT32) {
   CastOptionsBuilder builder_(_fbb);
+  builder_.add_out_data_type(out_data_type);
+  builder_.add_in_data_type(in_data_type);
   return builder_.Finish();
 }
 
@@ -5727,6 +5753,8 @@ inline CastOptionsT *CastOptions::UnPack(const flatbuffers::resolver_function_t 
 inline void CastOptions::UnPackTo(CastOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
+  { auto _e = in_data_type(); _o->in_data_type = _e; };
+  { auto _e = out_data_type(); _o->out_data_type = _e; };
 }
 
 inline flatbuffers::Offset<CastOptions> CastOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const CastOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -5737,8 +5765,12 @@ inline flatbuffers::Offset<CastOptions> CreateCastOptions(flatbuffers::FlatBuffe
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const CastOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _in_data_type = _o->in_data_type;
+  auto _out_data_type = _o->out_data_type;
   return tflite::CreateCastOptions(
-      _fbb);
+      _fbb,
+      _in_data_type,
+      _out_data_type);
 }
 
 inline DequantizeOptionsT *DequantizeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

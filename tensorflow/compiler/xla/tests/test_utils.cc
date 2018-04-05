@@ -23,14 +23,14 @@ namespace xla {
 
 namespace {
 
-template <typename FloatT>
-void PopulateWithRandomFloatingPointData(Literal* literal,
-                                         std::minstd_rand0* engine) {
+template <typename FloatT, typename GeneratorT>
+void PopulateWithRandomFloatingPointDataImpl(Literal* literal,
+                                             std::minstd_rand0* engine) {
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   // Create uniform numbers between 1 and 1.125 to avoid creating denormal
   // numbers.
-  std::uniform_real_distribution<FloatT> generator(1.0f, 1.125f);
+  std::uniform_real_distribution<GeneratorT> generator(1.0f, 1.125f);
   const bool should_index_bias = ShapeUtil::ElementsIn(literal->shape()) > 1000;
   TF_CHECK_OK(literal->Populate<FloatT>(
       [&](tensorflow::gtl::ArraySlice<int64> indices) {
@@ -52,8 +52,20 @@ void PopulateWithRandomFloatingPointData(Literal* literal,
         FloatT index_bias =
             static_cast<FloatT>(index_product % 113 - negative_bias) /
             static_cast<FloatT>(256.0f);
-        return (generator(*engine) - 1.0625) + index_bias;
+        return static_cast<FloatT>(generator(*engine) - 1.0625f) + index_bias;
       }));
+}
+
+template <typename FloatT>
+void PopulateWithRandomFloatingPointData(Literal* literal,
+                                         std::minstd_rand0* engine) {
+  PopulateWithRandomFloatingPointDataImpl<FloatT, FloatT>(literal, engine);
+}
+
+template <>
+void PopulateWithRandomFloatingPointData<half>(Literal* literal,
+                                               std::minstd_rand0* engine) {
+  PopulateWithRandomFloatingPointDataImpl<half, float>(literal, engine);
 }
 
 // The standard library does not have a case for bfloat16, unsurprisingly, so we
@@ -99,6 +111,9 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
   switch (shape.element_type()) {
     case BF16:
       PopulateWithRandomFloatingPointData<bfloat16>(literal.get(), engine);
+      break;
+    case F16:
+      PopulateWithRandomFloatingPointData<half>(literal.get(), engine);
       break;
     case F32:
       PopulateWithRandomFloatingPointData<float>(literal.get(), engine);

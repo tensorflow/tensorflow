@@ -485,9 +485,8 @@ def import_graph_def(graph_def,
     with graph._lock:  # pylint: disable=protected-access
       with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
         try:
-          with errors.raise_exception_on_not_ok_status() as status:
-            results = c_api.TF_GraphImportGraphDefWithResults(
-                graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
+          results = c_api.TF_GraphImportGraphDefWithResults(
+              graph._c_graph, serialized, options)  # pylint: disable=protected-access
         except errors.InvalidArgumentError as e:
           # Convert to ValueError for backwards compatibility.
           raise ValueError(str(e))

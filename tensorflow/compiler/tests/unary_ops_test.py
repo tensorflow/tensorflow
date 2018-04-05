@@ -793,7 +793,10 @@ class UnaryOpsTest(XLATestCase):
       self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)
       self._assertSoftplusMatchesExpected(
           [[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]], dtype)
-      log_eps = np.log(np.finfo(dtype).eps)
+      if dtype == dtypes.bfloat16.as_numpy_dtype:
+        log_eps = np.log(np.finfo(np.float32).eps)
+      else:
+        log_eps = np.log(np.finfo(dtype).eps)
       one = dtype(1)
       ten = dtype(10)
       self._assertSoftplusMatchesExpected([

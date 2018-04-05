@@ -295,7 +295,6 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
     ],
     data = ["//tensorflow/core:image_testdata"],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -1142,7 +1141,6 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/core:lmdb_testdata"],
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2332,7 +2330,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 4,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2463,7 +2460,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2523,7 +2519,10 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
     ],
     shard_count = 5,
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "optonly",  # b/77589990
+    ],
 )
 
 cuda_py_test(
@@ -2726,6 +2725,7 @@ cuda_py_test(
     ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(

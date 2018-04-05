@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/posix/error.h"
 #include "tensorflow/core/platform/windows/error.h"
@@ -494,7 +495,8 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   // but no code appears to rely on this behavior.
   string converted_pattern(pattern);
   std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
-  TF_RETURN_IF_ERROR(FileSystem::GetMatchingPaths(converted_pattern, results));
+  TF_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
+                                                converted_pattern, results));
   for (string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');
   }
