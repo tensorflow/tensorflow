@@ -62,6 +62,12 @@ class FunctionInliningContext {
       if (func.attr().count("_noinline") != 0) {
         continue;
       }
+      // Don't touch anything marked XLA to prevent XLA failures further down
+      // the road.
+      if (func.attr().count("_XlaCompile") > 0 &&
+          func.attr().at("_XlaCompile").b()) {
+        continue;
+      }
       // Can't create IdentityN nodes with no input or output: skip these
       // functions for now.
       if (func.signature().input_arg_size() == 0 ||
@@ -200,11 +206,6 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       TF_RETURN_IF_ERROR(InlineFunction(func_body_node, *func_body_node_func,
                                         ctx, optimized_graph));
     } else {
-      // Annotate the node with the function attributes.
-      for (const auto& attr : func.attr()) {
-        func_body_node.mutable_attr()->insert(attr);
-      }
-
       // Move the node to the main graph
       optimized_graph->add_node()->Swap(&func_body_node);
     }
