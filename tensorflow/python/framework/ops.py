@@ -3216,9 +3216,11 @@ class Graph(object):
       # as this will be unnecessary.
       if not function._c_func:
         serialized = function.definition.SerializeToString()
-        function._c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-      gradient = function._grad_func._c_func if function._grad_func else None
-      c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient)
+        c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+        function._c_func = c_api_util.ScopedTFFunction(c_func)
+      gradient = (function._grad_func._c_func.func if function._grad_func
+                  else None)
+      c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
     else:
       # If there is already a function with the same name, raise an error
       # if bodies are different. Else, do nothing. The C API version above
