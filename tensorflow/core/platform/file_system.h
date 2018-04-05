@@ -138,10 +138,8 @@ class FileSystem {
   ///  * OK - no errors
   ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   ///                    implemented
-  /// The default implementation uses a combination of GetChildren, MatchPath
-  /// and IsDirectory.
   virtual Status GetMatchingPaths(const string& pattern,
-                                  std::vector<string>* results);
+                                  std::vector<string>* results) = 0;
 
   /// \brief Obtains statistics for the given path.
   virtual Status Stat(const string& fname, FileStatistics* stat) = 0;

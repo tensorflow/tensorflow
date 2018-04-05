@@ -405,6 +405,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "math"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "metrics"
     mtype: "<type \'module\'>"
   }

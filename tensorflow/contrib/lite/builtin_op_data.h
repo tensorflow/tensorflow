@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "tensorflow/contrib/lite/context.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -173,6 +175,11 @@ typedef struct {
 typedef struct {
   int block_size;
 } TfLiteSpaceToDepthParams;
+
+typedef struct {
+  TfLiteType in_data_type;
+  TfLiteType out_data_type;
+} TfLiteCastParams;
 
 typedef enum {
   kTfLiteCombinerTypeSum = 0,

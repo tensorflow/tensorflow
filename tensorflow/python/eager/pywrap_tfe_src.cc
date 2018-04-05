@@ -1844,6 +1844,15 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
 
   op_exec_info.ctx = reinterpret_cast<TFE_Context*>(
       PyCapsule_GetPointer(PyTuple_GET_ITEM(args, 0), nullptr));
+
+  if (op_exec_info.ctx == nullptr) {
+    // The context hasn't been initialized. It will be in the slow path.
+    RaiseFallbackException(
+        "This function does not handle the case of the path where "
+        "all inputs are not already EagerTensors.");
+    return nullptr;
+  }
+
   op_exec_info.device_name = GetDeviceName(PyTuple_GET_ITEM(args, 1));
   op_exec_info.op_name = PyTuple_GET_ITEM(args, 2);
   op_exec_info.op_def = GetOpDef(op_exec_info.op_name);

@@ -77,7 +77,7 @@ parameter of `Estimator`.
 
 ```python
 distribution = tf.contrib.distribute.MirroredStrategy()
-config = tf.estimator.RunConfig(distribute=distribution)
+config = tf.estimator.RunConfig(train_distribute=distribution)
 classifier = tf.estimator.Estimator(model_fn=model_fn, config=config)
 classifier.train(input_fn=input_fn)
 ```

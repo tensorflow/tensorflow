@@ -33,6 +33,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl.keras.engine import sequential
 from tensorflow.python.keras._impl.keras.engine import training
 from tensorflow.python.layers import core
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -67,6 +68,87 @@ class MyModel(training.Model):
   def call(self, values):
     ret = self._second(self._named_dense(values))
     return ret
+
+
+def _split_variable_closure(variable):
+  def _fill_save_buffer_fn(save_buffer):
+    save_buffer["first_half"] = variable[:2]
+    save_buffer["second_half"] = variable[2:]
+  return _fill_save_buffer_fn
+
+
+def _combine_variable_closure(variable):
+  def _consume_restore_buffer_fn(restore_buffer):
+    return variable.assign(
+        array_ops.concat([restore_buffer["first_half"],
+                          restore_buffer["second_half"]],
+                         axis=0))
+  return _consume_restore_buffer_fn
+
+
+class SaveTensorSlicesAsDeps(checkpointable.CheckpointableBase):
+
+  def __init__(self):
+    self.combined = resource_variable_ops.ResourceVariable([0., 0., 0., 0.])
+    split_dependencies = checkpointable_utils.split_dependency(
+        component_names=("first_half", "second_half"),
+        component_dtypes=(self.combined.dtype,) * 2,
+        fill_save_buffer_fn=_split_variable_closure(
+            self.combined),
+        consume_restore_buffer_fn=_combine_variable_closure(
+            self.combined))
+    for name, dep in split_dependencies.items():
+      self._track_checkpointable(dep, name=name)
+
+
+class HasRegularDeps(checkpointable.Checkpointable):
+
+  def __init__(self):
+    self.first_half = resource_variable_ops.ResourceVariable([0., 0.])
+    self.second_half = resource_variable_ops.ResourceVariable([0., 0.])
+
+
+class OnlyOneDep(checkpointable.Checkpointable):
+
+  def __init__(self):
+    self.first_half = resource_variable_ops.ResourceVariable([0., 0.])
+
+
+class SplitTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testSaveRestoreSplitDep(self):
+    save_checkpoint = checkpointable_utils.Checkpoint(
+        dep=SaveTensorSlicesAsDeps())
+    self.evaluate(save_checkpoint.dep.combined.assign([1., 2., 3., 4.]))
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = save_checkpoint.save(checkpoint_prefix)
+
+    regular_deps = HasRegularDeps()
+    regular_restore_checkpoint = checkpointable_utils.Checkpoint(
+        dep=regular_deps)
+    regular_restore_checkpoint.restore(
+        save_path).assert_consumed().run_restore_ops()
+    self.assertAllEqual([1., 2.], self.evaluate(regular_deps.first_half))
+    self.assertAllEqual([3., 4.], self.evaluate(regular_deps.second_half))
+
+    one_dep = OnlyOneDep()
+    one_dep_restore_checkpoint = checkpointable_utils.Checkpoint(dep=one_dep)
+    status = one_dep_restore_checkpoint.restore(save_path)
+    with self.assertRaises(AssertionError):
+      # Missing the second dependency.
+      status.assert_consumed()
+    status.run_restore_ops()
+    self.assertAllEqual([1., 2.], self.evaluate(one_dep.first_half))
+
+    restore_checkpoint = checkpointable_utils.Checkpoint()
+    status = restore_checkpoint.restore(save_path)
+    restore_checkpoint.dep = SaveTensorSlicesAsDeps()
+    status.assert_consumed().run_restore_ops()
+    self.assertAllEqual(
+        [1., 2., 3., 4.],
+        self.evaluate(restore_checkpoint.dep.combined))
 
 
 class InterfaceTests(test.TestCase):

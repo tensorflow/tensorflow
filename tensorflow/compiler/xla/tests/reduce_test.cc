@@ -57,6 +57,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using FuncGeneratorForType = Computation (*)(PrimitiveType,
+                                             ComputationBuilder*);
+
+using FuncGenerator = Computation (*)(ComputationBuilder*);
+
 class ReduceTest : public ClientLibraryTestBase {
  protected:
   ReduceTest() {
@@ -755,53 +760,57 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDim2) {
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Add) {
-  RunVectorizedReduceTest(CreateScalarAddComputation,
-                          [](float a, float b) { return a + b; },
-                          [](int32 a, int32 b) {
-                            return static_cast<int32>(static_cast<uint32>(a) +
-                                                      static_cast<uint32>(b));
-                          },
-                          [](uint32 a, uint32 b) { return a + b; }, 0.0, 0, 0);
+  RunVectorizedReduceTest(
+      static_cast<FuncGeneratorForType>(CreateScalarAddComputation),
+      [](float a, float b) { return a + b; },
+      [](int32 a, int32 b) {
+        return static_cast<int32>(static_cast<uint32>(a) +
+                                  static_cast<uint32>(b));
+      },
+      [](uint32 a, uint32 b) { return a + b; }, 0.0, 0, 0);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Multiply) {
-  RunVectorizedReduceTest(CreateScalarMultiplyComputation,
-                          [](float a, float b) { return a * b; },
-                          [](int32 a, int32 b) {
-                            return static_cast<int32>(static_cast<uint32>(a) *
-                                                      static_cast<uint32>(b));
-                          },
-                          [](uint32 a, uint32 b) { return a * b; }, 1.0, 1, 1);
+  RunVectorizedReduceTest(
+      static_cast<FuncGeneratorForType>(CreateScalarMultiplyComputation),
+      [](float a, float b) { return a * b; },
+      [](int32 a, int32 b) {
+        return static_cast<int32>(static_cast<uint32>(a) *
+                                  static_cast<uint32>(b));
+      },
+      [](uint32 a, uint32 b) { return a * b; }, 1.0, 1, 1);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Max) {
-  RunVectorizedReduceTest(CreateScalarMaxComputation,
-                          [](float a, float b) { return std::max(a, b); },
-                          [](int32 a, int32 b) { return std::max(a, b); },
-                          [](uint32 a, uint32 b) { return std::max(a, b); },
-                          std::numeric_limits<float>::min(),
-                          std::numeric_limits<int32>::min(),
-                          std::numeric_limits<uint32>::min());
+  RunVectorizedReduceTest(
+      static_cast<FuncGeneratorForType>(CreateScalarMaxComputation),
+      [](float a, float b) { return std::max(a, b); },
+      [](int32 a, int32 b) { return std::max(a, b); },
+      [](uint32 a, uint32 b) { return std::max(a, b); },
+      std::numeric_limits<float>::min(), std::numeric_limits<int32>::min(),
+      std::numeric_limits<uint32>::min());
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
-  RunVectorizedReduceTest(CreateScalarMinComputation,
-                          [](float a, float b) { return std::min(a, b); },
-                          [](int32 a, int32 b) { return std::min(a, b); },
-                          [](uint32 a, uint32 b) { return std::min(a, b); },
-                          std::numeric_limits<float>::max(),
-                          std::numeric_limits<int32>::max(),
-                          std::numeric_limits<uint32>::max());
+  RunVectorizedReduceTest(
+      static_cast<FuncGeneratorForType>(CreateScalarMinComputation),
+      [](float a, float b) { return std::min(a, b); },
+      [](int32 a, int32 b) { return std::min(a, b); },
+      [](uint32 a, uint32 b) { return std::min(a, b); },
+      std::numeric_limits<float>::max(), std::numeric_limits<int32>::max(),
+      std::numeric_limits<uint32>::max());
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanAnd) {
   RunVectorizedReduceTestForType<bool>(
-      CreateScalarAndComputation, [](bool a, bool b) { return a && b; }, true);
+      static_cast<FuncGenerator>(CreateScalarAndComputation),
+      [](bool a, bool b) { return a && b; }, true);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanOr) {
   RunVectorizedReduceTestForType<bool>(
-      CreateScalarOrComputation, [](bool a, bool b) { return a || b; }, false);
+      static_cast<FuncGenerator>(CreateScalarOrComputation),
+      [](bool a, bool b) { return a || b; }, false);
 }
 
 class ReduceR3ToR2Test : public ReduceTest,

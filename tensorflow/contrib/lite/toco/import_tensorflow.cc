@@ -74,7 +74,7 @@ const string& GetStringAttr(const NodeDef& node, const string& attr_name) {
   return attr.s();
 }
 
-int GetIntAttr(const NodeDef& node, const string& attr_name) {
+int64 GetIntAttr(const NodeDef& node, const string& attr_name) {
   CHECK(HasAttr(node, attr_name)) << attr_name << " not found in:\n"
                                   << node.DebugString();
   const auto& attr = node.attr().at(attr_name);
@@ -567,6 +567,23 @@ void ConvertBiasAddOperator(const NodeDef& node,
   biasadd->inputs.push_back(bias_name);
   biasadd->outputs.push_back(node.name());
   model->operators.emplace_back(biasadd);
+}
+
+void ConvertRandomUniform(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK_EQ(node.op(), "RandomUniform");
+  CheckInputsCount(node, tf_import_flags, 1);
+
+  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_INT32);
+  auto op = absl::make_unique<RandomUniformOperator>();
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  op->dtype = ConvertDataType(GetDataTypeAttr(node, "dtype"));
+  op->seed = GetIntAttr(node, "seed");
+  op->seed2 = GetIntAttr(node, "seed2");
+  CHECK(model != nullptr);
+  model->operators.emplace_back(std::move(op));
 }
 
 void ConvertReluOperator(const NodeDef& node,
@@ -1931,7 +1948,7 @@ void ConvertTopKV2Operator(const NodeDef& node,
   // K can be encoded as attr (TopK) convert it to a const.
   if (HasAttr(node, "k")) {
     string k_array = CreateConstArray<ArrayDataType::kInt32>(
-        model, node.name() + "k", {GetIntAttr(node, "k")});
+        model, node.name() + "k", {static_cast<int32>(GetIntAttr(node, "k"))});
     op->inputs.push_back(k_array);
   } else {
     CheckInputsCount(node, tf_import_flags, 2);
@@ -2168,6 +2185,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
     } else if (node.op() == "DynamicStitch" ||
                node.op() == "ParallelDynamicStitch") {
       ConvertDynamicStitchOperator(node, tf_import_flags, model);
+    } else if (node.op() == "RandomUniform") {
+      ConvertRandomUniform(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }

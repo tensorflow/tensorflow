@@ -28,7 +28,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
@@ -86,6 +85,7 @@ class _EagerContext(threading.local):
     self.device_spec = pydev.DeviceSpec.from_string("")
     self.device_name = self.device_spec.to_string()
     self.mode = _default_mode
+    self.is_eager = _default_mode == EAGER_MODE
     self.scope_name = ""
     self.recording_summaries = False
     self.summary_writer_resource = None
@@ -223,34 +223,27 @@ class Context(object):
       assert self._context_devices is None
       opts = pywrap_tensorflow.TFE_NewContextOptions()
       try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          if self._config is not None:
-            config_str = self._config.SerializeToString()
-            pywrap_tensorflow.TFE_ContextOptionsSetConfig(
-                opts, config_str, len(config_str), status)
-          if self._device_policy is not None:
-            pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
-                opts, self._device_policy)
-          if self._execution_mode == ASYNC:
-            pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
-          self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
+        if self._config is not None:
+          config_str = self._config.SerializeToString()
+          pywrap_tensorflow.TFE_ContextOptionsSetConfig(opts, config_str)
+        if self._device_policy is not None:
+          pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
+              opts, self._device_policy)
+        if self._execution_mode == ASYNC:
+          pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
+        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       # Store list of devices
       self._context_devices = []
-      with errors.raise_exception_on_not_ok_status() as status:
-        device_list = pywrap_tensorflow.TFE_ContextListDevices(
-            self._context_handle, status)
+      device_list = pywrap_tensorflow.TFE_ContextListDevices(
+          self._context_handle)
       try:
         self._num_gpus = 0
         for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
-          with errors.raise_exception_on_not_ok_status() as status:
-            dev_name = pywrap_tensorflow.TF_DeviceListName(
-                device_list, i, status)
+          dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
           self._context_devices.append(pydev.canonical_name(dev_name))
-          with errors.raise_exception_on_not_ok_status() as status:
-            dev_type = pywrap_tensorflow.TF_DeviceListType(
-                device_list, i, status)
+          dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
           if dev_type == "GPU":
             self._num_gpus += 1
 
@@ -287,9 +280,12 @@ class Context(object):
 
   @tf_contextlib.contextmanager
   def _mode(self, mode):
+    """A context manager to allow setting the mode to EAGER/GRAPH."""
     ctx = self._eager_context
     old_mode = ctx.mode
+    old_is_eager = ctx.is_eager
     ctx.mode = mode
+    ctx.is_eager = mode == EAGER_MODE
     if mode == EAGER_MODE:
       # Entering graph mode does not provide us with sufficient information to
       # record a context switch; graph-based context switches are only logged
@@ -298,13 +294,14 @@ class Context(object):
     try:
       yield
     finally:
+      ctx.is_eager = old_is_eager
       ctx.mode = old_mode
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
-    return self._eager_context.mode == EAGER_MODE
+    return self._eager_context.is_eager
 
   def scalar_cache(self):
     """Per-device cache for scalars."""
@@ -411,9 +408,7 @@ class Context(object):
     if mode is None:
       mode = SYNC
     self._eager_context.execution_mode = mode
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._handle,
-                                                     mode == ASYNC, status)
+    pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._handle, mode == ASYNC)
 
   @tf_contextlib.contextmanager
   def execution_mode(self, mode):
@@ -427,8 +422,7 @@ class Context(object):
 
   def async_wait(self):
     """Waits for ops dispatched in ASYNC mode to finish."""
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.TFE_ContextAsyncWait(self._handle, status)
+    pywrap_tensorflow.TFE_ContextAsyncWait(self._handle)
 
   def async_clear_error(self):
     """Clears errors raised during ASYNC execution."""
@@ -448,11 +442,9 @@ class Context(object):
     Args:
       fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.TFE_ContextAddFunction(
-          self._handle,  # pylint: disable=protected-access
-          fn,
-          status)
+    pywrap_tensorflow.TFE_ContextAddFunction(
+        self._handle,  # pylint: disable=protected-access
+        fn)
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -464,12 +456,10 @@ class Context(object):
       fdef: A FunctionDef protocol buffer message.
     """
     fdef_string = fdef.SerializeToString()
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.TFE_ContextAddFunctionDef(
-          self._handle,  # pylint: disable=protected-access
-          fdef_string,
-          len(fdef_string),
-          status)
+    pywrap_tensorflow.TFE_ContextAddFunctionDef(
+        self._handle,  # pylint: disable=protected-access
+        fdef_string,
+        len(fdef_string))
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
@@ -512,23 +502,19 @@ class Context(object):
     To retrieve the accumulated metadata call context.export_run_metadata()
     and to stop tracing call context.disable_run_metadata().
     """
-    if not self._context_handle:
-      self._initialize_handle_and_devices()
-    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._context_handle)
+    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
 
   @tf_contextlib.contextmanager
   def device_policy(self, policy):
-    if not self._context_handle:
-      self._initialize_handle_and_devices()
-    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
-        self._context_handle)
+    handle = self._handle
+    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(handle)
     pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
-        self._handle, policy)
+        handle, policy)
     try:
       yield
     finally:
       pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
-          self._handle, old)
+          handle, old)
 
   def disable_run_metadata(self):
     """Disables tracing of op execution via RunMetadata."""
@@ -548,9 +534,8 @@ class Context(object):
     if not self._context_handle:
       return None
     with c_api_util.tf_buffer() as buffer_:
-      with errors.raise_exception_on_not_ok_status() as status:
-        pywrap_tensorflow.TFE_ContextExportRunMetadata(
-            self._context_handle, buffer_, status)
+      pywrap_tensorflow.TFE_ContextExportRunMetadata(
+          self._context_handle, buffer_)
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     run_metadata = config_pb2.RunMetadata()
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
@@ -576,6 +561,10 @@ def context():
   """Returns a singleton context object."""
   if _context is None:
     _initialize_context()
+  return _context
+
+
+def context_safe():
   return _context
 
 

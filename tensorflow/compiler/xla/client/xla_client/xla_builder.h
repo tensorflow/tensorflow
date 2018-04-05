@@ -803,19 +803,16 @@ class XlaBuilder {
       HloInstructionProto&& instr, HloOpcode opcode,
       tensorflow::gtl::ArraySlice<XlaOp> operands = {});
 
+  void AddCalledComputation(const XlaComputation& computation,
+                            HloInstructionProto* instr);
+
   // Notes that the error occurred by:
   // * storing it internally and capturing a backtrace if it's the first error
   //   (this deferred value will be produced on the call to Build())
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
-  XlaOp NoteErrorOrReturn(StatusOr<XlaOp>&& op) {
-    if (!op.ok()) {
-      NoteError(op.status());
-      return XlaOp();
-    }
-    return op.ConsumeValueOrDie();
-  }
+  XlaOp NoteErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
 
   // Helper method that creates an empty op and notes error.
   XlaOp UnimplementedOp();
@@ -835,6 +832,10 @@ class XlaBuilder {
   XlaOp TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
                   const XlaOp& ehs);
 
+  XlaOp RngOp(RandomDistribution distribution,
+              tensorflow::gtl::ArraySlice<XlaOp> parameters,
+              const Shape& shape);
+
   StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, const XlaOp& operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
@@ -852,7 +853,8 @@ class XlaBuilder {
   // computation and fills the root_id in the pointer.
   StatusOr<ProgramShape> GetProgramShape(int64* root_id);
 
-  string name_;  // Name to use for the built computation.
+  string name_;      // Name to use for the built computation.
+  int64 unique_id_;  // The unique id for the built computation.
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.

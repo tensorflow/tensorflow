@@ -474,6 +474,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_exception_registry.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_exception_registry.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_util.h"

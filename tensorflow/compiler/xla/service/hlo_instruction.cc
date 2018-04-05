@@ -98,6 +98,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
   }
 
+  if (instruction->opcode() == HloOpcode::kTrace) {
+    TF_RET_CHECK(instruction->operands().size() == 1)
+        << "Trace instruction should have 1 operand but sees "
+        << instruction->operands().size();
+    instruction->mutable_operand(0)->set_tracing(instruction.get());
+  }
+
   TF_RET_CHECK(!proto.name().empty());
   instruction->name_ = proto.name();
 
@@ -170,6 +177,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
   instruction->literal_ = Literal::CreateR1U8(tag);
+  operand->set_tracing(instruction.get());
   return instruction;
 }
 

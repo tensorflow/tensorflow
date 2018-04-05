@@ -601,6 +601,12 @@ ComputationDataHandle ClientLibraryTestBase::CreateConstantFromLiteral(
       use_bfloat16_ ? *LiteralTestUtil::ConvertF32ToBF16(literal) : literal);
 }
 
+XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
+                                                       XlaBuilder* builder) {
+  return builder->ConstantLiteral(
+      use_bfloat16_ ? *LiteralTestUtil::ConvertF32ToBF16(literal) : literal);
+}
+
 template void ClientLibraryTestBase::ComputeAndCompareLiteral(
     ComputationBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,

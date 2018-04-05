@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/grappler/utils/frame.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -45,21 +44,16 @@ const NodeScopeAndName ParseNodeScopeAndName(const string& node_name);
 struct GraphOptimizerContext {
   GraphOptimizerContext(const std::unordered_set<string>* nodes_to_preserve,
                         GraphDef* optimized_graph,
-                        GraphProperties* graph_properties, NodeMap* node_map,
-                        FrameMap* frame_map)
+                        GraphProperties* graph_properties, NodeMap* node_map)
       : nodes_to_preserve(nodes_to_preserve),
         optimized_graph(optimized_graph),
         graph_properties(graph_properties),
-        node_map(node_map),
-        frame_map(frame_map) {}
+        node_map(node_map) {}
 
   const std::unordered_set<string>* nodes_to_preserve;
   GraphDef* optimized_graph;
   GraphProperties* graph_properties;
   NodeMap* node_map;
-  // TODO(ezhulenev): it seems that frame_map is only relevant for loop
-  // optimizer? Move it to loop-optimizer specific context extension.
-  FrameMap* frame_map;
 };
 
 Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
@@ -116,6 +110,9 @@ class GraphOptimizerStage {
                                const GraphOptimizerContext& ctx)
       : optimizer_name_(optimizer_name), stage_name_(stage_name), ctx_(ctx) {}
   virtual ~GraphOptimizerStage() = default;
+
+  const string& stage_name() const { return stage_name_; }
+  const string& optimizer_name() const { return optimizer_name_; }
 
   // Check if we should try to simplify node. Returning true doesn't
   // guarantee that node will be simplified.
@@ -177,6 +174,64 @@ class GraphOptimizerStage {
   const string optimizer_name_;
   const string stage_name_;
   const GraphOptimizerContext ctx_;
+};
+
+template <typename Result>
+class GraphOptimizerStagePipeline {
+ public:
+  // Break predicate specifies if a pipeline should stop early, and not pass
+  // a node to the next registered optimizer stage, typically that should be the
+  // case when a stage successfully optimized a node, and it wants to yield
+  // control to the optimizer.
+  explicit GraphOptimizerStagePipeline(
+      const std::function<bool(const Result&)> break_predicate)
+      : break_predicate_(break_predicate) {}
+
+  // Add a stage to the pipeline. It should be called with the arguments for the
+  // stage constructor:
+  //
+  //   pipeline.AddStage<FooStage>(constructor_arg1, constructor_arg2);
+  //
+  // Returns a reference to the added stage.
+  template <typename T, typename... Args>
+  T& AddStage(Args&&... args) {
+    auto stage = new T(std::forward<Args>(args)...);
+    stages_.push_back(std::unique_ptr<T>(stage));
+    return *stage;
+  }
+
+  // Pass a node through all registered optimizer stages, until break predicate
+  // is true.
+  //
+  // Return true, if pipeline exited after a break predicate was evaluated as
+  // 'true', which typically means that a node was optimized by one of the
+  // registered stages.
+  //
+  // Return false, if node was not optimized by any of registered stages.
+  bool PassThroughAllStages(NodeDef* node, Result* result) {
+    for (auto& stage : stages_) {
+      if (stage->IsSupported(node)) {
+        const Status stage_status = stage->TrySimplify(node, result);
+        // Each stage must be "error safe" (just like exception safe). In
+        // case of any error it must leave optimized graph unmodified.
+        if (!stage_status.ok()) {
+          LOG(WARNING) << "Failed to run optimizer " << stage->optimizer_name()
+                       << ", stage " << stage->stage_name()
+                       << ". Error: " << stage_status.error_message();
+        }
+        if (break_predicate_(*result)) return true;
+      }
+    }
+    return false;
+  }
+
+  std::size_t NumStages() { return stages_.size(); }
+
+ private:
+  std::vector<std::unique_ptr<GraphOptimizerStage<Result>>> stages_;
+  std::function<bool(const Result&)> break_predicate_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GraphOptimizerStagePipeline);
 };
 
 }  // end namespace grappler

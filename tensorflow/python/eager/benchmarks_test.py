@@ -201,6 +201,9 @@ class MicroBenchmarks(test.Benchmark):
     m = self._m_2
     self._run(lambda: gen_array_ops.identity(m), 30000)
 
+  def benchmark_slowpath_tf_identity(self):
+    self._run(lambda: gen_array_ops.identity(1), 30000)
+
   def benchmark_tfe_py_execute_identity(self):
     m = self._m_2
     ctx_handle = context.context()._handle

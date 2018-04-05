@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -44,16 +45,15 @@ int64 NumEdges(const GraphDef& graph) {
 }
 
 string PrintSizesBeforeAfter(const GraphDef& before, const GraphDef& after) {
-  return strings::StrCat("Graph size before: ", before.node_size(), " nodes, ",
-                         NumEdges(before),
-                         " edges. Graph size after: ", after.node_size(),
-                         " nodes, ", NumEdges(after), " edges.");
+  return strings::StrCat("Graph size after: ", after.node_size(), " nodes (",
+                         after.node_size() - before.node_size(), "), ",
+                         NumEdges(after), " edges (",
+                         NumEdges(after) - NumEdges(before), ")");
 }
 }  // namespace
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     const string& optimizer) {
-  VLOG(1) << "Adding graph optimization pass: " << optimizer;
   std::unique_ptr<GraphOptimizer> graph_optimizer;
   if (optimizer == "pruning") {
     graph_optimizer.reset(new ModelPruner());
@@ -171,46 +171,58 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
+  // Some optimizers should be run only once.
+  const std::set<string> run_once_optimizers = {"layout"};
   bool already_optimized = false;
-  for (const auto& optimizer : optimizers) {
-    if (!already_optimized) {
-      Status status = optimizer->Optimize(cluster, item, optimized_graph);
-      string result;
-      if (!status.ok()) {
-        VLOG(1) << "Not able to apply optimizer " << optimizer->name()
-                << ". Return status: " << status.ToString();
-        result = status.ToString();
-      } else {
-        already_optimized = true;
-        result = strings::StrCat(
-            "OK. ", PrintSizesBeforeAfter(item.graph, *optimized_graph));
+  const int num_iterations =
+      cfg_.meta_optimizer_iterations() == RewriterConfig::DEFAULT_NUM_ITERS
+          ? 1
+          : cfg_.meta_optimizer_iterations();
+  for (int iteration = 0; iteration < num_iterations; ++iteration) {
+    VLOG(1) << "Starting optimization iteration " << iteration + 1;
+    for (const auto& optimizer : optimizers) {
+      if (iteration > 0 && run_once_optimizers.count(optimizer->name())) {
+        continue;
       }
-      result_.push_back(std::make_pair(optimizer->name(), result));
-      VLOG(1) << "Optimizer " << optimizer->name()
-              << " return status: " << result;
-    } else {
-      GrapplerItem optimized_item(item, std::move(*optimized_graph));
-      Status status =
-          optimizer->Optimize(cluster, optimized_item, optimized_graph);
-      string result;
-      if (!status.ok()) {
-        VLOG(1) << "Not able to apply optimizer " << optimizer->name()
-                << ". Return status: " << status.ToString();
-        optimized_graph->Swap(&optimized_item.graph);
-        result = status.ToString();
+      if (!already_optimized) {
+        Status status = optimizer->Optimize(cluster, item, optimized_graph);
+        string result;
+        if (!status.ok()) {
+          VLOG(1) << "Not able to apply optimizer " << optimizer->name()
+                  << ". Return status: " << status.ToString();
+          result = status.ToString();
+        } else {
+          already_optimized = true;
+          result = strings::StrCat(
+              "OK. ", PrintSizesBeforeAfter(item.graph, *optimized_graph));
+        }
+        result_.push_back(std::make_pair(optimizer->name(), result));
+        VLOG(1) << "Optimizer " << optimizer->name()
+                << " return status: " << result;
       } else {
-        result = strings::StrCat(
-            "OK. ",
-            PrintSizesBeforeAfter(optimized_item.graph, *optimized_graph));
+        GrapplerItem optimized_item(item, std::move(*optimized_graph));
+        Status status =
+            optimizer->Optimize(cluster, optimized_item, optimized_graph);
+        string result;
+        if (!status.ok()) {
+          VLOG(1) << "Not able to apply optimizer " << optimizer->name() << ": "
+                  << status.ToString();
+          optimized_graph->Swap(&optimized_item.graph);
+          result = status.ToString();
+        } else {
+          result = strings::StrCat(
+              optimizer->name(), ": ",
+              PrintSizesBeforeAfter(optimized_item.graph, *optimized_graph));
+        }
+        result_.push_back(std::make_pair(optimizer->name(), result));
+        VLOG(1) << result;
       }
-      result_.push_back(std::make_pair(optimizer->name(), result));
-      VLOG(1) << "Optimizer " << optimizer->name()
-              << " return status: " << result;
     }
   }
 
   if (already_optimized) {
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
+    ReassignColocation(optimized_graph);
     // Make sure that the optimizers preserved the graph version and library.
     DCHECK_GE(optimized_graph->library().function_size(),
               item.graph.library().function_size());
