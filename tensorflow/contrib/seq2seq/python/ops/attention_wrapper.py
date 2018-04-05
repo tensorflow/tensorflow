@@ -610,8 +610,8 @@ def monotonic_attention(p_choose_i, previous_attention, mode):
   addition, once an input sequence element is attended to at a given output
   timestep, elements occurring before it cannot be attended to at subsequent
   output timesteps.  This function generates attention distributions according
-  to these assumptions.  For more information, see ``Online and Linear-Time
-  Attention by Enforcing Monotonic Alignments''.
+  to these assumptions.  For more information, see `Online and Linear-Time
+  Attention by Enforcing Monotonic Alignments`.
 
   Args:
     p_choose_i: Probability of choosing input sequence/memory element i.  Should
