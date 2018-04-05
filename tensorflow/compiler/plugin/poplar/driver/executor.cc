@@ -283,6 +283,8 @@ port::Status PoplarExecutor::InitializePoplarDevice(
               type)};
   }
 
+  random_type_ = cfg.random_type();
+
   device_open_ = true;
   return port::Status::OK();
 }
@@ -313,6 +315,17 @@ void PoplarExecutor::AddEventRecord(tensorflow::IpuTraceEvent::Type type,
 
 void PoplarExecutor::AddCompilerReport(const std::string& report) {
   AddEventRecord(tensorflow::IpuTraceEvent::COMPILE, report, 0);
+}
+
+const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
+  switch(random_type_) {
+    case tensorflow::IPUOptions::DeviceConfig::NOT_REPEATABLE:
+      return poprand::NOT_REPEATABLE;
+    case tensorflow::IPUOptions::DeviceConfig::SYSTEM_REPEATABLE:
+      return poprand::SYSTEM_REPEATABLE;
+    case tensorflow::IPUOptions::DeviceConfig::ALWAYS_REPEATABLE:
+      return poprand::ALWAYS_REPEATABLE;
+  }
 }
 
 port::Status

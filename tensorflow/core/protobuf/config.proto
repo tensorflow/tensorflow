@@ -161,6 +161,14 @@ message IPUOptions {
     };
     Profiling profiling = 3;
 
+    // Type type of randomness (see poprand library)
+    enum RandomType {
+      NOT_REPEATABLE = 0;
+      SYSTEM_REPEATABLE = 1;
+      ALWAYS_REPEATABLE = 2;
+    };
+    RandomType random_type = 5;
+
     // Options to control Poplar compilation
     repeated string compilation_options = 4;
   };

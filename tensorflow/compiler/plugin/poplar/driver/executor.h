@@ -46,6 +46,8 @@ limitations under the License.
 #include <poplar/Engine.hpp>
 #include <poplar/Device.hpp>
 
+#include <poprand/RandomGen.hpp>
+
 namespace perftools {
 namespace gputools {
 namespace poplarplugin {
@@ -209,6 +211,8 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
+  const poprand::RandomGenMode GetRandomGenMode() const;
+
   bool CompilerReportingEnabled() const { return profile_compilation_; }
 
   void AddCompilerReport(const std::string& report);
@@ -289,6 +293,8 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   bool profile_compilation_;
   bool profile_execution_;
   bool profile_io_;
+
+  tensorflow::IPUOptions::DeviceConfig::RandomType random_type_;
 
   std::list<tensorflow::IpuTraceEvent> reports_;
 };

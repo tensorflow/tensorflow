@@ -268,7 +268,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   popops::addCodelets(*graph);
   poprand::addCodelets(*graph);
 
-  CompilerResources resources(module->config().seed() + 1);
+  CompilerResources resources(module->config().seed() + 1,
+                              poplarExecutor->GetRandomGenMode());
 
   HloComputation* entry = module->entry_computation();
 
