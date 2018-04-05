@@ -429,6 +429,11 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     for l in self._listeners:
       l.begin()
 
+  def after_create_session(self, session, coord):
+    global_step = session.run(self._global_step_tensor)
+    self._save(session, global_step)
+    self._timer.update_last_triggered_step(global_step)
+
   def before_run(self, run_context):  # pylint: disable=unused-argument
     if self._timer.last_triggered_step() is None:
       # We do write graph and saver_def at the first call of before_run.
