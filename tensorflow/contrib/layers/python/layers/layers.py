@@ -911,6 +911,90 @@ def bias_add(inputs,
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
+def _convolution(inputs,
+                 num_outputs,
+                 kernel_size,
+                 stride=1,
+                 padding='SAME',
+                 data_format=None,
+                 rate=1,
+                 activation_fn=nn.relu,
+                 normalizer_fn=None,
+                 normalizer_params=None,
+                 weights_initializer=initializers.xavier_initializer(),
+                 weights_regularizer=None,
+                 biases_initializer=init_ops.zeros_initializer(),
+                 biases_regularizer=None,
+                 reuse=None,
+                 variables_collections=None,
+                 outputs_collections=None,
+                 trainable=True,
+                 scope=None,
+                 dims=None):
+  if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
+    raise ValueError('Invalid data_format: %r' % (data_format,))
+
+  layer_variable_getter = _build_variable_getter({
+      'bias': 'biases',
+      'kernel': 'weights'
+  })
+
+  with variable_scope.variable_scope(
+      scope, 'Conv', [inputs], reuse=reuse,
+      custom_getter=layer_variable_getter) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    input_rank = inputs.get_shape().ndims
+
+    if dims is not None and dims + 2 != input_rank:
+      raise ValueError('Convolution expects input with rank %d, got %d' %
+                       (dims + 2, input_rank))
+    if input_rank == 3:
+      layer_class = convolutional_layers.Convolution1D
+    elif input_rank == 4:
+      layer_class = convolutional_layers.Convolution2D
+    elif input_rank == 5:
+      layer_class = convolutional_layers.Convolution3D
+    else:
+      raise ValueError('Convolution not supported for input with rank',
+                       input_rank)
+
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    layer = layer_class(
+        filters=num_outputs,
+        kernel_size=kernel_size,
+        strides=stride,
+        padding=padding,
+        data_format=df,
+        dilation_rate=rate,
+        activation=None,
+        use_bias=not normalizer_fn and biases_initializer,
+        kernel_initializer=weights_initializer,
+        bias_initializer=biases_initializer,
+        kernel_regularizer=weights_regularizer,
+        bias_regularizer=biases_regularizer,
+        activity_regularizer=None,
+        trainable=trainable,
+        name=sc.name,
+        dtype=inputs.dtype.base_dtype,
+        _scope=sc,
+        _reuse=reuse)
+    outputs = layer.apply(inputs)
+
+    # Add variables to collections.
+    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
+    if layer.use_bias:
+      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
+
+    if normalizer_fn is not None:
+      normalizer_params = normalizer_params or {}
+      outputs = normalizer_fn(outputs, **normalizer_params)
+
+    if activation_fn is not None:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
 # TODO(jbms): change `rate` parameter to `dilation_rate` for consistency with
 # underlying op.
 @add_arg_scope
@@ -1001,70 +1085,111 @@ def convolution(inputs,
     ValueError: If `data_format` is invalid.
     ValueError: Both 'rate' and `stride` are not uniformly 1.
   """
-  if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
-    raise ValueError('Invalid data_format: %r' % (data_format,))
+  return _convolution(inputs,
+                      num_outputs,
+                      kernel_size,
+                      stride,
+                      padding,
+                      data_format,
+                      rate,
+                      activation_fn,
+                      normalizer_fn,
+                      normalizer_params,
+                      weights_initializer,
+                      weights_regularizer,
+                      biases_initializer,
+                      biases_regularizer,
+                      reuse,
+                      variables_collections,
+                      outputs_collections,
+                      trainable,
+                      scope)
 
-  layer_variable_getter = _build_variable_getter({
-      'bias': 'biases',
-      'kernel': 'weights'
-  })
+@add_arg_scope
+def convolution2d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return _convolution(inputs,
+                      num_outputs,
+                      kernel_size,
+                      stride,
+                      padding,
+                      data_format,
+                      rate,
+                      activation_fn,
+                      normalizer_fn,
+                      normalizer_params,
+                      weights_initializer,
+                      weights_regularizer,
+                      biases_initializer,
+                      biases_regularizer,
+                      reuse,
+                      variables_collections,
+                      outputs_collections,
+                      trainable,
+                      scope,
+                      dims=2)
 
-  with variable_scope.variable_scope(
-      scope, 'Conv', [inputs], reuse=reuse,
-      custom_getter=layer_variable_getter) as sc:
-    inputs = ops.convert_to_tensor(inputs)
-    input_rank = inputs.get_shape().ndims
+convolution2d.__doc__ = convolution.__doc__
 
-    if input_rank == 3:
-      layer_class = convolutional_layers.Convolution1D
-    elif input_rank == 4:
-      layer_class = convolutional_layers.Convolution2D
-    elif input_rank == 5:
-      layer_class = convolutional_layers.Convolution3D
-    else:
-      raise ValueError('Convolution not supported for input with rank',
-                       input_rank)
+@add_arg_scope
+def convolution3d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return _convolution(inputs,
+                      num_outputs,
+                      kernel_size,
+                      stride,
+                      padding,
+                      data_format,
+                      rate,
+                      activation_fn,
+                      normalizer_fn,
+                      normalizer_params,
+                      weights_initializer,
+                      weights_regularizer,
+                      biases_initializer,
+                      biases_regularizer,
+                      reuse,
+                      variables_collections,
+                      outputs_collections,
+                      trainable,
+                      scope,
+                      dims=3)
 
-    df = ('channels_first'
-          if data_format and data_format.startswith('NC') else 'channels_last')
-    layer = layer_class(
-        filters=num_outputs,
-        kernel_size=kernel_size,
-        strides=stride,
-        padding=padding,
-        data_format=df,
-        dilation_rate=rate,
-        activation=None,
-        use_bias=not normalizer_fn and biases_initializer,
-        kernel_initializer=weights_initializer,
-        bias_initializer=biases_initializer,
-        kernel_regularizer=weights_regularizer,
-        bias_regularizer=biases_regularizer,
-        activity_regularizer=None,
-        trainable=trainable,
-        name=sc.name,
-        dtype=inputs.dtype.base_dtype,
-        _scope=sc,
-        _reuse=reuse)
-    outputs = layer.apply(inputs)
-
-    # Add variables to collections.
-    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.use_bias:
-      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
-
-    if normalizer_fn is not None:
-      normalizer_params = normalizer_params or {}
-      outputs = normalizer_fn(outputs, **normalizer_params)
-
-    if activation_fn is not None:
-      outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
-
-
-convolution2d = convolution
-convolution3d = convolution
-
+convolution3d.__doc__ = convolution.__doc__
 
 @add_arg_scope
 def convolution2d_in_plane(
