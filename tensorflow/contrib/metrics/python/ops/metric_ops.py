@@ -2892,7 +2892,9 @@ def streaming_mean_squared_error(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None,
+            'Please switch to tf.metrics.mean_squared_error. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_root_mean_squared_error(predictions,
                                       labels,
                                       weights=None,
