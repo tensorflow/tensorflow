@@ -1226,13 +1226,16 @@ _default_tower_mode = _DefaultTowerThreadMode()
 # So here we catch any attempts to deserialize variables
 # when using distribution strategies.
 # pylint: disable=protected-access
+_original_from_proto = resource_variable_ops._from_proto_fn
+
+
 def _from_proto_fn(v, import_scope=None):
   if has_distribution_strategy():
     raise NotImplementedError(
         "Deserialization of variables is not yet supported when using"
         "distributed strategies.")
   else:
-    resource_variable_ops._from_proto_fn(v, import_scope=import_scope)
+    return _original_from_proto(v, import_scope=import_scope)
 
 resource_variable_ops._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access
