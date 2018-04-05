@@ -1808,7 +1808,7 @@ def softmax_cross_entropy_with_logits_v2(
   or `float64`).
 
   Backpropagation will happen into both `logits` and `labels`.  To disallow
-  backpropagation into `labels`, pass label tensors through a `stop_gradients`
+  backpropagation into `labels`, pass label tensors through @{tf.stop_gradient}
   before feeding it to this function.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
@@ -1895,7 +1895,7 @@ _XENT_DEPRECATION = """
 Future major versions of TensorFlow will allow gradients to flow
 into the labels input on backprop by default.
 
-See tf.nn.softmax_cross_entropy_with_logits_v2.
+See @{tf.nn.softmax_cross_entropy_with_logits_v2}.
 """
 
 

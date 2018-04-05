@@ -515,8 +515,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
     def _sparse_values_to_keep(t, keep_input):
       """Convert a per-row `keep_input` vector to a per-value one."""
       # Get the rows of every value in the sparse Tensor.
-      row_values = array_ops.reshape(
-          t.indices, [array_ops.shape(t.indices)[0], -1])[:, 0]
+      row_values = t.indices[:, 0]
       # The value should be kept iff the row should be kept.
       return array_ops.gather(keep_input, row_values)
     if keep_input.shape.ndims == 1:

@@ -107,16 +107,20 @@ class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
   def _next_internal(self):
     """Returns a nested structure of `tf.Tensor`s containing the next element.
     """
-    if self._buffer_resource_handle is not None:
-      with ops.device(self._device):
-        ret = prefetching_ops.function_buffering_resource_get_next(
-            function_buffer_resource=self._buffer_resource_handle,
-            output_types=self._flat_output_types)
-      return sparse.deserialize_sparse_tensors(
-          nest.pack_sequence_as(self._output_types, ret), self._output_types,
-          self._output_shapes, self._output_classes)
-    else:
-      return super(Iterator, self)._next_internal()
+    # This runs in sync mode as iterators use an error status to communicate
+    # that there is no more data to iterate over.
+    # TODO(b/77291417): Fix
+    with context.execution_mode(context.SYNC):
+      if self._buffer_resource_handle is not None:
+        with ops.device(self._device):
+          ret = prefetching_ops.function_buffering_resource_get_next(
+              function_buffer_resource=self._buffer_resource_handle,
+              output_types=self._flat_output_types)
+        return sparse.deserialize_sparse_tensors(
+            nest.pack_sequence_as(self._output_types, ret), self._output_types,
+            self._output_shapes, self._output_classes)
+      else:
+        return super(Iterator, self)._next_internal()
 
   # TODO(shivaniagrawal): Expose checkpointable stateful objects from dataset
   # attributes(potential).

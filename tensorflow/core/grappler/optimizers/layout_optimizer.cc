@@ -2119,6 +2119,10 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
+  if (cluster == nullptr) {
+    return errors::InvalidArgument("cluster == nullptr");
+  }
+
   if (GetNumGPUs(*cluster) < 1) {
     // LayoutOptimizer is currently only tuned for GPU.
     *output = item.graph;

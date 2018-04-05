@@ -93,6 +93,7 @@ genrule(
         "api/logging/__init__.py",
         "api/losses/__init__.py",
         "api/manip/__init__.py",
+        "api/math/__init__.py",
         "api/metrics/__init__.py",
         "api/nn/__init__.py",
         "api/nn/rnn_cell/__init__.py",

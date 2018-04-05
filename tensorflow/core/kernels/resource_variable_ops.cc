@@ -250,8 +250,9 @@ class AssignVariableOp : public OpKernel {
 
     // Copying is unnecessary if we are the last user of the value
     // tensor, we can just adopt the input tensor's buffer instead.
-    std::unique_ptr<Tensor> input_alias =
-        context->forward_input(1, dtype_, value.shape(), DEVICE_MEMORY, attr);
+    std::unique_ptr<Tensor> input_alias = context->forward_input(
+        1, OpKernelContext::Params::kNoReservation /*output_index*/, dtype_,
+        value.shape(), DEVICE_MEMORY, attr);
     mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
     if (input_alias) {
@@ -363,9 +364,36 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(DT_VARIANT)));
 
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+
+    // Copying is unnecessary if we are the last user of the value
+    // tensor, we can just adopt the input tensor's buffer instead.
+    // Note that Variant objects themselves always reside on host.
+    std::unique_ptr<Tensor> input_alias = context->forward_input(
+        1, OpKernelContext::Params::kNoReservation /*output_index*/, DT_VARIANT,
+        value.shape(), HOST_MEMORY, attr);
+
     mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
     *variable->tensor() = Tensor(DT_VARIANT, value.shape());
+
+    if (input_alias) {
+      *variable->tensor() = *input_alias;
+      return;
+    }
+
+    // Need to copy, but maybe we can re-use variable's buffer?
+    if (!variable->tensor()->RefCountIsOne() ||
+        !variable->tensor()->shape().IsSameSize(value.shape())) {
+      PersistentTensor unused;
+      Tensor* tmp;
+      OP_REQUIRES_OK(context,
+                     context->allocate_persistent(DT_VARIANT, value.shape(),
+                                                  &unused, &tmp, attr));
+      *variable->tensor() = *tmp;
+    }
+
     const auto elements_in = value.flat<Variant>();
     auto elements_out = variable->tensor()->flat<Variant>();
     auto copy_fn = std::bind(&VariantCopyFn<Device>, context,
@@ -577,7 +605,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 #if GOOGLE_CUDA
 #define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GATHER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_GPU);
 
 #endif  // GOOGLE_CUDA
 

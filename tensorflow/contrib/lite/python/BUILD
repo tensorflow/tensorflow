@@ -101,6 +101,7 @@ py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     visibility = ["//visibility:public"],
     deps = [
         ":convert_saved_model",

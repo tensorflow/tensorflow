@@ -32,6 +32,32 @@ namespace tflite {
 
 const char* kEmptyTensorName = "";
 
+TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
+                               ErrorReporter* error_reporter) {
+  switch (tensor_type) {
+    case TensorType_FLOAT32:
+      *type = kTfLiteFloat32;
+      break;
+    case TensorType_INT32:
+      *type = kTfLiteInt32;
+      break;
+    case TensorType_UINT8:
+      *type = kTfLiteUInt8;
+      break;
+    case TensorType_INT64:
+      *type = kTfLiteInt64;
+      break;
+    case TensorType_STRING:
+      *type = kTfLiteString;
+      break;
+    default:
+      error_reporter->Report("Unimplemented data type %s (%d) in tensor\n",
+                             EnumNameTensorType(tensor_type), tensor_type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 // Loads a model from `filename`. If `mmap_file` is true then use mmap,
 // otherwise make a copy of the model in a buffer.
 std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
@@ -307,10 +333,25 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_EXP:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_CAST:
     case BuiltinOperator_DEQUANTIZE:
     case BuiltinOperator_PRELU:
       break;
+    case BuiltinOperator_CAST: {
+      TfLiteCastParams* params = MallocPOD<TfLiteCastParams>();
+      if (auto* schema_params = op->builtin_options_as_CastOptions()) {
+        auto in_status =
+            ConvertTensorType(schema_params->in_data_type(),
+                              &params->in_data_type, error_reporter);
+        auto out_status =
+            ConvertTensorType(schema_params->out_data_type(),
+                              &params->out_data_type, error_reporter);
+        if (in_status != kTfLiteOk || out_status != kTfLiteOk) {
+          break;
+        }
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_LSH_PROJECTION: {
       TfLiteLSHProjectionParams* params =
           MallocPOD<TfLiteLSHProjectionParams>();
@@ -707,29 +748,10 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     }
 
     TfLiteType type;
-    switch (tensor->type()) {
-      case TensorType_FLOAT32:
-        type = kTfLiteFloat32;
-        break;
-      case TensorType_INT32:
-        type = kTfLiteInt32;
-        break;
-      case TensorType_UINT8:
-        type = kTfLiteUInt8;
-        break;
-      case TensorType_INT64:
-        type = kTfLiteInt64;
-        break;
-      case TensorType_STRING:
-        type = kTfLiteString;
-        break;
-      default:
-        // tensorType = ArrayType::NONE;
-        error_reporter_->Report("Unimplemented data type %s (%d) in tensor\n",
-                                EnumNameTensorType(tensor->type()),
-                                tensor->type());
-        status = kTfLiteError;
-        continue;
+    if (ConvertTensorType(tensor->type(), &type, error_reporter_) !=
+        kTfLiteOk) {
+      status = kTfLiteError;
+      continue;
     }
     auto get_readonly_data = [&](const char** buffer_data,
                                  size_t* buffer_size) {

@@ -43,6 +43,7 @@ cc_library(
         "-Iexternal/nccl_archive/src",
         "-O3",
     ] + cuda_default_copts(),
+    include_prefix = "third_party/nccl",
     linkopts = select({
         "@org_tensorflow//tensorflow:android": [
             "-pie",
@@ -61,6 +62,7 @@ cc_library(
             "-lrt",
         ],
     }),
+    strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )

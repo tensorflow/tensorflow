@@ -324,8 +324,38 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
     tensorflow::gtl::ArraySlice<XlaComputationInstance> computations) {
-  return Unimplemented(
-      "ExecuteParallel is not yet implemented for XlaComputation.");
+  ExecuteGraphParallelRequest request;
+
+  for (const XlaComputationInstance& computation : computations) {
+    ExecuteGraphRequest single_request;
+    *single_request.mutable_computation() = computation.computation.proto();
+    for (GlobalData* argument : computation.arguments) {
+      *single_request.add_arguments() = argument->handle();
+    }
+    *single_request.mutable_execution_options() = computation.execution_options;
+    *request.add_requests() = single_request;
+  }
+
+  ExecuteParallelResponse response;
+  VLOG(1) << "making execute-graph-parallel request: "
+          << request.ShortDebugString();
+  tensorflow::Status s = stub_->ExecuteGraphParallel(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+
+  std::vector<std::unique_ptr<GlobalData>> outputs;
+  for (size_t i = 0; i < computations.size(); ++i) {
+    outputs.push_back(
+        MakeUnique<GlobalData>(stub_, response.responses(i).output()));
+    if (computations[i].execution_profile != nullptr) {
+      *computations[i].execution_profile = response.responses(i).profile();
+    }
+  }
+
+  return std::move(outputs);
 }
 
 StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(

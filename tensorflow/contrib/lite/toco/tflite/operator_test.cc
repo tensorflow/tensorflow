@@ -131,7 +131,7 @@ TEST_F(OperatorTest, BuiltinMean) {
   EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
 }
 
-TEST_F(OperatorTest, CustomCast) {
+TEST_F(OperatorTest, BuiltinCast) {
   CastOperator op;
   op.src_data_type = ArrayDataType::kFloat;
   op.dst_data_type = ArrayDataType::kUint8;
