@@ -163,11 +163,12 @@ TEST(XlaCompilationTest, HalfSupported) {
   GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
-    Node* a = ops::SourceOp(
-        "Const", builder.opts()
-                     .WithName("A")
-                     .WithAttr("dtype", DT_HALF)
-                     .WithAttr("value", Tensor(DT_HALF, TensorShape())));
+    Tensor t(DT_HALF, TensorShape());
+    t.scalar<Eigen::half>()() = static_cast<Eigen::half>(0.0f);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_HALF)
+                                         .WithAttr("value", t));
     Node* b = ops::UnaryOp("Neg", a, builder.opts().WithName("B"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
     TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
