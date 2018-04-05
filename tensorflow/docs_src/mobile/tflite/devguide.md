@@ -88,7 +88,7 @@ Tensorflow Lite format. This process uses several model formats:
   extracted from a `SavedModel`.
 * *TensorFlow Lite model* (.tflite) —A serialized
   [FlatBuffer](https://google.github.io/flatbuffers/) that contains TensorFlow
-  Lite operators and tensors for the TensorFlow Lite interpreter, similiar to a
+  Lite operators and tensors for the TensorFlow Lite interpreter, similar to a
   `FrozenGraphDef`.
 
 ### Freeze Graph

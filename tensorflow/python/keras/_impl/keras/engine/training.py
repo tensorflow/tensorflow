@@ -1181,6 +1181,9 @@ class Model(Network):
           batch_size=batch_size)
 
     elif validation_split and 0. < validation_split < 1.:
+      if training_utils.has_symbolic_tensors(x):
+        raise ValueError('If your data is in the form of symbolic tensors, '
+                         'you cannot use `validation_split`.')
       if hasattr(x[0], 'shape'):
         split_at = int(x[0].shape[0] * (1. - validation_split))
       else:

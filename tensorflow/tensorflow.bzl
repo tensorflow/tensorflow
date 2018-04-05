@@ -304,6 +304,7 @@ def tf_cc_shared_object(
           clean_dep("//tensorflow:darwin"): [
               "-Wl,-install_name,@rpath/" + name.split("/")[-1],
           ],
+          clean_dep("//tensorflow:windows"): [],
           "//conditions:default": [
               "-Wl,-soname," + name.split("/")[-1],
           ],
@@ -339,6 +340,22 @@ def tf_cc_binary(name,
 
 register_extension_info(
     extension_name = "tf_cc_binary",
+    label_regex_for_dep = "{extension_name}.*",
+)
+
+# A simple wrap around native.cc_binary rule.
+# When using this rule, you should realize it doesn't link to any tensorflow
+# dependencies by default.
+def tf_native_cc_binary(name,
+                        copts=tf_copts(),
+                        **kwargs):
+  native.cc_binary(
+      name=name,
+      copts=copts,
+      **kwargs)
+
+register_extension_info(
+    extension_name = "tf_native_cc_binary",
     label_regex_for_dep = "{extension_name}.*",
 )
 
@@ -622,9 +639,12 @@ def tf_cc_test(name,
       linkopts=select({
         clean_dep("//tensorflow:android"): [
             "-pie",
-          ],
+        ],
         clean_dep("//tensorflow:windows"): [],
         clean_dep("//tensorflow:windows_msvc"): [],
+        clean_dep("//tensorflow:darwin"): [
+            "-lm",
+        ],
         "//conditions:default": [
             "-lpthread",
             "-lm"
@@ -910,6 +930,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if 'linkstatic' not in kwargs or kwargs['linkstatic'] != 1:
     enable_text_relocation_linkopt = select({
           clean_dep("//tensorflow:darwin"): [],
+          clean_dep("//tensorflow:windows"): [],
           "//conditions:default": ['-Wl,-z,notext'],})
     if 'linkopts' in kwargs:
       kwargs['linkopts'] += enable_text_relocation_linkopt
@@ -1178,6 +1199,20 @@ def tf_custom_op_library_additional_deps():
       "@protobuf_archive//:protobuf_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
+  ] + if_windows(["//tensorflow/python:pywrap_tensorflow_import_lib"])
+
+# A list of targets that contains the implemenation of
+# tf_custom_op_library_additional_deps. It's used to generate a DEF file for
+# exporting symbols from _pywrap_tensorflow.dll on Windows.
+def tf_custom_op_library_additional_deps_impl():
+  return [
+      "@protobuf_archive//:protobuf",
+      "@nsync//:nsync_cpp",
+      # for //third_party/eigen3
+      clean_dep("//third_party/eigen3"),
+      # for //tensorflow/core:framework_headers_lib
+      clean_dep("//tensorflow/core:framework"),
+      clean_dep("//tensorflow/core:reader_base"),
   ]
 
 # Traverse the dependency graph along the "deps" attribute of the
@@ -1264,6 +1299,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(is_external=True),
+      features = ["windows_export_all_symbols"],
       linkopts=linkopts + select({
           "//conditions:default": [
               "-lm",
@@ -1410,7 +1446,8 @@ def tf_py_wrap_cc(name,
       ]) + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,
-      deps=deps + extra_deps)
+      deps=deps + extra_deps,
+      **kwargs)
   native.genrule(
       name="gen_" + cc_library_pyd_name,
       srcs=[":" + cc_library_name],

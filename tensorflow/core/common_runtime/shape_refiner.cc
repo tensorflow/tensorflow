@@ -351,6 +351,11 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
         }
       }
     }
+    if (node_context->requested_input_tensor_as_partial_shape(dst_input)) {
+      // The input value may have changed. Since we have no way to know if
+      // that's indeed the case, err on the safe side.
+      *refined = true;
+    }
 
     // Also propagate handle shape and dtype of edges which are carrying
     // resource handles.

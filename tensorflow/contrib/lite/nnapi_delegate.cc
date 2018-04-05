@@ -162,7 +162,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
     };
 
     auto duplicate_state_tensor_float32 =
-        [interpreter, &nn_model, &augmented_inputs, &next_id](int tensor_id) {
+        [interpreter, &nn_model, &augmented_inputs](int tensor_id) {
           const TfLiteTensor* tensor = interpreter->tensor(tensor_id);
           CHECK_NN(ANeuralNetworksModel_setOperandValue(
               nn_model, tensor_id, tensor->data.raw, tensor->bytes));

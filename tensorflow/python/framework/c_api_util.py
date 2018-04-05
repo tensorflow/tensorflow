@@ -33,7 +33,7 @@ class ScopedTFStatus(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteStatus is not None:
+    if c_api is not None and c_api.TF_DeleteStatus is not None:
       c_api.TF_DeleteStatus(self.status)
 
 
@@ -46,7 +46,7 @@ class ScopedTFGraph(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteGraph is not None:
+    if c_api is not None and c_api.TF_DeleteGraph is not None:
       c_api.TF_DeleteGraph(self.graph)
 
 
@@ -59,7 +59,7 @@ class ScopedTFImportGraphDefOptions(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteImportGraphDefOptions is not None:
+    if c_api is not None and c_api.TF_DeleteImportGraphDefOptions is not None:
       c_api.TF_DeleteImportGraphDefOptions(self.options)
 
 

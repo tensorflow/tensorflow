@@ -166,7 +166,7 @@ int64 AvailableRam() {
   MEMORYSTATUSEX statex;
   statex.dwLength = sizeof(statex);
   if (GlobalMemoryStatusEx(&statex)) {
-    return statex.ullAvailPhys / 1024;
+    return statex.ullAvailPhys;
   }
   return INT64_MAX;
 }

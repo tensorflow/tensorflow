@@ -312,6 +312,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   // will be converted to BF16s.
   ComputationDataHandle CreateConstantFromLiteral(const Literal& literal,
                                                   ComputationBuilder* builder);
+  XlaOp CreateConstantFromLiteral(const Literal& literal, XlaBuilder* builder);
 
   // Creates a constant instruction with the given array. When the use_bfloat16
   // flag is set but the array has float elements, the elements will be
@@ -322,10 +323,22 @@ class ClientLibraryTestBase : public ::testing::Test {
     return CreateConstantFromLiteral(*Literal::CreateFromArray(array), builder);
   }
 
+  template <typename NativeT>
+  XlaOp CreateConstantFromArray(const Array<NativeT>& array,
+                                XlaBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateFromArray(array), builder);
+  }
+
   // Same as CreateConstantFromArray, but for scalars.
   template <typename NativeT>
   ComputationDataHandle CreateConstantFromScalar(NativeT value,
                                                  ComputationBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateR0<NativeT>(value),
+                                     builder);
+  }
+
+  template <typename NativeT>
+  XlaOp CreateConstantFromScalar(NativeT value, XlaBuilder* builder) {
     return CreateConstantFromLiteral(*Literal::CreateR0<NativeT>(value),
                                      builder);
   }

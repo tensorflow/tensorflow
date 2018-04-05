@@ -188,7 +188,7 @@ class Estimator(object):
       self._config = config
 
     # The distribute field contains an instance of DistributionStrategy.
-    self._distribution = self._config.distribute
+    self._distribution = self._config.train_distribute
 
     # Model directory.
     model_dir = compat_internal.path_to_str(model_dir)

@@ -496,9 +496,11 @@ tensorflow::Status ValidateInputTypeAndPlacement(
               expected_device->name(), " but is actually on ",
               actual_device->name(), " (operation running on ",
               op_device->name(), ")",
-              " Tensors can be copied explicitly using .gpu() or .cpu(),"
-              " or transparently copied by using tfe.enable_eager_execution("
-              "tfe.DEVICE_PLACEMENT_SILENT). Copying tensors between devices"
+              " Tensors can be copied explicitly using .gpu() or .cpu() "
+              "methods,"
+              " or transparently copied by using tf.enable_eager_execution("
+              "device_policy=tfe.DEVICE_PLACEMENT_SILENT). Copying tensors "
+              "between devices"
               " may slow down your model");
         case tensorflow::DEVICE_PLACEMENT_WARN:
           LOG(WARNING) << "before computing " << op->name << " input #" << i

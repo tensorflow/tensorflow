@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -155,22 +156,22 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
 
     Status s = session->RunCallable(handle, {}, nullptr, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(StringPiece(s.error_message())
-                    .contains("`fetch_tensors` must be provided"));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                      "`fetch_tensors` must be provided"));
 
     TF_ASSERT_OK(session->ReleaseCallable(handle));
 
     std::vector<Tensor> outputs;
     s = session->RunCallable(handle, {}, &outputs, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(
-        StringPiece(s.error_message())
-            .contains("Attempted to run callable after handle was released"));
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(),
+        "Attempted to run callable after handle was released"));
 
     s = session->RunCallable(handle + 1, {}, &outputs, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
     EXPECT_TRUE(
-        StringPiece(s.error_message()).contains("No such callable handle"));
+        str_util::StrContains(s.error_message(), "No such callable handle"));
   }
 }
 
@@ -567,7 +568,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
 }
 
 TEST(DirectSessionTest, MultipleFeedTest_Callable) {
@@ -650,7 +651,7 @@ TEST(DirectSessionTest, MultipleFeedTest_Callable) {
           {first_identity->name() + ":0", second_identity->name() + ":0"}, {}),
       &handle);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
 }
 
 TEST(DirectSessionTest, FetchMultipleTimes) {
@@ -845,8 +846,8 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
   s = session->PRun(handle, {{first_const->name(), value_11}},
                     {third_identity->name() + ":0"}, &outputs);
   ASSERT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("can't be computed from the feeds"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "can't be computed from the feeds"));
 }
 
 TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
@@ -875,8 +876,8 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   // Fetch fourth_identity without feeds.
   s = session->PRun(handle, {}, {fourth_identity->name() + ":0"}, &outputs);
   ASSERT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("can't be computed from the feeds"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "can't be computed from the feeds"));
 
   // Feed switch_node:1 and fetch fourth_identity.
   s = session->PRun(handle, {{switch_node->name() + ":1", bool_value}},

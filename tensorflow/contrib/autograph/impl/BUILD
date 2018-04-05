@@ -26,6 +26,7 @@ py_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/contrib/autograph/converters",
+        "//tensorflow/contrib/autograph/operators",
         "//tensorflow/contrib/autograph/pyct",
         "//tensorflow/contrib/autograph/pyct/static_analysis",
         "//tensorflow/contrib/autograph/utils",
@@ -38,6 +39,7 @@ py_test(
     name = "api_test",
     srcs = ["api_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":impl",
         "//tensorflow/contrib/autograph/utils",
@@ -50,6 +52,7 @@ py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",

@@ -550,6 +550,15 @@ std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
   return control_inputs;
 }
 
+std::vector<TF_Operation*> TF_OperationGetControlOutputs_wrapper(
+    TF_Operation* oper) {
+  std::vector<TF_Operation*> control_outputs(
+      TF_OperationNumControlOutputs(oper));
+  TF_OperationGetControlOutputs(oper, control_outputs.data(),
+                                control_outputs.size());
+  return control_outputs;
+}
+
 std::vector<const char*> TF_OperationOutputConsumers_wrapper(
     TF_Output oper_out) {
   int num_consumers = TF_OperationOutputNumConsumers(oper_out);

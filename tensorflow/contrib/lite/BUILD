@@ -89,6 +89,7 @@ cc_library(
     hdrs = [
         "builtin_op_data.h",
     ],
+    deps = [":context"],
 )
 
 cc_library(

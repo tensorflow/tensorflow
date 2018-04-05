@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include "tensorflow/python/platform/base.i"
+
 %ignore "";
 
 %rename("%s") TFE_NewContext;

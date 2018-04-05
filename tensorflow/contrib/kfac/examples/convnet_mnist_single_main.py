@@ -14,44 +14,26 @@
 # ==============================================================================
 r"""Train a ConvNet on MNIST using K-FAC.
 
-See convnet.py for details.
+Train on single machine. See `convnet.train_mnist_single_machine` for details.
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-import sys
 
+from absl import flags
 import tensorflow as tf
 
 from tensorflow.contrib.kfac.examples import convnet
 
-FLAGS = None
+FLAGS = flags.FLAGS
+flags.DEFINE_string("data_dir", "/tmp/mnist", "local mnist dir")
 
 
-def main(argv):
-  _ = argv
-
-  if FLAGS.num_towers > 1:
-    convnet.train_mnist_multitower(
-        FLAGS.data_dir, num_epochs=200, num_towers=FLAGS.num_towers)
-  else:
-    convnet.train_mnist_single_machine(FLAGS.data_dir, num_epochs=200)
+def main(unused_argv):
+  convnet.train_mnist_single_gpu(FLAGS.data_dir, num_epochs=200)
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      "--data_dir",
-      type=str,
-      default="/tmp/mnist",
-      help="Directory to store dataset in.")
-  parser.add_argument(
-      "--num_towers",
-      type=int,
-      default=1,
-      help="Number of CPUs to split minibatch across.")
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.app.run(main=main)
