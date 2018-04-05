@@ -748,16 +748,16 @@ There are three possible workarounds or solutions:
    to which tfdbg dumps the debug data. You can use it to let tfdbg dump the
    debug data on a disk with larger free space. For example:
 
-   ``` python
-   # For LocalCLIDebugWrapperSession
-   sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
+```python
+# For LocalCLIDebugWrapperSession
+sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
 
-   # For LocalCLIDebugHook
-   hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
-   ```
-
+# For LocalCLIDebugHook
+hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
+```
    Make sure that the directory pointed to by dump_root is empty or nonexistent.
-   tfdbg cleans up the dump directories before exiting.
+   `tfdbg` cleans up the dump directories before exiting.
+
 *  Reduce the batch size used during the runs.
 *  Use the filtering options of tfdbg's `run` command to watch only specific
    nodes in the graph. For example:
