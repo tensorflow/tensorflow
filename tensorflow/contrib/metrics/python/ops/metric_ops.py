@@ -2711,7 +2711,9 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       name=name)
 
 
-@deprecated(None, 'Please switch to tf.metrics.mean.')
+@deprecated(None,
+            'Please switch to tf.metrics.mean_absolute_error. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_mean_absolute_error(predictions,
                                   labels,
                                   weights=None,
