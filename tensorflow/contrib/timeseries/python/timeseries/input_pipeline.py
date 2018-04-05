@@ -78,6 +78,7 @@ import numpy
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 from tensorflow.contrib.timeseries.python.timeseries import model_utils
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -268,12 +269,8 @@ class NumpyReader(TimeSeriesReader):
 
   def read_full(self):
     """Returns `Tensor` versions of the full Numpy arrays."""
-    features = estimator_lib.inputs.numpy_input_fn(
-        x=self._features,
-        batch_size=1,
-        num_epochs=None,
-        queue_capacity=2,  # Each queue element is a full copy of the dataset
-        shuffle=False)()
+    features = dataset_ops.Dataset.from_tensors(
+        self._features).repeat().make_one_shot_iterator().get_next()
     # TimeSeriesInputFn expect just a batch dimension
     return {feature_name: array_ops.squeeze(feature_value, axis=0)
             for feature_name, feature_value in features.items()}

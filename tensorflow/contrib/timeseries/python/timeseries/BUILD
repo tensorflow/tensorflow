@@ -287,6 +287,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
