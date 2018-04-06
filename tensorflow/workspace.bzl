@@ -315,18 +315,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "backports.weakref-1.0rc1/src",
       build_file = clean_dep("//third_party:backports_weakref.BUILD"),
   )
-
-  tf_http_archive(
-      name = "com_github_andreif_codegen",
-      urls = [
-          "https://mirror.bazel.build/github.com/andreif/codegen/archive/1.0.tar.gz",
-          "https://github.com/andreif/codegen/archive/1.0.tar.gz",
-      ],
-      sha256 = "2dadd04a2802de27e0fe5a19b76538f6da9d39ff244036afa00c1bba754de5ee",
-      strip_prefix = "codegen-1.0",
-      build_file = clean_dep("//third_party:codegen.BUILD"),
-  )
-
+  
   filegroup_external(
       name = "org_python_license",
       licenses = ["notice"],  # Python 2.0
