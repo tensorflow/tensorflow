@@ -126,6 +126,29 @@ class VectorOfTensors {
   std::vector<Dims<4>*> all_dims_ptr_;
 };
 
+// A list of quantized tensors in a format that can be used by kernels like
+// split and concatenation.
+class VectorOfQuantizedTensors : public VectorOfTensors<uint8> {
+ public:
+  // Build with the tensors in 'tensor_list'.
+  VectorOfQuantizedTensors(const TfLiteContext& context,
+                           const TfLiteIntArray& tensor_list)
+      : VectorOfTensors<uint8>(context, tensor_list) {
+    for (int i = 0; i < tensor_list.size; ++i) {
+      TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
+      zero_point_.push_back(t->params.zero_point);
+      scale_.push_back(t->params.scale);
+    }
+  }
+
+  const float* scale() const { return scale_.data(); }
+  const int32* zero_point() const { return zero_point_.data(); }
+
+ private:
+  std::vector<int32> zero_point_;
+  std::vector<float> scale_;
+};
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_

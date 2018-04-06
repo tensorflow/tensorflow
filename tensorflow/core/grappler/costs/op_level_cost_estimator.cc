@@ -459,11 +459,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   Costs costs;
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
-  if (compute_memory_overlap_) {
-    costs.execution_time = std::max(compute_cost, memory_cost);
-  } else {
-    costs.execution_time = compute_cost + memory_cost;
-  }
+  CombineCostsAndUpdateExecutionTime(&costs);
   return costs;
 }
 
@@ -1373,6 +1369,15 @@ Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
   costs.inaccurate = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
+}
+
+void OpLevelCostEstimator::CombineCostsAndUpdateExecutionTime(
+    Costs* costs) const {
+  if (compute_memory_overlap_) {
+    costs->execution_time = std::max(costs->compute_time, costs->memory_time);
+  } else {
+    costs->execution_time = costs->compute_time + costs->memory_time;
+  }
 }
 
 }  // end namespace grappler

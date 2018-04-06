@@ -431,7 +431,8 @@ bool ChooseQuantizationForOperatorOutput(
       (op.type == OperatorType::kSpaceToDepth) ||
       (op.type == OperatorType::kTensorFlowReshape) ||
       (op.type == OperatorType::kTensorFlowSplit) ||
-      (op.type == OperatorType::kConcatenation)) {
+      (op.type == OperatorType::kConcatenation &&
+       model->flags.change_concat_input_ranges())) {
     int data_input_index = 0;
     if (op.type == OperatorType::kTensorFlowSplit) {
       data_input_index = 1;

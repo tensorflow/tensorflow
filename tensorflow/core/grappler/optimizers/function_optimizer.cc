@@ -36,8 +36,11 @@ namespace {
 
 class FunctionInliningContext {
  public:
-  explicit FunctionInliningContext(const GrapplerItem& item)
-      : library_(&item.graph.library()), functions_(InliningCandidates(item)) {}
+  explicit FunctionInliningContext(const GrapplerItem& item,
+                                   RewriterConfig::Toggle opt_level)
+      : library_(&item.graph.library()),
+        opt_level_(opt_level),
+        functions_(InliningCandidates(item)) {}
 
   const FunctionDefLibrary& Library() const { return *library_; }
 
@@ -59,13 +62,9 @@ class FunctionInliningContext {
     std::unordered_map<string, const FunctionDef*> functions;
     for (const FunctionDef& func : item.graph.library().function()) {
       // Don't inline functions marked as noinline
-      if (func.attr().count("_noinline") != 0) {
-        continue;
-      }
-      // Don't touch anything marked XLA to prevent XLA failures further down
-      // the road.
-      if (func.attr().count("_XlaCompile") > 0 &&
-          func.attr().at("_XlaCompile").b()) {
+      if (func.attr().count("_noinline") != 0 &&
+          func.attr().at("_noinline").b() &&
+          opt_level_ != RewriterConfig::AGGRESSIVE) {
         continue;
       }
       // Can't create IdentityN nodes with no input or output: skip these
@@ -80,6 +79,7 @@ class FunctionInliningContext {
   }
 
   const FunctionDefLibrary* library_;
+  RewriterConfig::Toggle opt_level_;
   std::unordered_map<string, const FunctionDef*> functions_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionInliningContext);
@@ -206,6 +206,10 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       TF_RETURN_IF_ERROR(InlineFunction(func_body_node, *func_body_node_func,
                                         ctx, optimized_graph));
     } else {
+      // Annotate the node with the function attributes.
+      for (const auto& attr : func.attr()) {
+        func_body_node.mutable_attr()->insert(attr);
+      }
       // Move the node to the main graph
       optimized_graph->add_node()->Swap(&func_body_node);
     }
@@ -367,7 +371,7 @@ Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
 
 Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
-  FunctionInliningContext function_inlining_ctx(item);
+  FunctionInliningContext function_inlining_ctx(item, opt_level_);
 
   // Nothing to do here.
   if (!function_inlining_ctx.HasInlinedFunctions()) {

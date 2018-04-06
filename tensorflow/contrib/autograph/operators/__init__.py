@@ -22,3 +22,8 @@ closures for the body.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+# TODO(mdan): Add a container for implementation-specific toggles (throughout).
+
+from tensorflow.contrib.autograph.operators.control_flow import for_loop
+from tensorflow.contrib.autograph.operators.control_flow import while_loop

@@ -21,6 +21,17 @@ message ProfileOptions {
   // next-field: 2
 }
 
+message ToolRequestOptions {
+  // Required formats for the tool, it should be one of "json", "proto", "raw"
+  // etc. If not specified (backward compatible), use default format, i.e. most
+  // tools use json format.
+  string output_formats = 2;
+
+  // Whether save the result directly to repository or pass it back to caller.
+  // Default to false for backward compatibilities.
+  bool save_to_repo = 3;
+}
+
 message ProfileRequest {
   // In future, the caller will be able to customize when profiling starts and
   // stops. For now, it collects `duration_ms` milliseconds worth of data.
@@ -30,8 +41,11 @@ message ProfileRequest {
   // events.
   uint64 max_events = 2;
 
-  // required profiling tools name such as "input_pipeline_analyzer" etc
+  // Required profiling tools name such as "input_pipeline_analyzer" etc
   repeated string tools = 3;
+
+  // Specifies the requirement for each tools.
+  map<string, ToolRequestOptions> tool_options = 8;
 
   // Optional profiling options that control how a TF session will be profiled.
   ProfileOptions opts = 4;
@@ -43,10 +57,14 @@ message ProfileRequest {
   // The user provided profile session identifier.
   string session_id = 6;
 
+  // The hostname of system where the profile should happen.
+  // We use it as identifier in part of our output filename.
+  string host_name = 7;
+
   // In future, the caller will indicate which TF session is being profiled, and
   // only data relating to that program will be returned. For now, we assume
   // all activity during the profiling period is relevant.
-  // next-field: 7
+  // next-field: 9
 }
 
 message ProfileToolData {

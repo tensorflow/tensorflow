@@ -629,15 +629,6 @@ void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
   TF_GraphSetTensorShape(graph, output, dims.data(), dims.size(), status);
 }
 
-std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
-                                                    TF_Output output,
-                                                    int num_dims,
-                                                    TF_Status* status) {
-  std::vector<int64_t> dims(num_dims);
-  TF_GraphGetTensorShape(graph, output, dims.data(), num_dims, status);
-  return dims;
-}
-
 std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
     TF_ImportGraphDefResults* results) {
   int num_missing_unused_input_mappings;

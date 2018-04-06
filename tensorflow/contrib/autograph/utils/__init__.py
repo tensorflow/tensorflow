@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.autograph.utils.builtins import dynamic_builtin
-from tensorflow.contrib.autograph.utils.builtins import dynamic_dataset
-from tensorflow.contrib.autograph.utils.builtins import dynamic_for_cond
 from tensorflow.contrib.autograph.utils.builtins import dynamic_print
 from tensorflow.contrib.autograph.utils.builtins import dynamic_range
 from tensorflow.contrib.autograph.utils.context_managers import control_dependency_on_returns
@@ -28,7 +26,6 @@ from tensorflow.contrib.autograph.utils.misc import alias_tensors
 from tensorflow.contrib.autograph.utils.multiple_dispatch import dynamic_is
 from tensorflow.contrib.autograph.utils.multiple_dispatch import dynamic_is_not
 from tensorflow.contrib.autograph.utils.multiple_dispatch import run_cond
-from tensorflow.contrib.autograph.utils.multiple_dispatch import run_while
 from tensorflow.contrib.autograph.utils.py_func import wrap_py_func
 from tensorflow.contrib.autograph.utils.tensor_list import dynamic_list_append
 from tensorflow.contrib.autograph.utils.testing import fake_tf

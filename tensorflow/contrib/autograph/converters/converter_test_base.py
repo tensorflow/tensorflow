@@ -21,6 +21,7 @@ from __future__ import print_function
 import contextlib
 import imp
 
+from tensorflow.contrib.autograph import operators
 from tensorflow.contrib.autograph import utils
 from tensorflow.contrib.autograph.pyct import compiler
 from tensorflow.contrib.autograph.pyct import context
@@ -77,6 +78,7 @@ class TestCase(test.TestCase):
       result.tf = self.make_fake_mod('fake_tf', *symbols)
       result.autograph_utils = utils
       result.autograph_api = self.make_fake_mod('fake_api', converted_call)
+      result.__dict__['__ops'] = operators
       yield result
     except Exception:  # pylint:disable=broad-except
       if source is None:
