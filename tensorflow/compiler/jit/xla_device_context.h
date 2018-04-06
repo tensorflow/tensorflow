@@ -57,11 +57,18 @@ class XlaTransferManager {
   perftools::gputools::Stream* stream() const { return stream_; }
 
  private:
+  Status TransferLiteralToDevice(const Tensor& host_tensor,
+                                 Tensor* device_tensor) const;
+  Status TransferLiteralFromDevice(Tensor* host_tensor,
+                                   const Tensor& device_tensor) const;
+
   // Stream obtained from a Device, used to transfer tensors between
   // CPU and device.
   perftools::gputools::Stream* stream_;
   // For the underlying memory allocator and XLA's TransferManager.
   xla::LocalClient* client_;
+  // Transfer manager, for marshalling data to and from the device.
+  xla::TransferManager* transfer_manager_;
   // True if we must use XLA's TransferManager for correct device transfers.
   bool transfer_as_literal_;
 };
