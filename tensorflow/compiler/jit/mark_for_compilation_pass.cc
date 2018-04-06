@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/public/version.h"
 
@@ -432,6 +433,9 @@ string DescribeCycle(const GraphCycles& cycles, const Graph& graph, int src,
   }
 
   auto node_name = [&cycles, &graph](int node_id) {
+    if (!FastBoundsCheck(node_id, graph.num_node_ids())) {
+      return string("(null)");
+    }
     auto* node = graph.FindNodeId(node_id);
     if (node == nullptr) {
       return string("(null)");
