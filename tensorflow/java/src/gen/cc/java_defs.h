@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -230,12 +230,12 @@ class Javadoc {
     return Javadoc(brief);
   }
   const string& brief() const { return brief_; }
-  const string& details() const { return description_; }
-  Javadoc& details(const string description) {
-    description_ = description;
+  const string& details() const { return details_; }
+  Javadoc& details(const string& details) {
+    details_ = details;
     return *this;
   }
-  const std::list<std::pair<string, string>> tags() const { return tags_; }
+  const std::list<std::pair<string, string>>& tags() const { return tags_; }
   Javadoc& add_tag(const string& tag, const string& text) {
     tags_.push_back(std::make_pair(tag, text));
     return *this;
@@ -246,7 +246,7 @@ class Javadoc {
 
  private:
   string brief_;
-  string description_;
+  string details_;
   std::list<std::pair<string, string>> tags_;
 
   explicit Javadoc(const string& brief) : brief_(brief) {}

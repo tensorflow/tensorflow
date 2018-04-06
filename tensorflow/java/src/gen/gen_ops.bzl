@@ -32,50 +32,52 @@ def tf_java_op_gen_srcjar(name,
                           api_def_srcs=[],
                           visibility=["//tensorflow/java:__pkg__"]):
 
-  gen_tools = []
   gen_cmds = ["rm -rf $(@D)"]  # Always start from fresh when generating source files
   srcs = api_def_srcs[:]
 
-  # Construct an op generator binary for each ops library.
+  if not api_def_srcs:
+    api_def_args_str = ","
+  else:
+    api_def_args = []
+    for api_def_src in api_def_srcs:
+      # Add directory of the first ApiDef source to args.
+      # We are assuming all ApiDefs in a single api_def_src are in the
+      # same directory.
+      api_def_args.append(
+          "$$(dirname $$(echo $(locations " + api_def_src +
+          ") | cut -d\" \" -f1))")
+    api_def_args_str = ",".join(api_def_args)
+
+  gen_tool_deps = [":java_op_gen_lib"]
   for ops_lib in ops_libs:
-    gen_lib = ops_lib[:ops_lib.rfind("_")]
-    out_gen_tool = out_dir + ops_lib + "_gen_tool"
+    gen_tool_deps.append(ops_libs_pkg + ":" + ops_lib + "_op_lib")
 
-    if not api_def_srcs:
-      api_def_args_str = ","
-    else:
-      api_def_args = []
-      for api_def_src in api_def_srcs:
-        # Add directory of the first ApiDef source to args.
-        # We are assuming all ApiDefs in a single api_def_src are in the
-        # same directory.
-        api_def_args.append(
-            " $$(dirname $$(echo $(locations " + api_def_src +
-            ") | cut -d\" \" -f1))")
-      api_def_args_str = ",".join(api_def_args)
+  tf_cc_binary(
+      name=gen_tool,
+      srcs=[
+          "src/gen/cc/op_gen_main.cc",
+      ],
+      copts=tf_copts(),
+      linkopts=["-lm"],
+      linkstatic=1,  # Faster to link this one-time-use binary dynamically
+      deps = gen_tool_deps)
 
-    tf_cc_binary(
-        name=out_gen_tool,
-        copts=tf_copts(),
-        linkopts=["-lm"],
-        linkstatic=1,  # Faster to link this one-time-use binary dynamically
-        deps=[gen_tool, ops_libs_pkg + ":" + ops_lib + "_op_lib"])
-
-    gen_tools += [":" + out_gen_tool]
-    gen_cmds += ["$(location :" + out_gen_tool + ")" +
-                 " --output_dir=$(@D)/" + out_src_dir +
-                 " --lib_name=" + gen_lib +
-                 " --base_package=" + gen_base_package +
-                 " " + api_def_args_str]
+  gen_cmds += ["$(location :" + gen_tool + ")" +
+               " --output_dir=$(@D)/" + out_src_dir +
+               " --base_package=" + gen_base_package +
+               " --api_dirs=" + api_def_args_str]
 
   # Generate a source archive containing generated code for these ops.
   gen_srcjar = out_dir + name + ".srcjar"
   gen_cmds += ["$(location @local_jdk//:jar) cMf $(location :" + gen_srcjar + ") -C $(@D) src"]
-  gen_tools += ["@local_jdk//:jar"] + ["@local_jdk//:jdk"]
-  gen_tools += tf_binary_additional_srcs()
+
   native.genrule(
       name=name,
       srcs=srcs,
       outs=[gen_srcjar],
-      tools=gen_tools,
-      cmd="&&".join(gen_cmds))
+      tools=[
+          "@local_jdk//:jar",
+          "@local_jdk//:jdk",
+          gen_tool
+      ] + tf_binary_additional_srcs(),
+      cmd=" && ".join(gen_cmds))
