@@ -685,11 +685,10 @@ def import_graph_def(graph_def,
                      ', '.join(x.name for x in op._input_types))))
         # pylint: enable=protected-access
 
-        if not g._is_function(op.type):  # pylint: disable=protected-access
-          # Execute shape inference for this op.
-          # NOTE(mrry): If the graph contains a cycle, the full shape
-          # information may not be available for this op's inputs.
-          ops.set_shapes_for_outputs(op)
+        # Execute shape inference for this op.
+        # NOTE(mrry): If the graph contains a cycle, the full shape
+        # information may not be available for this op's inputs.
+        ops.set_shape_and_handle_data_for_outputs(op)
         # For nodes with _output_shapes set, set the output shapes.
         if '_output_shapes' in op.node_def.attr:
           for i, output in enumerate(op.outputs):
