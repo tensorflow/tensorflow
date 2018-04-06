@@ -548,7 +548,22 @@ XlaOp XlaBuilder::ConcatInDim(tensorflow::gtl::ArraySlice<XlaOp> operands,
 
 XlaOp XlaBuilder::Pad(const XlaOp& operand, const XlaOp& padding_value,
                       const PaddingConfig& padding_config) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& padding_value_shape,
+                        GetShape(padding_value));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferPadShape(operand_shape, padding_value_shape,
+                                      padding_config));
+
+    *instr.mutable_padding_config() = padding_config;
+
+    return AddInstruction(std::move(instr), HloOpcode::kPad,
+                          {operand, padding_value});
+  });
 }
 
 XlaOp XlaBuilder::Reshape(const XlaOp& operand,
