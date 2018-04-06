@@ -27,6 +27,7 @@ namespace tensorflow {
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
+using shape_inference::UnchangedShape;
 
 namespace {
 
@@ -338,6 +339,50 @@ REGISTER_OP("Pack")
       while (index < rank) dims.push_back(c->Dim(cur, index++));
 
       c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    });
+
+REGISTER_OP("DeepCopy")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetIsStateful()
+    .SetShapeFn(UnchangedShape);
+
+REGISTER_OP("InplaceUpdate")
+    .Input("x: T")
+    .Input("i: int32")
+    .Input("v: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetShapeFn(UnchangedShape);
+
+REGISTER_OP("InplaceAdd")
+    .Input("x: T")
+    .Input("i: int32")
+    .Input("v: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetShapeFn(UnchangedShape);
+
+REGISTER_OP("InplaceSub")
+    .Input("x: T")
+    .Input("i: int32")
+    .Input("v: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetShapeFn(UnchangedShape);
+
+REGISTER_OP("Empty")
+    .Input("shape: int32")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("init: bool = false")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
       return Status::OK();
     });
 

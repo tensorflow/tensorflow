@@ -1616,7 +1616,10 @@ py_library(
 
 py_library(
     name = "array_ops",
-    srcs = ["ops/array_ops.py"],
+    srcs = [
+        "ops/array_ops.py",
+        "ops/inplace_ops.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops_gen",
