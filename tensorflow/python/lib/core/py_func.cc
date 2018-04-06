@@ -166,7 +166,7 @@ bool IsSingleNone(PyObject* obj) {
 // Retrieves a Tensor from `eager_tensor` and stores it in `output_tensor`.
 tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
                                                 const Tensor** output_tensor) {
-  return EagerTensor_Handle(eager_tensor)->Tensor(output_tensor);
+  return EagerTensor_Handle(eager_tensor)->handle->Tensor(output_tensor);
 }
 
 // Calls the registered py function through the trampoline.

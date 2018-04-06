@@ -69,7 +69,10 @@ py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],
+    tags = [
+        "no-internal-py3",
+        "no_oss",
+    ],
     deps = [
         ":lite",
         ":op_hint",
@@ -81,14 +84,38 @@ py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_binary(
+    name = "convert_saved_model",
+    srcs = ["convert_saved_model.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lite",
+        "//tensorflow/contrib/saved_model:saved_model_py",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python/tools:freeze_graph_lib",
+    ],
+)
+
+py_test(
+    name = "convert_saved_model_test",
+    srcs = ["convert_saved_model_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":convert_saved_model",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
+        "//tensorflow/python/saved_model",
+    ],
+)
+
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "tf_lite_py_pip",
+    deps = [
+        ":convert_saved_model",
+    ],
 )

@@ -317,6 +317,7 @@ class InferenceContext {
     input_tensors_as_shapes_ = input_tensors_as_shapes;
   }
 
+  ShapeHandle output(int64 idx) const { return outputs_[idx]; }
   void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
   Status set_output(StringPiece output_name,
                     const std::vector<ShapeHandle>& shapes);

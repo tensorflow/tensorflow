@@ -5,18 +5,6 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_binary(
     name = "create_python_api",
     srcs = ["create_python_api.py"],
@@ -105,6 +93,7 @@ genrule(
         "api/logging/__init__.py",
         "api/losses/__init__.py",
         "api/manip/__init__.py",
+        "api/math/__init__.py",
         "api/metrics/__init__.py",
         "api/nn/__init__.py",
         "api/nn/rnn_cell/__init__.py",
@@ -127,6 +116,7 @@ genrule(
         "api/test/__init__.py",
         "api/train/__init__.py",
         "api/train/queue_runner/__init__.py",
+        "api/user_ops/__init__.py",
     ],
     cmd = "$(location create_python_api) $(OUTS)",
     tools = ["create_python_api"],

@@ -170,6 +170,30 @@ class ArgScopeTest(test.TestCase):
         self.assertTupleEqual(args, func1_args)
         self.assertDictEqual(kwargs, func1_kwargs)
 
+  def testNestedArgScopeObjectCreatedOutsideScopeOverridesArgScope(self):
+
+    def get_scope_object():
+      with arg_scope([func1], a=1, b=None, c=[1]) as sc:
+        return sc
+
+    scope_object = get_scope_object()
+    with arg_scope([func1], b=2, d=10):
+      with arg_scope(scope_object):
+        args, kwargs = func1(0)
+        self.assertTupleEqual(args, (0,))
+        self.assertDictEqual(kwargs, {'a': 1, 'b': None, 'c': [1]})
+
+  def testArgScopeObjectCreatedWithinScopeInheritsArgScope(self):
+    def get_scope_object():
+      with arg_scope([func1], a=1, b=None, c=[1]) as sc:
+        return sc
+
+    with arg_scope([func1], b=2, d=10):
+      with arg_scope(get_scope_object()):
+        args, kwargs = func1(0)
+        self.assertTupleEqual(args, (0,))
+        self.assertDictEqual(kwargs, {'a': 1, 'b': None, 'c': [1], 'd': 10})
+
   def testSharedArgScope(self):
     func1_args = (0,)
     func1_kwargs = {'a': 1, 'b': None, 'c': [1]}

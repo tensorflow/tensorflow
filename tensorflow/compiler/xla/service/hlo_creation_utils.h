@@ -28,73 +28,73 @@ namespace xla {
 
 // Creates a binary HLO instruction and adds it to the computation containing
 // `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
-StatusOr<HloInstruction*> CreateBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
-                                          HloInstruction* rhs);
+StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
+                                        HloInstruction* rhs);
 
 // Creates a pad HLO instruction and adds it to the computation containing
 // `operand` and `padding_value` (`operand` and `padding_value` must be in the
 // same computation).
-StatusOr<HloInstruction*> CreatePadHlo(HloInstruction* operand,
-                                       HloInstruction* padding_value,
-                                       const PaddingConfig& padding_config);
+StatusOr<HloInstruction*> MakePadHlo(HloInstruction* operand,
+                                     HloInstruction* padding_value,
+                                     const PaddingConfig& padding_config);
 
 // Creates a slice HLO instruction and adds it to the computation containing
 // `operand`.
-StatusOr<HloInstruction*> CreateSliceHlo(
+StatusOr<HloInstruction*> MakeSliceHlo(
     HloInstruction* operand, tensorflow::gtl::ArraySlice<int64> start_indices,
     tensorflow::gtl::ArraySlice<int64> limit_indices,
     tensorflow::gtl::ArraySlice<int64> strides);
 
 // Creates a convolution HLO instruction and adds it to the computation
 // containing `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
-StatusOr<HloInstruction*> CreateConvolveHlo(
+StatusOr<HloInstruction*> MakeConvolveHlo(
     HloInstruction* lhs, HloInstruction* rhs, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
 // `operand`.
-StatusOr<HloInstruction*> CreateTransposeHlo(
+StatusOr<HloInstruction*> MakeTransposeHlo(
     HloInstruction* operand, tensorflow::gtl::ArraySlice<int64> dimensions);
 
 // Creates a reshape HLO instruction and adds it to the computation containing
 // `operand`.
-StatusOr<HloInstruction*> CreateReshapeHlo(const Shape& result_shape,
-                                           HloInstruction* operand);
+StatusOr<HloInstruction*> MakeReshapeHlo(const Shape& result_shape,
+                                         HloInstruction* operand);
 
-StatusOr<HloInstruction*> CreateReshapeHlo(
+StatusOr<HloInstruction*> MakeReshapeHlo(
     tensorflow::gtl::ArraySlice<int64> result_shape_dim_bounds,
     HloInstruction* operand);
 
 // Creates a dynamic-slice HLO instruction and adds it to the computation
 // containing `operand` and `start_indices` (`operand` and `start_indices` must
 // be in the same computation).
-StatusOr<HloInstruction*> CreateDynamicSliceHlo(
+StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, HloInstruction* start_indices,
     tensorflow::gtl::ArraySlice<int64> slice_sizes);
 
 // Creates a dynamic-update-slice HLO instruction and adds it to the computation
 // containing `operand`, `update` and `start_indices` (`operand`, `update` and
 // `start_indices` must be in the same computation).
-StatusOr<HloInstruction*> CreateDynamicUpdateSliceHlo(
+StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
     HloInstruction* operand, HloInstruction* update,
     HloInstruction* start_indices);
 
 // Creates a broadcast HLO instruction and adds it to the computation containing
 // `operand`.
-StatusOr<HloInstruction*> CreateBroadcastHlo(
+StatusOr<HloInstruction*> MakeBroadcastHlo(
     HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions,
     tensorflow::gtl::ArraySlice<int64> result_shape_bounds);
 
 // Creates a GetTupleElement HLO instruction and adds it to the computation
 // containing `operand`.
-StatusOr<HloInstruction*> CreateGetTupleElementHlo(HloInstruction* operand,
-                                                   int64 index);
+StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
+                                                 int64 index);
 
 // Creates a Concatenate HLO instruction and adds it to the computation
 // containing `operands` (`operands` must be non-empty and every element must be
 // contained in the same computation).
-StatusOr<HloInstruction*> CreateConcatHlo(
+StatusOr<HloInstruction*> MakeConcatHlo(
     tensorflow::gtl::ArraySlice<HloInstruction*> operands, int64 dimension);
 
 // -----------------------------------------------------------------------------
@@ -117,16 +117,6 @@ StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n);
 // For instance if `operand` has shape f32[200,9,7] and expanded_dims is
 // {2,5,20} the result is `operand` reshaped to [2,5,20,9,7].
 StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
-    HloInstruction* operand, tensorflow::gtl::ArraySlice<int64> expanded_dims);
-
-// Expands (via reshape) the last (logical) dimension of `operand` into a
-// sequence of `expanded_dims` dimensions.  `operand` must at least be of rank 1
-// and the number of elements in its last dimension must be equal to the
-// product of `expanded_dims`.
-//
-// For instance if `operand` has shape f32[9,7,200] and expanded_dims is
-// {2,5,20} the result is `operand` reshaped to [9,7,2,5,20].
-StatusOr<HloInstruction*> ExpandLastDimIntoNDims(
     HloInstruction* operand, tensorflow::gtl::ArraySlice<int64> expanded_dims);
 
 // Elides (via reshape) a set of degenerate dimensions (dimensions containing

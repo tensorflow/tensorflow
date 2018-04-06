@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -207,9 +208,9 @@ XLA_TEST_P(ReshapeTest, Trivial3x1) {
 //
 // Splits an empty vector into an empty matrix.
 XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(R1ToR2_0_To_2x0)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateR1<float>({});
-  ComputationDataHandle parameter;
+  XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   builder.Reshape(/*operand=*/parameter, /*dimensions=*/{0},
@@ -221,10 +222,10 @@ XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(R1ToR2_0_To_2x0)) {
 
 // Splits a vector into a matrix.
 XLA_TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto input_literal =
       Literal::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
-  ComputationDataHandle parameter;
+  XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   builder.Reshape(/*operand=*/parameter, /*dimensions=*/{0},
@@ -241,9 +242,9 @@ XLA_TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
 //
 // Transposes a 2x0 array to a 0x2 array.
 XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Reshape0x2To2x0)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateFromArray(Array2D<float>(0, 2));
-  ComputationDataHandle parameter;
+  XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   builder.Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
@@ -255,10 +256,10 @@ XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Reshape0x2To2x0)) {
 
 // Transposes a 2-dimensional row vector to a column vector.
 XLA_TEST_P(ReshapeTest, ReshapeRowToCol) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto simple = MakeLinspaceArray2D(1.0f, 3.0f, 1, 3);
   auto input_literal = Literal::CreateFromArray(*simple);
-  ComputationDataHandle parameter;
+  XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   builder.Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
@@ -272,10 +273,10 @@ XLA_TEST_P(ReshapeTest, ReshapeRowToCol) {
 
 // Transposes a 2-dimensional array.
 XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
   auto input_literal = Literal::CreateFromArray(*a4x3);
-  ComputationDataHandle parameter;
+  XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   builder.Reshape(/*operand=*/parameter, /*dimensions=*/{1, 0},
@@ -291,11 +292,11 @@ XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
 // does not handle zero-sized shapes correctly. Failed last on 2017-11-30
 // with an incorrect result rank.
 //
-// Transposes a 0x4 array with ComputationBuilder::Trans.
+// Transposes a 0x4 array with XlaBuilder::Transpose.
 XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Transpose0x4)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateFromArray(Array2D<float>(0, 4));
-  ComputationDataHandle parameter;
+  XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   builder.Transpose(parameter, {1, 0});
@@ -306,10 +307,10 @@ XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Transpose0x4)) {
 
 // Transposes a 2-dimensional array with ComputationBuilder::Trans.
 XLA_TEST_P(ReshapeTest, Transpose4x3) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
   auto input_literal = Literal::CreateFromArray(*a4x3);
-  ComputationDataHandle parameter;
+  XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   builder.Transpose(parameter, {1, 0});
@@ -327,9 +328,9 @@ XLA_TEST_P(ReshapeTest, Transpose4x3) {
 // Reshapes an empty 2-dimensional array with dimensions that are not just a
 // rearrangement of the originals (split), but no reordering (no shuffle).
 XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(ReshapeSplitNoShuffleZeroElements)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateFromArray(Array2D<float>(6, 0));
-  ComputationDataHandle parameter;
+  XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   builder.Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},

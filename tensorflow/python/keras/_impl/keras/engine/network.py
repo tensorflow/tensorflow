@@ -92,7 +92,9 @@ class Network(base_layer.Layer):
     self._expects_training_arg = False
 
     self.supports_masking = False
-    self.optimizer = None
+    if not hasattr(self, 'optimizer'):
+      # Don't reset optimizer if already set.
+      self.optimizer = None
 
     # Private attributes to implement compatibility with Layer.
     self._updates = []  # Used in symbolic mode only.
@@ -115,6 +117,7 @@ class Network(base_layer.Layer):
     self._inbound_nodes = []
 
   def _init_graph_network(self, inputs, outputs, name=None):
+    self._uses_inputs_arg = True
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, (list, tuple)):
       self.inputs = list(inputs)  # Tensor or list of tensors.
@@ -187,17 +190,6 @@ class Network(base_layer.Layer):
     # built.
     self.built = True
     self._is_graph_network = True
-
-    # # List of initial layers (1 to 1 mapping with self.inputs,
-    # # hence the same layer might appear twice)
-    # self._input_layers = []
-    # self._input_layers_node_indices = []
-    # self._input_layers_tensor_indices = []
-    # # list of layers (1 to 1 mapping with self.inputs,
-    # # hence the same layer might appear twice)
-    # self._output_layers = []
-    # self._output_layers_node_indices = []
-    # self._output_layers_tensor_indices = []
 
     self._input_layers = []
     self._output_layers = []
@@ -283,11 +275,15 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
-    if 'training' in tf_inspect.getargspec(self.call).args:
+    call_args = tf_inspect.getargspec(self.call).args
+    if 'training' in call_args:
       self._expects_training_arg = True
     else:
       self._expects_training_arg = False
-
+    if 'inputs' in call_args:
+      self._uses_inputs_arg = True
+    else:
+      self._uses_inputs_arg = False
     self.outputs = None
     self.inputs = None
     self.built = False
@@ -1223,9 +1219,6 @@ class Network(base_layer.Layer):
     Returns:
         A JSON string.
     """
-    if not self._is_graph_network:
-      raise NotImplementedError
-
     def get_json_type(obj):
       # If obj is any numpy type
       if type(obj).__module__ == np.__name__:
@@ -1260,9 +1253,6 @@ class Network(base_layer.Layer):
     Raises:
         ImportError: if yaml module is not found.
     """
-    if not self._is_graph_network:
-      raise NotImplementedError
-
     if yaml is None:
       raise ImportError('Requires yaml module installed.')
     return yaml.dump(self._updated_config(), **kwargs)

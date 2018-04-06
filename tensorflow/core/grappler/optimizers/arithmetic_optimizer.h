@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -55,17 +54,27 @@ class ArithmeticOptimizer : public GraphOptimizer {
 
   // Granular control for arithmetic optimizer stages
   struct ArithmeticOptimizerOptions {
-    bool combine_add_to_addn = true;
+    // TODO(ezhulenev): flag do disable TrySimplifyAndReplaceUses in tests.
+    // Remove when all optimizers will be migrated to separate stages.
+    bool enable_try_simplify_and_replace = true;
+    bool combine_add_to_addn = false;
     bool hoist_common_factor_out_of_aggregation = true;
-    bool remove_inverse_transpose = true;
+    bool remove_identity_transpose = true;
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
+    bool remove_negation = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
     static ArithmeticOptimizerOptions Default(
         RewriterConfig::Toggle opt_level) {
-      return ArithmeticOptimizerOptions();
+      ArithmeticOptimizerOptions options;
+      // TODO(ezhulenev): enable combine_add_to_addn by default after 1.8
+      // release cut
+      if (opt_level == RewriterConfig::AGGRESSIVE) {
+        options.combine_add_to_addn = true;
+      }
+      return options;
     }
   };
 
@@ -90,13 +99,9 @@ class ArithmeticOptimizer : public GraphOptimizer {
   // Dedup redundant nodes in the graph.
   void DedupComputations();
 
-  // Fix frame dependencies by adding control dependencies from old_input to
-  // nodes in new_nodes_for_control_dep, and update frame_map for all nodes in
-  // new_nodes.
-  void AddFrameControlDeps(const NodeDef* old_node,
-                           const std::vector<NodeDef*>& new_nodes,
-                           const string& source_for_ctrl_dep,
-                           const std::vector<NodeDef*>& sinks_for_control_dep);
+  // Forward the control dependencies anchored on src_nodes to the target_nodes.
+  void ForwardControlDependencies(NodeDef* target_node,
+                                  const std::vector<const NodeDef*>& src_nodes);
 
   // Runs peep-hole optimizations on `optimized_graph`, e.g., removing inverse
   // transposes.
@@ -125,7 +130,6 @@ class ArithmeticOptimizer : public GraphOptimizer {
   bool fetch_nodes_known_ = false;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
-  FrameMap frame_map_;
   std::unique_ptr<GraphProperties> graph_properties_;
   GraphDef* optimized_graph_ = nullptr;  // Not owned.
 };

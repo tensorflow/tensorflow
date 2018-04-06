@@ -31,6 +31,8 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training import checkpointable
+from tensorflow.python.training.saver import BaseSaverBuilder
 
 _uid_counter = 0
 _uid_lock = threading.Lock()
@@ -44,7 +46,7 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class Iterator(iterator_ops.EagerIterator):
+class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
   NOTE: Unlike the iterator created by the
@@ -96,7 +98,6 @@ class Iterator(iterator_ops.EagerIterator):
             f=remote_fn,
             target_device=target,
             buffer_size=10,
-            thread_pool_size=1,
             container="",
             shared_name=_generate_shared_name("function_buffer_resource"))
         self._buffer_resource_deleter = resource_variable_ops.EagerResourceDeleter(  # pylint: disable=line-too-long
@@ -106,13 +107,44 @@ class Iterator(iterator_ops.EagerIterator):
   def _next_internal(self):
     """Returns a nested structure of `tf.Tensor`s containing the next element.
     """
-    if self._buffer_resource_handle is not None:
-      with ops.device(self._device):
-        ret = prefetching_ops.function_buffering_resource_get_next(
-            function_buffer_resource=self._buffer_resource_handle,
-            output_types=self._flat_output_types)
-      return sparse.deserialize_sparse_tensors(
-          nest.pack_sequence_as(self._output_types, ret), self._output_types,
-          self._output_shapes, self._output_classes)
-    else:
-      return super(Iterator, self)._next_internal()
+    # This runs in sync mode as iterators use an error status to communicate
+    # that there is no more data to iterate over.
+    # TODO(b/77291417): Fix
+    with context.execution_mode(context.SYNC):
+      if self._buffer_resource_handle is not None:
+        with ops.device(self._device):
+          ret = prefetching_ops.function_buffering_resource_get_next(
+              function_buffer_resource=self._buffer_resource_handle,
+              output_types=self._flat_output_types)
+        return sparse.deserialize_sparse_tensors(
+            nest.pack_sequence_as(self._output_types, ret), self._output_types,
+            self._output_shapes, self._output_classes)
+      else:
+        return super(Iterator, self)._next_internal()
+
+  # TODO(shivaniagrawal): Expose checkpointable stateful objects from dataset
+  # attributes(potential).
+
+  class _Saveable(BaseSaverBuilder.SaveableObject):
+    """SaveableObject for saving/restoring iterator state."""
+
+    def __init__(self, iterator_resource, name):
+      serialized_iterator = gen_dataset_ops.serialize_iterator(
+          iterator_resource)
+      specs = [
+          BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
+      ]
+      # pylint: disable=protected-access
+      super(Iterator._Saveable, self).__init__(iterator_resource, specs, name)
+
+    def restore(self, restored_tensors, restored_shapes):
+      with ops.colocate_with(self.op):
+        return gen_dataset_ops.deserialize_iterator(self.op,
+                                                    restored_tensors[0])
+
+  def _gather_saveables_for_checkpoint(self):
+
+    def _saveable_factory(name):
+      return self._Saveable(self._resource, name)
+
+    return {"ITERATOR": _saveable_factory}

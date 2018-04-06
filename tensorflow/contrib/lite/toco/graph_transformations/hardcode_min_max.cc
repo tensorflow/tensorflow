@@ -223,8 +223,11 @@ bool PropagateMinMaxAmongArrays(Model* model,
     if (array.minmax) {
       CHECK(*array.minmax == *reference_minmax)
           << "Both the following arrays have minmax, and they disagree: "
-          << reference_array_name << " and " << array_name
-          << ". Expected that either only one of them would have minmax, or at "
+          << reference_array_name << " (" << reference_minmax->min << ","
+          << reference_minmax->max << ") and " << array_name << " ("
+          << array.minmax->min << "," << array.minmax->max
+          << "). Expected that either only one of them would have minmax, or "
+             "at "
              "least that they would agree.";
     } else {
       array.GetOrCreateMinMax() = *reference_minmax;
@@ -332,6 +335,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kPad:
     case OperatorType::kGather:
     case OperatorType::kTranspose:
+    case OperatorType::kMean:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
 

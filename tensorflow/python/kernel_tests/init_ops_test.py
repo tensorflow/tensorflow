@@ -618,7 +618,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
     for dtype in [dtypes.float32]:
       for kernel_size in [[3], [8], [3, 5], [2, 4], [3, 3, 3], [2, 2, 2]]:
         tol = 1e-2
-        # Check orthogonality by computing the 2-norms of the inputs and ouputs.
+        # Check orthogonality by computing the 2-norms of the inputs and outputs.
         if len(kernel_size) == 1:
           shape = [4, 32, 64]
           convolution = convolutional.conv1d
@@ -648,6 +648,30 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
               sess.run(inputs_2norm)/np.sqrt(np.prod(shape)),
               sess.run(outputs_2norm)/(np.sqrt(np.prod(shape))*np.sqrt(3.14)),
               rtol=tol, atol=tol)
+
+  def testNonuniformity(self):
+    value = 0
+    abs_value = 0
+    shape = [3, 3, 10, 10]
+    count = 70
+    tol = 1e-5
+    with self.test_session(use_gpu=True):  # as sess:
+      for i in range(count):
+        x = variable_scope.get_variable("{}".format(i), shape=shape,
+                                        initializer=
+                                        init_ops.convolutional_delta_orthogonal)
+        x.initializer.run()
+        y = x.eval()[1, 1, :, :]
+        determinant = np.linalg.det(y)
+        value += determinant
+        abs_value += np.abs(determinant)
+
+      # Check there is some variation in the signs of the determinants
+      self.assertLess(value, count - tol)
+      self.assertLess(-count + tol, value)
+      # Check all determinants have absolute value 1
+      # Compute the sum of the absolute values of 'count' determinants
+      self.assertAllClose(abs_value, count, rtol=tol, atol=tol)
 
 
 class IdentityInitializerTest(test.TestCase):

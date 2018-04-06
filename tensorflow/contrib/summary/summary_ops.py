@@ -26,7 +26,6 @@ import time
 
 import six
 
-from tensorflow.contrib.summary import gen_summary_ops
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -35,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_summary_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util

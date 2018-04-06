@@ -109,6 +109,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
   CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
                                           OperatorType::kLogSoftmax);
+  CheckSimpleOperator<TensorFlowMaximumOperator>(
+      "MAXIMUM", OperatorType::kTensorFlowMaximum);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -129,7 +131,7 @@ TEST_F(OperatorTest, BuiltinMean) {
   EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
 }
 
-TEST_F(OperatorTest, CustomCast) {
+TEST_F(OperatorTest, BuiltinCast) {
   CastOperator op;
   op.src_data_type = ArrayDataType::kFloat;
   op.dst_data_type = ArrayDataType::kUint8;

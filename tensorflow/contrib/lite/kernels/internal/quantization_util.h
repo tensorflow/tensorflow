@@ -97,6 +97,71 @@ QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
   return quantization_params;
 }
 
+// Converts a floating-point number to an integer. For all inputs x where
+// static_cast<IntOut>(x) is legal according to the C++ standard, the result
+// is identical to that cast (i.e. the result is x with its fractional part
+// truncated whenever that is representable as IntOut).
+//
+// static_cast would cause undefined behavior for the following cases, which
+// have well-defined behavior for this function:
+//
+//  1. If x is NaN, the result is zero.
+//
+//  2. If the truncated form of x is above the representable range of IntOut,
+//     the result is std::numeric_limits<IntOut>::max().
+//
+//  3. If the truncated form of x is below the representable range of IntOut,
+//     the result is std::numeric_limits<IntOut>::min().
+//
+// Note that cases #2 and #3 cover infinities as well as finite numbers.
+//
+// The range of FloatIn must include the range of IntOut, otherwise
+// the results are undefined.
+// TODO(sfeuz): Replace by absl::SafeCast once available.
+template <class IntOut, class FloatIn>
+IntOut SafeCast(FloatIn x) {
+  static_assert(!std::numeric_limits<FloatIn>::is_integer,
+                "FloatIn is integer");
+  static_assert(std::numeric_limits<IntOut>::is_integer,
+                "IntOut is not integer");
+  static_assert(std::numeric_limits<IntOut>::radix == 2, "IntOut is base 2");
+
+  // Special case NaN, for which the logic below doesn't work.
+  if (std::isnan(x)) {
+    return 0;
+  }
+
+  // Negative values all clip to zero for unsigned results.
+  if (!std::numeric_limits<IntOut>::is_signed && x < 0) {
+    return 0;
+  }
+
+  // Handle infinities.
+  if (std::isinf(x)) {
+    return x < 0 ? std::numeric_limits<IntOut>::min()
+                 : std::numeric_limits<IntOut>::max();
+  }
+
+  // Set exp such that x == f * 2^exp for some f with |f| in [0.5, 1.0),
+  // unless x is zero in which case exp == 0. Note that this implies that the
+  // magnitude of x is strictly less than 2^exp.
+  int exp = 0;
+  std::frexp(x, &exp);
+
+  // Let N be the number of non-sign bits in the representation of IntOut. If
+  // the magnitude of x is strictly less than 2^N, the truncated version of x
+  // is representable as IntOut. The only representable integer for which this
+  // is not the case is kMin for signed types (i.e. -2^N), but that is covered
+  // by the fall-through below.
+  if (exp <= std::numeric_limits<IntOut>::digits) {
+    return x;
+  }
+
+  // Handle numbers with magnitude >= 2^N.
+  return x < 0 ? std::numeric_limits<IntOut>::min()
+               : std::numeric_limits<IntOut>::max();
+}
+
 // Decompose a double multiplier into a Q0.31 int32 representation of its
 // significand, and shift representation of NEGATIVE its exponent ---
 // this is intended as a RIGHT-shift.
@@ -135,8 +200,8 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
 // Calculate the largest input that will result in a within-bounds intermediate
 // result within MultiplyByQuantizedMultiplierGreaterThanOne.  In other words,
 // it must not overflow before we reduce the value by multiplication by the
-// input multiplier.  The negative radius is used as the minimum difference
-// in Softmax.
+// input multiplier.  The negative radius is used as the minimum difference in
+// Softmax.
 int CalculateInputRadius(int input_integer_bits, int input_left_shift);
 
 }  // namespace tflite

@@ -111,8 +111,8 @@ HloExecutionProfile::HloExecutionProfile(
     : hlo_profile_printer_data_(*hlo_profile_printer_data),
       hlo_profile_index_map_(*hlo_profile_index_map),
       profile_counters_(
-          /*count*/ hlo_profile_index_map_.total_count(),
-          /*value*/ 0) {}
+          /*count=*/hlo_profile_index_map_.total_count(),
+          /*value=*/0) {}
 
 void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
                                            uint64 cycles_taken) {

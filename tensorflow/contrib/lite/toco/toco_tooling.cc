@@ -74,11 +74,14 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
-  transformations->Add(new ReorderActivationFunctions);
+  transformations->Add(new MergeReshapeIntoPrecedingTranspose);
+  transformations->Add(new ReorderElementwiseUnary);
+  transformations->Add(new ReorderReshapeTranspose);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
   transformations->Add(new ResolveConstantGather);
+  transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
@@ -94,6 +97,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
+  transformations->Add(new IdentifyPRelu);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
@@ -288,6 +292,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   if (output_format == TENSORFLOW_GRAPHDEF) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
+
+  // Fix any issues with IO edges. This must happen after any transform that
+  // may modify the structure of the edges.
+  FixEdgeArrays(model);
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 

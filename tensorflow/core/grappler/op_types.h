@@ -37,6 +37,7 @@ bool IsBiasAdd(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
 bool IsCast(const NodeDef& node);
+bool IsCheckNumerics(const NodeDef& node);
 bool IsComplex(const NodeDef& node);
 bool IsComplexAbs(const NodeDef& node);
 bool IsConj(const NodeDef& node);
@@ -89,6 +90,7 @@ bool IsNextIteration(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsPack(const NodeDef& node);
+bool IsNeg(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
@@ -120,6 +122,7 @@ bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
 bool IsSplitV(const NodeDef& node);
 bool IsSqrtGrad(const NodeDef& node);
+bool IsSquare(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);
 bool IsStackOp(const NodeDef& node);
@@ -137,6 +140,7 @@ bool IsTile(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsTruncateDiv(const NodeDef& node);
 bool IsTruncateMod(const NodeDef& node);
+bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
@@ -153,7 +157,11 @@ bool IsCommutative(const NodeDef& node);
 bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
+
 bool ModifiesFrameInfo(const NodeDef& node);
+
+// Returns true if the op is known to write to one or more of its inputs.
+bool ModifiesInputsInPlace(const NodeDef& node);
 
 // Returns true if the op is an element-wise involution, i.e. if it is its
 // own inverse such that f(f(x)) == x.

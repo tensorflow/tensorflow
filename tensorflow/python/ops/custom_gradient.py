@@ -95,7 +95,7 @@ def custom_gradient(f):
     if not context.executing_eagerly():
       if kwargs:
         raise ValueError(
-            "The custom_gradient decorator currently suports keywords "
+            "The custom_gradient decorator currently supports keywords "
             "arguments only when eager execution is enabled.")
       name = "CustomGradient-%s" % ops.uid()
       args = [ops.convert_to_tensor(x) for x in args]

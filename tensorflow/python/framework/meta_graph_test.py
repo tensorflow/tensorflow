@@ -285,8 +285,7 @@ class SimpleMetaGraphTest(test.TestCase):
       self.assertIs(global_vars[0], trainable_vars[0])
 
 
-# TODO(skyewm): reenable when this works with _USE_C_SHAPES=False
-# @test_util.with_c_api
+@test_util.with_c_api
 class ScopedMetaGraphTest(test.TestCase):
 
   def _testScopedExport(self, test_dir, exported_filenames):
@@ -537,6 +536,21 @@ class ScopedMetaGraphTest(test.TestCase):
         self.assertEqual(len(imported_variables), 1)
         self.assertEqual(list(imported_variables.values())[0].name,
                          "foo/bar/myvar:0")
+
+  def testScopedImportUnderNameScopeNoVarScope(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      variables.Variable(initial_value=1.0, trainable=True, name="myvar")
+    meta_graph_def, _ = meta_graph.export_scoped_meta_graph(graph=graph)
+
+    graph = ops.Graph()
+    with graph.as_default():
+      with ops.name_scope("foo"):
+        imported_variables = meta_graph.import_scoped_meta_graph(
+            meta_graph_def)
+        self.assertEqual(len(imported_variables), 1)
+        self.assertEqual(list(imported_variables.values())[0].name,
+                         "foo/myvar:0")
 
   def testImportsUsingSameScopeName(self):
     with ops.Graph().as_default():

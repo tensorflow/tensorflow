@@ -25,7 +25,7 @@ namespace {
 
 class ScopedAllocatorMgrTest : public ::testing::Test {
  public:
-  ScopedAllocatorMgrTest() : sam_("CPU0"), sa_(nullptr) {}
+  ScopedAllocatorMgrTest() : sam_("CPU0") {}
 
   void InitTensor() {
     backing_tensor_ = Tensor(cpu_allocator(), DT_FLOAT, backing_tensor_shape_);
@@ -42,7 +42,7 @@ class ScopedAllocatorMgrTest : public ::testing::Test {
             << " expected_use_count " << expected_use_count;
     return sam_.AddScopedAllocator(backing_tensor_, step_id_, scope_id,
                                    "tensor_shape_599", fields_,
-                                   expected_use_count, &sa_);
+                                   expected_use_count);
   }
 
   Status PrepScopedAllocatorMgr(int expected_use_count) {
@@ -87,7 +87,6 @@ class ScopedAllocatorMgrTest : public ::testing::Test {
   std::vector<TensorShape> fields_shapes_;
   std::vector<ScopedAllocator::Field> fields_;
   ScopedAllocatorMgr sam_;
-  ScopedAllocator* sa_;
   const int step_id_ = 101;
   const int scope_id_ = 599;
   std::vector<ScopedAllocatorInstance*> sa_instances_;
@@ -138,9 +137,9 @@ TEST_F(ScopedAllocatorMgrTest, ContainerAddAllocator) {
 
   // Cleanup the instances by invoking allocate and deallocate.
   void* ptr0 =
-      sa_instances_[0]->AllocateRaw(0 /* alignment */, 512 * sizeof(DT_FLOAT));
+      sa_instances_[0]->AllocateRaw(0 /* alignment */, 512 * sizeof(float));
   void* ptr1 =
-      sa_instances_[1]->AllocateRaw(0 /* alignment */, 512 * sizeof(DT_FLOAT));
+      sa_instances_[1]->AllocateRaw(0 /* alignment */, 512 * sizeof(float));
   sa_instances_[0]->DeallocateRaw(ptr0);
   sa_instances_[1]->DeallocateRaw(ptr1);
 }
@@ -153,7 +152,6 @@ TEST_F(ScopedAllocatorMgrTest, AllocatorSuccess) {
   fields_shapes_ = std::vector<TensorShape>({{512}, {3, 3}, {2, 256}});
   Status s = PrepScopedAllocatorMgr(3);
   other = sac->GetAllocator(scope_id_);
-  EXPECT_EQ(other, sa_);
 
   ScopedAllocatorInstance* inst0 = sac->GetInstance(scope_id_ + 1);
   char* ptr0 = static_cast<char*>(inst0->AllocateRaw(0, 512 * sizeof(float)));
@@ -187,8 +185,7 @@ TEST_F(ScopedAllocatorMgrTest, AllocatorInitFail) {
   fields_.resize(1);
   fields_[0].scope_id = scope_id_ + 1;
   fields_[0].offset = 0;
-  fields_[0].bytes =
-      backing_tensor_shape_.num_elements() * 2 * sizeof(DT_FLOAT);
+  fields_[0].bytes = backing_tensor_shape_.num_elements() * 2 * sizeof(float);
   // fields[0].offset + fields[0].bytes is larger than the size of the backing
   // tensor, so this check should fail
   EXPECT_DEATH(Status s = AddScopedAllocator(1, scope_id_), "");
@@ -208,20 +205,20 @@ TEST_F(ScopedAllocatorMgrTest, AllocatorFail) {
   // so we need to explicitly delete the instances to avoid a memleak.
   SaveInstances(fields_shapes_.size());
 
-  char* ptr0 = static_cast<char*>(
-      sa_instances_[0]->AllocateRaw(0, 512 * sizeof(DT_FLOAT)));
+  char* ptr0 =
+      static_cast<char*>(sa_instances_[0]->AllocateRaw(0, 512 * sizeof(float)));
   VLOG(2) << "Should fail because we deallocate ptr="
           << static_cast<void*>(ptr0 + 8) << " which we never allocated.";
   EXPECT_DEATH(sa_instances_[0]->DeallocateRaw(ptr0 + 8), "");
   VLOG(2) << "Should fail because we allocate smaller than the size of the "
           << "field.";
-  EXPECT_EQ(nullptr, sa_instances_[1]->AllocateRaw(0, 256 * sizeof(DT_FLOAT)));
+  EXPECT_EQ(nullptr, sa_instances_[1]->AllocateRaw(0, 256 * sizeof(float)));
   VLOG(2) << "Should fail because we allocate larger than the size of the "
           << "field.";
-  EXPECT_EQ(nullptr, sa_instances_[1]->AllocateRaw(0, 1024 * sizeof(DT_FLOAT)));
-  void* ptr1 = sa_instances_[1]->AllocateRaw(0, 512 * sizeof(DT_FLOAT));
+  EXPECT_EQ(nullptr, sa_instances_[1]->AllocateRaw(0, 1024 * sizeof(float)));
+  void* ptr1 = sa_instances_[1]->AllocateRaw(0, 512 * sizeof(float));
   VLOG(2) << "Should fail because we exceed expected_use_count.";
-  EXPECT_EQ(nullptr, sa_instances_[0]->AllocateRaw(0, 512 * sizeof(DT_FLOAT)));
+  EXPECT_EQ(nullptr, sa_instances_[0]->AllocateRaw(0, 512 * sizeof(float)));
   sa_instances_[0]->DeallocateRaw(ptr0);
   sa_instances_[1]->DeallocateRaw(ptr1);
 }

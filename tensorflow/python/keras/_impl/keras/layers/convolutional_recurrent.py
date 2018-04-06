@@ -29,6 +29,8 @@ from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.layers.recurrent import Recurrent
 from tensorflow.python.keras._impl.keras.utils import conv_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -438,9 +440,9 @@ class ConvLSTM2D(ConvRecurrent2D):
 
   def get_initial_state(self, inputs):
     # (samples, timesteps, rows, cols, filters)
-    initial_state = K.zeros_like(inputs)
+    initial_state = array_ops.zeros_like(inputs)
     # (samples, rows, cols, filters)
-    initial_state = K.sum(initial_state, axis=1)
+    initial_state = math_ops.reduce_sum(initial_state, axis=1)
     shape = list(self.kernel_shape)
     shape[-1] = self.filters
     initial_state = self.input_conv(
@@ -483,8 +485,8 @@ class ConvLSTM2D(ConvRecurrent2D):
   def get_constants(self, inputs, training=None):
     constants = []
     if self.implementation == 0 and 0 < self.dropout < 1:
-      ones = K.zeros_like(inputs)
-      ones = K.sum(ones, axis=1)
+      ones = array_ops.zeros_like(inputs)
+      ones = math_ops.reduce_sum(ones, axis=1)
       ones += 1
 
       def dropped_inputs():
@@ -501,8 +503,8 @@ class ConvLSTM2D(ConvRecurrent2D):
     if 0 < self.recurrent_dropout < 1:
       shape = list(self.kernel_shape)
       shape[-1] = self.filters
-      ones = K.zeros_like(inputs)
-      ones = K.sum(ones, axis=1)
+      ones = array_ops.zeros_like(inputs)
+      ones = math_ops.reduce_sum(ones, axis=1)
       ones = self.input_conv(ones, K.zeros(shape), padding=self.padding)
       ones += 1.
 

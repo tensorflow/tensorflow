@@ -99,11 +99,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJ)J
+ *  Signature: (JJI)J
  */
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
-    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle);
+    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
+    jint num_threads);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper

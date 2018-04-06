@@ -37,6 +37,8 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import func_dump
 from tensorflow.python.keras._impl.keras.utils.generic_utils import func_load
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.layers import core as tf_core_layers
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -75,12 +77,12 @@ class Masking(Layer):
     self.mask_value = mask_value
 
   def compute_mask(self, inputs, mask=None):
-    return K.any(K.not_equal(inputs, self.mask_value), axis=-1)
+    return K.any(math_ops.not_equal(inputs, self.mask_value), axis=-1)
 
   def call(self, inputs):
     boolean_mask = K.any(
-        K.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
-    return inputs * K.cast(boolean_mask, inputs.dtype)
+        math_ops.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
+    return inputs * math_ops.cast(boolean_mask, inputs.dtype)
 
   def compute_output_shape(self, input_shape):
     return input_shape
@@ -170,7 +172,7 @@ class SpatialDropout1D(Dropout):
     self.input_spec = InputSpec(ndim=3)
 
   def _get_noise_shape(self, inputs):
-    input_shape = K.shape(inputs)
+    input_shape = array_ops.shape(inputs)
     noise_shape = (input_shape[0], 1, input_shape[2])
     return noise_shape
 
@@ -222,7 +224,7 @@ class SpatialDropout2D(Dropout):
     self.input_spec = InputSpec(ndim=4)
 
   def _get_noise_shape(self, inputs):
-    input_shape = K.shape(inputs)
+    input_shape = array_ops.shape(inputs)
     if self.data_format == 'channels_first':
       return (input_shape[0], input_shape[1], 1, 1)
     elif self.data_format == 'channels_last':
@@ -275,7 +277,7 @@ class SpatialDropout3D(Dropout):
     self.input_spec = InputSpec(ndim=5)
 
   def _get_noise_shape(self, inputs):
-    input_shape = K.shape(inputs)
+    input_shape = array_ops.shape(inputs)
     if self.data_format == 'channels_first':
       return (input_shape[0], input_shape[1], 1, 1, 1)
     elif self.data_format == 'channels_last':
@@ -414,7 +416,8 @@ class Reshape(Layer):
     return tensor_shape.TensorShape(output_shape)
 
   def call(self, inputs):
-    return K.reshape(inputs, (K.shape(inputs)[0],) + self.target_shape)
+    return array_ops.reshape(inputs,
+                             (array_ops.shape(inputs)[0],) + self.target_shape)
 
   def get_config(self):
     config = {'target_shape': self.target_shape}
@@ -467,7 +470,7 @@ class Permute(Layer):
     return tensor_shape.TensorShape(output_shape)
 
   def call(self, inputs):
-    return K.permute_dimensions(inputs, (0,) + self.dims)
+    return array_ops.transpose(inputs, perm=(0,) + self.dims)
 
   def get_config(self):
     config = {'dims': self.dims}

@@ -35,7 +35,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
 
 // max_batch_size: maximum batch size which can be used for inference for
 //                 optimization targets inference run with max batch size.
-// max_workspace_size_bytes: The upper bound of memory allowence for
+// max_workspace_size_bytes: The upper bound of memory allowance for
 //                 engine building.
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,

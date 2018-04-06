@@ -154,7 +154,7 @@ class RevBlockTest(test.TestCase):
       y_val, yd_val, gd_val, g_val = sess.run([y, y_rev, grads_rev, grads])
       self.assertAllClose(y_val, yd_val)
       for g1, g2 in zip(gd_val, g_val):
-        self.assertAllClose(g1, g2)
+        self.assertAllClose(g1, g2, rtol=1e-5)
 
   def testRevBlock(self):
     self._testRevBlock()
@@ -255,25 +255,54 @@ class RecomputeTest(test.TestCase):
     def fn_recompute(x):
       return fn(x)
 
-    x = random_ops.random_uniform((3, 1, 3))
-    recompute_vars = None
-    with variable_scope.variable_scope("recompute") as vs:
-      out1 = math_ops.reduce_sum(fn_recompute(x))
-      recompute_vars = vs.trainable_variables()
-    reg_vars = None
-    with variable_scope.variable_scope("regular") as vs:
-      out2 = math_ops.reduce_sum(fn(x))
-      reg_vars = vs.trainable_variables()
+    @rev_block_lib.recompute_grad(use_data_dep=True)
+    def fn_use_data_dep(x):
+      return fn(x)
 
-    grad1 = gradients_impl.gradients(out1, recompute_vars)
-    grad2 = gradients_impl.gradients(out2, reg_vars)
+    @rev_block_lib.recompute_grad(tupleize_grads=True)
+    def fn_tupleize(x):
+      return fn(x)
+
+    @rev_block_lib.recompute_grad(use_data_dep=True, tupleize_grads=True)
+    def fn_both(x):
+      return fn(x)
+
+    x = random_ops.random_uniform((3, 1, 3))
+
+    names_and_fns = [
+        ("recompute", fn_recompute),
+        ("regular", fn),
+        ("use_data_dep", fn_use_data_dep),
+        ("tupleize", fn_tupleize),
+        ("tuple_and_data_dep", fn_both),
+    ]
+    outputs_and_vars = []
+    for name, wrapped_fn in names_and_fns:
+      with variable_scope.variable_scope(name) as vs:
+        out = math_ops.reduce_sum(wrapped_fn(x))
+        outputs_and_vars.append((out, vs.trainable_variables()))
+
+    all_grads = []
+    for out, scope_vars in outputs_and_vars:
+      all_grads.append(gradients_impl.gradients(out, scope_vars))
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      outs = sess.run([out1, out2, grad1, grad2])
-      self.assertAllClose(outs[0], outs[1])
-      for g1, g2 in zip(outs[2], outs[3]):
-        self.assertAllClose(g1, g2)
+      outputs = list(zip(*outputs_and_vars))[0]
+      outs, all_grads_val = sess.run([outputs, all_grads])
+
+      # All outputs are the same
+      current = outs[0]
+      for out in outs[1:]:
+        self.assertAllClose(current, out)
+        current = out
+
+      # All gradients are the same
+      for grads in zip(all_grads_val):
+        current = grads[0]
+        for g in grads[1:]:
+          self.assertAllClose(current, g)
+          current = g
 
 
 class FnWithCustomGradTest(test.TestCase):

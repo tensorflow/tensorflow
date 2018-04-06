@@ -319,6 +319,7 @@ GENERATE_PYTHON_OP_LIB("audio_ops")
 GENERATE_PYTHON_OP_LIB("array_ops")
 GENERATE_PYTHON_OP_LIB("batch_ops")
 GENERATE_PYTHON_OP_LIB("bitwise_ops")
+GENERATE_PYTHON_OP_LIB("boosted_trees_ops")
 GENERATE_PYTHON_OP_LIB("math_ops")
 GENERATE_PYTHON_OP_LIB("functional_ops")
 GENERATE_PYTHON_OP_LIB("candidate_sampling_ops")
@@ -326,6 +327,7 @@ GENERATE_PYTHON_OP_LIB("checkpoint_ops")
 GENERATE_PYTHON_OP_LIB("control_flow_ops"
   ADDITIONAL_LIBRARIES $<TARGET_OBJECTS:tf_no_op>)
 GENERATE_PYTHON_OP_LIB("ctc_ops")
+GENERATE_PYTHON_OP_LIB("cudnn_rnn_ops")
 GENERATE_PYTHON_OP_LIB("data_flow_ops")
 GENERATE_PYTHON_OP_LIB("dataset_ops")
 GENERATE_PYTHON_OP_LIB("image_ops")
@@ -348,6 +350,7 @@ GENERATE_PYTHON_OP_LIB("state_ops")
 GENERATE_PYTHON_OP_LIB("sparse_ops")
 GENERATE_PYTHON_OP_LIB("spectral_ops")
 GENERATE_PYTHON_OP_LIB("string_ops")
+GENERATE_PYTHON_OP_LIB("summary_ops")
 GENERATE_PYTHON_OP_LIB("user_ops")
 GENERATE_PYTHON_OP_LIB("training_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/training/gen_training_ops.py)
@@ -366,8 +369,6 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_coder_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/coder/python/ops/gen_coder_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_cudnn_rnn_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cudnn_rnn/ops/gen_cudnn_rnn_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_data_dataset_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_dataset_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
@@ -419,8 +420,6 @@ GENERATE_PYTHON_OP_LIB("stateless_random_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/stateless/gen_stateless_random_ops.py)
 GENERATE_PYTHON_OP_LIB("debug_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/debug/ops/gen_debug_ops.py)
-GENERATE_PYTHON_OP_LIB("summary_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/summary/gen_summary_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
@@ -475,6 +474,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_exception_registry.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_exception_registry.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_util.h"

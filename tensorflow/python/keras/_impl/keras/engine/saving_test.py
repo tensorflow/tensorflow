@@ -340,7 +340,7 @@ class TestWholeModelSaving(test.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
-      model.model._make_train_function()
+      model._make_train_function()
 
       fd, fname = tempfile.mkstemp('.h5')
       keras.models.save_model(model, fname)

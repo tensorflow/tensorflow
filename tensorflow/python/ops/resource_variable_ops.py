@@ -46,10 +46,6 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   container = ops.get_default_graph()._container  # pylint: disable=protected-access
   if container is None:
     container = ""
-  if not graph_mode:
-    # When in eager mode use a uid for the shared_name, to prevent accidental
-    # sharing.
-    shared_name = str(ops.uid())
   handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                    shared_name=shared_name,
                                                    name=name,
@@ -153,7 +149,7 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
-  See the @{$python/state_ops$`Variables`} documentation for more details.
+  See the @{$variables$Variables How To} for a high level overview.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.
@@ -175,7 +171,9 @@ class ResourceVariable(variables.Variable):
   to see all modifications to the value of the variable which happen in any
   operation on which the read_value depends on (either directly, indirectly, or
   via a control dependency) and guaranteed to not see any modification to the
-  value of the variable on which the read_value operation does not depend on.
+  value of the variable from operations that depend on the read_value operation.
+  Updates from operations that have no dependency relationship to the read_value
+  operation might or might not be visible to read_value.
 
   For example, if there is more than one assignment to a ResourceVariable in
   a single session.run call there is a well-defined value for each operation
@@ -183,24 +181,20 @@ class ResourceVariable(variables.Variable):
   by edges in the graph. Consider the following example, in which two writes
   can cause tf.Variable and tf.ResourceVariable to behave differently:
 
-   ```python
-    a = tf.ResourceVariable(1.0)
-    a.initializer.run()
+  ```python
+  a = tf.ResourceVariable(1.0)
+  a.initializer.run()
 
-    assign = a.assign(2.0)
-    with tf.control_dependencies([assign]):
-      b = a.read_value()
-    with tf.control_dependencies([b]):
-      other_assign = a.assign(3.0)
-    with tf.control_dependencies([other_assign]):
-      # Will print 2.0 because the value was read before other_assign ran. If
-      # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
-      tf.Print(b, [b]).eval()
+  assign = a.assign(2.0)
+  with tf.control_dependencies([assign]):
+    b = a.read_value()
+  with tf.control_dependencies([b]):
+    other_assign = a.assign(3.0)
+  with tf.control_dependencies([other_assign]):
+    # Will print 2.0 because the value was read before other_assign ran. If
+    # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
+    tf.Print(b, [b]).eval()
   ```
-
-  To enforce these consistency properties tf.ResourceVariable might make more
-  copies than an equivalent tf.Variable under the hood, so tf.Variable is still
-  not deprecated.
   """
 
   def __init__(self,
@@ -368,6 +362,12 @@ class ResourceVariable(variables.Variable):
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
         handle_name = ops._name_from_scope_name(name)
+        if self._in_graph_mode:
+          shared_name = handle_name
+        else:
+          # When in eager mode use a uid for the shared_name, to prevent
+          # accidental sharing.
+          shared_name = "%s_%d" % (handle_name, ops.uid())
         if init_from_fn:
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
@@ -383,7 +383,7 @@ class ResourceVariable(variables.Variable):
               self._handle = _eager_safe_variable_handle(
                   shape=initial_value.get_shape(),
                   dtype=initial_value.dtype.base_dtype,
-                  shared_name=handle_name,
+                  shared_name=shared_name,
                   name=name,
                   graph_mode=self._in_graph_mode)
               self._shape = initial_value.get_shape()
@@ -395,7 +395,7 @@ class ResourceVariable(variables.Variable):
             self._handle = _eager_safe_variable_handle(
                 shape=initial_value.get_shape(),
                 dtype=initial_value.dtype.base_dtype,
-                shared_name=handle_name,
+                shared_name=shared_name,
                 name=name,
                 graph_mode=False)
             self._shape = initial_value.get_shape()
@@ -418,11 +418,12 @@ class ResourceVariable(variables.Variable):
           self._handle = _eager_safe_variable_handle(
               shape=initial_value.get_shape(),
               dtype=initial_value.dtype.base_dtype,
-              shared_name=handle_name,
+              shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
           self._shape = initial_value.get_shape()
 
+        self._unique_id = shared_name
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
         self._dtype = initial_value.dtype.base_dtype
@@ -503,6 +504,7 @@ class ResourceVariable(variables.Variable):
     self._shape = tensor_shape.TensorShape(
         self._handle.op.get_attr("shape"))
     self._handle_name = self._handle.name
+    self._unique_id = self._handle_name
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.initializer_name, import_scope=import_scope))
@@ -851,7 +853,8 @@ class ResourceVariable(variables.Variable):
       tape.watch_variable(self)
     return _UnreadVariable(
         self._handle, self.dtype, self._shape, self._in_graph_mode,
-        self._handle_deleter if not self._in_graph_mode else None, op)
+        self._handle_deleter if not self._in_graph_mode else None, op,
+        self._unique_id)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     """Assigns a new value to this variable.
@@ -966,7 +969,7 @@ class _UnreadVariable(ResourceVariable):
   """
 
   def __init__(self, handle, dtype,  # pylint: disable=super-init-not-called
-               shape, in_graph_mode, deleter, parent_op):
+               shape, in_graph_mode, deleter, parent_op, unique_id):
     # We do not call super init on purpose.
     self._trainable = False
     self._save_slice_info = None
@@ -979,6 +982,7 @@ class _UnreadVariable(ResourceVariable):
       self._handle_name = ""
     else:
       self._handle_name = self._handle.name
+    self._unique_id = unique_id
     self._dtype = dtype
     self._constraint = None
     self._cached_value = None
@@ -1082,6 +1086,11 @@ ops.register_proto_function(
     from_proto=_from_proto_fn)
 ops.register_proto_function(
     ops.GraphKeys.MODEL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.GLOBAL_STEP,
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)

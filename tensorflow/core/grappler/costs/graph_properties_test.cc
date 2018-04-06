@@ -742,6 +742,8 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   EXPECT_EQ("float: [128,256]", PropToString(prop));
 }
 
+#if 0
+// Disabled for now since this doesnt' seem to work when functions are instantiated inside while loops. It's also unclear whether it's correct when the same function is instantiated twice.
 TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   // Test graph produced in python using:
   /*
@@ -775,6 +777,7 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   EXPECT_TRUE(shape.IsFullyDefined());
   EXPECT_FALSE(shape.unknown_rank());
 }
+#endif
 
 TEST_F(GraphPropertiesTest, SymbolicShapes) {
   // Build a simple graph with placeholders of unknown dimensions. These
