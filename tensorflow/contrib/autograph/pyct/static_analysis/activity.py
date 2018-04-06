@@ -162,11 +162,11 @@ class Scope(object):
       self.parent.mark_returned(name)
 
 
-class ActivityAnalizer(transformer.Base):
+class ActivityAnalyzer(transformer.Base):
   """Annotates nodes with local scope information. See Scope."""
 
   def __init__(self, context, parent_scope):
-    super(ActivityAnalizer, self).__init__(context)
+    super(ActivityAnalyzer, self).__init__(context)
     self.scope = Scope(parent_scope)
     self._in_return_statement = False
 
@@ -323,4 +323,4 @@ class ActivityAnalizer(transformer.Base):
 
 
 def resolve(node, context, parent_scope=None):
-  return ActivityAnalizer(context, parent_scope).visit(node)
+  return ActivityAnalyzer(context, parent_scope).visit(node)
