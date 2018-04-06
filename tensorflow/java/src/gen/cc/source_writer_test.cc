@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -313,8 +313,7 @@ TEST(WriteType, SimpleClassWithDependencies) {
 TEST(WriteType, AnnotatedAndDocumentedClass) {
   SourceBufferWriter writer;
   Type clazz = Type::Class("Test", "org.tensorflow");
-  Javadoc clazz_doc;
-  clazz_doc.brief("Javadoc test")
+  Javadoc clazz_doc = Javadoc::Create("Javadoc test")
       .details("This is a\nmultiline description.");
   clazz.add_annotation(Annotation::Create("Bean"));
   clazz.add_annotation(Annotation::Create("SuppressWarnings")
@@ -329,7 +328,7 @@ TEST(WriteType, AnnotatedAndDocumentedClass) {
       " * <p>\n"
       " * This is a\n"
       " * multiline description.\n"
-      " **/\n"
+      " */\n"
       "@Bean\n"
       "@SuppressWarnings(\"rawtypes\")\n"
       "public class Test {\n}\n";
@@ -378,8 +377,7 @@ TEST(WriteType, ParameterizedClassFields) {
   Variable field1 = Variable::Create("field1", Type::Class("String"));
   Variable field2 = Variable::Create("field2", Type::Class("String"));
   Variable field3 = Variable::Create("field3", type_t);
-  Javadoc field3_doc;
-  field3_doc.brief("This variable is documented");
+  Javadoc field3_doc = Javadoc::Create("This variable is documented");
 
   writer.BeginType(clazz, PUBLIC)
           .WriteField(field1, STATIC | PUBLIC | FINAL)
@@ -464,8 +462,7 @@ TEST(WriteMethod, AnnotatedAndDocumentedMethod) {
   SourceBufferWriter writer;
   Type clazz = Type::Class("Test", "org.tensorflow");
   Method method = Method::Create("doNothing", Type::Void());
-  Javadoc method_doc;
-  method_doc.brief("Javadoc test")
+  Javadoc method_doc = Javadoc::Create("Javadoc test")
       .details("This method has a\nmultiline description.");
   method.add_annotation(Annotation::Create("Override"));
   method.add_annotation(Annotation::Create("SuppressWarnings")
@@ -484,7 +481,7 @@ TEST(WriteMethod, AnnotatedAndDocumentedMethod) {
       "   * <p>\n"
       "   * This method has a\n"
       "   * multiline description.\n"
-      "   **/\n"
+      "   */\n"
       "  @Override\n"
       "  @SuppressWarnings(\"rawtypes\")\n"
       "  public void doNothing() {\n"
@@ -500,8 +497,7 @@ TEST(WriteMethod, DocumentedMethodWithArguments) {
   Method method = Method::Create("boolToInt", Type::Int());
   method.add_argument(Variable::Create("b", Type::Boolean()));
   method.add_argument(reverse);
-  Javadoc method_doc;
-  method_doc.brief("Converts a boolean to an int")
+  Javadoc method_doc = Javadoc::Create("Converts a boolean to an int")
       .details("This method will convert\na boolean to an int")
       .add_param_tag(reverse.name(), "if true, value is reversed")
       .add_tag("return", "int value for this boolean");
@@ -528,7 +524,7 @@ TEST(WriteMethod, DocumentedMethodWithArguments) {
       "   * \n"
       "   * @param reverse if true, value is reversed\n"
       "   * @return int value for this boolean\n"
-      "   **/\n"
+      "   */\n"
       "  public int boolToInt(boolean b, boolean reverse) {\n"
       "    if (b && !reverse) {\n"
       "      return 1;\n"

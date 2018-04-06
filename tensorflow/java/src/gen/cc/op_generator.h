@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,36 +23,33 @@ limitations under the License.
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/java/src/gen/cc/op_specs.h"
 
 namespace tensorflow {
 namespace java {
 
 // A generator of Java operation wrappers.
 //
-// Such generator is normally ran only once per executable, outputting
-// wrappers for the all registered operations it has been compiled with.
-// Nonetheless, it is designed to support multiple runs, giving a different
-// list of operations on each cycle.
+// This generator takes a list of ops definitions in input and outputs
+// a Java Op wrapper for each of them in the provided directory. The same
+// generator instance can be invoked multiple times with a different list of
+// ops definitions.
 class OpGenerator {
  public:
   OpGenerator(const string& base_package, const string& output_dir,
       const std::vector<string>& api_dirs, Env* env = Env::Default());
-  virtual ~OpGenerator() = default;
 
   // Generates wrappers for the given list of 'ops'.
   //
   // Output files are generated in <output_dir>/<base_package>/<lib_package>,
-  // where 'lib_package' is derived from 'lib_name'.
-  Status Run(const OpList& op_list, const string& lib_name);
+  // where 'lib_package' is derived from ops endpoints.
+  Status Run(const OpList& op_list);
 
  private:
-  string base_package_;
-  string output_dir_;
-  std::vector<string> api_dirs_;
+  const string base_package_;
+  const string output_dir_;
+  const std::vector<string> api_dirs_;
   Env* env_;
-
-  Status GenerateOp(const OpDef& op_def, const ApiDef& api_def,
-    const string& lib_name);
 };
 
 }  // namespace java
