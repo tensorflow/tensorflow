@@ -24,7 +24,6 @@ py_library(
         "continue_statements.py",
         "control_flow.py",
         "decorators.py",
-        "for_loops.py",
         "ifexp.py",
         "list_comprehension.py",
         "lists.py",
@@ -126,16 +125,6 @@ py_test(
 py_test(
     name = "decorators_test",
     srcs = ["decorators_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":test_lib",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "for_loops_test",
-    srcs = ["for_loops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",

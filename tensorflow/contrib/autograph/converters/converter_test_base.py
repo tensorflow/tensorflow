@@ -78,7 +78,7 @@ class TestCase(test.TestCase):
       result.tf = self.make_fake_mod('fake_tf', *symbols)
       result.autograph_utils = utils
       result.autograph_api = self.make_fake_mod('fake_api', converted_call)
-      result.__ops = operators  # pylint:disable=protected-access
+      result.__dict__['__ops'] = operators
       yield result
     except Exception:  # pylint:disable=broad-except
       if source is None:

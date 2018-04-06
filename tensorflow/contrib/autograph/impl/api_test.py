@@ -201,8 +201,7 @@ class ApiTest(test.TestCase):
 
     compiled_code = api.to_code(test_fn)
 
-    # Just check for some key words and that it is parseable Python code.
-    self.assertRegexpMatches(compiled_code, 'autograph_utils\\.run_while')
+    # Just check that it is parseable Python code.
     self.assertIsNotNone(parser.parse_str(compiled_code))
 
 
