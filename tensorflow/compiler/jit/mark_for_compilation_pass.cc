@@ -732,11 +732,15 @@ Status MarkForCompilationPass::RunImpl(
     }
   }
 
-  // Count the number of elements in each cluster.
-  std::vector<int> cluster_sizes(graph->num_node_ids());
+  // Count the number of non-trivial elements in each cluster.
+  std::vector<int> effective_cluster_sizes(graph->num_node_ids());
   for (const Node* n : compilation_candidates) {
     int cluster = clusters[n->id()].Get().representative;
-    cluster_sizes[cluster]++;
+    // Identity nodes will be removed if the node gets marked for compilation.
+    // Therefore we don't want to count them towards the effective cluster size.
+    if (n->def().op() != "Identity") {
+      effective_cluster_sizes[cluster]++;
+    }
   }
 
   // Names for each cluster.
@@ -769,9 +773,12 @@ Status MarkForCompilationPass::RunImpl(
     const XlaOpRegistry::DeviceRegistration* registration;
     XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration);
 
-    // Or compile if this is a cluster of >= min_cluster_size compilable
-    // operators.
-    if (cluster_sizes[cluster] >= min_cluster_size || marked_for_compilation ||
+    // Compile if this is a cluster of >= min_cluster_size compilable operators.
+    // Also, always compile if the operator is placed on a device that requires
+    // compilation, or if it contains at least one op that is marked for
+    // compilation that is not an Identity op.
+    if (effective_cluster_sizes[cluster] >= min_cluster_size ||
+        (effective_cluster_sizes[cluster] > 0 && marked_for_compilation) ||
         registration->requires_compilation) {
       string& name = cluster_names[cluster];
 

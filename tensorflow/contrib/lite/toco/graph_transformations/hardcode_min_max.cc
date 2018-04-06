@@ -95,30 +95,37 @@ bool HardcodeMinMaxForConcatenation(Model* model, Operator* op) {
   overall_minmax.min = overall_min;
   overall_minmax.max = overall_max;
   bool changed = false;
-  for (const auto& input : op->inputs) {
-    auto& array = model->GetArray(input);
-    if (!array.minmax) {
-      changed = true;
-    } else if (!(overall_minmax == array.GetMinMax())) {
-      changed = true;
-      LOG(WARNING)
-          << "Tweaking the MinMax of array " << input << ", which is "
-          << "an input to " << LogName(*op) << ", because we want all inputs "
-          << "and outputs of a Concatenation operator to have the same MinMax "
-          << "so that it can be implemented as a pure byte-copy, no "
-             "arithmetic.";
+  if (model->flags.change_concat_input_ranges()) {
+    for (const auto& input : op->inputs) {
+      auto& array = model->GetArray(input);
+      if (!array.minmax) {
+        changed = true;
+      } else if (!(overall_minmax == array.GetMinMax())) {
+        changed = true;
+        LOG(WARNING)
+            << "Tweaking the MinMax of array " << input << ", which is "
+            << "an input to " << LogName(*op) << ", because we want all inputs "
+            << "and outputs of a Concatenation operator to have the same "
+            << "MinMax so that it can be implemented as a pure byte-copy, no "
+               "arithmetic.";
+      }
+      array.GetOrCreateMinMax() = overall_minmax;
     }
-    array.GetOrCreateMinMax() = overall_minmax;
   }
   if (!output.minmax) {
     changed = true;
   } else if (!(overall_minmax == output.GetMinMax())) {
-    changed = true;
-    LOG(WARNING)
-        << "Tweaking the MinMax of the output array of " << LogName(*op)
-        << ", because we want all inputs "
-        << "and outputs of a Concatenation operator to have the same MinMax "
-        << "so that it can be implemented as a pure byte-copy, no arithmetic.";
+    if (model->flags.change_concat_input_ranges()) {
+      changed = true;
+      LOG(WARNING)
+          << "Tweaking the MinMax of the output array of " << LogName(*op)
+          << ", because we want all inputs "
+          << "and outputs of a Concatenation operator to have the same MinMax "
+          << "so that it can be implemented as a pure byte-copy, no "
+          << "arithmetic.";
+    } else {
+      return false;
+    }
   }
   output.GetOrCreateMinMax() = overall_minmax;
 

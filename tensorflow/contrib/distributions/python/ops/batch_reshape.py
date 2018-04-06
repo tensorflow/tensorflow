@@ -290,7 +290,7 @@ class BatchReshape(distribution_lib.Distribution):
           isinstance(expected_batch_event_ndims, int)):
         if x_ndims < expected_batch_event_ndims:
           raise NotImplementedError(
-              "Broadcasting is not supported; too few event dims "
+              "Broadcasting is not supported; too few batch and event dims "
               "(expected at least {}, saw {}).".format(
                   expected_batch_event_ndims, x_ndims))
         ndims_assertion = []
@@ -299,7 +299,8 @@ class BatchReshape(distribution_lib.Distribution):
             check_ops.assert_greater_equal(
                 x_ndims,
                 expected_batch_event_ndims,
-                message="Broadcasting is not supported; too few event dims.",
+                message=("Broadcasting is not supported; too few "
+                         "batch and event dims."),
                 name="assert_batch_and_event_ndims_large_enough"),
         ]
 

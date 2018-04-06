@@ -918,28 +918,35 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   // The two transpose_... parameters are actually booleans, but we use int32
   // to avoid target-dependent calling convention details.
 
-  bool multi_threaded_eigen =
+  bool multi_threaded =
       hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
+  bool use_mkl_dnn = hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
     case F16:
-      fn_name = multi_threaded_eigen
+      fn_name = multi_threaded
                     ? runtime::kEigenMatMulF16SymbolName
                     : runtime::kEigenSingleThreadedMatMulF16SymbolName;
       float_type = ir_builder_->getHalfTy();
       break;
     case F32:
-      fn_name = multi_threaded_eigen
-                    ? runtime::kEigenMatMulF32SymbolName
-                    : runtime::kEigenSingleThreadedMatMulF32SymbolName;
+      fn_name = multi_threaded
+                    ? (use_mkl_dnn ? runtime::kMKLMatMulF32SymbolName
+                                   : runtime::kEigenMatMulF32SymbolName)
+                    : (use_mkl_dnn
+                           ? runtime::kMKLSingleThreadedMatMulF32SymbolName
+                           : runtime::kEigenSingleThreadedMatMulF32SymbolName);
       float_type = ir_builder_->getFloatTy();
       break;
     case F64:
-      fn_name = multi_threaded_eigen
-                    ? runtime::kEigenMatMulF64SymbolName
-                    : runtime::kEigenSingleThreadedMatMulF64SymbolName;
+      fn_name = multi_threaded
+                    ? (use_mkl_dnn ? runtime::kMKLMatMulF64SymbolName
+                                   : runtime::kEigenMatMulF64SymbolName)
+                    : (use_mkl_dnn
+                           ? runtime::kMKLSingleThreadedMatMulF64SymbolName
+                           : runtime::kEigenSingleThreadedMatMulF64SymbolName);
       float_type = ir_builder_->getDoubleTy();
       break;
     default:

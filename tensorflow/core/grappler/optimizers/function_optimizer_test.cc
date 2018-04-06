@@ -412,7 +412,7 @@ TEST_F(FunctionOptimizerTest, InlineFunctionWithNestedFunctionCall) {
       {mul_func, square_func});
 
   GraphDef output;
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   int count = 0;
@@ -508,7 +508,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradients) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -550,7 +550,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradientsIdentity) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -613,7 +613,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradientsNoInlineFunc) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   // The optimizer should succeed but the graphs should be the same.

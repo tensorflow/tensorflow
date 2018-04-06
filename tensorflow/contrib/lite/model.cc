@@ -30,6 +30,13 @@ limitations under the License.
 
 namespace tflite {
 
+namespace {
+// Ensure that ErrorReporter is non-null.
+ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
+  return e ? e : DefaultErrorReporter();
+}
+}  // namespace
+
 const char* kEmptyTensorName = "";
 
 TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
@@ -78,6 +85,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
   auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
                                           error_reporter, /*use_nnapi=*/true);
@@ -89,6 +98,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
     const char* filename, TfLiteVerifier* verifier,
     ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
   auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
                                           error_reporter, /*use_nnapi=*/true);
@@ -104,6 +115,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
     const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
   Allocation* allocation =
       new MemoryAllocation(buffer, buffer_size, error_reporter);
@@ -114,6 +127,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
     const tflite::Model* model_spec, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
   model.reset(new FlatBufferModel(model_spec, error_reporter));
   if (!model->initialized()) model.reset();
@@ -133,15 +148,13 @@ bool FlatBufferModel::CheckModelIdentifier() const {
 
 FlatBufferModel::FlatBufferModel(const Model* model,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
+    : error_reporter_(ValidateErrorReporter(error_reporter)) {
   model_ = model;
 }
 
 FlatBufferModel::FlatBufferModel(Allocation* allocation,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
+    : error_reporter_(ValidateErrorReporter(error_reporter)) {
   allocation_ = allocation;
   if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
@@ -154,7 +167,7 @@ InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
     : model_(model.GetModel()),
       op_resolver_(op_resolver),
-      error_reporter_(model.error_reporter()),
+      error_reporter_(ValidateErrorReporter(model.error_reporter())),
       allocation_(model.allocation()) {}
 
 InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
@@ -162,8 +175,7 @@ InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
                                        ErrorReporter* error_reporter)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {}
+      error_reporter_(ValidateErrorReporter(error_reporter)) {}
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
