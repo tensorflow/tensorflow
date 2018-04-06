@@ -177,6 +177,7 @@ if (tensorflow_ENABLE_JEMALLOC_SUPPORT)
 endif()
 
 # External dependencies
+include(abseil_cpp)
 include(zlib)
 include(gif)
 include(png)
@@ -201,6 +202,7 @@ add_definitions(${ADD_CFLAGS})
 link_directories(${ADD_LINK_DIRECTORY})
 
 set(tensorflow_EXTERNAL_LIBRARIES
+    ${abseil_cpp_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -224,6 +226,7 @@ else (systemlib_ZLIB)
 endif (systemlib_ZLIB)
 
 set(tensorflow_EXTERNAL_DEPENDENCIES
+    abseil_cpp
     zlib_copy_headers_to_destination
     gif_copy_headers_to_destination
     png_copy_headers_to_destination
@@ -247,6 +250,7 @@ include_directories(
     ${tensorflow_source_dir}
     ${CMAKE_CURRENT_BINARY_DIR}
     # External dependencies.
+    ${abseil_cpp_INCLUDE_DIR}
     ${zlib_INCLUDE_DIR}
     ${gif_INCLUDE_DIR}
     ${png_INCLUDE_DIR}
