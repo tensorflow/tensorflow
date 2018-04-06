@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/bounds_check.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
@@ -173,9 +174,8 @@ static void SpatialMaxPoolWithArgMaxHelper(
         // Although this check is in the inner loop, it is worth its value
         // so we don't end up with memory corruptions. Our benchmark shows that
         // the performance impact is quite small
-        CHECK(input_backprop_index >= in_start && input_backprop_index < in_end)
-            << "Invalid input backprop index: " << input_backprop_index << ", "
-            << in_start << ", " << in_end;
+        //CHECK(input_backprop_index >= in_start && input_backprop_index < in_end)
+        FastBoundsCheck(input_backprop_index - in_start, in_end - in_start);
         input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
       }
     }
@@ -940,8 +940,6 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
                      Tensor* grad_out) {
-    Tensor* output = nullptr;
-
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *(context->device()->tensorflow_cpu_worker_threads());
 
