@@ -2635,8 +2635,8 @@ def root_mean_squared_error(labels,
   mse, update_mse_op = mean_squared_error(labels, predictions, weights, None,
                                           None, name='mean_squared_error')
 
-  rmse = math_ops.sqrt(mse, name=name or 'root_mean_squared_error')
-  update_rmse_op = math_ops.sqrt(update_mse_op, name=name or 'root_mean_squared_error')
+  rmse = math_ops.sqrt(mse, name=(name or 'root_mean_squared_error'))
+  update_rmse_op = math_ops.sqrt(update_mse_op, name=(name or 'root_mean_squared_error'))
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, rmse)
