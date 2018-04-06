@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -229,7 +230,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   for (int n_index = 0; n_index < fdef->node_def_size(); ++n_index) {
     NodeDef* node_def = fdef->mutable_node_def(n_index);
     for (int i = 0; i < node_def->input_size(); ++i) {
-      if (StringPiece(node_def->input(i)).starts_with("^")) {
+      if (str_util::StartsWith(node_def->input(i), "^")) {
         // Control input
         const string normalized =
             node_names.Renormalize(node_def->input(i).substr(1));

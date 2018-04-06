@@ -152,6 +152,8 @@ class GradientTape {
                          gtl::ArraySlice<Gradient*> output_gradients,
                          std::vector<Gradient*>* result);
 
+  bool IsPersistent() const { return persistent_; }
+
  private:
   TensorTape tensor_tape_;
   OpTape<BackwardFunction> op_tape_;
@@ -599,23 +601,28 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
   }
   CHECK(state.op_tape.empty());
   result->reserve(source_tensor_ids.size());
+  gtl::FlatSet<int64> used_gradient_ids(source_tensor_ids.size());
   for (auto is : source_tensor_ids) {
     auto grad_it = gradients.find(is);
     if (grad_it == gradients.end()) {
       result->push_back(nullptr);
     } else {
-      if (grad_it->second.size() == 1) {
-        result->push_back(grad_it->second[0]);
-      } else {
-        result->push_back(vspace.AggregateGradients(grad_it->second));
+      if (grad_it->second.size() > 1) {
+        Gradient* grad = vspace.AggregateGradients(grad_it->second);
+        grad_it->second.clear();
+        grad_it->second.push_back(grad);
       }
-      gradients.erase(grad_it);
+      result->push_back(grad_it->second[0]);
+      used_gradient_ids.insert(is);
     }
   }
-  VLOG(1) << "Final gradients size: " << gradients.size();
+  VLOG(1) << "Final gradients size: "
+          << gradients.size() - used_gradient_ids.size();
   for (auto grad_pair : gradients) {
-    for (const auto& g : grad_pair.second) {
-      vspace.DeleteGradient(g);
+    if (used_gradient_ids.find(grad_pair.first) == used_gradient_ids.end()) {
+      for (const auto& g : grad_pair.second) {
+        vspace.DeleteGradient(g);
+      }
     }
   }
   return Status::OK();

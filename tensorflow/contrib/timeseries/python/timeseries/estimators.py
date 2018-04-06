@@ -33,16 +33,18 @@ from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.training import training as train
+from tensorflow.python.util import nest
 
 
 class TimeSeriesRegressor(estimator_lib.Estimator):
   """An Estimator to fit and evaluate a time series model."""
 
   def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
-               config=None):
+               config=None, head_type=ts_head_lib.TimeSeriesRegressionHead):
     """Initialize the Estimator.
 
     Args:
@@ -53,6 +55,8 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
           from tf.train.Optimizer. Defaults to Adam with step size 0.02.
       model_dir: See `Estimator`.
       config: See `Estimator`.
+      head_type: The kind of head to use for the model (inheriting from
+          `TimeSeriesRegressionHead`).
     """
     input_statistics_generator = math_utils.InputStatisticsFromMiniBatch(
         dtype=model.dtype, num_features=model.num_features)
@@ -61,8 +65,8 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
     if optimizer is None:
       optimizer = train.AdamOptimizer(0.02)
     self._model = model
-    ts_regression_head = ts_head_lib.time_series_regression_head(
-        model, state_manager, optimizer,
+    ts_regression_head = head_type(
+        model=model, state_manager=state_manager, optimizer=optimizer,
         input_statistics_generator=input_statistics_generator)
     model_fn = ts_regression_head.create_estimator_spec
     super(TimeSeriesRegressor, self).__init__(
@@ -98,11 +102,11 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
     def _serving_input_receiver_fn():
       """A receiver function to be passed to export_savedmodel."""
       placeholders = {}
-      placeholders[feature_keys.TrainEvalFeatures.TIMES] = (
-          array_ops.placeholder(
-              name=feature_keys.TrainEvalFeatures.TIMES,
-              dtype=dtypes.int64,
-              shape=[default_batch_size, default_series_length]))
+      time_placeholder = array_ops.placeholder(
+          name=feature_keys.TrainEvalFeatures.TIMES,
+          dtype=dtypes.int64,
+          shape=[default_batch_size, default_series_length])
+      placeholders[feature_keys.TrainEvalFeatures.TIMES] = time_placeholder
       # Values are only necessary when filtering. For prediction the default
       # value will be ignored.
       placeholders[feature_keys.TrainEvalFeatures.VALUES] = (
@@ -145,15 +149,29 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
       # use only static metadata from the returned Tensors.
       with ops.Graph().as_default():
         self._model.initialize_graph()
-        model_start_state = self._model.get_start_state()
-      for prefixed_state_name, state_tensor in ts_head_lib.state_to_dictionary(
-          model_start_state).items():
+        # Evaluate the initial state as same-dtype "zero" values. These zero
+        # constants aren't used, but are necessary for feeding to
+        # placeholder_with_default for the "cold start" case where state is not
+        # fed to the model.
+        def _zeros_like_constant(tensor):
+          return tensor_util.constant_value(array_ops.zeros_like(tensor))
+        start_state = nest.map_structure(
+            _zeros_like_constant, self._model.get_start_state())
+      batch_size_tensor = array_ops.shape(time_placeholder)[0]
+      for prefixed_state_name, state in ts_head_lib.state_to_dictionary(
+          start_state).items():
         state_shape_with_batch = tensor_shape.TensorShape(
-            (default_batch_size,)).concatenate(state_tensor.get_shape())
-        placeholders[prefixed_state_name] = array_ops.placeholder(
+            (default_batch_size,)).concatenate(state.shape)
+        default_state_broadcast = array_ops.tile(
+            state[None, ...],
+            multiples=array_ops.concat(
+                [batch_size_tensor[None],
+                 array_ops.ones(len(state.shape), dtype=dtypes.int32)],
+                axis=0))
+        placeholders[prefixed_state_name] = array_ops.placeholder_with_default(
+            input=default_state_broadcast,
             name=prefixed_state_name,
-            shape=state_shape_with_batch,
-            dtype=state_tensor.dtype)
+            shape=state_shape_with_batch)
       return export_lib.ServingInputReceiver(placeholders, placeholders)
 
     return _serving_input_receiver_fn

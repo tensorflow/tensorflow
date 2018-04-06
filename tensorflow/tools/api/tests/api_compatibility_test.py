@@ -58,7 +58,7 @@ _UPDATE_GOLDENS_HELP = """
      have to be authorized by TensorFlow leads.
 """
 
-# DEFINE_boolean, verbose_diffs, default False:
+# DEFINE_boolean, verbose_diffs, default True:
 _VERBOSE_DIFFS_HELP = """
      If set to true, print line by line diffs on all libraries. If set to
      false, only print which libraries have differences.
@@ -145,6 +145,9 @@ class ApiCompatibilityTest(test.TestCase):
       verbose_diff_message = ''
       # First check if the key is not found in one or the other.
       if key in only_in_expected:
+        # TODO(annarev): remove once we switch to using tf_export decorators.
+        if key == 'tensorflow.math':
+          continue
         diff_message = 'Object %s expected but not found (removed). %s' % (
             key, additional_missing_object_message)
         verbose_diff_message = diff_message
@@ -229,6 +232,13 @@ class ApiCompatibilityTest(test.TestCase):
         for filename in golden_file_list
     }
 
+    # TODO(annarev): remove once we switch to using tf_export decorators.
+    tf_module = golden_proto_dict['tensorflow'].tf_module
+    for i in range(len(tf_module.member)):
+      if tf_module.member[i].name == 'math':
+        del tf_module.member[i]
+        break
+
     # Diff them. Do not fail if called with update.
     # If the test is run to update goldens, only report diffs but do not fail.
     self._AssertProtoDictEquals(
@@ -270,17 +280,6 @@ class ApiCompatibilityTest(test.TestCase):
         for filename in golden_file_list
     }
 
-    # user_ops is an empty module. It is currently available in TensorFlow API
-    # but we don't keep empty modules in the new API.
-    # We delete user_ops from golden_proto_dict to make sure assert passes
-    # when diffing new API against goldens.
-    # TODO(annarev): remove user_ops from goldens once we switch to new API.
-    tf_module = golden_proto_dict['tensorflow'].tf_module
-    for i in range(len(tf_module.member)):
-      if tf_module.member[i].name == 'user_ops':
-        del tf_module.member[i]
-        break
-
     # Diff them. Do not fail if called with update.
     # If the test is run to update goldens, only report diffs but do not fail.
     self._AssertProtoDictEquals(
@@ -297,7 +296,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
   parser.add_argument(
-      '--verbose_diffs', type=bool, default=False, help=_VERBOSE_DIFFS_HELP)
+      '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)
   FLAGS, unparsed = parser.parse_known_args()
 
   # Now update argv, so that unittest library does not get confused.

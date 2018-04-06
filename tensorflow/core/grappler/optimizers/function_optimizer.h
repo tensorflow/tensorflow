@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_FUNCTION_OPTIMIZER_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -25,7 +26,7 @@ namespace grappler {
 // operations to make the overall graph more efficient.
 class FunctionOptimizer : public GraphOptimizer {
  public:
-  FunctionOptimizer() {}
+  FunctionOptimizer(RewriterConfig::Toggle opt_level) {}
   ~FunctionOptimizer() override {}
 
   string name() const override { return "function_optimizer"; };

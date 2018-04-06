@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -894,7 +895,7 @@ class HloParserTest : public ::testing::Test,
                       public ::testing::WithParamInterface<TestData> {
  protected:
   static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-    EXPECT_TRUE(StringPiece(s).contains(expected))
+    EXPECT_TRUE(tensorflow::str_util::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
 

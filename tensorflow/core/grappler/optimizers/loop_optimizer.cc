@@ -46,8 +46,9 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-std::vector<int> GetStackPushNodesToConvert(const SimpleGraphView& graph_view,
-                                            int stack_node_idx) {
+std::vector<int> GetStackPushNodesToConvert(
+    const SimpleGraphView& graph_view,
+    const std::unordered_set<string>& nodes_to_preserve, int stack_node_idx) {
   VLOG(1) << "Stack node: " << graph_view.graph()->node(stack_node_idx).name();
   const std::unordered_set<string> op_types_to_traverse(
       {"Stack", "StackV2", "Enter", "RefEnter", "Switch", "RefSwitch",
@@ -65,7 +66,9 @@ std::vector<int> GetStackPushNodesToConvert(const SimpleGraphView& graph_view,
                    op_types_to_traverse.end()) {
       continue;
     } else if (!IsStackPopOp(fanout_node) ||
-               !graph_view.outputs(fanout_idx).empty()) {
+               (!graph_view.outputs(fanout_idx).empty() ||
+                nodes_to_preserve.find(fanout_node.name()) !=
+                    nodes_to_preserve.end())) {
       // The node is either a stack pop with consumers or something unexpected
       // so we leave the graph alone.
       nodes_to_convert.clear();
@@ -75,15 +78,17 @@ std::vector<int> GetStackPushNodesToConvert(const SimpleGraphView& graph_view,
   return nodes_to_convert;
 }
 
-Status RemoveStackOps(const GraphDef& graph, GraphDef* optimized_graph) {
+Status RemoveStackOps(const GrapplerItem& item, GraphDef* optimized_graph) {
+  const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
+  const GraphDef& graph = item.graph;
   *optimized_graph = graph;
   NodeMap node_map(optimized_graph);
   SimpleGraphView graph_view;
   TF_RETURN_IF_ERROR(graph_view.Initialize(graph));
   for (int node_idx = 0; node_idx < graph.node_size(); ++node_idx) {
     if (IsStackOp(graph.node(node_idx))) {
-      for (int push_node_idx :
-           GetStackPushNodesToConvert(graph_view, node_idx)) {
+      for (int push_node_idx : GetStackPushNodesToConvert(
+               graph_view, nodes_to_preserve, node_idx)) {
         // We found push nodes without corresponding pops. Convert them to
         // Identity passing the data through and add a control dependency from
         // the op supplying the stack handle.
@@ -363,7 +368,7 @@ Status LoopOptimizer::FindInvariantNodes(NodeDef* node) {
     bool is_invariant = true;
     for (const auto& input : consumer->input()) {
       if (!IsControlInput(input)) {
-        const auto& name = NodeName(input);
+        const string name = NodeName(input);
         auto* producer = node_map_->GetNode(name);
         if (!invariant_nodes_.count(producer)) {
           if (IsConstant(*producer)) {
@@ -464,16 +469,19 @@ Status LoopOptimizer::LoopInvariantNodeMotion() {
 
 Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
-  TF_RETURN_IF_ERROR(RemoveStackOps(item.graph, optimized_graph));
-  optimized_graph_ = optimized_graph;
 
-  // Set up helper data structures.
-  node_map_.reset(new NodeMap(optimized_graph_));
-  int num_frames;
-  TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
-                                               &frame_map_, &num_frames));
+  TF_RETURN_IF_ERROR(RemoveStackOps(item, optimized_graph));
 
-  TF_RETURN_IF_ERROR(LoopInvariantNodeMotion());
+  if (opt_level_ == RewriterConfig::AGGRESSIVE) {
+    optimized_graph_ = optimized_graph;
+    // Set up helper data structures.
+    node_map_.reset(new NodeMap(optimized_graph_));
+    int num_frames;
+    TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
+                                                 &frame_map_, &num_frames));
+    TF_RETURN_IF_ERROR(LoopInvariantNodeMotion());
+  }
+
   return Status::OK();
 }
 

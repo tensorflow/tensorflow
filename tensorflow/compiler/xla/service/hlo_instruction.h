@@ -179,20 +179,15 @@ class HloInstruction {
   //   module: the module which will contain the instruction. The newly created
   //     instruction is *not* added to the module or any computation, however.
   //   proto: the proto to convert from.
-  //   instruction_map: a map from instruction name to HloInstruction*. This map
+  //   instruction_map: a map from instruction id to HloInstruction*. This map
   //     must contain all operands of the newly constructed instruction.
-  //   computation_map: a map from computation name to HloComputation*. This map
+  //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
   //     calls.
-  //   add_fused_computation: A function to call to add a fused
-  //     computation. Used (clearly) when the instruction is a fusion
-  //     instruction.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       HloModule* module, const HloInstructionProto& proto,
-      const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
-      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
-      const std::function<void(std::unique_ptr<HloComputation>)>&
-          add_fused_computation);
+      const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
+      const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
@@ -932,6 +927,13 @@ class HloInstruction {
   // Returns the sharding applied to this operator, or default_ if none exists.
   const HloSharding& sharding_or_default(const HloSharding& default_) const {
     return sharding_ ? *sharding_ : default_;
+  }
+  // Returns the sharding unique device, if any.
+  tensorflow::gtl::optional<int64> sharding_unique_device() const {
+    if (sharding_ == nullptr || !sharding_->HasUniqueDevice()) {
+      return tensorflow::gtl::optional<int64>();
+    }
+    return sharding_->UniqueDevice().ValueOrDie();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.

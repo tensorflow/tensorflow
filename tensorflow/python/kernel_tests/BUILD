@@ -392,6 +392,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
     ],
+    shard_count = 5,
 )
 
 tf_py_test(
@@ -407,6 +408,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
     ],
+    shard_count = 5,
 )
 
 tf_py_test(
@@ -1086,6 +1088,7 @@ cuda_py_test(
     tags = [
         "no_windows",
         "noasan",
+        "noguitar",
         "notap",
     ],
 )
@@ -1564,7 +1567,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "init_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["init_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1906,7 +1909,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "softmax_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["softmax_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2516,7 +2519,10 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
     ],
     shard_count = 5,
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "optonly",  # b/77589990
+    ],
 )
 
 cuda_py_test(
@@ -2717,7 +2723,9 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
+    data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2936,16 +2944,4 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

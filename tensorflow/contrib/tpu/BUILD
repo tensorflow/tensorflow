@@ -119,6 +119,8 @@ py_library(
     srcs = ["python/profiler/__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_pb2_grpc",
+        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_proto_py",
         "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
         "//tensorflow/python:util",
     ],
@@ -157,6 +159,7 @@ py_library(
     name = "tpu_lib",
     srcs = [
         "python/tpu/__init__.py",
+        "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
@@ -212,6 +215,7 @@ tf_py_test(
         ":datasets",
     ],
     grpc_enabled = True,
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -232,6 +236,17 @@ tf_py_test(
     name = "tpu_sharding_test",
     size = "small",
     srcs = ["python/tpu/tpu_sharding_test.py"],
+    additional_deps = [
+        ":tpu",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+    ],
+)
+
+tf_py_test(
+    name = "bfloat16_test",
+    size = "small",
+    srcs = ["python/tpu/bfloat16_test.py"],
     additional_deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
@@ -272,15 +287,13 @@ tf_py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
+tf_py_test(
+    name = "tpu_estimator_signals_test",
+    size = "small",
+    srcs = ["python/tpu/tpu_estimator_signals_test.py"],
+    additional_deps = [
+        ":tpu_estimator",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
 )

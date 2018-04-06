@@ -1,8 +1,6 @@
-package(
-    default_visibility = [
-        "//visibility:public",
-    ],
-)
+package(default_visibility = [
+    "//visibility:public",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -70,18 +68,6 @@ cc_test(
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tflite_portable_test_suite()

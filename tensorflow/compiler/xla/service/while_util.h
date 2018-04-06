@@ -71,7 +71,7 @@ class WhileUtil {
   //    return loop_state;
   //  }
   static StatusOr<LoopStateTy> MakeCountedLoop(
-      HloComputation* computation, int64 trip_count,
+      HloComputation* computation, int32 trip_count,
       const LoopStateTy& init_values,
       const LoopBodyGeneratorTy& loop_body_generator);
 };

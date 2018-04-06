@@ -155,7 +155,10 @@ class ProcessFunctionLibraryRuntime {
 
     string target_device() { return target_device_; }
 
-    FunctionLibraryRuntime::LocalHandle local_handle() { return local_handle_; }
+    FunctionLibraryRuntime::LocalHandle local_handle() {
+      mutex_lock l(mu_);
+      return local_handle_;
+    }
 
     // Initializes the FunctionData object by potentially making an Initialize
     // call to the DistributedFunctionLibraryRuntime.

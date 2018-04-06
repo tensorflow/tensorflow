@@ -58,16 +58,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    shard_count = 4,
+    tags = ["noasan"],
 )

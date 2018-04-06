@@ -149,7 +149,7 @@ class Network(base.Layer):
     # check we might have name collisions if the parent scope on init gets
     # closed before build is called.
     self._variable_scope_counts_on_init = (
-        variable_scope._get_default_variable_store().variable_scopes_count)
+        variable_scope.get_variable_scope_store().variable_scopes_count)
 
   def _name_scope_name(self, current_variable_scope):
     """Overrides Layer op naming to match variable naming."""

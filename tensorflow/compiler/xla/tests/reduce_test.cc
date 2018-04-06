@@ -57,6 +57,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using FuncGeneratorForType = Computation (*)(PrimitiveType,
+                                             ComputationBuilder*);
+
+using FuncGenerator = Computation (*)(ComputationBuilder*);
+
 class ReduceTest : public ClientLibraryTestBase {
  protected:
   ReduceTest() {
@@ -755,53 +760,57 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDim2) {
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Add) {
-  RunVectorizedReduceTest(CreateScalarAddComputation,
-                          [](float a, float b) { return a + b; },
-                          [](int32 a, int32 b) {
-                            return static_cast<int32>(static_cast<uint32>(a) +
-                                                      static_cast<uint32>(b));
-                          },
-                          [](uint32 a, uint32 b) { return a + b; }, 0.0, 0, 0);
+  RunVectorizedReduceTest(
+      static_cast<FuncGeneratorForType>(CreateScalarAddComputation),
+      [](float a, float b) { return a + b; },
+      [](int32 a, int32 b) {
+        return static_cast<int32>(static_cast<uint32>(a) +
+                                  static_cast<uint32>(b));
+      },
+      [](uint32 a, uint32 b) { return a + b; }, 0.0, 0, 0);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Multiply) {
-  RunVectorizedReduceTest(CreateScalarMultiplyComputation,
-                          [](float a, float b) { return a * b; },
-                          [](int32 a, int32 b) {
-                            return static_cast<int32>(static_cast<uint32>(a) *
-                                                      static_cast<uint32>(b));
-                          },
-                          [](uint32 a, uint32 b) { return a * b; }, 1.0, 1, 1);
+  RunVectorizedReduceTest(
+      static_cast<FuncGeneratorForType>(CreateScalarMultiplyComputation),
+      [](float a, float b) { return a * b; },
+      [](int32 a, int32 b) {
+        return static_cast<int32>(static_cast<uint32>(a) *
+                                  static_cast<uint32>(b));
+      },
+      [](uint32 a, uint32 b) { return a * b; }, 1.0, 1, 1);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Max) {
-  RunVectorizedReduceTest(CreateScalarMaxComputation,
-                          [](float a, float b) { return std::max(a, b); },
-                          [](int32 a, int32 b) { return std::max(a, b); },
-                          [](uint32 a, uint32 b) { return std::max(a, b); },
-                          std::numeric_limits<float>::min(),
-                          std::numeric_limits<int32>::min(),
-                          std::numeric_limits<uint32>::min());
+  RunVectorizedReduceTest(
+      static_cast<FuncGeneratorForType>(CreateScalarMaxComputation),
+      [](float a, float b) { return std::max(a, b); },
+      [](int32 a, int32 b) { return std::max(a, b); },
+      [](uint32 a, uint32 b) { return std::max(a, b); },
+      std::numeric_limits<float>::min(), std::numeric_limits<int32>::min(),
+      std::numeric_limits<uint32>::min());
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
-  RunVectorizedReduceTest(CreateScalarMinComputation,
-                          [](float a, float b) { return std::min(a, b); },
-                          [](int32 a, int32 b) { return std::min(a, b); },
-                          [](uint32 a, uint32 b) { return std::min(a, b); },
-                          std::numeric_limits<float>::max(),
-                          std::numeric_limits<int32>::max(),
-                          std::numeric_limits<uint32>::max());
+  RunVectorizedReduceTest(
+      static_cast<FuncGeneratorForType>(CreateScalarMinComputation),
+      [](float a, float b) { return std::min(a, b); },
+      [](int32 a, int32 b) { return std::min(a, b); },
+      [](uint32 a, uint32 b) { return std::min(a, b); },
+      std::numeric_limits<float>::max(), std::numeric_limits<int32>::max(),
+      std::numeric_limits<uint32>::max());
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanAnd) {
   RunVectorizedReduceTestForType<bool>(
-      CreateScalarAndComputation, [](bool a, bool b) { return a && b; }, true);
+      static_cast<FuncGenerator>(CreateScalarAndComputation),
+      [](bool a, bool b) { return a && b; }, true);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanOr) {
   RunVectorizedReduceTestForType<bool>(
-      CreateScalarOrComputation, [](bool a, bool b) { return a || b; }, false);
+      static_cast<FuncGenerator>(CreateScalarOrComputation),
+      [](bool a, bool b) { return a || b; }, false);
 }
 
 class ReduceR3ToR2Test : public ReduceTest,
@@ -882,6 +891,48 @@ XLA_TEST_F(ReduceTest, ReduceAndPredR2_128x64_To_R1) {
 }
 XLA_TEST_F(ReduceTest, ReduceOrPredR2_64x32_To_R1) {
   RunR2ToR1PredTest</*cols=32*/ 32>(/*and_reduce=false*/ false, /*rows=64*/ 64);
+}
+
+// Tests reductions with different initial values.  There's no test macro that
+// combines TYPED_TEST and TYPED_P, so we have to do it manually.
+class ReduceInitializerTest : public ReduceTest {
+ protected:
+  template <typename T>
+  void DoTest(T initializer, int num_elems) {
+    ComputationBuilder builder(client_, TestName());
+    Computation max_fn = CreateScalarMaxComputation(
+        primitive_util::NativeToPrimitiveType<T>(), &builder);
+
+    auto init = builder.ConstantR0<T>(initializer);
+    std::vector<T> input_arr(num_elems, std::numeric_limits<T>::lowest());
+    auto input_literal = Literal::CreateR1<T>(input_arr);
+    auto input_data =
+        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+    builder.Reduce(builder.Parameter(0, input_literal->shape(), "input"), init,
+                   max_fn, {0});
+
+    ComputeAndCompareR0<T>(&builder, initializer, {input_data.get()});
+  }
+};
+
+XLA_TEST_F(ReduceInitializerTest, U8Small) { DoTest<uint8>(42, 2); }
+
+XLA_TEST_F(ReduceInitializerTest, U8BigPowerOf2) { DoTest<uint8>(42, 4096); }
+
+XLA_TEST_F(ReduceInitializerTest, U8InitializerBigNonPowerOf2) {
+  DoTest<uint8>(42, 4095);
+}
+
+XLA_TEST_F(ReduceInitializerTest, U64InitializerZero) {
+  DoTest<uint64>(0, 1024);
+}
+
+XLA_TEST_F(ReduceInitializerTest, U64InitializerOne) {
+  DoTest<uint64>(1, 1024);
+}
+
+XLA_TEST_F(ReduceInitializerTest, U64InitializerBigValue) {
+  DoTest<uint64>(1234556789123, 1024);
 }
 
 }  // namespace

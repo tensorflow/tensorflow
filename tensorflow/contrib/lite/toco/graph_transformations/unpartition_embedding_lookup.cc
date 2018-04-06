@@ -165,7 +165,7 @@ bool UnpartitionEmbeddingLookup::Run(Model* model, std::size_t op_index) {
   CHECK(mod_op && mod_op->type == OperatorType::kFloorMod)
       << "Unsupported partition strategy";
   CHECK_EQ(mod_op, GetOpWithOutput(*model, indices_partition_op->inputs[1]))
-      << "Indices and data parition ops require the same partition strategy "
+      << "Indices and data partition ops require the same partition strategy "
          "and inputs";
 
   // Glob together all of the gather data. This is not yet in the correct order.

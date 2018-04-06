@@ -473,6 +473,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(z.control_inputs, [x, x])
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, x, x, y, y])
+    self.assertEqual(x._control_outputs, [z])
 
   def testAddControlInputC(self):
     # The C API dedups redundant control edges, pure Python does not
@@ -487,6 +488,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(z.control_inputs, [x])
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, y])
+    self.assertEqual(x._control_outputs, [z])
 
   def testRemoveAllControlInputs(self):
     a = constant_op.constant(1)
@@ -1555,6 +1557,35 @@ class MultithreadedGraphStateTest(test_util.TensorFlowTestCase):
       node { name: "FloatOutput_2" op: "FloatOutput"
              input: "^ColocateWithMe_2" }
     """, gd)
+
+  def testNameStack(self):
+
+    class NameSettingThread(self.TestThread):
+
+      def run(self):
+        with g.name_scope("foo"):
+          op1 = g.create_op("FloatOutput", [], [dtypes.float32])
+          self.has_mutated_graph.set()
+          self.should_continue.wait()
+          self.should_continue.clear()
+          op2 = g.create_op("FloatOutput", [], [dtypes.float32])
+          self.result = (op1, op2)
+
+    g = ops.Graph()
+    threads = [NameSettingThread(g, i) for i in range(3)]
+    for t in threads:
+      t.start()
+      t.has_mutated_graph.wait()
+      t.has_mutated_graph.clear()
+
+    for t in threads:
+      t.should_continue.set()
+      t.join()
+
+    suffixes = ["", "_1", "_2"]
+    for t, s in zip(threads, suffixes):
+      self.assertEquals("foo" + s + "/FloatOutput", t.result[0].name)
+      self.assertEquals("foo" + s + "/FloatOutput_1", t.result[1].name)
 
 
 @test_util.with_c_api
@@ -2919,6 +2950,9 @@ class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "device_policy must be one of"):
       c = config_pb2.ConfigProto()
       ops.enable_eager_execution(c, c)
+    with self.assertRaisesRegexp(ValueError, "execution_mode must be one of"):
+      c = config_pb2.ConfigProto()
+      ops.enable_eager_execution(c, execution_mode=c)
 
 
 if __name__ == "__main__":

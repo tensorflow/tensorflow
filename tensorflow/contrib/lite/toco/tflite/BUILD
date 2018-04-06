@@ -115,9 +115,11 @@ cc_library(
     deps = [
         ":operator",
         ":types",
+        "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/contrib/lite/toco:tooling_util",
+        "//tensorflow/contrib/lite/tools:verifier",
         "@flatbuffers",
     ],
 )
@@ -134,16 +136,4 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

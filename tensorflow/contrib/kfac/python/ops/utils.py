@@ -649,15 +649,23 @@ class PartitionedTensor(object):
   def dtype(self):
     return self.tensors[0].dtype
 
-  def devices(self):
-    return set(tensor.device for tensor in self.tensors)
-
   def __str__(self):
     return "PartitionedTensor([%s, ...], dtype=%s, shape=%s)" % (
         self.tensors[0].name, self.dtype.name, tuple(self.shape.as_list()))
 
   def __hash__(self):
     return hash(tuple(self.tensors))
+
+  def __eq__(self, other):
+    if not isinstance(other, PartitionedTensor):
+      return False
+    return self.tensors == other.tensors
+
+  def __ne__(self, other):
+    return not self == other  # pylint: disable=g-comparison-negation
+
+  def __getitem__(self, key):
+    return self.as_tensor()[key]
 
   def as_tensor(self, dtype=None, name=None, as_ref=False):
     with ops.name_scope(name, "PartitionedTensor.as_tensor", self.tensors):
@@ -669,6 +677,15 @@ class PartitionedTensor(object):
       if result.device not in self._concats:
         self._concats[result.device] = result
       return self._concats[result.device]
+
+  @property
+  def device(self):
+    # PartitionedTensors in general do not live on a single device.  If the
+    # device cannot be determined unambiguously this property will return None.
+    device = self.tensors[0].device
+    if all(tensor.device == device for tensor in self.tensors):
+      return device
+    return None
 
 
 ops.register_tensor_conversion_function(

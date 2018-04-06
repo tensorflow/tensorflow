@@ -387,7 +387,10 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   """
   if context.executing_eagerly() and not isinstance(
       input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
-    return np.prod(ops.convert_to_tensor(input)._shape_tuple())  # pylint: disable=protected-access
+    input = ops.convert_to_tensor(input)
+    np_out_type = out_type.as_numpy_dtype
+    num_elements = np.prod(input._shape_tuple(), dtype=np_out_type)  # pylint: disable=protected-acces:
+    return ops.convert_to_tensor(num_elements, dtype=out_type)
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
                           sparse_tensor.SparseTensorValue)):
@@ -957,6 +960,11 @@ def _autopacking_helper(list_or_tuple, dtype, name):
   Returns:
     A `tf.Tensor` with value equivalent to `list_or_tuple`.
   """
+  if context.executing_eagerly():
+    # NOTE: Fast path when all the items are tensors, this doesn't do any type
+    # checking.
+    if all(ops.is_dense_tensor_like(elem) for elem in list_or_tuple):
+      return gen_array_ops.pack(list_or_tuple, name=name)
   must_pack = False
   converted_elems = []
   with ops.name_scope(name) as scope:
@@ -2691,12 +2699,17 @@ reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
 
 @tf_export("gather")
 def gather(params, indices, validate_indices=None, name=None, axis=0):
-  # TODO(rjryan): Remove "Gather" creation in favor of GatherV2 once the forward
-  # compatibility 3 week period has passed.
-  if axis == 0:
-    return gen_array_ops.gather(
-        params, indices, validate_indices=validate_indices, name=name)
-  else:
+  del validate_indices
+  if axis != 0:
+    # Note that we do a sparse_read here to avoid snapshotting the entire
+    # resource variable and doing a gather, which can be inefficient and lead to
+    # subtle race conditions. TODO(apassos) implement axis != 0 on sparse_read
+    return gen_array_ops.gather_v2(params, indices, axis, name=name)
+  try:
+    # TODO(apassos) find a less bad way of detecting resource variables without
+    # introducing a circular dependency.
+    return params.sparse_read(indices, name=name)
+  except AttributeError:
     return gen_array_ops.gather_v2(params, indices, axis, name=name)
 
 

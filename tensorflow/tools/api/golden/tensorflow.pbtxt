@@ -85,6 +85,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "GradientTape"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Graph"
     mtype: "<type \'type\'>"
   }
@@ -398,6 +402,10 @@ tf_module {
   }
   member {
     name: "manip"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "math"
     mtype: "<type \'module\'>"
   }
   member {
@@ -974,7 +982,7 @@ tf_module {
   }
   member_method {
     name: "enable_eager_execution"
-    argspec: "args=[\'config\', \'device_policy\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'config\', \'device_policy\', \'execution_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "encode_base64"
@@ -1682,6 +1690,14 @@ tf_module {
   }
   member_method {
     name: "scatter_div"
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_max"
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_min"
     argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {

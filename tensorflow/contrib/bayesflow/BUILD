@@ -38,25 +38,6 @@ py_library(
 )
 
 cuda_py_test(
-    name = "metropolis_hastings_test",
-    size = "large",
-    srcs = ["python/kernel_tests/metropolis_hastings_test.py"],
-    additional_deps = [
-        ":bayesflow_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-    ],
-)
-
-cuda_py_test(
     name = "monte_carlo_test",
     size = "small",
     srcs = ["python/kernel_tests/monte_carlo_test.py"],
@@ -75,38 +56,4 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
     ],
-)
-
-cuda_py_test(
-    name = "hmc_test",
-    size = "large",
-    srcs = ["python/kernel_tests/hmc_test.py"],
-    additional_deps = [
-        ":bayesflow_py",
-        "//third_party/py/numpy",
-        "//tensorflow/contrib/distributions:distributions_py",
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/python/ops/distributions",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:random_seed",
-    ],
-    tags = ["nomsan"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

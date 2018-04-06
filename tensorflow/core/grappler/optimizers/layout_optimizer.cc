@@ -301,10 +301,6 @@ bool IsComparisonOp(const NodeDef& node) {
   return is_compare;
 }
 
-bool IsLogicalOp(const NodeDef& node) {
-  return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
-}
-
 bool IsReduceOp(const NodeDef& node) {
   return IsSum(node) || IsMean(node) || IsProd(node) || IsMax(node) ||
          IsMin(node) || IsAll(node) || IsAny(node);
@@ -551,8 +547,8 @@ class NodeProcessor : public GraphProcessor {
     string device;
     string not_used;
     if (DeviceNameUtils::SplitDeviceName(device_name, &not_used, &device) &&
-        (StringPiece(str_util::Lowercase(device)))
-            .contains(str_util::Lowercase(DEVICE_GPU))) {
+        str_util::StrContains(str_util::Lowercase(device),
+                              str_util::Lowercase(DEVICE_GPU))) {
       return true;
     }
     return false;
@@ -2123,6 +2119,10 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
+  if (cluster == nullptr) {
+    return errors::InvalidArgument("cluster == nullptr");
+  }
+
   if (GetNumGPUs(*cluster) < 1) {
     // LayoutOptimizer is currently only tuned for GPU.
     *output = item.graph;

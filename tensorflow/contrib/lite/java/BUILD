@@ -167,15 +167,3 @@ tflite_jni_binary(
         "//tensorflow/contrib/lite/java/src/main/native",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

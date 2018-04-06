@@ -253,7 +253,7 @@ class CreateQuantileAccumulatorOp : public OpKernel {
  private:
   float epsilon_;
   int32 num_quantiles_;
-  // An upperbound on the number of enteries that the summaries might have
+  // An upper bound on the number of entries that the summaries might have
   // for a feature.
   int64 max_elements_;
   bool generate_quantiles_;
