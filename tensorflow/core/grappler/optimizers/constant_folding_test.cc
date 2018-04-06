@@ -2402,6 +2402,48 @@ TEST_F(ConstantFoldingTest, Enter) {
   }
 }
 
+TEST_F(ConstantFoldingTest, TensorArraySize) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+  auto dynamic_array =
+      ops::TensorArray(scope.WithOpName("dynamic"), size, DT_FLOAT,
+                       ops::TensorArray::DynamicSize(true));
+  auto static_array =
+      ops::TensorArray(scope.WithOpName("static"), size, DT_FLOAT,
+                       ops::TensorArray::DynamicSize(false));
+  auto dynamic_sz = ops::TensorArraySize(
+      scope.WithOpName("dynamic_sz"), dynamic_array.handle, dynamic_array.flow);
+  auto static_sz = ops::TensorArraySize(scope.WithOpName("static_sz"),
+                                        static_array.handle, static_array.flow);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  auto tensors_expected =
+      EvaluateNodes(item.graph, {"dynamic_sz", "static_sz"});
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(5, output.node_size());
+  EXPECT_EQ("dynamic_sz", output.node(3).name());
+  EXPECT_EQ("TensorArraySizeV3", output.node(3).op());
+  EXPECT_EQ("static_sz", output.node(4).name());
+  EXPECT_EQ("Const", output.node(4).op());
+
+  auto tensors_actual = EvaluateNodes(output, {"dynamic_sz", "static_sz"});
+  EXPECT_EQ(2, tensors_expected.size());
+  EXPECT_EQ(2, tensors_actual.size());
+  test::ExpectTensorEqual<int32>(tensors_expected[0], tensors_actual[0]);
+  test::ExpectTensorEqual<int32>(tensors_expected[1], tensors_actual[1]);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

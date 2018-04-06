@@ -536,14 +536,14 @@ class _BatchReshapeTest(object):
 
     if self.is_static_shape:
       with self.assertRaisesRegexp(NotImplementedError,
-                                   "too few event dims"):
+                                   "too few batch and event dims"):
         poisson_141_reshaped.log_prob(x_4)
       with self.assertRaisesRegexp(NotImplementedError,
                                    "unexpected batch and event shape"):
         poisson_141_reshaped.log_prob(x_114)
       return
 
-    with self.assertRaisesOpError("too few event dims"):
+    with self.assertRaisesOpError("too few batch and event dims"):
       with self.test_session():
         poisson_141_reshaped.log_prob(x_4).eval()
 

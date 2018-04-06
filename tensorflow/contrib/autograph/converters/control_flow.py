@@ -22,6 +22,7 @@ import gast
 
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import ast_util
+from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import templates
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
@@ -48,11 +49,6 @@ class ControlFlowTransformer(transformer.Base):
 
   def __init__(self, context):
     super(ControlFlowTransformer, self).__init__(context)
-
-  # pylint:disable=invalid-name
-
-  def visit_For(self, node):
-    assert False, 'for statement should have been canonicalized at this point'
 
   def _create_cond_branch(self, body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
@@ -170,6 +166,13 @@ class ControlFlowTransformer(transformer.Base):
     body_closure = body_scope.modified - body_scope.created
     all_referenced = body_scope.referenced
 
+    cond_scope = anno.getanno(node, NodeAnno.COND_SCOPE)
+    cond_closure = set()
+    for s in cond_scope.referenced:
+      for root in s.support_set:
+        if root not in body_scope.created:
+          cond_closure.add(root)
+
     state = list(body_closure)
     if not state:
       # TODO(mdan): Implement this properly.
@@ -204,7 +207,8 @@ class ControlFlowTransformer(transformer.Base):
       def body_name(state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = autograph_utils.run_while(test_name, body_name, [state])
+      state_ast_tuple = __ops.while_loop(
+          test_name, body_name, (state,), (extra_deps,))
     """
     node = templates.replace(
         template,
@@ -216,11 +220,67 @@ class ControlFlowTransformer(transformer.Base):
         test=test,
         body_name=self.context.namer.new_symbol('loop_body',
                                                 body_scope.referenced),
-        body=node_body)
+        body=node_body,
+        extra_deps=tuple(s.ast() for s in cond_closure),
+    )
 
     return node
 
-  # pylint:enable=invalid-name
+  def visit_For(self, node):
+    self.generic_visit(node)
+
+    body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    body_closure = body_scope.modified - body_scope.created
+    all_referenced = body_scope.referenced
+
+    state = list(body_closure)
+
+    state_ssf = [
+        self.context.namer.new_symbol(s.ssf(), all_referenced) for s in state
+    ]
+    ssf_map = {
+        name: ssf
+        for name, ssf in zip(state, state_ssf)
+        if str(name) != ssf
+    }
+
+    if len(state) == 1:
+      state = state[0]
+      state_ssf = state_ssf[0]
+      state_ast_tuple = state
+    else:
+      state_ast_tuple = gast.Tuple([n.ast() for n in state], None)
+
+    node_body = ast_util.rename_symbols(node.body, ssf_map)
+    if anno.hasanno(node, 'extra_cond'):
+      extra_cond = anno.getanno(node, 'extra_cond')
+      extra_cond = ast_util.rename_symbols(extra_cond, ssf_map)
+    else:
+      extra_cond = parser.parse_expression('True')
+
+    template = """
+      def extra_cond_name(state_ssf):
+        return extra_cond_expr
+      def body_name(iterate, state_ssf):
+        body
+        return state_ssf,
+      state_ast_tuple = __ops.for_loop(
+          iterated, extra_cond_name, body_name, (state,))
+    """
+    node = templates.replace(
+        template,
+        state=state,
+        state_ssf=state_ssf,
+        state_ast_tuple=state_ast_tuple,
+        iterated=node.iter,
+        iterate=node.target,
+        extra_cond_name=self.context.namer.new_symbol('extra_cond',
+                                                      all_referenced),
+        extra_cond_expr=extra_cond,
+        body_name=self.context.namer.new_symbol('loop_body', all_referenced),
+        body=node_body)
+
+    return node
 
 
 def transform(node, context):

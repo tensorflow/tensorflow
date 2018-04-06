@@ -37,6 +37,7 @@ limitations under the License.
 
 using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
+using tensorflow::DT_INT16;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
 using tensorflow::DT_UINT8;
@@ -1867,6 +1868,9 @@ void AddPlaceholder(const string& name, ArrayDataType type,
       break;
     case ArrayDataType::kInt64:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT64);
+      break;
+    case ArrayDataType::kInt16:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_INT16);
       break;
     default:
       LOG(FATAL) << "Unexpected data type in array \"" << name << "\"";

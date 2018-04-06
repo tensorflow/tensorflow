@@ -61,7 +61,7 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
           mode=['graph'],
           distribution=[
               combinations.one_device_strategy,
-              combinations.mirrored_strategy_without_prefetch
+              combinations.mirrored_strategy_with_gpu_and_cpu
           ]))
   def test_complete_flow_with_mode(self, distribution):
     label_dimension = 2

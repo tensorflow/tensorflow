@@ -28,7 +28,7 @@ from tensorflow.contrib.autograph.pyct import anno
 class CleanCopier(gast.NodeVisitor):
   """Copy AST nodes.
 
-  The copied nodes will ignore almost all fields that prefixed by '__'.
+  The copied nodes will ignore almost all fields that are prefixed by '__'.
   Exceptions make some annotations.
   """
 
