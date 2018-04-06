@@ -6180,3 +6180,12 @@ cc_library(
         "@gemmlowp",
     ],
 )
+
+# Header-only version of cwise_lib for clients that want to use the cwise_ops
+# functionality in their own custom ops.
+cc_header_only_library(
+    name = "cwise_lib_hdrs",
+    deps = [
+        ":cwise_lib",
+    ],
+)
