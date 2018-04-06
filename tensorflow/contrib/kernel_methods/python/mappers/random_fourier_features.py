@@ -40,11 +40,11 @@ class RandomFourierFeatureMapper(dkm.DenseKernelMapper):
   "Random Features for Large-Scale Kernel Machines" by Ali Rahimi and Ben Recht.
   (link: https://people.eecs.berkeley.edu/~brecht/papers/07.rah.rec.nips.pdf)
 
-  The mapping uses a matrix `\\(Omega \in R^{d x D}\\)` and a bias vector
-  `\\(b \in R^D\\)` where `d` is the input dimension (number of dense input
-  features) and `D` is the output dimension (i.e., dimension of the feature
-  space the input is mapped to). Each entry of `Omega` is sampled i.i.d. from a
-  (scaled) Gaussian distribution and each entry of `b` is sampled independently
+  The mapping uses a matrix \\(\Omega \in R^{d x D}\\) and a bias vector
+  \\(b \in R^D\\) where \\(d\\) is the input dimension (number of dense input
+  features) and \\(D\\) is the output dimension (i.e., dimension of the feature
+  space the input is mapped to). Each entry of \\(\Omega\\) is sampled i.i.d. from a
+  (scaled) Gaussian distribution and each entry of \\(b\\) is sampled independently
   and uniformly from [0, \\(2 * pi\\)].
 
   For a single input feature vector x in R^d, its RFFM is defined as:
