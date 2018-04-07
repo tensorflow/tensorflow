@@ -1395,6 +1395,7 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         ":bounds_check",
+        ":dense_update_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",

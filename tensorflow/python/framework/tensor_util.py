@@ -822,17 +822,32 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   all-or-nothing.
 
   Args:
-    tensor: The rank-1 Tensor to be evaluated.
+    tensor: The rank-0 or rank-1 Tensor to be evaluated.
 
   Returns:
     A `TensorShape` based on the constant value of the given `tensor`.
+
+  Raises:
+    ValueError: If the shape is rank-0 and is not statically known to be -1.
   """
   if isinstance(tensor, ops.EagerTensor):
     return tensor_shape.as_shape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 
+  if tensor.get_shape().ndims == 0:
+    value = constant_value(tensor)
+    if value is None:
+      raise ValueError(
+          "Received a scalar with unknown value as shape; require a statically "
+          "known scalar with value '-1' to describe an unknown shape.")
+    if value != -1:
+      raise ValueError(
+          "Received a scalar value '%s' as shape; require a statically known "
+          "scalar with value '-1' to describe an unknown shape." % value)
+    return tensor_shape.unknown_shape()
+
   shape = tensor.get_shape().with_rank(1)
-  if tensor.get_shape() == [0]:
+  if shape == [0]:
     return tensor_shape.scalar()
   elif tensor.op.type == "Shape":
     return tensor.op.inputs[0].get_shape()
