@@ -475,7 +475,7 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
       return false;
     }
     // it must not be created by this stage at any of previous optimization runs
-    if (StringPiece(node->name()).contains(stage_name_)) {
+    if (str_util::StrContains(node->name(), stage_name_)) {
       return false;
     }
     // should not drive or be driven by control dependency
