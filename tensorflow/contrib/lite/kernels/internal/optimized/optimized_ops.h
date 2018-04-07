@@ -5067,7 +5067,7 @@ template <typename T>
 inline void Pad(const T* input_data, const Dims<4>& input_dims,
                 const std::vector<int>& left_paddings,
                 const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
+                const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Pad");
   const int output_batch = ArraySize(output_dims, 3);
   const int output_height = ArraySize(output_dims, 2);
@@ -5087,27 +5087,27 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   const int input_depth = ArraySize(input_dims, 0);
 
   if (left_b_padding != 0) {
-    memset(output_data, pad_value,
+    memset(output_data, 0,
            left_b_padding * output_height * output_width * output_depth *
                sizeof(T));
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), pad_value,
+      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), 0,
              left_h_padding * output_width * output_depth * sizeof(T));
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), pad_value,
+        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), 0,
                left_w_padding * output_depth * sizeof(T));
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
-          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b),
-                 pad_value, left_d_padding * sizeof(T));
+          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b), 0,
+                 left_d_padding * sizeof(T));
         }
 
         T* out = output_data +
@@ -5121,21 +5121,20 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
           memset(
               output_data + Offset(output_dims, output_depth - right_d_padding,
                                    out_w, out_h, out_b),
-              pad_value, right_d_padding * sizeof(T));
+              0, right_d_padding * sizeof(T));
         }
       }
       if (right_w_padding != 0) {
         memset(
             output_data + Offset(output_dims, 0, output_width - right_w_padding,
                                  out_h, out_b),
-            pad_value, right_w_padding * output_depth * sizeof(T));
+            0, right_w_padding * output_depth * sizeof(T));
       }
     }
     if (right_h_padding != 0) {
       memset(output_data + Offset(output_dims, 0, 0,
                                   output_height - right_h_padding, out_b),
-             pad_value,
-             right_h_padding * output_width * output_depth * sizeof(T));
+             0, right_h_padding * output_width * output_depth * sizeof(T));
     }
   }
   if (right_b_padding != 0) {
@@ -5145,15 +5144,6 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
            right_b_padding * output_height * output_width * output_depth *
                sizeof(T));
   }
-}
-
-template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims) {
-  Pad(input_data, input_dims, left_paddings, right_paddings, output_data,
-      output_dims, 0);
 }
 
 template <typename T>

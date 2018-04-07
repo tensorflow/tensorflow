@@ -3086,7 +3086,7 @@ template <typename T>
 inline void Pad(const T* input_data, const Dims<4>& input_dims,
                 const std::vector<int>& left_paddings,
                 const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
+                const Dims<4>& output_dims) {
   const int output_batch = ArraySize(output_dims, 3);
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
@@ -3116,7 +3116,7 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
               out_w >= output_width - right_w_padding ||
               out_d < left_d_padding ||
               out_d >= output_depth - right_d_padding) {
-            *out_ptr++ = static_cast<T>(pad_value);
+            *out_ptr++ = 0;
           } else {
             *out_ptr++ = *in_ptr++;
           }
@@ -3124,15 +3124,6 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
       }
     }
   }
-}
-
-template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims) {
-  Pad(input_data, input_dims, left_paddings, right_paddings, output_data,
-      output_dims, 0);
 }
 
 inline bool LoopCondition(int index, int stop, int stride) {

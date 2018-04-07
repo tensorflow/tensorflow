@@ -119,46 +119,39 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     after_padding.push_back(paddings_data[idx * 2 + 1]);
   }
 
-#define TF_LITE_PAD(type, scalar, pad_value)                                \
+#define TF_LITE_PAD(type, scalar)                                           \
   type::Pad(GetTensorData<scalar>(op_context.input),                        \
             GetTensorDims(op_context.input), before_padding, after_padding, \
             GetTensorData<scalar>(op_context.output),                       \
-            GetTensorDims(op_context.output), pad_value)
+            GetTensorDims(op_context.output))
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, float, 0);
+        TF_LITE_PAD(reference_ops, float);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, float, 0);
+        TF_LITE_PAD(optimized_ops, float);
       }
       break;
     case kTfLiteUInt8:
-      // Quantized Pad requires that 0 is represented in the quantized range.
-      TF_LITE_ENSURE(context, op_context.output->params.zero_point >=
-                                  std::numeric_limits<uint8_t>::min());
-      TF_LITE_ENSURE(context, op_context.output->params.zero_point <=
-                                  std::numeric_limits<uint8_t>::max());
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, uint8_t,
-                    op_context.output->params.zero_point);
+        TF_LITE_PAD(reference_ops, uint8_t);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, uint8_t,
-                    op_context.output->params.zero_point);
+        TF_LITE_PAD(optimized_ops, uint8_t);
       }
       break;
     case kTfLiteInt32:
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, int32_t, 0);
+        TF_LITE_PAD(reference_ops, int32_t);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, int32_t, 0);
+        TF_LITE_PAD(optimized_ops, int32_t);
       }
       break;
     case kTfLiteInt64:
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, int64_t, 0);
+        TF_LITE_PAD(reference_ops, int64_t);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, int64_t, 0);
+        TF_LITE_PAD(optimized_ops, int64_t);
       }
       break;
     default:
