@@ -4180,19 +4180,6 @@ class Graph(object):
     return self._name_stack
 
   @tf_contextlib.contextmanager
-  def _colocate_with_for_gradient(self, op, gradient_uid,
-                                  ignore_existing=False):
-    with self.colocate_with(op, ignore_existing):
-      if gradient_uid is not None and self._control_flow_context is not None:
-        try:
-          self._control_flow_context.EnterGradientColocation(op, gradient_uid)
-          yield
-        finally:
-          self._control_flow_context.ExitGradientColocation(op, gradient_uid)
-      else:
-        yield
-
-  @tf_contextlib.contextmanager
   def colocate_with(self, op, ignore_existing=False):
     """Returns a context manager that specifies an op to colocate with.
 
@@ -4971,7 +4958,8 @@ def container(container_name):
   return get_default_graph().container(container_name)
 
 
-def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
+@tf_export("colocate_with")
+def colocate_with(op, ignore_existing=False):
   if context.executing_eagerly():
     if op is not None:
       return device(op.device)
@@ -4985,13 +4973,7 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
       else:
         raise ValueError("Encountered an Eager-defined Tensor during graph "
                          "construction, but a function was not being built.")
-    return default_graph._colocate_with_for_gradient(
-        op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
-
-
-@tf_export("colocate_with")
-def colocate_with(op, ignore_existing=False):
-  return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
+    return default_graph.colocate_with(op, ignore_existing)
 
 
 @tf_export("control_dependencies")
