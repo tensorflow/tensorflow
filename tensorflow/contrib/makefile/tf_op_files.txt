@@ -301,3 +301,5 @@ tensorflow/core/kernels/warn_about_ints.cc
 tensorflow/core/kernels/segment_reduction_ops.cc
 tensorflow/core/kernels/batch_util.cc
 tensorflow/core/ops/audio_ops.cc
+tensorflow/core/kernels/decode_proto_op.cc
+tensorflow/core/kernels/encode_proto_op.cc
