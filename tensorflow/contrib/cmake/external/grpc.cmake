@@ -23,18 +23,18 @@ if (tensorflow_GRPC_PROVIDER STREQUAL module)
 
   if(WIN32)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-      set(grpc_STATIC_LIBRARIES
+      set(GRPC_LIBRARIES
           ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
           ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc_unsecure.lib
           ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/gpr.lib)
     else()
-      set(grpc_STATIC_LIBRARIES
+      set(GRPC_LIBRARIES
           ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/grpc++_unsecure.lib
           ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/grpc_unsecure.lib
           ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/gpr.lib)
     endif()
   else()
-    set(grpc_STATIC_LIBRARIES
+    set(GRPC_LIBRARIES
         ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
         ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
         ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libaddress_sorting.a
@@ -59,7 +59,7 @@ if (tensorflow_GRPC_PROVIDER STREQUAL module)
       GIT_TAG ${GRPC_TAG}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       BUILD_IN_SOURCE 1
-      BUILD_BYPRODUCTS ${grpc_STATIC_LIBRARIES}
+      BUILD_BYPRODUCTS ${GRPC_LIBRARIES}
       BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
       COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
       INSTALL_COMMAND ""
