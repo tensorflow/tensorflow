@@ -258,7 +258,7 @@ class RollOp : public OpKernel {
       if (axis < 0) {
         axis += num_dims;
       }
-      OP_REQUIRES(context, axis < num_dims,
+      OP_REQUIRES(context, 0 <= axis && axis < num_dims,
                   errors::InvalidArgument("axis ", axis, " is out of range"));
       const int ds = std::max<int>(static_cast<int>(input.dim_size(axis)), 1);
       const int sum = shift_mod_sum[axis] + static_cast<int>(shift_flat(i));
