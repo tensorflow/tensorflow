@@ -403,7 +403,8 @@ class FunctionalOpsTest(test.TestCase):
 
       r = functional_ops.scanr(
           lambda a, x: math_ops.multiply(a, x), elems, initializer=v)
-      self.assertAllEqual([1440., 1440., 720., 240., 60., 12.], self.evaluate(r))
+      self.assertAllEqual([1440., 1440., 720., 240., 60., 12.],
+                          self.evaluate(r))
       # pylint: enable=unnecessary-lambda
 
   @test_util.run_in_graph_and_eager_modes()
@@ -412,7 +413,7 @@ class FunctionalOpsTest(test.TestCase):
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
       initializer = (np.array(1.0), np.array(-1.0))
       r = functional_ops.scanr(lambda a, x: (a[0] * x, -a[1] * x), elems,
-                              initializer)
+                               initializer)
       r_value = self.evaluate(r)
 
       self.assertAllEqual([720., 720., 360., 120., 30., 6.], r_value[0])
@@ -425,7 +426,7 @@ class FunctionalOpsTest(test.TestCase):
       initializer = np.array(1.0)
       # Multiply a * 1 each time
       r = functional_ops.scanr(lambda a, x: a * (x[0] + x[1]),
-                              (elems + 1, -elems), initializer)
+                               (elems + 1, -elems), initializer)
       self.assertAllEqual([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], self.evaluate(r))
 
   @test_util.run_in_graph_and_eager_modes()
@@ -433,7 +434,7 @@ class FunctionalOpsTest(test.TestCase):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
       r = functional_ops.scanr(lambda a, x: (a[0] + x[0], a[1] + x[1]),
-                              (elems, -elems))
+                               (elems, -elems))
       r_value = self.evaluate(r)
       # Use [::-1] to flip the elems
       self.assertAllEqual(np.cumsum(elems[::-1])[::-1], r_value[0])
