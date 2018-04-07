@@ -16391,6 +16391,55 @@ op {
   }
 }
 op {
+  name: "DecodeProtoV2"
+  input_arg {
+    name: "bytes"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "sizes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "message_type"
+    type: "string"
+  }
+  attr {
+    name: "field_names"
+    type: "list(string)"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "descriptor_source"
+    type: "string"
+    default_value {
+      s: "local://"
+    }
+  }
+  attr {
+    name: "message_format"
+    type: "string"
+    default_value {
+      s: "binary"
+    }
+  }
+  attr {
+    name: "sanitize"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "DecodeRaw"
   input_arg {
     name: "bytes"
@@ -19012,6 +19061,42 @@ op {
         type: DT_UINT16
       }
     }
+  }
+}
+op {
+  name: "EncodeProto"
+  input_arg {
+    name: "sizes"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    type_list_attr: "Tinput_types"
+  }
+  output_arg {
+    name: "bytes"
+    type: DT_STRING
+  }
+  attr {
+    name: "field_names"
+    type: "list(string)"
+  }
+  attr {
+    name: "message_type"
+    type: "string"
+  }
+  attr {
+    name: "descriptor_source"
+    type: "string"
+    default_value {
+      s: "local://"
+    }
+  }
+  attr {
+    name: "Tinput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {
@@ -50216,6 +50301,47 @@ op {
   }
 }
 op {
+  name: "Rpc"
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "method"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "request"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "response"
+    type: DT_STRING
+  }
+  attr {
+    name: "protocol"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "fail_fast"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "timeout_in_ms"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "Rsqrt"
   input_arg {
     name: "x"
@@ -69032,6 +69158,55 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "TryRpc"
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "method"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "request"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "response"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "status_code"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "status_message"
+    type: DT_STRING
+  }
+  attr {
+    name: "protocol"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "fail_fast"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "timeout_in_ms"
+    type: "int"
+    default_value {
+      i: 0
     }
   }
   is_stateful: true
