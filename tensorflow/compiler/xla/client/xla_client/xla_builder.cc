@@ -593,7 +593,45 @@ XlaOp XlaBuilder::Reshape(const XlaOp& operand,
 
 XlaOp XlaBuilder::Collapse(const XlaOp& operand,
                            tensorflow::gtl::ArraySlice<int64> dimensions) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (dimensions.size() <= 1) {
+      // Not collapsing anything, trivially we can return the operand versus
+      // enqueueing a trivial reshape.
+      return operand;
+    }
+
+    // Out-of-order collapse is not supported.
+    // Checks that the collapsed dimensions are in order and consecutive.
+    for (tensorflow::gtl::ArraySlice<int64>::size_type i = 1;
+         i < dimensions.size(); ++i) {
+      if (dimensions[i] - 1 != dimensions[i - 1]) {
+        return InvalidArgument(
+            "Collapsed dimensions are not in consecutive order.");
+      }
+    }
+
+    // Create a new sizes vector from the old shape, replacing the collapsed
+    // dimensions by the product of their sizes.
+    TF_ASSIGN_OR_RETURN(const Shape& original_shape, GetShape(operand));
+
+    VLOG(3) << "original shape: " << ShapeUtil::HumanString(original_shape);
+    VLOG(3) << "dims to collapse: "
+            << tensorflow::str_util::Join(dimensions, ",");
+
+    std::vector<int64> new_sizes;
+    for (int i = 0; i < ShapeUtil::Rank(original_shape); ++i) {
+      if (i <= dimensions.front() || i > dimensions.back()) {
+        new_sizes.push_back(original_shape.dimensions(i));
+      } else {
+        new_sizes.back() *= original_shape.dimensions(i);
+      }
+    }
+
+    VLOG(3) << "new sizes: [" << tensorflow::str_util::Join(new_sizes, ",")
+            << "]";
+
+    return Reshape(operand, new_sizes);
+  });
 }
 
 void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
