@@ -263,7 +263,7 @@ def _check_dense_labels_match_logits_and_reshape(
         if (dim1 is not None) and (dim1 != expected_labels_dimension):
           raise ValueError(
               'Mismatched label shape. '
-              'Classifier configured with n_classes=%s.  Received %s. '
+              'Expected labels dimension=%s.  Received %s. '
               'Suggested Fix: check your n_classes argument to the estimator '
               'and/or the shape of your label.' %
               (expected_labels_dimension, dim1))
