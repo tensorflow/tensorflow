@@ -366,13 +366,35 @@ class ScatterNdTest(test.TestCase):
 
   def testString(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
-    updates = constant_op.constant(["four", "three", "one", "seven"], dtype=dtypes.string)
+    updates = constant_op.constant(["four", "three", "one", "seven"],
+                                   dtype=dtypes.string)
     expected = np.array(["", "one", "", "three", "four", "", "", "seven"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
-
     with self.test_session() as sess:
       result = sess.run(scatter)
-      self.assertTrue(np.array_equal(result, expected))
+      self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by same value.
+    indices = constant_op.constant([[4], [3], [3], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(["a", "b", "b", "c"],
+                                   dtype=dtypes.string)
+    expected = np.array(["", "", "", "bb", "a", "", "", "c"])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by different value.
+    indices = constant_op.constant([[4], [3], [3], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(["a", "b", "c", "d"],
+                                   dtype=dtypes.string)
+    expected = [np.array(["", "", "", "bc", "a", "", "", "d"]),
+                np.array(["", "", "", "cb", "a", "", "", "d"])]
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertTrue(np.array_equal(result, expected[0]) or
+                      np.array_equal(result, expected[1]))
 
   def testRank3ValidShape(self):
     indices = array_ops.zeros([2, 2, 2], dtypes.int32)
