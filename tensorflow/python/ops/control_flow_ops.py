@@ -1595,6 +1595,16 @@ class ControlFlowContext(object):
     last_context = self._context_stack.pop()
     graph._set_control_flow_context(last_context)
 
+  def EnterGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.EnterGradientColocation(op, gradient_uid)
+
+  def ExitGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.ExitGradientColocation(op, gradient_uid)
+
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
     if self._outer_context:
