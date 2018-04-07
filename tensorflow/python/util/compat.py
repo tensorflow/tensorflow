@@ -115,13 +115,15 @@ def as_str_any(value):
 
 @tf_export('compat.path_to_str')
 def path_to_str(path):
-  """Returns the file system path representation of a `PathLike` object, else as it is.
+  """Returns the file system path representation of one or more `PathLike` objects, otherwise 
+  `path` is passed through unchanged.
 
   Args:
-    path: One or more objects that can be converted to path representation.
+    path: One or more objects to be conditionally converted to path representation.
 
   Returns:
-    One or more `str` object.
+    If `path` is a `PathLike` object, then the return value is one or more `str` objects.
+    Otherwise `path` is returned unchanged
   """
   if isinstance(path, _Iterable) and not isinstance(path, (str, bytes, bytearray, ops.Tensor)):
     path = [path_to_str(p) for p in path]
