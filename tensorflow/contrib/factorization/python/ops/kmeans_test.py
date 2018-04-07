@@ -26,6 +26,7 @@ from sklearn.cluster import KMeans as SklearnKMeans
 
 # pylint: disable=g-import-not-at-top
 from tensorflow.contrib.factorization.python.ops import kmeans as kmeans_lib
+from tensorflow.contrib.factorization.python.ops import constants
 from tensorflow.python.estimator import run_config
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import constant_op
@@ -121,7 +122,7 @@ class KMeansTestBase(test.TestCase):
 
   @property
   def initial_clusters(self):
-    return kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT
+    return constants.KMEANS_PLUS_PLUS_INIT
 
   @property
   def batch_size(self):
@@ -152,7 +153,7 @@ class KMeansTest(KMeansTestBase):
     return kmeans_lib.KMeansClustering(
         self.num_centers,
         initial_clusters=self.initial_clusters,
-        distance_metric=kmeans_lib.KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
+        distance_metric=constants.SQUARED_EUCLIDEAN_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
         random_seed=24,
@@ -181,7 +182,7 @@ class KMeansTest(KMeansTestBase):
     kmeans = kmeans_lib.KMeansClustering(
         self.num_centers,
         initial_clusters=self.initial_clusters,
-        distance_metric=kmeans_lib.KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
+        distance_metric=constants.SQUARED_EUCLIDEAN_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
         config=self.config(14),
@@ -273,8 +274,8 @@ class KMeansTestMultiStageInit(KMeansTestBase):
         [[1, 2], [3, 4], [5, 6], [7, 8], [9, 0]], dtype=np.float32)
     kmeans = kmeans_lib.KMeansClustering(
         num_clusters=points.shape[0],
-        initial_clusters=kmeans_lib.KMeansClustering.RANDOM_INIT,
-        distance_metric=kmeans_lib.KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
+        initial_clusters=constants.RANDOM_INIT,
+        distance_metric=constants.SQUARED_EUCLIDEAN_DISTANCE,
         use_mini_batch=True,
         mini_batch_steps_per_iteration=100,
         random_seed=24,
@@ -289,8 +290,8 @@ class KMeansTestMultiStageInit(KMeansTestBase):
     points = np.array([[1, 2]], dtype=np.float32)
     kmeans = kmeans_lib.KMeansClustering(
         num_clusters=points.shape[0],
-        initial_clusters=kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT,
-        distance_metric=kmeans_lib.KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
+        initial_clusters=constants.KMEANS_PLUS_PLUS_INIT,
+        distance_metric=constants.SQUARED_EUCLIDEAN_DISTANCE,
         use_mini_batch=True,
         mini_batch_steps_per_iteration=100,
         random_seed=24,
@@ -306,8 +307,8 @@ class KMeansTestMultiStageInit(KMeansTestBase):
         [[1, 2], [3, 4], [5, 6], [7, 8], [9, 0]], dtype=np.float32)
     kmeans = kmeans_lib.KMeansClustering(
         num_clusters=points.shape[0],
-        initial_clusters=kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT,
-        distance_metric=kmeans_lib.KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
+        initial_clusters=constants.KMEANS_PLUS_PLUS_INIT,
+        distance_metric=constants.SQUARED_EUCLIDEAN_DISTANCE,
         use_mini_batch=True,
         mini_batch_steps_per_iteration=100,
         random_seed=24,
@@ -369,8 +370,8 @@ class KMeansCosineDistanceTest(KMeansTestBase):
     self.num_centers = 2
     self.kmeans = kmeans_lib.KMeansClustering(
         self.num_centers,
-        initial_clusters=kmeans_lib.KMeansClustering.RANDOM_INIT,
-        distance_metric=kmeans_lib.KMeansClustering.COSINE_DISTANCE,
+        initial_clusters=constants.RANDOM_INIT,
+        distance_metric=constants.COSINE_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
         config=self.config(3))
@@ -436,7 +437,7 @@ class KMeansCosineDistanceTest(KMeansTestBase):
     kmeans = kmeans_lib.KMeansClustering(
         3,
         initial_clusters=self.initial_clusters,
-        distance_metric=kmeans_lib.KMeansClustering.COSINE_DISTANCE,
+        distance_metric=constants.COSINE_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
         config=self.config(3))
@@ -556,7 +557,7 @@ class TensorflowKMeansBenchmark(KMeansBenchmark):
       print('Starting tensorflow KMeans: %d' % i)
       tf_kmeans = kmeans_lib.KMeansClustering(
           self.num_clusters,
-          initial_clusters=kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT,
+          initial_clusters=constants.KMEANS_PLUS_PLUS_INIT,
           kmeans_plus_plus_num_retries=int(math.log(self.num_clusters) + 2),
           random_seed=i * 42,
           relative_tolerance=1e-6,

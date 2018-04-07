@@ -23,6 +23,7 @@ from __future__ import print_function
 import time
 
 from tensorflow.contrib.factorization.python.ops import clustering_ops
+from tensorflow.contrib.factorization.python.ops import constants
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.export import export_output
@@ -221,9 +222,9 @@ class _ModelFn(object):
           _LossRelativeChangeHook(loss, self._relative_tolerance))
 
     export_outputs = {
-        KMeansClustering.ALL_DISTANCES:
+        constants.ALL_DISTANCES:
             export_output.PredictOutput(all_distances[0]),
-        KMeansClustering.CLUSTER_INDEX:
+        constants.CLUSTER_INDEX:
             export_output.PredictOutput(model_predictions[0]),
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
             export_output.PredictOutput(model_predictions[0])
@@ -232,12 +233,12 @@ class _ModelFn(object):
     return model_fn_lib.EstimatorSpec(
         mode=mode,
         predictions={
-            KMeansClustering.ALL_DISTANCES: all_distances[0],
-            KMeansClustering.CLUSTER_INDEX: model_predictions[0],
+            constants.ALL_DISTANCES: all_distances[0],
+            constants.CLUSTER_INDEX: model_predictions[0],
         },
         loss=loss,
         train_op=training_op,
-        eval_metric_ops={KMeansClustering.SCORE: metrics.mean(loss)},
+        eval_metric_ops={constants.SCORE: metrics.mean(loss)},
         training_hooks=training_hooks,
         export_outputs=export_outputs)
 
@@ -292,36 +293,15 @@ class KMeansClustering(estimator.Estimator):
   is equivalent to
   ```
   tf.train.load_variable(
-      kmeans.model_dir, KMeansClustering.CLUSTER_CENTERS_VAR_NAME)
+      kmeans.model_dir, constants.CLUSTERS_VAR_NAME)
   ```
   """
-
-  # Valid values for the distance_metric constructor argument.
-  SQUARED_EUCLIDEAN_DISTANCE = clustering_ops.SQUARED_EUCLIDEAN_DISTANCE
-  COSINE_DISTANCE = clustering_ops.COSINE_DISTANCE
-
-  # Values for initial_clusters constructor argument.
-  RANDOM_INIT = clustering_ops.RANDOM_INIT
-  KMEANS_PLUS_PLUS_INIT = clustering_ops.KMEANS_PLUS_PLUS_INIT
-
-  # Metric returned by evaluate(): The sum of the squared distances from each
-  # input point to its closest center.
-  SCORE = 'score'
-
-  # Keys returned by predict().
-  # ALL_DISTANCES: The distance from each input  point to each cluster center.
-  # CLUSTER_INDEX: The index of the closest cluster center for each input point.
-  CLUSTER_INDEX = 'cluster_index'
-  ALL_DISTANCES = 'all_distances'
-
-  # Variable name used by cluster_centers().
-  CLUSTER_CENTERS_VAR_NAME = clustering_ops.CLUSTERS_VAR_NAME
 
   def __init__(self,
                num_clusters,
                model_dir=None,
-               initial_clusters=RANDOM_INIT,
-               distance_metric=SQUARED_EUCLIDEAN_DISTANCE,
+               initial_clusters=constants.RANDOM_INIT,
+               distance_metric=constants.SQUARED_EUCLIDEAN_DISTANCE,
                random_seed=0,
                use_mini_batch=True,
                mini_batch_steps_per_iteration=1,
@@ -365,19 +345,19 @@ class KMeansClustering(estimator.Estimator):
               from an input batch. `f` is free to return any number of centers
               from `0` to `k`. It will be invoked on successive input batches
               as necessary until all `num_clusters` centers are chosen.
-        * `KMeansClustering.RANDOM_INIT`: Choose centers randomly from an input
+        * `constants.RANDOM_INIT`: Choose centers randomly from an input
               batch. If the batch size is less than `num_clusters` then the
               entire batch is chosen to be initial cluster centers and the
               remaining centers are chosen from successive input batches.
-        * `KMeansClustering.KMEANS_PLUS_PLUS_INIT`: Use kmeans++ to choose
+        * `constants.KMEANS_PLUS_PLUS_INIT`: Use kmeans++ to choose
               centers from the first input batch. If the batch size is less
               than `num_clusters`, a TensorFlow runtime error occurs.
       distance_metric: The distance metric used for clustering. One of:
-        * `KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE`: Euclidean distance
+        * `constants.SQUARED_EUCLIDEAN_DISTANCE`: Euclidean distance
              between vectors `u` and `v` is defined as `\\(||u - v||_2\\)`
              which is the square root of the sum of the absolute squares of
              the elements' difference.
-        * `KMeansClustering.COSINE_DISTANCE`: Cosine distance between vectors
+        * `constants.COSINE_DISTANCE`: Cosine distance between vectors
              `u` and `v` is defined as `\\(1 - (u . v) / (||u||_2 ||v||_2)\\)`.
       random_seed: Python integer. Seed for PRNG used to initialize centers.
       use_mini_batch: A boolean specifying whether to use the mini-batch k-means
@@ -390,7 +370,7 @@ class KMeansClustering(estimator.Estimator):
         additional points to draw from the current distribution before selecting
         the best. If a negative value is specified, a heuristic is used to
         sample `O(log(num_to_sample))` additional points. Used only if
-        `initial_clusters=KMeansClustering.KMEANS_PLUS_PLUS_INIT`.
+        `initial_clusters=constants.KMEANS_PLUS_PLUS_INIT`.
       relative_tolerance: A relative tolerance of change in the loss between
         iterations. Stops learning if the loss changes less than this amount.
         This may not work correctly if `use_mini_batch=True`.
@@ -405,13 +385,13 @@ class KMeansClustering(estimator.Estimator):
         `distance_metric`.
     """
     if isinstance(initial_clusters, str) and initial_clusters not in [
-        KMeansClustering.RANDOM_INIT, KMeansClustering.KMEANS_PLUS_PLUS_INIT
+        constants.RANDOM_INIT, constants.KMEANS_PLUS_PLUS_INIT
     ]:
       raise ValueError(
           "Unsupported initialization algorithm '%s'" % initial_clusters)
     if distance_metric not in [
-        KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
-        KMeansClustering.COSINE_DISTANCE
+        constants.SQUARED_EUCLIDEAN_DISTANCE,
+        constants.COSINE_DISTANCE
     ]:
       raise ValueError("Unsupported distance metric '%s'" % distance_metric)
     super(KMeansClustering, self).__init__(
@@ -437,7 +417,7 @@ class KMeansClustering(estimator.Estimator):
       The index of the closest cluster center for each input point.
     """
     for index in self._predict_one_key(input_fn,
-                                       KMeansClustering.CLUSTER_INDEX):
+                                       constants.CLUSTER_INDEX):
       yield index
 
   def score(self, input_fn):
@@ -454,12 +434,12 @@ class KMeansClustering(estimator.Estimator):
       The sum of the squared distance from each point in the first batch of
       inputs to its nearest cluster center.
     """
-    return self.evaluate(input_fn=input_fn, steps=1)[KMeansClustering.SCORE]
+    return self.evaluate(input_fn=input_fn, steps=1)[constants.SCORE]
 
   def transform(self, input_fn):
     """Transforms each input point to its distances to all cluster centers.
 
-    Note that if `distance_metric=KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE`,
+    Note that if `distance_metric=constants.SQUARED_EUCLIDEAN_DISTANCE`,
     this
     function returns the squared Euclidean distance while the corresponding
     sklearn function returns the Euclidean distance.
@@ -471,9 +451,9 @@ class KMeansClustering(estimator.Estimator):
       The distances from each input point to each cluster center.
     """
     for distances in self._predict_one_key(input_fn,
-                                           KMeansClustering.ALL_DISTANCES):
+                                           constants.ALL_DISTANCES):
       yield distances
 
   def cluster_centers(self):
     """Returns the cluster centers."""
-    return self.get_variable_value(KMeansClustering.CLUSTER_CENTERS_VAR_NAME)
+    return self.get_variable_value(constants.CLUSTERS_VAR_NAME)
