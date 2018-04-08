@@ -764,7 +764,7 @@ REGISTER_OP("Min")
     .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
-    .Attr("T: numbertype")
+    .Attr("T: realnumbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape);
 
