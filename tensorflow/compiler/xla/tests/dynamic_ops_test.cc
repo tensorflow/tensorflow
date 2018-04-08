@@ -57,7 +57,13 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT, typename DataT>
   void TestR1Wrap() {
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {6}, {4}, {6, 7, 0, 1});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {6}, {4}, {6, 7, 0, 1});
   }
 
   template <typename IndexT, typename DataT>
@@ -82,8 +88,14 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT, typename DataT>
   void TestR2Wrap() {
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {3, 3},
-                         {{5, 6, 4}, {8, 9, 7}, {2, 3, 1}});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {3, 3},
+    //                      {{5, 6, 4}, {8, 9, 7}, {2, 3, 1}});
   }
 
   template <typename IndexT, typename DataT>
@@ -110,9 +122,15 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT, typename DataT>
   void TestR3Wrap() {
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR3<IndexT, DataT>(
-        {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {0, 2, 1},
-        {2, 1, 2}, {{{6, 5}}, {{12, 11}}});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR3<IndexT, DataT>(
+    //     {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {0, 2, 1},
+    //    {2, 1, 2}, {{{6, 5}}, {{12, 11}}});
   }
 
   template <typename IndexT, typename DataT>
@@ -336,8 +354,15 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   template <typename IndexT, typename DataT>
   void TestWrap() {
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {6},
-                         {10, 1, 2, 3, 4, 5, 8, 9});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {6},
+    //                      {10, 1, 2, 3, 4, 5, 8, 9});
+
     // R2 Shape: [3, 3]
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{10, 11}}, {2, 2},
                          {{1, 2, 3}, {4, 5, 6}, {11, 8, 10}});
@@ -655,17 +680,17 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElementsBF16) {
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/2);
 }
 
-XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrapping) {
-  // Multiple element, wrapping.
-  std::vector<int32> operand_shape({4, 5, 2});
-  RunR3Contiguous<float>(operand_shape, /*index=*/3, /*size=*/2);
-}
+// XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrapping) {
+//   // Multiple element, wrapping.
+//   std::vector<int32> operand_shape({4, 5, 2});
+//   RunR3Contiguous<float>(operand_shape, /*index=*/3, /*size=*/2);
+// }
 
-XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrappingBF16) {
-  // Multiple element, wrapping.
-  std::vector<int32> operand_shape({4, 5, 2});
-  RunR3Contiguous<bfloat16>(operand_shape, /*index=*/3, /*size=*/2);
-}
+// XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrappingBF16) {
+//   // Multiple element, wrapping.
+//   std::vector<int32> operand_shape({4, 5, 2});
+//   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/3, /*size=*/2);
+// }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLarge) {
   // Multiple element, update size larger than operand.
