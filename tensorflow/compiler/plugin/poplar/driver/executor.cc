@@ -467,12 +467,13 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
   } else {
     current_engine_->readTensor(tc->output_handle, buf);
   }
+  if (profile_io_) {
+    AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER,
+                   tc->output_handle, 0);
+  }
   tc->on_device = false;
   tc->output_handle.clear();
   tc->input_handle.clear();
-  if (profile_io_) {
-    AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "", 0);
-  }
   return port::Status::OK();
 }
 
@@ -570,7 +571,7 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
           tc->input_handle = mem.first;
           if (profile_io_) {
             AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
-                           "", 0);
+                           mem.first, 0);
           }
         }
       }
