@@ -74,9 +74,9 @@ string ClientLibraryTestBase::TestName() const {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 
+template <typename BuilderT>
 StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
-    ComputationBuilder* builder,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    BuilderT* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return client_->Execute(computation, arguments, &execution_options_);
@@ -650,5 +650,12 @@ template void ClientLibraryTestBase::ComputeAndCompareTuple(
 template void ClientLibraryTestBase::ComputeAndCompareTuple(
     XlaBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
+
+template StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
+    ComputationBuilder* builder,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+
+template StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
+    XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
 }  // namespace xla

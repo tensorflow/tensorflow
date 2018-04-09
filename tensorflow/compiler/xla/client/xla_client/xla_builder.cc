@@ -781,12 +781,41 @@ XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
 }
 
 XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    if (!LayoutUtil::HasLayout(shape)) {
+      return InvalidArgument("Given shape to Infeed must have a layout");
+    }
+    *instr.mutable_shape() = shape;
+    instr.set_infeed_config(config);
+    return AddInstruction(std::move(instr), HloOpcode::kInfeed);
+  });
 }
 
 void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
                          const string& outfeed_config) {
-  UnimplementedOp();
+  NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    *instr.mutable_shape() = ShapeUtil::MakeNil();
+
+    // Check and set outfeed shape.
+    if (!LayoutUtil::HasLayout(shape_with_layout)) {
+      return InvalidArgument("Given shape to Outfeed must have a layout");
+    }
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
+      return InvalidArgument(
+          "Outfeed shape %s must be compatible with operand shape %s",
+          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
+          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+    }
+    *instr.mutable_outfeed_shape() = shape_with_layout;
+
+    instr.set_outfeed_config(outfeed_config);
+
+    return AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand});
+  });
 }
 
 XlaOp XlaBuilder::CustomCall(const string& call_target_name,

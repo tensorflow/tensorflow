@@ -92,9 +92,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Convenience methods for building and running a computation with the member
   // execution options. Modify execution_options_ in your test if you want to
   // customize the options.
+  template <typename BuilderT>
   StatusOr<std::unique_ptr<GlobalData>> Execute(
-      ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+      BuilderT* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
   // TODO(b/74197823): Remove the template type 'BuilderT' in all methods once
   // the migration to XlaBuilder is complete.
