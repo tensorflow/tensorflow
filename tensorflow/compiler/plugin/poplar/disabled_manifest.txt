@@ -10,3 +10,4 @@ MatrixTriangularSolveOpTest.testLarge # Too slow at the moment
 SegmentReductionOpsTest.testUnsortedSegmentSum1DIndices1DDataNegativeIndices # Tests negative indices, not allowed in TF Op
 BinaryOpsTest.testS64Comparisons # No S64
 PoolGradTest.testMaxPool # Tests MaxPoolGradGrad
+OutOfMemoryTest.testOutputOutOfMemory # Don't do out of memory yet
