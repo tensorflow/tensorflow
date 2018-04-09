@@ -34,6 +34,7 @@ from tensorflow.python.keras._impl.keras.utils.multi_gpu_utils import multi_gpu_
 from tensorflow.python.keras._impl.keras.utils.np_utils import normalize
 from tensorflow.python.keras._impl.keras.utils.np_utils import to_categorical
 from tensorflow.python.keras._impl.keras.utils.vis_utils import plot_model
+from tensorflow.python.keras._impl.keras.utils.vis_utils import model_to_dot
 
 del absolute_import
 del division
