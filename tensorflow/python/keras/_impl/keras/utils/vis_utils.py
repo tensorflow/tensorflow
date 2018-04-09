@@ -50,6 +50,7 @@ def _check_pydot():
                       ' and graphviz for `pydotprint` to work.')
 
 
+@tf_export('keras.utils.model_to_dot')
 def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   """Convert a Keras model to dot format.
 
