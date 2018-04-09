@@ -51,7 +51,6 @@ def LastValueQuantize(inputs,
                       per_channel=False,
                       init_min=-6.0,
                       init_max=6.0,
-                      updates_collection=ops.GraphKeys.UPDATE_OPS,
                       vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
                       name_prefix='LastValueQuant',
                       reuse=None,
@@ -69,8 +68,6 @@ def LastValueQuantize(inputs,
       quantization ranges per output channel.
     init_min: a float scalar, the initial value for variable min.
     init_max: a float scalar, the initial value for variable max.
-    updates_collection: (Optional) collections to collect the update ops for
-      computation.
     vars_collection: (Optional) collection where to store variables for
       quantization interval ends.
     name_prefix: name_prefix for created nodes.
@@ -133,7 +130,6 @@ def LastValueQuantize(inputs,
     # TFLite requires that 0.0 if always in the [min; max] range.
     batch_min = math_ops.minimum(batch_min, 0.0)
     assign_min = state_ops.assign(min_var, batch_min, name='AssignMinLast')
-    ops.add_to_collection(updates_collection, assign_min.op)
 
     if per_channel:
       if input_dim >= 2:
@@ -146,7 +142,6 @@ def LastValueQuantize(inputs,
     # TFLite requires that 0.0 if always in the [min; max] range.
     batch_max = math_ops.maximum(batch_max, 0.0)
     assign_max = state_ops.assign(max_var, batch_max, name='AssignMaxLast')
-    ops.add_to_collection(updates_collection, assign_max.op)
 
     return _FakeQuantWithMinMaxVars(
         inputs,
@@ -163,7 +158,6 @@ def MovingAvgQuantize(inputs,
                       init_min=-6.0,
                       init_max=6.0,
                       ema_decay=0.999,
-                      updates_collection=ops.GraphKeys.UPDATE_OPS,
                       vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
                       name_prefix='MovingAvgQuantize',
                       reuse=None,
@@ -182,8 +176,6 @@ def MovingAvgQuantize(inputs,
     init_min: a float scalar, the initial value for variable min.
     init_max: a float scalar, the initial value for variable max.
     ema_decay: EMA decay parameter.
-    updates_collection: (Optional) collections to collect the update ops for
-      computation.
     vars_collection: (Optional) collection where to store variables for
       quantization interval ends.
     name_prefix: name_prefix for created nodes.
@@ -246,7 +238,6 @@ def MovingAvgQuantize(inputs,
     batch_min = math_ops.minimum(batch_min, 0.0)
     assign_min = moving_averages.assign_moving_average(
         min_var, batch_min, ema_decay, name='AssignMinEma')
-    ops.add_to_collection(updates_collection, assign_min.op)
 
     if per_channel:
       if input_dim >= 2:
@@ -260,7 +251,6 @@ def MovingAvgQuantize(inputs,
     batch_max = math_ops.maximum(batch_max, 0.0)
     assign_max = moving_averages.assign_moving_average(
         max_var, batch_max, ema_decay, name='AssignMaxEma')
-    ops.add_to_collection(updates_collection, assign_max.op)
 
     return _FakeQuantWithMinMaxVars(
         inputs,

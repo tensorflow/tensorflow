@@ -297,7 +297,6 @@ CUDNN_DNN_ROUTINE_EACH_R7(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 namespace {
 
-// Forward declaration.
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
 
 cudnnHandle_t ToHandle(void* opaque_handle) {
@@ -476,6 +475,13 @@ port::Status CudnnSupport::Init() {
   return port::Status{port::error::INTERNAL,
                       port::StrCat("cudnn library could not create a handle: ",
                                    ToString(status))};
+}
+
+port::StatusOr<std::tuple<int, int, int>> CudnnSupport::GetVersion() {
+  CudnnVersion version;
+  TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&version));
+  return std::make_tuple(version.major_version, version.minor_version,
+                         version.patch_level);
 }
 
 // Turns a BatchDescriptor structure into a cudnn tensor handle within a scope.

@@ -234,6 +234,30 @@ class InspectUtilsTest(test.TestCase):
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
 
+  def test_getdefiningclass(self):
+    class Superclass(object):
+
+      def foo(self):
+        pass
+
+      def bar(self):
+        pass
+
+    class Subclass(Superclass):
+
+      def foo(self):
+        pass
+
+      def baz(self):
+        pass
+
+    self.assertTrue(
+        inspect_utils.getdefiningclass(Subclass.foo, Subclass) is Subclass)
+    self.assertTrue(
+        inspect_utils.getdefiningclass(Subclass.bar, Subclass) is Superclass)
+    self.assertTrue(
+        inspect_utils.getdefiningclass(Subclass.baz, Subclass) is Subclass)
+
 
 if __name__ == '__main__':
   test.main()

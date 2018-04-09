@@ -132,6 +132,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "collective_ops",
+    prefix = "collective_ops",
+    deps = [
+        "//tensorflow/core:collective_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
     name = "concat_lib",
     srcs = [
         "concat_lib_cpu.cc",
@@ -1395,6 +1406,7 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         ":bounds_check",
+        ":dense_update_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
@@ -5121,6 +5133,9 @@ filegroup(
             "summary_interface.*",
             "summary_kernels.*",
             "spectrogram_convert_test_data.cc",
+            "decode_proto_op.cc",
+            "encode_proto_op.cc",
+            "rpc_op.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
@@ -6150,6 +6165,50 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core/lib/db:sqlite",
+    ],
+)
+
+tf_kernel_library(
+    name = "decode_proto_op",
+    srcs = [
+        "decode_proto_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:decode_proto_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/util/proto:decode",
+        "//tensorflow/core/util/proto:descriptors",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "encode_proto_op",
+    srcs = ["encode_proto_op.cc"],
+    deps = [
+        "//tensorflow/core:encode_proto_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/util/proto:descriptors",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "rpc_op",
+    srcs = [
+        "rpc_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:rpc_ops_op_lib",
+        "//tensorflow/core/util/rpc:call_container",
+        "//tensorflow/core/util/rpc:rpc_factory",
+        "//tensorflow/core/util/rpc:rpc_factory_registry",
+        "//third_party/eigen3",
     ],
 )
 

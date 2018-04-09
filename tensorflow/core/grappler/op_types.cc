@@ -245,6 +245,8 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
+bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
+
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }

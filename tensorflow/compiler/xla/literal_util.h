@@ -587,6 +587,12 @@ class Literal {
   template <typename NativeT, typename FnType>
   Status Populate(const FnType& generator);
 
+  // A parallel version of Populate(). This can be used if the generator is
+  // thread-safe and the values for the shape's different elements are
+  // independent.
+  template <typename NativeT, typename FnType>
+  Status PopulateParallel(const FnType& generator);
+
   // Fills this literal with the given value.
   template <typename NativeT>
   void PopulateWithValue(NativeT value);
@@ -784,6 +790,10 @@ class Literal {
   // Deallocate the buffers held by this literal (if the literal owns the
   // buffer).
   void DeallocateBuffers();
+
+  // Implementation details shared between Populate() and PopulateParallel()
+  template <typename NativeT, typename FnType>
+  Status PopulateInternal(const FnType& generator, bool parallel);
 
   Shape shape_;
   ShapeTree<Piece> pieces_;
@@ -1276,7 +1286,7 @@ void Literal::PopulateSparse(SparseIndexArray indices,
 }
 
 template <typename NativeT, typename FnType>
-Status Literal::Populate(const FnType& generator) {
+Status Literal::PopulateInternal(const FnType& generator, bool parallel) {
   const Shape& this_shape = shape();
   const int64 rank = ShapeUtil::Rank(this_shape);
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
@@ -1286,11 +1296,11 @@ Status Literal::Populate(const FnType& generator) {
   if (rank > 0) {
     StrideConfig stride_config(this_shape, this_shape,
                                AsInt64Slice(this_shape.dimensions()));
-    DimensionVector minor_scan_indexes(rank, 0);
     int64 minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
     auto init_function = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+      DimensionVector minor_scan_indexes(rank, 0);
       const int64 index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
@@ -1298,16 +1308,34 @@ Status Literal::Populate(const FnType& generator) {
         minor_scan_indexes[stride_config.minor_dimension] = i;
         literal_data.at(index + i) = generator(minor_scan_indexes);
       }
-      return true;
     };
-    ShapeUtil::ForEachIndex(this_shape, stride_config.base,
-                            stride_config.dimensions, stride_config.step,
-                            init_function);
+    if (parallel) {
+      ShapeUtil::ForEachIndexParallel(this_shape, stride_config.base,
+                                      stride_config.dimensions,
+                                      stride_config.step, init_function);
+    } else {
+      ShapeUtil::ForEachIndex(
+          this_shape, stride_config.base, stride_config.dimensions,
+          stride_config.step,
+          [&init_function](tensorflow::gtl::ArraySlice<int64> indexes) {
+            init_function(indexes);
+            return true;
+          });
+    }
   } else {
     // For scalars.
     literal_data.at(0) = generator({});
   }
   return Status::OK();
+}
+template <typename NativeT, typename FnType>
+Status Literal::Populate(const FnType& generator) {
+  return PopulateInternal<NativeT>(generator, /*parallel=*/false);
+}
+
+template <typename NativeT, typename FnType>
+Status Literal::PopulateParallel(const FnType& generator) {
+  return PopulateInternal<NativeT>(generator, /*parallel=*/true);
 }
 
 template <typename NativeT>

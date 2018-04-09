@@ -300,10 +300,15 @@ class ClientLibraryTestBase : public ::testing::Test {
   // set exactly once. The first added parameter gets index 0, then 1 and so on.
   ComputationDataHandle AddParam(const Literal& argument,
                                  ComputationBuilder* builder);
+  XlaOp AddParam(const Literal& argument, XlaBuilder* builder);
 
   template <class T>
   ComputationDataHandle AddParam(const Array<T>& argument,
                                  ComputationBuilder* builder) {
+    return AddParam(*Literal::CreateFromArray(argument), builder);
+  }
+  template <class T>
+  XlaOp AddParam(const Array<T>& argument, XlaBuilder* builder) {
     return AddParam(*Literal::CreateFromArray(argument), builder);
   }
 
