@@ -611,6 +611,18 @@ void ConvertRelu6Operator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertLogOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Log");
+  CheckInputsCount(node, tf_import_flags, 1);
+
+  auto op = absl::make_unique<LogOperator>();
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(std::move(op));
+}
+
 void ConvertLogisticOperator(const NodeDef& node,
                              const TensorFlowImportFlags& tf_import_flags,
                              Model* model) {
@@ -2091,6 +2103,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertLRNOperator(node, tf_import_flags, model);
     } else if (node.op() == "Softmax") {
       ConvertSoftmaxOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Log") {
+      ConvertLogOperator(node, tf_import_flags, model);
     } else if (node.op() == "LogSoftmax") {
       ConvertLogSoftmaxOperator(node, tf_import_flags, model);
     } else if (node.op() == "All") {
