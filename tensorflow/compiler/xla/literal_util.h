@@ -333,9 +333,17 @@ class Literal {
   template <typename NativeT>
   std::unique_ptr<Literal> Replicate(int64 times) const;
 
-  // Converts this literal to another primitive type. Returns an error if the
-  // conversion is not possible. This literal must be array-shaped.
+  // Converts this literal to another primitive type using
+  // static_cast<>. Returns an error if the conversion is not possible. This
+  // literal must be array-shaped.
   StatusOr<std::unique_ptr<Literal>> Convert(
+      PrimitiveType primitive_dest_type) const;
+
+  // Converts this literal to another primitive type using a bitcast
+  // conversion. The to and from primitive types must have the same bit
+  // width. Returns an error if the conversion is not possible. This literal
+  // must be array-shaped.
+  StatusOr<std::unique_ptr<Literal>> BitcastConvert(
       PrimitiveType primitive_dest_type) const;
 
   // Converts this literal to the given shape. Returns an error is the

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -1283,6 +1284,25 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
             tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64->Convert(S32).status().code(),
             tensorflow::error::UNIMPLEMENTED);
+}
+
+TEST_F(LiteralUtilTest, BitcastConvert) {
+  auto original =
+      Literal::CreateR1<uint32>({tensorflow::bit_cast<uint32>(2.5f),
+                                 tensorflow::bit_cast<uint32>(-42.25f),
+                                 tensorflow::bit_cast<uint32>(100.f), 0xbeef});
+  auto expected = Literal::CreateR1<float>(
+      {2.5f, -42.25f, 100.0f, tensorflow::bit_cast<float>(0xbeef)});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> converted,
+                          original->BitcastConvert(F32));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
+  auto literal = Literal::CreateR0<uint32>(1234);
+  Status status = literal->BitcastConvert(F64).status();
+  EXPECT_NE(Status::OK(), status);
+  EXPECT_TRUE(tensorflow::str_util::StrContains(status.error_message(),
+                                                "bit widths are different"));
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
