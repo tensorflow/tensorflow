@@ -76,9 +76,9 @@ issue the following command:
 <pre>$ <b>git checkout r1.0</b></pre>
 
 Next, you must prepare your environment for
-[Linux](#PrepareLinux)
+[Linux](#prepare_environment_for_linux)
 or
-[macOS](#PrepareMac)
+[macOS](#prepare_environment_for_macos)
 
 
 <a name="#PrepareLinux"></a>
