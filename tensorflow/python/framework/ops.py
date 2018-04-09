@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import copy
+import functools
 import linecache
 import os
 import re
@@ -5244,12 +5245,33 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
   @tf_contextlib.contextmanager
   def get_controller(self, default):
     try:
-      context.context().context_switches.push(default.building_function,
-                                              default.as_default)
+      if context.executing_eagerly():
+        # A Graph alone on the context stack would keep init_scope-wrapped
+        # operations graph building when entered (assuming init_scope is called
+        # in a graph building context). Instead, we push a context which first
+        # enables eager execution and then re-enters the Graph.
+        context.context().context_switches.push(
+            default.building_function,
+            functools.partial(
+                _enter_context_and_graph,
+                context.eager_mode,
+                default.as_default))
+      else:
+        # This Graph is being used from a graph building context. A lack of
+        # context switch implies that the context is graph building.
+        context.context().context_switches.push(default.building_function,
+                                                default.as_default)
       with super(_DefaultGraphStack, self).get_controller(default) as g:
         yield g
     finally:
       context.context().context_switches.pop()
+
+
+@tf_contextlib.contextmanager
+def _enter_context_and_graph(context_fn, graph_fn):
+  """Combines two context managers."""
+  with context_fn(), graph_fn():
+    yield
 
 
 _default_graph_stack = _DefaultGraphStack()
