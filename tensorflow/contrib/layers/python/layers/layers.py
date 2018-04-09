@@ -933,7 +933,7 @@ def convolution(inputs,
                 outputs_collections=None,
                 trainable=True,
                 scope=None,
-                dims=None):
+                conv_dims=None):
   """Adds an N-D convolution followed by an optional batch_norm layer.
 
   It is required that 1 <= N <= 3.
@@ -994,8 +994,10 @@ def convolution(inputs,
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for `variable_scope`.
-    dims: Optional dims (e.g., 2 for Conv 2D) for convolution. Default is None
-      which will select the dimension based on the input rank.
+    conv_dims: Optional convolution dimensionality, when set it would use the
+      corresponding convolution (e.g. 2 for Conv 2D, 3 for Conv 3D, ..). When
+      leaved to None it would select the convolution dimensionality based on
+      the input rank (i.e. Conv ND, with N = input_rank - 2).
 
   Returns:
     A tensor representing the output of the operation.
@@ -1018,9 +1020,9 @@ def convolution(inputs,
     inputs = ops.convert_to_tensor(inputs)
     input_rank = inputs.get_shape().ndims
 
-    if dims is not None and dims + 2 != input_rank:
+    if conv_dims is not None and conv_dims + 2 != input_rank:
       raise ValueError('Convolution expects input with rank %d, got %d' %
-                       (dims + 2, input_rank))
+                       (conv_dims + 2, input_rank))
     if input_rank == 3:
       layer_class = convolutional_layers.Convolution1D
     elif input_rank == 4:
@@ -1068,6 +1070,49 @@ def convolution(inputs,
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 @add_arg_scope
+def convolution1d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=1)
+
+convolution1d.__doc__ = convolution.__doc__
+
+@add_arg_scope
 def convolution2d(inputs,
                   num_outputs,
                   kernel_size,
@@ -1106,7 +1151,7 @@ def convolution2d(inputs,
                      outputs_collections,
                      trainable,
                      scope,
-                     dims=2)
+                     conv_dims=2)
 
 convolution2d.__doc__ = convolution.__doc__
 
@@ -1149,7 +1194,7 @@ def convolution3d(inputs,
                      outputs_collections,
                      trainable,
                      scope,
-                     dims=3)
+                     conv_dims=3)
 
 convolution3d.__doc__ = convolution.__doc__
 
