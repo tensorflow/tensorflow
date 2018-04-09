@@ -629,10 +629,7 @@ class ShapeUtil {
                                    tensorflow::gtl::ArraySlice<int64> count,
                                    tensorflow::gtl::ArraySlice<int64> incr,
                                    const FnType& visitor_function) {
-    const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
-    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "test",
-                                        kNumThreads);
-    // If a pool is provided, ForEachIndexInternal can never fail.
+    // The parallel version of ForEachIndexInternal can never fail.
     CHECK(ForEachIndexInternal(
               shape, base, count, incr,
               [&visitor_function](tensorflow::gtl::ArraySlice<int64> indexes)
@@ -640,7 +637,7 @@ class ShapeUtil {
                 visitor_function(indexes);
                 return true;
               },
-              &pool)
+              /*parallel=*/true)
               .ok());
   }
 
@@ -650,11 +647,12 @@ class ShapeUtil {
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);
 
   template <typename FnType>
-  static Status ForEachIndexInternal(
-      const Shape& shape, tensorflow::gtl::ArraySlice<int64> base,
-      tensorflow::gtl::ArraySlice<int64> count,
-      tensorflow::gtl::ArraySlice<int64> incr, const FnType& visitor_function,
-      tensorflow::thread::ThreadPool* pool = nullptr) {
+  static Status ForEachIndexInternal(const Shape& shape,
+                                     tensorflow::gtl::ArraySlice<int64> base,
+                                     tensorflow::gtl::ArraySlice<int64> count,
+                                     tensorflow::gtl::ArraySlice<int64> incr,
+                                     const FnType& visitor_function,
+                                     bool parallel = false) {
     if (ShapeUtil::HasZeroElements(shape)) {
       return Status::OK();
     }
@@ -666,10 +664,16 @@ class ShapeUtil {
     // once with the proper empty indexes.
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
+    const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
+    tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+    if (parallel) {
+      pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
+    }
+
     while (n < rank) {
-      if (pool != nullptr) {
+      if (pool != tensorflow::gtl::nullopt) {
         pool->Schedule(
-            [indexes, visitor_function] { visitor_function(indexes); });
+            [indexes, &visitor_function] { visitor_function(indexes); });
       } else {
         TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
         if (!should_continue) {
