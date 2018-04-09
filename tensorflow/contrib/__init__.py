@@ -66,6 +66,7 @@ from tensorflow.contrib import periodic_resample
 from tensorflow.contrib import predictor
 from tensorflow.contrib import quantization
 from tensorflow.contrib import quantize
+from tensorflow.contrib import recurrent
 from tensorflow.contrib import reduce_slice_ops
 from tensorflow.contrib import resampler
 from tensorflow.contrib import rnn
