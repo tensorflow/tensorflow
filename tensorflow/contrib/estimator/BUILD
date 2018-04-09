@@ -23,6 +23,7 @@ py_library(
         ":logit_fns",
         ":multi_head",
         ":replicate_model_fn",
+        ":rnn",
         "//tensorflow/python:util",
     ],
 )
@@ -410,5 +411,59 @@ cuda_py_test(
         "manual",
         "multi_gpu",
         "notap",
+    ],
+)
+
+py_library(
+    name = "rnn",
+    srcs = ["python/estimator/rnn.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":extenders",
+        "//tensorflow/contrib/feature_column:feature_column_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:head",
+        "//tensorflow/python/estimator:optimizers",
+        "//tensorflow/python/feature_column",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "rnn_test",
+    size = "medium",
+    srcs = ["python/estimator/rnn_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
+    deps = [
+        ":rnn",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )

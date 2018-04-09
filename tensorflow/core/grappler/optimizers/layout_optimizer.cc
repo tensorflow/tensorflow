@@ -17,9 +17,13 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -361,6 +365,28 @@ std::vector<int> DataInputPos(const NodeDef& node) {
     return {0};
   }
   return {};
+}
+
+bool IsHostMemory(const NodeDef& node, int output_port) {
+  DeviceNameUtils::ParsedName parsed_name;
+  if (DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+    DeviceType device_type(parsed_name.type);
+    Status s = FindKernelDef(device_type, node, nullptr, nullptr);
+    if (s.ok()) {
+      tensorflow::MemoryTypeVector in_mtypes;
+      tensorflow::MemoryTypeVector out_mtypes;
+      s = tensorflow::MemoryTypesForNode(OpRegistry::Global(), device_type,
+                                         node, &in_mtypes, &out_mtypes);
+      if (s.ok()) {
+        if (out_mtypes[output_port] == HOST_MEMORY) {
+          return true;
+        }
+      }
+    } else {
+      return true;
+    }
+  }
+  return false;
 }
 
 class GraphProcessor {
@@ -883,6 +909,23 @@ class NodeProcessor : public GraphProcessor {
     list->set_i(3, w);
   }
 
+  string MaybeGetHostDevice(const string& input_name) const {
+    string device = node_->device();
+    DeviceNameUtils::ParsedName parsed_name;
+    if (DeviceNameUtils::ParseFullName(device, &parsed_name)) {
+      if (parsed_name.type != "CPU") {
+        NodeDef* input = node_map_->GetNode(input_name);
+        int port;
+        ParseNodeName(input_name, &port);
+        if (IsHostMemory(*input, port)) {
+          parsed_name.type = "CPU";
+          device = DeviceNameUtils::ParsedNameToString(parsed_name);
+        }
+      }
+    }
+    return device;
+  }
+
   NodeDef* AddNodeDataFormatOp(const string& name, const string& input_name,
                                const string& op, DataType dtype,
                                bool nhwc_to_nchw) {
@@ -890,7 +933,9 @@ class NodeProcessor : public GraphProcessor {
     added_node->set_name(name);
     added_node->set_op(op);
     node_map_->AddNode(added_node->name(), added_node);
-    added_node->set_device(node_->device());
+    // The inputs of a DataFormat op could be in host memory for ops such as
+    // Reshape.
+    added_node->set_device(MaybeGetHostDevice(input_name));
     AttrValue attr_data_type;
     attr_data_type.set_type(dtype);
     added_node->mutable_attr()->insert({"T", attr_data_type});
