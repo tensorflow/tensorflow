@@ -1558,6 +1558,14 @@ REGISTER_OP("Bucketize")
     .Attr("boundaries: list(float)")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("ClipByValue")
+    .Input("t: T")
+    .Input("clip_value_min: T")
+    .Input("clip_value_max: T")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 #ifdef INTEL_MKL
 REGISTER_OP("_MklAddN")
     .Input("inputs: N * T")
