@@ -225,6 +225,15 @@ class InspectUtilsTest(test.TestCase):
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
         LocalClass)
 
+  def test_getmethodclass_callables(self):
+    class TestCallable(object):
+
+      def __call__(self):
+        pass
+
+    c = TestCallable()
+    self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
+
 
 if __name__ == '__main__':
   test.main()

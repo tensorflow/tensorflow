@@ -104,6 +104,7 @@ namespace {
 using perftools::gputools::DeviceMemory;
 using perftools::gputools::DeviceMemoryBase;
 using perftools::gputools::ScratchAllocator;
+using perftools::gputools::dnn::AlgorithmConfig;
 using perftools::gputools::dnn::RnnDirectionMode;
 using perftools::gputools::dnn::RnnInputMode;
 using perftools::gputools::dnn::RnnMode;
@@ -544,9 +545,10 @@ class CudnnRNNKernelCommon : public OpKernel {
     auto* stream = context->op_device_context()->stream();
     // ExtracCudnnRNNParamsInfo is only called by op_kernels that do not require
     // random number generator, therefore set state_allocator to nullptr.
+    const AlgorithmConfig algo_config;
     auto rnn_desc_s = stream->parent()->createRnnDescriptor(
         num_layers, num_units, input_size, input_mode, rnn_direction_mode(),
-        rnn_mode(), ToDataType<T>::value, dropout(), seed(),
+        rnn_mode(), ToDataType<T>::value, algo_config, dropout(), seed(),
         nullptr /* state_allocator */);
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
@@ -891,22 +893,24 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
         CudnnRNNPersistentSpaceAllocator* dropout_state_allocator =
             new CudnnRNNPersistentSpaceAllocator(context);
         rnn_state.dropout_state_allocator.reset(dropout_state_allocator);
+        const AlgorithmConfig algo_config;
         auto rnn_desc_s = executor->createRnnDescriptor(
             model_shapes.num_layers, model_shapes.num_units,
             model_shapes.input_size, input_mode, rnn_direction_mode(),
-            rnn_mode(), data_type, dropout(), seed(), dropout_state_allocator);
+            rnn_mode(), data_type, algo_config, dropout(), seed(),
+            dropout_state_allocator);
         OP_REQUIRES_OK(context, FromExecutorStatus(rnn_desc_s));
         rnn_state.rnn_desc = std::move(rnn_desc_s.ConsumeValueOrDie());
       }
       launch_status =
           stream
-              ->ThenRnnForward(*rnn_state.rnn_desc, *input_desc, input_data,
-                               *hidden_state_desc, input_h_data,
-                               *hidden_state_desc, input_c_data, params_data,
-                               *output_desc, &output_data, *hidden_state_desc,
-                               &output_h_data, *hidden_state_desc,
-                               &output_c_data, is_training_,
-                               &reserve_space_allocator, &workspace_allocator)
+              ->ThenRnnForward(
+                  *rnn_state.rnn_desc, *input_desc, input_data,
+                  *hidden_state_desc, input_h_data, *hidden_state_desc,
+                  input_c_data, params_data, *output_desc, &output_data,
+                  *hidden_state_desc, &output_h_data, *hidden_state_desc,
+                  &output_c_data, is_training_, &reserve_space_allocator,
+                  &workspace_allocator, /* output_result_profile */ nullptr)
               .ok();
     }
     OP_REQUIRES(context, launch_status,
@@ -1095,25 +1099,27 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
         CudnnRNNPersistentSpaceAllocator* dropout_state_allocator =
             new CudnnRNNPersistentSpaceAllocator(context);
         rnn_state.dropout_state_allocator.reset(dropout_state_allocator);
+        const AlgorithmConfig algo_config;
         auto rnn_desc_s = executor->createRnnDescriptor(
             model_shapes.num_layers, model_shapes.num_units,
             model_shapes.input_size, input_mode, rnn_direction_mode(),
-            rnn_mode(), data_type, dropout(), seed(), dropout_state_allocator);
+            rnn_mode(), data_type, algo_config, dropout(), seed(),
+            dropout_state_allocator);
         OP_REQUIRES_OK(context, FromExecutorStatus(rnn_desc_s));
         rnn_state.rnn_desc = std::move(rnn_desc_s.ConsumeValueOrDie());
       }
       launch_status =
           stream
-              ->ThenRnnBackward(*rnn_state.rnn_desc, *input_desc, input_data,
-                                *hidden_state_desc, input_h_data,
-                                *hidden_state_desc, input_c_data, params_data,
-                                *output_desc, output_data, *hidden_state_desc,
-                                output_h_data, *hidden_state_desc,
-                                output_c_data, output_backprop_data,
-                                output_h_backprop_data, output_c_backprop_data,
-                                &input_backprop_data, &input_h_backprop_data,
-                                &input_c_backprop_data, &params_backprop_data,
-                                &reserve_space_uint8, &workspace_allocator)
+              ->ThenRnnBackward(
+                  *rnn_state.rnn_desc, *input_desc, input_data,
+                  *hidden_state_desc, input_h_data, *hidden_state_desc,
+                  input_c_data, params_data, *output_desc, output_data,
+                  *hidden_state_desc, output_h_data, *hidden_state_desc,
+                  output_c_data, output_backprop_data, output_h_backprop_data,
+                  output_c_backprop_data, &input_backprop_data,
+                  &input_h_backprop_data, &input_c_backprop_data,
+                  &params_backprop_data, &reserve_space_uint8,
+                  &workspace_allocator, /* output_result_profile */ nullptr)
               .ok();
     }
     OP_REQUIRES(context, launch_status,

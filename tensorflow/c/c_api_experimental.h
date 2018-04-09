@@ -60,27 +60,6 @@ extern "C" {
 TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
                                                    unsigned char enable);
 
-// Initializes TPU system. Must be called exactly once before TF_SessionRun() is
-// called on a TPU graph.
-//
-// The session graph must contain a node named ConfigureDistributedTPU.
-// TODO(b/74774824): Improve the API on initializing TPU system.
-TF_CAPI_EXPORT extern void TF_InitializeTPU(TF_Session* session,
-                                            TF_Status* status);
-
-// Shuts down TPU system. For any `session` where TF_InitializeTPU() has
-// been successfully called, this call must be made exactly once before the
-// session is closed.
-// The session graph must contain a node named ShutdownDistributedTPU.
-TF_CAPI_EXPORT extern void TF_ShutdownTPU(TF_Session* session,
-                                          TF_Status* status);
-
-// Returns the graph content in a human-readable format, with length set in
-// `len`. The format is subject to change in the future.
-// The returned string is heap-allocated, and caller should call free() on it.
-TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
-                                                      size_t* len);
-
 // Returns the graph content in a human-readable format, with length set in
 // `len`. The format is subject to change in the future.
 // The returned string is heap-allocated, and caller should call free() on it.

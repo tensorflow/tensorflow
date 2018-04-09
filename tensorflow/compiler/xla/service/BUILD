@@ -2640,6 +2640,21 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "despecializer",
+    srcs = ["despecializer.cc"],
+    hdrs = ["despecializer.h"],
+    deps = [
+        ":bfloat16_normalization",
+        ":defuser",
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
+        ":implicit_broadcast_remover",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+cc_library(
     name = "source_map_util",
     srcs = ["source_map_util.cc"],
     hdrs = ["source_map_util.h"],

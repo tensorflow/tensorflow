@@ -229,13 +229,6 @@ void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
                                     const std::vector<int64_t>& dims,
                                     bool unknown_shape, TF_Status* status);
 
-// Return the shape of output. `num_dims` should be the output of
-// TF_GraphGetTensorNumDims. If `num_dims = -1`, this should not be called.
-std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
-                                                    TF_Output output,
-                                                    int num_dims,
-                                                    TF_Status* status);
-
 // Returns the string representations of the missing unused input mappings.
 std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
     TF_ImportGraphDefResults* results);

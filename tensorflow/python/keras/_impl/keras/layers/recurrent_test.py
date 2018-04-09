@@ -232,6 +232,7 @@ class RNNTest(test.TestCase):
       cell = RNNCellWithConstants(32)
       layer = keras.layers.RNN(cell)
       y = layer(x, constants=c)
+
       model = keras.models.Model([x, c], y)
       model.compile(optimizer='rmsprop', loss='mse')
       model.train_on_batch(
@@ -270,6 +271,20 @@ class RNNTest(test.TestCase):
       cells = [keras.layers.recurrent.GRUCell(8),
                RNNCellWithConstants(12),
                RNNCellWithConstants(32)]
+      layer = keras.layers.recurrent.RNN(cells)
+      y = layer(x, constants=c)
+      model = keras.models.Model([x, c], y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          [np.zeros((6, 5, 5)), np.zeros((6, 3))],
+          np.zeros((6, 32))
+      )
+
+    with self.test_session():
+      # Test GRUCell reset_after property.
+      x = keras.Input((None, 5))
+      c = keras.Input((3,))
+      cells = [keras.layers.recurrent.GRUCell(32, reset_after=True)]
       layer = keras.layers.recurrent.RNN(cells)
       y = layer(x, constants=c)
       model = keras.models.Model([x, c], y)
@@ -540,7 +555,6 @@ class RNNTest(test.TestCase):
     self.assertEqual(
         [tuple(o.as_list()) for o in output_shape],
         expected_output_shape)
-
 
 if __name__ == '__main__':
   test.main()

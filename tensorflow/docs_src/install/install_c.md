@@ -113,6 +113,6 @@ If executing `a.out` fails, ask yourself the following questions:
   * Did you export those environment variables?
 
 If you are still seeing build or execution error messages, search (or post to)
-[StackOverflow](www.stackoverflow.com/questions/tagged/tensorflow) for
+[StackOverflow](https://stackoverflow.com/questions/tagged/tensorflow) for
 possible solutions.
 

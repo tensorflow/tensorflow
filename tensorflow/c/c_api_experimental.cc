@@ -56,57 +56,6 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
   }
 }
 
-void TF_InitializeTPU(TF_Session* session, TF_Status* status) {
-  VLOG(1) << "Initializing TPU";
-  TF_Operation* config_op =
-      TF_GraphOperationByName(session->graph, "ConfigureDistributedTPU");
-  if (config_op == nullptr) {
-    status->status = tensorflow::errors::Internal(
-        "Unable to find node ConfigureDistributedTPU in the TF graph.");
-    return;
-  }
-
-  TF_Output config_node{config_op, 0};
-
-  TF_Tensor* dummy_output;
-  TF_SessionRun(session, /*run_options*/ nullptr,
-                // input related parameters
-                /*inputs*/ nullptr, /*input_values*/ nullptr, /*ninputs*/ 0,
-                // output related parameters
-                /*outputs*/ &config_node, /*output_values*/ &dummy_output,
-                /*noutputs*/ 1,
-                /*targets*/ nullptr, /*ntargets*/ 0,
-                /*run_metadata*/ nullptr, status);
-  if (status->status.ok()) {
-    TF_DeleteTensor(dummy_output);
-  }
-}
-
-void TF_ShutdownTPU(TF_Session* session, TF_Status* status) {
-  {
-    tensorflow::mutex_lock c(session->graph->mu);
-    VLOG(1) << "Shutting down TPU, with input graph: "
-            << session->graph->graph.ToGraphDefDebug().DebugString();
-  }
-
-  TF_Operation* shutdown_op =
-      TF_GraphOperationByName(session->graph, "ShutdownDistributedTPU");
-  if (shutdown_op == nullptr) {
-    status->status = tensorflow::errors::Internal(
-        "Unable to find node ShutdownDistributedTPU in the TF graph.");
-    return;
-  }
-
-  TF_SessionRun(session, /*run_options*/ nullptr,
-                // input related parameters
-                /*inputs*/ nullptr, /*input_values*/ nullptr, /*ninputs*/ 0,
-                // output related parameters
-                /*outputs*/ nullptr, /*output_values*/ nullptr,
-                /*noutputs*/ 0,
-                /*targets*/ &shutdown_op, /*ntargets*/ 1,
-                /*run_metadata*/ nullptr, status);
-}
-
 const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
   tensorflow::mutex_lock c(graph->mu);
   const auto& debug_str = graph->graph.ToGraphDefDebug().DebugString();

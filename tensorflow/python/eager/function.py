@@ -294,7 +294,7 @@ class _EagerDefinedFunction(object):
     self.signature = function_def.signature
     self.grad_func_name = None
     self.python_grad_func = None
-    self._c_func = fn
+    self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
 
 
@@ -661,7 +661,7 @@ def _defun_internal(name, func, args, kwds):
   if context.executing_eagerly():
     for f in tmp_graph._functions.values():  # pylint: disable=protected-access
       # TODO(ashankar): What about the gradient registry?
-      _register(f._c_func)  # pylint: disable=protected-access
+      _register(f._c_func.func)  # pylint: disable=protected-access
   return GraphModeFunction(
       fname, all_inputs, extra_inputs, tmp_graph, operations, func_def_outputs,
       func_outputs, output_shapes, variables)

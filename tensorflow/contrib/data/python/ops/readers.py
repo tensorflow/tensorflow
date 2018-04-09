@@ -370,7 +370,8 @@ def make_batched_features_dataset(file_pattern,
                                   prefetch_buffer_size=1,
                                   reader_num_threads=1,
                                   parser_num_threads=2,
-                                  sloppy_ordering=False):
+                                  sloppy_ordering=False,
+                                  drop_final_batch=False):
   """Returns a `Dataset` of feature dictionaries from `Example` protos.
 
   Example:
@@ -443,6 +444,9 @@ def make_batched_features_dataset(file_pattern,
       produced is deterministic prior to shuffling (elements are still
       randomized if `shuffle=True`. Note that if the seed is set, then order
       of elements after shuffling is deterministic). Defaults to `False`.
+    drop_final_batch: If `True`, and the batch size does not evenly divide the
+      input dataset size, the final smaller batch will be dropped. Defaults to
+      `False`.
 
   Returns:
     A dataset of `dict` elements. Each `dict` maps feature keys to
@@ -481,7 +485,10 @@ def make_batched_features_dataset(file_pattern,
   elif shuffle:
     dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
 
-  dataset = dataset.batch(batch_size)
+  if drop_final_batch:
+    dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
+  else:
+    dataset = dataset.batch(batch_size)
 
   # Parse `Example` tensors to a dictionary of `Feature` tensors.
   dataset = dataset.map(

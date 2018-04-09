@@ -271,7 +271,8 @@ class ReadBatchFeaturesTest(test.TestCase):
                            reader_num_threads=1,
                            parser_num_threads=1,
                            shuffle=False,
-                           shuffle_seed=None):
+                           shuffle_seed=None,
+                           drop_final_batch=False):
     self.filenames = filenames
     self.num_epochs = num_epochs
     self.batch_size = batch_size
@@ -289,7 +290,8 @@ class ReadBatchFeaturesTest(test.TestCase):
         shuffle=shuffle,
         shuffle_seed=shuffle_seed,
         reader_num_threads=reader_num_threads,
-        parser_num_threads=parser_num_threads).make_one_shot_iterator(
+        parser_num_threads=parser_num_threads,
+        drop_final_batch=drop_final_batch).make_one_shot_iterator(
         ).get_next()
 
   def _record(self, f, r):
@@ -558,6 +560,20 @@ class ReadBatchFeaturesTest(test.TestCase):
                   interleave_cycle_length=reader_num_threads)
               with self.assertRaises(errors.OutOfRangeError):
                 self._next_actual_batch(sess)
+
+  def testDropFinalBatch(self):
+    for batch_size in [1, 2]:
+      for num_epochs in [1, 10]:
+        with ops.Graph().as_default():
+          # Basic test: read from file 0.
+          self.outputs = self._read_batch_features(
+              filenames=self.test_filenames[0],
+              num_epochs=num_epochs,
+              batch_size=batch_size,
+              drop_final_batch=True)
+          for _, tensor in self.outputs.items():
+            if isinstance(tensor, ops.Tensor):  # Guard against SparseTensor.
+              self.assertEqual(tensor.shape[0], batch_size)
 
 
 class MakeCsvDatasetTest(test.TestCase):

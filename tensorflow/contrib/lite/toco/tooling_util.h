@@ -285,7 +285,7 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 // already quantized, then case (a) should hold.
 void FinishBuildingRNNStates(Model* model);
 
-void UseArraysExtraInfo(Model* model);
+void UseArraysExtraInfo(Model* model, bool quantize_output);
 
 }  // namespace toco
 

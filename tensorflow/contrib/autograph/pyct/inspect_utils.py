@@ -74,6 +74,12 @@ def getmethodclass(m):
     ValueError: if the class could not be resolved for any unexpected reason.
   """
 
+  # Callable objects: return their own class.
+  if (not hasattr(m, '__name__') and hasattr(m, '__class__') and
+      hasattr(m, '__call__')):
+    if isinstance(m.__class__, six.class_types):
+      return m.__class__
+
   # Instance method and class methods: should be bound to a non-null "self".
   # If self is a class, then it's a class method.
   if hasattr(m, '__self__'):
