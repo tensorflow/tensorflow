@@ -31,7 +31,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gradients
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -266,13 +265,10 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       c = constant_op.constant([1.0, 2.0])
       tape.watch(c)
       l = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
-      c2 = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+      c2 = list_ops.tensor_list_stack(
+          l, element_dtype=dtypes.float32, num_elements=2)
       result = c2 * 2.0
-    if context.in_eager_mode():
-      # TODO(b/77609620): Fix this in graph mode.
-      grad = tape.gradient(result, [c])[0]
-    else:
-      grad = gradients.gradients(result, [c])[0]
+    grad = tape.gradient(result, [c])[0]
     self.assertAllEqual(self.evaluate(grad), [2.0, 2.0])
 
   @test_util.run_in_graph_and_eager_modes()
