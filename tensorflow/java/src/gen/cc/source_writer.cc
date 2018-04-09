@@ -23,8 +23,15 @@ namespace tensorflow {
 namespace java {
 
 SourceWriter::SourceWriter() {
-  // push an empty generic namespace at start, for simplification
+  // Push an empty generic namespace at start, for simplification.
   generic_namespaces_.push(new GenericNamespace());
+}
+
+SourceWriter::~SourceWriter() {
+  // Remove empty generic namespace added at start.
+  GenericNamespace* generic_namespace = generic_namespaces_.top();
+  generic_namespaces_.pop();
+  delete generic_namespace;
 }
 
 SourceWriter& SourceWriter::Indent(int tab) {
