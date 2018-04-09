@@ -256,11 +256,60 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-# Minimal lib to detect plafrom
+# Minimal lib to detect platform
 cc_library(
     name = "lib_platform",
     hdrs = [
         "platform/platform.h",
+    ],
+)
+
+PLATFORM_BASE_HDRS = [
+    "platform/logging.h",
+    "platform/macros.h",
+    "platform/types.h",
+    "platform/cpu_info.h",
+]
+
+PLATFORM_OTHER_HDRS = [
+    "platform/abi.h",
+    "platform/stacktrace.h",
+    "platform/stacktrace_handler.h",
+    "platform/context.h",
+    "platform/cpu_feature_guard.h",
+    "platform/dynamic_annotations.h",
+    "platform/env.h",
+    "platform/env_time.h",
+    "platform/file_system.h",
+    "platform/file_system_helper.h",
+    "platform/fingerprint.h",
+    "platform/init_main.h",
+    "platform/mem.h",
+    "platform/mutex.h",
+    "platform/net.h",
+    "platform/notification.h",
+    "platform/null_file_system.h",
+    "platform/prefetch.h",
+    "platform/profile_utils/clock_cycle_profiler.h",
+    "platform/profile_utils/cpu_utils.h",
+    "platform/protobuf.h",
+    "platform/strong_hash.h",
+    "platform/subprocess.h",
+    "platform/thread_annotations.h",
+]
+
+# Smaller platform libraries that don't depend on "lib" or "lib_internal".
+cc_library(
+    name = "platform_base",
+    srcs = glob([
+        "platform/*/integral_types.h",
+        "platform/*/logging.h",
+        "platform/*/cpu_info.h",
+    ]),
+    hdrs = PLATFORM_BASE_HDRS,
+    deps = [
+        ":lib_platform",
+        "//tensorflow/core/platform/default/build_config:base",
     ],
 )
 
@@ -294,7 +343,8 @@ cc_library(
 # tf_cc_test and tf_cc_binary will include the necessary symbols.
 cc_library(
     name = "lib",
-    hdrs = [
+    hdrs = PLATFORM_BASE_HDRS +
+           PLATFORM_OTHER_HDRS + [
         "lib/bfloat16/bfloat16.h",
         "lib/core/arena.h",
         "lib/core/bitmap.h",
@@ -341,34 +391,6 @@ cc_library(
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
-        "platform/abi.h",
-        "platform/context.h",
-        "platform/cpu_feature_guard.h",
-        "platform/cpu_info.h",
-        "platform/dynamic_annotations.h",
-        "platform/env.h",
-        "platform/env_time.h",
-        "platform/file_system.h",
-        "platform/file_system_helper.h",
-        "platform/fingerprint.h",
-        "platform/init_main.h",
-        "platform/logging.h",
-        "platform/macros.h",
-        "platform/mem.h",
-        "platform/mutex.h",
-        "platform/net.h",
-        "platform/notification.h",
-        "platform/null_file_system.h",
-        "platform/prefetch.h",
-        "platform/profile_utils/clock_cycle_profiler.h",
-        "platform/profile_utils/cpu_utils.h",
-        "platform/protobuf.h",
-        "platform/stacktrace.h",
-        "platform/strong_hash.h",
-        "platform/subprocess.h",
-        "platform/thread_annotations.h",
-        "platform/types.h",
-        "platform/windows/cpu_info.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -415,6 +437,17 @@ cc_library(
     ],
 )
 
+# Libraries that will eventually be moved into lib/core
+# Note that stringpiece_test can't be place here yet, because we are
+# required to use tf_cc_test, and that rule will change / into _
+cc_library(
+    name = "core_stringpiece",
+    srcs = ["lib/core/stringpiece.cc"],
+    hdrs = ["lib/core/stringpiece.h"],
+    copts = tf_copts(),
+    deps = [":platform_base"],
+)
+
 # Test support library needed for all tests
 # This is currently public, but may be made internal in the
 # future.  Try to avoid depending on it.
@@ -440,6 +473,27 @@ cc_library(
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
     ] + tf_additional_test_deps(),
+)
+
+# Testing libraries - lite versions that don't depend on all of "lib" or
+# "lib_internal". Instead, they only need a much smaller set of support
+# libraries such as ":platform_base" and ":core_stringpiece".
+cc_library(
+    name = "test_lite",
+    testonly = 1,
+    srcs = [
+        "platform/test.cc",
+    ],
+    hdrs = [
+        "platform/test.h",
+        "platform/test_benchmark.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":lib_platform",
+        ":platform_base",
+        "//tensorflow/core/platform/default/build_config:gtest",
+    ],
 )
 
 # This build rule (along with :framework_internal, :lib, and :lib_internal)
@@ -1650,6 +1704,7 @@ cc_library(
         exclude = [
             "**/*test*",
             "framework/variant.cc",
+            "lib/core/stringpiece.cc",
             "lib/hash/crc32c_accelerate.cc",
             "lib/gif/**/*",
             "lib/jpeg/**/*",
@@ -1663,6 +1718,7 @@ cc_library(
     ) + tf_additional_lib_srcs(
         exclude = [
             "**/*test*",
+            "lib/core/stringpiece.cc",
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
@@ -1683,6 +1739,7 @@ cc_library(
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
         ":abi",
+        ":core_stringpiece",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
@@ -2622,6 +2679,23 @@ cc_library(
         ":lib_internal",
         ":test",  # buildcleaner: keep
         "//tensorflow/core/platform/default/build_config:test_main",
+    ],
+    alwayslink = 1,
+)
+
+# This is the lite version of a main() for tests. It does not include any
+# support for reporting benchmark results when running on TPUs.
+cc_library(
+    name = "test_lite_main",
+    testonly = 1,
+    srcs = ["platform/test_main.cc"],
+    copts = tf_copts(),
+    deps = [
+        ":core_stringpiece",
+        ":lib_platform",
+        ":stacktrace_handler",
+        ":test_lite",
+        "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,
 )
