@@ -124,6 +124,7 @@ tf_xla_py_test(
     name = "categorical_op_test",
     size = "small",
     srcs = ["categorical_op_test.py"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework_for_generated_wrappers",
