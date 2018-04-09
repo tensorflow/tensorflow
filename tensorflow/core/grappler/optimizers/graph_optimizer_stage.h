@@ -134,6 +134,18 @@ class GraphOptimizerStage {
   // and remove template parameter.
   virtual Status TrySimplify(NodeDef* node, Result* result) = 0;
 
+  // Return InvalidArgumentError if node is not supported by the optimizer
+  // stage.
+  // TODO(ezhulenev): make this check part of non-virtual public API
+  // (TrySimplify), and make virtual implementation protected.
+  Status EnsureNodeIsSupported(const NodeDef* node) const {
+    return IsSupported(node)
+               ? Status::OK()
+               : errors::InvalidArgument(
+                     "Node ", node->name(), " is not supported by optimizer ",
+                     optimizer_name_, " and stage ", stage_name_);
+  }
+
   // Get a name for a new node, created by this stage, based on one or multiple
   // nodes of an original graph.
   const string OptimizedNodeName(const NodeScopeAndName& node) const {

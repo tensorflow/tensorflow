@@ -1090,6 +1090,48 @@ TEST_F(LiteralUtilTest, Populate) {
   }
 }
 
+TEST_F(LiteralUtilTest, PopulateParallel) {
+  struct PopulateData {
+    std::vector<int64> dimensions;
+    std::vector<int64> layout;
+  } populate_data[] = {
+      {{}, {}},
+      {{0}, {0}},
+      {{16}, {0}},
+      {{2, 0}, {1, 0}},
+      {{4, 16}, {1, 0}},
+      {{21, 12}, {0, 1}},
+      {{6, 11, 17}, {2, 0, 1}},
+      {{6, 11, 5, 17}, {3, 2, 0, 1}},
+  };
+  for (const auto& data : populate_data) {
+    Shape shape = ShapeUtil::MakeShapeWithLayout(
+        primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
+        data.layout);
+    auto literal = Literal::CreateFromShape(shape);
+    auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
+      // Offsets from linear index just to avoid R0 literals to be initialized
+      // with zero.
+      return IndexUtil::MultidimensionalIndexToLinearIndex(literal->shape(),
+                                                           indexes) +
+             17;
+    };
+    TF_EXPECT_OK(literal->PopulateParallel<uint32>(generator));
+
+    std::vector<int64> zero_base(data.dimensions.size(), 0);
+    std::vector<int64> step(data.dimensions.size(), 1);
+    bool matched = true;
+    auto check_function = [&](ArraySlice<int64> indexes) {
+      auto value = literal->Get<uint32>(indexes);
+      matched = matched && (value == generator(indexes));
+      return matched;
+    };
+    ShapeUtil::ForEachIndex(literal->shape(), zero_base, data.dimensions, step,
+                            check_function);
+    EXPECT_TRUE(matched);
+  }
+}
+
 TEST_F(LiteralUtilTest, ConvertR4) {
   // clang-format off
   auto original = Literal::CreateR4WithLayout<int8>({{

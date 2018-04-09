@@ -704,6 +704,15 @@ void ConvertRelu6Operator(const Relu6Operator& src_op,
   (*relu_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertLogOperator(const LogOperator& src_op, GraphDef* tensorflow_graph) {
+  auto* op = tensorflow_graph->add_node();
+  op->set_op("Log");
+  op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *op->add_input() = src_op.inputs[0];
+  (*op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
 void ConvertLogisticOperator(const LogisticOperator& src_op,
                              GraphDef* tensorflow_graph) {
   auto* relu_op = tensorflow_graph->add_node();
@@ -1703,6 +1712,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kRelu6) {
     ConvertRelu6Operator(static_cast<const Relu6Operator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kLog) {
+    ConvertLogOperator(static_cast<const LogOperator&>(src_op),
+                       tensorflow_graph);
   } else if (src_op.type == OperatorType::kLogistic) {
     ConvertLogisticOperator(static_cast<const LogisticOperator&>(src_op),
                             tensorflow_graph);

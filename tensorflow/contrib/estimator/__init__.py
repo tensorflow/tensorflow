@@ -52,6 +52,7 @@ _allowed_symbols = [
     'linear_logit_fn_builder',
     'replicate_model_fn',
     'TowerOptimizer',
+    'RNNClassifier',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

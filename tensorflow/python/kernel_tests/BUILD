@@ -1191,6 +1191,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "inplace_ops_test",
+    size = "small",
+    srcs = ["inplace_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+    ],
+    shard_count = 10,
+)
+
+cuda_py_test(
     name = "batch_matmul_op_test",
     size = "small",
     srcs = ["batch_matmul_op_test.py"],
