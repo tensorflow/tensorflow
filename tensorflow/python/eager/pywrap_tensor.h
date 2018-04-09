@@ -22,8 +22,4 @@ limitations under the License.
 bool EagerTensor_CheckExact(const PyObject* o);
 tensorflow::int64 EagerTensor_id(const PyObject* tensor);
 
-namespace tensorflow {
-TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype);
-}
-
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TENSOR_H_

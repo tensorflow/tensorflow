@@ -161,64 +161,6 @@ PyObject* PyIntFromDataType(TF_DataType l) {
 
 }  // namespace
 
-namespace tensorflow {
-TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
-  int desired_dtype = -1;
-  if (dtype != Py_None) {
-    if (!PyIntToDataType(dtype, &desired_dtype)) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Expecting a DataType value for dtype. Got ",
-                          Py_TYPE(dtype)->tp_name)
-                          .c_str());
-      return nullptr;
-    }
-  }
-  if (PyArray_Check(value)) {
-    int desired_np_dtype = -1;
-    if (desired_dtype >= 0) {
-      if (!tensorflow::TF_DataType_to_PyArray_TYPE(
-               static_cast<TF_DataType>(desired_dtype), &desired_np_dtype)
-               .ok()) {
-        PyErr_SetString(PyExc_TypeError,
-                        tensorflow::strings::StrCat(
-                            "Invalid dtype argument value ", desired_dtype)
-                            .c_str());
-        return nullptr;
-      }
-    }
-    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
-    int current_np_dtype = PyArray_TYPE(array);
-    auto safe_value = tensorflow::make_safe(static_cast<PyObject*>(nullptr));
-    if ((desired_np_dtype >= 0 && desired_np_dtype != current_np_dtype) ||
-        !PyArray_ISCARRAY(array)) {
-      int new_dtype =
-          desired_np_dtype >= 0 ? desired_np_dtype : current_np_dtype;
-      safe_value = tensorflow::make_safe(
-          PyArray_FromAny(value, PyArray_DescrFromType(new_dtype), 0, 0,
-                          NPY_ARRAY_CARRAY | NPY_ARRAY_FORCECAST, nullptr));
-      if (PyErr_Occurred()) return nullptr;
-      if (safe_value == nullptr) {
-        PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
-        return nullptr;
-      }
-      value = safe_value.get();
-    }
-    return NumpyToTensorHandle(value);
-  } else {
-    tensorflow::Tensor t;
-    // TODO(josh11b): Have PySeqToTensor set python errors instead of
-    // returning Status.
-    auto cppstatus = tensorflow::PySeqToTensor(value, dtype, &t);
-    if (!cppstatus.ok()) {
-      PyErr_SetString(PyExc_ValueError, cppstatus.error_message().c_str());
-      return nullptr;
-    }
-    return TFE_NewTensorHandle(t);
-  }
-}
-}  // namespace tensorflow
-
 extern "C" {
 
 static const int kMaxEagerTensorParentSize = 64;
@@ -288,11 +230,56 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
       return -1;
     }
   }
-  PyErr_Clear();
   tensorflow::Safe_TFE_TensorHandlePtr handle =
-      tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
-          tensorflow::ConvertToEagerTensor(value, dtype)));
-  if (handle == nullptr) return -1;
+      tensorflow::make_safe(static_cast<TFE_TensorHandle*>(nullptr));
+  PyErr_Clear();
+  if (PyArray_Check(value)) {
+    int desired_np_dtype = -1;
+    if (desired_dtype >= 0) {
+      if (!tensorflow::TF_DataType_to_PyArray_TYPE(
+               static_cast<TF_DataType>(desired_dtype), &desired_np_dtype)
+               .ok()) {
+        PyErr_SetString(PyExc_TypeError,
+                        tensorflow::strings::StrCat(
+                            "Invalid dtype argument value ", desired_dtype)
+                            .c_str());
+        return -1;
+      }
+    }
+    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
+    int current_np_dtype = PyArray_TYPE(array);
+    auto safe_value = tensorflow::make_safe(static_cast<PyObject*>(nullptr));
+    if ((desired_np_dtype >= 0 && desired_np_dtype != current_np_dtype) ||
+        !PyArray_ISCARRAY(array)) {
+      int new_dtype =
+          desired_np_dtype >= 0 ? desired_np_dtype : current_np_dtype;
+      safe_value = tensorflow::make_safe(
+          PyArray_FromAny(value, PyArray_DescrFromType(new_dtype), 0, 0,
+                          NPY_ARRAY_CARRAY | NPY_ARRAY_FORCECAST, nullptr));
+      if (PyErr_Occurred()) return -1;
+      if (safe_value == nullptr) {
+        PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
+        return -1;
+      }
+      value = safe_value.get();
+    }
+    handle = tensorflow::make_safe(NumpyToTensorHandle(value));
+  } else {
+    tensorflow::Tensor t;
+    // TODO(josh11b): Have PySeqToTensor set python errors instead of
+    // returning Status.
+    auto cppstatus = tensorflow::PySeqToTensor(value, dtype, &t);
+    if (!cppstatus.ok()) {
+      PyErr_SetString(PyExc_ValueError, cppstatus.error_message().c_str());
+      return -1;
+    }
+    handle = tensorflow::make_safe(TFE_NewTensorHandle(t));
+  }
+  if (PyErr_Occurred()) return -1;
+  if (handle == nullptr) {
+    PyErr_SetString(PyExc_ValueError, "Error while creating an EagerTensor");
+    return -1;
+  }
   TF_DataType handle_dtype = TFE_TensorHandleDataType(handle.get());
   if (desired_dtype >= 0 && desired_dtype != handle_dtype) {
     handle = tensorflow::make_safe(
@@ -714,12 +701,12 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   return reinterpret_cast<PyObject*>(EagerTensorType);
 }
 
-PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
-  if (!PyList_Check(tensors) && !PyTuple_Check(tensors)) {
+PyObject* TFE_Py_TensorShapeSlice(PyObject* tensor_list, int slice_dim) {
+  if (!PyList_Check(tensor_list)) {
     PyErr_SetString(PyExc_TypeError,
                     tensorflow::strings::StrCat(
-                        "tensors argument must be a list or a tuple. Got \"",
-                        Py_TYPE(tensors)->tp_name, "\"")
+                        "tensor_list argument must be a list. Got \"",
+                        Py_TYPE(tensor_list)->tp_name, "\"")
                         .c_str());
     return nullptr;
   }
@@ -733,14 +720,14 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
     return nullptr;
   }
 
-  Py_ssize_t num_tensors = PySequence_Fast_GET_SIZE(tensors);
+  Py_ssize_t num_tensors = PyList_Size(tensor_list);
   int64_t num_tensors_int = static_cast<int64_t>(num_tensors);
   auto tensor = tensorflow::make_safe(TF_AllocateTensor(
       TF_INT32, &num_tensors_int, /*num_dims=*/1, /*len=*/4 * num_tensors_int));
   int32_t* data = reinterpret_cast<int32_t*>(TF_TensorData(tensor.get()));
   auto status = tensorflow::make_safe(TF_NewStatus());
   for (Py_ssize_t i = 0; i < num_tensors; ++i) {
-    PyObject* tensor_obj = PySequence_Fast_GET_ITEM(tensors, i);
+    PyObject* tensor_obj = PyList_GET_ITEM(tensor_list, i);
     if (!EagerTensor_CheckExact(tensor_obj)) {
       PyErr_SetString(PyExc_TypeError,
                       tensorflow::strings::StrCat(
