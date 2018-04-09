@@ -71,12 +71,14 @@ class SDCAOptimizer(object):
                num_loss_partitions=1,
                num_table_shards=None,
                symmetric_l1_regularization=0.0,
-               symmetric_l2_regularization=1.0):
+               symmetric_l2_regularization=1.0,
+               adaptive=True):
     self._example_id_column = example_id_column
     self._num_loss_partitions = num_loss_partitions
     self._num_table_shards = num_table_shards
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
+    self._adaptive = adaptive
 
   def get_name(self):
     return 'SDCAOptimizer'
@@ -100,6 +102,10 @@ class SDCAOptimizer(object):
   @property
   def symmetric_l2_regularization(self):
     return self._symmetric_l2_regularization
+
+  @property
+  def adaptive(self):
+    return self._adaptive
 
   def get_train_step(self, columns_to_variables, weight_column_name, loss_type,
                      features, targets, global_step):
@@ -228,6 +234,7 @@ class SDCAOptimizer(object):
         options=dict(
             symmetric_l1_regularization=self._symmetric_l1_regularization,
             symmetric_l2_regularization=self._symmetric_l2_regularization,
+            adaptive=self._adaptive,
             num_loss_partitions=self._num_loss_partitions,
             num_table_shards=self._num_table_shards,
             loss_type=loss_type))

@@ -165,6 +165,11 @@ bool ParseModelFlagsFromCommandLineFlags(
            "Path to an optional file containing a serialized ModelFlags proto. "
            "Options specified on the command line will override the values in "
            "the proto."),
+      Flag("change_concat_input_ranges",
+           parsed_flags.change_concat_input_ranges.bind(),
+           parsed_flags.change_concat_input_ranges.default_value(),
+           "Boolean to change the behavior of min/max ranges for inputs and"
+           " output of the concat operators."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -399,12 +404,15 @@ void ReadModelFlagsFromCommandLineFlags(
       parsed_model_flags.allow_nonascii_arrays.value());
   model_flags->set_allow_nonexistent_arrays(
       parsed_model_flags.allow_nonexistent_arrays.value());
+  model_flags->set_change_concat_input_ranges(
+      parsed_model_flags.change_concat_input_ranges.value());
 
   if (parsed_model_flags.arrays_extra_info_file.specified()) {
     string arrays_extra_info_file_contents;
-    port::file::GetContents(parsed_model_flags.arrays_extra_info_file.value(),
-                            &arrays_extra_info_file_contents,
-                            port::file::Defaults());
+    CHECK(port::file::GetContents(
+              parsed_model_flags.arrays_extra_info_file.value(),
+              &arrays_extra_info_file_contents, port::file::Defaults())
+              .ok());
     ParseFromStringEitherTextOrBinary(arrays_extra_info_file_contents,
                                       model_flags->mutable_arrays_extra_info());
   }

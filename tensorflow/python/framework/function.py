@@ -274,7 +274,7 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     if self._c_func:
       with c_api_util.tf_buffer() as buf:
-        c_api.TF_FunctionToFunctionDef(self._c_func, buf)
+        c_api.TF_FunctionToFunctionDef(self._c_func.func, buf)
         fdef = function_pb2.FunctionDef()
         proto_data = c_api.TF_GetBuffer(buf)
         fdef.ParseFromString(compat.as_bytes(proto_data))
@@ -397,7 +397,7 @@ class _DefinedFunction(object):
                       if self._out_names else [])
       description = self._func.__doc__ or None
       # pylint: disable=protected-access
-      self._c_func = c_api.TF_GraphToFunction_wrapper(
+      c_func = c_api.TF_GraphToFunction_wrapper(
           temp_graph._c_graph,
           base_func_name,
           self._func_name is None,  # append_hash_to_fn_name
@@ -407,6 +407,7 @@ class _DefinedFunction(object):
           output_names,
           None,  # opts
           description)
+      self._c_func = c_api_util.ScopedTFFunction(c_func)
       # pylint: enable=protected-access
       self._set_c_attrs(kwargs_attr)
 
@@ -429,7 +430,7 @@ class _DefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use the same status.
-      c_api.TF_FunctionSetAttrValueProto(self._c_func, compat.as_str(name),
+      c_api.TF_FunctionSetAttrValueProto(self._c_func.func, compat.as_str(name),
                                          serialized)
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
@@ -825,7 +826,8 @@ def _from_definition(fdef, grad_func=None):
   # pylint: disable=protected-access
   if ops._USE_C_API:
     serialized = fdef.SerializeToString()
-    result._c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+    c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+    result._c_func = c_api_util.ScopedTFFunction(c_func)
     result._extra_inputs = []
   else:
     result._definition = fdef

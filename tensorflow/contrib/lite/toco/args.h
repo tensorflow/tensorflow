@@ -202,6 +202,7 @@ struct ParsedModelFlags {
   Arg<toco::IntList> input_shape;
   Arg<toco::StringMapList> rnn_states;
   Arg<toco::StringMapList> model_checks;
+  Arg<bool> change_concat_input_ranges = Arg<bool>(true);
   // Debugging output options.
   // TODO(benoitjacob): these shouldn't be ModelFlags.
   Arg<string> graphviz_first_array;

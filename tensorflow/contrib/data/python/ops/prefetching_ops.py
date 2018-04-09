@@ -25,10 +25,11 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.ops import gen_dataset_ops as core_gen_dataset_ops
 
 
 # TODO(rohanj): Add a python class that constructs resource in the __init__
@@ -111,19 +112,7 @@ class _PrefetchToDeviceIterator(object):
           self._input_iterator.output_shapes,
           self._input_iterator.output_classes)
       ret = remote_iterator.get_next()
-
-      # Convert any `SparseTensorValue`s to `SparseTensor`s.
-      ret = nest.pack_sequence_as(ret, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else t for t in nest.flatten(ret)
-      ])
-
-      # Serialize any sparse tensors and convert result to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          ops.convert_to_tensor(t)
-          for t in nest.flatten(sparse.serialize_sparse_tensors(ret))
-      ])
-      return nest.flatten(ret)
+      return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
@@ -179,6 +168,68 @@ class _PrefetchToDeviceIterator(object):
   @property
   def output_types(self):
     return self._input_dataset.output_types
+
+
+class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
+  """A replacement for @{tf.data.Iterator} that prefetches to another device.
+
+  Args:
+    input_dataset: The input dataset
+    one_shot: If true, we make a one shot iterator that's already initialized.
+    device: A fully specified device string where we want to prefetch to
+    buffer_size: Size of the prefetching buffer.
+    shared_name: (Optional.) If non-empty, the returned iterator will be
+        shared under the given name across multiple sessions that share the
+        same devices (e.g. when using a remote server).
+
+  Returns:
+    An Iterator type object.
+  """
+
+  def __init__(self,
+               input_dataset,
+               device,
+               buffer_size):
+    with ops.device("/device:CPU:0"):
+      super(_PrefetchToDeviceEagerIterator, self).__init__(input_dataset)
+      input_iterator_handle = core_gen_dataset_ops.iterator_to_string_handle(
+          self._resource)
+
+    self._device = device
+
+    @function.Defun(dtypes.string)
+    def _prefetch_fn(handle):
+      """Prefetches one element from `input_iterator`."""
+      remote_iterator = iterator_ops.Iterator.from_string_handle(
+          handle, self.output_types, self.output_shapes, self.output_classes)
+      ret = remote_iterator.get_next()
+      return nest.flatten(sparse.serialize_sparse_tensors(ret))
+
+    _prefetch_fn.add_to_graph(None)
+
+    with ops.device(device):
+      self._buffering_resource = function_buffering_resource(
+          f=_prefetch_fn,
+          target_device=gen_dataset_ops.iterator_get_device(self._resource),
+          string_arg=input_iterator_handle,
+          buffer_size=buffer_size,
+          shared_name=iterator_ops._generate_shared_name(
+              "function_buffer_resource"))
+
+  def _next_internal(self):
+    """Returns a nested structure of `tf.Tensor`s containing the next element.
+    """
+    # This runs in sync mode as iterators use an error status to communicate
+    # that there is no more data to iterate over.
+    # TODO(b/77291417): Fix
+    with context.execution_mode(context.SYNC):
+      with ops.device(self._device):
+        ret = gen_dataset_ops.function_buffering_resource_get_next(
+            function_buffer_resource=self._buffering_resource,
+            output_types=self._flat_output_types)
+      return sparse.deserialize_sparse_tensors(
+          nest.pack_sequence_as(self._output_types, ret), self._output_types,
+          self._output_shapes, self._output_classes)
 # pylint: enable=protected-access
 
 
@@ -190,12 +241,37 @@ class _PrefetchToDeviceDataset(dataset_ops.Dataset):
     self._device = device
     self._buffer_size = buffer_size if buffer_size is not None else 1
 
+  # The static analysis cannot tell that the eager iterator's superclass has
+  # a `next()` method.
+  # pylint: disable=non-iterator-returned
+  def __iter__(self):
+    """Creates an `Iterator` for enumerating the elements of this dataset.
+
+    The returned iterator implements the Python iterator protocol and therefore
+    can only be used in eager mode.
+
+    Returns:
+      An `Iterator` over the elements of this dataset.
+
+    Raises:
+      RuntimeError: If eager execution is enabled.
+    """
+    if context.executing_eagerly():
+      return _PrefetchToDeviceEagerIterator(self._input_dataset, self._device,
+                                            self._buffer_size)
+    else:
+      raise RuntimeError("dataset.__iter__() is only supported when eager "
+                         "execution is enabled.")
+  # pylint: enable=non-iterator-returned
+
   def make_one_shot_iterator(self):
-    return _PrefetchToDeviceIterator(
-        self._input_dataset,
-        one_shot=True,
-        device=self._device,
-        buffer_size=self._buffer_size)
+    if context.executing_eagerly():
+      return _PrefetchToDeviceEagerIterator(self._input_dataset, self._device,
+                                            self._buffer_size)
+    else:
+      return _PrefetchToDeviceIterator(self._input_dataset, one_shot=True,
+                                       device=self._device,
+                                       buffer_size=self._buffer_size)
 
   def make_initializable_iterator(self, shared_name=None):
     return _PrefetchToDeviceIterator(

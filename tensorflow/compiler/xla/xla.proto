@@ -189,6 +189,9 @@ message DebugOptions {
   // directory.
   string xla_dump_per_pass_hlo_proto_to = 96;
 
+  // Generate calls to MKL-DNN in the CPU backend.
+  bool xla_cpu_use_mkl_dnn = 97;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;

@@ -101,7 +101,7 @@ def _build_class_page(page_info):
 
     link_template = '[`{short_name}`]({url})'
     parts.append(', '.join(
-        link_template.format(**base.__dict__) for base in page_info.bases))
+        link_template.format(**base._asdict()) for base in page_info.bases))
 
   parts.append('\n\n')
 
@@ -159,7 +159,7 @@ def _build_class_page(page_info):
       h3 = ('<h3 id="{short_name}">'
             '<code>{short_name}</code>'
             '</h3>\n\n')
-      parts.append(h3.format(**method_info.__dict__))
+      parts.append(h3.format(**method_info._asdict()))
 
       if method_info.signature is not None:
         parts.append(_build_signature(method_info, use_full_name=False))
@@ -217,7 +217,7 @@ def _build_module_page(page_info):
     template = '[`{short_name}`]({url}) module'
 
     for item in page_info.modules:
-      parts.append(template.format(**item.__dict__))
+      parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
         parts.append(': ' + item.doc.brief)
@@ -229,7 +229,7 @@ def _build_module_page(page_info):
     template = '[`class {short_name}`]({url})'
 
     for item in page_info.classes:
-      parts.append(template.format(**item.__dict__))
+      parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
         parts.append(': ' + item.doc.brief)
@@ -241,7 +241,7 @@ def _build_module_page(page_info):
     template = '[`{short_name}(...)`]({url})'
 
     for item in page_info.functions:
-      parts.append(template.format(**item.__dict__))
+      parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
         parts.append(': ' + item.doc.brief)
@@ -254,7 +254,7 @@ def _build_module_page(page_info):
     parts.append('## Other Members\n\n')
 
     for item in page_info.other_members:
-      parts.append('`{short_name}`\n\n'.format(**item.__dict__))
+      parts.append('`{short_name}`\n\n'.format(**item._asdict()))
 
   return ''.join(parts)
 

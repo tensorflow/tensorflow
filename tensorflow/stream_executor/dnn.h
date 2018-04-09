@@ -1195,6 +1195,9 @@ class DnnSupport {
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
 
+  // Returns a list of supported rnn algorithms.
+  virtual bool GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms);
+
   // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
   // coefficient_scales specifies the scaling of each column of coefficients:
   // original float coefficient[row * num_columns + column] =
@@ -2001,6 +2004,7 @@ class DnnSupport {
                       dnn::RnnInputMode input_mode,
                       dnn::RnnDirectionMode direction_mode,
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
+                      const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64 seed,
                       ScratchAllocator* state_allocator) {
     return port::Status{port::error::UNIMPLEMENTED,
@@ -2076,7 +2080,8 @@ class DnnSupport {
                             DeviceMemory<Eigen::half>* output_c_data,
                             bool is_training,
                             ScratchAllocator* reserve_space_allocator,
-                            ScratchAllocator* workspace_allocator) {
+                            ScratchAllocator* workspace_allocator,
+                            dnn::ProfileResult* output_profile_result) {
     return false;
   }
 
@@ -2096,7 +2101,8 @@ class DnnSupport {
                             DeviceMemory<float>* output_c_data,
                             bool is_training,
                             ScratchAllocator* reserve_space_allocator,
-                            ScratchAllocator* workspace_allocator) {
+                            ScratchAllocator* workspace_allocator,
+                            dnn::ProfileResult* output_profile_result) {
     return false;
   }
 
@@ -2116,7 +2122,8 @@ class DnnSupport {
                             DeviceMemory<double>* output_c_data,
                             bool is_training,
                             ScratchAllocator* reserve_space_allocator,
-                            ScratchAllocator* workspace_allocator) {
+                            ScratchAllocator* workspace_allocator,
+                            dnn::ProfileResult* output_profile_result) {
     return false;
   }
   // Enqueue a backward operation of the RNN model onto the stream.
@@ -2183,7 +2190,8 @@ class DnnSupport {
       DeviceMemory<Eigen::half>* input_c_backprop_data,
       DeviceMemory<Eigen::half>* params_backprop_data,
       DeviceMemory<uint8>* reserve_space_data,
-      ScratchAllocator* workspace_allocator) {
+      ScratchAllocator* workspace_allocator,
+      dnn::ProfileResult* output_profile_result) {
     return false;
   }
 
@@ -2210,7 +2218,8 @@ class DnnSupport {
       DeviceMemory<float>* input_c_backprop_data,
       DeviceMemory<float>* params_backprop_data,
       DeviceMemory<uint8>* reserve_space_data,
-      ScratchAllocator* workspace_allocator) {
+      ScratchAllocator* workspace_allocator,
+      dnn::ProfileResult* output_profile_result) {
     return false;
   }
 
@@ -2237,7 +2246,8 @@ class DnnSupport {
       DeviceMemory<double>* input_c_backprop_data,
       DeviceMemory<double>* params_backprop_data,
       DeviceMemory<uint8>* reserve_space_data,
-      ScratchAllocator* workspace_allocator) {
+      ScratchAllocator* workspace_allocator,
+      dnn::ProfileResult* output_profile_result) {
     return false;
   }
 

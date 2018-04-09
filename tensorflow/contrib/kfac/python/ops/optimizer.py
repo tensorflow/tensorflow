@@ -108,13 +108,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       ValueError: If momentum is non-zero and momentum_type is not 'regular'
           or 'adam'.
     """
-
-    variables = var_list
-    if variables is None:
-      variables = tf_variables.trainable_variables()
-
     # Parameters to be passed to the Fisher estimator:
-    self._variables = variables
+    self._variables = var_list or tf_variables.trainable_variables
     self._cov_ema_decay = cov_ema_decay
     self._layers = layer_collection
     self._estimation_mode = estimation_mode
@@ -235,7 +230,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
 
   @property
   def variables(self):
-    return self._variables
+    return self._fisher_est.variables
 
   @property
   def damping(self):
@@ -373,6 +368,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     else:
       kwargs["var_list"] = kwargs.get("var_list") or self.variables
       var_list = kwargs["var_list"]
+
     if set(var_list) != set(self.variables):
       raise ValueError("var_list doesn't match with set of Fisher-estimating "
                        "variables.")

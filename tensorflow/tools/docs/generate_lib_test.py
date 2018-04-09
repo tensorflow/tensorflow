@@ -52,9 +52,6 @@ class DummyVisitor(object):
 class GenerateTest(googletest.TestCase):
 
   def test_write(self):
-    if sys.version_info >= (3, 0):
-      self.skipTest('Warning: Doc generation is not supported from python3.')
-
     module = sys.modules[__name__]
 
     index = {

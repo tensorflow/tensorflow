@@ -265,10 +265,10 @@ class ActivityAnalizer(transformer.Base):
       qn = QN(node.name)
       self.scope.mark_write(qn)
     current_scope = self.scope
-    fndef_scope = Scope(current_scope, isolated=True)
-    self.scope = fndef_scope
+    body_scope = Scope(current_scope, isolated=True)
+    self.scope = body_scope
     self.generic_visit(node)
-    anno.setanno(node, NodeAnno.BODY_SCOPE, fndef_scope)
+    anno.setanno(node, NodeAnno.BODY_SCOPE, body_scope)
     self.scope = current_scope
     return node
 
@@ -282,7 +282,13 @@ class ActivityAnalizer(transformer.Base):
     return node
 
   def visit_If(self, node):
+    current_scope = self.scope
+    cond_scope = Scope(current_scope, isolated=False)
+    self.scope = cond_scope
     self.visit(node.test)
+    anno.setanno(node, NodeAnno.COND_SCOPE, cond_scope)
+    self.scope = current_scope
+
     node = self._process_parallel_blocks(node,
                                          ((node.body, NodeAnno.BODY_SCOPE),
                                           (node.orelse, NodeAnno.ORELSE_SCOPE)))
@@ -297,7 +303,13 @@ class ActivityAnalizer(transformer.Base):
     return node
 
   def visit_While(self, node):
+    current_scope = self.scope
+    cond_scope = Scope(current_scope, isolated=False)
+    self.scope = cond_scope
     self.visit(node.test)
+    anno.setanno(node, NodeAnno.COND_SCOPE, cond_scope)
+    self.scope = current_scope
+
     node = self._process_parallel_blocks(node,
                                          ((node.body, NodeAnno.BODY_SCOPE),
                                           (node.orelse, NodeAnno.ORELSE_SCOPE)))

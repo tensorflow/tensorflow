@@ -45,10 +45,12 @@ class _PrefetchToDeviceIterator(object):
 
     @function.Defun(dtypes.string)
     def _prefetch_fn(handle):
+      """Prefetches one element from `input_iterator`."""
       remote_iterator = iterator_ops.Iterator.from_string_handle(
           handle, input_iterator.output_types, input_iterator.output_shapes,
           input_iterator.output_classes)
-      return remote_iterator.get_next()
+      ret = remote_iterator.get_next()
+      return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
     target_device = gen_dataset_ops.iterator_get_device(
         input_iterator._iterator_resource)

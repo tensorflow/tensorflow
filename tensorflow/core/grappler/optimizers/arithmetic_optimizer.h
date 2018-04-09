@@ -105,7 +105,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
 
   // Runs peep-hole optimizations on `optimized_graph`, e.g., removing inverse
   // transposes.
-  Status SimplifyArithmeticOps();
+  Status SimplifyArithmeticOps(bool can_use_shapes);
   // Tries to simplify the expression that roots at `node` and replaces the uses
   // of `node` to the simplified expression. Returns the name of the simplified
   // tensor (e.g. "split:1") or an emtpy string if no simplification is

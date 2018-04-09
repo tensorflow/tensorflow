@@ -45,6 +45,7 @@ from tensorflow.python.keras._impl.keras.layers import GlobalAveragePooling2D
 from tensorflow.python.keras._impl.keras.layers import GlobalMaxPooling2D
 from tensorflow.python.keras._impl.keras.layers import Input
 from tensorflow.python.keras._impl.keras.layers import MaxPooling2D
+from tensorflow.python.keras._impl.keras.layers import ZeroPadding2D
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils import layer_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
@@ -236,9 +237,9 @@ def ResNet50(include_top=True,
   else:
     bn_axis = 1
 
+  x = ZeroPadding2D(padding=(3, 3), name='conv1_pad')(img_input)
   x = Conv2D(
-      64, (7, 7), strides=(2, 2), padding='same', name='conv1')(
-          img_input)
+      64, (7, 7), strides=(2, 2), padding='valid', name='conv1')(x)
   x = BatchNormalization(axis=bn_axis, name='bn_conv1')(x)
   x = Activation('relu')(x)
   x = MaxPooling2D((3, 3), strides=(2, 2))(x)
