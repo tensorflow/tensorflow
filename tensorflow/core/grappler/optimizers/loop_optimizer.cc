@@ -106,7 +106,7 @@ Status LoopInvariantNodeMotionOptimizer::HandleInvariantEnter(
 Status LoopInvariantNodeMotionOptimizer::HandleConst(NodeDef* node,
                                                      const int num_outputs,
                                                      const int frame_id) {
-  NodeDef* const_node;
+  NodeDef* const_node = nullptr;
   if (num_outputs == 0) {
     // all successor nodes are invariant
     // Remove the control inputs from this frame to the const node,
@@ -118,12 +118,17 @@ Status LoopInvariantNodeMotionOptimizer::HandleConst(NodeDef* node,
     // some successor nodes are variant
     // Have to keep the const node in the frame,
     // so create a new one outside the frame (in parent frame)
-    const_node = optimized_graph_->add_node();
-    const_node->set_name(AddPrefixToNodeName(node->name(), kLoopOptimizer));
-    const_node->set_op("Const");
-    const_node->set_device(node->device());
-    *const_node->mutable_attr() = node->attr();
-    node_map_->AddNode(const_node->name(), const_node);
+    const string const_node_name =
+        AddPrefixToNodeName(node->name(), kLoopOptimizer);
+    const_node = node_map_->GetNode(const_node_name);
+    if (const_node == nullptr) {
+      const_node = optimized_graph_->add_node();
+      const_node->set_name(const_node_name);
+      const_node->set_op("Const");
+      const_node->set_device(node->device());
+      *const_node->mutable_attr() = node->attr();
+      node_map_->AddNode(const_node->name(), const_node);
+    }
     auto consumers = node_map_->GetOutputs(node->name());
     for (auto* consumer : consumers) {
       if (invariant_nodes_.count(consumer)) {
