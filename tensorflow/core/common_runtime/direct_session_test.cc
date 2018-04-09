@@ -254,7 +254,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
     EXPECT_TRUE(
-        StringPiece(s.error_message()).contains("would create a cycle"));
+        str_util::StrContains(s.error_message(), "would create a cycle"));
   }
 
   {
@@ -268,7 +268,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(StringPiece(s.error_message()).contains("unknown node"));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown node"));
   }
 
   {
@@ -283,7 +283,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(StringPiece(s.error_message()).contains("unknown edge"));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown edge"));
   }
 
   {
@@ -298,7 +298,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsNotFound(s));
     EXPECT_TRUE(
-        StringPiece(s.error_message()).contains("unable to find feed output"));
+        str_util::StrContains(s.error_message(), "unable to find feed output"));
   }
 
   {
@@ -315,7 +315,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
   }
 
   {
@@ -330,7 +330,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
   }
 }
 
