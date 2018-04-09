@@ -34,7 +34,6 @@ from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -79,14 +78,10 @@ def capture_value(tensor_map, value, dtype, name):
         ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
         shapes = [[d.size for d in s.dim]
                   if not s.unknown_rank else None for s in shapes]
-        with errors.raise_exception_on_not_ok_status() as status:
-          pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
-              captured_value._op._graph._c_graph,  # pylint: disable=protected-access
-              captured_value._as_tf_output(),  # pylint: disable=protected-access
-              shapes,
-              ranks,
-              types,
-              status)
+        pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+            captured_value._op._graph._c_graph,  # pylint: disable=protected-access
+            captured_value._as_tf_output(),  # pylint: disable=protected-access
+            shapes, ranks, types)
 
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
@@ -275,23 +270,20 @@ class _EagerDefinedFunction(object):
       inputs: the tensors in the graph to be used as inputs to the function
       outputs: the tensors in the graph which will be outputs to the function
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
-          graph._c_graph,  # pylint: disable=protected-access
-          compat.as_str(name),
-          False,
-          [o._c_op for o in operations],  # pylint: disable=protected-access
-          [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
-          [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
-          [],
-          None,
-          compat.as_str(""),
-          status)
+    fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
+        graph._c_graph,  # pylint: disable=protected-access
+        compat.as_str(name),
+        False,
+        [o._c_op for o in operations],  # pylint: disable=protected-access
+        [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
+        [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
+        [],
+        None,
+        compat.as_str(""))
     # TODO(apassos) avoid creating a FunctionDef (specially to grab the
     # signature, but also in general it's nice not to depend on it.
     with c_api_util.tf_buffer() as buffer_:
-      with errors.raise_exception_on_not_ok_status() as status:
-        pywrap_tensorflow.TF_FunctionToFunctionDef(fn, buffer_, status)
+      pywrap_tensorflow.TF_FunctionToFunctionDef(fn, buffer_)
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
@@ -302,7 +294,7 @@ class _EagerDefinedFunction(object):
     self.signature = function_def.signature
     self.grad_func_name = None
     self.python_grad_func = None
-    self._c_func = fn
+    self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
 
 
@@ -669,7 +661,7 @@ def _defun_internal(name, func, args, kwds):
   if context.executing_eagerly():
     for f in tmp_graph._functions.values():  # pylint: disable=protected-access
       # TODO(ashankar): What about the gradient registry?
-      _register(f._c_func)  # pylint: disable=protected-access
+      _register(f._c_func.func)  # pylint: disable=protected-access
   return GraphModeFunction(
       fname, all_inputs, extra_inputs, tmp_graph, operations, func_def_outputs,
       func_outputs, output_shapes, variables)

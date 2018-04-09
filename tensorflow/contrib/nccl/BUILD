@@ -31,7 +31,7 @@ tf_custom_op_library(
         "kernels/nccl_ops.cc",
     ],
     deps = if_cuda([
-        "@nccl_archive//:nccl",
+        "@local_config_nccl//:nccl",
         "//tensorflow/core:gpu_headers_lib",
     ]),
 )
@@ -61,7 +61,7 @@ tf_cuda_cc_test(
             "//tensorflow/core:test",
             "//tensorflow/core:test_main",
             "//tensorflow/core:testlib",
-            "@nccl_archive//:nccl",
+            "@local_config_nccl//:nccl",
         ],
 )
 
@@ -80,7 +80,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:stream_executor",
-        "@nccl_archive//:nccl",
+        "@local_config_nccl//:nccl",
     ],
     alwayslink = 1,
 )

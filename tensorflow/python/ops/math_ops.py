@@ -174,6 +174,7 @@ from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
@@ -183,7 +184,6 @@ arg_max = deprecation.deprecated(None, "Use `argmax` instead")(arg_max)  # pylin
 arg_min = deprecation.deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 tf_export("arg_max")(arg_max)
 tf_export("arg_min")(arg_min)
-
 
 # This is set by resource_variable_ops.py. It is included in this way since
 # there is a circular dependency between math_ops and resource_variable_ops
@@ -1343,8 +1343,7 @@ def _ReductionDims(x, axis, reduction_indices):
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
     if isinstance(x, ops.Tensor) and x._rank() is not None:  # pylint: disable=protected-access
-      return constant_op.constant(
-          np.arange(x._rank()), dtype=dtypes.int32)  # pylint: disable=protected-access
+      return constant_op.constant(np.arange(x._rank()), dtype=dtypes.int32)  # pylint: disable=protected-access
     if (isinstance(x, sparse_tensor.SparseTensor) and
         x.dense_shape.get_shape().is_fully_defined()):
       rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
@@ -1403,10 +1402,11 @@ def reduce_sum(input_tensor,
     keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
-    The reduced tensor.
+    The reduced tensor, of the same dtype as the input_tensor.
 
   @compatibility(numpy)
-  Equivalent to np.sum
+  Equivalent to np.sum appart the fact that numpy upcast uint8 and int32 to
+  int64 while tensorflow returns the same dtype as the input.
   @end_compatibility
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
@@ -1522,7 +1522,7 @@ def reduce_mean(input_tensor,
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor)]`.
+      `[-rank(input_tensor), rank(input_tensor))`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -2273,10 +2273,11 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
+
   def _input_error():
-    return ValueError(
-        "inputs must be a list of at least one Tensor with the "
-        "same dtype and shape")
+    return ValueError("inputs must be a list of at least one Tensor with the "
+                      "same dtype and shape")
+
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise _input_error()
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
@@ -2294,8 +2295,8 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   # tensor_dtype is for safety only; operator's output type computed in C++
   if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
-    raise TypeError("tensor_dtype is {}, but input is of type {}"
-                    .format(tensor_dtype, inputs[0].dtype))
+    raise TypeError("tensor_dtype is {}, but input is of type {}".format(
+        tensor_dtype, inputs[0].dtype))
 
   if len(inputs) == 1 and name is None:
     return inputs[0]
@@ -2761,14 +2762,14 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
         name=name)
   else:
     return gen_math_ops.sparse_segment_sum(
-        data=data,
-        indices=indices,
-        segment_ids=segment_ids,
-        name=name)
+        data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
 @tf_export("sparse_segment_mean")
-def sparse_segment_mean(data, indices, segment_ids, name=None,
+def sparse_segment_mean(data,
+                        indices,
+                        segment_ids,
+                        name=None,
                         num_segments=None):
   r"""Computes the mean along sparse segments of a tensor.
 
@@ -2805,14 +2806,14 @@ def sparse_segment_mean(data, indices, segment_ids, name=None,
         name=name)
   else:
     return gen_math_ops.sparse_segment_mean(
-        data=data,
-        indices=indices,
-        segment_ids=segment_ids,
-        name=name)
+        data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
 @tf_export("sparse_segment_sqrt_n")
-def sparse_segment_sqrt_n(data, indices, segment_ids, name=None,
+def sparse_segment_sqrt_n(data,
+                          indices,
+                          segment_ids,
+                          name=None,
                           num_segments=None):
   r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
 
@@ -2842,10 +2843,7 @@ def sparse_segment_sqrt_n(data, indices, segment_ids, name=None,
         name=name)
   else:
     return gen_math_ops.sparse_segment_sqrt_n(
-        data=data,
-        indices=indices,
-        segment_ids=segment_ids,
-        name=name)
+        data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
 @tf_export("tensordot", "linalg.tensordot")
@@ -3015,6 +3013,47 @@ def tensordot(a, b, axes, name=None):
         product.set_shape(a_free_dims_static + b_free_dims_static)
       return product
 
+
+@tf_export("math.polyval")
+def polyval(coeffs, x, name=None):
+  r"""Computes the elementwise value of a polynomial.
+
+  If `x` is a tensor and `coeffs` is a list n + 1 tensors, this function returns
+  the value of the n-th order polynomial
+
+     p(x) = coeffs[n-1] + coeffs[n-2] * x + ...  + coeffs[0] * x**(n-1)
+
+  evaluated using Horner's method, i.e.
+
+     p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
+            x * coeffs[0]))
+
+  Args:
+    coeffs: A list of `Tensor` representing the coefficients of the polynomial.
+    x: A `Tensor` representing the variable of the polynomial.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as the expression p(x) with usual broadcasting rules
+    for element-wise addition and multiplication applied.
+
+  @compatibility(numpy)
+  Equivalent to numpy.polyval.
+  @end_compatibility
+  """
+
+  with ops.name_scope(name, "polyval", nest.flatten(coeffs) + [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    if len(coeffs) < 1:
+      return array_ops.zeros_like(x, name=name)
+    coeffs = [
+        ops.convert_to_tensor(coeff, name=("coeff_%d" % index))
+        for index, coeff in enumerate(coeffs)
+    ]
+    p = coeffs[0]
+    for c in coeffs[1:]:
+      p = c + p * x
+    return p
 
 # FFT ops were moved to tf.spectral. tf.fft symbols were part of the TensorFlow
 # 1.0 API so we leave these here for backwards compatibility.

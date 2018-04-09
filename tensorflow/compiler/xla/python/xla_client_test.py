@@ -855,6 +855,17 @@ class SingleOpTest(LocalComputationTest):
     self.assertTrue(np.all(lo <= result))
     self.assertTrue(np.all(result < hi))
 
+  def testIsConstant(self):
+    c = self._NewComputation()
+    a = c.ConstantS32Scalar(3)
+    b = c.ConstantS32Scalar(1)
+    x = c.ParameterFromNumpy(NumpyArrayS32(0))
+    const_expr = c.Sub(b, a)
+    non_const_expr = c.Mul(const_expr, x)
+    self.assertTrue(c.IsConstant(const_expr))
+    self.assertFalse(c.IsConstant(non_const_expr))
+    # self.assertTrue(c.IsConstant(c.Sub(c.Add(x, a), x)))  # TODO(b/77245564)
+
 
 class EmbeddedComputationsTest(LocalComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""

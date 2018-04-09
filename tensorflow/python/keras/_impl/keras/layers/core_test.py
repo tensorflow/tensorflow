@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -159,7 +160,7 @@ class CoreLayersTest(test.TestCase):
 
     # test with lambda
     ld = keras.layers.Lambda(
-        lambda x: keras.backend.concatenate([keras.backend.square(x), x]))
+        lambda x: keras.backend.concatenate([math_ops.square(x), x]))
     config = ld.get_config()
     ld = keras.layers.Lambda.from_config(config)
 
@@ -235,4 +236,3 @@ class CoreLayersTest(test.TestCase):
 
 if __name__ == '__main__':
   test.main()
-

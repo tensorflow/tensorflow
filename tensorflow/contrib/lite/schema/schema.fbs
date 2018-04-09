@@ -381,6 +381,8 @@ table LogSoftmaxOptions {
 }
 
 table CastOptions {
+  in_data_type: TensorType;
+  out_data_type: TensorType;
 }
 
 table DequantizeOptions {

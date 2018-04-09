@@ -192,6 +192,26 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "oom_test",
+    size = "medium",
+    srcs = ["oom_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv2d_test",
     size = "medium",
     srcs = ["conv2d_test.py"],
@@ -375,7 +395,6 @@ tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
-    tags = ["no_oss"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

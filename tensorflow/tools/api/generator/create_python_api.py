@@ -122,7 +122,8 @@ def get_api_imports():
   # we want to traverse over TensorFlow Python modules.
   for module in sys.modules.values():
     # Only look at tensorflow modules.
-    if not module or 'tensorflow.' not in module.__name__:
+    if (not module or not hasattr(module, "__name__") or
+        'tensorflow.' not in module.__name__):
       continue
     # Do not generate __init__.py files for contrib modules for now.
     if '.contrib.' in module.__name__ or module.__name__.endswith('.contrib'):

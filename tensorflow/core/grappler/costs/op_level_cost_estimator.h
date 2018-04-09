@@ -173,6 +173,11 @@ class OpLevelCostEstimator {
       const TensorShapeProto& original_image_shape, const OpInfo& op_info,
       bool* found_unknown_shapes);
 
+  // This method calculates the execution time depending on whether IO can
+  // overlap with computation. It assumes the memory and the compute times have
+  // already been calculated.
+  void CombineCostsAndUpdateExecutionTime(Costs* costs) const;
+
  protected:
   std::map<string, int> elementwise_ops_;
   typedef std::function<Costs(const OpContext& op_context)> CostImpl;

@@ -83,14 +83,6 @@ class ConstantFoldingTest : public GrapplerTest {
   }
 };
 
-template <DataType DTYPE>
-Tensor GetRandomTensor(const TensorShape& shape) {
-  typedef typename EnumToDataType<DTYPE>::Type T;
-  Tensor tensor(DTYPE, shape);
-  tensor.flat<T>() = tensor.flat<T>().random();
-  return tensor;
-}
-
 TEST_F(ConstantFoldingTest, SimpleFolding) {
   // Build a simple graph with a few trivially prunable ops.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -380,11 +372,11 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ(2, t.tensor_shape().dim(1).size());
       }
     }
-    auto a_t = GetRandomTensor<DT_FLOAT>(TensorShape({3, 2}));
-    auto b_t = GetRandomTensor<DT_FLOAT>(TensorShape({2, 3}));
-    auto x_t = GetRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-    auto y_t = GetRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-    auto bias_t = GetRandomTensor<DT_FLOAT>(TensorShape({2}));
+    auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 2}));
+    auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 3}));
+    auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+    auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+    auto bias_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2}));
 
     auto tensors_expected = EvaluateNodes(
         item.graph, item.fetch,
@@ -1264,6 +1256,10 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   ops::Merge m1(scope.WithOpName("m1"), {x, const1, const2});
   ops::Merge m2(scope.WithOpName("m2"), {const1, const3});
   ops::Merge m3(scope.WithOpName("m3"), {x, y});
+  // m4 is not foldable because the only constant input
+  // has a control input, so we cannot know if it will be
+  // triggered.
+  ops::Merge m4(scope.WithOpName("m4"), {x, const1});
 
   ops::Identity out1(scope.WithOpName("out1"), m1.output);
   ops::Identity idx1(scope.WithOpName("idx1"), m1.value_index);
@@ -1271,9 +1267,11 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   ops::Identity idx2(scope.WithOpName("idx2"), m2.value_index);
   ops::Identity out3(scope.WithOpName("out3"), m3.output);
   ops::Identity idx3(scope.WithOpName("idx3"), m3.value_index);
+  ops::Identity out4(scope.WithOpName("out4"), m4.output);
+  ops::Identity idx4(scope.WithOpName("idx4"), m4.value_index);
 
   GrapplerItem item;
-  item.fetch = {"out1", "idx1", "out2", "idx2", "out3", "idx3"};
+  item.fetch = {"out1", "idx1", "out2", "idx2", "out3", "idx3", "out4", "idx4"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
   ConstantFolding optimizer(nullptr /* cpu_device */);
@@ -1281,6 +1279,7 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
+  EXPECT_EQ(19, output.node_size());
   int found_nodes = 0;
   for (const auto& node : output.node()) {
     if (node.name() == "out1") {
@@ -1317,10 +1316,18 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("m3:1", node.input(0));
       ++found_nodes;
+    } else if (node.name() == "out4") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("m4", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "idx4") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("m4:1", node.input(0));
+      ++found_nodes;
     }
   }
   // Make sure the graph contains all the nodes we're expecting.
-  EXPECT_EQ(6, found_nodes);
+  EXPECT_EQ(8, found_nodes);
 
   std::vector<string> fetch = {"out1", "idx1"};
   auto tensors = EvaluateNodes(output, fetch);
@@ -1333,6 +1340,82 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   const Tensor& out_idx = tensors[1];
   EXPECT_EQ(1, out_idx.NumElements());
   EXPECT_EQ(2, out_idx.flat<int32>()(0));
+}
+
+TEST_F(ConstantFoldingTest, SplitRemoval) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 =
+      ops::Variable(scope.WithOpName("in1"), TensorShape({2}), DT_FLOAT);
+  Output in2 =
+      ops::Variable(scope.WithOpName("in2"), TensorShape({4}), DT_FLOAT);
+  auto split_dim = ops::Const(scope.WithOpName("split_dim"), {0}, {});
+  ops::Split s1(scope.WithOpName("s1"), split_dim, in1, 1);
+  ops::Split s2(scope.WithOpName("s2"), split_dim, in2, 2);
+
+  ops::Add out(scope.WithOpName("out"), s1[0], s2[0]);
+
+  GrapplerItem item;
+  item.fetch = {"out"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("split_dim", "Const", {}, {}, &want);
+  AddNode("s1", "Identity", {"in1", AsControlDependency("split_dim")}, {},
+          &want);
+  AddNode("s2", "Split", {"in2", "split_dim"}, {}, &want);
+  AddNode("out", "Add", {"s1", "s2"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, SplitVRemoval) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 =
+      ops::Variable(scope.WithOpName("in1"), TensorShape({2}), DT_FLOAT);
+  Output in2 =
+      ops::Variable(scope.WithOpName("in2"), TensorShape({5}), DT_FLOAT);
+  auto split_dim = ops::Const(scope.WithOpName("split_dim"), {0}, {});
+  auto size_splits1 = ops::Const(scope.WithOpName("size_splits1"), {2}, {1});
+  auto size_splits2 = ops::Const(scope.WithOpName("size_splits2"), {2, 3}, {2});
+  ops::SplitV s1(scope.WithOpName("s1"), in1, size_splits1, split_dim, 1);
+  ops::SplitV s2(scope.WithOpName("s2"), in2, size_splits2, split_dim, 2);
+
+  LOG(INFO) << s1.output.size();
+  LOG(INFO) << s2.output.size();
+  ops::Add out(scope.WithOpName("out"), s1[0], s2[0]);
+
+  GrapplerItem item;
+  item.fetch = {"out"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("split_dim", "Const", {}, {}, &want);
+  AddNode("size_splits1", "Const", {}, {}, &want);
+  AddNode("size_splits2", "Const", {}, {}, &want);
+  AddNode("s1", "Identity",
+          {"in1", AsControlDependency("size_splits1"),
+           AsControlDependency("split_dim")},
+          {}, &want);
+  AddNode("s2", "SplitV", {"in2", "size_splits2", "split_dim"}, {}, &want);
+  AddNode("out", "Add", {"s1", "s2"}, {}, &want);
+
+  CompareGraphs(want, got);
 }
 
 TEST_F(ConstantFoldingTest, ShuffleReverseOnScalarRemoval) {
@@ -2252,6 +2335,10 @@ TEST_F(ConstantFoldingTest, Enter) {
   GrapplerItem item;
   AttrValue frame_name;
   frame_name.set_s("foo");
+  AttrValue is_constant_true;
+  is_constant_true.set_b(true);
+  AttrValue is_constant_false;
+  is_constant_false.set_b(false);
   AttrValue type;
   type.set_type(DT_FLOAT);
   AttrValue value;
@@ -2262,19 +2349,31 @@ TEST_F(ConstantFoldingTest, Enter) {
   GraphDef& graph = item.graph;
   AddNode("x", "Placeholder", {}, {{"T", type}}, &graph);
   AddNode("c1", "Const", {"^x"}, {{"value", value}, {"dtype", type}}, &graph);
-  AddNode("enter1", "Enter", {"x"}, {{"T", type}, {"frame_name", frame_name}},
+  AddNode("enter1", "Enter", {"x"},
+          {{"T", type},
+           {"frame_name", frame_name},
+           {"is_constant", is_constant_true}},
           &graph);
-  AddNode("enter2", "Enter", {"c1"}, {{"T", type}, {"frame_name", frame_name}},
+  AddNode("enter2", "Enter", {"c1"},
+          {{"T", type},
+           {"frame_name", frame_name},
+           {"is_constant", is_constant_true}},
+          &graph);
+  AddNode("enter3", "Enter", {"c1"},
+          {{"T", type},
+           {"frame_name", frame_name},
+           {"is_constant", is_constant_false}},
           &graph);
   AddNode("id1", "Identity", {"enter1"}, {{"T", type}}, &graph);
   AddNode("id2", "Identity", {"enter2"}, {{"T", type}}, &graph);
   AddNode("id3", "Identity", {"enter2"}, {{"T", type}}, &graph);
+  AddNode("id4", "Identity", {"enter3"}, {{"T", type}}, &graph);
   item.fetch.push_back("id1");
   item.fetch.push_back("id2");
   item.fetch.push_back("id3");
+  item.fetch.push_back("id4");
 
-  ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
-                            nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -2283,7 +2382,7 @@ TEST_F(ConstantFoldingTest, Enter) {
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(7, output.node_size());
+  EXPECT_EQ(9, output.node_size());
   for (const NodeDef& node : output.node()) {
     if (node.name() == "id1") {
       EXPECT_EQ("Identity", node.op());
@@ -2295,7 +2394,54 @@ TEST_F(ConstantFoldingTest, Enter) {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("^enter2", node.input(0));
     }
+    if (node.name() == "id4") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("enter3", node.input(0));
+    }
   }
+}
+
+TEST_F(ConstantFoldingTest, TensorArraySize) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+  auto dynamic_array =
+      ops::TensorArray(scope.WithOpName("dynamic"), size, DT_FLOAT,
+                       ops::TensorArray::DynamicSize(true));
+  auto static_array =
+      ops::TensorArray(scope.WithOpName("static"), size, DT_FLOAT,
+                       ops::TensorArray::DynamicSize(false));
+  auto dynamic_sz = ops::TensorArraySize(
+      scope.WithOpName("dynamic_sz"), dynamic_array.handle, dynamic_array.flow);
+  auto static_sz = ops::TensorArraySize(scope.WithOpName("static_sz"),
+                                        static_array.handle, static_array.flow);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  auto tensors_expected =
+      EvaluateNodes(item.graph, {"dynamic_sz", "static_sz"});
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(5, output.node_size());
+  EXPECT_EQ("dynamic_sz", output.node(3).name());
+  EXPECT_EQ("TensorArraySizeV3", output.node(3).op());
+  EXPECT_EQ("static_sz", output.node(4).name());
+  EXPECT_EQ("Const", output.node(4).op());
+
+  auto tensors_actual = EvaluateNodes(output, {"dynamic_sz", "static_sz"});
+  EXPECT_EQ(2, tensors_expected.size());
+  EXPECT_EQ(2, tensors_actual.size());
+  test::ExpectTensorEqual<int32>(tensors_expected[0], tensors_actual[0]);
+  test::ExpectTensorEqual<int32>(tensors_expected[1], tensors_actual[1]);
 }
 
 }  // namespace

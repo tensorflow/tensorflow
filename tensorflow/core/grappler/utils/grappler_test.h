@@ -57,6 +57,15 @@ class GrapplerTest : public ::testing::Test {
   // Count nodes of the given op-type in a graph.
   int CountOpNodes(const GraphDef& graph, const string& op);
 
+  // Get a random tansor with given shape.
+  template <DataType DTYPE>
+  Tensor GenerateRandomTensor(const TensorShape& shape) const {
+    typedef typename EnumToDataType<DTYPE>::Type T;
+    Tensor tensor(DTYPE, shape);
+    tensor.flat<T>() = tensor.flat<T>().random();
+    return tensor;
+  }
+
  private:
   SessionOptions options_;
 };

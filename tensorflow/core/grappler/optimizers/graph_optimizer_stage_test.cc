@@ -58,8 +58,8 @@ TEST_F(GraphOptimizerStageTest, ParseNodeNameAndScope_InScope) {
 TEST_F(GraphOptimizerStageTest, OptimizedNodeName) {
   GraphOptimizerContext ctx(/*nodes_to_preserve*/ nullptr,
                             /*optimized_graph*/ nullptr,
-                            /*graph_properties*/ nullptr, /*node_name*/ nullptr,
-                            /*frame_map*/ nullptr);
+                            /*graph_properties*/ nullptr,
+                            /*node_name*/ nullptr);
   FakeOptimizerStage stage("my_opt", "my_stg", ctx);
 
   const auto node = ParseNodeScopeAndName("a/b/c/Add");
@@ -94,8 +94,7 @@ TEST_F(GraphOptimizerStageTest, GetInputNodeAndProperties) {
   GraphOptimizerContext ctx(/*nodes_to_preserve*/ nullptr,
                             /*optimized_graph*/ &item.graph,
                             /*graph_properties*/ &properties,
-                            /*node_name*/ &node_map,
-                            /*frame_map*/ nullptr);
+                            /*node_name*/ &node_map);
   FakeOptimizerStage stage("my_opt", "my_stg", ctx);
 
   NodeDef* add_node;
@@ -134,8 +133,7 @@ TEST_F(GraphOptimizerStageTest, AddNodes) {
   GraphOptimizerContext ctx(/*nodes_to_preserve*/ nullptr,
                             /*optimized_graph*/ &item.graph,
                             /*graph_properties*/ &properties,
-                            /*node_name*/ &node_map,
-                            /*frame_map*/ nullptr);
+                            /*node_name*/ &node_map);
   FakeOptimizerStage stage("my_opt", "my_stg", ctx);
 
   NodeDef* add_node;

@@ -202,6 +202,25 @@ void IterateThroughWindow(
   } while (IndexUtil::BumpIndices(window_shape, &window_index));
 }
 
+// Creates a vector of multipliers which can be used to create a linear index
+// into shape.
+//
+// Given the multidimensional index {i1, ..., iN} and
+// M = MakeDimMultipliers(shape), the corresponding linear index LI is simply
+//
+//   LI = i1 * M[1] + i2 * M[2] + ... + iN * M[N].
+//
+// This lets you calculate LI given the multidimensional indices in any order.
+DimensionVector MakeDimMultipliers(const Shape& shape) {
+  DimensionVector v(ShapeUtil::Rank(shape));
+  int64 scale = 1;
+  for (auto dim : LayoutUtil::MinorToMajor(shape)) {
+    v[dim] = scale;
+    scale *= shape.dimensions(dim);
+  }
+  return v;
+}
+
 }  // namespace
 
 template <typename ReturnT, typename ElementwiseT>
@@ -999,25 +1018,30 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Shape& window_shape =
         ShapeUtil::MakeShape(rhs_shape.element_type(), window_dimension_sizes);
 
-    DimensionVector lhs_index(lhs_rank);
-    DimensionVector rhs_index(rhs_rank);
+    DimensionVector lhs_dim_multipliers = MakeDimMultipliers(lhs_shape);
+    DimensionVector rhs_dim_multipliers = MakeDimMultipliers(rhs_shape);
+
     DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size());
+
+    auto lhs_literal_data = lhs_literal.data<ReturnT>();
+    auto rhs_literal_data = rhs_literal.data<ReturnT>();
 
     auto func = [&](ArraySlice<int64> out_index) {
       ElementwiseT result_val = static_cast<ElementwiseT>(0);
-
-      std::fill(lhs_index.begin(), lhs_index.end(), 0);
-      std::fill(rhs_index.begin(), rhs_index.end(), 0);
       std::fill(rhs_spatial_index.begin(), rhs_spatial_index.end(), 0);
-
-      lhs_index[input_batch_dim] = out_index[output_batch_dim];
-      rhs_index[kernel_output_z_dim] = out_index[output_z_dim];
 
       // Convolve input feature with kernel.
       do {
         for (int64 iz = 0; iz < z_size; ++iz) {
-          lhs_index[input_z_dim] = iz;
-          rhs_index[kernel_input_z_dim] = iz;
+          int64 lhs_linear_index = 0;
+          lhs_linear_index += out_index[output_batch_dim] *
+                              lhs_dim_multipliers[input_batch_dim];
+          lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
+
+          int64 rhs_linear_index = 0;
+          rhs_linear_index += out_index[output_z_dim] *
+                              rhs_dim_multipliers[kernel_output_z_dim];
+          rhs_linear_index += iz * rhs_dim_multipliers[kernel_input_z_dim];
 
           // Find corresponding spatial dimension index for input (lhs).
           for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
@@ -1042,29 +1066,32 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
             // Calculate the actual lhs (input) index after dilation.  As an
             // optimization, skip this integer divide if there's no dilation.
+            int64 lhs_spatial_index;
             if (window_dim.base_dilation() > 1) {
-              lhs_index[input_spatial_dim] =
-                  undilated_index / window_dim.base_dilation();
+              lhs_spatial_index = undilated_index / window_dim.base_dilation();
             } else {
-              lhs_index[input_spatial_dim] = undilated_index;
+              lhs_spatial_index = undilated_index;
             }
+            lhs_linear_index +=
+                lhs_spatial_index * lhs_dim_multipliers[input_spatial_dim];
 
-            // Skip if input index is not in bound.
-            if (!(lhs_index[input_spatial_dim] >= 0 &&
-                  lhs_index[input_spatial_dim] <
+            // Skip if input index is not in bounds.
+            if (!(lhs_spatial_index >= 0 &&
+                  lhs_spatial_index <
                       lhs_shape.dimensions(input_spatial_dim))) {
               goto cnt;
             }
 
-            rhs_index[dnums.kernel_spatial_dimensions(ki)] =
-                window_dim.window_reversal()
-                    ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
-                    : rhs_spatial_index[ki];
+            rhs_linear_index +=
+                (window_dim.window_reversal()
+                     ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
+                     : rhs_spatial_index[ki]) *
+                rhs_dim_multipliers[dnums.kernel_spatial_dimensions(ki)];
           }
 
           result_val +=
-              static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index)) *
-              static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+              static_cast<ElementwiseT>(lhs_literal_data[lhs_linear_index]) *
+              static_cast<ElementwiseT>(rhs_literal_data[rhs_linear_index]);
         }
       cnt : {}
       } while (IndexUtil::BumpIndices(window_shape, &rhs_spatial_index));
@@ -1520,14 +1547,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       arg_dim_counts[dim] = arg_dimensions[dim];
     }
 
-    // Create mapping from result index to arg index.
-    const int64 result_rank = ShapeUtil::Rank(result->shape());
-    int64 result_dim = 0;
-    std::vector<int64> result_to_arg_index(result_rank);
+    // Map each dimension in the result to a dimension in arg that isn't
+    // being reduced.
+    std::vector<int64> result_to_arg_index;
     for (int64 i = 0; i < arg_dimensions.size(); ++i) {
       if (arg_dim_steps[i] == 0) {
-        result_to_arg_index[result_dim] = i;
-        ++result_dim;
+        result_to_arg_index.push_back(i);
       }
     }
 
@@ -1542,6 +1567,20 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             base[result_to_arg_index[i]] = multi_index[i];
           }
 
+          // When the reduction is addition of floats, accumulate in a double
+          // for better precision. Also, avoid creating Literals for the
+          // intermediate results; it's much faster.
+          if (ShapeUtil::ElementIsFloating(init_literal.shape()) &&
+              IsScalarAdd(function)) {
+            double computed_result = 0;
+            auto func = [&](ArraySlice<int64> input_index) {
+              computed_result += arg_literal.Get<float>(input_index);
+              return true;
+            };
+            ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,
+                                    arg_dim_steps, func);
+            return static_cast<ReturnT>(computed_result);
+          }
           auto func = [&](ArraySlice<int64> input_index) {
             auto curr_val = arg_literal.Get<ReturnT>(input_index);
 
@@ -1554,24 +1593,36 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator.Evaluate<const Literal*>(*function, args)
                     .ConsumeValueOrDie();
-            // Clear visit states so that the we can use the evaluate again on
+            // Clear visit states so that we can use the evaluator again on
             // the same computation.
             embedded_evaluator.ResetVisitStates();
-
             // Assign computed result to result_val.
             result_val = computed_result->Get<ReturnT>({});
-
             return true;
           };
-
+          // Computes one element of the result, reducing all dimensions that
+          // contribute to that element.
           ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,
                                   arg_dim_steps, func);
-
           return result_val;
         }));
 
     parent_->evaluated_[reduce] = std::move(result);
     return Status::OK();
+  }
+
+  bool IsScalarAdd(HloComputation* computation) {
+    HloInstruction* instruction = computation->root_instruction();
+    if (instruction->opcode() == HloOpcode::kAdd &&
+        computation->num_parameters() == 2) {
+      const HloInstruction* lhs = instruction->operand(0);
+      const HloInstruction* rhs = instruction->operand(1);
+      return lhs->opcode() == HloOpcode::kParameter &&
+             ShapeUtil::IsScalar(lhs->shape()) &&
+             rhs->opcode() == HloOpcode::kParameter &&
+             ShapeUtil::IsScalar(rhs->shape()) && lhs != rhs;
+    }
+    return false;
   }
 
   Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override {

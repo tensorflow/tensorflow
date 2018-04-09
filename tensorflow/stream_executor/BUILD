@@ -75,7 +75,6 @@ cc_library(
         ":stream_executor",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:ops_util",
-        "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
     ] + if_cuda_is_configured([
         "//tensorflow/core:cuda",

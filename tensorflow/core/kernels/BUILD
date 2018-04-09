@@ -2265,6 +2265,7 @@ tf_cc_tests(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -5905,6 +5906,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -6178,5 +6180,14 @@ cc_library(
         "//tensorflow/core:lib",
         "//third_party/eigen3",
         "@gemmlowp",
+    ],
+)
+
+# Header-only version of cwise_lib for clients that want to use the cwise_ops
+# functionality in their own custom ops.
+cc_header_only_library(
+    name = "cwise_lib_hdrs",
+    deps = [
+        ":cwise_lib",
     ],
 )

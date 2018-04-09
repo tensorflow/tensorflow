@@ -966,5 +966,6 @@ cuda_py_test(
     tags = [
         "multi_gpu",
         "noasan",  # flaky time outs
+        "notsan",  # flaky
     ],
 )

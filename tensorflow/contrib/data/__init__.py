@@ -25,6 +25,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@Counter
 @@SqlDataset
 
+@@assert_element_shape
 @@batch_and_drop_remainder
 @@bucket_by_sequence_length
 @@dense_to_sparse_batch
@@ -55,6 +56,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 
+from tensorflow.contrib.data.python.ops.batching import assert_element_shape
 from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
 from tensorflow.contrib.data.python.ops.batching import map_and_batch
