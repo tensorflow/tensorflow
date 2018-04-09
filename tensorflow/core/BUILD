@@ -2280,6 +2280,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/scoped_allocator.h",
     "common_runtime/scoped_allocator_mgr.h",
     "common_runtime/session_factory.h",
+    "common_runtime/single_threaded_cpu_device.h",
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
