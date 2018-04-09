@@ -132,6 +132,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "collective_ops",
+    prefix = "collective_ops",
+    deps = [
+        "//tensorflow/core:collective_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
     name = "concat_lib",
     srcs = [
         "concat_lib_cpu.cc",
