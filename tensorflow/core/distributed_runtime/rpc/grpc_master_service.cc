@@ -111,6 +111,11 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(CloseSession, false);
     ENQUEUE_REQUEST(ListDevices, false);
     ENQUEUE_REQUEST(Reset, false);
+    ENQUEUE_REQUEST(MakeCallable, false);
+    for (int i = 0; i < 100; ++i) {
+      ENQUEUE_REQUEST(RunCallable, true);
+    }
+    ENQUEUE_REQUEST(ReleaseCallable, false);
 
     void* tag;
     bool ok;
@@ -236,6 +241,47 @@ class GrpcMasterService : public AsyncServiceInterface {
                         });
     ENQUEUE_REQUEST(Reset, false);
   }
+
+  // RPC handler for making a callable.
+  void MakeCallableHandler(
+      MasterCall<MakeCallableRequest, MakeCallableResponse>* call) {
+    master_impl_->MakeCallable(&call->request, &call->response,
+                               [call](const Status& status) {
+                                 call->SendResponse(ToGrpcStatus(status));
+                               });
+    ENQUEUE_REQUEST(MakeCallable, false);
+  }
+
+  // RPC handler for running a callable.
+  void RunCallableHandler(
+      MasterCall<RunCallableRequest, RunCallableResponse>* call) {
+    auto* trace = TraceRpc("RunCallable/Server", call->client_metadata());
+    CallOptions* call_opts = new CallOptions;
+    // The timeout may be overridden by a non-zero timeout in the
+    // callable's `RunOptions`; this overriding will happen inside the
+    // `MasterSession` implementation.
+    call_opts->SetTimeout(default_session_config_.operation_timeout_in_ms());
+    call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
+    master_impl_->RunCallable(call_opts, &call->request, &call->response,
+                              [call, call_opts, trace](const Status& status) {
+                                call->ClearCancelCallback();
+                                delete call_opts;
+                                delete trace;
+                                call->SendResponse(ToGrpcStatus(status));
+                              });
+    ENQUEUE_REQUEST(RunCallable, false);
+  }
+
+  // RPC handler for making a callable.
+  void ReleaseCallableHandler(
+      MasterCall<ReleaseCallableRequest, ReleaseCallableResponse>* call) {
+    master_impl_->ReleaseCallable(&call->request, &call->response,
+                                  [call](const Status& status) {
+                                    call->SendResponse(ToGrpcStatus(status));
+                                  });
+    ENQUEUE_REQUEST(ReleaseCallable, false);
+  }
+
 #undef ENQUEUE_REQUEST
 
   // Start tracing, including the ID attached to the RPC.

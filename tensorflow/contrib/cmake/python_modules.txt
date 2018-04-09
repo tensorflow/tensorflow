@@ -104,6 +104,8 @@ tensorflow/python/user_ops
 tensorflow/python/util
 tensorflow/python/util/protobuf
 tensorflow/tools
+tensorflow/tools/api
+tensorflow/tools/api/generator
 tensorflow/tools/graph_transforms
 tensorflow/contrib
 tensorflow/contrib/all_reduce
@@ -355,6 +357,9 @@ tensorflow/contrib/periodic_resample
 tensorflow/contrib/periodic_resample/python
 tensorflow/contrib/periodic_resample/python/ops
 tensorflow/contrib/predictor
+tensorflow/contrib/proto
+tensorflow/contrib/proto/python
+tensorflow/contrib/proto/python/ops
 tensorflow/contrib/quantization
 tensorflow/contrib/quantization/python
 tensorflow/contrib/quantize
@@ -383,6 +388,9 @@ tensorflow/contrib/rnn/ops
 tensorflow/contrib/rnn/python
 tensorflow/contrib/rnn/python/kernel_tests
 tensorflow/contrib/rnn/python/ops
+tensorflow/contrib/rpc
+tensorflow/contrib/rpc/python
+tensorflow/contrib/rpc/python/ops
 tensorflow/contrib/saved_model
 tensorflow/contrib/saved_model/python
 tensorflow/contrib/saved_model/python/saved_model

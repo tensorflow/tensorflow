@@ -93,6 +93,14 @@ OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
   return op_context;
 }
 
+// Wrangles the minimum number of proto fields to set up a 1D Tensor for cost
+// estimation purposes.
+void DescribeTensor1D(int dim0, OpInfo::TensorProperties* tensor) {
+  auto shape = tensor->mutable_shape();
+  shape->add_dim()->set_size(dim0);
+  tensor->set_dtype(DT_FLOAT);
+}
+
 // Wrangles the minimum number of proto fields to set up a 4D Tensor for cost
 // estimation purposes.
 void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
@@ -116,6 +124,38 @@ OpContext DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2,
 
   DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
   DescribeTensor4D(kx, ky, iz2, oz, op_context.op_info.add_inputs());
+
+  return op_context;
+}
+
+// DescribeFusedConv2DBiasActivation constructs an OpContext for a
+// FusedConv2DBiasActivation applied to a convolution input tensor with shape
+// (batch, ix, iy, iz1), a kernel tensor with shape (kx, ky, iz2, oz), a
+// bias tensor with shape (oz), a side input tensor with shape
+// (batch, ox, oy, oz) if has_side_input is set, and two scaling tensors with
+// shape (1).
+//
+// Note that this assumes the NHWC data format.
+OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
+                                            int iz2, int kx, int ky, int ox,
+                                            int oy, int oz,
+                                            bool has_side_input) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("FusedConv2DBiasActivation");
+  DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
+  DescribeTensor4D(kx, ky, iz2, oz, op_context.op_info.add_inputs());
+  DescribeTensor1D(oz, op_context.op_info.add_inputs());
+
+  // Add the side_input, if any.
+  auto side_input = op_context.op_info.add_inputs();
+  if (has_side_input) {
+    DescribeTensor4D(batch, ox, oy, oz, side_input);
+  }
+
+  // Add the scaling tensors.
+  DescribeTensor1D(1, op_context.op_info.add_inputs());
+  DescribeTensor1D(1, op_context.op_info.add_inputs());
 
   return op_context;
 }
@@ -162,11 +202,8 @@ OpContext DescribeBiasAdd(int size1, int size2) {
   op_context.op_info.set_op("BiasAdd");
 
   DescribeTensor4D(1, 1, size2, size1, op_context.op_info.add_inputs());
+  DescribeTensor1D(size1, op_context.op_info.add_inputs());
   DescribeTensor4D(1, 1, size2, size1, op_context.op_info.add_outputs());
-
-  auto bias = op_context.op_info.add_inputs();
-  bias->mutable_shape()->add_dim()->set_size(size1);
-  bias->set_dtype(DT_FLOAT);
 
   return op_context;
 }
@@ -484,6 +521,25 @@ TEST_F(OpLevelCostEstimatorTest, ExecutionTimeSumOrMax) {
   EXPECT_EQ(Costs::Duration(2000), cost.execution_time);  // max(2000, 200)
   EXPECT_TRUE(cost.inaccurate);
   SetComputeMemoryOverlap(false);  // Set it back to default.
+}
+
+TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationExecutionTime) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true));
+  EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest,
+       FusedConv2DBiasActivationNoSideInputExecutionTime) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ false));
+  EXPECT_EQ(Costs::Duration(825345), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355321038), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(356146383), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
 }
 
 TEST_F(OpLevelCostEstimatorTest, MulExecutionTime) {

@@ -72,7 +72,7 @@ class NcclTestCase(test.TestCase):
           two.
       device_sets: Tuple of virtual devices to run test on.
     """
-    for dtype in [np.float32, np.int32, np.int64, np.float64]:
+    for dtype in [np.float16, np.float32, np.int32, np.int64, np.float64]:
       # Create session inside outer loop to test use of
       # same communicator across multiple sessions.
       with self.test_session(use_gpu=True) as sess:

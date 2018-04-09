@@ -95,6 +95,7 @@ bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
 bool IsPolygamma(const NodeDef& node);
+bool IsPrint(const NodeDef& node);
 bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
 bool IsReal(const NodeDef& node);

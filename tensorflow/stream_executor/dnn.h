@@ -25,6 +25,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <tuple>
 
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -884,6 +885,12 @@ class DnnSupport {
   virtual ~DnnSupport() {}
 
   virtual port::Status Init() = 0;
+
+  // Gets the version of the backing library, as a {major, minor, patch} tuple.
+  virtual port::StatusOr<std::tuple<int, int, int>> GetVersion() {
+    return port::UnimplementedError(
+        "DnnSupport::GetVersion not implemented on this platform.");
+  }
 
   // Performs a single-precision forward batch normalization operation onto
   // the stream.

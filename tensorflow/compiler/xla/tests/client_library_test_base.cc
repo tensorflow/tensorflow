@@ -595,6 +595,14 @@ ComputationDataHandle ClientLibraryTestBase::AddParam(
   return data_handle;
 }
 
+XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
+                                      XlaBuilder* builder) {
+  XlaOp data_handle;
+  arguments_.push_back(CreateParameterAndTransferLiteral(
+      arguments_.size(), argument, "", builder, &data_handle));
+  return data_handle;
+}
+
 ComputationDataHandle ClientLibraryTestBase::CreateConstantFromLiteral(
     const Literal& literal, ComputationBuilder* builder) {
   return builder->ConstantLiteral(
