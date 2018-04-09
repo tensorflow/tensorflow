@@ -205,8 +205,6 @@ class ApiCompatibilityTest(test.TestCase):
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
     public_api_visitor.do_not_descend_map['tf'].append('contrib')
     public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
-    # TODO(annarev): Make slide_dataset available in API.
-    public_api_visitor.private_map['tf'] = ['slide_dataset']
     traverse.traverse(tf, public_api_visitor)
 
     proto_dict = visitor.GetProtos()
