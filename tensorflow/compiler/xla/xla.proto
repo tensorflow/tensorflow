@@ -417,6 +417,11 @@ message ComputeConstantRequest {
   repeated LiteralProto parameters = 4;
 }
 
+message ComputeConstantGraphRequest {
+  HloModuleProto computation = 1;
+  Layout output_layout = 2;
+}
+
 message ComputeConstantResponse {
   // A LiteralProto is returned directly for this request, instead of a
   // ComputationDataHandle.
