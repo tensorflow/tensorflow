@@ -940,7 +940,7 @@ def convolution(inputs,
   `inputs` to produce a `Tensor` of activations. If a `normalizer_fn` is
   provided (such as `batch_norm`), it is then applied. Otherwise, if
   `normalizer_fn` is None and a `biases_initializer` is provided then a `biases`
-  variable would be created and added the activations. Finally, if
+  variable would be created and added to the activations. Finally, if
   `activation_fn` is not `None`, it is applied to the activations as well.
 
   Performs atrous convolution with input stride/dilation rate equal to `dilation_rate`
