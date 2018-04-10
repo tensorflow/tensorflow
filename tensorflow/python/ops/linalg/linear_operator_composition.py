@@ -45,7 +45,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   [batch] matrix formed with the multiplication `A1 A2...AJ`.
 
   If `opj` has shape `batch_shape_j + [M_j, N_j]`, then we must have
-  `N_j = M_{j+1}`, in which case the composed operator has shape equal to
+  \\(N_j = M_{j+1}\\), in which case the composed operator has shape equal to
   `broadcast_batch_shape + [M_1, N_J]`, where `broadcast_batch_shape` is the
   mutual broadcast of `batch_shape_j`, `j = 1,...,J`, assuming the intermediate
   batch shapes broadcast.  Even if the composed shape is well defined, the
@@ -120,8 +120,8 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     r"""Initialize a `LinearOperatorComposition`.
 
     `LinearOperatorComposition` is initialized with a list of operators
-    `[\\(op_1,...,op_J\\)]`.  For the `matmul` method to be well defined, the
-    composition `op_i.matmul(\\(op_{i+1}(x)\\))` must be defined.  Other methods have
+    [\\(op_1,...,op_J\\)].  For the `matmul` method to be well defined, the
+    composition op_i.matmul(\\(op_{i+1}(x)\\)) must be defined.  Other methods have
     similar constraints.
 
     Args:
