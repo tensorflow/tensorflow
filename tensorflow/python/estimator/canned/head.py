@@ -57,8 +57,8 @@ _PREDICT_SERVING_KEY = 'predict'
 
 # A LossSpec contains
 # * a scalar `Tensor` representing reduced weighted training loss
-# * a scalar `Tensor` representing the unreduced unweighted loss
-# * a scalar `Tensor` representing the example weights
+# * a `Tensor` representing the unreduced unweighted loss
+# * a `Tensor` representing the example weights
 # * possibly processed labels (e.g. vocabulary lookup, shape manipulation, etc)
 LossSpec = collections.namedtuple(
     'LossSpec', ['training_loss', 'unreduced_loss', 'weights',
@@ -163,8 +163,8 @@ class _Head(object):
     Returns:
       A LossSpec that contains
       * the scalar `Tensor` representing reduced weighted training loss
-      * the scalar `Tensor` representing the unreduced unweighted loss
-      * the scalar `Tensor` representing the example weights
+      * the `Tensor` representing the unreduced unweighted loss
+      * the `Tensor` representing the example weights
       * possibly processed labels (e.g. vocabulary lookup, shape manipulation,
         etc.)
 

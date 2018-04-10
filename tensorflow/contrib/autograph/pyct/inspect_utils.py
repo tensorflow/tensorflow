@@ -50,6 +50,18 @@ def getnamespace(f):
   return namespace
 
 
+def getdefiningclass(m, owner_class):
+  """Resolves the class (e.g. one of the superclasses) that defined a method."""
+  m = six.get_unbound_function(m)
+  last_defining = owner_class
+  for superclass in tf_inspect.getmro(owner_class):
+    if hasattr(superclass, m.__name__):
+      superclass_m = getattr(superclass, m.__name__)
+      if six.get_unbound_function(superclass_m) == m:
+        last_defining = superclass
+  return last_defining
+
+
 def getmethodclass(m):
   """Resolves a function's owner, e.g. a method's class.
 

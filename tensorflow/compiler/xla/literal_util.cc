@@ -1409,6 +1409,28 @@ std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
       src_literal, converter);
 }
 
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT)),
+                        std::unique_ptr<Literal>>::type
+BitcastBetweenNativeTypes(const Literal& src_literal) {
+  auto converter = [](NativeSrcT src) {
+    return tensorflow::bit_cast<NativeDestT>(src);
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+// This template specialization is here to make the compiler happy. bit_cast has
+// a static check that the types are the same size. This specialization should
+// never be used because the source and destination types are checked for
+// identical sizes higher up.
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<(sizeof(NativeSrcT) != sizeof(NativeDestT)),
+                        std::unique_ptr<Literal>>::type
+BitcastBetweenNativeTypes(const Literal& src_literal) {
+  LOG(FATAL) << "Invalid bitcast between types of different sizes.";
+}
+
 template <PrimitiveType primitive_src_type>
 std::unique_ptr<Literal> ConvertToC64(const Literal& src_literal) {
   CHECK(ShapeUtil::IsArray(src_literal.shape()));
@@ -1428,21 +1450,33 @@ std::unique_ptr<Literal> ConvertToC64(const Literal& src_literal) {
 }
 
 template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>
-std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
+std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal,
+                                             bool bitcast) {
   CHECK_EQ(primitive_src_type, src_literal.shape().element_type());
-  return ConvertBetweenNativeTypes<
-      typename primitive_util::PrimitiveTypeToNative<primitive_src_type>::type,
-      typename primitive_util::PrimitiveTypeToNative<
-          primitive_dest_type>::type>(src_literal);
+  if (bitcast) {
+    return BitcastBetweenNativeTypes<
+        typename primitive_util::PrimitiveTypeToNative<
+            primitive_src_type>::type,
+        typename primitive_util::PrimitiveTypeToNative<
+            primitive_dest_type>::type>(src_literal);
+  } else {
+    return ConvertBetweenNativeTypes<
+        typename primitive_util::PrimitiveTypeToNative<
+            primitive_src_type>::type,
+        typename primitive_util::PrimitiveTypeToNative<
+            primitive_dest_type>::type>(src_literal);
+  }
 }
 
 template <PrimitiveType primitive_src_type>
 StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
-    const Literal& src_literal, PrimitiveType primitive_dest_type) {
+    const Literal& src_literal, PrimitiveType primitive_dest_type,
+    bool bitcast) {
   switch (primitive_dest_type) {
-#define CONVERT_IF_TYPES_MATCH(type) \
-  case (type):                       \
-    return ConvertIfTypesMatch<primitive_src_type, (type)>(src_literal);
+#define CONVERT_IF_TYPES_MATCH(type)                                    \
+  case (type):                                                          \
+    return ConvertIfTypesMatch<primitive_src_type, (type)>(src_literal, \
+                                                           bitcast);
     CONVERT_IF_TYPES_MATCH(PRED)
     CONVERT_IF_TYPES_MATCH(S8)
     CONVERT_IF_TYPES_MATCH(S32)
@@ -1456,28 +1490,31 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
     CONVERT_IF_TYPES_MATCH(BF16)
 #undef CONVERT_IF_TYPES_MATCH
     case C64:
-      return ConvertToC64<primitive_src_type>(src_literal);
+      if (!bitcast) {
+        return ConvertToC64<primitive_src_type>(src_literal);
+      }
+      break;
     // Other types are not yet supported.
     default:
-      return Unimplemented(
-          "Converting from type %s to type %s is not implemented.",
-          PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
-          PrimitiveType_Name(primitive_dest_type).c_str());
+      break;
   }
+  return Unimplemented(
+      "Converting from type %s to type %s is not implemented.",
+      PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
+      PrimitiveType_Name(primitive_dest_type).c_str());
 }
 
-}  // namespace
-
-StatusOr<std::unique_ptr<Literal>> Literal::Convert(
-    PrimitiveType primitive_dest_type) const {
-  TF_RET_CHECK(ShapeUtil::IsArray(shape()));
-  if (shape().element_type() == primitive_dest_type) {
-    return CloneToUnique();
+StatusOr<std::unique_ptr<Literal>> ConvertSwitch(
+    const Literal& literal, PrimitiveType primitive_dest_type, bool bitcast) {
+  TF_RET_CHECK(ShapeUtil::IsArray(literal.shape()));
+  if (literal.shape().element_type() == primitive_dest_type) {
+    return literal.CloneToUnique();
   }
-  switch (shape().element_type()) {
-#define CONVERT_IF_DEST_TYPE_MATCHES(type) \
-  case (type):                             \
-    return ConvertIfDestTypeMatches<(type)>(*this, primitive_dest_type);
+  switch (literal.shape().element_type()) {
+#define CONVERT_IF_DEST_TYPE_MATCHES(type)                                \
+  case (type):                                                            \
+    return ConvertIfDestTypeMatches<(type)>(literal, primitive_dest_type, \
+                                            bitcast);
     CONVERT_IF_DEST_TYPE_MATCHES(PRED)
     CONVERT_IF_DEST_TYPE_MATCHES(S8)
     CONVERT_IF_DEST_TYPE_MATCHES(S32)
@@ -1493,10 +1530,33 @@ StatusOr<std::unique_ptr<Literal>> Literal::Convert(
       // Other types are not yet supported.
     default:
       return Unimplemented(
-          "Converting from type %s to type %s is not implemented.",
-          PrimitiveType_Name(shape().element_type()).c_str(),
+          "%s from type %s to type %s is not implemented.",
+          (bitcast ? "Bitcast converting" : "Converting"),
+          PrimitiveType_Name(literal.shape().element_type()).c_str(),
           PrimitiveType_Name(primitive_dest_type).c_str());
   }
+}
+
+}  // namespace
+
+StatusOr<std::unique_ptr<Literal>> Literal::Convert(
+    PrimitiveType primitive_dest_type) const {
+  return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/false);
+}
+
+StatusOr<std::unique_ptr<Literal>> Literal::BitcastConvert(
+    PrimitiveType primitive_dest_type) const {
+  if (primitive_util::BitWidth(shape().element_type()) !=
+      primitive_util::BitWidth(primitive_dest_type)) {
+    return InvalidArgument(
+        "Cannot bitcast convert from %s to %s, bit widths are different: %d != "
+        "%d",
+        PrimitiveType_Name(shape().element_type()).c_str(),
+        PrimitiveType_Name(primitive_dest_type).c_str(),
+        primitive_util::BitWidth(shape().element_type()),
+        primitive_util::BitWidth(primitive_dest_type));
+  }
+  return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/true);
 }
 
 StatusOr<std::unique_ptr<Literal>> Literal::ConvertToShape(

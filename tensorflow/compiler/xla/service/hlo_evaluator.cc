@@ -399,6 +399,22 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  Status HandleBitcastConvert(HloInstruction* convert) override {
+    const HloInstruction* operand = convert->operand(0);
+    TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> result,
+                        parent_->GetEvaluatedLiteralFor(operand).BitcastConvert(
+                            convert->shape().element_type()));
+
+    if (LayoutUtil::LayoutsInShapesEqual(result->shape(), convert->shape())) {
+      parent_->evaluated_[convert] = std::move(result);
+    } else {
+      parent_->evaluated_[convert] =
+          result->Relayout(convert->shape().layout());
+    }
+    return Status::OK();
+  }
+
   Status HandleExp(HloInstruction* exp) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[exp],
                         ElementWiseUnaryOp(exp, [](ElementwiseT elem_operand) {
@@ -998,18 +1014,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
-    // Dimension number applicable for input (lhs).
-    const int64 input_batch_dim = dnums.input_batch_dimension();
-    const int64 input_z_dim = dnums.input_feature_dimension();
-    // Dimension number applicable for kernel (rhs).
-    const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
-    const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
-    // Dimension number applicable for output.
-    const int64 output_batch_dim = dnums.output_batch_dimension();
-    const int64 output_z_dim = dnums.output_feature_dimension();
-
-    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, input_z_dim);
-
     std::vector<int64> window_dimension_sizes;
     for (auto i : dnums.kernel_spatial_dimensions()) {
       window_dimension_sizes.push_back(ShapeUtil::GetDimension(rhs_shape, i));
@@ -1021,14 +1025,27 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     DimensionVector lhs_dim_multipliers = MakeDimMultipliers(lhs_shape);
     DimensionVector rhs_dim_multipliers = MakeDimMultipliers(rhs_shape);
 
-    DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size());
-
     auto lhs_literal_data = lhs_literal.data<ReturnT>();
     auto rhs_literal_data = rhs_literal.data<ReturnT>();
 
-    auto func = [&](ArraySlice<int64> out_index) {
+    auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
+                 &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
+                 rhs_literal_data](ArraySlice<int64> out_index) {
+      // Dimension number applicable for input (lhs).
+      const int64 input_batch_dim = dnums.input_batch_dimension();
+      const int64 input_z_dim = dnums.input_feature_dimension();
+      // Dimension number applicable for kernel (rhs).
+      const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
+      const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+      // Dimension number applicable for output.
+      const int64 output_batch_dim = dnums.output_batch_dimension();
+      const int64 output_z_dim = dnums.output_feature_dimension();
+
+      const int64 z_size = ShapeUtil::GetDimension(lhs_shape, input_z_dim);
+
       ElementwiseT result_val = static_cast<ElementwiseT>(0);
-      std::fill(rhs_spatial_index.begin(), rhs_spatial_index.end(), 0);
+      DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size(),
+                                        0);
 
       // Convolve input feature with kernel.
       do {
@@ -1100,7 +1117,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     };
 
     auto result = Literal::CreateFromShape(result_shape);
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(func));
+    TF_RETURN_IF_ERROR(result->PopulateParallel<ReturnT>(func));
 
     parent_->evaluated_[conv] = std::move(result);
     return Status::OK();
