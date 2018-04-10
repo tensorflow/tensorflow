@@ -653,6 +653,15 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_MAXIMUM: {
       break;
     }
+    case BuiltinOperator_ARG_MAX: {
+      auto* params = MallocPOD<TfLiteArgMaxParams>();
+      if (auto* schema_params = op->builtin_options_as_ArgMaxOptions()) {
+        ConvertTensorType(schema_params->output_type(), &params->output_type,
+                          error_reporter);
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");

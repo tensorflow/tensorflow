@@ -104,6 +104,10 @@ KNOWN_BUGS = {
     r"strided_slice.*begin=\[0\].*end=\[1\].*": "73170889",
     # No support for SplitV
     r"split.*num_or_size_splits=\[2,2\]": "73377559",
+    # Needs support for dimensions other than the last one in argmax.
+    r"arg_max.*axis=0.*": "77546240",
+    r"arg_max.*axis=1.*": "77546240",
+    r"arg_max.*axis=2.*": "77546240",
 }
 
 
@@ -1954,7 +1958,7 @@ def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
 
 
 def make_topk_tests(zip_path):
-  """Make a set of tests to do gather."""
+  """Make a set of tests to do topk."""
 
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32],
@@ -1962,7 +1966,7 @@ def make_topk_tests(zip_path):
   }]
 
   def build_graph(parameters):
-    """Build the gather op testing graph."""
+    """Build the topk op testing graph."""
     input_value = tf.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
@@ -1978,6 +1982,36 @@ def make_topk_tests(zip_path):
         outputs, feed_dict=dict(zip(inputs, [input_value])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_arg_max_tests(zip_path):
+  """Make a set of tests to do arg_max."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
+      "axis": [0, 1, 2, 3],
+      "output_type": [tf.int32, tf.int64],
+  }]
+
+  def build_graph(parameters):
+    """Build the topk op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    axis = tf.constant(parameters["axis"], name="axis")
+    out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
 
 # Toco binary path provided by the generate rule.
 bin_path = None

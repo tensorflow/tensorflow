@@ -391,6 +391,13 @@ TEST_F(OperatorTest, BuiltinTopKV2) {
   ASSERT_NE(nullptr, output_toco_op.get());
 }
 
+TEST_F(OperatorTest, BuiltinArgMax) {
+  ArgMaxOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ARG_MAX", OperatorType::kArgMax), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
 TEST_F(OperatorTest, TensorFlowUnsupported) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";

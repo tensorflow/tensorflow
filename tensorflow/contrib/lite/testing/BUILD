@@ -18,6 +18,7 @@ gen_zipped_test_files(
     name = "optest",
     files = [
         "add.zip",
+        "arg_max.zip",
         "avg_pool.zip",
         "batch_to_space_nd.zip",
         "concat.zip",
