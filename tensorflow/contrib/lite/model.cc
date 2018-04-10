@@ -650,7 +650,17 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_MAXIMUM: {
+    case BuiltinOperator_MAXIMUM:
+    case BuiltinOperator_MINIMUM: {
+      break;
+    }
+    case BuiltinOperator_ARG_MAX: {
+      auto* params = MallocPOD<TfLiteArgMaxParams>();
+      if (auto* schema_params = op->builtin_options_as_ArgMaxOptions()) {
+        ConvertTensorType(schema_params->output_type(), &params->output_type,
+                          error_reporter);
+      }
+      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_DELEGATE: {

@@ -36,7 +36,7 @@ class LayoutOptimizerTest : public ::testing::Test {
     DeviceProperties device_properties;
     device_properties.set_type("GPU");
     device_properties.mutable_environment()->insert({"architecture", "6"});
-    virtual_cluster_.reset(new VirtualCluster({{"/GPU:0", device_properties}}));
+    virtual_cluster_.reset(new VirtualCluster({{"/GPU:1", device_properties}}));
   }
 
   Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,

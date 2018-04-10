@@ -24,9 +24,9 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace builtin {
-namespace maximum {
+namespace maximum_minimum {
 
-// This file has a reference implemenation of TFMaximum.
+// This file has a reference implemenation of TFMaximum/TFMinimum.
 enum KernelType {
   kReference,
 };
@@ -35,8 +35,8 @@ constexpr int kInputTensor1 = 0;
 constexpr int kInputTensor2 = 1;
 constexpr int kOutputTensor = 0;
 
-struct MaximumContext {
-  MaximumContext(TfLiteContext* context, TfLiteNode* node) {
+struct OpContext {
+  OpContext(TfLiteContext* context, TfLiteNode* node) {
     input1 = GetInput(context, node, kInputTensor1);
     input2 = GetInput(context, node, kInputTensor2);
     output = GetOutput(context, node, kOutputTensor);
@@ -50,7 +50,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  MaximumContext op_context(context, node);
+  OpContext op_context(context, node);
   TF_LITE_ENSURE_EQ(context, op_context.input1->type, op_context.input2->type);
   op_context.output->type = op_context.input1->type;
 
@@ -69,23 +69,49 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, op_context.output, output_size);
 }
 
-template <KernelType kernel_type>
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  MaximumContext op_context(context, node);
+struct MaximumOp {
+  template <typename data_type>
+  static data_type op(data_type el1, data_type el2) {
+    return el1 > el2 ? el1 : el2;
+  }
+};
 
-#define TF_LITE_MAXIMUM(kernel_type, data_type)    \
-  kernel_type::TensorFlowMaximum<data_type>(       \
-      GetTensorData<data_type>(op_context.input1), \
-      GetTensorDims(op_context.input1),            \
-      GetTensorData<data_type>(op_context.input2), \
-      GetTensorDims(op_context.input2),            \
-      GetTensorData<data_type>(op_context.output), \
-      GetTensorDims(op_context.output))
+struct MinimumOp {
+  template <typename data_type>
+  static data_type op(data_type el1, data_type el2) {
+    return el1 < el2 ? el1 : el2;
+  }
+};
+
+template <typename data_type, typename op_type>
+void TFLiteOperation(TfLiteContext* context, TfLiteNode* node,
+                      const OpContext& op_context) {
+  reference_ops::TensorFlowMaximumMinimum<data_type>(
+      GetTensorData<data_type>(op_context.input1),
+      GetTensorDims(op_context.input1),
+      GetTensorData<data_type>(op_context.input2),
+      GetTensorDims(op_context.input2),
+      GetTensorData<data_type>(op_context.output),
+      GetTensorDims(op_context.output), op_type::template op<data_type>);
+}
+
+template <KernelType kernel_type, typename OpType>
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  OpContext op_context(context, node);
 
   if (kernel_type == kReference) {
     switch (op_context.output->type) {
       case kTfLiteFloat32:
-        TF_LITE_MAXIMUM(reference_ops, float);
+        TFLiteOperation<float, OpType>(context, node, op_context);
+        break;
+      case kTfLiteUInt8:
+        TFLiteOperation<uint8_t, OpType>(context, node, op_context);
+        break;
+      case kTfLiteInt32:
+       TFLiteOperation<int32_t, OpType>(context, node, op_context);
+        break;
+      case kTfLiteInt64:
+        TFLiteOperation<int64_t, OpType>(context, node, op_context);
         break;
       default:
         context->ReportError(context,
@@ -99,19 +125,28 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                          op_context.output->type);
     return kTfLiteError;
   }
-#undef TF_LITE_MAXIMUM
   return kTfLiteOk;
 }
 
-}  // namespace maximum
+}  // namespace maximum_minimum
 
 TfLiteRegistration* Register_MAXIMUM_REF() {
-  static TfLiteRegistration r = {nullptr, nullptr, maximum::Prepare,
-                                 maximum::Eval<maximum::kReference>};
+  static TfLiteRegistration r = {
+      nullptr, nullptr, maximum_minimum::Prepare,
+      maximum_minimum::Eval<maximum_minimum::kReference,
+                            maximum_minimum::MaximumOp>};
   return &r;
 }
 
+TfLiteRegistration* Register_MINIMUM_REF() {
+  static TfLiteRegistration r = {
+      nullptr, nullptr, maximum_minimum::Prepare,
+      maximum_minimum::Eval<maximum_minimum::kReference,
+                            maximum_minimum::MinimumOp>};
+  return &r;
+}
 TfLiteRegistration* Register_MAXIMUM() { return Register_MAXIMUM_REF(); }
+TfLiteRegistration* Register_MINIMUM() { return Register_MINIMUM_REF(); }
 
 }  // namespace builtin
 }  // namespace ops

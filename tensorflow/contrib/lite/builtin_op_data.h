@@ -221,6 +221,10 @@ typedef struct {
   int shrink_axis_mask;
 } TfLiteStridedSliceParams;
 
+typedef struct {
+  TfLiteType output_type;
+} TfLiteArgMaxParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -1544,6 +1544,50 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   // Since the shape_with_output_layout option in ExecutionOption is
   // non-effective to the Evaluator results, explicit relayout here.
+  //
+  // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
+  if (arg->has_output_layout()) {
+    result_literal = result_literal->Relayout(arg->output_layout());
+  }
+  *result->mutable_literal() = result_literal->ToProto();
+
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status Service::ComputeConstantGraph(
+    const ComputeConstantGraphRequest* arg, ComputeConstantResponse* result) {
+  if (!arg->has_computation()) {
+    return InvalidArgument("computations may not be empty");
+  }
+  if (!arg->computation().has_program_shape()) {
+    return InvalidArgument("program shape may not be empty");
+  }
+  if (arg->computation().program_shape().parameters_size() != 0) {
+    return InvalidArgument(
+        "constant computation may not depend on any parameters.");
+  }
+
+  ProgramShape program_shape = arg->computation().program_shape();
+  TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
+  if (arg->has_output_layout()) {
+    TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
+        arg->output_layout(), program_shape.result()));
+  }
+
+  HloModuleConfig config(program_shape);
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(arg->computation(), config));
+
+  HloEvaluator evaluator;
+  TF_ASSIGN_OR_RETURN(auto result_literal,
+                      evaluator.Evaluate<std::unique_ptr<Literal>>(
+                          *module, /*arg_literals=*/{}));
+
+  // Since the result layout is non-effective to the Evaluator results, explicit
+  // relayout here.
+  //
+  // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
   if (arg->has_output_layout()) {
     result_literal = result_literal->Relayout(arg->output_layout());
   }

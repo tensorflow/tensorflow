@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.estimator.python.estimator import boosted_trees
+from tensorflow.core.kernels.boosted_trees import boosted_trees_pb2
 from tensorflow.python.estimator.canned import boosted_trees as canned_boosted_trees
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
@@ -69,10 +70,18 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         for i in range(NUM_FEATURES)
     }
 
-  def _assert_checkpoint(self, model_dir, expected_global_step):
-    self.assertEqual(expected_global_step,
-                     checkpoint_utils.load_variable(model_dir,
-                                                    ops.GraphKeys.GLOBAL_STEP))
+  def _assert_checkpoint(self, model_dir, global_step, finalized_trees,
+                         attempted_layers):
+    reader = checkpoint_utils.load_checkpoint(model_dir)
+    self.assertEqual(global_step, reader.get_tensor(ops.GraphKeys.GLOBAL_STEP))
+    serialized = reader.get_tensor('boosted_trees:0_serialized')
+    ensemble_proto = boosted_trees_pb2.TreeEnsemble()
+    ensemble_proto.ParseFromString(serialized)
+    self.assertEqual(
+        finalized_trees,
+        sum([1 for t in ensemble_proto.tree_metadata if t.is_finalized]))
+    self.assertEqual(attempted_layers,
+                     ensemble_proto.growing_metadata.num_layers_attempted)
 
   def testTrainAndEvaluateEstimator(self):
     input_fn = _make_train_input_fn(is_classification=False)
@@ -88,9 +97,10 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     num_steps = 100
     # Train for a few steps, and validate final checkpoint.
     est.train(input_fn, steps=num_steps)
-    self._assert_checkpoint(est.model_dir, 11)
+    self._assert_checkpoint(
+        est.model_dir, global_step=10, finalized_trees=2, attempted_layers=10)
     eval_res = est.evaluate(input_fn=input_fn, steps=1)
-    self.assertAllClose(eval_res['average_loss'], 0.913176)
+    self.assertAllClose(eval_res['average_loss'], 1.008551)
 
   def testInferEstimator(self):
     train_input_fn = _make_train_input_fn(is_classification=False)
@@ -108,31 +118,13 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     num_steps = 100
     # Train for a few steps, and validate final checkpoint.
     est.train(train_input_fn, steps=num_steps)
-    self._assert_checkpoint(est.model_dir, 6)
-
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    # Validate predictions.
     predictions = list(est.predict(input_fn=predict_input_fn))
-    self.assertEquals(5, len(predictions))
-    self.assertAllClose([0.703549], predictions[0]['predictions'])
-    self.assertAllClose([0.266539], predictions[1]['predictions'])
-    self.assertAllClose([0.256479], predictions[2]['predictions'])
-    self.assertAllClose([1.088732], predictions[3]['predictions'])
-    self.assertAllClose([1.901732], predictions[4]['predictions'])
-
-
-class BoostedTreesClassifierTrainInMemoryTest(test_util.TensorFlowTestCase):
-
-  def setUp(self):
-    self._feature_columns = {
-        feature_column.bucketized_column(
-            feature_column.numeric_column('f_%d' % i, dtype=dtypes.float32),
-            BUCKET_BOUNDARIES)
-        for i in range(NUM_FEATURES)
-    }
-
-  def _assert_checkpoint(self, model_dir, expected_global_step):
-    self.assertEqual(expected_global_step,
-                     checkpoint_utils.load_variable(model_dir,
-                                                    ops.GraphKeys.GLOBAL_STEP))
+    self.assertAllClose(
+        [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
+        [pred['predictions'] for pred in predictions])
 
   def testBinaryClassifierTrainInMemoryAndEvalAndInfer(self):
     train_input_fn = _make_train_input_fn(is_classification=True)
@@ -145,36 +137,16 @@ class BoostedTreesClassifierTrainInMemoryTest(test_util.TensorFlowTestCase):
         n_trees=1,
         max_depth=5)
     # It will stop after 5 steps because of the max depth and num trees.
-    self._assert_checkpoint(est.model_dir, 6)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
 
     # Check eval.
     eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
     self.assertAllClose(eval_res['accuracy'], 1.0)
-
-    # Check predict that all labels are correct.
+    # Validate predictions.
     predictions = list(est.predict(input_fn=predict_input_fn))
-    self.assertEquals(5, len(predictions))
-    self.assertAllClose([0], predictions[0]['class_ids'])
-    self.assertAllClose([1], predictions[1]['class_ids'])
-    self.assertAllClose([1], predictions[2]['class_ids'])
-    self.assertAllClose([0], predictions[3]['class_ids'])
-    self.assertAllClose([0], predictions[4]['class_ids'])
-
-
-class BoostedTreesRegressorTrainInMemoryTest(test_util.TensorFlowTestCase):
-
-  def setUp(self):
-    self._feature_columns = {
-        feature_column.bucketized_column(
-            feature_column.numeric_column('f_%d' % i, dtype=dtypes.float32),
-            BUCKET_BOUNDARIES)
-        for i in range(NUM_FEATURES)
-    }
-
-  def _assert_checkpoint(self, model_dir, expected_global_step):
-    self.assertEqual(expected_global_step,
-                     checkpoint_utils.load_variable(model_dir,
-                                                    ops.GraphKeys.GLOBAL_STEP))
+    self.assertAllClose([[0], [1], [1], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
 
   def testRegressorTrainInMemoryAndEvalAndInfer(self):
     train_input_fn = _make_train_input_fn(is_classification=False)
@@ -187,20 +159,17 @@ class BoostedTreesRegressorTrainInMemoryTest(test_util.TensorFlowTestCase):
         n_trees=1,
         max_depth=5)
     # It will stop after 5 steps because of the max depth and num trees.
-    self._assert_checkpoint(est.model_dir, 6)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
 
     # Check eval.
     eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
-    self.assertAllClose(eval_res['average_loss'], 2.2136638)
-
+    self.assertAllClose(eval_res['average_loss'], 2.478283)
     # Validate predictions.
     predictions = list(est.predict(input_fn=predict_input_fn))
-    self.assertEquals(5, len(predictions))
-    self.assertAllClose([0.703549], predictions[0]['predictions'])
-    self.assertAllClose([0.266539], predictions[1]['predictions'])
-    self.assertAllClose([0.256479], predictions[2]['predictions'])
-    self.assertAllClose([1.088732], predictions[3]['predictions'])
-    self.assertAllClose([1.901732], predictions[4]['predictions'])
+    self.assertAllClose(
+        [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
+        [pred['predictions'] for pred in predictions])
 
 
 if __name__ == '__main__':

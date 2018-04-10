@@ -615,45 +615,68 @@ def assert_no_garbage_created(f):
 
 
 def run_in_graph_and_eager_modes(__unused__=None,
-                                 graph=None,
                                  config=None,
-                                 use_gpu=False,
-                                 force_gpu=False,
+                                 use_gpu=True,
                                  reset_test=True,
                                  assert_no_eager_garbage=False):
-  """Runs the test in both graph and eager modes.
+  """Execute the decorated test with and without enabling eager execution.
+
+  This function returns a decorator intended to be applied to test methods in
+  a @{tf.test.TestCase} class. Doing so will cause the contents of the test
+  method to be executed twice - once normally, and once with eager execution
+  enabled. This allows unittests to confirm the equivalence between eager
+  and graph execution (see @{tf.enable_eager_execution}).
+
+  For example, consider the following unittest:
+
+  ```python
+  class MyTests(tf.test.TestCase):
+
+    @run_in_graph_and_eager_modes()
+    def test_foo(self):
+      x = tf.constant([1, 2])
+      y = tf.constant([3, 4])
+      z = tf.add(x, y)
+      self.assertAllEqual([4, 6], self.evaluate(z))
+
+  if __name__ == "__main__":
+    tf.test.main()
+  ```
+
+  This test validates that `tf.add()` has the same behavior when computed with
+  eager execution enabled as it does when constructing a TensorFlow graph and
+  executing the `z` tensor in a session.
+
 
   Args:
     __unused__: Prevents sliently skipping tests.
-    graph: Optional graph to use during the returned session.
     config: An optional config_pb2.ConfigProto to use to configure the
-      session.
-    use_gpu: If True, attempt to run as many ops as possible on GPU.
-    force_gpu: If True, pin all ops to `/device:GPU:0`.
-    reset_test: If True, tearDown and SetUp the test case again.
+      session when executing graphs.
+    use_gpu: If True, attempt to run as many operations as possible on GPU.
+    reset_test: If True, tearDown and SetUp the test case between the two
+      executions of the test (once with and once without eager execution).
     assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
       collector and asserts that no extra garbage has been created when running
-      the test in eager mode. This will fail if there are reference cycles
-      (e.g. a = []; a.append(a)). Off by default because some tests may create
-      garbage for legitimate reasons (e.g. they define a class which inherits
-      from `object`), and because DEBUG_SAVEALL is sticky in some Python
-      interpreters (meaning that tests which rely on objects being collected
-      elsewhere in the unit test file will not work). Additionally, checks that
-      nothing still has a reference to Tensors that the test allocated.
+      the test with eager execution enabled. This will fail if there are
+      reference cycles (e.g. a = []; a.append(a)). Off by default because some
+      tests may create garbage for legitimate reasons (e.g. they define a class
+      which inherits from `object`), and because DEBUG_SAVEALL is sticky in some
+      Python interpreters (meaning that tests which rely on objects being
+      collected elsewhere in the unit test file will not work). Additionally,
+      checks that nothing still has a reference to Tensors that the test
+      allocated.
   Returns:
-    Returns a decorator that will run the decorated test function
-        using both a graph and using eager execution.
+    Returns a decorator that will run the decorated test method twice:
+    once by constructing and executing a graph in a session and once with
+    eager execution enabled.
   """
 
   assert not __unused__, "Add () after run_in_graph_and_eager_modes."
 
   def decorator(f):
-    """Test method decorator."""
-
     def decorated(self, **kwargs):
-      """Decorated the test method."""
       with context.graph_mode():
-        with self.test_session(graph, config, use_gpu, force_gpu):
+        with self.test_session(use_gpu=use_gpu):
           f(self, **kwargs)
 
       if reset_test:
@@ -663,27 +686,20 @@ def run_in_graph_and_eager_modes(__unused__=None,
         self._tempdir = None
         self.setUp()
 
-      def run_eager_mode(self, **kwargs):
-        if force_gpu:
-          gpu_name = gpu_device_name()
-          if not gpu_name:
-            gpu_name = "/device:GPU:0"
-          with context.device(gpu_name):
-            f(self)
-        elif use_gpu:
-          # TODO(xpan): Support softplacement and gpu by default when available.
-          f(self, **kwargs)
-        else:
-          with context.device("/device:CPU:0"):
+      def run_eagerly(self, **kwargs):
+        if not use_gpu:
+          with ops.device("/cpu:0"):
             f(self, **kwargs)
+        else:
+          f(self, **kwargs)
 
       if assert_no_eager_garbage:
-        run_eager_mode = assert_no_new_tensors(
-            assert_no_garbage_created(run_eager_mode))
+        run_eagerly = assert_no_new_tensors(
+            assert_no_garbage_created(run_eagerly))
 
       with context.eager_mode():
         with ops.Graph().as_default():
-          run_eager_mode(self, **kwargs)
+          run_eagerly(self, **kwargs)
 
     return decorated
 
