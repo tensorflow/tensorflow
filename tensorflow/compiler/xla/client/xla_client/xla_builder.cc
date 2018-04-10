@@ -1425,7 +1425,21 @@ XlaOp XlaBuilder::ReduceWindow(
     const XlaComputation& computation,
     tensorflow::gtl::ArraySlice<int64> window_dimensions,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_RETURN_IF_ERROR(
+        ValidatePaddingValues(AsInt64Slice(operand_shape.dimensions()),
+                              window_dimensions, window_strides));
+
+    std::vector<std::pair<int64, int64>> padding_values =
+        MakePadding(AsInt64Slice(operand_shape.dimensions()), window_dimensions,
+                    window_strides, padding);
+    return ReduceWindowWithGeneralPadding(operand, init_value, computation,
+                                          window_dimensions, window_strides,
+                                          padding_values);
+  });
 }
 
 XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
@@ -1434,7 +1448,25 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     tensorflow::gtl::ArraySlice<int64> window_dimensions,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& init_shape, GetShape(init_value));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
+                        computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
+                        MakeWindow(window_dimensions, window_strides, padding,
+                                   /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferReduceWindowShape(operand_shape, init_shape,
+                                               instr.window(), to_apply_shape));
+
+    AddCalledComputation(computation, &instr);
+    return AddInstruction(std::move(instr), HloOpcode::kReduceWindow,
+                          {operand, init_value});
+  });
 }
 
 XlaOp XlaBuilder::BatchNormTraining(const XlaOp& operand, const XlaOp& scale,
