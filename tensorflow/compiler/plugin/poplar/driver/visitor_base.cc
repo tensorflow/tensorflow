@@ -242,6 +242,10 @@ Status BaseVisitor::HandleBroadcast(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleBroadcastDimOne(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 Status BaseVisitor::HandleReshape(HloInstruction* inst) {
   return Unimplemented(inst);
 }

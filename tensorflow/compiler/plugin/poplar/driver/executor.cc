@@ -325,6 +325,8 @@ const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
       return poprand::SYSTEM_REPEATABLE;
     case tensorflow::IPUOptions::DeviceConfig::ALWAYS_REPEATABLE:
       return poprand::ALWAYS_REPEATABLE;
+    default:
+      return poprand::NOT_REPEATABLE;
   }
 }
 
