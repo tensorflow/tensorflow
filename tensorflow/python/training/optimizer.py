@@ -689,9 +689,7 @@ class Optimizer(
       # device_policy is set because non-mirrored tensors will be read in
       # `update_op`. `_resource_apply_dense`, `lr_t`, `beta1_t` and `beta2_t`
       # is an example.
-      with ops.name_scope(
-          "update_" + scope_name), context.context().device_policy(
-              context.DEVICE_PLACEMENT_SILENT):
+      with ops.name_scope("update_" + scope_name):
         return p.update_op(self, g)
 
     with ops.name_scope(name, self._name) as name:
@@ -707,11 +705,8 @@ class Optimizer(
         return self._finish(update_ops, "update")
 
       non_slot_devices = distribution.non_slot_devices(var_list)
-      # Device policy is needed because hyperparameter tensors (such as
-      # AdamOptimizer's beta1_t) need to be copied across devices in Eager.
-      with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
-        finish_updates = distribution.update_non_slot(
-            non_slot_devices, finish, self, update_ops)
+      finish_updates = distribution.update_non_slot(
+          non_slot_devices, finish, self, update_ops)
       if global_step is None:
         apply_updates = distribution.group(finish_updates, name=name)
       else:
