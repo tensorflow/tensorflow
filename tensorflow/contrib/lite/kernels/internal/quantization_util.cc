@@ -104,4 +104,25 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift) {
   return static_cast<int>(std::floor(max_input_rescaled));
 }
 
+void NudgeQuantizationRange(const float min, const float max,
+                            const int quant_min, const int quant_max,
+                            float* nudged_min, float* nudged_max,
+                            float* scale) {
+  // This code originates from tensorflow/core/kernels/fake_quant_ops_functor.h.
+  const float quant_min_float = static_cast<float>(quant_min);
+  const float quant_max_float = static_cast<float>(quant_max);
+  *scale = (max - min) / (quant_max_float - quant_min_float);
+  const float zero_point_from_min = quant_min_float - min / *scale;
+  uint16 nudged_zero_point;
+  if (zero_point_from_min < quant_min_float) {
+    nudged_zero_point = static_cast<uint16>(quant_min);
+  } else if (zero_point_from_min > quant_max_float) {
+    nudged_zero_point = static_cast<uint16>(quant_max);
+  } else {
+    nudged_zero_point = static_cast<uint16>(TfLiteRound(zero_point_from_min));
+  }
+  *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
+  *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);
+}
+
 }  // namespace tflite

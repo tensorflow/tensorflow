@@ -209,6 +209,14 @@ void PreprocessLogSoftmaxScaling(double beta, double input_scale,
 // Softmax.
 int CalculateInputRadius(int input_integer_bits, int input_left_shift);
 
+// Nudges a min/max quantization range to ensure zero is zero.
+// Gymnastics with nudged zero point is to ensure that real zero maps to
+// an integer, which is required for e.g. zero-padding in convolutional layers.
+// Outputs nudged_min, nudged_max, nudged_scale.
+void NudgeQuantizationRange(const float min, const float max,
+                            const int quant_min, const int quant_max,
+                            float* nudged_min, float* nudged_max, float* scale);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_QUANTIZATION_UTIL_H_

@@ -724,8 +724,7 @@ struct L2PoolOperator : Operator {
 // The expected [min, max] range of values in a given array.
 // Used for quantization only.
 // This information typically comes from special nodes found in quantized
-// models,
-// see FakeQuantOperator, and is used during quantization to resolve
+// models, see FakeQuantOperator, and is used during quantization to resolve
 // actual quantization parameters (see QuantizationParams).
 struct MinMax {
   double min = 0.;
@@ -753,6 +752,7 @@ inline bool operator==(const MinMax& m1, const MinMax& m2) {
 struct FakeQuantOperator : Operator {
   FakeQuantOperator() : Operator(OperatorType::kFakeQuant) {}
   std::unique_ptr<MinMax> minmax;
+  int num_bits = 8;
 };
 
 // Element-wise division operator.

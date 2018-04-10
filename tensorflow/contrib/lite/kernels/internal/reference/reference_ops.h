@@ -27,6 +27,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
+#include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
@@ -2697,74 +2698,30 @@ inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
 }
 
 inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
-                      float rmin, float rmax, float* output_data,
+                      float rmin, float rmax, int num_bits, float* output_data,
                       const Dims<4>& output_dims) {
   // 0 should always be a representable value. Let's assume that the initial
   // min,max range contains 0.
-  TFLITE_DCHECK_LE(rmin, 0.);
-  TFLITE_DCHECK_GE(rmax, 0.);
+  TFLITE_DCHECK_LE(rmin, 0.0f);
+  TFLITE_DCHECK_GE(rmax, 0.0f);
+  TFLITE_DCHECK_LT(rmin, rmax);
 
-  // Determine quantization parameters: zero_point, scale.
-  using Integer = uint8;
-  const Integer qmin = std::numeric_limits<Integer>::min();
-  const Integer qmax = std::numeric_limits<Integer>::max();
-  const float qmin_float = qmin;
-  const float qmax_float = qmax;
-  int32 zero_point = 0;
-  float scale = 0.f;
-  // If rmin==rmax, both must be zero per the above assertion,
-  // so we are done.
-  if (rmin != rmax) {
-    // First determine the scale.
-    scale = (rmax - rmin) / (qmax_float - qmin_float);
-
-    // Zero-point computation.
-    // First the initial floating-point computation. The zero-point can be
-    // determined from solving an affine equation for any known pair
-    // (real value, corresponding quantized value).
-    // We know two such pairs: (rmin, qmin) and (rmax, qmax).
-    // The arithmetic error on the zero point computed from either pair
-    // will be roughly machine_epsilon * (sum of absolute values of terms)
-    // so we want to use the variant that adds the smaller terms.
-    const float zero_point_from_min = qmin_float - rmin / scale;
-    const float zero_point_from_max = qmax_float - rmax / scale;
-    const float zero_point_from_min_error =
-        std::abs(qmin_float) + std::abs(rmin / scale);
-    const float zero_point_from_max_error =
-        std::abs(qmax_float) + std::abs(rmax / scale);
-
-    const float zero_point_float =
-        zero_point_from_min_error < zero_point_from_max_error
-            ? zero_point_from_min
-            : zero_point_from_max;
-
-    // Now we need to nudge the zero point to be an integer
-    // (our zero points are integer, and this is motivated by the requirement
-    // to be able to represent the real value "0" exactly as a quantized value,
-    // which is required in multiple places, for example in Im2col with SAME
-    // padding).
-    if (zero_point_float < qmin_float) {
-      zero_point = qmin;
-    } else if (zero_point_float > qmax_float) {
-      zero_point = qmax;
-    } else {
-      zero_point = static_cast<int32>(TfLiteRound(zero_point_float));
-    }
-    // The zero point should always be in the range of quantized value,
-    // [qmin, qmax].
-    TFLITE_DCHECK_GE(zero_point, qmin);
-    TFLITE_DCHECK_LE(zero_point, qmax);
-  }
+  // Code matches tensorflow's FakeQuantWithMinMaxArgsFunctor.
+  int quant_min = 0;
+  int quant_max = (1 << num_bits) - 1;
+  float nudged_min, nudged_max, nudged_scale;
+  NudgeQuantizationRange(rmin, rmax, quant_min, quant_max, &nudged_min,
+                         &nudged_max, &nudged_scale);
+  const float inv_nudged_scale = 1.0f / nudged_scale;
 
   const int flat_size = MatchingFlatSize(output_dims, input_dims);
-
   for (int i = 0; i < flat_size; i++) {
     const float src_val = input_data[i];
-    const float unclamped_quantized_val =
-        TfLiteRound(zero_point + src_val / scale);
-    const float quantized_val =
-        std::min(qmax_float, std::max(qmin_float, unclamped_quantized_val));
-    const float dst_val = scale * (quantized_val - zero_point);
+    const float clamped = std::min(nudged_max, std::max(nudged_min, src_val));
+    const float clamped_shifted = clamped - nudged_min;
+    const float dst_val =
+        TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
+        nudged_min;
     output_data[i] = dst_val;
   }
 }
