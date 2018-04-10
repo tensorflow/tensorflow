@@ -2273,7 +2273,6 @@ py_library(
         ":clip_ops",
         ":framework_for_generated_wrappers",
         ":init_ops",
-        ":layers_base",
         ":math_ops",
         ":nn_ops",
         ":partitioned_variables",
@@ -2949,11 +2948,13 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/losses",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
+        # `layers` dependency only exists due to the use of a small utility.
+        "//tensorflow/python/keras:layers",
     ],
 )
 
@@ -4310,6 +4311,7 @@ py_library(
         ":variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
     ],
 )
@@ -4346,6 +4348,7 @@ py_library(
         ":variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/keras:layers",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

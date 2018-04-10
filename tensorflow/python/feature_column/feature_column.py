@@ -581,24 +581,25 @@ class _LinearModel(training.Model):
         **kwargs)
 
   def call(self, features):
-    for column in self._feature_columns:
-      if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
-        raise ValueError(
-            'Items of feature_columns must be either a '
-            '_DenseColumn or _CategoricalColumn. Given: {}'.format(column))
-    weighted_sums = []
-    ordered_columns = []
-    builder = _LazyBuilder(features)
-    for layer in sorted(self._column_layers.values(), key=lambda x: x.name):
-      ordered_columns.append(layer._feature_column)  # pylint: disable=protected-access
-      weighted_sum = layer(builder)
-      weighted_sums.append(weighted_sum)
+    with variable_scope.variable_scope(self.name):
+      for column in self._feature_columns:
+        if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
+          raise ValueError(
+              'Items of feature_columns must be either a '
+              '_DenseColumn or _CategoricalColumn. Given: {}'.format(column))
+      weighted_sums = []
+      ordered_columns = []
+      builder = _LazyBuilder(features)
+      for layer in sorted(self._column_layers.values(), key=lambda x: x.name):
+        ordered_columns.append(layer._feature_column)  # pylint: disable=protected-access
+        weighted_sum = layer(builder)
+        weighted_sums.append(weighted_sum)
 
-    _verify_static_batch_size_equality(weighted_sums, ordered_columns)
-    predictions_no_bias = math_ops.add_n(
-        weighted_sums, name='weighted_sum_no_bias')
-    predictions = nn_ops.bias_add(
-        predictions_no_bias, self._bias_layer(builder), name='weighted_sum')  # pylint: disable=not-callable
+      _verify_static_batch_size_equality(weighted_sums, ordered_columns)
+      predictions_no_bias = math_ops.add_n(
+          weighted_sums, name='weighted_sum_no_bias')
+      predictions = nn_ops.bias_add(
+          predictions_no_bias, self._bias_layer(builder), name='weighted_sum')  # pylint: disable=not-callable
     return predictions
 
   def _add_layers(self, layers):

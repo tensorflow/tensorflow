@@ -102,7 +102,8 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
-    super(Embedding, self).__init__(**kwargs)
+    dtype = kwargs.pop('dtype', K.floatx())
+    super(Embedding, self).__init__(dtype=dtype, **kwargs)
 
     self.input_dim = input_dim
     self.output_dim = output_dim
@@ -120,8 +121,7 @@ class Embedding(Layer):
         initializer=self.embeddings_initializer,
         name='embeddings',
         regularizer=self.embeddings_regularizer,
-        constraint=self.embeddings_constraint,
-        dtype=self.dtype)
+        constraint=self.embeddings_constraint)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
