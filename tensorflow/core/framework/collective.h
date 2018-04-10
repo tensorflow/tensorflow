@@ -103,11 +103,8 @@ struct CollectiveParams {
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
   std::vector<int> subdiv_source_rank;
-  const Tensor* in_tensor;             // kernel input
-  Tensor* out_tensor;                  // kernel output
   std::unique_ptr<OpKernel> merge_op;  // reduction only
   std::unique_ptr<OpKernel> final_op;  // reduction only
-  OpKernelContext* op_context;
   string ToString() const;
 };
 

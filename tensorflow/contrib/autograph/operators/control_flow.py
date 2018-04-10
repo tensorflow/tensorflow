@@ -83,7 +83,8 @@ def _known_len_for_loop(iterated, extra_cond, loop_body, init_state):
       while_cond,
       while_body,
       init_state=(0,) + init_state,
-      extra_deps=(iterated,))
+      extra_deps=(iterated,),
+      opts=dict(maximum_iterations=n))
   # Dropping the iteration index because it's not syntactically visible.
   results = results[1:]
 
@@ -136,7 +137,7 @@ def _dataset_for_loop(ds, extra_cond, loop_body, init_state):
   return results
 
 
-def while_loop(loop_cond, loop_body, init_state, extra_deps):
+def while_loop(loop_cond, loop_body, init_state, extra_deps, opts=None):
   """Functional form of a while statement.
 
   The loop operates on a so-called state, which includes all symbols that are
@@ -153,6 +154,7 @@ def while_loop(loop_cond, loop_body, init_state, extra_deps):
     extra_deps: Tuple containing additional entities on which the loop may
         depend, such as loop invariants referenced by loop_cond. Used
         exclusively for dispatch control.
+    opts: Optional dict of extra loop parameters.
 
   Returns:
     Tuple containing the final state.
@@ -161,18 +163,21 @@ def while_loop(loop_cond, loop_body, init_state, extra_deps):
   # That could be somethins as simple as a collection of dispatch rules, with
   # some prioritization.
   if any(tensor_util.is_tensor(v) for v in init_state + extra_deps):
-    return _tf_while_loop(loop_cond, loop_body, init_state)
+    return _tf_while_loop(loop_cond, loop_body, init_state, opts)
   else:
-    return _py_while_loop(loop_cond, loop_body, init_state)
+    return _py_while_loop(loop_cond, loop_body, init_state, opts)
 
 
-def _tf_while_loop(loop_cond, loop_body, init_state):
+def _tf_while_loop(loop_cond, loop_body, init_state, opts):
   """Overload of while_loop that stages a TF while_loop."""
-  return control_flow_ops.while_loop(loop_cond, loop_body, init_state)
+  if opts is None:
+    opts = {}
+  return control_flow_ops.while_loop(loop_cond, loop_body, init_state, **opts)
 
 
-def _py_while_loop(loop_cond, loop_body, init_state):
+def _py_while_loop(loop_cond, loop_body, init_state, opts):
   """Overload of while_loop that executes a Python while loop."""
+  del opts
   state = init_state
   while loop_cond(*state):
     state = loop_body(*state)

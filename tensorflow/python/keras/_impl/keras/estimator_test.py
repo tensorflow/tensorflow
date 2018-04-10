@@ -512,6 +512,26 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
                      ._config.gpu_options.per_process_gpu_memory_fraction,
                      gpu_options.per_process_gpu_memory_fraction)
 
+  def test_pretrained_weights(self):
+    keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=['mse', keras.metrics.categorical_accuracy])
+
+    keras_model.train_on_batch(
+        np.random.random((10,) + _INPUT_SIZE), np.random.random((10,
+                                                                 _NUM_CLASS)))
+    weights = keras_model.get_weights()
+    keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+    keras_model.set_weights(weights)
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=['mse', keras.metrics.categorical_accuracy])
+    keras.estimator.model_to_estimator(
+        keras_model=keras_model, config=self._config)
+
 
 if __name__ == '__main__':
   test.main()

@@ -124,6 +124,7 @@ tf_xla_py_test(
     name = "categorical_op_test",
     size = "small",
     srcs = ["categorical_op_test.py"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -198,6 +199,10 @@ tf_xla_py_test(
     disabled_backends = [
         "cpu",
         "cpu_ondemand",
+    ],
+    tags = [
+        # Allocates very large amounts of memory and does not work under TSAN.
+        "notsan",
     ],
     deps = [
         ":xla_test",

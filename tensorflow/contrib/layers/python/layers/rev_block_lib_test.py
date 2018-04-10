@@ -304,6 +304,20 @@ class RecomputeTest(test.TestCase):
           self.assertAllClose(current, g)
           current = g
 
+  def testResourceVariable(self):
+    @rev_block_lib.recompute_grad(tupleize_grads=True)
+    def layer_with_recompute(inputs):
+      var = variable_scope.get_variable("var", ())
+      return var * inputs
+
+    inputs = array_ops.ones((), dtypes.float32)
+    with variable_scope.variable_scope("layer", use_resource=True):
+      outputs = layer_with_recompute(inputs)
+      loss = math_ops.square(outputs)
+      grads = gradients_impl.gradients(loss, variables.trainable_variables())
+      self.assertEqual(1, len(grads))
+      self.assertTrue(grads[0] is not None)
+
 
 class FnWithCustomGradTest(test.TestCase):
 
