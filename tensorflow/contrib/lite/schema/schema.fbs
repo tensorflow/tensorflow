@@ -132,6 +132,8 @@ enum BuiltinOperator : byte {
   CAST = 53,
   PRELU = 54,
   MAXIMUM = 55,
+  ARG_MAX = 56,
+  MINIMUM = 57,
 }
 
 // Options for the builtin operators.
@@ -174,7 +176,8 @@ union BuiltinOptions {
   LogSoftmaxOptions,
   CastOptions,
   DequantizeOptions,
-  MaximumOptions,
+  MaximumMinimumOptions,
+  ArgMaxOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -388,7 +391,11 @@ table CastOptions {
 table DequantizeOptions {
 }
 
-table MaximumOptions {
+table MaximumMinimumOptions {
+}
+
+table ArgMaxOptions {
+  output_type : TensorType;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

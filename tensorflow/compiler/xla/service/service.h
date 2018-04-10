@@ -206,6 +206,9 @@ class Service : public ServiceInterface {
   // Computes the value of a constant expression.
   tensorflow::Status ComputeConstant(const ComputeConstantRequest* arg,
                                      ComputeConstantResponse* result) override;
+  tensorflow::Status ComputeConstantGraph(
+      const ComputeConstantGraphRequest* arg,
+      ComputeConstantResponse* result) override;
 
   // Returns the shape (with layout) of an array associated with a given data
   // handle.

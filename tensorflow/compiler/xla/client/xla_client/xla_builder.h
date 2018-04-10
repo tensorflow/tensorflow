@@ -687,11 +687,12 @@ class XlaBuilder {
   XlaOp Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters with index greater than or equal to
-  // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
-  // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
-  // compile-time constant without evaluating the computation.
-  StatusOr<bool> IsConstant(const XlaOp& operand, int64 num_parameters = 0);
+  // constant does not depend on any parameters, or on stateful operators such
+  // as `RngNormal` or `Infeed`.
+  //
+  // This tests whether a computation is a compile-time constant without
+  // evaluating the computation.
+  StatusOr<bool> IsConstant(const XlaOp& operand) const;
 
   // Normalizes operand across spatial and batch dimensions for each feature.
   //
@@ -731,47 +732,14 @@ class XlaBuilder {
                       const XlaOp& grad_output, float epsilon,
                       int64 feature_index);
 
-  // Computes the value of a constant indicated by a XlaOp using a non-optimized
-  // interpreter on the host.
-  //
-  // The operand must represent a constant value, which in this case
-  // means that it must not statically depend on any parameter of the
-  // computation that is being built other then the ones specified on the
-  // parameter list. The parameters in the list will be indexed by their
-  // parameter id property so the number of parameters specified should be at
-  // least as many as the largest used parameter index.
-  //
-  // `IsConstant` can be used to test whether a computation is a compile-time
-  // constant without evaluation it. `ComputeConstant` only succeeds for
-  // computations where `IsConstant` returns true.
-  //
-  // This functionality can be useful when translating a computation
-  // into XLA where something that looked dynamic is required by
-  // XLA to be specified as a constant. E.g. the source
-  // computation (outside of XLA) may include a dynamic
-  // computation of the shape of something and ComputeConstant lets
-  // you determine what the value of that computation is in the case
-  // where the value can be determined at compile time.
-  //
-  // If output_layout is non-null, then the output of the computation
-  // will be stored using that layout.
-  StatusOr<std::unique_ptr<Literal>> ComputeConstant(
-      const XlaOp& operand, const Layout* output_layout = nullptr,
-      tensorflow::gtl::ArraySlice<Literal> parameters = {});
-
   // Returns a new XlaBuilder whose resultant Computation is used only by this
   // XlaBuilder. The sub-XlaBuilder has the same die_immediately_on_error
   // behavior as the parent.
   std::unique_ptr<XlaBuilder> CreateSubBuilder(const string& computation_name);
 
-  // Modifies the computation being built so that executions of it will return
-  // the value associated with operand, rather than the last expression enqueued
-  // on the XlaBuilder. Any subsequent operations added to the XlaBuilder will
-  // not have any effect unless SetReturnValue is called again.
-  Status SetReturnValue(const XlaOp& operand);
-
   // Builds the computation with the requested operations, or returns a non-ok
-  // status.
+  // status. Note that all ops that have been enqueued will be moved to the
+  // computation being returned.
   StatusOr<XlaComputation> Build();
 
   // Builds the computation with the requested operations, or notes an error in
@@ -783,6 +751,12 @@ class XlaBuilder {
   // a XlaBuilder other than the parent XlaBuilder then Build() should be used
   // instead.
   XlaComputation BuildAndNoteError();
+
+  // Returns a subgraph that roots on the given root. If the root is not a
+  // compile-time constant (see `IsConstant`), returns an error.
+  //
+  // This will copy the needed ops/computations to the subgraph.
+  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op) const;
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -796,7 +770,7 @@ class XlaBuilder {
   StatusOr<Shape> GetShape(const XlaOp& op) const;
 
   // Returns the (inferred) result for the current computation's shape.
-  StatusOr<ProgramShape> GetProgramShape();
+  StatusOr<ProgramShape> GetProgramShape() const;
 
  private:
   StatusOr<XlaOp> AddInstruction(
@@ -851,10 +825,17 @@ class XlaBuilder {
 
   // Returns the (inferred) result for the program shape for the current
   // computation and fills the root_id in the pointer.
-  StatusOr<ProgramShape> GetProgramShape(int64* root_id);
+  StatusOr<ProgramShape> GetProgramShape(int64* root_id) const;
 
-  string name_;      // Name to use for the built computation.
-  int64 unique_id_;  // The unique id for the built computation.
+  // A visitor which checks whether an operation is a compile-time constant,
+  // meaning that it doesn't depend on any parameters, or on any stateful
+  // operation such as `RngNormal` or `Infeed`. The visitor walks the
+  // computation starting at a given operation and sets is_constant to false iff
+  // a parameter or stateful operation is encountered.
+  void IsConstantVisitor(const int64 op_handle, std::set<int64>* visited,
+                         bool* is_constant) const;
+
+  string name_;  // Name to use for the built computation.
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.

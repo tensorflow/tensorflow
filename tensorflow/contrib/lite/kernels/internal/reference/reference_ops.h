@@ -3419,10 +3419,11 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-template <typename T>
-void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
-                       const T* input2_data, const Dims<4>& input2_dims,
-                       T* output_data, const Dims<4>& output_dims) {
+template <typename T, typename Op>
+void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
+                              const T* input2_data, const Dims<4>& input2_dims,
+                              T* output_data, const Dims<4>& output_dims,
+                              Op op) {
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
@@ -3436,7 +3437,7 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
           auto in2_idx = SubscriptToIndex(desc2, c, x, y, b);
           auto in1_val = input1_data[in1_idx];
           auto in2_val = input2_data[in2_idx];
-          output_data[out_idx] = in1_val > in2_val ? in1_val : in2_val;
+          output_data[out_idx] = op(in1_val, in2_val);
         }
       }
     }
