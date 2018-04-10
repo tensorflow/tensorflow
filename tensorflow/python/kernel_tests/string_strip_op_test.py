@@ -18,18 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
 class StringStripOpTest(test.TestCase):
+  """ Test cases for tf.string_strip."""
 
-  def testStringStrip(self):
+  def test_string_strip(self):
     strings = ["pigs on the wing", "animals"]
 
     with self.test_session() as sess:
@@ -37,7 +33,7 @@ class StringStripOpTest(test.TestCase):
       output = sess.run(output)
       self.assertAllEqual(output, ["pigs on the wing", "animals"])
 
-  def testStringStrip2D(self):
+  def test_string_strip_2d(self):
     strings = [["pigs on the wing", "animals"],
                [" hello ", "\n\tworld \r \n"]]
 
@@ -47,7 +43,7 @@ class StringStripOpTest(test.TestCase):
       self.assertAllEqual(output, [["pigs on the wing", "animals"],
                                    ["hello", "world"]])
 
-  def testStringStripWithEmptyStrings(self):
+  def test_string_strip_with_empty_strings(self):
     strings = [" hello ", "", "world ", " \t \r \n "]
 
     with self.test_session() as sess:
