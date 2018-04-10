@@ -157,6 +157,9 @@ from tensorflow.python.ops import rnn_cell
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).
 nn.dynamic_rnn = rnn.dynamic_rnn
+nn.static_rnn = rnn.static_rnn
+nn.raw_rnn = rnn.raw_rnn
+nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
 nn.rnn_cell = rnn_cell
 
 # Symbols whitelisted for export without documentation.
