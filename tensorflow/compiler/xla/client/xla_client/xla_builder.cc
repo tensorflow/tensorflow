@@ -777,7 +777,20 @@ XlaOp XlaBuilder::ConvGeneralDilated(
 
 XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
                       const tensorflow::gtl::ArraySlice<int64> fft_length) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, operand.GetShape());
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferFftShape(operand_shape, fft_type, fft_length));
+
+    instr.set_fft_type(fft_type);
+    for (int64 i : fft_length) {
+      instr.add_fft_length(i);
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kFft, {operand});
+  });
 }
 
 XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
