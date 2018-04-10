@@ -2469,7 +2469,8 @@ def multi_one_hot(indices, depth_list, on_values_list=None,
   Suppose that we have two columns where the first represents an attribute
   that can obtain two different values and the second may obtain three.
   Three instances (rows) are then one-hot encoded in a single pass using
-  5.0 as hot-value for the first and 10.0 as the hot-value for the second column
+  5.0 as hot-value for the first and 10.0 as the hot-value for the second
+  column
 
   ```python
     indices = tf.constant([[1, 2],
@@ -2534,8 +2535,11 @@ def multi_one_hot(indices, depth_list, on_values_list=None,
     else:
       off_values_list = [None] * n_features
 
-    tensor_list = [one_hot(indices[:, col], depth_list[col], on_values_list[col],
-                           off_values_list[col], dtype=dtypes.float32) \
+    tensor_list = [one_hot(indices[:, col],
+                           depth_list[col],
+                           on_values_list[col],
+                           off_values_list[col],
+                           dtype=dtypes.float32) \
                    for col in range(n_features)]
 
     multi_tensor = concat(tensor_list, axis=-1, name=name)
