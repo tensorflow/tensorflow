@@ -714,7 +714,7 @@ class CheckpointingTests(test.TestCase):
     status.run_restore_ops()
     self.assertEqual(-14., self.evaluate(loaded_dep_after_var.dep.var))
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
@@ -779,7 +779,7 @@ class CheckpointingTests(test.TestCase):
       self.evaluate(train_op)
     slot_status.assert_consumed()
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testOverlappingRestores(self):
     checkpoint_directory = self.get_temp_dir()
     save_root = checkpointable.Checkpointable()
@@ -830,7 +830,7 @@ class CheckpointingTests(test.TestCase):
     second_status.run_restore_ops()
     self.assertEqual(12., self.evaluate(load_dep.var))
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testAmbiguousLoad(self):
     # Not OK to split one checkpoint object into two
     checkpoint_directory = self.get_temp_dir()
@@ -853,7 +853,7 @@ class CheckpointingTests(test.TestCase):
                                  "resolved to different objects"):
       load_root.dep_two.dep_three = checkpointable.Checkpointable()
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testObjectsCombined(self):
     # Currently fine to load two checkpoint objects into one Python object
     checkpoint_directory = self.get_temp_dir()
@@ -1154,7 +1154,7 @@ class CheckpointingTests(test.TestCase):
 
 class TemplateTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def test_checkpointable_save_restore(self):
 
     def _templated():
@@ -1185,7 +1185,7 @@ class TemplateTests(test.TestCase):
     self.assertAllEqual([13.], self.evaluate(var_plus_one))
     self.assertAllEqual([14.], self.evaluate(var2))
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def test_checkpointable_save_restore_nested(self):
 
     def _inner_template():

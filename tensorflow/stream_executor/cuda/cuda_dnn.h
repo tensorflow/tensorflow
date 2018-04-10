@@ -46,6 +46,7 @@ class CudnnSupport : public dnn::DnnSupport {
   ~CudnnSupport() override;
 
   port::Status Init() override;
+  port::StatusOr<std::tuple<int, int, int>> GetVersion() override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size,

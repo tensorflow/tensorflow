@@ -431,6 +431,32 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
   InferenceContext* src_context = GetContext(input_edge->src());
   if (src_context == nullptr) return errors::Internal("Missing src context");
   ShapeHandle src_shape = src_context->output(input_edge->src_output());
+
+  if (src_context->Value(src_context->Rank(src_shape)) == 0) {
+    Tensor t;
+    bool evaluated = false;
+    TF_RETURN_IF_ERROR(
+        EvaluateConstantTensorForEdge(node, dst_idx, &evaluated, &t));
+    if (!evaluated) {
+      return errors::InvalidArgument(
+          "Received a shape scalar with unknown static value.  A static value "
+          "of '-1' is required to represent an unknown shape.");
+    }
+    if (t.dims() == 0) {
+      if (t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) {
+        *result = target_context->UnknownShape();
+        return Status::OK();
+      } else if (t.dtype() == DT_INT64 && t.scalar<int64>()() == -1) {
+        *result = target_context->UnknownShape();
+        return Status::OK();
+      }
+    }
+    return errors::InvalidArgument(
+        "Received an invalid shape scalar with a static value that is not "
+        "'-1': ",
+        t.DebugString());
+  }
+
   TF_RETURN_IF_ERROR(src_context->WithRank(src_shape, 1, &src_shape));
 
   const string& src_op = input_edge->src()->type_string();

@@ -117,6 +117,7 @@ java_test(
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
         "src/testdata/uint8.bin",
+        "src/testdata/with_custom_op.lite",
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",

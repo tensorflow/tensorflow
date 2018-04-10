@@ -56,6 +56,7 @@ enum class OperatorType {
   kL2Pool,
   kLstmCell,
   kLocalResponseNormalization,
+  kLog,
   kLogistic,
   kMaxPool,
   kFakeQuant,
@@ -589,6 +590,17 @@ struct PReluOperator : Operator {
 // TensorFlow equivalent: Sigmoid
 struct LogisticOperator : Operator {
   LogisticOperator() : Operator(OperatorType::kLogistic) {}
+};
+
+// Element-wise natural log operator:
+//   x -> ln(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Log
+struct LogOperator : Operator {
+  LogOperator() : Operator(OperatorType::kLog) {}
 };
 
 // Element-wise Tanh operator:

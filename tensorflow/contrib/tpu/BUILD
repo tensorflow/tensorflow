@@ -47,6 +47,7 @@ py_library(
         ":tpu_lib",
         ":tpu_py",
         "//tensorflow/contrib/summary:summary_ops",
+        "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
