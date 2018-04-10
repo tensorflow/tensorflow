@@ -28,10 +28,13 @@ SourceWriter::SourceWriter() {
 }
 
 SourceWriter::~SourceWriter() {
-  // Remove empty generic namespace added at start.
-  GenericNamespace* generic_namespace = generic_namespaces_.top();
-  generic_namespaces_.pop();
-  delete generic_namespace;
+  // Remove empty generic namespace added at start as well as any other
+  // namespace objects that haven't been removed.
+  while (!generic_namespaces_.empty()) {
+    GenericNamespace* generic_namespace = generic_namespaces_.top();
+    generic_namespaces_.pop();
+    delete generic_namespace;
+  }
 }
 
 SourceWriter& SourceWriter::Indent(int tab) {

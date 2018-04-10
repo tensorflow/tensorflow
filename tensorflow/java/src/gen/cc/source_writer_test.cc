@@ -261,7 +261,7 @@ TEST(StreamTest, FileSnippet) {
   SourceBufferWriter writer;
   const string fname = tensorflow::io::JoinPath(
       tensorflow::testing::TensorFlowSrcRoot(),
-      "java/src/gen/resources/test.snippet.java.txt");
+      "java/src/gen/resources/test.java.snippet");
 
   writer.WriteFromFile(fname)
         .BeginBlock()
