@@ -25,7 +25,7 @@
 * TensorFlow Debugger (tfdbg) CLI:
   * During tensor-filter operations, allow exclusion of nodes by regular expressions.
   * Fix spurious background colors in some text terminals.
-* tf.contrib:
+* `tf.contrib`:
   * Add meta-distribution BatchReshape which reshapes batch dimensions.
   * `tf.contrib.layers.recompute_grad` works for explicit gradient checkpointing on TPU.
   * Add `tf.contrib.framework.argsort`.
