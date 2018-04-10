@@ -1969,3 +1969,16 @@ tf_cc_test(
         "//tensorflow/core:test",
     ],
 )
+
+xla_test(
+    name = "test_utils_test",
+    srcs = ["test_utils_test.cc"],
+    deps = [
+        ":local_client_test_base",
+        ":test_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
