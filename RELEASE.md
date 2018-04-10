@@ -13,9 +13,8 @@
   * Add `tf.contrib.data.prefetch_to_device`, which enables prefetching dataset elements to GPU memory.
   * Add `tf.contrib.data.AUTOTUNE`, which allows the tf.data runtime to automatically tune the prefetch buffer sizes based on your system and environment.
   * Add `tf.contrib.data.make_csv_dataset` for building datasets of CSV files.
-  * With eager execution Datasets can now be used as standard python iterators (`for batch in dataset:`). Both `Dataset.__iter__()` and `Dataset.make_one_shot_iterator()` can now be used to create iterators in eager mode.
 * Eager Execution:
-  * Can now naturally iterate over `tf.data.Dataset` objects without wrapping in a `tf.contrib.eager.Iterator`. For example: `for x in tf.data.Dataset.range(10): print(x)`
+  * With eager execution Datasets can now be used as standard python iterators (`for batch in dataset:`). Both `Dataset.__iter__()` and `Dataset.make_one_shot_iterator()` can now be used to create iterators when eager execution is enabled.
   * Automatic device placement has been enabled (i.e., use a GPU if available automatically, without requiring an explicit `with tf.device(“/gpu:0”)`) (Fixes #14133)
   * `tf.GradientTape` has moved out of contrib.
 * `tf.keras`:
@@ -24,8 +23,8 @@
 * Accelerated Linear Algebra (XLA):
   * Select and scatter in reference util and evaluator now use lexicographical order to break ties.
 * TensorFlow Debugger (tfdbg) CLI:
- * During tensor-filter operations, allow exclusion of nodes by regular expressions.
- * Fix spurious background colors in some text terminals.
+  * During tensor-filter operations, allow exclusion of nodes by regular expressions.
+  * Fix spurious background colors in some text terminals.
 * tf.contrib:
   * Add meta-distribution BatchReshape which reshapes batch dimensions.
   * `tf.contrib.layers.recompute_grad` works for explicit gradient checkpointing on TPU.
