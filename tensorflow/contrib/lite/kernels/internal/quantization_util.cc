@@ -78,6 +78,22 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
                                    quantized_multiplier, left_shift);
 }
 
+void PreprocessLogSoftmaxScaling(double beta, double input_scale,
+                                 int input_integer_bits,
+                                 int32_t* quantized_multiplier, int* left_shift,
+                                 int32_t* reverse_scaling_divisor,
+                                 int* reverse_scaling_right_shift) {
+  PreprocessSoftmaxScaling(beta, input_scale, input_integer_bits,
+                           quantized_multiplier, left_shift);
+
+  // Also calculate what amounts to the inverse scaling factor for the input.
+  const double real_reverse_scaling_divisor =
+      (1 << (31 - *left_shift)) / static_cast<double>(*quantized_multiplier);
+  tflite::QuantizeMultiplierSmallerThanOne(real_reverse_scaling_divisor,
+                                           reverse_scaling_divisor,
+                                           reverse_scaling_right_shift);
+}
+
 int CalculateInputRadius(int input_integer_bits, int input_left_shift) {
   const double max_input_rescaled = 1.0 * ((1 << input_integer_bits) - 1) *
                                     (1ll << (31 - input_integer_bits)) /

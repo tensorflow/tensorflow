@@ -2447,6 +2447,92 @@ inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
+                       int32 input_multiplier, int32 input_left_shift,
+                       int32 reverse_scaling_divisor,
+                       int32 reverse_scaling_right_shift, int diff_min,
+                       uint8* output_data, const Dims<4>& output_dims) {
+  // The representation chosen for the input to the exp() function is Q5.26.
+  // We need to leave extra space since values that we skip might be as large as
+  // -32 before multiplying by input_beta_multiplier, and therefore as large as
+  // -16 afterwards.  Note that exp(-8) is definitely not insignificant to
+  // accumulation, but exp(-16) definitely is.
+  static constexpr int kScaledDiffIntegerBits = 5;
+  static constexpr int kAccumulationIntegerBits = 12;
+  static constexpr int kOutputIntegerBits = 4;
+  using FixedPointScaledDiff =
+      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
+  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
+  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+
+  for (int i = 0; i < outer_size; ++i) {
+    uint8 max_in_row = 0;
+    for (int c = 0; c < depth; ++c) {
+      max_in_row = std::max(max_in_row, input_data[i * depth + c]);
+    }
+
+    FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
+    for (int c = 0; c < depth; ++c) {
+      int32 input_diff =
+          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      if (input_diff >= diff_min) {
+        const int32 input_diff_rescaled =
+            MultiplyByQuantizedMultiplierGreaterThanOne(
+                input_diff, input_multiplier, input_left_shift);
+        const FixedPointScaledDiff scaled_diff_f8 =
+            FixedPointScaledDiff::FromRaw(input_diff_rescaled);
+        sum_of_exps = sum_of_exps + gemmlowp::Rescale<kAccumulationIntegerBits>(
+                                        exp_on_negative_values(scaled_diff_f8));
+      }
+    }
+
+    // TODO(b/77858996): Implement fixed-point log().
+    // Not a fully-quantized implementation: floating-point log().
+    const float float_log_sum_of_exps =
+        std::log(static_cast<float>(sum_of_exps.raw()) /
+                 (1 << (31 - kAccumulationIntegerBits)));
+    const int32 fixed_log_sum_of_exps = static_cast<int32>(TfLiteRound(
+        float_log_sum_of_exps * (1 << (31 - kScaledDiffIntegerBits))));
+
+    // rescaled_diff_min is smallest representable in
+    // Q(kScaledDiffIntegerBits).(31-kScaledDiffIntegerBits) plus the
+    // log-sub-exps that will be subtracted in the loop.
+    //
+    // The thresholds diff_min, etc are negative.
+    const int rescaled_diff_min =
+        fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
+    const int adjusted_diff_min =
+        std::max(diff_min - 1,  // Note use of > below instead of >= above.
+                 MultiplyByQuantizedMultiplierSmallerThanOne(
+                     rescaled_diff_min, reverse_scaling_divisor,
+                     reverse_scaling_right_shift));
+
+    for (int c = 0; c < depth; ++c) {
+      int32 input_diff =
+          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      if (input_diff > adjusted_diff_min) {
+        const int32 input_diff_rescaled =
+            MultiplyByQuantizedMultiplierGreaterThanOne(
+                input_diff, input_multiplier, input_left_shift);
+        int32 unsat_output =
+            gemmlowp::RoundingDivideByPOT(
+                (input_diff_rescaled - fixed_log_sum_of_exps),
+                31 - kScaledDiffIntegerBits - kOutputIntegerBits) +
+            255;
+
+        output_data[i * depth + c] = static_cast<uint8>(
+            std::max(std::min(unsat_output, static_cast<int32>(255)), 0));
+      } else {
+        // Set output to smallest value.
+        output_data[i * depth + c] = 0;
+      }
+    }
+  }
+}
+
 inline void Logistic(const float* input_data, const Dims<4>& input_dims,
                      float* output_data, const Dims<4>& output_dims) {
   const int flat_size = MatchingFlatSize(output_dims, input_dims);

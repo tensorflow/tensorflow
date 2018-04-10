@@ -196,7 +196,12 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
 void PreprocessSoftmaxScaling(double beta, double input_scale,
                               int input_integer_bits,
                               int32_t* quantized_multiplier, int* left_shift);
-
+// Like PreprocessSoftmaxScaling, but inverse scaling factors also calculated.
+void PreprocessLogSoftmaxScaling(double beta, double input_scale,
+                                 int input_integer_bits,
+                                 int32_t* quantized_multiplier, int* left_shift,
+                                 int32_t* reverse_scaling_divisor,
+                                 int* reverse_scaling_right_shift);
 // Calculate the largest input that will result in a within-bounds intermediate
 // result within MultiplyByQuantizedMultiplierGreaterThanOne.  In other words,
 // it must not overflow before we reduce the value by multiplication by the
