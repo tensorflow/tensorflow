@@ -1056,7 +1056,17 @@ XlaOp XlaBuilder::Transpose(const XlaOp& operand,
 
 XlaOp XlaBuilder::Rev(const XlaOp& operand,
                       tensorflow::gtl::ArraySlice<int64> dimensions) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferReverseShape(operand_shape, dimensions));
+    for (int64 dim : dimensions) {
+      instr.add_dimensions(dim);
+    }
+    return AddInstruction(std::move(instr), HloOpcode::kReverse, {operand});
+  });
 }
 
 XlaOp XlaBuilder::Sort(const XlaOp& operand) {
@@ -1087,7 +1097,15 @@ XlaOp XlaBuilder::ConvertElementType(const XlaOp& operand,
 
 XlaOp XlaBuilder::BitcastConvertType(const XlaOp& operand,
                                      PrimitiveType new_element_type) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferConvertShape(operand_shape, new_element_type));
+    return AddInstruction(std::move(instr), HloOpcode::kBitcastConvert,
+                          {operand});
+  });
 }
 
 XlaOp XlaBuilder::SquareF32(const XlaOp& operand) {
@@ -1113,7 +1131,28 @@ XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
                       const XlaComputation& computation,
                       tensorflow::gtl::ArraySlice<int64> dimensions,
                       tensorflow::gtl::ArraySlice<XlaOp> static_operands) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (!static_operands.empty()) {
+      return Unimplemented("static_operands is not supported in Map");
+    }
+
+    HloInstructionProto instr;
+
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
+    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferMapShape(operand_shape_ptrs, called_program_shape,
+                                      dimensions));
+
+    AddCalledComputation(computation, &instr);
+
+    return AddInstruction(std::move(instr), HloOpcode::kMap, operands);
+  });
 }
 
 XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
@@ -1283,7 +1322,17 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
 
 XlaOp XlaBuilder::ReducePrecision(const XlaOp& operand, const int exponent_bits,
                                   const int mantissa_bits) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferReducePrecisionShape(
+                            operand_shape, exponent_bits, mantissa_bits));
+    instr.set_exponent_bits(exponent_bits);
+    instr.set_mantissa_bits(mantissa_bits);
+    return AddInstruction(std::move(instr), HloOpcode::kReducePrecision,
+                          {operand});
+  });
 }
 
 void XlaBuilder::Send(const XlaOp& operand, const ChannelHandle& handle) {
