@@ -21,7 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/framework/visitable_allocator.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"

@@ -1424,6 +1424,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   return Status::OK();
 }
 
+// TODO(b/74536353): do this simplification for BroadcastDimOne as well.
 StatusOr<bool> AlgebraicSimplifierVisitor::
     TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
         HloInstruction* reshape_or_broadcast) {

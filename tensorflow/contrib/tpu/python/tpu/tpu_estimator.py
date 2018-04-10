@@ -38,6 +38,8 @@ from tensorflow.contrib.tpu.python.tpu import tpu_context
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
+from tensorflow.contrib.training.python.training import hparam
+from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -53,6 +55,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -73,6 +76,8 @@ _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
+_TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
+_TPU_TRAIN_OP = '_tpu_train_op'
 
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
@@ -83,6 +88,13 @@ _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 # tf.while_loop (This can be disabled by returning features and labels
 # explicitly).
 _WRAP_INPUT_FN_INTO_WHILE_LOOP = False
+
+
+ops.register_proto_function(
+    '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR),
+    proto_type=variable_pb2.VariableDef,
+    to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
+    from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
 
 
 def _create_global_step(graph):
@@ -1297,7 +1309,10 @@ class _ModelFnWrapper(object):
       batch_size_for_model_fn = self._ctx.batch_size_for_model_fn
 
     if batch_size_for_model_fn is not None:
-      params[_BATCH_SIZE_KEY] = batch_size_for_model_fn
+      if isinstance(params, hparam.HParams):
+        params.add_hparam(_BATCH_SIZE_KEY, batch_size_for_model_fn)
+      else:
+        params[_BATCH_SIZE_KEY] = batch_size_for_model_fn
 
     estimator_spec = self._model_fn(features=features, **kwargs)
     if (self._ctx.is_running_on_cpu(is_export_mode) and
@@ -1936,7 +1951,10 @@ class TPUEstimator(estimator_lib.Estimator):
       # input_fn for use_tpu=True/False.
       batch_size_for_input_fn = ctx.batch_size_for_input_fn
       if batch_size_for_input_fn is not None:
-        kwargs['params'][_BATCH_SIZE_KEY] = batch_size_for_input_fn
+        if isinstance(kwargs['params'], hparam.HParams):
+          kwargs['params'].add_hparam(_BATCH_SIZE_KEY, batch_size_for_input_fn)
+        else:
+          kwargs['params'][_BATCH_SIZE_KEY] = batch_size_for_input_fn
 
       # For export_savedmodel, input_fn is never passed to Estimator. So,
       # `is_export_mode` must be False.
@@ -2006,6 +2024,13 @@ class TPUEstimator(estimator_lib.Estimator):
         enqueue_ops, dequeue_fn, input_hooks, run_infeed_loop_on_coordinator = (
             input_holders.generate_infeed_enqueue_ops_and_dequeue_fn())
 
+        graph = ops.get_default_graph()
+        for enqueue_op in enqueue_ops:
+          if isinstance(enqueue_op, list):
+            graph.get_collection_ref(_TPU_ENQUEUE_OPS).extend(enqueue_op)
+          else:
+            graph.add_to_collection(_TPU_ENQUEUE_OPS, enqueue_op)
+
         if mode == model_fn_lib.ModeKeys.TRAIN:
           loss, host_call, scaffold = (
               _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
@@ -2036,11 +2061,14 @@ class TPUEstimator(estimator_lib.Estimator):
           # Validate the TPU training graph to catch basic errors
           _validate_tpu_training_graph()
 
+          train_op = control_flow_ops.group(*update_ops)
+          graph.add_to_collection(_TPU_TRAIN_OP, train_op)
+
           return model_fn_lib.EstimatorSpec(
               mode,
               loss=loss,
               training_hooks=hooks,
-              train_op=control_flow_ops.group(*update_ops),
+              train_op=train_op,
               scaffold=scaffold)
 
         if mode == model_fn_lib.ModeKeys.EVAL:

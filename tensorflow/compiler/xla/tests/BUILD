@@ -1266,9 +1266,9 @@ xla_test(
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -1372,11 +1372,10 @@ xla_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:computation",
-        "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -1477,6 +1476,9 @@ xla_test(
 xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",

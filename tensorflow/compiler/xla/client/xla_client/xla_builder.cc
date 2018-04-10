@@ -548,7 +548,22 @@ XlaOp XlaBuilder::ConcatInDim(tensorflow::gtl::ArraySlice<XlaOp> operands,
 
 XlaOp XlaBuilder::Pad(const XlaOp& operand, const XlaOp& padding_value,
                       const PaddingConfig& padding_config) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& padding_value_shape,
+                        GetShape(padding_value));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferPadShape(operand_shape, padding_value_shape,
+                                      padding_config));
+
+    *instr.mutable_padding_config() = padding_config;
+
+    return AddInstruction(std::move(instr), HloOpcode::kPad,
+                          {operand, padding_value});
+  });
 }
 
 XlaOp XlaBuilder::Reshape(const XlaOp& operand,
@@ -578,7 +593,45 @@ XlaOp XlaBuilder::Reshape(const XlaOp& operand,
 
 XlaOp XlaBuilder::Collapse(const XlaOp& operand,
                            tensorflow::gtl::ArraySlice<int64> dimensions) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (dimensions.size() <= 1) {
+      // Not collapsing anything, trivially we can return the operand versus
+      // enqueueing a trivial reshape.
+      return operand;
+    }
+
+    // Out-of-order collapse is not supported.
+    // Checks that the collapsed dimensions are in order and consecutive.
+    for (tensorflow::gtl::ArraySlice<int64>::size_type i = 1;
+         i < dimensions.size(); ++i) {
+      if (dimensions[i] - 1 != dimensions[i - 1]) {
+        return InvalidArgument(
+            "Collapsed dimensions are not in consecutive order.");
+      }
+    }
+
+    // Create a new sizes vector from the old shape, replacing the collapsed
+    // dimensions by the product of their sizes.
+    TF_ASSIGN_OR_RETURN(const Shape& original_shape, GetShape(operand));
+
+    VLOG(3) << "original shape: " << ShapeUtil::HumanString(original_shape);
+    VLOG(3) << "dims to collapse: "
+            << tensorflow::str_util::Join(dimensions, ",");
+
+    std::vector<int64> new_sizes;
+    for (int i = 0; i < ShapeUtil::Rank(original_shape); ++i) {
+      if (i <= dimensions.front() || i > dimensions.back()) {
+        new_sizes.push_back(original_shape.dimensions(i));
+      } else {
+        new_sizes.back() *= original_shape.dimensions(i);
+      }
+    }
+
+    VLOG(3) << "new sizes: [" << tensorflow::str_util::Join(new_sizes, ",")
+            << "]";
+
+    return Reshape(operand, new_sizes);
+  });
 }
 
 void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
@@ -728,12 +781,41 @@ XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
 }
 
 XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    if (!LayoutUtil::HasLayout(shape)) {
+      return InvalidArgument("Given shape to Infeed must have a layout");
+    }
+    *instr.mutable_shape() = shape;
+    instr.set_infeed_config(config);
+    return AddInstruction(std::move(instr), HloOpcode::kInfeed);
+  });
 }
 
 void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
                          const string& outfeed_config) {
-  UnimplementedOp();
+  NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    *instr.mutable_shape() = ShapeUtil::MakeNil();
+
+    // Check and set outfeed shape.
+    if (!LayoutUtil::HasLayout(shape_with_layout)) {
+      return InvalidArgument("Given shape to Outfeed must have a layout");
+    }
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
+      return InvalidArgument(
+          "Outfeed shape %s must be compatible with operand shape %s",
+          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
+          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+    }
+    *instr.mutable_outfeed_shape() = shape_with_layout;
+
+    instr.set_outfeed_config(outfeed_config);
+
+    return AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand});
+  });
 }
 
 XlaOp XlaBuilder::CustomCall(const string& call_target_name,
