@@ -92,9 +92,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Convenience methods for building and running a computation with the member
   // execution options. Modify execution_options_ in your test if you want to
   // customize the options.
+  template <typename BuilderT>
   StatusOr<std::unique_ptr<GlobalData>> Execute(
-      ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+      BuilderT* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
   // TODO(b/74197823): Remove the template type 'BuilderT' in all methods once
   // the migration to XlaBuilder is complete.
@@ -300,10 +300,15 @@ class ClientLibraryTestBase : public ::testing::Test {
   // set exactly once. The first added parameter gets index 0, then 1 and so on.
   ComputationDataHandle AddParam(const Literal& argument,
                                  ComputationBuilder* builder);
+  XlaOp AddParam(const Literal& argument, XlaBuilder* builder);
 
   template <class T>
   ComputationDataHandle AddParam(const Array<T>& argument,
                                  ComputationBuilder* builder) {
+    return AddParam(*Literal::CreateFromArray(argument), builder);
+  }
+  template <class T>
+  XlaOp AddParam(const Array<T>& argument, XlaBuilder* builder) {
     return AddParam(*Literal::CreateFromArray(argument), builder);
   }
 

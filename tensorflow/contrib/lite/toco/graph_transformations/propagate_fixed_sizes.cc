@@ -1479,6 +1479,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kPRelu:
     case OperatorType::kSoftmax:
     case OperatorType::kLogSoftmax:
+    case OperatorType::kLog:
     case OperatorType::kLogistic:
     case OperatorType::kTanh:
     case OperatorType::kLocalResponseNormalization:

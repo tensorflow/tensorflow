@@ -1081,17 +1081,26 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   t = ::tensorflow::test::AsTensor<int64>({});
   EXPECT_EQ("[]", create(&t));
 
+  // Test negative scalar
+  t = ::tensorflow::test::AsScalar<int32>(-1);
+  EXPECT_EQ("?", create(&t));
+
   t = ::tensorflow::test::AsTensor<float>({1, 2, 3});
   EXPECT_TRUE(str_util::StrContains(
       create(&t), "Input tensor must be int32 or int64, but was float"));
 
   t = ::tensorflow::test::AsScalar<int32>(1);
+  auto s_scalar = create(&t);
   EXPECT_TRUE(str_util::StrContains(
-      create(&t), "Input tensor must be rank 1, but was rank 0"));
+      s_scalar,
+      "Input tensor must be rank 1, or if its rank 0 it must have value -1"))
+      << s_scalar;
 
   t = ::tensorflow::test::AsTensor<int32>({1, 2}, TensorShape{2, 1});
+  auto s_matrix = create(&t);
   EXPECT_TRUE(str_util::StrContains(
-      create(&t), "Input tensor must be rank 1, but was rank 2"));
+      s_matrix, "Input tensor must be rank 1, but was rank 2"))
+      << s_matrix;
 
   // Test negative values for the dims.
   t = ::tensorflow::test::AsTensor<int64>({3, -2, 1});

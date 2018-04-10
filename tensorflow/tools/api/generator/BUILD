@@ -32,6 +32,7 @@ genrule(
     # api/module1/module2/__init__.py and api/module3/__init__.py.
     # keep sorted
     outs = [
+        # BEGIN GENERATED FILES
         "api/__init__.py",
         "api/app/__init__.py",
         "api/bitwise/__init__.py",
@@ -117,6 +118,7 @@ genrule(
         "api/train/__init__.py",
         "api/train/queue_runner/__init__.py",
         "api/user_ops/__init__.py",
+        # END GENERATED FILES
     ],
     cmd = "$(location create_python_api) $(OUTS)",
     tools = ["create_python_api"],

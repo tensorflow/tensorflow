@@ -51,7 +51,7 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
     if backend == "cpu":
       backend_args += [
           "--test_device=XLA_CPU",
-          "--types=DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64"
+          "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64"
       ]
     elif backend == "gpu":
       backend_args += [

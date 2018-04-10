@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -158,7 +159,7 @@ class LayoutOptimizerTest : public ::testing::Test {
     return output.x_backprop;
   }
 
-  std::unique_ptr<VirtualCluster> virtual_cluster_;
+  std::unique_ptr<Cluster> virtual_cluster_;
 };
 
 TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
@@ -1129,6 +1130,27 @@ TEST_F(LayoutOptimizerTest, LoopNoLiveLock) {
   auto mul_node = node_map.GetNode("mul");
   EXPECT_EQ(mul_node->input(0),
             "Conv2D-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
+}
+
+TEST_F(LayoutOptimizerTest, DevicePlacement) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  auto shape = ops::Shape(s.WithOpName("s"), conv);
+  auto i = ops::Identity(s.WithOpName("i"), shape);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  VirtualPlacer virtual_placer(virtual_cluster_.get());
+  for (auto& node : *item.graph.mutable_node()) {
+    string device = virtual_placer.get_canonical_device_name(node);
+    node.set_device(device);
+  }
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto vec_permute =
+      node_map.GetNode("s-0-0-VecPermuteNCHWToNHWC-LayoutOptimizer");
+  EXPECT_EQ(vec_permute->device(), "/device:CPU:0");
 }
 }  // namespace
 }  // namespace grappler

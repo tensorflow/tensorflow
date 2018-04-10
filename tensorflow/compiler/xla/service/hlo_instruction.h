@@ -401,6 +401,10 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
+  // Creates a broadcast-size-one-dimensions instruction.
+  static std::unique_ptr<HloInstruction> CreateBroadcastDimOne(
+      const Shape& shape, HloInstruction* operand);
+
   // Creates a sequence of instructions that performs an explicit broadcast of
   // the operand to the target shape.
   //

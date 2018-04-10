@@ -59,6 +59,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool enable_try_simplify_and_replace = true;
     bool combine_add_to_addn = false;
     bool hoist_common_factor_out_of_aggregation = true;
+    bool minimize_broadcasts = false;
     bool remove_identity_transpose = true;
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
@@ -69,10 +70,10 @@ class ArithmeticOptimizer : public GraphOptimizer {
     static ArithmeticOptimizerOptions Default(
         RewriterConfig::Toggle opt_level) {
       ArithmeticOptimizerOptions options;
-      // TODO(ezhulenev): enable combine_add_to_addn by default after 1.8
-      // release cut
+      // TODO(ezhulenev): enable by default after 1.8 release cut
       if (opt_level == RewriterConfig::AGGRESSIVE) {
         options.combine_add_to_addn = true;
+        options.minimize_broadcasts = true;
       }
       return options;
     }
