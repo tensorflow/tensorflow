@@ -34,6 +34,19 @@ class DecodeCSVOp : public OpKernel {
                 errors::InvalidArgument("Out type too large"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_delim", &delim));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_quote_delim", &use_quote_delim_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("select_cols", &select_cols_));
+    OP_REQUIRES(
+        ctx, out_type_.size() == select_cols_.size() || select_cols_.empty(),
+        errors::InvalidArgument("select_cols should match output size"));
+    select_all_cols_ = select_cols_.empty();
+    for (int i = 1; i < select_cols_.size(); i++) {
+      OP_REQUIRES(ctx, select_cols_[i - 1] < select_cols_[i],
+                  errors::InvalidArgument(
+                      "select_cols should be strictly increasing indices"));
+    }
+    OP_REQUIRES(
+        ctx, select_cols_.empty() || select_cols_.front() >= 0,
+        errors::InvalidArgument("select_cols should be non-negative indices"));
     OP_REQUIRES(ctx, delim.size() == 1,
                 errors::InvalidArgument("field_delim should be only 1 char"));
     delim_ = delim[0];
@@ -183,13 +196,18 @@ class DecodeCSVOp : public OpKernel {
 
  private:
   std::vector<DataType> out_type_;
+  std::vector<int64> select_cols_;
   char delim_;
   bool use_quote_delim_;
+  bool select_all_cols_;
   string na_value_;
 
   void ExtractFields(OpKernelContext* ctx, StringPiece input,
                      std::vector<string>* result) {
     int64 current_idx = 0;
+    int64 num_fields_parsed = 0;
+    int64 selector_idx = 0;  // Keep track of index into select_cols
+
     if (!input.empty()) {
       while (static_cast<size_t>(current_idx) < input.size()) {
         if (input[current_idx] == '\n' || input[current_idx] == '\r') {
@@ -198,6 +216,10 @@ class DecodeCSVOp : public OpKernel {
         }
 
         bool quoted = false;
+        bool include =
+            (select_all_cols_ || select_cols_[selector_idx] ==
+                                     static_cast<size_t>(num_fields_parsed));
+
         if (use_quote_delim_ && input[current_idx] == '"') {
           quoted = true;
           current_idx++;
@@ -214,7 +236,7 @@ class DecodeCSVOp : public OpKernel {
                             input[current_idx] != '\r',
                         errors::InvalidArgument(
                             "Unquoted fields cannot have quotes/CRLFs inside"));
-            field += input[current_idx];
+            if (include) field += input[current_idx];
             current_idx++;
           }
 
@@ -226,14 +248,14 @@ class DecodeCSVOp : public OpKernel {
               (static_cast<size_t>(current_idx) < input.size() - 1) &&
               (input[current_idx] != '"' || input[current_idx + 1] != delim_)) {
             if (input[current_idx] != '"') {
-              field += input[current_idx];
+              if (include) field += input[current_idx];
               current_idx++;
             } else {
               OP_REQUIRES(
                   ctx, input[current_idx + 1] == '"',
                   errors::InvalidArgument("Quote inside a string has to be "
                                           "escaped by another quote"));
-              field += '"';
+              if (include) field += '"';
               current_idx += 2;
             }
           }
@@ -250,11 +272,20 @@ class DecodeCSVOp : public OpKernel {
           current_idx += 2;
         }
 
-        result->push_back(field);
+        num_fields_parsed++;
+        if (include) {
+          result->push_back(field);
+          selector_idx++;
+          if (selector_idx == select_cols_.size()) return;
+        }
       }
 
+      bool include =
+          (select_all_cols_ || select_cols_[selector_idx] ==
+                                   static_cast<size_t>(num_fields_parsed));
       // Check if the last field is missing
-      if (input[input.size() - 1] == delim_) result->push_back(string());
+      if (include && input[input.size() - 1] == delim_)
+        result->push_back(string());
     }
   }
 };
