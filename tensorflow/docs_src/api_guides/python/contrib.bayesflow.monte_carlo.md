@@ -6,7 +6,7 @@ Monte Carlo integration and helpers.
 ## Background
 
 Monte Carlo integration refers to the practice of estimating an expectation with
-a sample mean.  For example, given random variable `Z in \\(R^k\\)` with density `p`,
+a sample mean.  For example, given random variable Z in \\(R^k\\) with density `p`,
 the expectation of function `f` can be approximated like:
 
 $$E_p[f(Z)] = \int f(z) p(z) dz$$
