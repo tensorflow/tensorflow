@@ -257,7 +257,6 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   // Parse default value, if present.
   if (str_util::ConsumePrefix(&spec, "=")) {
     str_util::RemoveLeadingWhitespace(&spec);
-    LOG(INFO) << "About to parse '" << spec << "' of type: " << type;
     VERIFY(ParseAttrValue(attr->type(), spec, attr->mutable_default_value()),
            "Could not parse default value '", spec, "'");
   } else {

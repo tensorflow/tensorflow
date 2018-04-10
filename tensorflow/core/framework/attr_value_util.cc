@@ -293,7 +293,6 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
     to_parse = strings::StrCat(field_name, ": ", text);
   }
 
-  LOG(INFO) << "Parsing " << to_parse;
   return ProtoParseFromString(to_parse, out);
 }
 
