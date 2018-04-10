@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <functional>
 #include <numeric>
+#include <queue>
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -82,7 +85,7 @@ StatusOr<Shape> XlaOp::GetShape() const {
 }
 
 XlaBuilder::XlaBuilder(const string& computation_name)
-    : name_(computation_name), unique_id_(GetUniqueId()) {}
+    : name_(computation_name) {}
 
 XlaBuilder::~XlaBuilder() {}
 
@@ -111,10 +114,11 @@ XlaOp XlaBuilder::NoteErrorOrReturn(
   return op.ConsumeValueOrDie();
 }
 
-StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64* root_id) {
+StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64* root_id) const {
   TF_RETURN_IF_ERROR(first_error_);
 
   TF_RET_CHECK(root_id != nullptr);
+
   ProgramShape program_shape;
 
   // Not all instructions can be roots. Walk backwards from the last added
@@ -155,9 +159,56 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64* root_id) {
   return program_shape;
 }
 
-StatusOr<ProgramShape> XlaBuilder::GetProgramShape() {
-  int64 root_id;
-  return GetProgramShape(&root_id);
+StatusOr<ProgramShape> XlaBuilder::GetProgramShape() const {
+  int64 root;
+  return GetProgramShape(&root);
+}
+
+void XlaBuilder::IsConstantVisitor(const int64 op_handle,
+                                   std::set<int64>* visited,
+                                   bool* is_constant) const {
+  if (visited->count(op_handle) != 0 || !*is_constant) {
+    return;
+  }
+
+  CHECK(op_handle < instructions_.size() && op_handle >= 0);
+
+  const HloInstructionProto& instr = instructions_[op_handle];
+  const HloOpcode opcode = StringToHloOpcode(instr.opcode()).ValueOrDie();
+  switch (opcode) {
+    default:
+      for (const int64 operand_id : instr.operand_ids()) {
+        IsConstantVisitor(operand_id, visited, is_constant);
+      }
+      // TODO(b/32495713): We aren't checking the called computations.
+      break;
+
+    // Non functional ops.
+    case HloOpcode::kRng:
+    case HloOpcode::kCrossReplicaSum:
+      // TODO(b/33009255): Implmement constant folding for cross replica sum.
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kHostCompute:
+    case HloOpcode::kCall:
+      // TODO(b/32495713): We aren't checking the to_apply computation itself,
+      // so we conservatively say that computations containing the Call op
+      // cannot be constant.  We cannot set is_functional=false in other similar
+      // cases since we're already relying on IsConstant to return true.
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kWhile:
+      // TODO(b/32495713): We aren't checking the condition and body
+      // computations themselves.
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+    case HloOpcode::kParameter:
+      *is_constant = false;
+      break;
+  }
+  if (!*is_constant) {
+    VLOG(1) << "Non-constant: " << instr.name();
+  }
+  visited->insert(op_handle);
 }
 
 XlaComputation XlaBuilder::BuildAndNoteError() {
@@ -180,21 +231,24 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
   }
 
   HloComputationProto entry;
+  entry.set_id(GetUniqueId());  // Give the computation a global unique id.
+  entry.set_name(StrCat(name_, entry.id()));  // Ensure that the name is unique.
 
   {
     int64 root_id;
-    ProgramShape program_shape;
-    TF_ASSIGN_OR_RETURN(program_shape, GetProgramShape(&root_id));
-    entry.mutable_program_shape()->Swap(&program_shape);
+    TF_ASSIGN_OR_RETURN(*entry.mutable_program_shape(),
+                        GetProgramShape(&root_id));
     entry.set_root_id(root_id);
   }
 
   for (auto& instruction : instructions_) {
+    // Ensures that the instruction names are unique among the whole graph.
+    const string& new_name =
+        StrCat(instruction.name(), ".", entry.id(), ".", instruction.id());
+    instruction.set_name(new_name);
     entry.add_instructions()->Swap(&instruction);
   }
 
-  entry.set_id(unique_id_);
-  entry.set_name(StrCat(name_, entry.id()));  // Ensure that the name is unique.
   XlaComputation computation(entry.id());
   HloModuleProto* module = computation.mutable_proto();
   module->set_name(entry.name());
@@ -417,11 +471,10 @@ XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
                             const string& name) {
   return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
-    if (parameter_numbers_.find(parameter_number) != parameter_numbers_.end()) {
+    if (!parameter_numbers_.insert(parameter_number).second) {
       return InvalidArgument("parameter %lld already registered",
                              parameter_number);
     }
-    parameter_numbers_.insert(parameter_number);
     instr.set_parameter_number(parameter_number);
     instr.set_name(name);
     *instr.mutable_shape() = shape;
@@ -777,7 +830,20 @@ XlaOp XlaBuilder::ConvGeneralDilated(
 
 XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
                       const tensorflow::gtl::ArraySlice<int64> fft_length) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, operand.GetShape());
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferFftShape(operand_shape, fft_type, fft_length));
+
+    instr.set_fft_type(fft_type);
+    for (int64 i : fft_length) {
+      instr.add_fft_length(i);
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kFft, {operand});
+  });
 }
 
 XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
@@ -821,7 +887,18 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
 XlaOp XlaBuilder::CustomCall(const string& call_target_name,
                              tensorflow::gtl::ArraySlice<XlaOp> operands,
                              const Shape& shape) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    if (tensorflow::str_util::StartsWith(call_target_name, "$")) {
+      return InvalidArgument(
+          "Invalid custom_call_target \"%s\": Call targets that start with '$' "
+          "are reserved for internal use.",
+          call_target_name.c_str());
+    }
+    *instr.mutable_shape() = shape;
+    instr.set_custom_call_target(call_target_name);
+    return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
+  });
 }
 
 XlaOp XlaBuilder::HostCompute(tensorflow::gtl::ArraySlice<XlaOp> operands,
@@ -1249,15 +1326,98 @@ XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
   });
 }
 
-StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand,
-                                      int64 num_parameters) {
-  return Unimplemented("IsConstant is not implemented.");
+StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
+  TF_RETURN_IF_ERROR(first_error_);
+
+  // Verify that the handle is valid.
+  TF_RETURN_IF_ERROR(LookUpInstruction(operand).status());
+
+  bool is_constant = true;
+  std::set<int64> visited;
+  IsConstantVisitor(operand.handle(), &visited, &is_constant);
+  return is_constant;
 }
 
-StatusOr<std::unique_ptr<Literal>> XlaBuilder::ComputeConstant(
-    const XlaOp& operand, const Layout* output_layout,
-    tensorflow::gtl::ArraySlice<Literal> parameters) {
-  return Unimplemented("ComputeConstant is not implemented");
+StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
+    const XlaOp& root_op) const {
+  TF_ASSIGN_OR_RETURN(bool is_constant, IsConstant(root_op));
+  if (!is_constant) {
+    auto op_status = LookUpInstruction(root_op);
+    string op_string =
+        op_status.ok() ? op_status.ValueOrDie()->name() : "<unknown operation>";
+    return InvalidArgument(
+        "Operand to BuildConstantSubGraph depends on a parameter.\n\n"
+        "  op requested for constant subgraph: %s\n\n"
+        "This is an internal error that typically happens when the XLA user "
+        "(e.g. TensorFlow) is attempting to determine a value that must be a "
+        "compile-time constant (e.g. an array dimension) but it is not capable "
+        "of being evaluated at XLA compile time.\n\n"
+        "Please file a usability bug with the framework being used (e.g. "
+        "TensorFlow).",
+        op_string.c_str());
+  }
+
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
+                      LookUpInstruction(root_op));
+  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
+  if (!CanBeRoot(opcode)) {
+    return InvalidArgument("the operand with opcode %s cannot be root",
+                           root->opcode().c_str());
+  }
+
+  HloComputationProto entry;
+  entry.set_id(GetUniqueId());  // Give the computation a global unique id.
+  entry.set_name(StrCat(name_, entry.id(), "_compute_constant"));
+  entry.set_root_id(root->id());
+  ProgramShape* program_shape = entry.mutable_program_shape();
+  *program_shape->mutable_result() = root->shape();
+
+  // We use std::set to keep the instruction ids in ascending order (which is
+  // also a valid denpendency order). The related ops will be added to the
+  // subgraph in the same order.
+  std::set<int64> related_ops;
+  tensorflow::gtl::FlatSet<int64> related_calls;  // Related computations.
+  std::queue<int64> worklist;
+  worklist.push(root->id());
+  related_ops.insert(root->id());
+  while (!worklist.empty()) {
+    int64 node = worklist.front();
+    worklist.pop();
+    for (int64 id : instructions_[node].operand_ids()) {
+      if (related_ops.insert(id).second) {
+        worklist.push(id);
+      }
+    }
+    for (int64 called_id : instructions_[node].called_computation_ids()) {
+      related_calls.insert(called_id);
+    }
+  }
+
+  // Add related ops to the computation.
+  for (int64 id : related_ops) {
+    auto* instr = entry.add_instructions();
+    *instr = instructions_[id];
+    // Ensures that the instruction names are unique among the graph.
+    const string& new_name =
+        StrCat(instr->name(), ".", entry.id(), ".", instr->id());
+    instr->set_name(new_name);
+  }
+
+  XlaComputation computation(entry.id());
+  HloModuleProto* module = computation.mutable_proto();
+  module->set_name(entry.name());
+  module->set_id(entry.id());
+  module->set_entry_computation_name(entry.name());
+  module->set_entry_computation_id(entry.id());
+  *module->mutable_program_shape() = *program_shape;
+  for (auto& e : embedded_) {
+    if (related_calls.find(e.second.id()) != related_calls.end()) {
+      *module->add_computations() = e.second;
+    }
+  }
+  *module->add_computations() = std::move(entry);
+
+  return std::move(computation);
 }
 
 std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
@@ -1266,10 +1426,6 @@ std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
   sub_builder->parent_builder_ = this;
   sub_builder->die_immediately_on_error_ = this->die_immediately_on_error_;
   return sub_builder;
-}
-
-Status XlaBuilder::SetReturnValue(const XlaOp& operand) {
-  return Unimplemented("SetReturnValue is not implemented.");
 }
 
 /* static */ ConvolutionDimensionNumbers
@@ -1351,10 +1507,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(
   instr.set_id(handle);
   instr.set_opcode(HloOpcodeString(opcode));
   if (instr.name().empty()) {
-    instr.set_name(StrCat(instr.opcode(), ".", unique_id_, ".", handle));
-  } else {
-    // Append the handle to make sure the name is unique.
-    instr.set_name(StrCat(instr.name(), ".", unique_id_, ".", handle));
+    instr.set_name(StrCat(instr.opcode()));
   }
   for (const auto& operand : operands) {
     if (operand.builder_ == nullptr) {

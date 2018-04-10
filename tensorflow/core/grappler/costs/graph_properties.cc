@@ -920,9 +920,9 @@ Status GraphProperties::UpdateResource(
 }
 
 Status GraphProperties::InferStatically(bool assume_valid_feeds) {
-  Graph graph(OpRegistry::Global());
-  FunctionLibraryDefinition function_library(graph.op_registry(),
+  FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item_.graph.library());
+  Graph graph(function_library);
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   shape_refiner.set_disable_constant_propagation(true);

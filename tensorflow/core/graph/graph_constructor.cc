@@ -1019,12 +1019,7 @@ Status GraphConstructor::Convert() {
       }
     }
 
-    // Function shape inference is supported on an opt-in basis per
-    // ShapeRefiner.
-    if (refiner_->function_shape_inference_supported() ||
-        g_->flib_def().Find(node_def->name()) == nullptr) {
-      TF_RETURN_IF_ERROR(ValidateShape(node));
-    }
+    TF_RETURN_IF_ERROR(ValidateShape(node));
 
     // Update pending_count_ for outputs.
     UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);

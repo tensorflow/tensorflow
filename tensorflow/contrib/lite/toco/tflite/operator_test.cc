@@ -111,6 +111,8 @@ TEST_F(OperatorTest, SimpleOperators) {
                                           OperatorType::kLogSoftmax);
   CheckSimpleOperator<TensorFlowMaximumOperator>(
       "MAXIMUM", OperatorType::kTensorFlowMaximum);
+  CheckSimpleOperator<TensorFlowMinimumOperator>(
+      "MINIMUM", OperatorType::kTensorFlowMinimum);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -389,6 +391,13 @@ TEST_F(OperatorTest, BuiltinTopKV2) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("TOPK_V2", OperatorType::kTopK_V2), op);
   ASSERT_NE(nullptr, output_toco_op.get());
+}
+
+TEST_F(OperatorTest, BuiltinArgMax) {
+  ArgMaxOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ARG_MAX", OperatorType::kArgMax), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {
