@@ -66,6 +66,10 @@ message OpMetricsDbResult {
   // The total of the difference between the start times of two
   // consecutive infeed-enqueues (per host) in picoseconds.
   optional uint64 total_host_infeed_enq_start_timestamp_ps_diff = 3;
+  // The total device time in microseconds.
+  optional double total_device_time_in_us = 4;
+  // The total host time in microseconds.
+  optional double total_host_time_in_us = 5;
 }
 
 // Result proto for StepInfo.

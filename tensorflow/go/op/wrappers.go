@@ -13882,6 +13882,14 @@ func DecodeCSVNaValue(value string) DecodeCSVAttr {
 	}
 }
 
+// DecodeCSVSelectCols sets the optional select_cols attribute to value.
+// If not specified, defaults to <>
+func DecodeCSVSelectCols(value []int64) DecodeCSVAttr {
+	return func(m optionalAttr) {
+		m["select_cols"] = value
+	}
+}
+
 // Convert CSV records to tensors. Each column maps to one tensor.
 //
 // RFC 4180 format is expected for the CSV records.

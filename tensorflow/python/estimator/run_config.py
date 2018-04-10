@@ -316,7 +316,7 @@ class RunConfig(object):
     a list of task addresses.
 
     `task` has two attributes: `type` and `index`, where `type` can be any of
-    the task types in `cluster`. ` When `TF_CONFIG` contains said information,
+    the task types in `cluster`. When `TF_CONFIG` contains said information,
     the following properties are set on this class:
 
     * `cluster_spec` is parsed from `TF_CONFIG['cluster']`. Defaults to {}. If

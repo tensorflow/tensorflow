@@ -94,6 +94,11 @@ std::map<string, string> kBrokenTests = {
 
     // No support for axis!=0 in GatherV2.
     {R"(^\/gather.*axis=1)", "76910444"},
+
+    // No support for arbitrary dimensions in ArgMax.
+    {R"(^\/arg_max.*axis=0)", "77546240"},
+    {R"(^\/arg_max.*axis=1)", "77546240"},
+    {R"(^\/arg_max.*axis=2)", "77546240"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -236,6 +241,7 @@ TEST_P(OpsTest, RunStuff) {
       ::testing::ValuesIn(UnarchiveZipAndFindTestNames(#zip_base ".zip")));
 
 INSTANTIATE_TESTS(add)
+INSTANTIATE_TESTS(arg_max)
 INSTANTIATE_TESTS(avg_pool)
 INSTANTIATE_TESTS(batch_to_space_nd)
 INSTANTIATE_TESTS(concat)
@@ -256,6 +262,7 @@ INSTANTIATE_TESTS(log_softmax)
 INSTANTIATE_TESTS(maximum)
 INSTANTIATE_TESTS(max_pool)
 INSTANTIATE_TESTS(mean)
+INSTANTIATE_TESTS(minimum)
 INSTANTIATE_TESTS(mul)
 INSTANTIATE_TESTS(pad)
 INSTANTIATE_TESTS(relu)

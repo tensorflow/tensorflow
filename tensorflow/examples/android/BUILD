@@ -76,7 +76,6 @@ android_binary(
     custom_package = "org.tensorflow.demo",
     inline_constants = 1,
     manifest = "AndroidManifest.xml",
-    manifest_merger = "legacy",
     resource_files = glob(["res/**"]),
     tags = [
         "manual",

@@ -662,6 +662,23 @@ class TopK_V2 : public BuiltinOperator<TopKV2Operator, ::tflite::TopKV2Options,
                    TocoOperator* op) const override {}
 };
 
+class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
+                                      ::tflite::BuiltinOptions_ArgMaxOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateArgMaxOptions(
+        *builder, DataType::Serialize(op.output_data_type));
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->output_data_type = DataType::Deserialize(options.output_type());
+  }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -834,6 +851,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Lstm(::tflite::BuiltinOperator_LSTM, OperatorType::kLstmCell));
   ops.emplace_back(
       new Cast(::tflite::BuiltinOperator_CAST, OperatorType::kCast));
+  ops.emplace_back(
+      new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
 
   // Custom Operators.
   ops.emplace_back(
@@ -871,6 +890,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
   ops.emplace_back(new SimpleOperator<TensorFlowMaximumOperator>(
       "MAXIMUM", OperatorType::kTensorFlowMaximum));
+  ops.emplace_back(new SimpleOperator<TensorFlowMinimumOperator>(
+      "MINIMUM", OperatorType::kTensorFlowMinimum));
 
   return ops;
 }

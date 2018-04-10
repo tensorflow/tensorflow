@@ -1925,6 +1925,14 @@ TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   item.fetch.push_back("reshape");
 
+  auto input_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 4}));
+  Tensor indices_t(DT_INT32, TensorShape({2}));
+  indices_t.flat<int>()(0) = 0;
+  indices_t.flat<int>()(1) = 1;
+  auto tensors_expected = EvaluateNodes(
+      item.graph, item.fetch, {{"input", input_t}, {"indices", indices_t}});
+  EXPECT_EQ(1, tensors_expected.size());
+
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -1951,6 +1959,11 @@ TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
     }
   }
   EXPECT_EQ(3, found);
+
+  auto tensors = EvaluateNodes(output, item.fetch,
+                               {{"input", input_t}, {"indices", indices_t}});
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-5);
 }
 
 TEST_F(ConstantFoldingTest, LargeConstant) {
@@ -2047,6 +2060,23 @@ TEST_F(ConstantFoldingTest, SwitchIdenticalInputs) {
     }
   }
   EXPECT_EQ(6, found);
+
+  // Evaluate id_true when input tensor x is true.
+  Tensor x_t(DT_BOOL, TensorShape({}));
+  x_t.flat<bool>()(0) = true;
+  auto tensors_expected = EvaluateNodes(item.graph, {"id_true"}, {{"x", x_t}});
+  EXPECT_EQ(1, tensors_expected.size());
+  auto tensors = EvaluateNodes(output, {"id_true"}, {{"x", x_t}});
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<bool>(tensors_expected[0], tensors[0]);
+
+  // Evalute id_false when input tensor is false.
+  x_t.flat<bool>()(0) = false;
+  tensors_expected = EvaluateNodes(item.graph, {"id_false"}, {{"x", x_t}});
+  EXPECT_EQ(1, tensors_expected.size());
+  tensors = EvaluateNodes(output, {"id_false"}, {{"x", x_t}});
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<bool>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ConstantFoldingTest, PartialFolding_AssociativeAndCommutative) {
@@ -2287,6 +2317,15 @@ TEST_F(ConstantFoldingTest, PartialFolding_IdentityN) {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("^id_n", node.input(0));
     }
+  }
+
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({}));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+  EXPECT_EQ(4, tensors_expected.size());
+  auto tensors = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+  EXPECT_EQ(4, tensors.size());
+  for (int i = 0; i < tensors.size(); i++) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-5);
   }
 }
 
