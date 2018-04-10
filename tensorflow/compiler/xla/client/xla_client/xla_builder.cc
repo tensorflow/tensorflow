@@ -887,7 +887,18 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
 XlaOp XlaBuilder::CustomCall(const string& call_target_name,
                              tensorflow::gtl::ArraySlice<XlaOp> operands,
                              const Shape& shape) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    if (tensorflow::str_util::StartsWith(call_target_name, "$")) {
+      return InvalidArgument(
+          "Invalid custom_call_target \"%s\": Call targets that start with '$' "
+          "are reserved for internal use.",
+          call_target_name.c_str());
+    }
+    *instr.mutable_shape() = shape;
+    instr.set_custom_call_target(call_target_name);
+    return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
+  });
 }
 
 XlaOp XlaBuilder::HostCompute(tensorflow::gtl::ArraySlice<XlaOp> operands,
