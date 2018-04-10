@@ -87,10 +87,9 @@ TfDriver::TfDriver(const std::vector<string>& input_layer,
 
 void TfDriver::LoadModel(const string& bin_file_path) {
   if (!IsValid()) return;
-  std::cout << std::endl << "Loading model: " << bin_file_path << std::endl;
   std::ifstream model(bin_file_path);
   if (model.fail()) {
-    Invalidate("Failed to find the model");
+    Invalidate("Failed to find the model " + bin_file_path);
     return;
   }
 
@@ -119,6 +118,10 @@ void TfDriver::SetInput(int id, const string& csv_values) {
     }
     case tensorflow::DT_INT32: {
       FillTensorWithData<int32_t>(&tensor, csv_values);
+      break;
+    }
+    case tensorflow::DT_UINT8: {
+      FillTensorWithData<uint8_t>(&tensor, csv_values);
       break;
     }
     default:
@@ -162,6 +165,8 @@ string TfDriver::ReadOutput(int id) {
       return TensorDataToCsvString<float>(output_tensors_[id]);
     case tensorflow::DT_INT32:
       return TensorDataToCsvString<int32_t>(output_tensors_[id]);
+    case tensorflow::DT_UINT8:
+      return TensorDataToCsvString<uint8_t>(output_tensors_[id]);
     default:
       fprintf(stderr, "Unsupported type %d in ResetTensor\n", input_types_[id]);
       Invalidate("Unsupported tensor data type");
