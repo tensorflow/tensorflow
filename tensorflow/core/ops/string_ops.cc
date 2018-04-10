@@ -123,6 +123,17 @@ REGISTER_OP("StringSplit")
       return Status::OK();
     });
 
+REGISTER_OP("StringStrip")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Strip leading and trailing whitespaces from the Tensor.
+
+input: A string `Tensor` of any shape.
+output: A string `Tensor` of the same shape as the input.
+)doc");
+
 REGISTER_OP("EncodeBase64")
     .Input("input: string")
     .Output("output: string")
