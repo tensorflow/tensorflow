@@ -11,6 +11,10 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_protos_grappler",
 )
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+)
 
 cc_library(
     name = "static_schedule",
@@ -532,11 +536,28 @@ tf_cuda_cc_test(
     ],
 )
 
+# This rule is header-only unless the build is static (--config=monolithic). Its
+# implementation is included directly in the framework shared object.
 cc_library(
     name = "custom_graph_optimizer_registry",
-    srcs = ["custom_graph_optimizer_registry.cc"],
     hdrs = ["custom_graph_optimizer_registry.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        ":custom_graph_optimizer",
+        "//tensorflow/core:lib",
+    ] + if_static(
+        [":custom_graph_optimizer_registry_impl"],
+    ),
+)
+
+# This rule contains static variables for the optimizer registry. Do not depend
+# on it directly; use :custom_graph_optimizer_registry, and link against
+# libtensorflow_framework.so for the registry symbols.
+cc_library(
+    name = "custom_graph_optimizer_registry_impl",
+    srcs = ["custom_graph_optimizer_registry.cc"],
+    hdrs = ["custom_graph_optimizer_registry.h"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":custom_graph_optimizer",
         "//tensorflow/core:lib",
