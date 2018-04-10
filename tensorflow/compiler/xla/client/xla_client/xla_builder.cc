@@ -790,24 +790,101 @@ XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
   });
 }
 
+Status XlaBuilder::VerifyConvolution(
+    const Shape& lhs_shape, const Shape& rhs_shape,
+    const ConvolutionDimensionNumbers& dimension_numbers) const {
+  if (ShapeUtil::Rank(lhs_shape) != ShapeUtil::Rank(rhs_shape)) {
+    return InvalidArgument(
+        "Convolution arguments must have same number of "
+        "dimensions. Got: %s and %s",
+        ShapeUtil::HumanString(lhs_shape).c_str(),
+        ShapeUtil::HumanString(rhs_shape).c_str());
+  }
+  int num_dims = ShapeUtil::Rank(lhs_shape);
+  if (num_dims < 2) {
+    return InvalidArgument(
+        "Convolution expects argument arrays with >= 3 dimensions. "
+        "Got: %s and %s",
+        ShapeUtil::HumanString(lhs_shape).c_str(),
+        ShapeUtil::HumanString(rhs_shape).c_str());
+  }
+  int num_spatial_dims = num_dims - 2;
+
+  const auto check_spatial_dimensions =
+      [&](const char* const field_name,
+          const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>&
+              numbers) {
+        if (numbers.size() != num_spatial_dims) {
+          return InvalidArgument("Expected %d elements for %s, but got %d.",
+                                 num_spatial_dims, field_name, numbers.size());
+        }
+        for (int i = 0; i < numbers.size(); ++i) {
+          if (numbers.Get(i) < 0 || numbers.Get(i) >= num_dims) {
+            return InvalidArgument("Convolution %s[%d] is out of bounds: %lld",
+                                   field_name, i, numbers.Get(i));
+          }
+        }
+        return Status::OK();
+      };
+  TF_RETURN_IF_ERROR(
+      check_spatial_dimensions("input_spatial_dimensions",
+                               dimension_numbers.input_spatial_dimensions()));
+  TF_RETURN_IF_ERROR(
+      check_spatial_dimensions("kernel_spatial_dimensions",
+                               dimension_numbers.kernel_spatial_dimensions()));
+  return check_spatial_dimensions(
+      "output_spatial_dimensions",
+      dimension_numbers.output_spatial_dimensions());
+}
+
 XlaOp XlaBuilder::Conv(const XlaOp& lhs, const XlaOp& rhs,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
-  return UnimplementedOp();
+  return ConvWithGeneralDimensions(
+      lhs, rhs, window_strides, padding,
+      CreateDefaultConvDimensionNumbers(window_strides.size()));
 }
 
 XlaOp XlaBuilder::ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
-  return UnimplementedOp();
+  return ConvGeneral(lhs, rhs, window_strides, padding,
+                     CreateDefaultConvDimensionNumbers(window_strides.size()));
 }
 
 XlaOp XlaBuilder::ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
     const ConvolutionDimensionNumbers& dimension_numbers) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
+    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
+
+    TF_RETURN_IF_ERROR(
+        VerifyConvolution(lhs_shape, rhs_shape, dimension_numbers));
+
+    std::vector<int64> base_area_dimensions(
+        dimension_numbers.input_spatial_dimensions_size());
+    for (std::vector<int64>::size_type i = 0; i < base_area_dimensions.size();
+         ++i) {
+      base_area_dimensions[i] =
+          lhs_shape.dimensions(dimension_numbers.input_spatial_dimensions(i));
+    }
+
+    std::vector<int64> window_dimensions(
+        dimension_numbers.kernel_spatial_dimensions_size());
+    for (std::vector<int64>::size_type i = 0; i < window_dimensions.size();
+         ++i) {
+      window_dimensions[i] =
+          rhs_shape.dimensions(dimension_numbers.kernel_spatial_dimensions(i));
+    }
+
+    return ConvGeneral(lhs, rhs, window_strides,
+                       MakePadding(base_area_dimensions, window_dimensions,
+                                   window_strides, padding),
+                       dimension_numbers);
+  });
 }
 
 XlaOp XlaBuilder::ConvGeneral(
@@ -815,7 +892,8 @@ XlaOp XlaBuilder::ConvGeneral(
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     const ConvolutionDimensionNumbers& dimension_numbers) {
-  return UnimplementedOp();
+  return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
+                            dimension_numbers);
 }
 
 XlaOp XlaBuilder::ConvGeneralDilated(
@@ -825,7 +903,89 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
+    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
+    TF_RETURN_IF_ERROR(
+        VerifyConvolution(lhs_shape, rhs_shape, dimension_numbers));
+
+    std::vector<int64> window_dimensions(
+        dimension_numbers.kernel_spatial_dimensions_size());
+    for (std::vector<int64>::size_type i = 0; i < window_dimensions.size();
+         ++i) {
+      window_dimensions[i] =
+          rhs_shape.dimensions(dimension_numbers.kernel_spatial_dimensions(i));
+    }
+    TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
+                        MakeWindow(window_dimensions, window_strides, padding,
+                                   lhs_dilation, rhs_dilation));
+
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferConvolveShape(lhs_shape, rhs_shape, instr.window(),
+                                           dimension_numbers));
+
+    *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
+
+    return AddInstruction(std::move(instr), HloOpcode::kConvolution,
+                          {lhs, rhs});
+  });
+}
+
+StatusOr<Window> XlaBuilder::MakeWindow(
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
+    tensorflow::gtl::ArraySlice<int64> rhs_dilation) const {
+  const auto verify_size = [&](const size_t x, const char* x_name) {
+    if (x == 0 || x == window_dimensions.size()) {
+      return Status::OK();
+    } else {
+      return InvalidArgument(
+          "%s", tensorflow::strings::StrCat(
+                    "Window has different number of window dimensions than of ",
+                    x_name,
+                    "\nNumber of window dimensions: ", window_dimensions.size(),
+                    "\nNumber of ", x_name, ": ", x, "\n")
+                    .c_str());
+    }
+  };
+  TF_RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
+  TF_RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
+  TF_RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
+  TF_RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
+
+  Window window;
+  for (size_t i = 0; i < window_dimensions.size(); i++) {
+    auto dim = window.add_dimensions();
+    dim->set_size(window_dimensions[i]);
+    if (!window_strides.empty()) {
+      dim->set_stride(window_strides[i]);
+    } else {
+      dim->set_stride(1);
+    }
+    if (!padding.empty()) {
+      dim->set_padding_low(padding[i].first);
+      dim->set_padding_high(padding[i].second);
+    } else {
+      dim->set_padding_low(0);
+      dim->set_padding_high(0);
+    }
+    if (!lhs_dilation.empty()) {
+      dim->set_base_dilation(lhs_dilation[i]);
+    } else {
+      dim->set_base_dilation(1);
+    }
+    if (!rhs_dilation.empty()) {
+      dim->set_window_dilation(rhs_dilation[i]);
+    } else {
+      dim->set_window_dilation(1);
+    }
+    dim->set_window_reversal(false);
+  }
+  return window;
 }
 
 XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
