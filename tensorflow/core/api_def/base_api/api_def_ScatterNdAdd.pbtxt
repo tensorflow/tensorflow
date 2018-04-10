@@ -50,9 +50,7 @@ dimension of `ref`.
 
 `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
-```
 $$[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].$$
-```
 
 For example, say we want to add 4 scattered elements to a rank-1 tensor to 8
 elements. In Python, that addition would look like this:
