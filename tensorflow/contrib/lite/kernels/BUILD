@@ -157,7 +157,7 @@ cc_library(
         "local_response_norm.cc",
         "lsh_projection.cc",
         "lstm.cc",
-        "maximum.cc",
+        "maximum_minimum.cc",
         "mean.cc",
         "mfcc.cc",
         "mul.cc",
@@ -555,9 +555,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "maximum_test",
+    name = "maximum_minimum_test",
     size = "small",
-    srcs = ["maximum_test.cc"],
+    srcs = ["maximum_minimum_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -939,6 +939,18 @@ tf_cc_test(
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tflite_portable_test_suite()

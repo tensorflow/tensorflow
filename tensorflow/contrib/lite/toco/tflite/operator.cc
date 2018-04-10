@@ -890,6 +890,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
   ops.emplace_back(new SimpleOperator<TensorFlowMaximumOperator>(
       "MAXIMUM", OperatorType::kTensorFlowMaximum));
+  ops.emplace_back(new SimpleOperator<TensorFlowMinimumOperator>(
+      "MINIMUM", OperatorType::kTensorFlowMinimum));
 
   return ops;
 }

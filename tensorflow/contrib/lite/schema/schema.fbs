@@ -133,6 +133,7 @@ enum BuiltinOperator : byte {
   PRELU = 54,
   MAXIMUM = 55,
   ARG_MAX = 56,
+  MINIMUM = 57,
 }
 
 // Options for the builtin operators.
@@ -175,7 +176,7 @@ union BuiltinOptions {
   LogSoftmaxOptions,
   CastOptions,
   DequantizeOptions,
-  MaximumOptions,
+  MaximumMinimumOptions,
   ArgMaxOptions,
 }
 
@@ -390,7 +391,7 @@ table CastOptions {
 table DequantizeOptions {
 }
 
-table MaximumOptions {
+table MaximumMinimumOptions {
 }
 
 table ArgMaxOptions {

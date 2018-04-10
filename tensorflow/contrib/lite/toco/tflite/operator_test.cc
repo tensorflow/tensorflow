@@ -111,6 +111,8 @@ TEST_F(OperatorTest, SimpleOperators) {
                                           OperatorType::kLogSoftmax);
   CheckSimpleOperator<TensorFlowMaximumOperator>(
       "MAXIMUM", OperatorType::kTensorFlowMaximum);
+  CheckSimpleOperator<TensorFlowMinimumOperator>(
+      "MINIMUM", OperatorType::kTensorFlowMinimum);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

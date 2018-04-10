@@ -39,6 +39,7 @@ gen_zipped_test_files(
         "max_pool.zip",
         "maximum.zip",
         "mean.zip",
+        "minimum.zip",
         "mul.zip",
         "pad.zip",
         "prelu.zip",

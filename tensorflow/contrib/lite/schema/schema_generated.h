@@ -145,8 +145,8 @@ struct CastOptionsT;
 struct DequantizeOptions;
 struct DequantizeOptionsT;
 
-struct MaximumOptions;
-struct MaximumOptionsT;
+struct MaximumMinimumOptions;
+struct MaximumMinimumOptionsT;
 
 struct ArgMaxOptions;
 struct ArgMaxOptionsT;
@@ -263,11 +263,12 @@ enum BuiltinOperator {
   BuiltinOperator_PRELU = 54,
   BuiltinOperator_MAXIMUM = 55,
   BuiltinOperator_ARG_MAX = 56,
+  BuiltinOperator_MINIMUM = 57,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_ARG_MAX
+  BuiltinOperator_MAX = BuiltinOperator_MINIMUM
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[55] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[56] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -323,7 +324,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[55] {
     BuiltinOperator_CAST,
     BuiltinOperator_PRELU,
     BuiltinOperator_MAXIMUM,
-    BuiltinOperator_ARG_MAX
+    BuiltinOperator_ARG_MAX,
+    BuiltinOperator_MINIMUM
   };
   return values;
 }
@@ -387,6 +389,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "PRELU",
     "MAXIMUM",
     "ARG_MAX",
+    "MINIMUM",
     nullptr
   };
   return names;
@@ -437,7 +440,7 @@ enum BuiltinOptions {
   BuiltinOptions_LogSoftmaxOptions = 36,
   BuiltinOptions_CastOptions = 37,
   BuiltinOptions_DequantizeOptions = 38,
-  BuiltinOptions_MaximumOptions = 39,
+  BuiltinOptions_MaximumMinimumOptions = 39,
   BuiltinOptions_ArgMaxOptions = 40,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
   BuiltinOptions_MAX = BuiltinOptions_ArgMaxOptions
@@ -484,7 +487,7 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[41] {
     BuiltinOptions_LogSoftmaxOptions,
     BuiltinOptions_CastOptions,
     BuiltinOptions_DequantizeOptions,
-    BuiltinOptions_MaximumOptions,
+    BuiltinOptions_MaximumMinimumOptions,
     BuiltinOptions_ArgMaxOptions
   };
   return values;
@@ -531,7 +534,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "LogSoftmaxOptions",
     "CastOptions",
     "DequantizeOptions",
-    "MaximumOptions",
+    "MaximumMinimumOptions",
     "ArgMaxOptions",
     nullptr
   };
@@ -699,8 +702,8 @@ template<> struct BuiltinOptionsTraits<DequantizeOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_DequantizeOptions;
 };
 
-template<> struct BuiltinOptionsTraits<MaximumOptions> {
-  static const BuiltinOptions enum_value = BuiltinOptions_MaximumOptions;
+template<> struct BuiltinOptionsTraits<MaximumMinimumOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_MaximumMinimumOptions;
 };
 
 template<> struct BuiltinOptionsTraits<ArgMaxOptions> {
@@ -1042,13 +1045,13 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_DequantizeOptions ?
       reinterpret_cast<const DequantizeOptionsT *>(value) : nullptr;
   }
-  MaximumOptionsT *AsMaximumOptions() {
-    return type == BuiltinOptions_MaximumOptions ?
-      reinterpret_cast<MaximumOptionsT *>(value) : nullptr;
+  MaximumMinimumOptionsT *AsMaximumMinimumOptions() {
+    return type == BuiltinOptions_MaximumMinimumOptions ?
+      reinterpret_cast<MaximumMinimumOptionsT *>(value) : nullptr;
   }
-  const MaximumOptionsT *AsMaximumOptions() const {
-    return type == BuiltinOptions_MaximumOptions ?
-      reinterpret_cast<const MaximumOptionsT *>(value) : nullptr;
+  const MaximumMinimumOptionsT *AsMaximumMinimumOptions() const {
+    return type == BuiltinOptions_MaximumMinimumOptions ?
+      reinterpret_cast<const MaximumMinimumOptionsT *>(value) : nullptr;
   }
   ArgMaxOptionsT *AsArgMaxOptions() {
     return type == BuiltinOptions_ArgMaxOptions ?
@@ -3827,45 +3830,45 @@ inline flatbuffers::Offset<DequantizeOptions> CreateDequantizeOptions(
 
 flatbuffers::Offset<DequantizeOptions> CreateDequantizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const DequantizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
-struct MaximumOptionsT : public flatbuffers::NativeTable {
-  typedef MaximumOptions TableType;
-  MaximumOptionsT() {
+struct MaximumMinimumOptionsT : public flatbuffers::NativeTable {
+  typedef MaximumMinimumOptions TableType;
+  MaximumMinimumOptionsT() {
   }
 };
 
-struct MaximumOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef MaximumOptionsT NativeTableType;
+struct MaximumMinimumOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef MaximumMinimumOptionsT NativeTableType;
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            verifier.EndTable();
   }
-  MaximumOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(MaximumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<MaximumOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const MaximumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  MaximumMinimumOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(MaximumMinimumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<MaximumMinimumOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const MaximumMinimumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
-struct MaximumOptionsBuilder {
+struct MaximumMinimumOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  explicit MaximumOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit MaximumMinimumOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  MaximumOptionsBuilder &operator=(const MaximumOptionsBuilder &);
-  flatbuffers::Offset<MaximumOptions> Finish() {
+  MaximumMinimumOptionsBuilder &operator=(const MaximumMinimumOptionsBuilder &);
+  flatbuffers::Offset<MaximumMinimumOptions> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<MaximumOptions>(end);
+    auto o = flatbuffers::Offset<MaximumMinimumOptions>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<MaximumOptions> CreateMaximumOptions(
+inline flatbuffers::Offset<MaximumMinimumOptions> CreateMaximumMinimumOptions(
     flatbuffers::FlatBufferBuilder &_fbb) {
-  MaximumOptionsBuilder builder_(_fbb);
+  MaximumMinimumOptionsBuilder builder_(_fbb);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<MaximumOptions> CreateMaximumOptions(flatbuffers::FlatBufferBuilder &_fbb, const MaximumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<MaximumMinimumOptions> CreateMaximumMinimumOptions(flatbuffers::FlatBufferBuilder &_fbb, const MaximumMinimumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct ArgMaxOptionsT : public flatbuffers::NativeTable {
   typedef ArgMaxOptions TableType;
@@ -4152,8 +4155,8 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const DequantizeOptions *builtin_options_as_DequantizeOptions() const {
     return builtin_options_type() == BuiltinOptions_DequantizeOptions ? static_cast<const DequantizeOptions *>(builtin_options()) : nullptr;
   }
-  const MaximumOptions *builtin_options_as_MaximumOptions() const {
-    return builtin_options_type() == BuiltinOptions_MaximumOptions ? static_cast<const MaximumOptions *>(builtin_options()) : nullptr;
+  const MaximumMinimumOptions *builtin_options_as_MaximumMinimumOptions() const {
+    return builtin_options_type() == BuiltinOptions_MaximumMinimumOptions ? static_cast<const MaximumMinimumOptions *>(builtin_options()) : nullptr;
   }
   const ArgMaxOptions *builtin_options_as_ArgMaxOptions() const {
     return builtin_options_type() == BuiltinOptions_ArgMaxOptions ? static_cast<const ArgMaxOptions *>(builtin_options()) : nullptr;
@@ -4336,8 +4339,8 @@ template<> inline const DequantizeOptions *Operator::builtin_options_as<Dequanti
   return builtin_options_as_DequantizeOptions();
 }
 
-template<> inline const MaximumOptions *Operator::builtin_options_as<MaximumOptions>() const {
-  return builtin_options_as_MaximumOptions();
+template<> inline const MaximumMinimumOptions *Operator::builtin_options_as<MaximumMinimumOptions>() const {
+  return builtin_options_as_MaximumMinimumOptions();
 }
 
 template<> inline const ArgMaxOptions *Operator::builtin_options_as<ArgMaxOptions>() const {
@@ -5878,26 +5881,26 @@ inline flatbuffers::Offset<DequantizeOptions> CreateDequantizeOptions(flatbuffer
       _fbb);
 }
 
-inline MaximumOptionsT *MaximumOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
-  auto _o = new MaximumOptionsT();
+inline MaximumMinimumOptionsT *MaximumMinimumOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new MaximumMinimumOptionsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void MaximumOptions::UnPackTo(MaximumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+inline void MaximumMinimumOptions::UnPackTo(MaximumMinimumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
 }
 
-inline flatbuffers::Offset<MaximumOptions> MaximumOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MaximumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
-  return CreateMaximumOptions(_fbb, _o, _rehasher);
+inline flatbuffers::Offset<MaximumMinimumOptions> MaximumMinimumOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MaximumMinimumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateMaximumMinimumOptions(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<MaximumOptions> CreateMaximumOptions(flatbuffers::FlatBufferBuilder &_fbb, const MaximumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<MaximumMinimumOptions> CreateMaximumMinimumOptions(flatbuffers::FlatBufferBuilder &_fbb, const MaximumMinimumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const MaximumOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  return tflite::CreateMaximumOptions(
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const MaximumMinimumOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateMaximumMinimumOptions(
       _fbb);
 }
 
@@ -6259,8 +6262,8 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const DequantizeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case BuiltinOptions_MaximumOptions: {
-      auto ptr = reinterpret_cast<const MaximumOptions *>(obj);
+    case BuiltinOptions_MaximumMinimumOptions: {
+      auto ptr = reinterpret_cast<const MaximumMinimumOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case BuiltinOptions_ArgMaxOptions: {
@@ -6437,8 +6440,8 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const DequantizeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
-    case BuiltinOptions_MaximumOptions: {
-      auto ptr = reinterpret_cast<const MaximumOptions *>(obj);
+    case BuiltinOptions_MaximumMinimumOptions: {
+      auto ptr = reinterpret_cast<const MaximumMinimumOptions *>(obj);
       return ptr->UnPack(resolver);
     }
     case BuiltinOptions_ArgMaxOptions: {
@@ -6603,9 +6606,9 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const DequantizeOptionsT *>(value);
       return CreateDequantizeOptions(_fbb, ptr, _rehasher).Union();
     }
-    case BuiltinOptions_MaximumOptions: {
-      auto ptr = reinterpret_cast<const MaximumOptionsT *>(value);
-      return CreateMaximumOptions(_fbb, ptr, _rehasher).Union();
+    case BuiltinOptions_MaximumMinimumOptions: {
+      auto ptr = reinterpret_cast<const MaximumMinimumOptionsT *>(value);
+      return CreateMaximumMinimumOptions(_fbb, ptr, _rehasher).Union();
     }
     case BuiltinOptions_ArgMaxOptions: {
       auto ptr = reinterpret_cast<const ArgMaxOptionsT *>(value);
@@ -6769,8 +6772,8 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
       value = new DequantizeOptionsT(*reinterpret_cast<DequantizeOptionsT *>(u.value));
       break;
     }
-    case BuiltinOptions_MaximumOptions: {
-      value = new MaximumOptionsT(*reinterpret_cast<MaximumOptionsT *>(u.value));
+    case BuiltinOptions_MaximumMinimumOptions: {
+      value = new MaximumMinimumOptionsT(*reinterpret_cast<MaximumMinimumOptionsT *>(u.value));
       break;
     }
     case BuiltinOptions_ArgMaxOptions: {
@@ -6974,8 +6977,8 @@ inline void BuiltinOptionsUnion::Reset() {
       delete ptr;
       break;
     }
-    case BuiltinOptions_MaximumOptions: {
-      auto ptr = reinterpret_cast<MaximumOptionsT *>(value);
+    case BuiltinOptions_MaximumMinimumOptions: {
+      auto ptr = reinterpret_cast<MaximumMinimumOptionsT *>(value);
       delete ptr;
       break;
     }
