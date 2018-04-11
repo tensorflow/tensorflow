@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/platform/logging.h"
@@ -58,7 +59,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
 
   IRuntime* infer = nvinfer1::createInferRuntime(logger);
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
-      serialized_engine.c_str(), serialized_engine.size(), nullptr));
+      serialized_engine.c_str(), serialized_engine.size(),
+      &PluginFactoryTensorRT::GetInstance()));
   trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
   // Runtime is safe to delete after engine creation
   infer->destroy();

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #include <list>
 #include <map>
@@ -75,7 +76,8 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
       // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
-  return candidate_ops.count(node->type_string());
+  return (candidate_ops.count(node->type_string()) ||
+          PluginFactoryTensorRT::GetInstance().IsPlugin(&node->type_string()));
 }
 
 void GetSubGraphIncomingEdges(const tensorflow::Graph& graph,

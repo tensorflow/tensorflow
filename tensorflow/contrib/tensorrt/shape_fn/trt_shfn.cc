@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/shape_fn/trt_shfn.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #include <string>
 #include <vector>
@@ -33,7 +34,8 @@ tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
   TF_RETURN_IF_ERROR(context->GetAttr("serialized_engine", &serialized_engine));
   nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
   nvinfer1::ICudaEngine* trt_engine = infer->deserializeCudaEngine(
-      serialized_engine.c_str(), serialized_engine.size(), nullptr);
+      serialized_engine.c_str(), serialized_engine.size(),
+      &tensorrt::PluginFactoryTensorRT::GetInstance());
 
   int num_batch = -1;
   std::vector<::tensorflow::DataType> input_type;
