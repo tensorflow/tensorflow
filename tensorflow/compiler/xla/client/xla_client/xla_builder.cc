@@ -1499,7 +1499,14 @@ XlaOp XlaBuilder::SelectAndScatter(
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
     const XlaOp& source, const XlaOp& init_value,
     const XlaComputation& scatter) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    return SelectAndScatterWithGeneralPadding(
+        operand, select, window_dimensions, window_strides,
+        MakePadding(AsInt64Slice(operand_shape.dimensions()), window_dimensions,
+                    window_strides, padding),
+        source, init_value, scatter);
+  });
 }
 
 XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
@@ -1509,7 +1516,30 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     const XlaOp& source, const XlaOp& init_value,
     const XlaComputation& scatter) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& source_shape, GetShape(source));
+    TF_ASSIGN_OR_RETURN(const Shape& init_shape, GetShape(init_value));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& select_shape,
+                        select.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(const ProgramShape& scatter_shape,
+                        scatter.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
+                        MakeWindow(window_dimensions, window_strides, padding,
+                                   /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferSelectAndScatterShape(
+                            operand_shape, select_shape, instr.window(),
+                            source_shape, init_shape, scatter_shape));
+
+    AddCalledComputation(select, &instr);
+    AddCalledComputation(scatter, &instr);
+
+    return AddInstruction(std::move(instr), HloOpcode::kSelectAndScatter,
+                          {operand, source, init_value});
+  });
 }
 
 XlaOp XlaBuilder::ReducePrecision(const XlaOp& operand, const int exponent_bits,
