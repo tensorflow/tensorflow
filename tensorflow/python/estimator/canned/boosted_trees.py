@@ -349,8 +349,8 @@ def _bt_model_fn(
             array_ops.zeros(
                 [batch_size, head.logits_dimension], dtype=dtypes.float32))
       with ops.control_dependencies([ensemble_reload]):
-        (stamp_token, num_trees, num_finalized_trees,
-         num_attempted_layers) = local_tree_ensemble.get_states()
+        (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
+         last_layer_nodes_range) = local_tree_ensemble.get_states()
         summary.scalar('ensemble/num_trees', num_trees)
         summary.scalar('ensemble/num_finalized_trees', num_finalized_trees)
         summary.scalar('ensemble/num_attempted_layers', num_attempted_layers)
@@ -393,10 +393,7 @@ def _bt_model_fn(
         (node_ids_per_feature, gains_list, thresholds_list,
          left_node_contribs_list, right_node_contribs_list) = (
              boosted_trees_ops.calculate_best_gains_per_feature(
-                 node_id_range=array_ops.stack([
-                     math_ops.reduce_min(node_ids),
-                     math_ops.reduce_max(node_ids)
-                 ]),
+                 node_id_range=last_layer_nodes_range,
                  stats_summary_list=stats_summary_list,
                  l1=tree_hparams.l1,
                  l2=tree_hparams.l2,
