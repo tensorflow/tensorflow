@@ -242,6 +242,13 @@ class StatsDatasetSerializationTest(
     return dataset_ops.Dataset.range(num_elements).apply(
         stats_ops.latency_stats(tag1)).apply(stats_ops.latency_stats(tag2))
 
+  def test_latency_stats_invalid_tag_shape(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      self.run_core_tests(
+          lambda: dataset_ops.Dataset.range(100).apply(stats_ops.latency_stats(["record_latency", "record_latency_2"])),
+          None, 100)
+
   def testLatencyStatsDatasetSaveableCore(self):
     num_outputs = 100
 
