@@ -98,6 +98,7 @@ bool IsPolygamma(const NodeDef& node);
 bool IsPrint(const NodeDef& node);
 bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
+bool IsRandomShuffle(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu6Grad(const NodeDef& node);

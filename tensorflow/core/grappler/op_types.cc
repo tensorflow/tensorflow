@@ -249,6 +249,10 @@ bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
 
+bool IsRandomShuffle(const NodeDef& node) {
+  return node.op() == "RandomShuffle";
+}
+
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }
@@ -298,9 +302,7 @@ bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
 
 bool IsShapeN(const NodeDef& node) { return node.op() == "ShapeN"; }
 
-bool IsShuffle(const NodeDef& node) {
-  return node.op() == "Shuffle" || node.op() == "RandomShuffle";
-}
+bool IsShuffle(const NodeDef& node) { return node.op() == "Shuffle"; }
 
 bool IsSigmoidGrad(const NodeDef& node) { return node.op() == "SigmoidGrad"; }
 
