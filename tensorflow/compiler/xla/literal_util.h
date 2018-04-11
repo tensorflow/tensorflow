@@ -1287,12 +1287,13 @@ void Literal::PopulateSparse(SparseIndexArray indices,
   CHECK_LE(num_elements, max_elements);
   CHECK_EQ(num_elements, indices.index_count());
   auto root_data = root_piece().data<NativeT>();
-  root_data.remove_suffix(max_elements - values.size());
+  // Piece::data() returns an ArraySlice of size equal to the number of indices
+  // in the SparseIndexArray. So there is no need to adjust the size of the data
+  // here. It is enough to just copy the incoming values into the data buffer.
   std::copy(values.begin(), values.end(), root_data.begin());
   *this->root_piece().sparse_indices() = std::move(indices);
   if (sort) {
     auto root_data = this->root_piece().data<NativeT>();
-    root_data.remove_suffix(root_data.size() - num_elements);
     this->root_piece().sparse_indices()->SortWithValues(root_data);
   }
   DCHECK(this->root_piece().sparse_indices()->Validate(shape()));
