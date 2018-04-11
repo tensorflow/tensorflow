@@ -404,6 +404,7 @@ inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
           const int in_d =
               out_d + ((out_h % block_size) * block_size + out_w % block_size) *
                           output_depth;
+
           const int in_w = out_w / block_size;
           const int in_h = out_h / block_size;
           const int in_b = out_b;
@@ -956,8 +957,18 @@ template <FusedActivationFunctionType Ac>
 inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
                 int input1_shift, const int16* input2_data,
                 const Dims<4>& input2_dims, int input2_shift,
+                int16 output_activation_min, int16 output_activation_max,
                 int16* output_data, const Dims<4>& output_dims) {
-  static_assert(Ac == FusedActivationFunctionType::kNone, "");
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, -32768);
+    TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  }
 
   const int flat_size = RequiredBufferSizeForDims(output_dims);
   TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
@@ -978,7 +989,10 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
     F0 scaled_input =
         F0::FromRaw(gemmlowp::RoundingDivideByPOT(shift_input[i], input_shift));
     F0 result = gemmlowp::SaturatingAdd(scaled_input, input_ready_scaled);
-    output_data[i] = result.raw();
+    const int16 raw_output = result.raw();
+    const int16 clamped_output = std::min(
+        output_activation_max, std::max(output_activation_min, raw_output));
+    output_data[i] = clamped_output;
   }
 }
 
@@ -1547,6 +1561,61 @@ void Concatenation(int concat_dim, const Scalar* const* input_data,
           input_dims[i]->sizes[concat_dim] * input_dims[i]->strides[concat_dim];
       memcpy(output_ptr, input_data[i] + k * copy_size,
              copy_size * sizeof(Scalar));
+      output_ptr += copy_size;
+    }
+  }
+}
+
+// TODO(prabhumk): This is the same as the optimized implementation.
+// TODO(prabhumk): The quantized implementation of concatentation isn't fully
+// quantized as it takes scale as a floating point value. This should be fixed
+// when optimizng this routine further.
+inline void Concatenation(int concat_dim, const uint8* const* input_data,
+                          const Dims<4>* const* input_dims,
+                          const int32* input_zeropoint,
+                          const float* input_scale, int inputs_count,
+                          uint8* output_data, const Dims<4>& output_dims,
+                          const int32 output_zeropoint,
+                          const float output_scale) {
+  // The arguments input_zeropoint and input_scale are expected to be an array
+  // that have the quantization paramaters for all the inputs to the concat
+  // operator.
+  TFLITE_DCHECK_GT(inputs_count, 1);
+  int64_t concat_size = 0;
+  for (int i = 0; i < inputs_count; i++) {
+    for (int j = 0; j < 4; j++) {
+      if (j != concat_dim) {
+        MatchingArraySize(*input_dims[i], j, output_dims, j);
+      }
+    }
+    concat_size += ArraySize(*input_dims[i], concat_dim);
+  }
+  TFLITE_DCHECK_EQ(concat_size, ArraySize(output_dims, concat_dim));
+  int64_t outer_size = 1;
+  for (int i = concat_dim + 1; i < 4; i++) {
+    outer_size *= output_dims.sizes[i];
+  }
+  const float inverse_output_scale = 1.f / output_scale;
+  uint8* output_ptr = output_data;
+  for (int k = 0; k < outer_size; k++) {
+    for (int i = 0; i < inputs_count; ++i) {
+      const int copy_size =
+          input_dims[i]->sizes[concat_dim] * input_dims[i]->strides[concat_dim];
+      const uint8* input_ptr = input_data[i] + k * copy_size;
+      if (input_zeropoint[i] == output_zeropoint &&
+          input_scale[i] == output_scale) {
+        memcpy(output_ptr, input_ptr, copy_size);
+      } else {
+        const float scale = input_scale[i] * inverse_output_scale;
+        const float bias = -input_zeropoint[i] * scale;
+        for (int j = 0; j < copy_size; ++j) {
+          const int32_t value =
+              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              output_zeropoint;
+          output_ptr[j] =
+              static_cast<uint8_t>(std::max(std::min(255, value), 0));
+        }
+      }
       output_ptr += copy_size;
     }
   }
@@ -3170,19 +3239,20 @@ inline void Exp(const T* input_data, const size_t num_elements,
   }
 }
 
-template <typename T>
-inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
+template <typename T, typename U>
+inline bool Mean(T* input_data, const int* input_dims, const int input_num_dims,
                  T* output_data, const int* output_dims,
                  const int output_num_dims, const int* axis,
                  const int num_axis_dimensions, bool keep_dims, int* temp_index,
-                 int* resolved_axis) {
+                 int* resolved_axis, U* temp_sum) {
   // resets output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
     num_outputs *= static_cast<size_t>(output_dims[idx]);
   }
   for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = 0;
+    output_data[idx] = T();
+    temp_sum[idx] = U();
   }
   // resets temp index.
   for (int idx = 0; idx < input_num_dims; ++idx) {
@@ -3215,19 +3285,24 @@ inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
     size_t output_offset =
         ReducedOutputOffset(input_num_dims, input_dims, temp_index,
                             num_resolved_axis, resolved_axis);
-    output_data[output_offset] += input_data[input_offset];
+    temp_sum[output_offset] += static_cast<U>(input_data[input_offset]);
   }
   // takes average by num of elements added to get mean.
   size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
-    num_elements_in_axis *= static_cast<size_t>(input_dims[resolved_axis[idx]]);
+    size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
+    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
+      return false;
+    }
+    num_elements_in_axis *= current;
   }
   if (num_elements_in_axis > 0) {
     for (size_t idx = 0; idx < num_outputs; ++idx) {
-      output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
-                                        num_elements_in_axis);
+      output_data[idx] =
+          static_cast<T>(temp_sum[idx] / static_cast<U>(num_elements_in_axis));
     }
   }
+  return true;
 }
 
 template <typename T>
@@ -3338,6 +3413,31 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
           int offset = Offset(input1_dims, c, x, y, b);
           output_data[offset] =
               input1_data[offset] < max_value ? max_value : input1_data[offset];
+        }
+      }
+    }
+  }
+}
+
+template <typename T, typename Op>
+void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
+                              const T* input2_data, const Dims<4>& input2_dims,
+                              T* output_data, const Dims<4>& output_dims,
+                              Op op) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          auto out_idx = Offset(output_dims, c, x, y, b);
+          auto in1_idx = SubscriptToIndex(desc1, c, x, y, b);
+          auto in2_idx = SubscriptToIndex(desc2, c, x, y, b);
+          auto in1_val = input1_data[in1_idx];
+          auto in2_val = input2_data[in2_idx];
+          output_data[out_idx] = op(in1_val, in2_val);
         }
       }
     }

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -67,6 +68,10 @@ bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
+
+bool IsCheckNumerics(const NodeDef& node) {
+  return node.op() == "CheckNumerics";
+}
 
 bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
@@ -240,6 +245,8 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
+bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
+
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
@@ -309,6 +316,8 @@ bool IsSplitV(const NodeDef& node) { return node.op() == "SplitV"; }
 
 bool IsSqrtGrad(const NodeDef& node) { return node.op() == "SqrtGrad"; }
 
+bool IsSquare(const NodeDef& node) { return node.op() == "Square"; }
+
 bool IsSquaredDifference(const NodeDef& node) {
   return node.op() == "SquaredDifference";
 }
@@ -358,6 +367,8 @@ bool IsTruncateDiv(const NodeDef& node) { return node.op() == "TruncateDiv"; }
 
 bool IsTruncateMod(const NodeDef& node) { return node.op() == "TruncateMod"; }
 
+bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
+
 bool IsVariable(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
@@ -396,12 +407,27 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
       return false;
     }
   }
+  return !ModifiesInputsInPlace(node);
+}
+
+bool ModifiesInputsInPlace(const NodeDef& node) {
   // Some nodes do in-place updates on regular tensor inputs.
-  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace") ||
-      StringPiece(op_name).starts_with("Inplace")) {
+  string op_name = node.op();
+
+  // Ops that modify resource variables effectively modify one of their inputs.
+  if (op_name == "AssignVariableOp" || op_name == "AssignAddVariableOp" ||
+      op_name == "AssignSubVariableOp" || op_name == "ResourceScatterUpdate" ||
+      op_name == "ResourceScatterAdd" || op_name == "ResourceScatterSub" ||
+      op_name == "ResourceScatterMul" || op_name == "ResourceScatterDiv" ||
+      op_name == "ResourceScatterMin" || op_name == "ResourceScatterMax") {
     return false;
   }
-  return true;
+
+  std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
+  if (str_util::StrContains(op_name, "inplace")) {
+    return true;
+  }
+  return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
 }
 
 bool ModifiesFrameInfo(const NodeDef& node) {

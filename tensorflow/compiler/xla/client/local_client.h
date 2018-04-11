@@ -123,6 +123,15 @@ class LocalClient : public Client {
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
       const ExecutableBuildOptions& options);
 
+  // Build and return a LocalExecutable object. The executable is compiled using
+  // the given XlaComputation, argument layouts and options.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<LocalExecutable>> Compile(
+      const XlaComputation& computation,
+      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+      const ExecutableBuildOptions& options);
+
   // Copy the literal data to the device with the given ordinal and return as a
   // ScopedShapedBuffer. If non-null the given memory allocator is used for
   // device memory allocation. If null, the default memory allocator for the

@@ -402,11 +402,10 @@ py_test(
 
 py_test(
     name = "convolutional_recurrent_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/layers/convolutional_recurrent_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
-    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -610,6 +609,7 @@ py_test(
     srcs = ["_impl/keras/utils/data_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
         "noasan",  # times out
         "notsan",
@@ -638,7 +638,10 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/utils/io_utils_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -868,16 +871,4 @@ py_library(
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

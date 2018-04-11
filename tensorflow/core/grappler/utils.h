@@ -138,6 +138,9 @@ string AsControlDependency(const string& node);
 // some of the outputs may be unconnected.
 int NumOutputs(const NodeDef& node, GraphDef* graph);
 
+// Returns true iff the node has at least one control input.
+bool HasControlInputs(const NodeDef& node);
+
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 

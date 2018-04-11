@@ -6,18 +6,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "c_srcs",
     data = glob([
         "**/*.cc",
@@ -510,4 +498,34 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:variable_ops",
     ],
+)
+
+cc_library(
+    name = "grpc_rpc_factory",
+    srcs = [
+        "grpc_rpc_factory.cc",
+    ],
+    hdrs = ["grpc_rpc_factory.h"],
+    deps = [
+        ":grpc_state",
+        ":grpc_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/rpc:call_container",
+        "//tensorflow/core/util/rpc:rpc_factory",
+    ],
+)
+
+cc_library(
+    name = "grpc_rpc_factory_registration",
+    srcs = [
+        "grpc_rpc_factory_registration.cc",
+    ],
+    deps = [
+        ":grpc_rpc_factory",
+        "//tensorflow/core/util/rpc:rpc_factory",
+        "//tensorflow/core/util/rpc:rpc_factory_registry",
+    ],
+    alwayslink = 1,
 )

@@ -27,7 +27,6 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
-from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -629,14 +628,12 @@ class BaseSession(SessionInterface):
     self._session = None
     opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
-      with errors.raise_exception_on_not_ok_status() as status:
-        if self._created_with_new_api:
-          # pylint: disable=protected-access
-          self._session = tf_session.TF_NewSession(self._graph._c_graph, opts,
-                                                   status)
-          # pylint: enable=protected-access
-        else:
-          self._session = tf_session.TF_NewDeprecatedSession(opts, status)
+      if self._created_with_new_api:
+        # pylint: disable=protected-access
+        self._session = tf_session.TF_NewSession(self._graph._c_graph, opts)
+        # pylint: enable=protected-access
+      else:
+        self._session = tf_session.TF_NewDeprecatedSession(opts)
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
 
@@ -663,22 +660,20 @@ class BaseSession(SessionInterface):
     Returns:
       A list of devices in the session.
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      if self._created_with_new_api:
-        raw_device_list = tf_session.TF_SessionListDevices(
-            self._session, status)
-      else:
-        raw_device_list = tf_session.TF_DeprecatedSessionListDevices(
-            self._session, status)
-      device_list = []
-      size = tf_session.TF_DeviceListCount(raw_device_list)
-      for i in range(size):
-        name = tf_session.TF_DeviceListName(raw_device_list, i, status)
-        device_type = tf_session.TF_DeviceListType(raw_device_list, i, status)
-        memory = tf_session.TF_DeviceListMemoryBytes(raw_device_list, i, status)
-        device_list.append(_DeviceAttributes(name, device_type, memory))
-      tf_session.TF_DeleteDeviceList(raw_device_list)
-      return device_list
+    if self._created_with_new_api:
+      raw_device_list = tf_session.TF_SessionListDevices(self._session)
+    else:
+      raw_device_list = tf_session.TF_DeprecatedSessionListDevices(
+          self._session)
+    device_list = []
+    size = tf_session.TF_DeviceListCount(raw_device_list)
+    for i in range(size):
+      name = tf_session.TF_DeviceListName(raw_device_list, i)
+      device_type = tf_session.TF_DeviceListType(raw_device_list, i)
+      memory = tf_session.TF_DeviceListMemoryBytes(raw_device_list, i)
+      device_list.append(_DeviceAttributes(name, device_type, memory))
+    tf_session.TF_DeleteDeviceList(raw_device_list)
+    return device_list
 
   def close(self):
     """Closes this session.
@@ -692,15 +687,13 @@ class BaseSession(SessionInterface):
     if self._created_with_new_api:
       if self._session and not self._closed:
         self._closed = True
-        with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_CloseSession(self._session, status)
+        tf_session.TF_CloseSession(self._session)
 
     else:
       with self._extend_lock:
         if self._opened and not self._closed:
           self._closed = True
-          with errors.raise_exception_on_not_ok_status() as status:
-            tf_session.TF_CloseDeprecatedSession(self._session, status)
+          tf_session.TF_CloseDeprecatedSession(self._session)
 
   def __del__(self):
     # cleanly ignore all exceptions
@@ -710,11 +703,10 @@ class BaseSession(SessionInterface):
       pass
     if self._session is not None:
       try:
-        status = c_api_util.ScopedTFStatus()
         if self._created_with_new_api:
-          tf_session.TF_DeleteSession(self._session, status)
+          tf_session.TF_DeleteSession(self._session)
         else:
-          tf_session.TF_DeleteDeprecatedSession(self._session, status)
+          tf_session.TF_DeleteDeprecatedSession(self._session)
       except AttributeError:
         # At shutdown, `c_api_util` or `tf_session` may have been garbage
         # collected, causing the above method calls to fail. In this case,
@@ -889,6 +881,8 @@ class BaseSession(SessionInterface):
       Either a single value if `fetches` is a single graph element, or
       a list of values if `fetches` is a list, or a dictionary with the
       same keys as `fetches` if that is a dictionary (described above).
+      Order in which `fetches` operations are evaluated inside the call
+      is undefined.
 
     Raises:
       RuntimeError: If this `Session` is in an invalid state (e.g. has been
@@ -1029,11 +1023,11 @@ class BaseSession(SessionInterface):
     # Set up a graph with feeds and fetches for partial run.
     def _setup_fn(session, feed_list, fetch_list, target_list):
       self._extend_graph()
-      with errors.raise_exception_on_not_ok_status() as status:
-        if self._created_with_new_api:
-          return tf_session.TF_SessionPRunSetup_wrapper(
-              session, feed_list, fetch_list, target_list, status)
-        else:
+      if self._created_with_new_api:
+        return tf_session.TF_SessionPRunSetup_wrapper(
+            session, feed_list, fetch_list, target_list)
+      else:
+        with errors.raise_exception_on_not_ok_status() as status:
           return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
                                          target_list, status)
 
@@ -1343,8 +1337,7 @@ class BaseSession(SessionInterface):
   def _extend_graph(self):
     if self._created_with_new_api:
       with self._graph._lock:  # pylint: disable=protected-access
-        with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.ExtendSession(self._session, status)
+        tf_session.ExtendSession(self._session)
     else:
       # Ensure any changes to the graph are reflected in the runtime.
       with self._extend_lock:
@@ -1410,24 +1403,81 @@ class BaseSession(SessionInterface):
 
   def _call_tf_sessionrun(self, options, feed_dict, fetch_list, target_list,
                           run_metadata):
-    with errors.raise_exception_on_not_ok_status() as status:
-      if self._created_with_new_api:
-        return tf_session.TF_SessionRun_wrapper(
-            self._session, options, feed_dict, fetch_list, target_list,
-            run_metadata, status)
-      else:
+    if self._created_with_new_api:
+      return tf_session.TF_SessionRun_wrapper(
+          self._session, options, feed_dict, fetch_list, target_list,
+          run_metadata)
+    else:
+      with errors.raise_exception_on_not_ok_status() as status:
         return tf_session.TF_Run(
             self._session, options, feed_dict, fetch_list, target_list,
             status, run_metadata)
 
   def _call_tf_sessionprun(self, handle, feed_dict, fetch_list):
-    with errors.raise_exception_on_not_ok_status() as status:
-      if self._created_with_new_api:
-        return tf_session.TF_SessionPRun_wrapper(
-            self._session, handle, feed_dict, fetch_list, status)
-      else:
+    if self._created_with_new_api:
+      return tf_session.TF_SessionPRun_wrapper(
+          self._session, handle, feed_dict, fetch_list)
+    else:
+      with errors.raise_exception_on_not_ok_status() as status:
         return tf_session.TF_PRun(
             self._session, handle, feed_dict, fetch_list, status)
+
+  # pylint: disable=protected-access
+  class _Callable(object):
+    """Experimental wrapper for the C++ `Session::MakeCallable()` API."""
+
+    def __init__(self, session, callable_options):
+      self._session = session
+      self._handle = None
+      options_ptr = tf_session.TF_NewBufferFromString(
+          compat.as_bytes(callable_options.SerializeToString()))
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if session._created_with_new_api:
+            self._handle = tf_session.TF_SessionMakeCallable(
+                session._session, options_ptr, status)
+          else:
+            self._handle = tf_session.TF_DeprecatedSessionMakeCallable(
+                session._session, options_ptr, status)
+      finally:
+        tf_session.TF_DeleteBuffer(options_ptr)
+
+    def __call__(self, *args):
+      # TODO(b/74355905): Support argument and return value nested structures,
+      # and tensor-like objects such as SparseTensors.
+      with errors.raise_exception_on_not_ok_status() as status:
+        if self._session._created_with_new_api:
+          return tf_session.TF_SessionRunCallable(
+              self._session._session, self._handle, args, status, None)
+        else:
+          return tf_session.TF_DeprecatedSessionRunCallable(
+              self._session._session, self._handle, args, status, None)
+
+    def __del__(self):
+      if self._handle is not None:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if self._session._created_with_new_api:
+            tf_session.TF_SessionReleaseCallable(
+                self._session._session, self._handle, status)
+          else:
+            tf_session.TF_DeprecatedSessionReleaseCallable(
+                self._session._session, self._handle, status)
+  # pylint: enable=protected-access
+
+  # TODO(b/74355905): Reimplement `Session.make_callable()` using this method
+  # where possible.
+  def _make_callable_from_options(self, callable_options):
+    """Returns a handle to a "callable" with the given options.
+
+    Args:
+      callable_options: A `CallableOptions` protocol buffer message describing
+        the computation that will be performed by the callable.
+
+    Returns:
+      A handle to the new callable.
+    """
+    self._extend_graph()
+    return BaseSession._Callable(self, callable_options)
 
 
 @tf_export('Session')

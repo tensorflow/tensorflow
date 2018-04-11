@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients
@@ -370,6 +371,53 @@ class BackpropTest(test.TestCase):
 
   @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes()
+  def testGradientTapeRepeatedSource(self):
+    with backprop.GradientTape(persistent=False) as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = 2 * x
+    grad = g.gradient(target=y, sources=[x, x])
+    self.assertEqual(self.evaluate(grad), [2.0, 2.0])
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes()
+  def testPersistentGradientTapeRepeatedSource(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant(3.0)
+      y = constant_op.constant(5.0)
+      g.watch(x)
+      g.watch(y)
+      z = x * x + x * y
+    grad = g.gradient(target=z, sources=[x, x])
+    self.assertEqual(self.evaluate(grad), [11.0, 11.0])
+    grad = g.gradient(target=z, sources=[y, x])
+    self.assertEqual(self.evaluate(grad), [3.0, 11.0])
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes()
+  def testGradientTapeStructure(self):
+    with backprop.GradientTape(persistent=True) as g:
+      # Using different constant values because constant tensors are
+      # cached, leading to a different gradient then what one might expect.
+      x1 = constant_op.constant(3.0)
+      x2 = constant_op.constant(3.1)
+      x3 = constant_op.constant(3.2)
+      g.watch(x1)
+      g.watch(x2)
+      g.watch(x3)
+      y = x1  + 2 * x2  + 3 * x3
+    self.assertEqual(self.evaluate(g.gradient(y, x1)), [1.0])
+    self.assertEqual(self.evaluate(g.gradient(y, (x1,))), (1.0,))
+    self.assertEqual(self.evaluate(g.gradient(y, (x1, x2))), (1.0, 2.0))
+    self.assertEqual(self.evaluate(g.gradient(y, [(x1, x2), (x2, x3)])),
+                     [(1.0, 2.0), (2.0, 3.0)])
+    self.assertEqual(self.evaluate(g.gradient(y, (x1, x2, [x1, x3]))),
+                     (1.0, 2.0, [1.0, 3.0]))
+    self.assertEqual(self.evaluate(g.gradient(y, [x1, {'x2': x2, 'x3': x3}])),
+                     [1.0, {'x2': 2.0, 'x3': 3.0}])
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes()
   def testGradientTape(self):
     with backprop.GradientTape() as g:
       x = constant_op.constant(3.0)
@@ -383,6 +431,49 @@ class BackpropTest(test.TestCase):
       y += inner_grad
     grad = g.gradient(y, [x])[0]
     self.assertEqual(self.evaluate(grad), 6.0)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testGradientTapeWithCond(self):
+    x = constant_op.constant(3.0)
+
+    def true_fn():
+      return x
+
+    def false_fn():
+      return x * x
+
+    with backprop.GradientTape() as g:
+      g.watch(x)
+      y = control_flow_ops.cond(x < x, true_fn, false_fn)
+
+    if not context.executing_eagerly():
+      with self.assertRaisesRegexp(NotImplementedError, 'tf.gradients'):
+        dy = g.gradient(y, [x])[0]
+    else:
+      dy = g.gradient(y, [x])[0]
+      self.assertEqual(self.evaluate(dy), 6.0)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testGradientTapeWithWhileLoop(self):
+    i = constant_op.constant(1)
+    x = constant_op.constant(2.)
+
+    def cond(i, _):
+      return i < 3
+
+    def body(i, x):
+      return i + 1, x * 2
+
+    with backprop.GradientTape() as g:
+      g.watch([x])
+      _, y = control_flow_ops.while_loop(cond, body, [i, x])
+
+    if not context.executing_eagerly():
+      with self.assertRaisesRegexp(NotImplementedError, 'tf.gradients'):
+        dy = g.gradient(y, [x])[0]
+    else:
+      dy = g.gradient(y, [x])[0]
+      self.assertEqual(self.evaluate(dy), 4.0)
 
   @test_util.assert_no_new_tensors
   def testGradientTapeGradientCalledMultipleTimes(self):

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
-#include "tensorflow/core/platform/cloud/gce_env_utils.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -208,16 +207,6 @@ Status GoogleAuthProvider::GetTokenFromFiles() {
 }
 
 Status GoogleAuthProvider::GetTokenFromGce() {
-  if (!is_running_on_gce_.has_value()) {
-    bool is_running_on_gce = false;
-    TF_RETURN_IF_ERROR(IsRunningOnGce(env_, &is_running_on_gce));
-    is_running_on_gce_ = is_running_on_gce;
-  }
-  if (!is_running_on_gce_.value()) {
-    // Assume bucket is world-accessible. If not, the access will be rejected.
-    current_token_ = "";
-    return Status::OK();
-  }
   const auto get_token_from_gce = [this]() {
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     std::vector<char> response_buffer;

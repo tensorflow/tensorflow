@@ -37,7 +37,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_logging_ops
@@ -58,12 +57,32 @@ def _OptimizerOptions():
   for cse in [False, True]:
     for inline in [False, True]:
       for cfold in [False, True]:
-        yield config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-            optimizer_options=config_pb2.OptimizerOptions(
-                opt_level=config_pb2.OptimizerOptions.L0,
-                do_common_subexpression_elimination=cse,
-                do_function_inlining=inline,
-                do_constant_folding=cfold)))
+        cfg = config_pb2.ConfigProto(
+            graph_options=config_pb2.GraphOptions(
+                optimizer_options=config_pb2.OptimizerOptions(
+                    opt_level=config_pb2.OptimizerOptions.L0,
+                    do_common_subexpression_elimination=cse,
+                    do_function_inlining=inline,
+                    do_constant_folding=cfold)))
+        if cse:
+          cfg.graph_options.rewrite_options.arithmetic_optimization = (
+              rewriter_config_pb2.RewriterConfig.ON)
+        else:
+          cfg.graph_options.rewrite_options.arithmetic_optimization = (
+              rewriter_config_pb2.RewriterConfig.OFF)
+        if inline:
+          cfg.graph_options.rewrite_options.function_optimization = (
+              rewriter_config_pb2.RewriterConfig.ON)
+        else:
+          cfg.graph_options.rewrite_options.function_optimization = (
+              rewriter_config_pb2.RewriterConfig.OFF)
+        if cfold:
+          cfg.graph_options.rewrite_options.constant_folding = (
+              rewriter_config_pb2.RewriterConfig.ON)
+        else:
+          cfg.graph_options.rewrite_options.constant_folding = (
+              rewriter_config_pb2.RewriterConfig.OFF)
+        yield cfg
 
 
 @test_util.with_c_api
@@ -1227,6 +1246,15 @@ class FunctionsFromProtos(test.TestCase):
         ValueError, "FunctionDefLibrary contains cyclic gradient functions!"):
       function._from_library(library)
 
+  def testExperimentalAttrs(self):
+
+    @function.Defun(dtypes.int32, experimental_tag="tag_value")
+    def FunctionWithAttr(i):
+      return array_ops.identity(i)
+    self.assertTrue("experimental_tag" in FunctionWithAttr.definition.attr)
+    self.assertEqual(
+        FunctionWithAttr.definition.attr["experimental_tag"].s, b"tag_value")
+
 
 @test_util.with_c_api
 class FunctionOverloadTest(test.TestCase):
@@ -1333,7 +1361,7 @@ class UnrollLSTMTest(test.TestCase):
         value=math_ops.matmul(xm, weights), num_or_size_splits=4, axis=1)
     new_c = math_ops.sigmoid(f_g) * cprev + math_ops.sigmoid(
         i_g) * math_ops.tanh(i_i)
-    new_c = clip_ops.clip_by_value(new_c, -50.0, 50.0)
+    new_c = math_ops.maximum(math_ops.minimum(new_c, 50.0), -50.0)
     new_m = math_ops.sigmoid(o_g) * math_ops.tanh(new_c)
     return new_m, new_c
 

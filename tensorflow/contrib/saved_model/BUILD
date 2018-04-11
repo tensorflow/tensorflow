@@ -53,6 +53,7 @@ py_test(
     size = "small",
     srcs = ["python/saved_model/reader_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
     deps = [
         ":saved_model_py",
@@ -80,16 +81,4 @@ py_test(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:utils",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

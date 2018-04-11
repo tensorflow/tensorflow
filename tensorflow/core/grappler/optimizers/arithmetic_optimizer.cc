@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 
 #include <algorithm>
+#include <deque>
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
@@ -31,10 +32,12 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer_stage.h"
+#include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/grappler/utils/frame.h"
+#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -196,54 +199,23 @@ void SetSourceDataType(DataType dtype, NodeDef* node) {
 
 bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
 
-const char kOutputShapesAttr[] = "_output_shapes";
-
-// Shape is symbolically defined if it has a known rank, and each dimension is
-// defined, or is an unknown symbol (dim.size <= -2).
-bool ShapeIsSymbolicallyDefined(const TensorShapeProto& shape) {
-  return !shape.unknown_rank() &&
-         std::all_of(
-             shape.dim().begin(), shape.dim().end(),
-             [](const TensorShapeProto::Dim& dim) { return dim.size() != -1; });
-}
-
-bool ShapeIsSymbolicallyDefined(const OpInfo::TensorProperties& properties) {
-  return ShapeIsSymbolicallyDefined(properties.shape());
-}
-
-bool ShapesSymbolicallyEqual(const TensorShapeProto& left,
-                             const TensorShapeProto& right) {
-  if (left.unknown_rank() || right.unknown_rank() ||
-      left.dim_size() != right.dim_size()) {
-    return false;
-  }
-  for (int i = 0; i < left.dim_size(); ++i) {
-    if (left.dim(i).size() == -1 || right.dim(i).size() == -1 ||
-        left.dim(i).size() != right.dim(i).size()) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool ShapesSymbolicallyEqual(const OpInfo::TensorProperties& left,
-                             const OpInfo::TensorProperties& right) {
-  return ShapesSymbolicallyEqual(left.shape(), right.shape());
-}
-
 // Returns whether `reshape` is an identity op. The tensor that `reshape`
 // reshapes is the `output_pos`-th output of node `input`.
 bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
-                       const int output_pos) {
-  if (!reshape.attr().count(kOutputShapesAttr) ||
-      !input.attr().count(kOutputShapesAttr)) {
+                       const int output_pos,
+                       const GraphProperties& graph_properties) {
+  const std::vector<OpInfo::TensorProperties>& reshape_props =
+      graph_properties.GetOutputProperties(reshape.name());
+  const std::vector<OpInfo::TensorProperties>& input_props =
+      graph_properties.GetOutputProperties(input.name());
+  if (reshape_props.empty() || input_props.empty() ||
+      input_props.size() <= output_pos) {
     return false;
   }
 
-  PartialTensorShape src_shape(
-      input.attr().at(kOutputShapesAttr).list().shape(output_pos));
-  PartialTensorShape dst_shape(
-      reshape.attr().at(kOutputShapesAttr).list().shape(0));
+  const PartialTensorShape& src_shape = input_props[output_pos].shape();
+  const PartialTensorShape& dst_shape = reshape_props[0].shape();
+
   if (src_shape.unknown_rank() || dst_shape.unknown_rank()) {
     return false;
   }
@@ -256,7 +228,8 @@ bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
   // sizes.
   auto num_unknown_dim_sizes = [](const PartialTensorShape& partial_shape) {
     auto dim_sizes = partial_shape.dim_sizes();
-    return std::count(dim_sizes.begin(), dim_sizes.end(), -1);
+    return std::count_if(dim_sizes.begin(), dim_sizes.end(),
+                         [](int dim) { return dim < 0; });
   };
   int src_num_unknown_dim_sizes = num_unknown_dim_sizes(src_shape);
   int dst_num_unknown_dim_sizes = num_unknown_dim_sizes(dst_shape);
@@ -264,17 +237,16 @@ bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
     return false;
   }
 
-  // Now, src_shape and dst_shape have at most one dimension with unknown
-  // sizes, and are compatible. Therefore, the reshape is a no-op when
-  //
-  // 1. at least one of them is fully-defined, or
-  // 2. both are partially defined and the -1 appears on the same dimension,
-  //    i.e., IsIdenticalTo returns true.
-  if (src_num_unknown_dim_sizes == 1 && dst_num_unknown_dim_sizes == 1) {
-    return dst_shape.IsIdenticalTo(src_shape);
+  // If dst_num_unknown_dim_sizes != src_num_unknown_dim_sizes we would weaken
+  // shape inference in subsequent passes if we removed this reshape.
+  if (src_num_unknown_dim_sizes != dst_num_unknown_dim_sizes) {
+    return false;
   }
 
-  return true;
+  // Remove the reshape if both are fully defined or partially defined and the
+  // unknown or symbolic shape appears on the same dimension, i.e., if
+  // IsIdenticalTo returns true.
+  return dst_shape.IsIdenticalTo(src_shape);
 }
 
 NodeDef* GetTailOfValuePreservingChain(
@@ -307,6 +279,7 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
         ctx_ext_(ctx_ext) {}
   virtual ~ArithmeticOptimizerStage() = default;
 
+ protected:
   // Simplification graph rewrite can create additional nodes that are inputs
   // to final simplified node, they can be also added to the arithmetic
   // optimizer queue for further optimization.
@@ -316,118 +289,148 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
 
   // TODO(ezhulenev): remove this method from ArithmeticOptimizer when all
   // optimizations will be migrated to stages
-  void AddFrameControlDeps(const NodeDef* old_node,
-                           const std::vector<NodeDef*>& new_nodes,
-                           const string& source_for_ctrl_dep,
-                           const std::vector<NodeDef*>& sinks_for_control_dep) {
-    const auto frame_it = ctx_.frame_map->find(old_node);
-    if (frame_it != ctx_.frame_map->end()) {
-      for (auto node : new_nodes) {
-        ctx_.frame_map->emplace(node, frame_it->second);
-      }
-      if (!source_for_ctrl_dep.empty() && !sinks_for_control_dep.empty()) {
-        const string ctrl_dep = ConstantFolding::AddControlDependency(
-            source_for_ctrl_dep, ctx_.optimized_graph, ctx_.node_map);
-        for (auto node : sinks_for_control_dep) {
-          MaybeAddControlInput(ctrl_dep, node, ctx_.optimized_graph,
-                               ctx_.node_map);
+  void ForwardControlDependencies(
+      NodeDef* target_node, const std::vector<const NodeDef*>& src_nodes) {
+    for (const auto& src : src_nodes) {
+      for (int i = src->input_size() - 1; i >= 0; --i) {
+        if (IsControlInput(src->input(i))) {
+          *target_node->add_input() = src->input(i);
+          ctx_.node_map->AddOutput(NodeName(src->input(i)),
+                                   target_node->name());
+        } else {
+          break;
         }
       }
     }
   }
 
  private:
-  // extened context required for ArithmeticOptimizer
+  // Extended context required for ArithmeticOptimizer.
   const ArithmeticOptimizerContext ctx_ext_;
 };
 
-// Rewrite a tree of Add/AddN with a single AddN operation, consuming all the
-// original inputs of absorbed nodes.
+// Subtype of ArithmeticOptimizerStage that does optimization by rewriting a
+// group of nodes from the optimized graph.
 //
-// All nodes in a Add/AddN subgraph must have symbolically equal shape. All
-// nodes must have the same device placement.
+// * AddOpsRewrite:
+//   Rewrite a group of Add/AddN with compact Add/AddN tree
 //
-// Example:
-//                AddN_1
-//             /    |    \
-//          Add_1   z   Add_2       -> AddN(z, y, z, w, q, e)
-//          /  \        /  \
-//         x    y      w    Add_3
-//                          / \
-//                         q   e
-class AddOpsRewriteStage : public ArithmeticOptimizerStage {
+// * MinimizeBroadcasts:
+//   Rewrite a group of binary associative ops, reordering
+//   inputs, to minimize the cost of broadcast
+class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
  public:
-  explicit AddOpsRewriteStage(const GraphOptimizerContext& ctx,
-                              const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("AddOpsRewrite", ctx, ctx_ext),
-        rewritten_nodes_() {}
+  explicit ArithmeticNodesGroupOptimizerStage(
+      const string& name, const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext ctx_ext)
+      : ArithmeticOptimizerStage(name, ctx, ctx_ext), optimized_nodes_{} {}
+  ~ArithmeticNodesGroupOptimizerStage() override = default;
 
-  ~AddOpsRewriteStage() override = default;
+  // Input name with a statically inferred shape from GraphProperties
+  struct InputAndShape {
+    InputAndShape(const string& input, const TensorShapeProto& shape)
+        : input(input), shape(shape) {}
+    string input;
+    TensorShapeProto shape;
+  };
 
-  // Check if a node can become a root of AddOpsGroup
-  bool IsSupported(const NodeDef* node) const override {
-    // check basic preconditions
-    if (!IsRewritable(node)) {
-      return false;
-    }
-
-    // shape must be symbolically defined and all inputs compatible with it
-    OpInfo::TensorProperties properties;
-    Status has_properties = GetTensorProperties(node->name(), &properties);
-    return has_properties.ok() && ShapeIsSymbolicallyDefined(properties) &&
-           HasAllInputsOfSymbolicallyEqualShape(*node, properties);
-  }
+  // Subgraph (subtree) of nodes, that we want to optimize in "one shot" (e.g.
+  // all the Add nodes that we plan to rewrite with a single AddN). Subgraph is
+  // obtained by graph traversal, starting from a root node.
+  struct OptimizedNodesGroup {
+    NodeDef* root_node;
+    TensorShapeProto root_shape;
+    // Optimized nodes that will be updated or removed by rewrite
+    std::vector<NodeDef*> optimized_nodes;
+    // Inputs to optimized nodes
+    std::vector<InputAndShape> inputs;
+  };
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    CHECK(IsSupported(node));
-    AddOpsGroup group;
-    TF_RETURN_IF_ERROR(CreateAddOpsGroup(node, &group));
+    TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
 
-    if (!group.absorbed_nodes.empty() && !IsRewritten(group)) {
-      *simplified_node_name = RewriteAddOpsGroup(group);
+    OptimizedNodesGroup group;
+    TF_RETURN_IF_ERROR(CreateOptimizedNodesGroup(node, &group));
+
+    if (!group.optimized_nodes.empty()) {
+      *simplified_node_name = RewriteOptimizedNodesGroup(group);
     }
 
     return Status::OK();
   }
 
- private:
-  // Holds together an add ops subgraph that we want to rewrite together.
-  //
-  // For the graph above the AddOpsGroup will be:
-  //   root_node: AddN_1
-  //   absorbed_nodes: [Add_1, Add_2]
-  //   input_nodes: [x, y, z, w, q, e]
-  struct AddOpsGroup {
-    const NodeDef* root_node;
-    TensorShapeProto root_shape;
-    // Add/AddN operations below the root level that were absorbed by this group
-    std::vector<NodeDef*> absorbed_nodes;
-    // Inputs of absorbed nodes that will be forwarded to rewritten AddN node
-    std::vector<string> inputs;
-  };
+ protected:
+  // Modify the optimized graph after nodes group was successfully identified
+  virtual string RewriteOptimizedNodesGroup(
+      const OptimizedNodesGroup& group) = 0;
 
-  // Check if all inputs have symbolically equal shapes
-  bool HasAllInputsOfSymbolicallyEqualShape(
-      const NodeDef& node, const OpInfo::TensorProperties& properties) const {
-    const AddOpsRewriteStage* self = this;
-    return std::all_of(
-        node.input().begin(), node.input().end(),
-        [self, &properties](const string& input) {
-          OpInfo::TensorProperties input_properties;
-          Status has_input_properties =
-              self->GetTensorProperties(input, &input_properties);
-          return has_input_properties.ok() &&
-                 ShapesSymbolicallyEqual(properties, input_properties);
-        });
+  // Check if input can become a part of current optimized nodes group.
+  virtual bool IsAbsorbableByOptimizedNodesGroup(
+      const OptimizedNodesGroup& group, const string& input) const = 0;
+
+  Status AbsorbInputByOptimizedNodesGroup(const string& input,
+                                          OptimizedNodesGroup* group) const {
+    NodeDef* node;
+    TF_RETURN_IF_ERROR(GetInputNode(input, &node));
+
+    if (IsAbsorbableByOptimizedNodesGroup(*group, input)) {
+      for (int i = 0; i < node->input_size(); ++i) {
+        const string& input_i = node->input(i);
+        if (!IsControlInput(input)) {
+          TF_RETURN_IF_ERROR(AbsorbInputByOptimizedNodesGroup(input_i, group));
+        }
+      }
+      group->optimized_nodes.push_back(node);
+    } else {
+      // If node can't be absorbed, add it to OptimizedNodesGroup input
+      OpInfo::TensorProperties properties;
+      TF_RETURN_IF_ERROR(GetTensorProperties(input, &properties));
+      group->inputs.emplace_back(input, properties.shape());
+    }
+    return Status::OK();
   }
 
-  // TODO(ezhulenev): use GraphRewriter?
+  Status CreateOptimizedNodesGroup(NodeDef* root_node,
+                                   OptimizedNodesGroup* group) const {
+    OpInfo::TensorProperties root_node_output_properties;
+    TF_RETURN_IF_ERROR(
+        GetTensorProperties(root_node->name(), &root_node_output_properties));
+
+    group->root_node = root_node;
+    group->root_shape = root_node_output_properties.shape();
+
+    group->optimized_nodes.reserve(root_node->input_size());
+    for (int i = 0; i < root_node->input_size(); ++i) {
+      const string& input_i = root_node->input(i);
+      if (!IsControlInput(input_i)) {
+        TF_RETURN_IF_ERROR(AbsorbInputByOptimizedNodesGroup(input_i, group));
+      }
+    }
+
+    return Status::OK();
+  }
+
+  // Check if all inputs can be broadcasted to the same shape
+  // TODO(ezhulenev): move to GraphOptimizerStage?
+  bool HasAllInputsBroadcastableToShape(
+      const NodeDef& node, const OpInfo::TensorProperties& properties) const {
+    auto is_broadcastable = [this, &properties](const string& input) {
+      OpInfo::TensorProperties input_props;
+      Status has_input_properties = GetTensorProperties(input, &input_props);
+      return has_input_properties.ok() &&
+             ShapesBroadcastable(properties, input_props);
+    };
+    return std::all_of(node.input().begin(), node.input().end(),
+                       is_broadcastable);
+  }
+
+  // TODO(ezhulenev): move to GraphOptimizerStage?
   bool IsDrivenByControlDependency(const NodeDef& node) const {
     return std::any_of(node.input().begin(), node.input().end(),
                        IsControlInput);
   }
 
-  // TODO(ezhulenev): use GraphRewriter?
+  // TODO(ezhulenev): move to GraphOptimizerStage?
   bool DrivesControlDependency(const NodeDef& node) const {
     int position;
     for (const NodeDef* output : ctx_.node_map->GetOutputs(node.name())) {
@@ -442,15 +445,90 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
     return false;
   }
 
-  // Check if a node can be absorbed by current AddOpsGroup
-  bool IsAbsorbableByAddOpsGroup(const string& name, const AddOpsGroup& group) {
+  string ShapeSignature(const TensorShapeProto& shape) const {
+    string signature = strings::StrCat("rank:", shape.dim_size(), ":dim");
+    for (int i = 0; i < shape.dim_size(); ++i)
+      strings::StrAppend(&signature, ":", shape.dim(i).size());
+    return signature;
+  }
+
+  void AddToOptimizedNodes(const NodeDef* node) {
+    optimized_nodes_.insert(node->name());
+  }
+
+  bool IsOnTheSameDevice(const OptimizedNodesGroup& group,
+                         const NodeDef& node) const {
+    return group.root_node->device() == node.device();
+  }
+
+  bool IsInPreserveSet(const NodeDef& node) const {
+    return ctx_.nodes_to_preserve->find(node.name()) !=
+           ctx_.nodes_to_preserve->end();
+  }
+
+  bool IsAlreadyOptimized(const NodeDef& node) const {
+    return optimized_nodes_.find(node.name()) != optimized_nodes_.end();
+  }
+
+ private:
+  // set of nodes already processed by this optimizer stage
+  std::unordered_set<string> optimized_nodes_;
+};
+
+// Rewrite a tree of Add/AddN with a single AddN operation, consuming all the
+// original inputs of absorbed nodes.
+//
+// 1) All nodes must have the same device placement.
+//
+// 2) If All nodes in a Add/AddN subgraph have symbolically equal shape, tree is
+//    optimized to a single AddN node.
+//
+//                AddN_1
+//             /    |    \
+//          Add_1   z   Add_2       -> AddN(x, y, z, w, q, e)
+//          /  \        /  \
+//         x    y      w    Add_3
+//                          / \
+//                         q   e
+//
+// 3) If some nodes have different shape (it needs to be broadcastable to the
+//    shape of a "root), tree is optimized to AddNs for symbolically equal
+//    shapes, and a tree of Add ops, that minimize broadcasts.
+//
+//                AddN_1                                 Add
+//             /    |    \                              /  \
+//          Add_1   z   Add_2       ->               Add    w
+//          /  \        /  \                        /   \
+//         x    y      w    Add_3      AddN(x, y, q, e)  z
+//                          / \
+//                         q   e
+class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
+ public:
+  explicit AddOpsRewriteStage(const GraphOptimizerContext& ctx,
+                              const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticNodesGroupOptimizerStage("AddOpsRewrite", ctx, ctx_ext) {}
+  ~AddOpsRewriteStage() override = default;
+
+  // Check if a node can become a root of AddOpsGroup
+  bool IsSupported(const NodeDef* node) const override {
+    if (!CanOptimize(node)) return false;
+
+    // shape must be symbolically defined and all inputs compatible with it
+    OpInfo::TensorProperties properties;
+    Status has_properties = GetTensorProperties(node->name(), &properties);
+    return has_properties.ok() && ShapeIsSymbolicallyDefined(properties) &&
+           HasAllInputsBroadcastableToShape(*node, properties);
+  }
+
+ protected:
+  // Check if a node can be absorbed by current OptimizedNodesGroup
+  bool IsAbsorbableByOptimizedNodesGroup(const OptimizedNodesGroup& group,
+                                         const string& input) const override {
     NodeDef* node;
-    Status node_status = GetInputNode(name, &node);
-    if (!node_status.ok()) {
-      return false;
-    }
-    // check basic preconditions
-    if (!IsRewritable(node)) {
+    Status node_status = GetInputNode(input, &node);
+    if (!node_status.ok() || !CanOptimize(node)) return false;
+
+    if (!IsOnTheSameDevice(group, *node)) {
       return false;
     }
     // with a single output data consumer (presumably if we reach this node from
@@ -459,138 +537,162 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
     if (NumNonControlDataOutputs(*node, *ctx_.node_map) != 1) {
       return false;
     }
-    // must be on the same device as a root node
-    if (node->device() != group.root_node->device()) {
-      return false;
-    }
-    // All input shapes must be symbolically defined and equal to the node shape
+    // All input shapes must be broadcastable to the node shape
     OpInfo::TensorProperties properties;
-    Status has_properties = GetTensorProperties(name, &properties);
+    Status has_properties = GetTensorProperties(input, &properties);
     return has_properties.ok() &&
-           HasAllInputsOfSymbolicallyEqualShape(*node, properties);
+           HasAllInputsBroadcastableToShape(*node, properties);
   }
 
   // Node requirements both for a root node and an absorbed node
-  bool IsRewritable(const NodeDef* node) const {
-    // only Add or AddN can be a root node
+  bool CanOptimize(const NodeDef* node) const {
     // TODO(ezhulenev): check if AccumulateNV2 can be supported too
     if (!IsAdd(*node) && !IsAddN(*node)) {
       return false;
     }
-    // it must not be in a preserve set
-    if (ctx_.nodes_to_preserve->find(node->name()) !=
-        ctx_.nodes_to_preserve->end()) {
+    if (IsInPreserveSet(*node) || IsAlreadyOptimized(*node)) {
       return false;
     }
-    // it must not be a node created or absorbed by previous iteration
-    if (rewritten_nodes_.find(node->name()) != rewritten_nodes_.end()) {
+    // it must not be created by this stage at any of previous optimization runs
+    if (str_util::StrContains(node->name(), stage_name_)) {
       return false;
     }
-    // should not drive or be driven by control dependency
     // TODO(ezhulenev): relax this condition for root node
     return !(IsDrivenByControlDependency(*node) ||
              DrivesControlDependency(*node));
   }
 
-  // Check that optimized group node name doesn't exists. It might happen if
-  // graph optimized multiple times without pruning between invocations.
-  bool IsRewritten(const AddOpsGroup& group) const {
-    return ctx_.node_map->NodeExists(AddOpsGroupName(group));
-  }
+  // Rewrite a group of add ops into a single AddN if all input shapes are
+  // symbolically equal. If not, create AddN for equal shapes first, and then
+  // build an Add tree, minimizing the cost of broadcasts.
+  string RewriteOptimizedNodesGroup(const OptimizedNodesGroup& group) override {
+    // all new nodes will be placed under the scope of a root node
+    auto root_scope_and_name = ParseNodeScopeAndName(group.root_node->name());
 
-  // Create an AddOpsGroup with a root in a given node
-  Status CreateAddOpsGroup(const NodeDef* root_node, AddOpsGroup* group) {
-    OpInfo::TensorProperties root_node_output_properties;
-    TF_RETURN_IF_ERROR(
-        GetTensorProperties(root_node->name(), &root_node_output_properties));
-
-    group->root_node = root_node;
-    group->root_shape = root_node_output_properties.shape();
-
-    group->absorbed_nodes.reserve(root_node->input_size());
-    for (int i = 0; i < root_node->input_size(); ++i) {
-      TF_RETURN_IF_ERROR(AbsorbInputByAddOpsGroup(root_node->input(i), group));
+    // Find what shapes are present in the inputs of absorbed nodes
+    std::unordered_map<string, std::vector<InputAndShape>> shape_sig_to_inputs;
+    for (const auto& input : group.inputs) {
+      shape_sig_to_inputs[ShapeSignature(input.shape)].push_back(input);
     }
 
-    return Status::OK();
-  }
+    // Collect all the shapes from representative elements
+    std::vector<TensorShapeProto> shapes;
+    shapes.reserve(shape_sig_to_inputs.size());
+    for (const auto& el : shape_sig_to_inputs)
+      shapes.push_back(el.second[0].shape);
 
-  Status AbsorbInputByAddOpsGroup(const string& input, AddOpsGroup* group) {
-    NodeDef* node;
-    TF_RETURN_IF_ERROR(GetInputNode(input, &node));
-
-    if (IsAbsorbableByAddOpsGroup(input, *group)) {
-      group->absorbed_nodes.push_back(node);
-      for (int i = 0; i < node->input_size(); ++i) {
-        TF_RETURN_IF_ERROR(AbsorbInputByAddOpsGroup(node->input(i), group));
-      }
-    } else {
-      // If node can't be absorbed, add it to AddOpsGroup input
-      group->inputs.push_back(input);
+    // If all inputs have the same shape, rewrite whole group with a single AddN
+    if (shapes.size() == 1) {
+      string node_name = OptimizedNodeName(root_scope_and_name);
+      AddInputsOfSymbolicallyEqualShape(*group.root_node, node_name,
+                                        group.inputs);
+      return node_name;
     }
-    return Status::OK();
+
+    // For inputs of different shapes:
+    // 1. Rewrite inputs of the same shape using AddN (leaf nodes)
+    // 2. Build a tree of Add nodes, minimizing cost of broadcast
+    std::sort(shapes.begin(), shapes.end(),
+              [](const TensorShapeProto& left, const TensorShapeProto& right) {
+                return CompareSymbolicallyShapedTensorSizes(left, right);
+              });
+
+    // optimized name for leaf AddN nodes
+    auto leaf_node_name = [&root_scope_and_name, this](int i) {
+      return OptimizedNodeName(root_scope_and_name,
+                               strings::StrCat("Leaf_", i));
+    };
+    // optimized name for internal nodes of a tree built up from AddN leaves
+    auto internal_node_name = [&root_scope_and_name, this](int i) {
+      return OptimizedNodeName(root_scope_and_name,
+                               strings::StrCat("Internal_", i));
+    };
+
+    // Add/AddN nodes that must be added to the tree
+    std::deque<InputAndShape> add_ops;
+
+    // Prepare leaf AddN nodes for inputs of equal shape
+    for (int i = 0; i < shapes.size(); ++i) {
+      const auto node_name = leaf_node_name(i);
+      const auto& inputs = shape_sig_to_inputs[ShapeSignature(shapes[i])];
+      add_ops.push_back(AddInputsOfSymbolicallyEqualShape(*group.root_node,
+                                                          node_name, inputs));
+    }
+
+    // Build up a tree of Add ops
+    int internal_nodes = 0;
+    do {
+      const InputAndShape lhs = add_ops.front();
+      add_ops.pop_front();
+      const InputAndShape rhs = add_ops.front();
+      add_ops.pop_front();
+      string name = add_ops.empty() ? OptimizedNodeName(root_scope_and_name)
+                                    : internal_node_name(internal_nodes++);
+      InputAndShape add = AddAggregatedInputs(*group.root_node, name, lhs, rhs);
+      add_ops.push_front(add);
+    } while (add_ops.size() > 1);
+
+    InputAndShape optimized_root_node = add_ops.front();
+    return optimized_root_node.input;
   }
 
-  // New node for AddOpsGroup is added to the same scope as a root_node. All
-  // absorbed nodes are stripped of their scope, and only names are used in a
-  // new node name.
-  //
-  // Example: AddOpsGroup(root="a/b/c/Add_2", absorbed=["d/Add_1", "e/Add"])
-  //          node_name="a/b/c/AddOpsGroup_Add_2_Add_1_Add
-  string AddOpsGroupName(const AddOpsGroup& group) const {
-    CHECK_NOTNULL(group.root_node);
+  // Add 'AddN' node to aggregate inputs of symbolically equal shape
+  InputAndShape AddInputsOfSymbolicallyEqualShape(
+      const NodeDef& root_node, const string& node_name,
+      const std::vector<InputAndShape>& inputs) {
+    CHECK(!inputs.empty()) << "Inputs must be non-empty";
 
-    auto root = ParseNodeScopeAndName(group.root_node->name());
+    // Do not create redundant AddN nodes
+    if (inputs.size() == 1) {
+      return inputs[0];
+    }
 
-    std::vector<string> absorbed_node_names(group.absorbed_nodes.size());
-    std::transform(group.absorbed_nodes.begin(), group.absorbed_nodes.end(),
-                   absorbed_node_names.begin(),
-                   [](const NodeDef* node) { return node->name(); });
-
-    return OptimizedNodeName(root, absorbed_node_names);
-  }
-
-  // Create a new node for a AddOpsGroup and return it's name.
-  string RewriteAddOpsGroup(const AddOpsGroup& group) {
-    CHECK_GT(group.absorbed_nodes.size(), 0)
-        << "AddOpsGroup must have non empty absorbed nodes";
-
-    // name for a new node constructed from AddOpsGroup
-    string node_name = AddOpsGroupName(group);
+    // get shape from representative element
+    auto shape = inputs[0].shape;
 
     // copy attributes from a root node
-    DataType dtype = group.root_node->attr().at("T").type();
+    DataType dtype = root_node.attr().at("T").type();
 
     // add new AddN node
-    NodeDef* added_node = AddEmptyNode(node_name);
-    added_node->set_op("AddN");
-    added_node->set_device(group.root_node->device());
-    (*added_node->mutable_attr())["T"].set_type(dtype);
-    (*added_node->mutable_attr())["N"].set_i(group.inputs.size());
+    NodeDef* node = AddEmptyNode(node_name);
+    node->set_op("AddN");
+    node->set_device(root_node.device());
+    (*node->mutable_attr())["T"].set_type(dtype);
+    (*node->mutable_attr())["N"].set_i(inputs.size());
 
-    // all inputs of absorbed nodes are added to the new node
-    for (const string& input : group.inputs) {
-      ctx_.node_map->AddOutput(input, node_name);
-      added_node->add_input(input);
+    for (const auto& inputAndShape : inputs) {
+      ctx_.node_map->AddOutput(inputAndShape.input, node_name);
+      node->add_input(inputAndShape.input);
     }
 
-    // Add frame dependencies that the original node might have had.
-    AddFrameControlDeps(group.root_node, {added_node}, "", {});
-
-    VLOG(1) << "Absorbed " << group.absorbed_nodes.size()
-            << " Add/AddN nodes from the graph";
-
-    // keep track of nodes that were created or absorbed as a part of rewrite
-    rewritten_nodes_.insert(node_name);
-    for (const NodeDef* absorbed : group.absorbed_nodes) {
-      rewritten_nodes_.insert(absorbed->name());
-    }
-
-    return node_name;
+    AddToOptimizedNodes(node);
+    return InputAndShape(node_name, shape);
   }
 
-  // keep nodes that were added or absorbed as a part of AddOpsGroup rewrite
-  std::unordered_set<string> rewritten_nodes_;
+  // Add a single 'Add' node to sum two inputs
+  InputAndShape AddAggregatedInputs(const NodeDef& root_node,
+                                    const string& node_name,
+                                    const InputAndShape& left,
+                                    const InputAndShape& right) {
+    // copy attributes from a root node
+    DataType dtype = root_node.attr().at("T").type();
+
+    // add new Add node
+    NodeDef* node = AddEmptyNode(node_name);
+    node->set_op("Add");
+    node->set_device(root_node.device());
+    (*node->mutable_attr())["T"].set_type(dtype);
+
+    ctx_.node_map->AddOutput(left.input, node_name);
+    ctx_.node_map->AddOutput(right.input, node_name);
+
+    node->add_input(left.input);
+    node->add_input(right.input);
+
+    AddToOptimizedNodes(node);
+    return InputAndShape(
+        node_name, TensorShapeProto());  // shape is not important at this point
+  }
 };
 
 // Use the commutativity and (left- and right-) distributive property of
@@ -616,10 +718,11 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    CHECK(IsSupported(node));
+    TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
 
     std::set<string> common_factors;
-    TF_RETURN_IF_ERROR(GetCommonFactors(node, &common_factors));
+    std::vector<string> ctrl_deps;
+    TF_RETURN_IF_ERROR(GetCommonFactors(node, &common_factors, &ctrl_deps));
 
     if (common_factors.size() == 1) {
       const string& common_factor = *common_factors.begin();
@@ -648,12 +751,16 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
 
         // Hoist non-shared factors up into the new AddN node.
         for (int i = 0; i < unique_factors.size(); ++i) {
-          new_add_node->set_input(i, unique_factors[i]);
+          const string& unique_factor_i = unique_factors[i];
+          new_add_node->set_input(i, unique_factor_i);
+          ctx_.node_map->AddOutput(unique_factor_i, new_add_node->name());
         }
 
-        // Add frame dependencies that the original node might have had.
-        AddFrameControlDeps(node, {new_add_node, new_mul_node}, common_factor,
-                            {new_add_node});
+        // Add control deps on add node
+        for (const string& ctrl_dep : ctrl_deps) {
+          *new_add_node->add_input() = ctrl_dep;
+          ctx_.node_map->AddOutput(NodeName(ctrl_dep), new_add_node->name());
+        }
 
         // optimize new inner aggregation node
         AddToOptimizationQueue(new_add_node);
@@ -679,14 +786,16 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
   }
 
   // Determine the set of common factors if the input nodes are all Mul nodes.
-  Status GetCommonFactors(const NodeDef* node,
-                          std::set<string>* common_factors) const {
+  Status GetCommonFactors(const NodeDef* node, std::set<string>* common_factors,
+                          std::vector<string>* ctrl_deps) const {
     CHECK(common_factors->empty());
 
     for (int i = 0; i < node->input_size(); ++i) {
       if (i > 0 && common_factors->empty()) break;
-      if (IsControlInput(node->input(i))) break;
-
+      if (IsControlInput(node->input(i))) {
+        ctrl_deps->push_back(node->input(i));
+        continue;
+      }
       NodeDef* input;
       TF_RETURN_IF_ERROR(GetInputNode(node->input(i), &input));
 
@@ -705,6 +814,9 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
             common_factors->end(),
             std::inserter(intersection, intersection.begin()));
         std::swap(*common_factors, intersection);
+      }
+      for (int i = 2; i < input->input_size(); ++i) {
+        ctrl_deps->push_back(input->input(i));
       }
     }
     return Status::OK();
@@ -752,6 +864,201 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
   std::unordered_set<string> rewritten_nodes_;
 };
 
+// Binary associative ops can be re-ordered to minimize the number of broadcasts
+// and the size of a temporary tensors.
+//
+// Example: [a, c] - scalars, [b, d] - matrices
+//   @ - binary associative op (Add or Mul)
+//   @* - broadcast
+//
+//           @                      @*
+//        /     \                /      \
+//      @*       @*      ->     @        @
+//    /   \    /   \          /   \    /   \
+//   a     b  c     d        a     c  b     d
+class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
+ public:
+  explicit MinimizeBroadcasts(const GraphOptimizerContext& ctx,
+                              const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticNodesGroupOptimizerStage("MinimizeBroadcasts", ctx, ctx_ext) {
+  }
+  ~MinimizeBroadcasts() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    if (!IsBinaryAssociative(*node)) return false;
+
+    // has a symbolically defined shape with broadcastable inputs
+    OpInfo::TensorProperties properties;
+    Status has_properties = GetTensorProperties(node->name(), &properties);
+    return has_properties.ok() && ShapeIsSymbolicallyDefined(properties) &&
+           HasAllInputsBroadcastableToShape(*node, properties);
+  }
+
+ protected:
+  bool IsBinaryAssociative(const NodeDef& node) const {
+    return IsMul(node) || IsAdd(node);
+  }
+
+  bool IsSameOp(const OptimizedNodesGroup& group, const NodeDef& node) const {
+    return group.root_node->op() == node.op();
+  }
+
+  // Check if a node can be absorbed by current OptimizedNodesGroup
+  bool IsAbsorbableByOptimizedNodesGroup(const OptimizedNodesGroup& group,
+                                         const string& input) const override {
+    NodeDef* node;
+    Status node_status = GetInputNode(input, &node);
+    if (!node_status.ok()) return false;
+
+    if (!IsSameOp(group, *node)) {
+      return false;
+    }
+    if (IsInPreserveSet(*node) || IsAlreadyOptimized(*node)) {
+      return false;
+    }
+    if (IsDrivenByControlDependency(*node) || DrivesControlDependency(*node)) {
+      return false;
+    }
+    if (!IsOnTheSameDevice(group, *node)) {
+      return false;
+    }
+    // Optimized nodes updated in place, and that would break the graph, if the
+    // node has multiple output consumers
+    if (NumNonControlOutputs(*node, *ctx_.node_map) != 1) {
+      return false;
+    }
+    // All input shapes must be broadcastable to the node shape
+    OpInfo::TensorProperties properties;
+    Status has_properties = GetTensorProperties(input, &properties);
+    return has_properties.ok() &&
+           HasAllInputsBroadcastableToShape(*node, properties);
+  }
+
+  std::size_t CountUniqueShapes(const std::vector<InputAndShape>& inputs) {
+    std::set<string> sigs;
+    for (const auto& ias : inputs) {
+      sigs.insert(ShapeSignature(ias.shape));
+    }
+    return sigs.size();
+  }
+
+  string RewriteOptimizedNodesGroup(const OptimizedNodesGroup& group) override {
+    if (CountUniqueShapes(group.inputs) <= 1) {
+      // nothing to optimize when all shapes are the same
+      return group.root_node->name();
+    }
+
+    auto num_nodes = /*root*/ 1 + group.optimized_nodes.size();
+    auto num_inputs = group.inputs.size();
+    CHECK_EQ(num_nodes, num_inputs - 1)
+        << "Can't build a tree with " << num_inputs << " inputs, using "
+        << num_nodes << "binary op nodes.";
+
+    std::deque<InputAndShape> add_ops(group.inputs.begin(), group.inputs.end());
+    std::deque<NodeDef*> optimized_nodes(group.optimized_nodes.begin(),
+                                         group.optimized_nodes.end());
+
+    // sort inputs by it's shape from smallest to largest
+    std::stable_sort(add_ops.begin(), add_ops.end(),
+                     [](const InputAndShape& lhs, const InputAndShape& rhs) {
+                       return CompareSymbolicallyShapedTensorSizes(lhs.shape,
+                                                                   rhs.shape);
+                     });
+
+    // If there is an odd number of inputs, last one is the largest, and we want
+    // to attach it to the root node, to build a well balanced tree.
+    std::deque<InputAndShape> add_ops_leftover;
+    if (add_ops.size() % 2 != 0) {
+      add_ops_leftover.push_back(add_ops.back());
+      add_ops.pop_back();
+    }
+
+    // At this point it's guaranteed that add_ops have even number of inputs.
+    do {
+      const InputAndShape lhs = add_ops.front();
+      add_ops.pop_front();
+      const InputAndShape rhs = add_ops.front();
+      add_ops.pop_front();
+
+      NodeDef* node;
+      if (!optimized_nodes.empty()) {
+        // re-purpose optimized nodes to build a new tree
+        node = optimized_nodes.front();
+        optimized_nodes.pop_front();
+      } else {
+        // or use root node if none optimized nodes left
+        node = group.root_node;
+      }
+      InputAndShape updated_node = UpdateInputs(lhs.input, rhs.input, node);
+
+      // Pushing updated node to the back of a deque will create a wide and
+      // short tree, pushing to the front will create a tall tree. We prefer to
+      // get a wide tree, it minimizes the potential number of temporary tensors
+      // required to keep in memory, though sometimes we can go up to prevent
+      // propagating a brodcast from leaves to the root. Example:
+      //
+      // inputs: [s, s, s, M] (s - scalar, M - matrix)
+      // @* - op with broadcast
+      //
+      //  (only push_back)           @*     (push_front first op)
+      //                            /  \
+      //       @*                  @    M
+      //     /   \                / \
+      //    @     @*      ->     @   s
+      //   / \   / \            / \
+      //  s   s s   M          s   s
+      if (add_ops.size() >= 2 &&
+          CompareSymbolicallyShapedTensorSizes(add_ops.at(0).shape,
+                                               add_ops.at(1).shape)) {
+        add_ops.push_front(updated_node);
+      } else {
+        add_ops.push_back(updated_node);
+      }
+    } while (add_ops.size() > 1);
+    CHECK_EQ(1, add_ops.size());
+
+    // attach the largest tensor to the root op
+    if (!add_ops_leftover.empty()) {
+      const InputAndShape lhs = add_ops.front();
+      add_ops.pop_front();
+      const InputAndShape rhs = add_ops_leftover.front();
+      InputAndShape updated_node =
+          UpdateInputs(lhs.input, rhs.input, group.root_node);
+      add_ops.push_back(updated_node);
+    }
+
+    return add_ops.front().input;
+  }
+
+  InputAndShape UpdateInputs(const string& input_0, const string& input_1,
+                             NodeDef* node) {
+    string old_input_0 = node->input(0);
+    string old_input_1 = node->input(1);
+
+    // Update inputs only if they changed
+    if (old_input_0 != input_0 || old_input_1 != input_1) {
+      node->set_input(0, input_0);
+      node->set_input(1, input_1);
+      // Invalidate node properties (shape)
+      ctx_.graph_properties->ClearOutputProperties(node->name());
+      ctx_.graph_properties->ClearInputProperties(node->name());
+      // Update the node map
+      ctx_.node_map->RemoveOutput(NodeName(old_input_0), node->name());
+      ctx_.node_map->RemoveOutput(NodeName(old_input_1), node->name());
+      ctx_.node_map->AddOutput(NodeName(input_0), node->name());
+      ctx_.node_map->AddOutput(NodeName(input_1), node->name());
+      // Add updated node to optimization queue
+      AddToOptimizationQueue(node);
+    }
+
+    // Do not add updated node to any other group
+    AddToOptimizedNodes(node);
+
+    TensorShapeProto shape;  // shape is not important at this point
+    return InputAndShape(node->name(), shape);
+  }
+};
+
 // Removes inverse transpose nodes
 class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
  public:
@@ -767,19 +1074,24 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   // TODO(rmlarsen): Forward control dependencies on the bypassed
   // transpose nodes.
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    CHECK(IsSupported(node));
+    TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
 
     NodeDef* input;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
     NodeDef* node_perm;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &node_perm));
+    if (!IsConstant(*node_perm)) {
+      return Status::OK();
+    }
     std::vector<int64> node_perm_values;
     TF_RETURN_IF_ERROR(GetPermutation(*node_perm, &node_perm_values));
-
     if (input->op() == node->op()) {
       // Remove pairs of transposes that cancel each other.
       NodeDef* input_perm;
       TF_RETURN_IF_ERROR(GetInputNode(input->input(1), &input_perm));
+      if (!IsConstant(*input_perm)) {
+        return Status::OK();
+      }
       std::vector<int64> input_perm_values;
       TF_RETURN_IF_ERROR(GetPermutation(*input_perm, &input_perm_values));
       if (AreInversePermutations(node_perm_values, input_perm_values)) {
@@ -851,7 +1163,7 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    CHECK(IsSupported(node));
+    TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
 
     // Bypass Bitcast whose source type and destination type are equal.
     if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
@@ -889,7 +1201,8 @@ class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
   bool IsSupported(const NodeDef* node) const override { return IsCast(*node); }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    CHECK(IsSupported(node));
+    TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
+
     // Bypass Cast whose source type and destination type are equal.
     if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
       *simplified_node_name = node->input(0);
@@ -1085,6 +1398,25 @@ bool ArithmeticOptimizer::OptimizedNodeExists(const NodeDef& node,
   return node_map_->NodeExists(OptimizedNodeName(node, suffix));
 }
 
+namespace {
+
+bool FeedsInPlaceOp(const SimpleGraphView& graph_view, const NodeDef& node) {
+  const std::unordered_set<string> op_types_to_traverse = {
+      node.op(),    "Identity", "IdentityN", "Reshape",
+      "ExpandDims", "Enter",    "Switch",    "Merge"};
+  int node_idx = graph_view.index(node.name());
+  std::set<int> node_fanout;
+  graph_view.DepthFirstSearch(op_types_to_traverse, node_idx, &node_fanout);
+  for (int fanout : node_fanout) {
+    if (ModifiesInputsInPlace(graph_view.graph()->node(fanout))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -1104,6 +1436,11 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
 
 void ArithmeticOptimizer::DedupComputations() {
   bool stop = true;
+  SimpleGraphView graph_view;
+  if (!graph_view.Initialize(*optimized_graph_).ok()) {
+    LOG(WARNING) << "Failed to build SimpleGraphView.";
+    return;
+  }
   std::set<int> duplicates;
   do {
     stop = true;
@@ -1120,19 +1457,28 @@ void ArithmeticOptimizer::DedupComputations() {
       if (rep == node) {
         continue;
       }
+      // If either node feeds an inplace op, deduping them may cause data races.
+      // For example: If we dedup nodes initializing two independent inplace
+      // accumulations, they will write to the same buffer, clobbering each
+      // other's results.
+      if (FeedsInPlaceOp(graph_view, *rep) ||
+          FeedsInPlaceOp(graph_view, *node)) {
+        continue;
+      }
       const std::set<NodeDef*>& fanouts = node_map_->GetOutputs(node->name());
       for (NodeDef* fanout : fanouts) {
-        for (string& name : *fanout->mutable_input()) {
+        for (int i = 0; i < fanout->input_size(); ++i) {
+          string* name = fanout->mutable_input(i);
           int position;
-          const string nodename = ParseNodeName(name, &position);
+          const string nodename = ParseNodeName(*name, &position);
           if (nodename == node->name()) {
             // Update name in-place.
             if (position > 0) {
-              name = StrCat(rep->name(), ":", position);
+              *name = StrCat(rep->name(), ":", position);
             } else if (position == 0) {
-              name = rep->name();
+              *name = rep->name();
             } else {
-              name = StrCat("^", rep->name());
+              *name = StrCat("^", rep->name());
             }
             node_map_->AddOutput(rep->name(), fanout->name());
           }
@@ -1158,20 +1504,15 @@ void ArithmeticOptimizer::DedupComputations() {
   }
 }
 
-void ArithmeticOptimizer::AddFrameControlDeps(
-    const NodeDef* old_node, const std::vector<NodeDef*>& new_nodes,
-    const string& source_for_ctrl_dep,
-    const std::vector<NodeDef*>& sinks_for_control_dep) {
-  const auto frame_it = frame_map_.find(old_node);
-  if (frame_it != frame_map_.end()) {
-    for (auto node : new_nodes) {
-      frame_map_.emplace(node, frame_it->second);
-    }
-    if (!source_for_ctrl_dep.empty() && !sinks_for_control_dep.empty()) {
-      const string ctrl_dep = ConstantFolding::AddControlDependency(
-          source_for_ctrl_dep, optimized_graph_, node_map_.get());
-      for (auto node : sinks_for_control_dep) {
-        MaybeAddControlInput(ctrl_dep, node, optimized_graph_, node_map_.get());
+void ArithmeticOptimizer::ForwardControlDependencies(
+    NodeDef* target_node, const std::vector<const NodeDef*>& src_nodes) {
+  for (const auto& src : src_nodes) {
+    for (int i = src->input_size() - 1; i >= 0; --i) {
+      if (IsControlInput(src->input(i))) {
+        *target_node->add_input() = src->input(i);
+        node_map_->AddOutput(NodeName(src->input(i)), target_node->name());
+      } else {
+        break;
       }
     }
   }
@@ -1223,23 +1564,22 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     //      ^      |
     //      |      |
     //    input ---+
-    NodeDef* reshape = node_map_->GetNode(node->name());
+    NodeDef* reshape = const_cast<NodeDef*>(node);
     int output_pos = 0;
-    string input_node_name = ParseNodeName(node->input(0), &output_pos);
+    string input_node_name = ParseNodeName(reshape->input(0), &output_pos);
     const NodeDef* input = node_map_->GetNode(input_node_name);
-    if (input->op() == "Reshape") {
+    if (input->op() == "Reshape" && !HasControlInputs(*input)) {
       reshape->set_input(0, input->input(0));
       node_map_->UpdateInput(reshape->name(), input->name(), input->input(0));
       nodes_to_simplify->PushBack(reshape);
       return reshape->name();
     }
 
-    // If the reshape is a no-op, forward its input to its consumers. This is
-    // considered aggressive, because users may state that the placeholder
-    // outputs tensors of shape [M, N] while feeding it with tensors of shape
-    // [M*N] (or worse). The reshape nodes are then necessary to update the
-    // tensor metadata to the required shape.
-    if (ReshapeIsIdentity(*reshape, *input, output_pos)) {
+    // If the reshape is a no-op, forward its input to its consumers, unless it
+    // anchors a control dependency since we want to make sure that control
+    // dependency is triggered.
+    if (ReshapeIsIdentity(*reshape, *input, output_pos, *graph_properties_) &&
+        !HasControlInputs(*reshape)) {
       return reshape->input(0);
     }
   }
@@ -1267,8 +1607,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // with image.type than with dst_type.
     if (DeviceNameUtils::SplitDeviceName(transpose->device(), &dontcare,
                                          &device) &&
-        (StringPiece(device).contains(DEVICE_CPU) ||
-         StringPiece(device).contains(DEVICE_GPU))) {
+        (str_util::StrContains(device, DEVICE_CPU) ||
+         str_util::StrContains(device, DEVICE_GPU))) {
       const NodeDef* cast = node_map_->GetNode(transpose->input(0));
       if (cast->op() == "Cast") {
         const NodeDef* input = node_map_->GetNode(cast->input(0));
@@ -1292,10 +1632,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           node_map_->AddOutput(new_transpose->name(), new_cast->name());
 
           nodes_to_simplify->PushBack(new_transpose);
-          //  Add frame dependencies that the original node might have had.
-          AddFrameControlDeps(node, {new_transpose, new_cast},
-                              new_transpose->input(0), {new_transpose});
-
+          ForwardControlDependencies(new_transpose, {cast, node});
           return new_cast->name();
         }
       }
@@ -1369,7 +1706,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             node_map_->AddOutput(weights->name(), scaled_weights->name());
             scaled_weights->add_input(mul->input(1));
             node_map_->AddOutput(scale->name(), scaled_weights->name());
-            AddFrameControlDeps(node, {scaled_weights}, "", {});
+            ForwardControlDependencies(scaled_weights, {source});
 
             // Update `conv`'s weights to `scaled_weights`.
             conv->set_input(1, scaled_weights->name());
@@ -1405,7 +1742,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   }
 
   if (IsAggregate(*node) && NumNonControlInputs(*node) > 0) {
-    // Discard aggregate nodes with a single input.
+    // Discard aggregate nodes with a single input and no control dependencies.
     if (node->input_size() == 1) {
       return node->input(0);
     }
@@ -1451,6 +1788,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
         return "";
       }
       new_const_node->set_device(node->device());
+      MaybeAddControlInput(NodeName(node->input(0)), new_const_node,
+                           optimized_graph_, node_map_.get());
       nodes_to_simplify->PushBack(new_const_node);
 
       // 2. Replace the aggregate node with Mul(Const(N), x).
@@ -1463,9 +1802,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       new_mul_node->add_input(node->input(0));
       node_map_->AddOutput(node->input(0), new_mul_node->name());
 
-      CopyControlInputs(*node, new_mul_node, optimized_graph_, node_map_.get());
-      AddFrameControlDeps(node, {new_const_node, new_mul_node}, node->input(0),
-                          {new_const_node});
+      ForwardControlDependencies(new_mul_node, {node});
       return new_mul_node->name();
     }
   }
@@ -1498,7 +1835,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
         FlipBooleanAttr(attr_a, new_op);
         new_op->set_input(0, a->input(0));
         node_map_->UpdateInput(new_op->name(), a->name(), a->input(0));
-        AddFrameControlDeps(node, {new_op}, a->input(0), {new_op});
       }
       if (b_is_foldable) {
         const string attr_b =
@@ -1506,10 +1842,15 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
         FlipBooleanAttr(attr_b, new_op);
         new_op->set_input(1, b->input(0));
         node_map_->UpdateInput(new_op->name(), b->name(), b->input(0));
-        if (!a_is_foldable) {
-          AddFrameControlDeps(node, {new_op}, b->input(0), {new_op});
-        }
       }
+      std::vector<const NodeDef*> deps_to_forward({node});
+      if (a_is_foldable) {
+        deps_to_forward.push_back(a);
+      }
+      if (b_is_foldable) {
+        deps_to_forward.push_back(b);
+      }
+      ForwardControlDependencies(new_op, deps_to_forward);
     }
   }
 
@@ -1531,7 +1872,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
                                                        : "Transpose");
       new_op->set_input(0, input->input(0));
       node_map_->UpdateInput(new_op->name(), node->name(), input->input(0));
-      AddFrameControlDeps(node, {new_op}, "", {});
+      ForwardControlDependencies(new_op, {node, input});
       return new_op->name();
     }
   }
@@ -1539,7 +1880,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   return "";
 }
 
-Status ArithmeticOptimizer::SimplifyArithmeticOps() {
+Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   SetVector<NodeDef*> nodes_to_simplify;
   nodes_to_simplify.Reserve(optimized_graph_->node_size());
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
@@ -1547,38 +1888,29 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
   }
 
   const GraphOptimizerContext ctx(&nodes_to_preserve_, optimized_graph_,
-                                  graph_properties_.get(), node_map_.get(),
-                                  &frame_map_);
+                                  graph_properties_.get(), node_map_.get());
   const ArithmeticOptimizerContext ctx_ext(&nodes_to_simplify);
 
-  std::vector<std::unique_ptr<ArithmeticOptimizerStage>> stages;
+  // Stop pipeline after first stage returning non-empty simplified tensor name.
+  const auto stop = [](const string& result) { return !result.empty(); };
+  GraphOptimizerStagePipeline<string> pipeline(stop);
 
-  if (options_.combine_add_to_addn) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new AddOpsRewriteStage(ctx, ctx_ext)));
-  }
-  if (options_.hoist_common_factor_out_of_aggregation) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new HoistCommonFactorOutOfAggregation(ctx, ctx_ext)));
-  }
-  if (options_.remove_identity_transpose) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveIdentityTranspose(ctx, ctx_ext)));
-  }
-  if (options_.remove_redundant_bitcast) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveRedundantBitcastStage(ctx, ctx_ext)));
-  }
-  if (options_.remove_redundant_cast) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveRedundantCastStage(ctx, ctx_ext)));
-  }
-  if (options_.remove_negation) {
-    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveNegationStage(ctx, ctx_ext)));
-  }
+  if (options_.combine_add_to_addn && can_use_shapes)
+    pipeline.AddStage<AddOpsRewriteStage>(ctx, ctx_ext);
+  if (options_.hoist_common_factor_out_of_aggregation && can_use_shapes)
+    pipeline.AddStage<HoistCommonFactorOutOfAggregation>(ctx, ctx_ext);
+  if (options_.minimize_broadcasts && can_use_shapes)
+    pipeline.AddStage<MinimizeBroadcasts>(ctx, ctx_ext);
+  if (options_.remove_identity_transpose && can_use_shapes)
+    pipeline.AddStage<RemoveIdentityTranspose>(ctx, ctx_ext);
+  if (options_.remove_redundant_bitcast)
+    pipeline.AddStage<RemoveRedundantBitcastStage>(ctx, ctx_ext);
+  if (options_.remove_redundant_cast)
+    pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
+  if (options_.remove_negation)
+    pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
 
-  VLOG(1) << "Simplify arithmetic ops using " << stages.size()
+  VLOG(1) << "Simplify arithmetic ops using " << pipeline.NumStages()
           << " arithmetic optimization stages";
 
   while (!nodes_to_simplify.Empty()) {
@@ -1591,20 +1923,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
     }
 
     // if it was not simplified try to run it through all configured stages
-    if (simplified_tensor.empty()) {
-      for (auto& stage : stages) {
-        if (stage->IsSupported(node)) {
-          TF_RETURN_IF_ERROR(stage->TrySimplify(node, &simplified_tensor));
-          if (!simplified_tensor.empty()) {
-            break;
-          }
-        }
+    if (!stop(simplified_tensor)) {
+      bool optimized = pipeline.PassThroughAllStages(node, &simplified_tensor);
+      if (!optimized) {
+        continue;
       }
-    }
-
-    // if it's still empty go to the next Node
-    if (simplified_tensor.empty()) {
-      continue;
     }
 
     // re-wire consumers of an old node to the new one
@@ -1649,31 +1972,32 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
 Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
                                      const GrapplerItem& item,
                                      GraphDef* optimized_graph) {
-  optimized_graph_ = optimized_graph;
-  *optimized_graph_ = item.graph;
+  GrapplerItem optimized_item(item);
+  optimized_graph_ = &optimized_item.graph;
 
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
   node_map_.reset(new NodeMap(optimized_graph_));
-  int num_frames;
-  TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
-                                               &frame_map_, &num_frames));
+
+  DedupComputations();
+
+  // Perform topological sort on the graph in order to help AddOpsRewrite to
+  // optimize larger subgraphs starting from the roots with more inputs.
+  TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
+
   // Shapes are only needed in aggressive mode.
   graph_properties_.reset(new GraphProperties(item));
-  TF_RETURN_IF_ERROR(graph_properties_->InferStatically(false));
-  // TODO(ezhulenev): Use GraphProperties to lookup tensor shapes directly
-  TF_RETURN_IF_ERROR(graph_properties_->AnnotateOutputShapes(optimized_graph_));
-
-  // Perform the optimizations.
-  DedupComputations();
-  TF_RETURN_IF_ERROR(SimplifyArithmeticOps());
-
-  // Clear output shapes.
-  for (int i = 0; i < optimized_graph->node_size(); ++i) {
-    optimized_graph_->mutable_node(i)->mutable_attr()->erase(kOutputShapesAttr);
+  const Status status = graph_properties_->InferStatically(false);
+  const bool can_use_shapes = status.ok();
+  if (!can_use_shapes) {
+    VLOG(1) << "Shape inference failed." << status.error_message();
   }
 
+  // Perform the optimizations.
+  TF_RETURN_IF_ERROR(SimplifyArithmeticOps(can_use_shapes));
+
+  optimized_graph->Swap(optimized_graph_);
   return Status::OK();
 }
 

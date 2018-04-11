@@ -485,9 +485,9 @@ def import_graph_def(graph_def,
     with graph._lock:  # pylint: disable=protected-access
       with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
         try:
-          with errors.raise_exception_on_not_ok_status() as status:
-            results = c_api.TF_GraphImportGraphDefWithResults(
-                graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
+          results = c_api.TF_GraphImportGraphDefWithResults(
+              graph._c_graph, serialized, options)  # pylint: disable=protected-access
+          results = c_api_util.ScopedTFImportGraphDefResults(results)
         except errors.InvalidArgumentError as e:
           # Convert to ValueError for backwards compatibility.
           raise ValueError(str(e))
@@ -516,7 +516,7 @@ def import_graph_def(graph_def,
     # they are likely to be due to a typo.
     missing_unused_input_keys = (
         c_api.TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
-            results))
+            results.results))
     if missing_unused_input_keys:
       missing_unused_input_keys = [
           compat.as_str(s) for s in missing_unused_input_keys
@@ -528,7 +528,7 @@ def import_graph_def(graph_def,
     if return_elements is None:
       return None
     else:
-      return _GatherReturnElements(return_elements, graph, results)
+      return _GatherReturnElements(return_elements, graph, results.results)
 
   else:
     g = graph
@@ -685,11 +685,10 @@ def import_graph_def(graph_def,
                      ', '.join(x.name for x in op._input_types))))
         # pylint: enable=protected-access
 
-        if not g._is_function(op.type):  # pylint: disable=protected-access
-          # Execute shape inference for this op.
-          # NOTE(mrry): If the graph contains a cycle, the full shape
-          # information may not be available for this op's inputs.
-          ops.set_shapes_for_outputs(op)
+        # Execute shape inference for this op.
+        # NOTE(mrry): If the graph contains a cycle, the full shape
+        # information may not be available for this op's inputs.
+        ops.set_shape_and_handle_data_for_outputs(op)
         # For nodes with _output_shapes set, set the output shapes.
         if '_output_shapes' in op.node_def.attr:
           for i, output in enumerate(op.outputs):

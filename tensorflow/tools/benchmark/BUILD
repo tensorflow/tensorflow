@@ -90,12 +90,3 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [":benchmark_model_lib"],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = ["**/OWNERS"],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

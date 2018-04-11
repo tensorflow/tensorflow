@@ -56,15 +56,18 @@ enum class OperatorType {
   kL2Pool,
   kLstmCell,
   kLocalResponseNormalization,
+  kLog,
   kLogistic,
   kMaxPool,
   kFakeQuant,
   kMul,
+  kRandomUniform,
   kRange,
   kRank,
   kRelu,
   kRelu1,
   kRelu6,
+  kPRelu,
   kSoftmax,
   kLogSoftmax,
   kSub,
@@ -566,6 +569,18 @@ struct Relu6Operator : Operator {
   Relu6Operator() : Operator(OperatorType::kRelu6) {}
 };
 
+// PRelu
+//   f(x) = alpha * x for x < 0, f(x) = x for x >= 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: the alpha array
+//
+// Equivalent to keras.layers.PReLU.
+struct PReluOperator : Operator {
+  PReluOperator() : Operator(OperatorType::kPRelu) {}
+};
+
 // Element-wise Logistic operator:
 //   x -> Logistic(x) = 1 / (1 + exp(-x))
 //
@@ -575,6 +590,17 @@ struct Relu6Operator : Operator {
 // TensorFlow equivalent: Sigmoid
 struct LogisticOperator : Operator {
   LogisticOperator() : Operator(OperatorType::kLogistic) {}
+};
+
+// Element-wise natural log operator:
+//   x -> ln(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Log
+struct LogOperator : Operator {
+  LogOperator() : Operator(OperatorType::kLog) {}
 };
 
 // Element-wise Tanh operator:
@@ -931,6 +957,13 @@ struct FloorDivOperator : Operator {
 // TensorFlow equivalent: FloorMod
 struct FloorModOperator : Operator {
   FloorModOperator() : Operator(OperatorType::kFloorMod) {}
+};
+
+struct RandomUniformOperator : Operator {
+  RandomUniformOperator() : Operator(OperatorType::kRandomUniform) {}
+  ArrayDataType dtype = ArrayDataType::kNone;
+  int64 seed;
+  int64 seed2;
 };
 
 // Creates a sequence of numbers that begins at start and extends by increments
@@ -1486,7 +1519,14 @@ class Shape {
 
   // We still have that one convenience accessor to avoid
   // the awkward double bracket issue:  shape.dims()[i].
-  int dims(int i) const { return dims_[i]; }
+  int dims(int i) const {
+    // Always check for out-of-bounds accesses, even in optimized builds where
+    // standard assertions are disabled. Out-of-bounds access here is a common
+    // occurence.
+    CHECK_GE(i, 0);
+    CHECK_GT(dims_.size(), i);
+    return dims_[i];
+  }
 
   bool operator==(const Shape& comp) const {
     return (this->dims_ == comp.dims());

@@ -387,7 +387,10 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   """
   if context.executing_eagerly() and not isinstance(
       input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
-    return np.prod(ops.convert_to_tensor(input)._shape_tuple())  # pylint: disable=protected-access
+    input = ops.convert_to_tensor(input)
+    np_out_type = out_type.as_numpy_dtype
+    num_elements = np.prod(input._shape_tuple(), dtype=np_out_type)  # pylint: disable=protected-acces:
+    return ops.convert_to_tensor(num_elements, dtype=out_type)
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
                           sparse_tensor.SparseTensorValue)):
@@ -957,6 +960,11 @@ def _autopacking_helper(list_or_tuple, dtype, name):
   Returns:
     A `tf.Tensor` with value equivalent to `list_or_tuple`.
   """
+  if context.executing_eagerly():
+    # NOTE: Fast path when all the items are tensors, this doesn't do any type
+    # checking.
+    if all(ops.is_dense_tensor_like(elem) for elem in list_or_tuple):
+      return gen_array_ops.pack(list_or_tuple, name=name)
   must_pack = False
   converted_elems = []
   with ops.name_scope(name) as scope:
@@ -1558,6 +1566,16 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 # pylint: enable=invalid-name
 
 
+def _constant_if_small(value, shape, dtype, name):
+  try:
+    if np.prod(shape) < 1000:
+      return constant(value, shape=shape, dtype=dtype, name=name)
+  except TypeError:
+    # Happens when shape is a Tensor, list with Tensor elements, etc.
+    pass
+  return None
+
+
 @tf_export("zeros")
 def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
@@ -1588,8 +1606,15 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = ""
     else:
       zero = 0
+
     if not isinstance(shape, ops.Tensor):
       try:
+        # Create a constant if it won't be very big. Otherwise create a fill op
+        # to prevent serialized GraphDefs from becoming too large.
+        output = _constant_if_small(zero, shape, dtype, name)
+        if output is not None:
+          return output
+
         # Go through tensor shapes to get int64-if-needed semantics
         shape = constant_op._tensor_shape_tensor_conversion_function(
             tensor_shape.TensorShape(shape))
@@ -1721,6 +1746,12 @@ def ones(shape, dtype=dtypes.float32, name=None):
     one = True if dtype == dtypes.bool else 1
     if not isinstance(shape, ops.Tensor):
       try:
+        # Create a constant if it won't be very big. Otherwise create a fill op
+        # to prevent serialized GraphDefs from becoming too large.
+        output = _constant_if_small(one, shape, dtype, name)
+        if output is not None:
+          return output
+
         # Go through tensor shapes to get int64-if-needed semantics
         shape = constant_op._tensor_shape_tensor_conversion_function(
             tensor_shape.TensorShape(shape))
@@ -2691,12 +2722,17 @@ reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
 
 @tf_export("gather")
 def gather(params, indices, validate_indices=None, name=None, axis=0):
-  # TODO(rjryan): Remove "Gather" creation in favor of GatherV2 once the forward
-  # compatibility 3 week period has passed.
-  if axis == 0:
-    return gen_array_ops.gather(
-        params, indices, validate_indices=validate_indices, name=name)
-  else:
+  del validate_indices
+  if axis != 0:
+    # Note that we do a sparse_read here to avoid snapshotting the entire
+    # resource variable and doing a gather, which can be inefficient and lead to
+    # subtle race conditions. TODO(apassos) implement axis != 0 on sparse_read
+    return gen_array_ops.gather_v2(params, indices, axis, name=name)
+  try:
+    # TODO(apassos) find a less bad way of detecting resource variables without
+    # introducing a circular dependency.
+    return params.sparse_read(indices, name=name)
+  except AttributeError:
     return gen_array_ops.gather_v2(params, indices, axis, name=name)
 
 

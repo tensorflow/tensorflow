@@ -71,6 +71,7 @@ class Interpreter(object):
     tensor_name = self._interpreter.TensorName(tensor_index)
     tensor_size = self._interpreter.TensorSize(tensor_index)
     tensor_type = self._interpreter.TensorType(tensor_index)
+    tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
 
     if not tensor_name or not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -80,6 +81,7 @@ class Interpreter(object):
         'index': tensor_index,
         'shape': tensor_size,
         'dtype': tensor_type,
+        'quantization': tensor_quantization,
     }
 
     return details

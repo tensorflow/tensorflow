@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
+#include "tensorflow/contrib/lite/kernels/eigen_support.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
@@ -762,6 +763,11 @@ void Interpreter::UseNNAPI(bool enable) {
 
 void Interpreter::SetNumThreads(int num_threads) {
   context_.recommended_num_threads = num_threads;
+
+  // TODO(ahentz): find a way to avoid this. It causes gemmlowp and eigen to
+  // be required in order to compile the framework.
+  gemm_support::SetNumThreads(&context_, num_threads);
+  eigen_support::SetNumThreads(&context_, num_threads);
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,

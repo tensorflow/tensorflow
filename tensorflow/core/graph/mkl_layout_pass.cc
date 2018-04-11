@@ -3103,8 +3103,7 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
   TensorProto proto;
   proto.set_dtype(dt);
   uint8 zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           8);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 8));
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -3219,7 +3218,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     // For that let's first find filter node that is 2nd input (slot 1)
     // of BackpropInput.
     Node* filter_node = nullptr;
-    old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx, &filter_node);
+    TF_CHECK_OK(old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx,
+                                     &filter_node));
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
@@ -3399,8 +3399,7 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   TensorProto proto;
   proto.set_dtype(dt);
   float zero[1] = {0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           4);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 4));
   TensorShape dummy_shape({1});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -3876,7 +3875,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
   // Create node.
   Node* new_node;
-  nb.Finalize(&**g, &new_node);
+  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
@@ -3987,7 +3986,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
 
   // Create node.
   Node* new_node;
-  nb.Finalize(&**g, &new_node);
+  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
   // Incoming data edges from BiasAddGrad node and Conv2DBackpropFilter node to

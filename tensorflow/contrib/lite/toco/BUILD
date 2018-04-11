@@ -124,6 +124,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -142,6 +143,7 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -164,6 +166,41 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "toco_saved_model",
+    srcs = [
+        "toco_saved_model.cc",
+    ],
+    hdrs = [
+        "toco_saved_model.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":model_cmdline_flags",
+        ":model_flags_proto_cc",
+        ":toco_flags_proto_cc",
+        ":types_proto_cc",
+        "//tensorflow/cc/tools:freeze_saved_model",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "toco_saved_model_test",
+    srcs = ["toco_saved_model_test.cc"],
+    deps = [
+        ":model_cmdline_flags",
+        ":toco_cmdline_flags",
+        ":toco_saved_model",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -193,9 +230,11 @@ cc_library(
         "graph_transformations/identify_lstm.cc",
         "graph_transformations/identify_lstm_merge_inputs.cc",
         "graph_transformations/identify_lstm_split_inputs.cc",
+        "graph_transformations/identify_prelu.cc",
         "graph_transformations/identify_relu1.cc",
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
+        "graph_transformations/merge_reshape_into_preceding_transpose.cc",
         "graph_transformations/propagate_activation_function_into_constants.cc",
         "graph_transformations/propagate_array_data_types.cc",
         "graph_transformations/propagate_fixed_sizes.cc",
@@ -213,7 +252,8 @@ cc_library(
         "graph_transformations/remove_trivial_reshape.cc",
         "graph_transformations/remove_trivial_slice.cc",
         "graph_transformations/remove_unused_op.cc",
-        "graph_transformations/reorder_activation_functions.cc",
+        "graph_transformations/reorder_elementwise_unary.cc",
+        "graph_transformations/reorder_reshape_transpose.cc",
         "graph_transformations/resolve_batch_normalization.cc",
         "graph_transformations/resolve_batch_to_space_nd_attributes.cc",
         "graph_transformations/resolve_constant_binary.cc",
@@ -221,6 +261,7 @@ cc_library(
         "graph_transformations/resolve_constant_fake_quant.cc",
         "graph_transformations/resolve_constant_fill.cc",
         "graph_transformations/resolve_constant_gather.cc",
+        "graph_transformations/resolve_constant_random_uniform.cc",
         "graph_transformations/resolve_constant_range.cc",
         "graph_transformations/resolve_constant_shape_or_rank.cc",
         "graph_transformations/resolve_constant_stack.cc",
@@ -362,6 +403,7 @@ tf_cc_binary(
         ":toco_cmdline_flags",
         ":toco_flags_proto_cc",
         ":toco_port",
+        ":toco_saved_model",
         ":toco_tooling",
         ":types_proto_cc",
         "//tensorflow/core:lib",
@@ -379,16 +421,4 @@ tf_cc_test(
         ":toco_port",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

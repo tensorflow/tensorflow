@@ -85,6 +85,12 @@ class FisherFactorTestingDummy(ff.FisherFactor):
   def instantiate_inv_variables(self):
     return NotImplementedError
 
+  def _num_towers(self):
+    raise NotImplementedError
+
+  def _get_data_device(self):
+    raise NotImplementedError
+
 
 class InverseProvidingFactorTestingDummy(ff.InverseProvidingFactor):
   """Dummy class to test the non-abstract methods on ff.InverseProvidingFactor.
@@ -115,6 +121,12 @@ class InverseProvidingFactorTestingDummy(ff.InverseProvidingFactor):
 
   def instantiate_covariance(self):
     pass
+
+  def _num_towers(self):
+    raise NotImplementedError
+
+  def _get_data_device(self):
+    raise NotImplementedError
 
 
 class NumericalUtilsTest(test.TestCase):
@@ -430,7 +442,7 @@ class EmbeddingInputKroneckerFactorTest(test.TestCase):
     with tf_ops.Graph().as_default():
       input_ids = array_ops.constant([[0], [1], [4]])
       vocab_size = 5
-      factor = ff.EmbeddingInputKroneckerFactor(input_ids, vocab_size)
+      factor = ff.EmbeddingInputKroneckerFactor((input_ids,), vocab_size)
       factor.instantiate_cov_variables()
       cov = factor.get_cov_var()
       self.assertEqual(cov.shape.as_list(), [vocab_size])
@@ -439,7 +451,7 @@ class EmbeddingInputKroneckerFactorTest(test.TestCase):
     with tf_ops.Graph().as_default():
       input_ids = array_ops.constant([[0], [1], [4]])
       vocab_size = 5
-      factor = ff.EmbeddingInputKroneckerFactor(input_ids, vocab_size)
+      factor = ff.EmbeddingInputKroneckerFactor((input_ids,), vocab_size)
       factor.instantiate_cov_variables()
       cov_update_op = factor.make_covariance_update_op(0.0)
 
@@ -477,8 +489,8 @@ class ConvDiagonalFactorTest(test.TestCase):
       ]
 
       factor = ff.ConvDiagonalFactor(
-          inputs,
-          outputs_grads,
+          (inputs,),
+          (outputs_grads,),
           self.kernel_shape,
           self.strides,
           self.padding,
@@ -508,7 +520,8 @@ class ConvDiagonalFactorTest(test.TestCase):
           self.out_channels)
 
       factor = ff.ConvDiagonalFactor(
-          constant_op.constant(inputs), [constant_op.constant(outputs_grad)],
+          (constant_op.constant(inputs),),
+          ((constant_op.constant(outputs_grad),),),
           self.kernel_shape,
           strides=[1, 1, 1, 1],
           padding='VALID')
@@ -537,8 +550,8 @@ class ConvDiagonalFactorTest(test.TestCase):
       ]
 
       factor = ff.ConvDiagonalFactor(
-          inputs,
-          outputs_grads,
+          (inputs,),
+          (outputs_grads,),
           self.kernel_shape,
           self.strides,
           self.padding,
@@ -569,7 +582,7 @@ class FullyConnectedKroneckerFactorTest(test.TestCase):
     with tf_ops.Graph().as_default():
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
-      factor = ff.FullyConnectedKroneckerFactor((tensor,), has_bias=has_bias)
+      factor = ff.FullyConnectedKroneckerFactor(((tensor,),), has_bias=has_bias)
       factor.instantiate_cov_variables()
       cov = factor.get_cov()
       self.assertEqual(cov.dtype, dtype)
@@ -587,7 +600,7 @@ class FullyConnectedKroneckerFactorTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       tensor = array_ops.constant([[1., 2.], [3., 4.]], name='a/b/c')
-      factor = ff.FullyConnectedKroneckerFactor((tensor,), has_bias=True)
+      factor = ff.FullyConnectedKroneckerFactor(((tensor,),), has_bias=True)
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())
@@ -598,7 +611,7 @@ class FullyConnectedKroneckerFactorTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       tensor = array_ops.constant([[1., 2.], [3., 4.]], name='a/b/c')
-      factor = ff.FullyConnectedKroneckerFactor((tensor,))
+      factor = ff.FullyConnectedKroneckerFactor(((tensor,),))
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())
@@ -629,8 +642,8 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       out_channels = 4
 
       factor = ff.ConvInputKroneckerFactor(
-          inputs=random_ops.random_uniform(
-              (batch_size, width, width, width, in_channels), seed=0),
+          inputs=(random_ops.random_uniform(
+              (batch_size, width, width, width, in_channels), seed=0),),
           filter_shape=(width, width, width, in_channels, out_channels),
           padding='SAME',
           strides=(2, 2, 2),
@@ -661,8 +674,8 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       out_channels = 4
 
       factor = ff.ConvInputKroneckerFactor(
-          inputs=random_ops.random_uniform(
-              (batch_size, width, width, in_channels), seed=0),
+          inputs=(random_ops.random_uniform(
+              (batch_size, width, width, in_channels), seed=0),),
           filter_shape=(1, 1, in_channels, out_channels),
           padding='SAME',
           strides=(1, 1, 1, 1),
@@ -691,8 +704,8 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       out_channels = 4
 
       factor = ff.ConvInputKroneckerFactor(
-          inputs=random_ops.random_uniform(
-              (batch_size, width, width, in_channels), seed=0),
+          inputs=(random_ops.random_uniform(
+              (batch_size, width, width, in_channels), seed=0),),
           filter_shape=(1, 1, in_channels, out_channels),
           padding='SAME',
           strides=(1, 2, 1, 1),
@@ -716,8 +729,8 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       out_channels = 4
 
       factor = ff.ConvInputKroneckerFactor(
-          inputs=random_ops.random_uniform(
-              (batch_size, width, width, in_channels), seed=0),
+          inputs=(random_ops.random_uniform(
+              (batch_size, width, width, in_channels), seed=0),),
           filter_shape=(3, 3, in_channels, out_channels),
           padding='SAME',
           extract_patches_fn='extract_image_patches',
@@ -739,7 +752,7 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
     with tf_ops.Graph().as_default():
       tensor = array_ops.ones((64, 1, 2, 3), name='a/b/c')
       factor = ff.ConvInputKroneckerFactor(
-          inputs=tensor,
+          inputs=(tensor,),
           filter_shape=(1, 2, 3, 4),
           padding='SAME',
           has_bias=False)
@@ -751,7 +764,7 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
     with tf_ops.Graph().as_default():
       tensor = array_ops.ones((64, 1, 2, 3), name='a/b/c')
       factor = ff.ConvInputKroneckerFactor(
-          tensor, filter_shape=(1, 2, 3, 4), padding='SAME', has_bias=True)
+          (tensor,), filter_shape=(1, 2, 3, 4), padding='SAME', has_bias=True)
       factor.instantiate_cov_variables()
       self.assertEqual([1 * 2 * 3 + 1, 1 * 2 * 3 + 1],
                        factor.get_cov().get_shape().as_list())
@@ -761,7 +774,7 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       dtype = dtypes.float64_ref
       tensor = array_ops.ones((64, 1, 2, 3), name='a/b/c', dtype=dtypes.float64)
       factor = ff.ConvInputKroneckerFactor(
-          tensor, filter_shape=(1, 2, 3, 4), padding='SAME', has_bias=True)
+          (tensor,), filter_shape=(1, 2, 3, 4), padding='SAME', has_bias=True)
       factor.instantiate_cov_variables()
       cov = factor.get_cov()
       self.assertEqual(cov.dtype, dtype)
@@ -775,7 +788,7 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
           np.arange(1, 1 + np.prod(input_shape)).reshape(input_shape).astype(
               np.float32))
       factor = ff.ConvInputKroneckerFactor(
-          tensor, filter_shape=(1, 1, 1, 1), padding='SAME', has_bias=True)
+          (tensor,), filter_shape=(1, 1, 1, 1), padding='SAME', has_bias=True)
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())
@@ -794,7 +807,7 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
           np.arange(1, 1 + np.prod(input_shape)).reshape(input_shape).astype(
               np.float32))
       factor = ff.ConvInputKroneckerFactor(
-          tensor, filter_shape=(1, 1, 1, 1), padding='SAME')
+          (tensor,), filter_shape=(1, 1, 1, 1), padding='SAME')
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())
@@ -810,10 +823,10 @@ class ConvOutputKroneckerFactorTest(ConvFactorTestCase):
       width = 3
       out_channels = width**3
 
-      factor = ff.ConvOutputKroneckerFactor(outputs_grads=[
+      factor = ff.ConvOutputKroneckerFactor(outputs_grads=([
           random_ops.random_uniform(
               (batch_size, width, width, width, out_channels), seed=0)
-      ])
+      ],))
       factor.instantiate_cov_variables()
 
       with self.test_session() as sess:
@@ -829,7 +842,7 @@ class ConvOutputKroneckerFactorTest(ConvFactorTestCase):
     with tf_ops.Graph().as_default():
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3, 4, 5), name='a/b/c')
-      factor = ff.ConvOutputKroneckerFactor((tensor,))
+      factor = ff.ConvOutputKroneckerFactor(((tensor,),))
       factor.instantiate_cov_variables()
       self.assertEqual([5, 5], factor.get_cov().get_shape().as_list())
 
@@ -838,7 +851,7 @@ class ConvOutputKroneckerFactorTest(ConvFactorTestCase):
       dtype = dtypes.float64_ref
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3, 4, 5), dtype=dtype, name='a/b/c')
-      factor = ff.ConvOutputKroneckerFactor((tensor,))
+      factor = ff.ConvOutputKroneckerFactor(((tensor,),))
       factor.instantiate_cov_variables()
       cov = factor.get_cov()
       self.assertEqual(cov.dtype, dtype)
@@ -848,7 +861,7 @@ class ConvOutputKroneckerFactorTest(ConvFactorTestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       tensor = np.arange(1, 17).reshape(2, 2, 2, 2).astype(np.float32)
-      factor = ff.ConvOutputKroneckerFactor((array_ops.constant(tensor),))
+      factor = ff.ConvOutputKroneckerFactor(((array_ops.constant(tensor),),))
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())
@@ -862,7 +875,7 @@ class FullyConnectedMultiKFTest(test.TestCase):
     with tf_ops.Graph().as_default():
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), name='a/b/c')
-      factor = ff.FullyConnectedMultiKF((tensor,), has_bias=False)
+      factor = ff.FullyConnectedMultiKF(((tensor,),), has_bias=False)
       factor.instantiate_cov_variables()
       self.assertEqual([3, 3], factor.get_cov().get_shape().as_list())
 
@@ -871,7 +884,7 @@ class FullyConnectedMultiKFTest(test.TestCase):
       dtype = dtypes.float64_ref
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
-      factor = ff.FullyConnectedMultiKF((tensor,), has_bias=False)
+      factor = ff.FullyConnectedMultiKF(((tensor,),), has_bias=False)
       factor.instantiate_cov_variables()
       cov = factor.get_cov()
       self.assertEqual(cov.dtype, dtype)
@@ -881,7 +894,7 @@ class FullyConnectedMultiKFTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       tensor = array_ops.constant([[1., 2.], [3., 4.]], name='a/b/c')
-      factor = ff.FullyConnectedMultiKF((tensor,), has_bias=True)
+      factor = ff.FullyConnectedMultiKF(((tensor,),), has_bias=True)
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())
@@ -892,7 +905,7 @@ class FullyConnectedMultiKFTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       tensor = array_ops.constant([[1., 2.], [3., 4.]], name='a/b/c')
-      factor = ff.FullyConnectedMultiKF((tensor,))
+      factor = ff.FullyConnectedMultiKF(((tensor,),))
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())

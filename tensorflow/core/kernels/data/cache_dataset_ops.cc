@@ -308,6 +308,21 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             cache_(new std::vector<std::vector<Tensor>>) {}
 
+      ~MemoryWriterIterator() override {
+        mutex_lock l(mu_);
+        if (cache_) {
+          LOG(ERROR)
+              << "The calling iterator did not fully read the dataset we were "
+                 "attempting to cache. In order to avoid unexpected truncation "
+                 "of the sequence, the current [partially cached] sequence "
+                 "will be dropped. This can occur if you have a sequence "
+                 "similar to `dataset.cache().take(k).repeat()`. Instead, swap "
+                 "the order (i.e. `dataset.take(k).cache().repeat()`)";
+          mutex_lock l2(dataset()->mu_);
+          dataset()->writer_iterator_created_ = false;
+        }
+      }
+
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
@@ -318,7 +333,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
           // Guard on cache_ to not crash if GetNext is called a second time
           // after *end_of_sequence == true
           if (cache_) {
-            mutex_lock l2(dataset()->mu_);
+            mutex_lock l(dataset()->mu_);
             DCHECK(dataset()->writer_iterator_created_);
             DCHECK(!dataset()->cache_);
             cache_.swap(dataset()->cache_);

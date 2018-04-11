@@ -26,6 +26,7 @@ from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import export as export_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config as run_config_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -296,9 +297,6 @@ def _clone_and_build_model(mode,
         sample_weight_mode=keras_model.sample_weight_mode,
         weighted_metrics=keras_model.weighted_metrics,
         target_tensors=target_tensors)
-
-  if isinstance(model, models.Sequential):
-    model = model.model
   return model
 
 
@@ -396,8 +394,6 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
       training_util.create_global_step()
       model = _clone_and_build_model(model_fn_lib.ModeKeys.TRAIN, keras_model,
                                      custom_objects)
-      if isinstance(model, models.Sequential):
-        model = model.model
       # save to checkpoint
       with session.Session(config=estimator._session_config) as sess:
         model.set_weights(keras_weights)
@@ -470,11 +466,21 @@ def model_to_estimator(keras_model=None,
   estimator = estimator_lib.Estimator(
       keras_model_fn, model_dir=model_dir, config=config)
 
+  old_session = K._SESSION
   # Pass the config into keras backend's default session.
-  with session.Session(config=estimator._session_config) as sess:
-    K.set_session(sess)
+  sess = session.Session(config=estimator._session_config)
+  K.set_session(sess)
+  try:
+    keras_weights = keras_model.get_weights()
+  except errors.FailedPreconditionError as e:
+    if old_session is None:
+      raise e
+    logging.warning(
+        'The Keras backend session has already been '
+        'set. The _session_config passed to model_to_estimator is not used.')
+    K.set_session(old_session)
+    keras_weights = keras_model.get_weights()
 
-  keras_weights = keras_model.get_weights()
   if keras_model._is_graph_network:
     # TODO(yifeif): move checkpoint initialization to scaffold.init_fn
     _save_first_checkpoint(keras_model,

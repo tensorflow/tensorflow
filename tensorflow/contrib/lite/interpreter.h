@@ -208,7 +208,7 @@ class Interpreter {
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
-      int node_index) {
+      int node_index) const {
     if (node_index >= nodes_and_registration_.size() || node_index < 0)
       return nullptr;
     return &nodes_and_registration_[node_index];

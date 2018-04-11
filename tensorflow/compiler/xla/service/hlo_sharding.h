@@ -94,6 +94,10 @@ class HloSharding {
   // Create a new sharding from a protobuf OpSharding.
   static StatusOr<HloSharding> FromProto(const OpSharding& proto);
 
+  // Checks whether device is a reserved device number. A reserved device number
+  // has usually a special meaning, with dedicated handling logic.
+  static bool IsReservedDevice(int64 device) { return device < 0; }
+
   OpSharding ToProto() const;
   string ToString() const;
 
@@ -268,6 +272,8 @@ class HloSharding {
   // shardings in a tuple shape, by pre-order walk (ShapeTree iterator order).
   std::vector<HloSharding> tuple_elements_;
 };
+
+std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);
 
 }  // namespace xla
 

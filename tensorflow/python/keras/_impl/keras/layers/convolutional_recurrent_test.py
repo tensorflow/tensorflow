@@ -64,6 +64,7 @@ class ConvLSTMTest(test.TestCase):
           self.assertEqual(len(states), 2)
           model = keras.models.Model(x, states[0])
           state = model.predict(inputs)
+
           self.assertAllClose(
               keras.backend.eval(layer.states[0]), state, atol=1e-4)
 
