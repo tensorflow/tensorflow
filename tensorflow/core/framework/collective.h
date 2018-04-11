@@ -178,7 +178,7 @@ class StepSequenceInterface {
   virtual void RefreshStepIdSequenceAsync(int64 graph_key,
                                           const StatusCallback& done) = 0;
 
-  // Returns the the step_id that should be used for initiating a new execution
+  // Returns the step_id that should be used for initiating a new execution
   // on the specified graph. May return the same step_id multiple times if
   // RetireStepId or RefreshStepIdReservation is not called.
   virtual int64 NextStepId(int64 graph_key) = 0;
