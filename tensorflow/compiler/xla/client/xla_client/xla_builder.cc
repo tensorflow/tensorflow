@@ -1083,7 +1083,9 @@ XlaOp XlaBuilder::Complex(
   return BinaryOp(HloOpcode::kComplex, real, imag, broadcast_dimensions);
 }
 
-XlaOp XlaBuilder::Conj(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Conj(const XlaOp& operand) {
+  return Complex(Real(operand), Neg(Imag(operand)));
+}
 
 XlaOp XlaBuilder::Sub(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
