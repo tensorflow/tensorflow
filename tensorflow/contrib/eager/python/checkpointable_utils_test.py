@@ -116,7 +116,7 @@ class OnlyOneDep(checkpointable.Checkpointable):
 
 class SplitTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testSaveRestoreSplitDep(self):
     save_checkpoint = checkpointable_utils.Checkpoint(
         dep=SaveTensorSlicesAsDeps())
@@ -390,7 +390,7 @@ class CheckpointingTests(test.TestCase):
             optimizer_node.slot_variables[0]
             .slot_variable_node_id].attributes[0].checkpoint_key)
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testMoreComplexSaveableReturned(self):
     v = _OwnsMirroredVariables()
     checkpoint = checkpointable_utils.Checkpoint(v=v)
@@ -976,7 +976,7 @@ class CheckpointingTests(test.TestCase):
         saver.save(checkpoint_prefix)
         self.assertEqual(before_ops, graph.get_operations())
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testCheckpointCleanup(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -996,7 +996,7 @@ class CheckpointingTests(test.TestCase):
         expected_filenames,
         os.listdir(checkpoint_directory))
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testCheckpointCleanupChangingVarList(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
