@@ -20,6 +20,7 @@ from __future__ import print_function
 import signal
 import sys
 import traceback
+import six
 
 # Google-internal import(s).
 from tensorflow.python.debug.lib import common
@@ -140,11 +141,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
 
 
 def _signal_handler(unused_signal, unused_frame):
-  try:
-    input_func = raw_input
-  except NameError:
-    # Python 3 does not have raw_input.
-    input_func = input
+  input_func = six.moves.input
 
   while True:
     response = input_func("\nSIGINT received. Quit program? (Y/n): ").strip()
