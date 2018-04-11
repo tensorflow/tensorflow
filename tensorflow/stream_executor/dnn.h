@@ -879,6 +879,19 @@ string ElementwiseOperationString(ElementwiseOperation op);
 // Suite of operations typically used for implementing Deep/Convolutional Neural
 // Nets. Note: A false return value of an operation indicates the
 // implementation is not available.
+class VersionInfo {
+ public:
+  VersionInfo(int major = 0, int minor = 0, int patch = 0)
+      : major_(major), minor_(minor), patch_(patch) {}
+  int maj() { return major_; }
+  int min() { return minor_; }
+  int patch() { return patch_; }
+ private:
+  int major_;
+  int minor_;
+  int patch_;
+};
+
 class DnnSupport {
  public:
   DnnSupport() {}
@@ -887,7 +900,7 @@ class DnnSupport {
   virtual port::Status Init() = 0;
 
   // Gets the version of the backing library, as a {major, minor, patch} tuple.
-  virtual port::StatusOr<std::tuple<int, int, int>> GetVersion() {
+  virtual port::StatusOr<VersionInfo> GetVersion() {
     return port::UnimplementedError(
         "DnnSupport::GetVersion not implemented on this platform.");
   }
@@ -1865,10 +1878,10 @@ class DnnSupport {
   //  bottom_pad: Amount to pad the input at the bottom (high Y).
   //  output_data: un-owned device memory region in which to place the
   //    padded result.
-  virtual bool DoXYPad(Stream* stream, const dnn::BatchDescriptor &dimensions,
-                       const DeviceMemory<float> &input_data,
-                       int64 left_pad, int64 right_pad, int64 top_pad,
-                       int64 bottom_pad, DeviceMemory<float> *output_data) = 0;
+  virtual bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
+                       const DeviceMemory<float>& input_data, int64 left_pad,
+                       int64 right_pad, int64 top_pad, int64 bottom_pad,
+                       DeviceMemory<float>* output_data) = 0;
 
   // Extracts a slice of the input in the X and Y dimensions. The feature_map
   // dimension is unchanged.
@@ -1885,10 +1898,10 @@ class DnnSupport {
   //  bottom_trim: Amount to cut off the input at the bottom (high Y).
   //  output_data: un-owned device memory region in which to place the
   //    padded result.
-  virtual bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor &dimensions,
-                    const DeviceMemory<float> &input_data,
-                    int64 left_trim, int64 right_trim, int64 top_trim,
-                    int64 bottom_trim, DeviceMemory<float> *output_data) = 0;
+  virtual bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
+                         const DeviceMemory<float>& input_data, int64 left_trim,
+                         int64 right_trim, int64 top_trim, int64 bottom_trim,
+                         DeviceMemory<float>* output_data) = 0;
 
   // Grows the input tensor by replicating the X and Y dimensions. The batch and
   // depth/feature_map dimensions are unchanged. Currently, the input tensor is

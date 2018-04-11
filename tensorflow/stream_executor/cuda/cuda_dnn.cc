@@ -18,7 +18,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "third_party/eigen3/Eigen/Core"
 // clang-format off
 #include "cuda/include/cudnn.h"
 // clang-format on
@@ -63,10 +63,10 @@ namespace perftools {
 namespace gputools {
 
 using dnn::BatchDescriptor;
-using dnn::FilterDescriptor;
 using dnn::ConvolutionDescriptor;
-using dnn::PoolingDescriptor;
+using dnn::FilterDescriptor;
 using dnn::NormalizeDescriptor;
+using dnn::PoolingDescriptor;
 
 namespace cuda {
 
@@ -215,9 +215,9 @@ CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 #if CUDNN_VERSION >= 3000
 #define CUDNN_DNN_ROUTINE_EACH_AFTER_R3(__macro)              \
   __macro(cudnnGetConvolutionBackwardFilterWorkspaceSize)     \
-  __macro(cudnnGetConvolutionBackwardDataAlgorithm)           \
-  __macro(cudnnGetConvolutionBackwardFilterAlgorithm)         \
-  __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)
+      __macro(cudnnGetConvolutionBackwardDataAlgorithm)       \
+          __macro(cudnnGetConvolutionBackwardFilterAlgorithm) \
+              __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)
 CUDNN_DNN_ROUTINE_EACH_AFTER_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_AFTER_R3
 #endif
@@ -477,11 +477,12 @@ port::Status CudnnSupport::Init() {
                                    ToString(status))};
 }
 
-port::StatusOr<std::tuple<int, int, int>> CudnnSupport::GetVersion() {
+port::StatusOr<perftools::gputools::dnn::VersionInfo>
+CudnnSupport::GetVersion() {
   CudnnVersion version;
   TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&version));
-  return std::make_tuple(version.major_version, version.minor_version,
-                         version.patch_level);
+  return perftools::gputools::dnn::VersionInfo(
+      version.major_version, version.minor_version, version.patch_level);
 }
 
 // Turns a BatchDescriptor structure into a cudnn tensor handle within a scope.
@@ -1219,8 +1220,7 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
       cudnnStatus_t status =
           wrap::cudnnSetRNNMatrixMathType(parent_, rnn_desc_, math_type);
       if (status != CUDNN_STATUS_SUCCESS) {
-        LOG(FATAL) << "could not set cudnn RNN math type: "
-                   << ToString(status);
+        LOG(FATAL) << "could not set cudnn RNN math type: " << ToString(status);
       }
     }
 #endif
@@ -2542,33 +2542,32 @@ bool CudnnSupport::DoConvolveImpl(
   //   GetCudnnConvolutionForwardAlgorithm().
   if (algorithm_config.algorithm().is_default()) {
     // With the default algorithm, use Cudnn's heuristics.
-    auto get_algorithm =
-        [&](bool specify_limit) SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) {
-          cudnnConvolutionFwdPreference_t preference =
-              specify_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
-                            : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
+    auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
+                             dnn_handle_mutex_) {
+      cudnnConvolutionFwdPreference_t preference =
+          specify_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
+                        : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
 
-          auto memory_limit_bytes =
-              scratch_allocator == nullptr
-                  ? 0
-                  : scratch_allocator->GetMemoryLimitInBytes(stream);
-          if (memory_limit_bytes < 0) {
-            memory_limit_bytes = 0;
-          }
+      auto memory_limit_bytes =
+          scratch_allocator == nullptr
+              ? 0
+              : scratch_allocator->GetMemoryLimitInBytes(stream);
+      if (memory_limit_bytes < 0) {
+        memory_limit_bytes = 0;
+      }
 
-          cudnnConvolutionFwdAlgo_t algo_to_use;
-          status = wrap::cudnnGetConvolutionForwardAlgorithm(
-              parent_, ToHandle(dnn_handle_), input_nd.handle(),
-              filter.handle(), conv.handle(), output_nd.handle(),
-              /*preference=*/preference,
-              /*memoryLimitInBytes=*/memory_limit_bytes,
-              /*algo=*/&algo_to_use);
-          CHECK_EQ(status, CUDNN_STATUS_SUCCESS)
-              << "Unable to find a suitable "
-                 "algorithm for doing forward "
-                 "convolution";
-          return algo_to_use;
-        };
+      cudnnConvolutionFwdAlgo_t algo_to_use;
+      status = wrap::cudnnGetConvolutionForwardAlgorithm(
+          parent_, ToHandle(dnn_handle_), input_nd.handle(), filter.handle(),
+          conv.handle(), output_nd.handle(),
+          /*preference=*/preference,
+          /*memoryLimitInBytes=*/memory_limit_bytes,
+          /*algo=*/&algo_to_use);
+      CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
+                                                "algorithm for doing forward "
+                                                "convolution";
+      return algo_to_use;
+    };
 
     algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
     use_tensor_ops = true;
@@ -3301,10 +3300,9 @@ bool CudnnSupport::DoFusedConvolve(
 #endif
 }
 
-template<class T>
+template <class T>
 DeviceMemory<T> CudnnSupport::MaybeTransformLayout(
-    Stream* stream,
-    BatchDescriptor* output_descriptor,
+    Stream* stream, BatchDescriptor* output_descriptor,
     DeviceMemory<T> backward_output_data,
     std::unique_ptr<TemporaryDeviceMemory<T>>* transform_scratch) {
   if (output_descriptor->layout() == dnn::DataLayout::kBatchDepthYX) {
@@ -3373,8 +3371,7 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
 
 template <class T>
 bool CudnnSupport::DoConvolveBackwardDataImpl(
-    Stream* stream,
-    const FilterDescriptor& filter_descriptor,
+    Stream* stream, const FilterDescriptor& filter_descriptor,
     const DeviceMemory<T>& filter_data,
     const BatchDescriptor& output_descriptor_in,
     DeviceMemory<T> backward_output_data,
@@ -3422,8 +3419,9 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
 
   if (algorithm_config.algorithm().is_default()) {
     // With the default algorithm, use Cudnn's heuristics.
-    auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
-        dnn_handle_mutex_) -> cudnnConvolutionBwdDataAlgo_t {
+    auto get_algorithm =
+        [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
+            dnn_handle_mutex_) -> cudnnConvolutionBwdDataAlgo_t {
       cudnnConvolutionBwdDataPreference_t preference =
           specify_limit ? CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT
                         : CUDNN_CONVOLUTION_BWD_DATA_NO_WORKSPACE;
@@ -3698,7 +3696,7 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
     // specify_limit will occur when we have a scratch allocator and it succeeds
     // in allocating; otherwise, we'll fall back to the "no workspace" version.
     auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
-        dnn_handle_mutex_) {
+                             dnn_handle_mutex_) {
       cudnnConvolutionBwdFilterPreference_t preference =
           specify_limit ? CUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT
                         : CUDNN_CONVOLUTION_BWD_FILTER_NO_WORKSPACE;
@@ -4691,8 +4689,8 @@ void initialize_cudnn() {
       gpu::PluginRegistry::Instance()
           ->RegisterFactory<gpu::PluginRegistry::DnnFactory>(
               gpu::cuda::kCudaPlatformId, gpu::cuda::kCuDnnPlugin, "cuDNN",
-              [](gpu::internal::StreamExecutorInterface*
-                     parent) -> gpu::dnn::DnnSupport* {
+              [](gpu::internal::StreamExecutorInterface* parent)
+                  -> gpu::dnn::DnnSupport* {
                 gpu::cuda::CUDAExecutor* cuda_executor =
                     dynamic_cast<gpu::cuda::CUDAExecutor*>(parent);
                 if (cuda_executor == nullptr) {
