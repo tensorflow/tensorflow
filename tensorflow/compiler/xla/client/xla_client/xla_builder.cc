@@ -1390,14 +1390,57 @@ XlaOp XlaBuilder::While(const XlaComputation& condition,
 XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& gather_indices,
                          const GatherDimensionNumbers& dimension_numbers,
                          tensorflow::gtl::ArraySlice<int64> window_bounds) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
+    TF_ASSIGN_OR_RETURN(const Shape& gather_indices_shape,
+                        GetShape(gather_indices));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferGatherShape(input_shape, gather_indices_shape,
+                                         dimension_numbers, window_bounds));
+
+    *instr.mutable_gather_dimension_numbers() = dimension_numbers;
+    for (int64 bound : window_bounds) {
+      instr.add_gather_window_bounds(bound);
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kGather,
+                          {input, gather_indices});
+  });
 }
 
 XlaOp XlaBuilder::Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                               const XlaComputation& true_computation,
                               const XlaOp& false_operand,
                               const XlaComputation& false_computation) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& predicate_shape, GetShape(predicate));
+    TF_ASSIGN_OR_RETURN(const Shape& true_operand_shape,
+                        GetShape(true_operand));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& true_computation_shape,
+                        true_computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(const Shape& false_operand_shape,
+                        GetShape(false_operand));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& false_computation_shape,
+                        false_computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferConditionalShape(
+            predicate_shape, true_operand_shape, false_operand_shape,
+            true_computation_shape, false_computation_shape));
+
+    // The index of true_computation must be 0 and that of false computation
+    // must be 1.
+    AddCalledComputation(true_computation, &instr);
+    AddCalledComputation(false_computation, &instr);
+
+    return AddInstruction(std::move(instr), HloOpcode::kConditional,
+                          {predicate, true_operand, false_operand});
+  });
 }
 
 XlaOp XlaBuilder::Reduce(
