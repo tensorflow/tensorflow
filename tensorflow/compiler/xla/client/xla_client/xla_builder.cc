@@ -538,7 +538,17 @@ XlaOp XlaBuilder::Slice(const XlaOp& operand,
 
 XlaOp XlaBuilder::SliceInDim(const XlaOp& operand, int64 start_index,
                              int64 limit_index, int64 stride, int64 dimno) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
+    std::vector<int64> starts(ShapeUtil::Rank(shape), 0);
+    std::vector<int64> limits(shape.dimensions().begin(),
+                              shape.dimensions().end());
+    std::vector<int64> strides(ShapeUtil::Rank(shape), 1);
+    starts[dimno] = start_index;
+    limits[dimno] = limit_index;
+    strides[dimno] = stride;
+    return Slice(operand, starts, limits, strides);
+  });
 }
 
 XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
