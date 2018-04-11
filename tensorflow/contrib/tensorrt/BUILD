@@ -67,6 +67,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
+        ":trt_plugins",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
@@ -86,6 +87,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
+        ":trt_plugins",
         ":trt_resources",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -222,6 +224,7 @@ tf_cuda_library(
     ],
     deps = [
         ":segment",
+        ":trt_plugins",
         ":trt_logging",
         ":trt_resources",
         "//tensorflow/core/grappler:grappler_item",
@@ -272,3 +275,26 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+# Library for the plugin factory 
+#cc_library(
+tf_cuda_library(
+    name = "trt_plugins",
+    srcs = [
+        "plugin/trt_plugin.cc",
+        "plugin/trt_plugin_factory.cc",
+        "plugin/trt_plugin_utils.cc",
+    ],
+    hdrs = [
+        "plugin/trt_plugin.h",
+        "plugin/trt_plugin_factory.h",
+        "plugin/trt_plugin_utils.h",
+    ],
+    linkstatic = 1,
+    deps = [
+        #"@protobuf_archive//:protobuf_headers",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+

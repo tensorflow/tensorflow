@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #include <algorithm>
 #include <list>
@@ -246,6 +247,15 @@ class TFAttrs {
     return attrs_.count(key) ? this->get<T>(key) : default_value;
   }
 
+  std::vector<string> GetAllAttrKey() {
+    std::vector<string> attr_list;
+    for (AttrMap::iterator iter = attrs_.begin(); iter != attrs_.end();
+         iter++) {
+      attr_list.emplace_back(iter->first);
+    }
+    return attr_list;
+  }
+
  private:
   typedef std::map<string, tensorflow::AttrValue const*> AttrMap;
   AttrMap attrs_;
@@ -260,6 +270,12 @@ template <>
 std::vector<int> TFAttrs::get<std::vector<int>>(string key) const {
   auto attr = this->at(key)->list().i();
   return std::vector<int>(attr.begin(), attr.end());
+}
+
+template <>
+std::vector<float> TFAttrs::get<std::vector<float>>(string key) const {
+  auto attr = this->at(key)->list().f();
+  return std::vector<float>(attr.begin(), attr.end());
 }
 
 template <>
@@ -424,6 +440,7 @@ using OpConverter =
 class Converter {
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
   std::unordered_map<string, OpConverter> op_registry_;
+  OpConverter plugin_converter_;
   nvinfer1::INetworkDefinition* trt_network_;
   std::list<std::vector<uint8_t>> temp_bufs_;
   tensorflow::tensorrt::TRTWeightStore* weight_store_;
@@ -444,8 +461,8 @@ class Converter {
        *    remove this and annotate the edge as a control dependency.
        ************************************************************************/
       // skip control nodes
-      if (input_name[0] == '^' ) continue;
-      string name =  input_name;
+      if (input_name[0] == '^') continue;
+      string name = input_name;
       auto first = name.find_first_of(':');
       if (first != string::npos && first + 2 == name.size() &&
           name[first + 1] == '0')
@@ -490,13 +507,17 @@ class Converter {
     std::vector<TRT_TensorOrWeights> inputs;
     TF_RETURN_IF_ERROR(this->get_inputs(node_def, &inputs));
     string op = node_def.op();
-    if (!op_registry_.count(op)) {
-      return tensorflow::errors::Unimplemented(
-          "No converter registered for op: " + op);
-    }
-    OpConverter op_converter = op_registry_.at(op);
     std::vector<TRT_TensorOrWeights> outputs;
-    TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
+    if (PluginFactoryTensorRT::GetInstance().IsPlugin(&op)) {
+      TF_RETURN_IF_ERROR(plugin_converter_(*this, node_def, inputs, &outputs));
+    } else {
+      if (!op_registry_.count(op)) {
+        return tensorflow::errors::Unimplemented(
+            "No converter registered for op: " + op);
+      }
+      OpConverter op_converter = op_registry_.at(op);
+      TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
+    }
     for (size_t i = 0; i < outputs.size(); ++i) {
       TRT_TensorOrWeights output = outputs.at(i);
       // TODO(jie): tf protobuf seems to be omitting the :0 suffix
@@ -1158,9 +1179,9 @@ tensorflow::Status BinaryTensorOpTensor(
   CHECK_EQ_TYPE(tensor_r->getType(), dtype);
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end())
-    return tensorflow::errors::Unimplemented(
-        "binary op: " + node_def.op() +
-        " not supported at: " + node_def.name());
+    return tensorflow::errors::Unimplemented("binary op: " + node_def.op() +
+                                             " not supported at: " +
+                                             node_def.name());
 
   nvinfer1::IElementWiseLayer* layer = ctx.network()->addElementWise(
       *const_cast<nvinfer1::ITensor*>(tensor_l),
@@ -1170,6 +1191,43 @@ tensorflow::Status BinaryTensorOpTensor(
 
   // pass the output
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertPlugin(Converter& ctx,
+                                 const tensorflow::NodeDef& node_def,
+                                 const std::vector<TRT_TensorOrWeights>& inputs,
+                                 std::vector<TRT_TensorOrWeights>* outputs) {
+  // prepare input
+  std::vector<nvinfer1::ITensor*> all_inputs;
+  for (auto input : inputs) {
+    all_inputs.emplace_back(const_cast<nvinfer1::ITensor*>(input.tensor()));
+  }
+
+  // plugin is owned by PluginFactory
+  // TODO(jie): destroy plugins later (resource management)
+  PluginTensorRT* plugin =
+      PluginFactoryTensorRT::GetInstance().CreatePlugin(&node_def.op());
+
+  // passing attributes
+  // TODO(jie): support more general attribute
+  TFAttrs attrs(node_def);
+  auto attr_key_vector = attrs.GetAllAttrKey();
+  for (auto attr_key : attr_key_vector) {
+    std::cout << attr_key << std::endl;
+    // TODO(jie): support only list of float for toy example here.
+    auto data = attrs.get<std::vector<float>>(attr_key);
+    size_t size_data = data.size() * sizeof(float);
+    plugin->SetAttribute(attr_key, static_cast<void*>(data.data()), size_data);
+  }
+
+  nvinfer1::IPluginLayer* layer =
+      ctx.network()->addPlugin(&all_inputs[0], int(inputs.size()), *plugin);
+
+  for (int i = 0; i < layer->getNbOutputs(); i++) {
+    nvinfer1::ITensor* output_tensor = layer->getOutput(i);
+    outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  }
   return tensorflow::Status::OK();
 }
 
@@ -2073,6 +2131,8 @@ void Converter::register_op_converters() {
   op_registry_["Reshape"] = ConvertReshape;
   op_registry_["FusedBatchNorm"] = ConvertFusedBatchNorm;
   op_registry_["FusedBatchNormV2"] = ConvertFusedBatchNorm;
+
+  plugin_converter_ = ConvertPlugin;
 }
 
 }  // namespace
@@ -2511,7 +2571,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
   for (const std::pair<int, int>& input : s.input_inds) {
-    VLOG(2) << "parsing input. Node id= " << input.first ;
+    VLOG(2) << "parsing input. Node id= " << input.first;
     int node_id = input.first;
     int output_idx = input.second;
     tensorflow::Node* node = s.graph.FindNodeId(node_id);
