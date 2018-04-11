@@ -1489,21 +1489,73 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
 XlaOp XlaBuilder::BatchNormTraining(const XlaOp& operand, const XlaOp& scale,
                                     const XlaOp& offset, float epsilon,
                                     int64 feature_index) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& scale_shape, GetShape(scale));
+    TF_ASSIGN_OR_RETURN(const Shape& offset_shape, GetShape(offset));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferBatchNormTrainingShape(
+            operand_shape, scale_shape, offset_shape, feature_index));
+
+    instr.set_epsilon(epsilon);
+    instr.set_feature_index(feature_index);
+
+    return AddInstruction(std::move(instr), HloOpcode::kBatchNormTraining,
+                          {operand, scale, offset});
+  });
 }
 
 XlaOp XlaBuilder::BatchNormInference(const XlaOp& operand, const XlaOp& scale,
                                      const XlaOp& offset, const XlaOp& mean,
                                      const XlaOp& variance, float epsilon,
                                      int64 feature_index) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& scale_shape, GetShape(scale));
+    TF_ASSIGN_OR_RETURN(const Shape& offset_shape, GetShape(offset));
+    TF_ASSIGN_OR_RETURN(const Shape& mean_shape, GetShape(mean));
+    TF_ASSIGN_OR_RETURN(const Shape& variance_shape, GetShape(variance));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferBatchNormInferenceShape(
+                            operand_shape, scale_shape, offset_shape,
+                            mean_shape, variance_shape, feature_index));
+
+    instr.set_epsilon(epsilon);
+    instr.set_feature_index(feature_index);
+
+    return AddInstruction(std::move(instr), HloOpcode::kBatchNormInference,
+                          {operand, scale, offset, mean, variance});
+  });
 }
 
 XlaOp XlaBuilder::BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
                                 const XlaOp& batch_mean, const XlaOp& batch_var,
                                 const XlaOp& grad_output, float epsilon,
                                 int64 feature_index) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& scale_shape, GetShape(scale));
+    TF_ASSIGN_OR_RETURN(const Shape& batch_mean_shape, GetShape(batch_mean));
+    TF_ASSIGN_OR_RETURN(const Shape& batch_var_shape, GetShape(batch_var));
+    TF_ASSIGN_OR_RETURN(const Shape& grad_output_shape, GetShape(grad_output));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferBatchNormGradShape(
+                            operand_shape, scale_shape, batch_mean_shape,
+                            batch_var_shape, grad_output_shape, feature_index));
+
+    instr.set_epsilon(epsilon);
+    instr.set_feature_index(feature_index);
+
+    return AddInstruction(std::move(instr), HloOpcode::kBatchNormGrad,
+                          {operand, scale, batch_mean, batch_var, grad_output});
+  });
 }
 
 XlaOp XlaBuilder::CrossReplicaSum(const XlaOp& operand) {
