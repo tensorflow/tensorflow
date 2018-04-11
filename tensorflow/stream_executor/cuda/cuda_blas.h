@@ -116,6 +116,17 @@ class CUDABlas : public blas::BlasSupport {
       const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
 
+  // A helper function to implement DoBlasGemmBatched interfaces for generic
+  // types supporting tensor op math.
+  template <typename T>
+  port::Status DoBlasGemmBatchedInternalTensorOp(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+      uint64 n, uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<T> *> &a_ptrs_to_wrappers, int lda,
+      const port::ArraySlice<DeviceMemory<T> *> &b_ptrs_to_wrappers, int ldb,
+      float beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
+      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
+
   // Helper function for implementing DoBlasGemmWithAlgorithm.
   //
   // We take alpha and beta by const reference because T might be Eigen::half,
