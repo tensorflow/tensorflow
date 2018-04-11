@@ -31,7 +31,7 @@ class StringStripOpTest(test.TestCase):
     with self.test_session() as sess:
       output = string_ops.string_strip(strings)
       output = sess.run(output)
-      self.assertAllEqual(output, ["pigs on the wing", "animals"])
+      self.assertAllEqual(output, [b"pigs on the wing", b"animals"])
 
   def test_string_strip_2d(self):
     strings = [["pigs on the wing", "animals"],
@@ -40,8 +40,8 @@ class StringStripOpTest(test.TestCase):
     with self.test_session() as sess:
       output = string_ops.string_strip(strings)
       output = sess.run(output)
-      self.assertAllEqual(output, [["pigs on the wing", "animals"],
-                                   ["hello", "world"]])
+      self.assertAllEqual(output, [[b"pigs on the wing", b"animals"],
+                                   [b"hello", b"world"]])
 
   def test_string_strip_with_empty_strings(self):
     strings = [" hello ", "", "world ", " \t \r \n "]
@@ -49,7 +49,7 @@ class StringStripOpTest(test.TestCase):
     with self.test_session() as sess:
       output = string_ops.string_strip(strings)
       output = sess.run(output)
-      self.assertAllEqual(output, ["hello", "", "world", ""])
+      self.assertAllEqual(output, [b"hello", b"", b"world", b""])
 
 
 if __name__ == "__main__":
