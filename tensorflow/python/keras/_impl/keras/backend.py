@@ -34,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -2795,6 +2796,8 @@ class Function(object):
     else:
       feed_dict = {}
 
+    session = get_session()
+    data_tensors_to_feed = []
     for tensor, value in zip(self.inputs, inputs):
       if value is None:
         continue
@@ -2803,9 +2806,20 @@ class Function(object):
         indices = np.concatenate((np.expand_dims(sparse_coo.row, 1),
                                   np.expand_dims(sparse_coo.col, 1)), 1)
         value = (indices, sparse_coo.data, sparse_coo.shape)
-      feed_dict[tensor] = value
+      elif tensor_util.is_tensor(value):
+        data_tensors_to_feed.append((tensor, value))
+      else:
+        feed_dict[tensor] = value
+
+    if data_tensors_to_feed:
+      # This is a *temporary* workaround (i.e. hack) to feed a symbolic tensor
+      # to `feed_dict`. It is very inefficient. It will be removed as soon
+      # as it becomes possible to pass symbolic tensors to `feed_dict`.
+      data_tensor_values = session.run([x[1] for x in data_tensors_to_feed])
+      for i, v in enumerate(data_tensor_values):
+        feed_dict[data_tensors_to_feed[i][0]] = v
+
     fetches = self.outputs + [self.updates_op] + self.fetches
-    session = get_session()
     updated = session.run(
         fetches=fetches, feed_dict=feed_dict, **self.session_kwargs)
     return updated[:len(self.outputs)]

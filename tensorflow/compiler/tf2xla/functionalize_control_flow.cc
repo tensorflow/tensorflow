@@ -901,6 +901,14 @@ FunctionalizeCond::DeterminePredicateSwitchOrder() {
       int src_depth = switch_depth[src_id];
       if (!e->IsControlEdge() || new_switch_depth == src_depth) {
         if (src_depth != new_switch_depth) {
+          // TODO(b/77601805) remove this when outside_compilation supports
+          // control flow.
+          if (str_util::StrContains(src->name(), "outside_compilation") ||
+              str_util::StrContains(n->name(), "outside_compilation")) {
+            return errors::InvalidArgument(
+                "outside_compilation is not yet supported within TensorFlow "
+                "control flow constructs b/77601805");
+          }
           return errors::InvalidArgument(
               "Unable to functionalize control flow in graph: Operand ('",
               src->name(), "') and operator ('", n->name(),

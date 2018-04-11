@@ -247,9 +247,7 @@ class RevBlock(base.Layer):
     f_vars_idxs = [[] for _ in range(self.num_layers)]
     g_vars_idxs = [[] for _ in range(self.num_layers)]
 
-    for i, t in enumerate(variables):
-      ref = _underlying_variable_ref(t)
-
+    for i, ref in enumerate(variables):
       # Use the name to identify the layer number and function (f or g)
       regex = LAYER_RE.match(ref.name)
       layer_no = int(regex.group(1))
@@ -604,6 +602,7 @@ def _fn_with_custom_grad_internal(fn, inputs, grad_fn, use_global_vars=False):
     """Custom grad fn applying grad_fn for identity Defun."""
     fn_inputs, fn_vars, fn_outputs = nest.pack_sequence_as(
         defun_inputs, list(op.inputs))
+    fn_vars = [_underlying_variable_ref(v) for v in fn_vars]
     dys = list(dys)
     assert len(fn_outputs) == len(outputs)
     assert len(fn_outputs) == len(dys)

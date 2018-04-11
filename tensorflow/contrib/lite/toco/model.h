@@ -56,10 +56,12 @@ enum class OperatorType {
   kL2Pool,
   kLstmCell,
   kLocalResponseNormalization,
+  kLog,
   kLogistic,
   kMaxPool,
   kFakeQuant,
   kMul,
+  kRandomUniform,
   kRange,
   kRank,
   kRelu,
@@ -590,6 +592,17 @@ struct LogisticOperator : Operator {
   LogisticOperator() : Operator(OperatorType::kLogistic) {}
 };
 
+// Element-wise natural log operator:
+//   x -> ln(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Log
+struct LogOperator : Operator {
+  LogOperator() : Operator(OperatorType::kLog) {}
+};
+
 // Element-wise Tanh operator:
 //   x -> Tanh(x) = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
 //
@@ -944,6 +957,13 @@ struct FloorDivOperator : Operator {
 // TensorFlow equivalent: FloorMod
 struct FloorModOperator : Operator {
   FloorModOperator() : Operator(OperatorType::kFloorMod) {}
+};
+
+struct RandomUniformOperator : Operator {
+  RandomUniformOperator() : Operator(OperatorType::kRandomUniform) {}
+  ArrayDataType dtype = ArrayDataType::kNone;
+  int64 seed;
+  int64 seed2;
 };
 
 // Creates a sequence of numbers that begins at start and extends by increments
@@ -1499,7 +1519,14 @@ class Shape {
 
   // We still have that one convenience accessor to avoid
   // the awkward double bracket issue:  shape.dims()[i].
-  int dims(int i) const { return dims_[i]; }
+  int dims(int i) const {
+    // Always check for out-of-bounds accesses, even in optimized builds where
+    // standard assertions are disabled. Out-of-bounds access here is a common
+    // occurence.
+    CHECK_GE(i, 0);
+    CHECK_GT(dims_.size(), i);
+    return dims_[i];
+  }
 
   bool operator==(const Shape& comp) const {
     return (this->dims_ == comp.dims());

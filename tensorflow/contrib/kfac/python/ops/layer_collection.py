@@ -84,7 +84,7 @@ _EMBEDDING_MULTI_APPROX_TO_BLOCK_TYPES = {
     APPROX_KRONECKER_INDEP_NAME: fb.EmbeddingKFACMultiIndepFB
 }
 
-# Possible value for 'reuse' keyword argument. Sets 'reuse' to
+# Possible value for `reuse` keyword argument. Sets `reuse` to
 # tf.get_variable_scope().reuse.
 VARIABLE_SCOPE = "VARIABLE_SCOPE"
 
@@ -294,8 +294,8 @@ class LayerCollection(object):
       layer_key: A variable or tuple of variables. The key to check for in
           existing registrations and to register if valid.
       fisher_block: The associated `FisherBlock`.
-      reuse: Method to use for inserting new `FisherBlock`s. One of True, False,
-        or 'VARIABLE_SCOPE'.
+      reuse: Method to use for inserting new `FisherBlock's. One of True, False,
+        or `VARIABLE_SCOPE`.
 
     Raises:
       ValueError: If `layer_key` was already registered and reuse is `False`,
@@ -359,15 +359,14 @@ class LayerCollection(object):
         is None.
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
-      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
-        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
-        tf.get_variable_scope().reuse.
+      reuse: (OPTIONAL) bool or str.  If True, adds `loss` as an additional
+        tower for the existing loss function.
 
     Raises:
       ValueError: If reuse == True and name == None.
       ValueError: If reuse == True and seed != None.
-      KeyError: If reuse == True and no existing LossFunction with 'name' found.
-      KeyError: If reuse == False and existing LossFunction with 'name' found.
+      KeyError: If reuse == True and no existing LossFunction with `name` found.
+      KeyError: If reuse == False and existing LossFunction with `name` found.
     """
 
     name = name or self._graph.unique_name(base_name)
@@ -491,24 +490,24 @@ class LayerCollection(object):
     """
     params = frozenset(utils.ensure_sequence(params))
 
-    # Check if any of the variables in 'params' is already in
-    # 'self.fisher_blocks.keys()'.
+    # Check if any of the variables in `params` is already in
+    # 'self.fisher_blocks.keys()`.
     for registered_params, fisher_block in self.fisher_blocks.items():
       registered_params_set = set(utils.ensure_sequence(registered_params))
       for variable in params:
         if (variable in registered_params_set and
             params != registered_params_set):
           raise ValueError(
-              "Can't link parameters {}, variable {} was already registered in "
+              "Can`t link parameters {}, variable {} was already registered in "
               "group {} with layer {}".format(params, variable,
                                               registered_params, fisher_block))
 
-    # Check if any of the variables in 'params' is already in
-    # 'self.linked_parameters'.
+    # Check if any of the variables in `params` is already in
+    # 'self.linked_parameters`.
     for variable in params:
       for other_linked_params in self.linked_parameters:
         if variable in other_linked_params:
-          raise ValueError("Can't link parameters {}, variable {} was already "
+          raise ValueError("Can`t link parameters {}, variable {} was already "
                            "linked in group {}.".format(params, variable,
                                                         other_linked_params))
     self._linked_parameters[params] = approximation
@@ -576,15 +575,15 @@ class LayerCollection(object):
         produced by layer.
       approx: str or None. If not None must be "kron".  The Fisher
         approximation to use. If None the default value is used. (Default: None)
-      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
     block_type, approx = self._get_block_type(
@@ -618,15 +617,15 @@ class LayerCollection(object):
       approx: str or None. If not None must be one of "kron" or "diagonal".
         The Fisher approximation to use. If None the default value is used.
         (Default: None)
-      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
 
@@ -669,15 +668,15 @@ class LayerCollection(object):
       approx: str or None. If not None must be one of "kron" or "diagonal".
         The Fisher approximation to use. If None the default value is used.
         (Default: None)
-      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
 
@@ -686,7 +685,7 @@ class LayerCollection(object):
         _CONV2D_APPROX_TO_BLOCK_TYPES)
 
     # It feels bad to pass in configuration that has to do with the internal
-    # implementation.  And then we can't use the same constructor for both
+    # implementation.  And then we can`t use the same constructor for both
     # anymore and are thus forced to use this ugly if-statement.
     # TODO(b/74793309): Clean this up?
     if approx == APPROX_KRONECKER_NAME:
@@ -749,15 +748,15 @@ class LayerCollection(object):
       approx: str or None. If not None must be one of "kron" or "diagonal".
         The Fisher approximation to use. If None the default value is used.
         (Default: None)
-      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
     # TODO(b/74793309): Have this use _get_block_type like the other
@@ -804,15 +803,15 @@ class LayerCollection(object):
       data_format: str or None. Format of data.
       approx: str or None. If not None must "diagonal".  The Fisher
         approximation to use. If None the default value is used. (Default: None)
-      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
     # TODO(b/74793309): Have this use _get_block_type like the other
@@ -872,15 +871,15 @@ class LayerCollection(object):
       approx: str or None. If not None must be one of "kron" or "diagonal".
         The Fisher approximation to use. If None the default value is used.
         (Default: None)
-      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
     self.register_depthwise_conv2d(
@@ -917,14 +916,14 @@ class LayerCollection(object):
       approx: str or None. It not None, must be one of "full" or "diagonal".
         The Fisher approximation to use. If None the default value is used.
         (Default: None)
-      reuse: bool or str. If True, this adds 'batch_size' to the total
+      reuse: bool or str. If True, this adds `batch_size` to the total
         mini-batch size use when estimating the Fisher block for this layer
         (which must have already been registered). If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse. (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
     block_type, approx = self._get_block_type(
@@ -954,10 +953,10 @@ class LayerCollection(object):
         correspond to a "time-step" in an RNN). OR, can be single Tensor, of
         shape [num_uses * batch_size , input_size], which is a reshaped version
         of a Tensor of shape [num_uses, batch_size, input_size].
-      outputs: A list of Tensors, the same length as 'inputs', each of shape
+      outputs: A list of Tensors, the same length as `inputs`, each of shape
         [batch_size, output_size]. Outputs produced by layer. The list indexes
         each use in the graph (which might correspond to a "time-step" in an
-        RNN). Needs to correspond with the order used in 'inputs'.  OR, can be
+        RNN). Needs to correspond with the order used in `inputs`.  OR, can be
         a single Tensor of shape [num_uses * batch_size, output_size], which is
         a reshaped version of a Tensor of shape [num_uses, batch_size,
         output_size].
@@ -967,16 +966,16 @@ class LayerCollection(object):
       approx: str or None. If not None, must be of "kron_indep", "kron_series_1"
         or "kron_series_2". The Fisher approximation to use. If None the default
         value is used. (Default: None)
-      reuse: bool or str.  If True, this adds inputs and outputs as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
-        word 'use' here has a completely different meaning to "use in the graph"
-        as it perturns to the 'inputs', 'outputs', and 'num_uses' arguments.)
+        word `use` here has a completely different meaning to "use in the graph"
+        as it perturns to the `inputs`, `outputs`, and `num_uses` arguments.)
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
+      ValueError: For improper value to `approx`.
     """
     block_type, approx = self._get_block_type(
         params, approx, self.default_fully_connected_multi_approximation,
@@ -990,9 +989,11 @@ class LayerCollection(object):
                                                    num_uses=num_uses),
                                 reuse=reuse)
     block.register_additional_tower(inputs, outputs)
-
-    assert len(inputs) == len(outputs)
-    self._add_uses(params, len(inputs))
+    if isinstance(inputs, (tuple, list)):
+      assert len(inputs) == len(outputs)
+      self._add_uses(params, len(inputs))
+    else:
+      self._add_uses(params, 1)
 
   def register_conv2d_multi(self,
                             params,
@@ -1023,7 +1024,7 @@ class LayerCollection(object):
       outputs: A list of Tensors, each of shape [batch_size, height, width,
         out_channels]. Output produced by layer. The list indexes each use
         in the graph (which might correspond to a "time-step" in an RNN).
-        Needs to correspond with the order used in 'inputs'.  OR, can be a
+        Needs to correspond with the order used in `inputs`.  OR, can be a
         single Tensor, of shape [num_uses * batch_size, height, width,
         out_channels], which is a reshaped version of a Tensor of shape
         [num_uses, batch_size, height, width, out_channels].
@@ -1035,17 +1036,17 @@ class LayerCollection(object):
       approx: str or None. If not None must by "kron_indep". The Fisher
         approximation to use. If None the default value is used.
         (Default: None)
-      reuse: bool or str.  If True, this adds inputs and outputs as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
-        word 'use' here has a completely different meaning to "use in the graph"
-        as it perturns to the 'inputs', 'outputs', and 'num_uses' arguments.)
+        word `use` here has a completely different meaning to "use in the graph"
+        as it perturns to the `inputs`, `outputs`, and `num_uses` arguments.)
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
     block_type, approx = self._get_block_type(
@@ -1066,9 +1067,11 @@ class LayerCollection(object):
         reuse=reuse)
 
     block.register_additional_tower(inputs, outputs)
-
-    assert len(inputs) == len(outputs)
-    self._add_uses(params, len(inputs))
+    if isinstance(inputs, (tuple, list)):
+      assert len(inputs) == len(outputs)
+      self._add_uses(params, len(inputs))
+    else:
+      self._add_uses(params, 1)
 
   # TODO(b/74108452): change the loss registration functions names to refer
   # to "loss functions" instead of distributions.  Following naming convention
@@ -1088,13 +1091,13 @@ class LayerCollection(object):
       inputs: A list of Tensors, each of shape [batch_size, input_size] and
         dtype int32. Indices into embedding matrix. The list indexes each use
         in the graph (which might correspond to a "time-step" in an RNN).
-        OR, can be single Tensor, of shape [num_uses, batch_size, input_size],
+        OR, can be single Tensor, of shape [num_uses*batch_size, input_size],
         which is a reshaped version of a Tensor of shape [num_uses, batch_size,
         input_size].
       outputs: A list of Tensors, each of shape [batch_size, embedding_size].
         Outputs produced by layer. The list indexes each use in the graph
         (which might correspond to a "time-step" in an RNN). Needs to
-        correspond with the order used in 'inputs'. OR, can be a
+        correspond with the order used in `inputs`. OR, can be a
         single Tensor, of shape [num_uses * batch_size, embedding_size], which
         is a reshaped version of a Tensor of shape [num_uses, batch_size,
         embedding_size].
@@ -1104,17 +1107,17 @@ class LayerCollection(object):
       approx: str or None. If not None must by "kron_indep". The Fisher
         approximation to use. If None the default value is used.
         (Default: None)
-      reuse: bool or str.  If True, this adds inputs and outputs as an
+      reuse: bool or str.  If True, this adds `inputs` and `outputs` as an
         additional mini-batch/tower of data to use when estimating the Fisher
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
-        word 'use' here has a completely different meaning to "use in the graph"
-        as it perturns to the 'inputs', 'outputs', and 'num_uses' arguments.)
+        word `use` here has a completely different meaning to "use in the graph"
+        as it perturns to the `inputs`, `outputs`, and `num_uses` arguments.)
         (Default: "VARIABLE_SCOPE")
 
     Raises:
-      ValueError: For improper value to 'approx'.
-      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: For improper value to `approx`.
+      KeyError: If reuse == True but no FisherBlock found for `params`.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
     block_type, approx = self._get_block_type(
@@ -1129,7 +1132,10 @@ class LayerCollection(object):
         params, block_type(self, vocab_size, num_uses=num_uses), reuse=reuse)
     block.register_additional_tower(inputs, outputs)
 
-    self._add_uses(params, len(inputs))
+    if isinstance(inputs, (tuple, list)):
+      self._add_uses(params, len(inputs))
+    else:
+      self._add_uses(params, 1)
 
   def register_categorical_predictive_distribution(self,
                                                    logits,
@@ -1149,7 +1155,7 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
-      reuse: bool or str.  If True, this adds 'logits' as an additional
+      reuse: bool or str.  If True, this adds `logits` as an additional
         mini-batch/tower of inputs to the loss-function/predictive distribution
         (which must have already been registered). If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse. (Default: "VARIABLE_SCOPE")
@@ -1183,7 +1189,7 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
-      reuse: bool or str.  If True, this adds 'mean' and 'var' as an additional
+      reuse: bool or str.  If True, this adds `mean` and `var` as an additional
         mini-batch/tower of inputs to the loss-function/predictive distribution
         (which must have already been registered). If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse. (Default: "VARIABLE_SCOPE")
@@ -1212,7 +1218,7 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
-      reuse: bool or str.  If True, this adds 'logits' as an additional
+      reuse: bool or str.  If True, this adds `logits` as an additional
         mini-batch/tower of inputs to the loss-function/predictive distribution
         (which must have already been registered). If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse. (Default: "VARIABLE_SCOPE")
@@ -1224,18 +1230,18 @@ class LayerCollection(object):
                                 name=name, reuse=reuse)
 
   def make_or_get_factor(self, cls, args):
-    """Insert 'cls(args)' into 'self.fisher_factors' if not already present.
+    """Insert `cls(args)` into 'self.fisher_factors` if not already present.
 
-    Wraps constructor in 'tf.variable_scope()' to ensure variables constructed
-    in 'cls.__init__' are placed under this LayerCollection's scope.
+    Wraps constructor in `tf.variable_scope()` to ensure variables constructed
+    in `cls.__init__` are placed under this LayerCollection's scope.
 
     Args:
       cls: Class that implements FisherFactor.
-      args: Tuple of arguments to pass into 'cls's constructor. Must be
+      args: Tuple of arguments to pass into `cls's constructor. Must be
         hashable.
 
     Returns:
-      Instance of 'cls' found in self.fisher_factors.
+      Instance of `cls` found in self.fisher_factors.
     """
     try:
       hash(args)

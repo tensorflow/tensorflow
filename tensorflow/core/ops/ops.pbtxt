@@ -30,8 +30,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -210,8 +210,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -237,8 +237,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -266,8 +266,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -423,8 +423,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -1932,8 +1932,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -1959,8 +1959,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -2191,8 +2191,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -2223,6 +2223,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -2244,8 +2245,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -3004,8 +3005,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -3854,6 +3855,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT64
@@ -3869,7 +3871,6 @@ op {
         type: DT_QINT16
         type: DT_QUINT16
         type: DT_QINT32
-        type: DT_HALF
       }
     }
   }
@@ -3879,6 +3880,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT64
@@ -3894,7 +3896,6 @@ op {
         type: DT_QINT16
         type: DT_QUINT16
         type: DT_QINT32
-        type: DT_HALF
       }
     }
   }
@@ -4637,8 +4638,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -4660,8 +4661,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -4725,6 +4726,147 @@ op {
   input_arg {
     name: "writer"
     type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
+  name: "CollectiveBcastRecv"
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "group_size"
+    type: "int"
+  }
+  attr {
+    name: "group_key"
+    type: "int"
+  }
+  attr {
+    name: "instance_key"
+    type: "int"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  is_stateful: true
+}
+op {
+  name: "CollectiveBcastSend"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "group_size"
+    type: "int"
+  }
+  attr {
+    name: "group_key"
+    type: "int"
+  }
+  attr {
+    name: "instance_key"
+    type: "int"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  is_stateful: true
+}
+op {
+  name: "CollectiveReduce"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "group_size"
+    type: "int"
+  }
+  attr {
+    name: "group_key"
+    type: "int"
+  }
+  attr {
+    name: "instance_key"
+    type: "int"
+  }
+  attr {
+    name: "merge_op"
+    type: "string"
+    allowed_values {
+      list {
+        s: "Min"
+        s: "Max"
+        s: "Mul"
+        s: "Add"
+      }
+    }
+  }
+  attr {
+    name: "final_op"
+    type: "string"
+    allowed_values {
+      list {
+        s: "Id"
+        s: "Div"
+      }
+    }
+  }
+  attr {
+    name: "subdiv_offsets"
+    type: "list(int)"
   }
   is_stateful: true
 }
@@ -5759,8 +5901,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -5784,8 +5926,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -7219,6 +7361,14 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "select_cols"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "DecodeCompressed"
@@ -7345,6 +7495,55 @@ op {
   }
 }
 op {
+  name: "DecodeProtoV2"
+  input_arg {
+    name: "bytes"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "sizes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "message_type"
+    type: "string"
+  }
+  attr {
+    name: "field_names"
+    type: "list(string)"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "descriptor_source"
+    type: "string"
+    default_value {
+      s: "local://"
+    }
+  }
+  attr {
+    name: "message_format"
+    type: "string"
+    default_value {
+      s: "binary"
+    }
+  }
+  attr {
+    name: "sanitize"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "DecodeRaw"
   input_arg {
     name: "bytes"
@@ -7407,6 +7606,22 @@ op {
       i: -1
     }
   }
+}
+op {
+  name: "DeepCopy"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  is_stateful: true
 }
 op {
   name: "DeleteSessionTensor"
@@ -7960,6 +8175,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -7986,6 +8202,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -8011,8 +8228,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8217,8 +8434,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -8433,6 +8650,29 @@ op {
   }
 }
 op {
+  name: "Empty"
+  input_arg {
+    name: "shape"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "init"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "EmptyTensorList"
   input_arg {
     name: "element_shape"
@@ -8594,6 +8834,42 @@ op {
   }
 }
 op {
+  name: "EncodeProto"
+  input_arg {
+    name: "sizes"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    type_list_attr: "Tinput_types"
+  }
+  output_arg {
+    name: "bytes"
+    type: DT_STRING
+  }
+  attr {
+    name: "field_names"
+    type: "list(string)"
+  }
+  attr {
+    name: "message_type"
+    type: "string"
+  }
+  attr {
+    name: "descriptor_source"
+    type: "string"
+    default_value {
+      s: "local://"
+    }
+  }
+  attr {
+    name: "Tinput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "EncodeWav"
   input_arg {
     name: "audio"
@@ -8678,8 +8954,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -8714,8 +8990,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8737,8 +9013,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8775,8 +9051,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -8832,8 +9108,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -9700,8 +9976,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -9727,8 +10003,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -9765,6 +10041,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -9778,6 +10055,38 @@ op {
     type: DT_RESOURCE
   }
   is_stateful: true
+}
+op {
+  name: "For"
+  input_arg {
+    name: "start"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "limit"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "delta"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "body"
+    type: "func"
+  }
 }
 op {
   name: "FractionalAvgPool"
@@ -11184,6 +11493,45 @@ op {
   is_stateful: true
 }
 op {
+  name: "If"
+  input_arg {
+    name: "cond"
+    type_attr: "Tcond"
+  }
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tcond"
+    type: "type"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "then_branch"
+    type: "func"
+  }
+  attr {
+    name: "else_branch"
+    type: "func"
+  }
+}
+op {
   name: "Igamma"
   input_arg {
     name: "a"
@@ -11551,6 +11899,75 @@ op {
   is_stateful: true
 }
 op {
+  name: "InplaceAdd"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "i"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "InplaceSub"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "i"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "InplaceUpdate"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "i"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "InterleaveDataset"
   input_arg {
     name: "input_dataset"
@@ -11609,8 +12026,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -11640,8 +12057,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -11728,8 +12145,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -11751,8 +12168,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -11774,8 +12191,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -12289,8 +12706,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -12437,8 +12854,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -12462,8 +12879,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -13319,8 +13736,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -14554,8 +14971,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -14810,8 +15227,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -14926,6 +15343,8 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+        type: DT_HALF
+        type: DT_HALF
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -14952,8 +15371,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -15374,8 +15793,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -15510,8 +15929,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -15675,6 +16094,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT8
@@ -16953,9 +17373,9 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
         type: DT_FLOAT
+        type: DT_HALF
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
@@ -17385,6 +17805,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -17440,6 +17861,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -17488,6 +17910,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -20035,8 +20458,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -20066,8 +20489,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -20097,8 +20520,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -23386,8 +23809,8 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_BOOL
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -23445,6 +23868,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -23509,8 +23933,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -23520,6 +23944,47 @@ op {
       }
     }
   }
+}
+op {
+  name: "Rpc"
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "method"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "request"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "response"
+    type: DT_STRING
+  }
+  attr {
+    name: "protocol"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "fail_fast"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "timeout_in_ms"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "Rsqrt"
@@ -23536,8 +24001,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -23565,8 +24030,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -25416,8 +25881,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -25445,8 +25910,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -25470,8 +25935,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -25497,8 +25962,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -25522,8 +25987,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -28917,8 +29382,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -28946,8 +29411,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -28971,8 +29436,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -29002,8 +29467,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -29951,8 +30416,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -30336,8 +30801,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -30363,8 +30828,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -30392,8 +30857,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -32014,8 +32479,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_HALF
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -32052,6 +32517,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -32102,6 +32568,55 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "TryRpc"
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "method"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "request"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "response"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "status_code"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "status_message"
+    type: DT_STRING
+  }
+  attr {
+    name: "protocol"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "fail_fast"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "timeout_in_ms"
+    type: "int"
+    default_value {
+      i: 0
     }
   }
   is_stateful: true
@@ -32935,6 +33450,31 @@ op {
       }
     }
   }
+}
+op {
+  name: "While"
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "cond"
+    type: "func"
+  }
+  attr {
+    name: "body"
+    type: "func"
+  }
+  is_stateful: true
 }
 op {
   name: "WholeFileReader"

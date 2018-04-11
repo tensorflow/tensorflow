@@ -43,6 +43,7 @@ class NodeAnno(NoValue):
   # Scopes
   # Scopes are represented by objects of type activity.Scope.
   ARGS_SCOPE = 'The scope for the argument list of a function call.'
+  COND_SCOPE = 'The scope for the test node of a conditional statement.'
   BODY_SCOPE = (
       'The scope for the main body of a statement (True branch for if '
       'statements, main body for loops).')

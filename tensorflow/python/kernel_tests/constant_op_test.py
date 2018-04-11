@@ -653,12 +653,12 @@ class FillTest(test.TestCase):
     self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex64(self):
-    np_ans = np.array([[0.15] * 3] * 2).astype(np.complex64)
-    self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
+    np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex64)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex128(self):
-    np_ans = np.array([[0.15] * 3] * 2).astype(np.complex128)
-    self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
+    np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex128)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillString(self):
     np_ans = np.array([[b"yolo"] * 3] * 2)

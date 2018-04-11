@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
 import threading
 
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
@@ -100,6 +101,33 @@ def make_example_dict(example_protos, example_weights):
       example_weights=example_weights,
       example_labels=array_ops.reshape(parsed['target'], [-1]),
       example_ids=['%d' % i for i in range(0, len(example_protos))])
+
+
+def make_random_examples_and_variables_dicts(num_examples, dim, num_non_zero):
+  random.seed(1)
+  sparse_features = [
+      SparseFeatureColumn(
+          [int(i / num_non_zero) for i in range(num_examples * num_non_zero)],
+          [int(random.random() * dim) for _ in range(
+              num_examples * num_non_zero)],
+          [num_non_zero**(-0.5) for _ in range(num_examples * num_non_zero)])
+  ]
+  examples_dict = dict(
+      sparse_features=sparse_features,
+      dense_features=[],
+      example_weights=[random.random() for _ in range(num_examples)],
+      example_labels=[
+          1. if random.random() > 0.5 else 0. for _ in range(num_examples)
+      ],
+      example_ids=[str(i) for i in range(num_examples)])
+
+  weights = variables_lib.Variable(
+      array_ops.zeros([dim], dtype=dtypes.float32))
+  variables_dict = dict(
+      sparse_features_weights=[weights],
+      dense_features_weights=[])
+
+  return examples_dict, variables_dict
 
 
 def make_variable_dict(max_age, max_gender):
@@ -234,6 +262,32 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllEqual([0, 1], predicted_labels.eval())
         self.assertAllClose(
             0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
+
+  def testSparseRandom(self):
+    dim = 20
+    num_examples = 1000
+    # Number of non-zero features per example.
+    non_zeros = 10
+    # Setup test data.
+    with self._single_threaded_test_session():
+      examples, variables = make_random_examples_and_variables_dicts(
+          num_examples, dim, non_zeros)
+      options = dict(
+          symmetric_l2_regularization=.1,
+          symmetric_l1_regularization=0,
+          num_table_shards=1,
+          adaptive=False,
+          loss_type='logistic_loss')
+
+      lr = SdcaModel(examples, variables, options)
+      variables_lib.global_variables_initializer().run()
+      train_op = lr.minimize()
+      for _ in range(4):
+        train_op.run()
+      lr.update_weights(train_op).run()
+      # Duality gap is 1.4e-5.
+      # It would be 0.01 without shuffling and 0.02 with adaptive sampling.
+      self.assertNear(0.0, lr.approximate_duality_gap().eval(), err=1e-3)
 
   def testDistributedSimple(self):
     # Setup test data

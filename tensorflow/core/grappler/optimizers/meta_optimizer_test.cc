@@ -72,6 +72,20 @@ TEST(MetaOptimizerTest, RunsCustomOptimizer) {
   EXPECT_TRUE(TestOptimizer::IsOptimized());
 }
 
+TEST(MetaOptimizerTest, RunOptimizersTwice) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  RewriterConfig rewriter_config;
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+
+  MetaOptimizer optimizer(nullptr, rewriter_config);
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

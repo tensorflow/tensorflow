@@ -609,6 +609,7 @@ py_test(
     srcs = ["_impl/keras/utils/data_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
         "noasan",  # times out
         "notsan",
@@ -637,7 +638,10 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/utils/io_utils_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

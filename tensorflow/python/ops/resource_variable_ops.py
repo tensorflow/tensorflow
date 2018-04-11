@@ -72,7 +72,12 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     # know the shape and dtype of the variable pointed to by a handle. Since
     # shape inference doesn't run in eager mode we copy this data here for when
     # the handle is captured by an eager mode function.
-    handle._handle_data = h._handle_data  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if h._handle_data is None:
+      ops.set_shape_and_handle_data_for_outputs(h.op)
+    handle._handle_data = h._handle_data
+    # pylint: enable=protected-access
+
   # Clean up our reference cycles to avoid making the garbage collector run.
   # pylint: disable=protected-access
   # OrderedDict, constructed on Graph creation, makes a simple reference loop
@@ -171,7 +176,9 @@ class ResourceVariable(variables.Variable):
   to see all modifications to the value of the variable which happen in any
   operation on which the read_value depends on (either directly, indirectly, or
   via a control dependency) and guaranteed to not see any modification to the
-  value of the variable on which the read_value operation does not depend on.
+  value of the variable from operations that depend on the read_value operation.
+  Updates from operations that have no dependency relationship to the read_value
+  operation might or might not be visible to read_value.
 
   For example, if there is more than one assignment to a ResourceVariable in
   a single session.run call there is a well-defined value for each operation

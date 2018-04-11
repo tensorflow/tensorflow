@@ -376,7 +376,9 @@ class DistributionStrategy(object):
     update. Allreduce is an algorithm for performing a reduction on
     values from multiple devices and making the result available on
     all of those devices.
-  * TODO(josh11b): Future: partitioned variables
+  * In the future we will have support for TensorFlows' partitioned
+    variables, where a single variable is split across multiple
+    devices.
 
   We have then a few approaches we want to support:
   * Code written (as if) with no knowledge of class `DistributionStrategy`.
@@ -390,7 +392,6 @@ class DistributionStrategy(object):
     ```
     with my_distribution.scope():
       iterator = my_distribution.distribute_dataset(dataset)
-      # TODO(josh11b): iterator = dataset.make_one_shot_iterator()
       tower_train_ops = my_distribution.call_for_each_tower(
           tower_fn, iterator.get_next())
       train_op = tf.group(my_distribution.unwrap(tower_train_ops))
@@ -402,6 +403,10 @@ class DistributionStrategy(object):
     using `my_distribution`'s policy, and library functions called by
     `tower_fn` can use the `get_tower_context()` API to get enhanced
     behavior in this case.
+
+    Note that in the future we will add support for initializable
+    Dataset iterators, at which point this example code will change.
+
   * If you want to write a distributed algorithm, you may use any of
     the `DistributionStrategy` APIs inside a
     `with my_distribution.scope():` block of code.
@@ -514,7 +519,7 @@ class DistributionStrategy(object):
 
   Steps 3 and 4 are done automatically by class `Optimizer` if you call
   its `apply_gradients` method in a tower context. Otherwise you can
-  manually call its `distributed_apply` method in a cross-tower context.
+  manually call its `_distributed_apply` method in a cross-tower context.
 
   Another thing you might want to do in the middle of your tower function
   is an all-reduce of some intermediate value, using `d.reduce()` or
@@ -1221,13 +1226,16 @@ _default_tower_mode = _DefaultTowerThreadMode()
 # So here we catch any attempts to deserialize variables
 # when using distribution strategies.
 # pylint: disable=protected-access
+_original_from_proto = resource_variable_ops._from_proto_fn
+
+
 def _from_proto_fn(v, import_scope=None):
   if has_distribution_strategy():
     raise NotImplementedError(
         "Deserialization of variables is not yet supported when using"
         "distributed strategies.")
   else:
-    resource_variable_ops._from_proto_fn(v, import_scope=import_scope)
+    return _original_from_proto(v, import_scope=import_scope)
 
 resource_variable_ops._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access

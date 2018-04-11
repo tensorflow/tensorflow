@@ -204,17 +204,22 @@ class BatchToSpaceND
                    TocoOperator* op) const override {}
 };
 
-class Cast : public CustomOperator<CastOperator> {
+class Cast : public BuiltinOperator<CastOperator, ::tflite::CastOptions,
+                                    ::tflite::BuiltinOptions_CastOptions> {
  public:
-  using CustomOperator::CustomOperator;
-  void WriteOptions(const TocoOperator& op,
-                    flexbuffers::Builder* fbb) const override {
-    fbb->Int("src_data_type", DataType::Serialize(op.src_data_type));
-    fbb->Int("dst_data_type", DataType::Serialize(op.dst_data_type));
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateCastOptions(*builder,
+                                       DataType::Serialize(op.src_data_type),
+                                       DataType::Serialize(op.dst_data_type));
   }
-  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
-    op->src_data_type = DataType::Deserialize(m["src_data_type"].AsInt64());
-    op->dst_data_type = DataType::Deserialize(m["dst_data_type"].AsInt64());
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->src_data_type = DataType::Deserialize(options.in_data_type());
+    op->dst_data_type = DataType::Deserialize(options.out_data_type());
   }
 };
 
@@ -657,6 +662,23 @@ class TopK_V2 : public BuiltinOperator<TopKV2Operator, ::tflite::TopKV2Options,
                    TocoOperator* op) const override {}
 };
 
+class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
+                                      ::tflite::BuiltinOptions_ArgMaxOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateArgMaxOptions(
+        *builder, DataType::Serialize(op.output_data_type));
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->output_data_type = DataType::Deserialize(options.output_type());
+  }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -827,9 +849,12 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new TopK_V2(::tflite::BuiltinOperator_TOPK_V2, OperatorType::kTopK_V2));
   ops.emplace_back(
       new Lstm(::tflite::BuiltinOperator_LSTM, OperatorType::kLstmCell));
+  ops.emplace_back(
+      new Cast(::tflite::BuiltinOperator_CAST, OperatorType::kCast));
+  ops.emplace_back(
+      new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
 
   // Custom Operators.
-  ops.emplace_back(new Cast("CAST", OperatorType::kCast));
   ops.emplace_back(
       new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
   ops.emplace_back(new FakeQuant("FAKE_QUANT", OperatorType::kFakeQuant));
@@ -865,6 +890,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
   ops.emplace_back(new SimpleOperator<TensorFlowMaximumOperator>(
       "MAXIMUM", OperatorType::kTensorFlowMaximum));
+  ops.emplace_back(new SimpleOperator<TensorFlowMinimumOperator>(
+      "MINIMUM", OperatorType::kTensorFlowMinimum));
 
   return ops;
 }

@@ -1206,7 +1206,16 @@ class DeviceWrapper(RNNCell):
 
 @tf_export("nn.rnn_cell.MultiRNNCell")
 class MultiRNNCell(RNNCell):
-  """RNN cell composed sequentially of multiple simple cells."""
+  """RNN cell composed sequentially of multiple simple cells.
+
+  Example:
+
+  ```python
+  num_units = [128, 64]
+  cells = [BasicLSTMCell(num_units=n) for n in num_units]
+  stacked_rnn_cell = MultiRNNCell(cells)
+  ```
+  """
 
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.

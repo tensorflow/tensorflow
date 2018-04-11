@@ -298,7 +298,8 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
   for (int node_idx = 0; node_idx < node_count; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
     const string op = node->op();
-    if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN") {
+    if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN" &&
+        op != "TensorArraySizeV3") {
       continue;
     }
 
@@ -346,6 +347,36 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       node_map_->AddOutput(NodeName(ctrl_dep), node->name());
 
       // Done with the Shape/Size/Rank node, move to the next node.
+      continue;
+    }
+
+    if (op == "TensorArraySizeV3") {
+      const NodeDef* array = node_map_->GetNode(node->input(0));
+      if (array->attr().count("dynamic_size") != 0 &&
+          array->attr().at("dynamic_size").b()) {
+        continue;
+      }
+      const NodeDef* array_size = node_map_->GetNode(array->input(0));
+      if (IsReallyConstant(*array_size)) {
+        // Don't materialize 0 sizes to avoid triggering incorrect static
+        // checks. A 0 sized array that can't grow isn't useful anyway.
+        const TensorProto& raw_val = array_size->attr().at("value").tensor();
+        if (raw_val.dtype() != DT_INT32) {
+          continue;
+        }
+        Tensor value(raw_val.dtype(), raw_val.tensor_shape());
+        if (!value.FromProto(raw_val)) {
+          continue;
+        }
+        if (value.flat<int32>()(0) == 0) {
+          continue;
+        }
+        node->set_op("Const");
+        *node->mutable_attr() = array_size->attr();
+        node->set_input(0, AsControlDependency(NodeName(node->input(0))));
+        node->set_input(1, AddControlDependency(NodeName(node->input(1)),
+                                                graph_, node_map_.get()));
+      }
       continue;
     }
 
@@ -552,7 +583,6 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
 
   const DataType type = node.attr().at("T").type();
   NodeDef* out[2];
-  bool created_const = false;
   for (int j = 0; j < 2; ++j) {
     int reduction_indices = reduce_dims[j].size();
     Tensor value(type, TensorShape({reduction_indices}));
@@ -576,20 +606,17 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
           AddControlDependency(node.name(), graph_, node_map_.get());
       *out[j]->add_input() = ctrl_dep;
       node_map_->AddOutput(NodeName(ctrl_dep), const_name);
-      created_const = true;
     }
   }
 
-  if (created_const) {
-    const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
-    for (NodeDef* output : outputs) {
-      for (int k = 0; k < output->input_size(); ++k) {
-        int port;
-        string node_name = ParseNodeName(output->input(k), &port);
-        if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
-          *output->mutable_input(k) = out[port]->name();
-          node_map_->UpdateInput(output->name(), node_name, out[port]->name());
-        }
+  const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
+  for (NodeDef* output : outputs) {
+    for (int k = 0; k < output->input_size(); ++k) {
+      int port;
+      string node_name = ParseNodeName(output->input(k), &port);
+      if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
+        *output->mutable_input(k) = out[port]->name();
+        node_map_->UpdateInput(output->name(), node_name, out[port]->name());
       }
     }
   }
@@ -747,10 +774,6 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   if (op.find("Quantized") != string::npos || op.find("Sparse") == 0) {
     return false;
   }
-  if (node.attr().count("_XlaCompile") > 0 &&
-      node.attr().at("_XlaCompile").b()) {
-    return false;
-  }
 
   const OpDef* op_def = nullptr;
   Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
@@ -777,7 +800,7 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   // the case of a merge node that propagate the first inputs that becomes
   // available, and therefore only requires a single constant input to be
   // foldable.
-  bool has_constant_input = false;
+  bool merge_has_constant_input = false;
   const bool is_merge = IsMerge(node);
   for (const auto& input : node.input()) {
     if (IsControlInput(input)) {
@@ -788,21 +811,20 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
       return false;
     }
     bool is_const = IsReallyConstant(*input_node);
-    if (!is_const && !is_merge) {
+    if (is_const) {
+      // Don't fold strings constants for now since this causes problems with
+      // checkpointing.
+      if (input_node->attr().at("dtype").type() == DT_STRING) {
+        return false;
+      }
+      // Special case: If a Merge node has at least one constant input that
+      // does not depend on a control input, we can fold it.
+      merge_has_constant_input |= !HasControlInputs(*input_node);
+    } else if (!is_merge) {
       return false;
     }
-    // Don't fold strings constants for now since this causes problems with
-    // checkpointing.
-    if (is_const && input_node->attr().at("dtype").type() == DT_STRING) {
-      return false;
-    }
-    has_constant_input |= is_const;
   }
-  if (is_merge) {
-    return has_constant_input;
-  }
-
-  return true;
+  return !is_merge || merge_has_constant_input;
 }
 
 namespace {
@@ -1542,6 +1564,16 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
     NodeDef* node = optimized_graph->mutable_node(i);
 
+    if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
+      ReplaceOperationWithIdentity(1, node, optimized_graph);
+      continue;
+    }
+
+    if (IsSplitV(*node) && node->attr().at("num_split").i() == 1) {
+      ReplaceOperationWithIdentity(0, node, optimized_graph);
+      continue;
+    }
+
     // Remove Shuffle or Reverse op over scalar values.
     if (use_shape_info &&
         !properties->GetInputProperties(node->name()).empty() &&
@@ -1708,9 +1740,11 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
     }
 
     // Move constants past Enter.
-    // TODO(rmlarsen): Reenable when we fix the root cause of b/76008022
-    if (opt_level_ == RewriterConfig::AGGRESSIVE && IsEnter(*node) &&
-        node->input_size() > 0) {
+    if (IsEnter(*node) && node->input_size() > 0) {
+      if (node->attr().count("is_constant") == 0 ||
+          !node->attr().at("is_constant").b()) {
+        continue;
+      }
       const string& node_name = node->name();
       const NodeDef* input = node_map_->GetNode(node->input(0));
       if (input != nullptr && IsReallyConstant(*input) &&
@@ -1739,7 +1773,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
           node_map_->AddOutput(node_name, new_node->name());
           for (NodeDef* consumer : consumers) {
             for (int i = 0; i < consumer->input_size(); ++i) {
-              if (consumer->input(i) == node_name) {
+              if (NodeName(consumer->input(i)) == node_name) {
                 node_map_->UpdateInput(consumer->name(), node_name,
                                        new_node->name());
                 consumer->set_input(i, new_node->name());

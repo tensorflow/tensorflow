@@ -88,7 +88,7 @@ Tensorflow Lite format. This process uses several model formats:
   extracted from a `SavedModel`.
 * *TensorFlow Lite model* (.tflite) —A serialized
   [FlatBuffer](https://google.github.io/flatbuffers/) that contains TensorFlow
-  Lite operators and tensors for the TensorFlow Lite interpreter, similiar to a
+  Lite operators and tensors for the TensorFlow Lite interpreter, similar to a
   `FrozenGraphDef`.
 
 ### Freeze Graph
@@ -190,7 +190,7 @@ graph visualization.
 
 ## 3. Use the TensorFlow Lite model for inference in a mobile app
 
-After completing the prior steps, you should now have a .tflite model file.
+After completing the prior steps, you should now have a `.tflite` model file.
 
 ### Android
 
@@ -222,3 +222,10 @@ trained Tensorflow models to the
 [CoreML](https://developer.apple.com/machine-learning/) format for use on Apple
 devices. To use the converter, refer to the
 [Tensorflow-CoreML converter documentation](https://github.com/tf-coreml/tf-coreml).
+
+### Raspberry Pi
+
+Compile Tensorflow Lite for a Raspberry Pi by following the
+[RPi build instructions](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/rpi.md)
+This compiles a static library file (`.a`) used to build your app. There are
+plans for Python bindings and a demo app.
