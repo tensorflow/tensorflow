@@ -76,12 +76,12 @@ issue the following command:
 <pre>$ <b>git checkout r1.0</b></pre>
 
 Next, you must prepare your environment for
-[Linux](#prepare_environment_for_linux)
+[Linux](#PrepareLinux)
 or
-[macOS](#prepare_environment_for_macos)
+[macOS](#PrepareMac)
 
 
-<a name="#PrepareLinux"></a>
+<a name="PrepareLinux"></a>
 ## Prepare environment for Linux
 
 Before building TensorFlow on Linux, install the following build

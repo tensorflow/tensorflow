@@ -23,9 +23,9 @@ from source.
 
 -   [bazel](https://www.bazel.build/versions/master/docs/install.html)
 -   Environment to build TensorFlow from source code
-    ([Linux](https://www.tensorflow.org/install/install_sources#prepare_environment_for_linux)
+    ([Linux](https://www.tensorflow.org/install/install_sources#PrepareLinux)
     or [OS
-    X](https://www.tensorflow.org/install/install_sources#prepare_environment_for_macos)).
+    X](https://www.tensorflow.org/install/install_sources#PrepareMac)).
     If you don't need GPU support, then try the following:
 
     ```sh
