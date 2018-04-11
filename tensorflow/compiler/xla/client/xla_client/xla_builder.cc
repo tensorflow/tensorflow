@@ -1559,7 +1559,17 @@ XlaOp XlaBuilder::BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
 }
 
 XlaOp XlaBuilder::CrossReplicaSum(const XlaOp& operand) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferCrossReplicaSumShape({&operand_shape}));
+
+    return AddInstruction(std::move(instr), HloOpcode::kCrossReplicaSum,
+                          {operand});
+  });
 }
 
 XlaOp XlaBuilder::SelectAndScatter(
