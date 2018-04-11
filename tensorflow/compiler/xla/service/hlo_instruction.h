@@ -1446,7 +1446,7 @@ class HloInstruction {
   string channel_name_;
 
   // Estimate of the duration of a host computation in nanoseconds.
-  int64 cost_estimate_ns_;
+  int64 cost_estimate_ns_ = 0;
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
