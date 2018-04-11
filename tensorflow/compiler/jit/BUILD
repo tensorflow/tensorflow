@@ -318,6 +318,25 @@ cc_library(
     hdrs = ["union_find.h"],
 )
 
+cc_library(
+    name = "producer_consumer_queue",
+    hdrs = ["producer_consumer_queue.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+tf_cc_test(
+    name = "producer_consumer_queue_test",
+    size = "small",
+    srcs = ["producer_consumer_queue_test.cc"],
+    deps = [
+        ":producer_consumer_queue",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "graph_to_functiondef_test",
     size = "small",

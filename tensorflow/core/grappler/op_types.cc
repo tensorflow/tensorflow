@@ -456,15 +456,38 @@ bool IsInvolution(const NodeDef& node) {
   return involution_ops.count(node.op()) > 0;
 }
 
-bool IsValuePreserving(const NodeDef& node) {
+bool IsValueAndOrderPreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
+  const std::unordered_set<string> value_and_order_preserving_ops{
+      "CheckNumerics",
+      "DebugGradientIdentity",
+      "DeepCopy"
+      "Enter",
+      "Exit",
+      "ExpandDims",
+      "Identity",
+      "IdentityN",
+      "PreventGradient",
+      "Print",
+      "Reshape",
+      "Snapshot",
+      "Squeeze",
+      "StopGradient",
+  };
+  return value_and_order_preserving_ops.count(node.op()) > 0;
+}
+
+bool IsValuePreserving(const NodeDef& node) {
   const std::unordered_set<string> value_preserving_ops{
-      "Transpose",  "Reshape",      "Identity",        "InvertPermutation",
-      "Reverse",    "StopGradient", "PreventGradient", "CheckNumerics",
-      "ExpandDims", "Squeeze"};
-  return value_preserving_ops.count(node.op()) > 0;
+      "InvertPermutation",
+      "Reverse",
+      "Roll",
+      "Transpose",
+  };
+  return IsValueAndOrderPreserving(node) ||
+         value_preserving_ops.count(node.op()) > 0;
 }
 
 bool HasOpDef(const NodeDef& node) {

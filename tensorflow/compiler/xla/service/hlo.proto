@@ -135,6 +135,10 @@ message HloInstructionProto {
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
   repeated int64 gather_window_bounds = 34;
 
+  // Compute Host.
+  string channel_name = 41;
+  int64 cost_estimate_ns = 42;
+
   // The id of this instruction.
   int64 id = 35;
 

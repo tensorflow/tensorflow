@@ -165,7 +165,7 @@ enum class ConstantType { kUnknown, kZero, kOne };
 // Return the constant type required by this computation, if known.
 ConstantType GetInitValue(const HloComputation& computation) {
   const HloInstruction* const root = computation.root_instruction();
-  if (computation.num_parameters() != 2 ||
+  if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
       root->operand(0)->opcode() != HloOpcode::kParameter ||
       root->operand(1)->opcode() != HloOpcode::kParameter ||
       root->operand(0) == root->operand(1)) {
