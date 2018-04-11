@@ -34,12 +34,17 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS HDRS ROOT_DIR)
     list(APPEND ${SRCS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc")
     list(APPEND ${HDRS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h")
 
+    set(DEPENDENCIES)
+    if(tensorflow_PROTOBUF_PROVIDER STREQUAL module)
+      set(DEPENDENCIES protobuf)
+    endif()
+
     add_custom_command(
       OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc"
              "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h"
       COMMAND  ${PROTOBUF_PROTOC_EXECUTABLE}
       ARGS --cpp_out  ${CMAKE_CURRENT_BINARY_DIR} -I ${ROOT_DIR} ${ABS_FIL} -I ${PROTOBUF_INCLUDE_DIRS}
-      DEPENDS ${ABS_FIL} protobuf
+      DEPENDS ${ABS_FIL} ${DEPENDENCIES}
       COMMENT "Running C++ protocol buffer compiler on ${FIL}"
       VERBATIM )
   endforeach()
@@ -69,14 +74,22 @@ if(NOT WIN32)
       list(APPEND ${SRCS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc")
       list(APPEND ${HDRS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h")
 
+      set(DEPENDENCIES)
+      if(tensorflow_PROTOBUF_PROVIDER STREQUAL module)
+        list(APPEND DEPENDENCIES protobuf)
+      endif()
+      if(tensorflow_GRPC_PROVIDER STREQUAL module)
+        list(APPEND DEPENDENCIES grpc)
+      endif()
+
       add_custom_command(
         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.cc"
                "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.h"
                "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc"
                "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h"
         COMMAND ${PROTOBUF_PROTOC_EXECUTABLE}
-        ARGS --grpc_out ${CMAKE_CURRENT_BINARY_DIR} --cpp_out ${CMAKE_CURRENT_BINARY_DIR} --plugin protoc-gen-grpc=${GRPC_BUILD}/grpc_cpp_plugin -I ${ROOT_DIR} ${ABS_FIL} -I ${PROTOBUF_INCLUDE_DIRS}
-        DEPENDS ${ABS_FIL} protobuf grpc
+        ARGS --grpc_out ${CMAKE_CURRENT_BINARY_DIR} --cpp_out ${CMAKE_CURRENT_BINARY_DIR} --plugin protoc-gen-grpc=${GRPC_CPP_PLUGIN} -I ${ROOT_DIR} ${ABS_FIL} -I ${PROTOBUF_INCLUDE_DIRS}
+        DEPENDS ${ABS_FIL} ${DEPENDENCIES}
         COMMENT "Running C++ protocol buffer grpc compiler on ${FIL}"
         VERBATIM )
     endforeach()
@@ -174,7 +187,7 @@ RELATIVE_PROTOBUF_TEXT_GENERATE_CPP(PROTO_TEXT_SRCS PROTO_TEXT_HDRS
     ${tensorflow_source_dir} ${tf_proto_text_srcs}
 )
 
-if(WIN32)
+if(WIN32 OR NOT tensorflow_ENABLE_GRPC_SUPPORT)
   add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
 else()
   file(GLOB_RECURSE tf_protos_grpc_cc_srcs RELATIVE ${tensorflow_source_dir}
