@@ -314,6 +314,9 @@ tf_cc_test(
     srcs = [
         "src/gen/cc/source_writer_test.cc",
     ],
+    data = [
+        "src/gen/resources/test.java.snippet",
+    ],
     deps = [
         ":java_op_gen_lib",
         "//tensorflow/core:lib",

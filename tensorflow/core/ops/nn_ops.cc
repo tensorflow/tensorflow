@@ -472,7 +472,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
@@ -490,7 +490,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
@@ -589,7 +589,7 @@ REGISTER_OP("AvgPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::Pool3DShape);
 
 REGISTER_OP("AvgPool3DGrad")
@@ -600,7 +600,7 @@ REGISTER_OP("AvgPool3DGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -618,7 +618,7 @@ REGISTER_OP("MaxPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {half, bfloat16, float}")
     .SetShapeFn(shape_inference::Pool3DShape);
 
 REGISTER_OP("MaxPool3DGrad")
@@ -630,8 +630,8 @@ REGISTER_OP("MaxPool3DGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {bfloat16, float} = DT_FLOAT")
-    .Attr("TInput: {bfloat16, float} = DT_FLOAT")
+    .Attr("T: {half, bfloat16, float} = DT_FLOAT")
+    .Attr("TInput: {half, bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
     });
@@ -1170,9 +1170,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -1226,9 +1226,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument(
-            "Input must have last dimension > n = ", c->Value(n_dim),
-            " but is ", c->Value(last_dim));
+        return errors::InvalidArgument("Input must have last dimension > n = ",
+                                       c->Value(n_dim), " but is ",
+                                       c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor

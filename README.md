@@ -12,7 +12,7 @@
 **TensorFlow** is an open source software library for numerical computation using
 data flow graphs.  The graph nodes represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow
-between them.  This flexible architecture lets you deploy computation to one
+between them.  This flexible architecture enables you to deploy computation to one
 or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
 code.  TensorFlow also includes TensorBoard, a data visualization toolkit.
 
@@ -86,6 +86,7 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 
 * [TensorFlow Website](https://www.tensorflow.org)
 * [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
+* [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
 * [TensorFlow Model Zoo](https://github.com/tensorflow/models)
 * [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
 * [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)

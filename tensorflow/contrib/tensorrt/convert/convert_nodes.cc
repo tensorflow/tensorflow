@@ -346,11 +346,10 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
       break;
     }
     case tensorflow::DataType::DT_HALF: {
-      Reorder2(
-          {k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
-          istrides,
-          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues())),
-          ostrides);
+      Reorder2({k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
+               istrides, static_cast<Eigen::half*>(
+                             const_cast<void*>(oweights->GetValues())),
+               ostrides);
       break;
     }
     default:

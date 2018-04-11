@@ -11,7 +11,7 @@ This doc is aimed at users who:
   using an existing model.
 * Have, perhaps, skimmed the code of an example TPU model
   [[1]](https://github.com/tensorflow/models/blob/master/official/mnist/mnist_tpu.py)
-  [[2]](https://github.com/tensorflow/tpu-demos/tree/master/cloud_tpu/models).
+  [[2]](https://github.com/tensorflow/tpu/tree/master/models).
 * Are interested in porting an existing `Estimator` model to
   run on Cloud TPUs
 
@@ -288,7 +288,7 @@ If shape inference has failed, but the shape is known it is possible to
 impose the correct shape using `tf.set_shape()`. 
 
 In the example below the shape
-inference algorithm fails, but it is corrected using `set_shape`:
+inference algorithm fails, but it is correctly using `set_shape`:
 
 ```
 >>> x = tf.zeros(tf.constant([1,2,3])+1)
@@ -371,10 +371,10 @@ in bytes. A minimum of a few MB (`buffer_size=8*1024*1024`) is recommended so
 that data is available when needed.
 
 The TPU-demos repo includes
-[a script](https://github.com/tensorflow/tpu-demos/blob/master/cloud_tpu/datasets/imagenet_to_gcs.py)
+[a script](https://github.com/tensorflow/tpu/blob/master/tools/datasets/imagenet_to_gcs.py)
 for downloading the imagenet dataset and converting it to an appropriate format.
 This together with the imagenet
-[models](https://github.com/tensorflow/tpu-demos/tree/master/cloud_tpu/models)
+[models](https://github.com/tensorflow/tpu/tree/master/models)
 included in the repo demonstrate all of these best-practices.
 
 
@@ -387,7 +387,7 @@ For details on how to actually set up and run a Cloud TPU see:
 This document is by no means exhaustive. The best source of more detail on how
 to make a Cloud TPU compatible model are the example models published in:
 
- * The [TPU Demos Repository.](https://github.com/tensorflow/tpu-demos/)
+ * The [TPU Demos Repository.](https://github.com/tensorflow/tpu)
 
 For more information about tuning TensorFlow code for performance see:
 

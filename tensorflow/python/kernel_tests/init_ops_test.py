@@ -618,7 +618,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
     for dtype in [dtypes.float32]:
       for kernel_size in [[3], [8], [3, 5], [2, 4], [3, 3, 3], [2, 2, 2]]:
         tol = 1e-2
-        # Check orthogonality by computing the 2-norms of the inputs and ouputs.
+        # Check orthogonality by computing the 2-norms of the inputs and outputs.
         if len(kernel_size) == 1:
           shape = [4, 32, 64]
           convolution = convolutional.conv1d
