@@ -93,9 +93,6 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
-    # BatchToSpaceND doesn't support cropping. This catches test cases with
-    # const tensors as crops.
-    r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
@@ -1595,7 +1592,7 @@ def make_batch_to_space_nd_tests(zip_path):
   test_parameters = [
       {
           "dtype": [tf.float32, tf.int64, tf.int32],
-          "input_shape": [[12, 2, 2, 1]],
+          "input_shape": [[12, 3, 3, 1]],
           "block_shape": [[1, 4], [2, 2], [3, 4]],
           "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
           "constant_block_shape": [True, False],
