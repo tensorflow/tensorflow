@@ -2822,7 +2822,7 @@ sycl_py_test(
 
 tf_py_test(
     name = "sets_test",
-    size = "small",
+    size = "medium",
     srcs = ["sets_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
