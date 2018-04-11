@@ -317,27 +317,28 @@ def _bt_model_fn(
                                                    head.logits_dimension)
 
     # Create Ensemble resources.
-    if is_single_machine:
-      tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
-      local_tree_ensemble = tree_ensemble
-      ensemble_reload = control_flow_ops.no_op()
-    else:
-      tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
-      with ops.device(worker_device):
-        local_tree_ensemble = boosted_trees_ops.TreeEnsemble(
-            name=name + '_local', is_local=True)
-      # TODO(soroush): Do partial updates if this becomes a bottleneck.
-      ensemble_reload = local_tree_ensemble.deserialize(
-          *tree_ensemble.serialize())
-
+    tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
     # Create logits.
     if mode != model_fn.ModeKeys.TRAIN:
       logits = boosted_trees_ops.predict(
-          tree_ensemble_handle=local_tree_ensemble.resource_handle,
+          # For non-TRAIN mode, ensemble doesn't change after initialization,
+          # so no local copy is needed; using tree_ensemble directly.
+          tree_ensemble_handle=tree_ensemble.resource_handle,
           bucketized_features=input_feature_list,
           logits_dimension=head.logits_dimension,
           max_depth=tree_hparams.max_depth)
     else:
+      if is_single_machine:
+        local_tree_ensemble = tree_ensemble
+        ensemble_reload = control_flow_ops.no_op()
+      else:
+        # Have a local copy of ensemble for the distributed setting.
+        with ops.device(worker_device):
+          local_tree_ensemble = boosted_trees_ops.TreeEnsemble(
+              name=name + '_local', is_local=True)
+        # TODO(soroush): Do partial updates if this becomes a bottleneck.
+        ensemble_reload = local_tree_ensemble.deserialize(
+            *tree_ensemble.serialize())
       if cache:
         cached_tree_ids, cached_node_ids, cached_logits = cache.lookup()
       else:
