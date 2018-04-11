@@ -33,8 +33,8 @@ class Exp(power_transform.PowerTransform):
 
     ```python
     # Create the Y=g(X)=exp(X) transform which works only on Tensors with 1
-    # batch ndim and 2 event ndims (i.e., vector of matrices).
-    exp = Exp(event_ndims=2)
+    # batch ndim 2.
+    exp = Exp()
     x = [[[1., 2],
            [3, 4]],
           [[5, 6],
@@ -48,19 +48,17 @@ class Exp(power_transform.PowerTransform):
   """
 
   def __init__(self,
-               event_ndims=0,
                validate_args=False,
                name="exp"):
     """Instantiates the `Exp` bijector.
 
     Args:
-      event_ndims: Scalar `int32` `Tensor` indicating the number of dimensions
-        associated with a particular draw from the distribution.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
     """
+    # forward_min_event_ndims = 0.
+    # No forward_min_event_ndims specified as this is done in PowerTransform.
     super(Exp, self).__init__(
-        event_ndims=event_ndims,
         validate_args=validate_args,
         name=name)
