@@ -33,7 +33,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
@@ -171,7 +170,6 @@ class BatchNormalization(Layer):
 
     self.fused = fused
     self._bessels_correction_test_only = True
-    self._use_resource_variables = None
 
     if renorm:
       renorm_clipping = renorm_clipping or {}
@@ -277,27 +275,6 @@ class BatchNormalization(Layer):
         for idx, x in enumerate(self.axis):
           self.axis[idx] = x + 1      # Account for added dimension
 
-    # BUG: when using fused BN with Resource Variables with a dynamic
-    # `training` argument in call, the cond
-    # `smart_cond(
-    #     training,
-    #     _fused_batch_norm_training,
-    #     _fused_batch_norm_inference)` triggers None gradients for the
-    # variables gamma and beta.
-    # In this case we choose to force normal variables when possible.
-    # The bug will not occur of `training` is static, or when
-    # not using fused BN, or when in eager execution.
-    # TODO(fchollet): remove code below when bug is fixed.
-    use_resource = False
-    if context.executing_eagerly():
-      use_resource = True  # Eager execution requires resource variables.
-    elif not self.fused:
-      use_resource = True  # Issue only exists with fused BN.
-    elif self._use_resource_variables is True:
-      use_resource = True  # Case of a subclassed model, always use RVs.
-    if hasattr(self, '_scope'):
-      use_resource = None  # Legacy layers, leave it to `add_weight`.
-
     if self.scale:
       self.gamma = self.add_variable(
           name='gamma',
@@ -306,7 +283,6 @@ class BatchNormalization(Layer):
           initializer=self.gamma_initializer,
           regularizer=self.gamma_regularizer,
           constraint=self.gamma_constraint,
-          use_resource=use_resource,
           trainable=True)
     else:
       self.gamma = None
@@ -322,7 +298,6 @@ class BatchNormalization(Layer):
           initializer=self.beta_initializer,
           regularizer=self.beta_regularizer,
           constraint=self.beta_constraint,
-          use_resource=use_resource,
           trainable=True)
     else:
       self.beta = None
@@ -531,13 +506,7 @@ class BatchNormalization(Layer):
         outputs = array_ops.reshape(outputs, original_shape)
         return outputs
 
-    # Gradient bug when using fused BN with dynamic `training` and resource
-    # variables. TODO(fchollet): remove workaround when bug fixed.
-    use_fused_bn = (
-        self.fused and
-        (tf_utils.constant_value(training) is not None or
-         not isinstance(self.gamma, resource_variable_ops.ResourceVariable)))
-    if use_fused_bn:
+    if self.fused:
       outputs = self._fused_batch_norm(inputs, training=training)
       if self.virtual_batch_size is not None:
         # Currently never reaches here since fused_batch_norm does not support
