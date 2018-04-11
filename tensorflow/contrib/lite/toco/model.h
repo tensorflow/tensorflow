@@ -151,7 +151,7 @@ enum class AxesOrder {
 };
 
 // The type of the scalars in an array.
-// Note that that does not by itself tell whether the values in the array are
+// Note that does not by itself tell whether the values in the array are
 // real (are literally interpreted as real numbers) or quantized (only acquire
 // a meaning as real numbers in conjunction with QuantizationParams).
 //
