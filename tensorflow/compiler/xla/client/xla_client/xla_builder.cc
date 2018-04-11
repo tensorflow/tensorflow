@@ -1417,7 +1417,12 @@ XlaOp XlaBuilder::Reduce(
 
 XlaOp XlaBuilder::ReduceAll(const XlaOp& operand, const XlaOp& init_value,
                             const XlaComputation& computation) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    std::vector<int64> all_dimnos(ShapeUtil::Rank(operand_shape));
+    std::iota(all_dimnos.begin(), all_dimnos.end(), 0);
+    return Reduce(operand, init_value, computation, all_dimnos);
+  });
 }
 
 XlaOp XlaBuilder::ReduceWindow(
