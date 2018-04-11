@@ -818,13 +818,13 @@ class Optimizer(
           if restored_initial_value is not None:
             initial_value = restored_initial_value
         v = variable_scope.variable(initial_value, name=name, trainable=False)
-        # Restore this variable by name if necessary, but don't add a
-        # Checkpointable dependency. Optimizers return the current graph's
-        # non-slot variables from _checkpoint_dependencies explicitly rather
-        # than unconditionally adding dependencies (since there may be multiple
-        # non-slot variables with the same name in different graphs, trying to
-        # save all of them would result in errors).
-        self._handle_deferred_dependencies(name=name, checkpointable=v)
+      # Restore this variable by name if necessary, but don't add a
+      # Checkpointable dependency. Optimizers return the current graph's
+      # non-slot variables from _checkpoint_dependencies explicitly rather
+      # than unconditionally adding dependencies (since there may be multiple
+      # non-slot variables with the same name in different graphs, trying to
+      # save all of them would result in errors).
+      self._handle_deferred_dependencies(name=name, checkpointable=v)
       self._non_slot_dict[key] = v
 
     return v

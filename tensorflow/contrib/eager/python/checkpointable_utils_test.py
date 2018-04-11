@@ -764,9 +764,8 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
 
     root = checkpointable.Checkpointable()
-    with ops.device("/cpu:0"):
-      root.var = checkpointable_utils.add_variable(
-          root, name="var", initializer=0.)
+    root.var = checkpointable_utils.add_variable(
+        root, name="var", initializer=0.)
     optimizer = adam.AdamOptimizer(0.1)
     if context.executing_eagerly():
       optimizer.minimize(root.var.read_value)
@@ -796,9 +795,8 @@ class CheckpointingTests(test.TestCase):
         new_root).restore(no_slots_path)
     with self.assertRaises(AssertionError):
       no_slot_status.assert_consumed()
-    with ops.device("/cpu:0"):
-      new_root.var = checkpointable_utils.add_variable(
-          new_root, name="var", shape=[])
+    new_root.var = checkpointable_utils.add_variable(
+        new_root, name="var", shape=[])
     no_slot_status.assert_consumed()
     no_slot_status.run_restore_ops()
     self.assertEqual(12., self.evaluate(new_root.var))
