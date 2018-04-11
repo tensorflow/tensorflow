@@ -1516,7 +1516,8 @@ def main():
     set_tf_cudnn_version(environ_cp)
     if is_linux():
       set_tf_tensorrt_install_path(environ_cp)
-    set_tf_nccl_install_path(environ_cp)
+      set_tf_nccl_install_path(environ_cp)
+
     set_tf_cuda_compute_capabilities(environ_cp)
     if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
         'LD_LIBRARY_PATH') != '1':
