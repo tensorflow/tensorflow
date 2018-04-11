@@ -2833,7 +2833,7 @@ def streaming_mean_relative_error(predictions,
       name=name)
 
 @deprecated(None,
-            'Please switch to tf.metrics.mean_relative_error. Note that the '
+            'Please switch to tf.metrics.mean_squared_error. Note that the '
             'order of the labels and predictions arguments has been switched.')
 def streaming_mean_squared_error(predictions,
                                  labels,
@@ -2893,7 +2893,7 @@ def streaming_mean_squared_error(predictions,
       name=name)
 
 @deprecated(None,
-            'Please switch to tf.metrics.mean_squared_error. Note that the '
+            'Please switch to tf.metrics.root_mean_squared_error. Note that the '
             'order of the labels and predictions arguments has been switched.')
 def streaming_root_mean_squared_error(predictions,
                                       labels,
