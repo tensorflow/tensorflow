@@ -1074,7 +1074,13 @@ XlaOp XlaBuilder::CustomCall(const string& call_target_name,
 XlaOp XlaBuilder::HostCompute(tensorflow::gtl::ArraySlice<XlaOp> operands,
                               const string& channel_name,
                               int64 cost_estimate_ns, const Shape& shape) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape;
+    instr.set_channel_name(channel_name);
+    instr.set_cost_estimate_ns(cost_estimate_ns);
+    return AddInstruction(std::move(instr), HloOpcode::kHostCompute, operands);
+  });
 }
 
 XlaOp XlaBuilder::Complex(
