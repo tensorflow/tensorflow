@@ -724,8 +724,7 @@ struct L2PoolOperator : Operator {
 // The expected [min, max] range of values in a given array.
 // Used for quantization only.
 // This information typically comes from special nodes found in quantized
-// models,
-// see FakeQuantOperator, and is used during quantization to resolve
+// models, see FakeQuantOperator, and is used during quantization to resolve
 // actual quantization parameters (see QuantizationParams).
 struct MinMax {
   double min = 0.;
@@ -753,6 +752,7 @@ inline bool operator==(const MinMax& m1, const MinMax& m2) {
 struct FakeQuantOperator : Operator {
   FakeQuantOperator() : Operator(OperatorType::kFakeQuant) {}
   std::unique_ptr<MinMax> minmax;
+  int num_bits = 8;
 };
 
 // Element-wise division operator.
@@ -1329,6 +1329,15 @@ struct SoftmaxOperator : Operator {
 // TensorFlow equivalent: LogSoftmax
 struct LogSoftmaxOperator : Operator {
   LogSoftmaxOperator() : Operator(OperatorType::kLogSoftmax) {}
+
+  // LogSoftmax can in principal have very large negative output, depending on
+  // the input size.  However, input x_i that is less than x_max-10 is
+  // accumulated as exp(x_i-x_max), which is truncated to zero.
+  //
+  // Since we effectively disregard smallish inputs in the normalizing factor,
+  // we also drop them in the output (set to minimum output), and in doing so
+  // make better use of the quantization range / resolution.
+  static constexpr float kOutputRangeMin = -16.0;
 };
 
 // Cast operator.
@@ -1522,7 +1531,7 @@ class Shape {
   int dims(int i) const {
     // Always check for out-of-bounds accesses, even in optimized builds where
     // standard assertions are disabled. Out-of-bounds access here is a common
-    // occurence.
+    // occurrence.
     CHECK_GE(i, 0);
     CHECK_GT(dims_.size(), i);
     return dims_[i];

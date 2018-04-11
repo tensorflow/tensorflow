@@ -123,7 +123,7 @@ class Sequential(Model):
             multiple output tensors, or is already connected
             somewhere else (forbidden in `Sequential` models).
     """
-    if not isinstance(layer, (base_layer.Layer, base_layer.TFBaseLayer)):
+    if not isinstance(layer, base_layer.Layer):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))

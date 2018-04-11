@@ -186,7 +186,7 @@ bool InterpreterWrapper::ResizeInputTensor(int i, PyObject* value) {
   std::vector<int> dims(PyArray_SHAPE(array)[0]);
   memcpy(dims.data(), PyArray_BYTES(array), dims.size() * sizeof(int));
 
-  return interpreter_->ResizeInputTensor(i, dims);
+  return (interpreter_->ResizeInputTensor(i, dims) == kTfLiteOk);
 }
 
 std::string InterpreterWrapper::TensorName(int i) const {

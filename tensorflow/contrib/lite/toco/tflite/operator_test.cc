@@ -165,10 +165,12 @@ TEST_F(OperatorTest, CustomFakeQuant) {
   minmax->min = -10;
   minmax->max = 200;
   op.minmax.reset(minmax);
+  op.num_bits = 16;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("FAKE_QUANT", OperatorType::kFakeQuant), op);
   EXPECT_EQ(op.minmax->min, output_toco_op->minmax->min);
   EXPECT_EQ(op.minmax->max, output_toco_op->minmax->max);
+  EXPECT_EQ(op.num_bits, output_toco_op->num_bits);
 }
 
 TEST_F(OperatorTest, CustomFullyConnected) {
