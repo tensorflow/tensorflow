@@ -234,7 +234,7 @@ def _maximum_mean(samples, envelope, high, name=None):
     envelope = ops.convert_to_tensor(envelope, name="envelope")
     high = ops.convert_to_tensor(high, name="high")
 
-    xmax = math_ops.reduce_max(samples, axis=[-1])
+    xmax = math_ops.reduce_max(samples, axis=[0])
     msg = "Given sample maximum value exceeds expectations"
     check_op = check_ops.assert_less_equal(xmax, high, message=msg)
     with ops.control_dependencies([check_op]):
@@ -279,7 +279,7 @@ def _minimum_mean(samples, envelope, low, name=None):
     envelope = ops.convert_to_tensor(envelope, name="envelope")
     low = ops.convert_to_tensor(low, name="low")
 
-    xmin = math_ops.reduce_min(samples, axis=[-1])
+    xmin = math_ops.reduce_min(samples, axis=[0])
     msg = "Given sample minimum value falls below expectations"
     check_op = check_ops.assert_greater_equal(xmin, low, message=msg)
     with ops.control_dependencies([check_op]):
@@ -319,8 +319,8 @@ def _dkwm_cdf_envelope(n, error_rate, name=None):
     return math_ops.sqrt(-gen_math_ops.log(error_rate / 2.) / (2. * n))
 
 
-def _check_shape_dominates(tensor, tensors):
-  """Check that broadcasting `tensor` against `tensors` does not expand it.
+def _check_shape_dominates(samples, parameters):
+  """Check that broadcasting `samples` against `parameters` does not expand it.
 
   Why?  Because I want to be very sure that the samples tensor is not
   accidentally enlarged by broadcasting against tensors that are
@@ -328,24 +328,27 @@ def _check_shape_dominates(tensor, tensors):
   sample counts end up inflated.
 
   Args:
-    tensor: A Tensor whose shape is to be protected against broadcasting.
-    tensors: A list of Tensors to check
+    samples: A Tensor whose shape is to be protected against broadcasting.
+    parameters: A list of Tensors who are parameters for the statistical test.
 
   Returns:
-    tensor: `tf.identity(tensor)` with control dependencies attached;
-      be sure to use that downstream.
+    samples: Return original `samples` with control dependencies attached
+      to ensure no broadcasting.
   """
   def check(t):
-    target = array_ops.shape(tensor)[1:]
-    result = array_ops.broadcast_dynamic_shape(target, array_ops.shape(t))
+    samples_batch_shape = array_ops.shape(samples)[1:]
+    broadcasted_batch_shape = array_ops.broadcast_dynamic_shape(
+        samples_batch_shape, array_ops.shape(t))
     # This rank check ensures that I don't get a wrong answer from the
     # _shapes_ broadcasting against each other.
-    gt = check_ops.assert_greater(array_ops.rank(target), array_ops.rank(t))
-    eq = check_ops.assert_equal(target, result)
-    return gt, eq
-  checks = list(itertools.chain(*[check(t) for t in tensors]))
+    samples_batch_ndims = array_ops.size(samples_batch_shape)
+    ge = check_ops.assert_greater_equal(
+        samples_batch_ndims, array_ops.rank(t))
+    eq = check_ops.assert_equal(samples_batch_shape, broadcasted_batch_shape)
+    return ge, eq
+  checks = list(itertools.chain(*[check(t) for t in parameters]))
   with ops.control_dependencies(checks):
-    return array_ops.identity(array_ops.identity(tensor))
+    return array_ops.identity(samples)
 
 
 def true_mean_confidence_interval_by_dkwm(
@@ -684,9 +687,13 @@ def assert_true_mean_equal_by_dkwm_two_sample(
       # I want to assert
       #   not (max_mean_1 < min_mean_2 or min_mean_1 > max_mean_2),
       # but I think I only have and-combination of asserts, so use DeMorgan.
-      clause1_op = check_ops.assert_greater_equal(max_mean_1, min_mean_2)
-      with ops.control_dependencies([clause1_op]):
-        return check_ops.assert_less_equal(min_mean_1, max_mean_2)
+      check_confidence_intervals_can_intersect = check_ops.assert_greater_equal(
+          max_mean_1, min_mean_2, message="Confidence intervals do not "
+          "intersect: samples1 has a smaller mean than samples2")
+      with ops.control_dependencies([check_confidence_intervals_can_intersect]):
+        return check_ops.assert_less_equal(
+            min_mean_1, max_mean_2, message="Confidence intervals do not "
+            "intersect: samples2 has a smaller mean than samples1")
 
 
 def min_discrepancy_of_true_means_detectable_by_dkwm_two_sample(

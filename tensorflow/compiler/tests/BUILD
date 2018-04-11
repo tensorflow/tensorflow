@@ -203,6 +203,7 @@ tf_xla_py_test(
     tags = [
         # Allocates very large amounts of memory and does not work under TSAN.
         "notsan",
+        "optonly",  # Times out frequently in fastbuild.
     ],
     deps = [
         ":xla_test",

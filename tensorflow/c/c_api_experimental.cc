@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 using tensorflow::FunctionDef;
@@ -189,6 +190,12 @@ library {
 //  be deleted by calling TF_DeleteFunction.
 static std::vector<UniqueFuncPtr> CreateImagenetDatasetFunctions(
     const char* file_path, std::string* dataset_name, TF_Status* status) {
+#if defined(PLATFORM_WINDOWS)
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
+  return std::vector<UniqueFuncPtr>();
+#else
   const char* func_def = R"PREFIX(
 library {
   function {
@@ -7067,6 +7074,7 @@ library {
         DCHECK(found);
       };
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
+#endif
 }
 
 //  On success, returns a set of TF_Function instances encoding a dataset
@@ -7076,6 +7084,12 @@ library {
 static std::vector<UniqueFuncPtr> CreateMNISTDatasetFunctions(
     const char* file_path, int batch_size, std::string* dataset_name,
     TF_Status* status) {
+#if defined(PLATFORM_WINDOWS)
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
+  return nullptr;
+#else
   const char* func_def = R"PREFIX(
 library {
   function {
@@ -8205,6 +8219,7 @@ library {
         DCHECK(found_batch_size);
       };
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
+#endif
 }
 
 // Adds the input functions to `graph`.  On success, returns the created

@@ -159,6 +159,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->fft_length_.push_back(fft_len);
   }
 
+  if (proto.has_gather_dimension_numbers()) {
+    instruction->gather_dimension_numbers_ =
+        MakeUnique<GatherDimensionNumbers>(proto.gather_dimension_numbers());
+  }
+  for (int64 bound : proto.gather_window_bounds()) {
+    instruction->gather_window_bounds_.push_back(bound);
+  }
+
+  instruction->channel_name_ = proto.channel_name();
+  instruction->cost_estimate_ns_ = proto.cost_estimate_ns();
+
   return std::move(instruction);
 }
 
@@ -2415,6 +2426,15 @@ HloInstructionProto HloInstruction::ToProto() const {
   for (int64 fft_len : fft_length_) {
     proto.add_fft_length(fft_len);
   }
+
+  if (gather_dimension_numbers_ != nullptr) {
+    *proto.mutable_gather_dimension_numbers() = *gather_dimension_numbers_;
+  }
+  for (int64 bound : gather_window_bounds_) {
+    proto.add_gather_window_bounds(bound);
+  }
+  proto.set_channel_name(channel_name_);
+  proto.set_cost_estimate_ns(cost_estimate_ns_);
 
   return proto;
 }
