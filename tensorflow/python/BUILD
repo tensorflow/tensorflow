@@ -2550,6 +2550,30 @@ py_library(
 )
 
 py_library(
+    name = "summary_ops_v2",
+    srcs = ["ops/summary_ops_v2.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":array_ops",
+        ":constant_op",
+        ":control_flow_ops",
+        ":dtypes",
+        ":framework_ops",
+        ":math_ops",
+        ":resource_variable_ops",
+        ":smart_cond",
+        ":summary_op_util",
+        ":summary_ops_gen",
+        ":training_util",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "template",
     srcs = ["ops/template.py"],
     srcs_version = "PY2AND3",
@@ -2911,7 +2935,10 @@ py_library(
     name = "training",
     srcs = glob(
         ["training/**/*.py"],
-        exclude = ["**/*test*"],
+        exclude = [
+            "**/*test*",
+            "training/training_util.py",  # See :training_util
+        ],
     ),
     srcs_version = "PY2AND3",
     deps = [
@@ -2945,6 +2972,7 @@ py_library(
         ":string_ops",
         ":summary",
         ":training_ops_gen",
+        ":training_util",
         ":util",
         ":variable_scope",
         ":variables",
@@ -4194,6 +4222,25 @@ py_test(
     ],
 )
 
+py_library(
+    name = "training_util",
+    srcs = ["training/training_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework",
+        ":framework_ops",
+        ":init_ops",
+        ":platform",
+        ":resource_variable_ops",
+        ":state_ops",
+        ":util",
+        ":variable_scope",
+        ":variables",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
 py_test(
     name = "training_util_test",
     size = "small",
@@ -4204,6 +4251,7 @@ py_test(
         ":framework",
         ":platform",
         ":training",
+        ":training_util",
         ":variables",
     ],
 )
@@ -4248,6 +4296,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":client",
         ":constant_op",
         ":errors",
         ":framework",
@@ -4260,6 +4309,7 @@ py_library(
         ":summary_op_util",
         ":summary_ops",
         ":summary_ops_gen",
+        ":summary_ops_v2",
         ":util",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
@@ -4286,7 +4336,7 @@ py_tests(
         ":platform",
         ":platform_test",
         ":summary",
-        ":training",
+        ":summary_ops_v2",
         "//tensorflow/core:protos_all_py",
     ],
 )
