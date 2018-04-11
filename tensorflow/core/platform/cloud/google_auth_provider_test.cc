@@ -17,7 +17,6 @@ limitations under the License.
 #include <stdlib.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cloud/fake_env.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -26,6 +25,14 @@ namespace tensorflow {
 namespace {
 
 constexpr char kTestData[] = "core/platform/cloud/testdata/";
+
+class FakeEnv : public EnvWrapper {
+ public:
+  FakeEnv() : EnvWrapper(Env::Default()) {}
+
+  uint64 NowSeconds() override { return now; }
+  uint64 now = 10000;
+};
 
 class FakeOAuthClient : public OAuthClient {
  public:
@@ -82,7 +89,7 @@ TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
   auto oauth_client = new FakeOAuthClient;
   std::vector<HttpRequest*> requests;
 
-  test::FakeEnv env(test::FakeEnv::kGoogle);
+  FakeEnv env;
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               std::unique_ptr<HttpRequest::Factory>(
                                   new FakeHttpRequestFactory(&requests)),
@@ -116,7 +123,7 @@ TEST_F(GoogleAuthProviderTest, GCloudRefreshToken) {
   auto oauth_client = new FakeOAuthClient;
   std::vector<HttpRequest*> requests;
 
-  test::FakeEnv env(test::FakeEnv::kGoogle);
+  FakeEnv env;
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               std::unique_ptr<HttpRequest::Factory>(
                                   new FakeHttpRequestFactory(&requests)),
@@ -162,7 +169,7 @@ TEST_F(GoogleAuthProviderTest, RunningOnGCE) {
                 "token_type":"Bearer"
               })")});
 
-  test::FakeEnv env(test::FakeEnv::kGoogle);
+  FakeEnv env;
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               std::unique_ptr<HttpRequest::Factory>(
                                   new FakeHttpRequestFactory(&requests)),
@@ -188,7 +195,7 @@ TEST_F(GoogleAuthProviderTest, OverrideForTesting) {
 
   auto oauth_client = new FakeOAuthClient;
   std::vector<HttpRequest*> empty_requests;
-  test::FakeEnv env(test::FakeEnv::kGoogle);
+  FakeEnv env;
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               std::unique_ptr<HttpRequest::Factory>(
                                   new FakeHttpRequestFactory(&empty_requests)),
@@ -208,7 +215,7 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
       "Header Metadata-Flavor: Google\n",
       "", errors::NotFound("404"), 404)});
 
-  test::FakeEnv env(test::FakeEnv::kGoogle);
+  FakeEnv env;
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               std::unique_ptr<HttpRequest::Factory>(
                                   new FakeHttpRequestFactory(&requests)),
@@ -216,26 +223,6 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
 
   string token;
   TF_EXPECT_OK(provider.GetToken(&token));
-  EXPECT_EQ("", token);
-}
-
-TEST_F(GoogleAuthProviderTest, AccessingPublicBucket) {
-  setenv("CLOUDSDK_CONFIG",
-         io::JoinPath(testing::TensorFlowSrcRoot(), kTestData).c_str(), 1);
-
-  auto oauth_client = new FakeOAuthClient;
-  std::vector<HttpRequest*> requests;
-
-  test::FakeEnv env(test::FakeEnv::kLocal);
-  GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
-                              std::unique_ptr<HttpRequest::Factory>(
-                                  new FakeHttpRequestFactory(&requests)),
-                              &env, 0);
-
-  string token;
-  TF_EXPECT_OK(provider.GetToken(&token));
-  // We are assuming we are accessing a public bucket (and we are not running
-  // on GCE) so we an empty token is returned.
   EXPECT_EQ("", token);
 }
 

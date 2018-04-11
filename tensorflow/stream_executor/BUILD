@@ -56,7 +56,10 @@ cc_library(
             [
                 "cuda/*.cc",
             ],
-            exclude = ["cuda/cuda_platform_id.cc"],
+            exclude = [
+                "cuda/*_test.cc",
+                "cuda/cuda_platform_id.cc",
+            ],
         ),
     ),
     copts = select({

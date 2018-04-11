@@ -298,7 +298,7 @@ class MutableHashTable(LookupInterface):
   table = tf.contrib.lookup.MutableHashTable(key_dtype=tf.string,
                                              value_dtype=tf.int64,
                                              default_value=-1)
-  table.insert(keys, values)
+  sess.run(table.insert(keys, values))
   out = table.lookup(query_keys)
   print(out.eval())
   ```
@@ -494,7 +494,7 @@ class MutableDenseHashTable(LookupInterface):
                                                   value_dtype=tf.int64,
                                                   default_value=-1,
                                                   empty_key=0)
-  table.insert(keys, values)
+  sess.run(table.insert(keys, values))
   out = table.lookup(query_keys)
   print(out.eval())
   ```

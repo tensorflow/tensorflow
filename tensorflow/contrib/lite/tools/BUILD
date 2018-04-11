@@ -91,18 +91,6 @@ cc_library(
     deps = ["//tensorflow/contrib/lite:framework"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "verifier",
     srcs = ["verifier.cc"],

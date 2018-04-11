@@ -17,18 +17,6 @@ load(
     "tf_cc_test",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-)
-
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
     name = "session_bundle_half_plus_two",
@@ -163,6 +151,7 @@ py_test(
     name = "gc_test",
     srcs = ["gc_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
     deps = [
         ":gc",

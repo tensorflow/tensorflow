@@ -142,6 +142,7 @@ def _ExitGrad(op, grad):
   """Gradients for an exit op are calculated using an Enter op."""
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
+  op_ctxt = op._get_control_flow_context()
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if not grad_ctxt.back_prop:
@@ -150,10 +151,8 @@ def _ExitGrad(op, grad):
     # no gradient computation.
     return None
 
-  # pylint: disable=protected-access
-  if op._get_control_flow_context().grad_state:
+  if op_ctxt.grad_state:
     raise TypeError("Second-order gradient for while loops not supported.")
-  # pylint: enable=protected-access
 
   if isinstance(grad, ops.Tensor):
     grad_ctxt.AddName(grad.name)

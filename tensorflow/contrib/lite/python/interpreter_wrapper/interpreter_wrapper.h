@@ -54,6 +54,7 @@ class InterpreterWrapper {
   std::string TensorName(int i) const;
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
+  PyObject* TensorQuantization(int i) const;
   bool SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
 

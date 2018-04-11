@@ -332,6 +332,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -461,18 +462,4 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

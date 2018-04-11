@@ -114,6 +114,12 @@ cc_library(
 )
 
 cc_library(
+    name = "base",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
@@ -126,6 +132,11 @@ cc_library(
         "@highwayhash//:sip_hash",
         "@png_archive//:png",
     ],
+)
+
+cc_library(
+    name = "stacktrace",
+    srcs = [],
 )
 
 cc_library(
@@ -158,6 +169,13 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library(
+    name = "test_lite_main",
+    testonly = 1,
+    linkstatic = 1,
+    deps = [],
 )
 
 cc_library(
@@ -217,16 +235,4 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

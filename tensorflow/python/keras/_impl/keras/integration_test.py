@@ -101,7 +101,7 @@ class KerasIntegrationTest(test.TestCase):
       history = model.fit(x_train, y_train, epochs=10, batch_size=16,
                           validation_data=(x_test, y_test),
                           verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.85)
+      self.assertGreater(history.history['val_acc'][-1], 0.80)
 
   def test_image_classification_declarative(self):
     with self.test_session():

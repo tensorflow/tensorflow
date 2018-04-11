@@ -324,6 +324,505 @@ void Gemm(const Eigen::MatrixBase<Lhs>& lhs, const Eigen::MatrixBase<Rhs>& rhs,
   }
 }
 
+inline void optimized_ops_preload_l1_stream(const uint8* ptr) {
+#ifdef GEMMLOWP_ARM_64
+  asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+#else
+  gemmlowp::Prefetch(ptr);
+#endif
+}
+
+inline void optimized_ops_preload_l1_keep(const uint8* ptr) {
+#ifdef GEMMLOWP_ARM_64
+  asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+#else
+  gemmlowp::Prefetch(ptr);
+#endif
+}
+
+#ifdef GEMMLOWP_NEON
+// In the common case of batch size 1, a fully-connected node degenerates
+// to a matrix*vector product. LSTM cells contain a fully-connected node;
+// when quantized, this becomes a special type of GEMV operation where
+// the output is 16bit-quantized, thus needs its own special path.
+inline void GEMVForLstmCell(const uint8* input_data, const Dims<4>& input_dims,
+                            const uint8* weights_data,
+                            const Dims<4>& weights_dims,
+                            uint8 weights_zero_point, const int32* bias_data,
+                            const Dims<4>& bias_dims, int32 accum_multiplier,
+                            int accum_shift, int16* output_data,
+                            const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("GEMVForLstmCell");
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  TFLITE_DCHECK_EQ(ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                       ArraySize(output_dims, 3),
+                   1);
+  const int input_size = input_dims.strides[3];
+  const int output_size = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  // This special fast path for quantized LSTM cells does not try to support
+  // odd sizes that we haven't encountered in any LSTM cell, that would
+  // require special code (that would go untested until any LSTM cell
+  // exercises it). We just guard our assumptions about size evenness with
+  // the following assertions.
+  TFLITE_DCHECK(!(output_size % 4));
+  TFLITE_DCHECK(!(input_size % 8));
+  const int32* bias_ptr = bias_data;
+  int16* output_ptr = output_data;
+  for (int out = 0; out < output_size; out += 4) {
+    int32x4_t acc_0 = vdupq_n_s32(0);
+    int32x4_t acc_1 = vdupq_n_s32(0);
+    int32x4_t acc_2 = vdupq_n_s32(0);
+    int32x4_t acc_3 = vdupq_n_s32(0);
+    const int16x8_t input_offset_vec = vdupq_n_s16(-128);
+    const int16x8_t weights_offset_vec = vdupq_n_s16(-weights_zero_point);
+    int in = 0;
+    // Handle 16 levels of depth at a time.
+    for (; in <= input_size - 16; in += 16) {
+      const uint8x16_t input_val_u8 = vld1q_u8(input_data + in);
+      const uint8* weights_ptr = weights_data + in + out * input_size;
+      uint8x16_t weights_val_u8_0 = vld1q_u8(weights_ptr + 0 * input_size);
+      uint8x16_t weights_val_u8_1 = vld1q_u8(weights_ptr + 1 * input_size);
+      uint8x16_t weights_val_u8_2 = vld1q_u8(weights_ptr + 2 * input_size);
+      uint8x16_t weights_val_u8_3 = vld1q_u8(weights_ptr + 3 * input_size);
+      int16x8_t input_val_0, input_val_1;
+      const uint8x8_t low = vget_low_u8(input_val_u8);
+      const uint8x8_t high = vget_high_u8(input_val_u8);
+      input_val_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      input_val_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      input_val_0 = vaddq_s16(input_val_0, input_offset_vec);
+      input_val_1 = vaddq_s16(input_val_1, input_offset_vec);
+      int16x8_t weights_val_0_0, weights_val_1_0, weights_val_2_0,
+          weights_val_3_0;
+      int16x8_t weights_val_0_1, weights_val_1_1, weights_val_2_1,
+          weights_val_3_1;
+      weights_val_0_0 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_0))),
+          weights_offset_vec);
+      weights_val_0_1 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_0))),
+          weights_offset_vec);
+      weights_val_1_0 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_1))),
+          weights_offset_vec);
+      weights_val_1_1 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_1))),
+          weights_offset_vec);
+      weights_val_2_0 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_2))),
+          weights_offset_vec);
+      weights_val_2_1 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_2))),
+          weights_offset_vec);
+      weights_val_3_0 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_3))),
+          weights_offset_vec);
+      weights_val_3_1 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_3))),
+          weights_offset_vec);
+      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0_0),
+                        vget_low_s16(input_val_0));
+      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1_0),
+                        vget_low_s16(input_val_0));
+      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2_0),
+                        vget_low_s16(input_val_0));
+      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3_0),
+                        vget_low_s16(input_val_0));
+      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0_0),
+                        vget_high_s16(input_val_0));
+      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1_0),
+                        vget_high_s16(input_val_0));
+      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2_0),
+                        vget_high_s16(input_val_0));
+      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3_0),
+                        vget_high_s16(input_val_0));
+      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0_1),
+                        vget_low_s16(input_val_1));
+      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1_1),
+                        vget_low_s16(input_val_1));
+      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2_1),
+                        vget_low_s16(input_val_1));
+      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3_1),
+                        vget_low_s16(input_val_1));
+      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0_1),
+                        vget_high_s16(input_val_1));
+      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1_1),
+                        vget_high_s16(input_val_1));
+      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2_1),
+                        vget_high_s16(input_val_1));
+      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3_1),
+                        vget_high_s16(input_val_1));
+    }
+    // Handle 8 levels of depth at a time.
+    for (; in < input_size; in += 8) {
+      const uint8x8_t input_val_u8 = vld1_u8(input_data + in);
+      const uint8* weights_ptr = weights_data + in + out * input_size;
+      uint8x8_t weights_val_u8_0 = vld1_u8(weights_ptr + 0 * input_size);
+      uint8x8_t weights_val_u8_1 = vld1_u8(weights_ptr + 1 * input_size);
+      uint8x8_t weights_val_u8_2 = vld1_u8(weights_ptr + 2 * input_size);
+      uint8x8_t weights_val_u8_3 = vld1_u8(weights_ptr + 3 * input_size);
+      int16x8_t input_val;
+      input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
+      input_val = vaddq_s16(input_val, input_offset_vec);
+      int16x8_t weights_val_0, weights_val_1, weights_val_2, weights_val_3;
+      weights_val_0 =
+          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_0)),
+                    weights_offset_vec);
+      weights_val_1 =
+          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_1)),
+                    weights_offset_vec);
+      weights_val_2 =
+          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_2)),
+                    weights_offset_vec);
+      weights_val_3 =
+          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_3)),
+                    weights_offset_vec);
+      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0),
+                        vget_low_s16(input_val));
+      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1),
+                        vget_low_s16(input_val));
+      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2),
+                        vget_low_s16(input_val));
+      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3),
+                        vget_low_s16(input_val));
+      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0),
+                        vget_high_s16(input_val));
+      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1),
+                        vget_high_s16(input_val));
+      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2),
+                        vget_high_s16(input_val));
+      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3),
+                        vget_high_s16(input_val));
+    }
+    // Horizontally reduce accumulators
+    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
+        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
+    pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(acc_0), vget_high_s32(acc_0));
+    pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(acc_1), vget_high_s32(acc_1));
+    pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(acc_2), vget_high_s32(acc_2));
+    pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(acc_3), vget_high_s32(acc_3));
+    const int32x2_t reduced_lo =
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+    const int32x2_t reduced_hi =
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+    // Add bias values.
+    int32x4_t bias_vec = vld1q_s32(bias_ptr);
+    bias_ptr += 4;
+    reduced = vaddq_s32(reduced, bias_vec);
+    int left_shift = accum_shift > 0 ? accum_shift : 0;
+    int right_shift = accum_shift > 0 ? 0 : -accum_shift;
+    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
+    // Multiply by the fixed-point multiplier.
+    reduced = vqrdmulhq_n_s32(reduced, accum_multiplier);
+    // Rounding-shift-right.
+    using gemmlowp::RoundingDivideByPOT;
+    reduced = RoundingDivideByPOT(reduced, right_shift);
+    // Narrow values down to 16 bit signed.
+    const int16x4_t res16 = vqmovn_s32(reduced);
+    vst1_s16(output_ptr, res16);
+    output_ptr += 4;
+  }
+}
+#endif
+
+#ifdef GEMMLOWP_NEON
+inline void GEMVForLstmCellWithSymmetricRange(
+    const uint8* input_data, const Dims<4>& input_dims,
+    const uint8* weights_data, const Dims<4>& weights_dims,
+    const int32* bias_data, const Dims<4>& bias_dims, int32 accum_multiplier,
+    int accum_shift, int16* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("GEMVForLstmCellWithSymmetricRange");
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  TFLITE_DCHECK_EQ(ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                       ArraySize(output_dims, 3),
+                   1);
+  const int input_size = input_dims.strides[3];
+  const int output_size = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  // This special fast path for quantized LSTM cells does not try to support
+  // odd sizes that we haven't encountered in any LSTM cell, that would
+  // require special code (that would go untested until any LSTM cell
+  // exercises it). We just guard our assumptions about size evenness with
+  // the following assertions.
+  TFLITE_DCHECK(!(output_size % 4));
+  TFLITE_DCHECK(!(input_size % 64));
+  const int32* bias_ptr = bias_data;
+  int16* output_ptr = output_data;
+  const uint8x16_t signbit = vdupq_n_u8(0x80);
+  for (int in = 0; in < input_size; in += 32) {
+    optimized_ops_preload_l1_keep(input_data + in);
+  }
+  const int left_shift = accum_shift > 0 ? accum_shift : 0;
+  const int right_shift = accum_shift > 0 ? 0 : -accum_shift;
+  for (int out = 0; out < output_size; out += 4) {
+    // Load the bias values
+    int32x4_t bias_vec = vld1q_s32(bias_ptr);
+    bias_ptr += 4;
+
+    // Clear accumulators. We use 2 accumulator registers per row,
+    // for 4 rows. row_accumRN is the N-th accumulator for row R.
+    int32x4_t row_accum00 = vdupq_n_s32(0);
+    int32x4_t row_accum01 = vdupq_n_s32(0);
+    int32x4_t row_accum10 = vdupq_n_s32(0);
+    int32x4_t row_accum11 = vdupq_n_s32(0);
+    int32x4_t row_accum20 = vdupq_n_s32(0);
+    int32x4_t row_accum21 = vdupq_n_s32(0);
+    int32x4_t row_accum30 = vdupq_n_s32(0);
+    int32x4_t row_accum31 = vdupq_n_s32(0);
+
+    // kReadAhead parametrizes how far ahead we prefetch weights into L1 cache.
+    const int kReadAhead = 512;
+    // Prefetch the first weights values.
+    for (int k = 0; k < kReadAhead; k += 64) {
+      optimized_ops_preload_l1_stream(weights_data + (out + 0) * input_size +
+                                      k);
+      optimized_ops_preload_l1_stream(weights_data + (out + 1) * input_size +
+                                      k);
+      optimized_ops_preload_l1_stream(weights_data + (out + 2) * input_size +
+                                      k);
+      optimized_ops_preload_l1_stream(weights_data + (out + 3) * input_size +
+                                      k);
+    }
+    // Loop along the rows, handling 64 bytes per iteration because that's
+    // cache line size on most current ARM-architecture CPUs.
+    for (int in = 0; in < input_size; in += 64) {
+      // Prefetch some future weights values.
+      optimized_ops_preload_l1_stream(weights_data + (out + 0) * input_size +
+                                      in + kReadAhead);
+      optimized_ops_preload_l1_stream(weights_data + (out + 1) * input_size +
+                                      in + kReadAhead);
+      optimized_ops_preload_l1_stream(weights_data + (out + 2) * input_size +
+                                      in + kReadAhead);
+      optimized_ops_preload_l1_stream(weights_data + (out + 3) * input_size +
+                                      in + kReadAhead);
+
+      // We will use 2 local 16-bit accumulators per row, for 2 rows.
+      // See below (*) for the rationale of processing only 2 rows at a time.
+      // local_accumRN is the N-th local accumulator for row R.
+      int16x8_t local_accum00;
+      int16x8_t local_accum01;
+      int16x8_t local_accum10;
+      int16x8_t local_accum11;
+
+      // Load 64 bytes of input activations values. Convert to signed int8
+      // by flipping the sign bit (i.e. subtracting 128, the required
+      // zero_point value).
+      int8x16_t input0 = vreinterpretq_s8_u8(
+          veorq_u8(signbit, vld1q_u8(input_data + in + 16 * 0)));
+      int8x16_t input1 = vreinterpretq_s8_u8(
+          veorq_u8(signbit, vld1q_u8(input_data + in + 16 * 1)));
+      int8x16_t input2 = vreinterpretq_s8_u8(
+          veorq_u8(signbit, vld1q_u8(input_data + in + 16 * 2)));
+      int8x16_t input3 = vreinterpretq_s8_u8(
+          veorq_u8(signbit, vld1q_u8(input_data + in + 16 * 3)));
+
+      // Beginning of the core accumulation. Notice how while we have 4
+      // rows to process, this code is taking care of only 2 rows at a time,
+      // thus being divided into two parts looking similar ("Rows 0 and 1" and
+      // "Rows 2 and 3").
+      //
+      // (*) The rationale for handling only 2 rows at a time is to avoid
+      // cache aliasing issues on 4-way set-associative L1-cache CPUs, such
+      // as Cortex-A53. With sufficiently large, power-of-two matrix dimensions,
+      // we may find ourselves in a situation where rows alias each other in
+      // the L1 cache, and moreover may also mutually alias with the input
+      // activations. If we try to load 4 rows at a time, together with the
+      // input activations, that may be 5 mutually-aliasing vectors, resulting
+      // in constant mutual eviction from L1 cache. Handling 2 rows at a time
+      // here largely mitigates these issues, and seems at least to be very
+      // effective on Cortex-A53:
+      //                          Before       After
+      // big (Cortex-A73)         2.85 ms      2.85 ms
+      // little (Cortex-A53)      11.0 ms      5.16 ms
+
+      // Rows 0 and 1:
+      // Load 64 bytes of weights values from each row. Convert to signed int8
+      // by flipping the sign bit (i.e. subtracting 128, the required
+      // zero_point value).
+      int8x16_t weights00 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 0) * input_size + in + 16 * 0)));
+      int8x16_t weights01 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 0) * input_size + in + 16 * 1)));
+      int8x16_t weights02 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 0) * input_size + in + 16 * 2)));
+      int8x16_t weights03 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 0) * input_size + in + 16 * 3)));
+      int8x16_t weights10 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 1) * input_size + in + 16 * 0)));
+      int8x16_t weights11 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 1) * input_size + in + 16 * 1)));
+      int8x16_t weights12 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 1) * input_size + in + 16 * 2)));
+      int8x16_t weights13 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 1) * input_size + in + 16 * 3)));
+      // Multiply-accumulate into local 16-bit accumulators.
+      // We can accumulate two products without overflow because weights are
+      // required to never be -128, so each product is at most 127^2 in absolute
+      // value.
+      local_accum00 = vmull_s8(vget_low_s8(weights00), vget_low_s8(input0));
+      local_accum01 = vmull_s8(vget_low_s8(weights01), vget_low_s8(input1));
+      local_accum10 = vmull_s8(vget_low_s8(weights10), vget_low_s8(input0));
+      local_accum11 = vmull_s8(vget_low_s8(weights11), vget_low_s8(input1));
+      local_accum00 = vmlal_s8(local_accum00, vget_high_s8(weights00),
+                               vget_high_s8(input0));
+      local_accum01 = vmlal_s8(local_accum01, vget_high_s8(weights01),
+                               vget_high_s8(input1));
+      local_accum10 = vmlal_s8(local_accum10, vget_high_s8(weights10),
+                               vget_high_s8(input0));
+      local_accum11 = vmlal_s8(local_accum11, vget_high_s8(weights11),
+                               vget_high_s8(input1));
+      // Pairwise add and accumulate into 32-bit accumulators
+      row_accum00 = vpadalq_s16(row_accum00, local_accum00);
+      row_accum01 = vpadalq_s16(row_accum01, local_accum01);
+      row_accum10 = vpadalq_s16(row_accum10, local_accum10);
+      row_accum11 = vpadalq_s16(row_accum11, local_accum11);
+      // Multiply-accumulate into local 16-bit accumulators.
+      // We can accumulate two products without overflow because weights are
+      // required to never be -128, so each product is at most 127^2 in absolute
+      // value.
+      local_accum00 = vmull_s8(vget_low_s8(weights02), vget_low_s8(input2));
+      local_accum01 = vmull_s8(vget_low_s8(weights03), vget_low_s8(input3));
+      local_accum10 = vmull_s8(vget_low_s8(weights12), vget_low_s8(input2));
+      local_accum11 = vmull_s8(vget_low_s8(weights13), vget_low_s8(input3));
+      local_accum00 = vmlal_s8(local_accum00, vget_high_s8(weights02),
+                               vget_high_s8(input2));
+      local_accum01 = vmlal_s8(local_accum01, vget_high_s8(weights03),
+                               vget_high_s8(input3));
+      local_accum10 = vmlal_s8(local_accum10, vget_high_s8(weights12),
+                               vget_high_s8(input2));
+      local_accum11 = vmlal_s8(local_accum11, vget_high_s8(weights13),
+                               vget_high_s8(input3));
+      // Pairwise add and accumulate into 32-bit accumulators
+      row_accum00 = vpadalq_s16(row_accum00, local_accum00);
+      row_accum01 = vpadalq_s16(row_accum01, local_accum01);
+      row_accum10 = vpadalq_s16(row_accum10, local_accum10);
+      row_accum11 = vpadalq_s16(row_accum11, local_accum11);
+
+      // Rows 2 and 3:
+      // Load 64 bytes of weights values from each row. Convert to signed int8
+      // by flipping the sign bit (i.e. subtracting 128, the required
+      // zero_point value).
+      weights00 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 2) * input_size + in + 16 * 0)));
+      weights01 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 2) * input_size + in + 16 * 1)));
+      weights02 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 2) * input_size + in + 16 * 2)));
+      weights03 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 2) * input_size + in + 16 * 3)));
+      weights10 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 3) * input_size + in + 16 * 0)));
+      weights11 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 3) * input_size + in + 16 * 1)));
+      weights12 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 3) * input_size + in + 16 * 2)));
+      weights13 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 3) * input_size + in + 16 * 3)));
+      // Multiply-accumulate into local 16-bit accumulators.
+      // We can accumulate two products without overflow because weights are
+      // required to never be -128, so each product is at most 127^2 in absolute
+      // value.
+      local_accum00 = vmull_s8(vget_low_s8(weights00), vget_low_s8(input0));
+      local_accum01 = vmull_s8(vget_low_s8(weights01), vget_low_s8(input1));
+      local_accum10 = vmull_s8(vget_low_s8(weights10), vget_low_s8(input0));
+      local_accum11 = vmull_s8(vget_low_s8(weights11), vget_low_s8(input1));
+      local_accum00 = vmlal_s8(local_accum00, vget_high_s8(weights00),
+                               vget_high_s8(input0));
+      local_accum01 = vmlal_s8(local_accum01, vget_high_s8(weights01),
+                               vget_high_s8(input1));
+      local_accum10 = vmlal_s8(local_accum10, vget_high_s8(weights10),
+                               vget_high_s8(input0));
+      local_accum11 = vmlal_s8(local_accum11, vget_high_s8(weights11),
+                               vget_high_s8(input1));
+      // Pairwise add and accumulate into 32-bit accumulators
+      row_accum20 = vpadalq_s16(row_accum20, local_accum00);
+      row_accum21 = vpadalq_s16(row_accum21, local_accum01);
+      row_accum30 = vpadalq_s16(row_accum30, local_accum10);
+      row_accum31 = vpadalq_s16(row_accum31, local_accum11);
+      // Multiply-accumulate into local 16-bit accumulators.
+      // We can accumulate two products without overflow because weights are
+      // required to never be -128, so each product is at most 127^2 in absolute
+      // value.
+      local_accum00 = vmull_s8(vget_low_s8(weights02), vget_low_s8(input2));
+      local_accum01 = vmull_s8(vget_low_s8(weights03), vget_low_s8(input3));
+      local_accum10 = vmull_s8(vget_low_s8(weights12), vget_low_s8(input2));
+      local_accum11 = vmull_s8(vget_low_s8(weights13), vget_low_s8(input3));
+      local_accum00 = vmlal_s8(local_accum00, vget_high_s8(weights02),
+                               vget_high_s8(input2));
+      local_accum01 = vmlal_s8(local_accum01, vget_high_s8(weights03),
+                               vget_high_s8(input3));
+      local_accum10 = vmlal_s8(local_accum10, vget_high_s8(weights12),
+                               vget_high_s8(input2));
+      local_accum11 = vmlal_s8(local_accum11, vget_high_s8(weights13),
+                               vget_high_s8(input3));
+      // Pairwise add and accumulate into 32-bit accumulators
+      row_accum20 = vpadalq_s16(row_accum20, local_accum00);
+      row_accum21 = vpadalq_s16(row_accum21, local_accum01);
+      row_accum30 = vpadalq_s16(row_accum30, local_accum10);
+      row_accum31 = vpadalq_s16(row_accum31, local_accum11);
+    }
+
+    row_accum00 = vaddq_s32(row_accum00, row_accum01);
+    row_accum10 = vaddq_s32(row_accum10, row_accum11);
+    row_accum20 = vaddq_s32(row_accum20, row_accum21);
+    row_accum30 = vaddq_s32(row_accum30, row_accum31);
+    // Horizontally reduce accumulators
+    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
+        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
+    pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(row_accum00), vget_high_s32(row_accum00));
+    pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(row_accum10), vget_high_s32(row_accum10));
+    pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(row_accum20), vget_high_s32(row_accum20));
+    pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(row_accum30), vget_high_s32(row_accum30));
+    const int32x2_t reduced_lo =
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+    const int32x2_t reduced_hi =
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+    // Add bias values.
+    reduced = vaddq_s32(reduced, bias_vec);
+    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
+    // Multiply by the fixed-point multiplier.
+    reduced = vqrdmulhq_n_s32(reduced, accum_multiplier);
+    // Rounding-shift-right.
+    using gemmlowp::RoundingDivideByPOT;
+    reduced = RoundingDivideByPOT(reduced, right_shift);
+    // Narrow values down to 16 bit signed.
+    const int16x4_t res16 = vqmovn_s32(reduced);
+    vst1_s16(output_ptr, res16);
+    output_ptr += 4;
+  }
+}
+#endif
+
 inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,
                            const float* weights_data,
                            const Dims<4>& weights_dims, const float* bias_data,
@@ -367,14 +866,6 @@ void FullyConnected(const float* input_data, const Dims<4>& input_dims,
                  output_data, output_dims);
 }
 
-inline void preload_l1_stream(const uint8* ptr) {
-#ifdef GEMMLOWP_ARM_64
-  asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#else
-  gemmlowp::Prefetch(ptr);
-#endif
-}
-
 #ifdef USE_NEON
 inline void FullyConnectedAsGEMV(
     const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
@@ -395,10 +886,10 @@ inline void FullyConnectedAsGEMV(
   const int output_size = MatchingArraySize(filter_dims, 1, output_dims, 0);
   static constexpr int kPeel = 4;
   for (int k = 0; k < input_size; k += 64) {
-    preload_l1_stream(input_data + k);
+    optimized_ops_preload_l1_stream(input_data + k);
   }
   for (int k = 0; k < kPeel * input_size; k += 64) {
-    preload_l1_stream(filter_data + k);
+    optimized_ops_preload_l1_stream(filter_data + k);
   }
   TFLITE_DCHECK(!(output_size % kPeel));
   const int32* bias_ptr = bias_data;
@@ -417,7 +908,7 @@ inline void FullyConnectedAsGEMV(
       for (int k = 0; k < kPeel; k++) {
         const uint8* filter_ptr = filter_data + in + (out + k) * input_size;
         filter_val_u8[k] = vld1q_u8(filter_ptr);
-        preload_l1_stream(filter_ptr + 64);
+        optimized_ops_preload_l1_stream(filter_ptr + 64);
       }
       int16x8_t input_val[2];
       const uint8x8_t low = vget_low_u8(input_val_u8);
@@ -610,21 +1101,20 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       input_offset, output_pipeline);
 }
 
-inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                           int32 input_offset, const uint8* filter_data,
-                           const Dims<4>& filter_dims, int32 filter_offset,
-                           const int32* bias_data, const Dims<4>& bias_dims,
-                           int32 output_offset, int32 output_multiplier,
-                           int output_shift, int32 output_activation_min,
-                           int32 output_activation_max, int16* output_data,
-                           const Dims<4>& output_dims,
-                           gemmlowp::GemmContext* gemm_context) {
+inline void FullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
+    const uint8* filter_data, const Dims<4>& filter_dims, int32 filter_offset,
+    const int32* bias_data_int32, const Dims<4>& bias_dims, int32 output_offset,
+    int32 output_multiplier, int output_shift, int32 output_activation_min,
+    int32 output_activation_max, int16* output_data, const Dims<4>& output_dims,
+    gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected/Uint8Int16");
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
   (void)gemm_context;  // only used in properly optimized code.
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_EQ(output_offset, 0);
+
   // TODO(benoitjacob): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
@@ -636,30 +1126,58 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   const int accum_depth = ArraySize(filter_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
-  for (int b = 0; b < batches; ++b) {
-    for (int out_c = 0; out_c < output_depth; ++out_c) {
-      // Internal accumulation.
-      // Initialize accumulator with the bias-value.
-      int32 accum = bias_data[out_c];
-      // Accumulation loop.
-      for (int d = 0; d < accum_depth; ++d) {
-        int16 input_val = input_data[b * accum_depth + d] + input_offset;
-        int16 filter_val = filter_data[out_c * accum_depth + d] + filter_offset;
-        accum += filter_val * input_val;
-      }
-      // Down-scale the final int32 accumulator to the scale used by our
-      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
-      // multiplier and shift here have been pre-computed offline
-      // (e.g. by toco).
-      accum = MultiplyByQuantizedMultiplier(accum, output_multiplier,
-                                            -output_shift);
-      // Saturate, cast to int16, and store to output array.
-      accum = std::max(accum, output_activation_min - output_offset);
-      accum = std::min(accum, output_activation_max - output_offset);
-      accum += output_offset;
-      output_data[out_c + output_depth * b] = accum;
+
+  // Implementation of the fully connected node suited to the inside of an LSTM
+  // cell. The operands are 8-bit integers, the accumulators are internally
+  // 32bit integers, and the output is 16-bit fixed-point with 3 integer bits so
+  // the output range is [-2^3, 2^3] == [-8, 8]. The rationale for that
+  // is explained in the function comment above.
+#ifdef GEMMLOWP_NEON
+  if (batches == 1 && input_offset == -128 && output_activation_min == -32768 &&
+      output_activation_max == 32767) {
+    if (filter_offset == -128 && !(output_depth % 4) && !(accum_depth % 64)) {
+      GEMVForLstmCellWithSymmetricRange(input_data, input_dims, filter_data,
+                                        filter_dims, bias_data_int32, bias_dims,
+                                        output_multiplier, -output_shift,
+                                        output_data, output_dims);
+      return;
+    }
+    if (!(output_depth % 4) && !(accum_depth % 8)) {
+      GEMVForLstmCell(input_data, input_dims, filter_data, filter_dims,
+                      filter_offset, bias_data_int32, bias_dims,
+                      output_multiplier, -output_shift, output_data,
+                      output_dims);
+      return;
     }
   }
+#endif
+  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> weights_matrix(
+      filter_data, output_depth, accum_depth);
+  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
+      input_data, accum_depth, batches);
+  gemmlowp::MatrixMap<int16, gemmlowp::MapOrder::ColMajor> output_matrix(
+      output_data, output_depth, batches);
+  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
+      ColVectorMap;
+  ColVectorMap bias_vector(bias_data_int32, output_depth);
+  gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+  bias_addition_stage.bias_vector = bias_vector;
+  gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent scale_stage;
+  scale_stage.result_offset_after_shift = 0;
+  scale_stage.result_fixedpoint_multiplier = output_multiplier;
+  // Note that this shift is negated wrt ordinary FC.
+  scale_stage.result_exponent = -output_shift;
+  gemmlowp::OutputStageClamp clamp_stage;
+  clamp_stage.min = output_activation_min;
+  clamp_stage.max = output_activation_max;
+  gemmlowp::OutputStageSaturatingCastToInt16 saturating_cast_int16_stage;
+  auto output_pipeline =
+      std::make_tuple(bias_addition_stage, scale_stage, clamp_stage,
+                      saturating_cast_int16_stage);
+  gemmlowp::GemmWithOutputPipeline<uint8, int16,
+                                   gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
+      gemm_context, weights_matrix, input_matrix, &output_matrix, filter_offset,
+      input_offset, output_pipeline);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -1660,11 +2178,21 @@ template <FusedActivationFunctionType Ac>
 inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
                 int input1_shift, const int16* input2_data,
                 const Dims<4>& input2_dims, int input2_shift,
+                int16 output_activation_min, int16 output_activation_max,
                 int16* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Add/Int16");
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
-  static_assert(Ac == FusedActivationFunctionType::kNone, "");
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, -32768);
+    TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  }
 
   const int flat_size = RequiredBufferSizeForDims(output_dims);
   TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
@@ -1685,7 +2213,10 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
     F0 scaled_input =
         F0::FromRaw(gemmlowp::RoundingDivideByPOT(shift_input[i], input_shift));
     F0 result = gemmlowp::SaturatingAdd(scaled_input, input_ready_scaled);
-    output_data[i] = result.raw();
+    const int16 raw_output = result.raw();
+    const int16 clamped_output = std::min(
+        output_activation_max, std::max(output_activation_min, raw_output));
+    output_data[i] = clamped_output;
   }
 }
 
@@ -2374,6 +2905,62 @@ void Concatenation(int concat_dim, const Scalar* const* input_data,
   }
 }
 
+// TODO(prabhumk): This is the same as the reference implementation.
+// TODO(prabhumk): The quantized implementation of concatentation isn't fully
+// quantized as it takes scale as a floating point value. This should be fixed
+// when optimizng this routine further.
+inline void Concatenation(int concat_dim, const uint8* const* input_data,
+                          const Dims<4>* const* input_dims,
+                          const int32* input_zeropoint,
+                          const float* input_scale, int inputs_count,
+                          uint8* output_data, const Dims<4>& output_dims,
+                          const int32 output_zeropoint,
+                          const float output_scale) {
+  // The arguments input_zeropoint and input_scale are expected to be an array
+  // that have the quantization paramaters for all the inputs to the concat
+  // operator.
+  gemmlowp::ScopedProfilingLabel label("Concatenation");
+  TFLITE_DCHECK_GT(inputs_count, 1);
+  int concat_size = 0;
+  for (int i = 0; i < inputs_count; i++) {
+    for (int j = 0; j < 4; j++) {
+      if (j != concat_dim) {
+        MatchingArraySize(*input_dims[i], j, output_dims, j);
+      }
+    }
+    concat_size += ArraySize(*input_dims[i], concat_dim);
+  }
+  TFLITE_DCHECK_EQ(concat_size, ArraySize(output_dims, concat_dim));
+  int outer_size = 1;
+  for (int i = concat_dim + 1; i < 4; i++) {
+    outer_size *= output_dims.sizes[i];
+  }
+  const float inverse_output_scale = 1.f / output_scale;
+  uint8* output_ptr = output_data;
+  for (int k = 0; k < outer_size; k++) {
+    for (int i = 0; i < inputs_count; ++i) {
+      const int copy_size =
+          input_dims[i]->sizes[concat_dim] * input_dims[i]->strides[concat_dim];
+      const uint8* input_ptr = input_data[i] + k * copy_size;
+      if (input_zeropoint[i] == output_zeropoint &&
+          input_scale[i] == output_scale) {
+        memcpy(output_ptr, input_ptr, copy_size);
+      } else {
+        const float scale = input_scale[i] * inverse_output_scale;
+        const float bias = -input_zeropoint[i] * scale;
+        for (int j = 0; j < copy_size; ++j) {
+          const int32_t value =
+              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              output_zeropoint;
+          output_ptr[j] =
+              static_cast<uint8_t>(std::max(std::min(255, value), 0));
+        }
+      }
+      output_ptr += copy_size;
+    }
+  }
+}
+
 template <FusedActivationFunctionType Ac, typename Scalar>
 void DepthConcatenation(const Scalar* const* input_data,
                         const Dims<4>* const* input_dims, int inputs_count,
@@ -2464,198 +3051,6 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
       output_gate_sm.unaryExpr(Eigen::internal::scalar_sigmoid_op<float>()) *
       output_state_map.tanh();
 }
-
-#ifdef GEMMLOWP_NEON
-// In the common case of batch size 1, a fully-connected node degenerates
-// to a matrix*vector product. LSTM cells contain a fully-connected node;
-// when quantized, this becomes a special type of GEMV operation where
-// the output is 16bit-quantized, thus needs its own special path.
-inline void GEMVForLstmCell(const uint8* input_data, const Dims<4>& input_dims,
-                            const uint8* weights_data,
-                            const Dims<4>& weights_dims,
-                            uint8 weights_zero_point, const int32* bias_data,
-                            const Dims<4>& bias_dims, int32 accum_multiplier,
-                            int accum_shift, int16* output_data,
-                            const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("GEMVForLstmCell");
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  TFLITE_DCHECK_EQ(ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
-                       ArraySize(output_dims, 3),
-                   1);
-  const int input_size = input_dims.strides[3];
-  const int output_size = MatchingArraySize(weights_dims, 1, output_dims, 0);
-  // This special fast path for quantized LSTM cells does not try to support
-  // odd sizes that we haven't encountered in any LSTM cell, that would
-  // require special code (that would go untested until any LSTM cell
-  // exercises it). We just guard our assumptions about size evenness with
-  // the following assertions.
-  TFLITE_DCHECK(!(output_size % 4));
-  TFLITE_DCHECK(!(input_size % 8));
-  const int32* bias_ptr = bias_data;
-  int16* output_ptr = output_data;
-  for (int out = 0; out < output_size; out += 4) {
-    int32x4_t acc_0 = vdupq_n_s32(0);
-    int32x4_t acc_1 = vdupq_n_s32(0);
-    int32x4_t acc_2 = vdupq_n_s32(0);
-    int32x4_t acc_3 = vdupq_n_s32(0);
-    const int16x8_t input_offset_vec = vdupq_n_s16(-128);
-    const int16x8_t weights_offset_vec = vdupq_n_s16(-weights_zero_point);
-    int in = 0;
-    // Handle 16 levels of depth at a time.
-    for (; in <= input_size - 16; in += 16) {
-      const uint8x16_t input_val_u8 = vld1q_u8(input_data + in);
-      const uint8* weights_ptr = weights_data + in + out * input_size;
-      uint8x16_t weights_val_u8_0 = vld1q_u8(weights_ptr + 0 * input_size);
-      uint8x16_t weights_val_u8_1 = vld1q_u8(weights_ptr + 1 * input_size);
-      uint8x16_t weights_val_u8_2 = vld1q_u8(weights_ptr + 2 * input_size);
-      uint8x16_t weights_val_u8_3 = vld1q_u8(weights_ptr + 3 * input_size);
-      int16x8_t input_val_0, input_val_1;
-      const uint8x8_t low = vget_low_u8(input_val_u8);
-      const uint8x8_t high = vget_high_u8(input_val_u8);
-      input_val_0 = vreinterpretq_s16_u16(vmovl_u8(low));
-      input_val_1 = vreinterpretq_s16_u16(vmovl_u8(high));
-      input_val_0 = vaddq_s16(input_val_0, input_offset_vec);
-      input_val_1 = vaddq_s16(input_val_1, input_offset_vec);
-      int16x8_t weights_val_0_0, weights_val_1_0, weights_val_2_0,
-          weights_val_3_0;
-      int16x8_t weights_val_0_1, weights_val_1_1, weights_val_2_1,
-          weights_val_3_1;
-      weights_val_0_0 = vaddq_s16(
-          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_0))),
-          weights_offset_vec);
-      weights_val_0_1 = vaddq_s16(
-          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_0))),
-          weights_offset_vec);
-      weights_val_1_0 = vaddq_s16(
-          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_1))),
-          weights_offset_vec);
-      weights_val_1_1 = vaddq_s16(
-          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_1))),
-          weights_offset_vec);
-      weights_val_2_0 = vaddq_s16(
-          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_2))),
-          weights_offset_vec);
-      weights_val_2_1 = vaddq_s16(
-          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_2))),
-          weights_offset_vec);
-      weights_val_3_0 = vaddq_s16(
-          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_3))),
-          weights_offset_vec);
-      weights_val_3_1 = vaddq_s16(
-          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_3))),
-          weights_offset_vec);
-      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0_0),
-                        vget_low_s16(input_val_0));
-      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1_0),
-                        vget_low_s16(input_val_0));
-      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2_0),
-                        vget_low_s16(input_val_0));
-      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3_0),
-                        vget_low_s16(input_val_0));
-      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0_0),
-                        vget_high_s16(input_val_0));
-      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1_0),
-                        vget_high_s16(input_val_0));
-      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2_0),
-                        vget_high_s16(input_val_0));
-      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3_0),
-                        vget_high_s16(input_val_0));
-      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0_1),
-                        vget_low_s16(input_val_1));
-      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1_1),
-                        vget_low_s16(input_val_1));
-      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2_1),
-                        vget_low_s16(input_val_1));
-      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3_1),
-                        vget_low_s16(input_val_1));
-      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0_1),
-                        vget_high_s16(input_val_1));
-      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1_1),
-                        vget_high_s16(input_val_1));
-      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2_1),
-                        vget_high_s16(input_val_1));
-      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3_1),
-                        vget_high_s16(input_val_1));
-    }
-    // Handle 8 levels of depth at a time.
-    for (; in < input_size; in += 8) {
-      const uint8x8_t input_val_u8 = vld1_u8(input_data + in);
-      const uint8* weights_ptr = weights_data + in + out * input_size;
-      uint8x8_t weights_val_u8_0 = vld1_u8(weights_ptr + 0 * input_size);
-      uint8x8_t weights_val_u8_1 = vld1_u8(weights_ptr + 1 * input_size);
-      uint8x8_t weights_val_u8_2 = vld1_u8(weights_ptr + 2 * input_size);
-      uint8x8_t weights_val_u8_3 = vld1_u8(weights_ptr + 3 * input_size);
-      int16x8_t input_val;
-      input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
-      input_val = vaddq_s16(input_val, input_offset_vec);
-      int16x8_t weights_val_0, weights_val_1, weights_val_2, weights_val_3;
-      weights_val_0 =
-          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_0)),
-                    weights_offset_vec);
-      weights_val_1 =
-          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_1)),
-                    weights_offset_vec);
-      weights_val_2 =
-          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_2)),
-                    weights_offset_vec);
-      weights_val_3 =
-          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_3)),
-                    weights_offset_vec);
-      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0),
-                        vget_low_s16(input_val));
-      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1),
-                        vget_low_s16(input_val));
-      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2),
-                        vget_low_s16(input_val));
-      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3),
-                        vget_low_s16(input_val));
-      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0),
-                        vget_high_s16(input_val));
-      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1),
-                        vget_high_s16(input_val));
-      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2),
-                        vget_high_s16(input_val));
-      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3),
-                        vget_high_s16(input_val));
-    }
-    // Horizontally reduce accumulators
-    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
-        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
-    pairwise_reduced_acc_0 =
-        vpadd_s32(vget_low_s32(acc_0), vget_high_s32(acc_0));
-    pairwise_reduced_acc_1 =
-        vpadd_s32(vget_low_s32(acc_1), vget_high_s32(acc_1));
-    pairwise_reduced_acc_2 =
-        vpadd_s32(vget_low_s32(acc_2), vget_high_s32(acc_2));
-    pairwise_reduced_acc_3 =
-        vpadd_s32(vget_low_s32(acc_3), vget_high_s32(acc_3));
-    const int32x2_t reduced_lo =
-        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
-    const int32x2_t reduced_hi =
-        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
-    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
-    // Add bias values.
-    int32x4_t bias_vec = vld1q_s32(bias_ptr);
-    bias_ptr += 4;
-    reduced = vaddq_s32(reduced, bias_vec);
-    int left_shift = accum_shift > 0 ? accum_shift : 0;
-    int right_shift = accum_shift > 0 ? 0 : -accum_shift;
-    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
-    // Multiply by the fixed-point multiplier.
-    reduced = vqrdmulhq_n_s32(reduced, accum_multiplier);
-    // Rounding-shift-right.
-    using gemmlowp::RoundingDivideByPOT;
-    reduced = RoundingDivideByPOT(reduced, right_shift);
-    // Narrow values down to 16 bit signed.
-    const int16x4_t res16 = vqmovn_s32(reduced);
-    vst1_s16(output_ptr, res16);
-    output_ptr += 4;
-  }
-}
-#endif
 
 // Quantized LSTM cell. Currently just a copy of the reference impl in
 // reference_ops.h. See the big function comment there, not replicating it
@@ -3926,12 +4321,46 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
 inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
                      int16* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
-  // This is a copy of the reference implementation. We do not currently have a
-  // properly optimized version.
   const int flat_size = RequiredBufferSizeForDims(output_dims);
   TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
 
   for (int i = 0; i < flat_size; i++) {
+  }
+
+  int c = 0;
+  const int16* input_data_ptr = input_data;
+  int16* output_data_ptr = output_data;
+#ifdef GEMMLOWP_NEON
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
+
+    for (; c <= flat_size - 16; c += 16) {
+      F3 input0 = F3::FromRaw(vld1q_s16(input_data_ptr));
+      F3 input1 = F3::FromRaw(vld1q_s16(input_data_ptr + 8));
+      F0 output0 = gemmlowp::logistic(input0);
+      F0 output1 = gemmlowp::logistic(input1);
+      vst1q_s16(output_data_ptr, output0.raw());
+      vst1q_s16(output_data_ptr + 8, output1.raw());
+
+      input_data_ptr += 16;
+      output_data_ptr += 16;
+    }
+    for (; c <= flat_size - 8; c += 8) {
+      F3 input = F3::FromRaw(vld1q_s16(input_data_ptr));
+      F0 output = gemmlowp::logistic(input);
+      vst1q_s16(output_data_ptr, output.raw());
+
+      input_data_ptr += 8;
+      output_data_ptr += 8;
+    }
+  }
+#endif
+  {
     // F0 uses 0 integer bits, range [-1, 1].
     // This is the return type of math functions such as tanh, logistic,
     // whose range is in [-1, 1].
@@ -3939,9 +4368,14 @@ inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
     // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
     using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
 
-    const F3 input = F3::FromRaw(input_data[i]);
-    F0 output = gemmlowp::logistic(input);
-    output_data[i] = output.raw();
+    for (; c < flat_size; ++c) {
+      F3 input = F3::FromRaw(*input_data_ptr);
+      F0 output = gemmlowp::logistic(input);
+      *output_data_ptr = output.raw();
+
+      ++input_data_ptr;
+      ++output_data_ptr;
+    }
   }
 }
 
@@ -4108,9 +4542,6 @@ inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
                  int input_left_shift, int16* output_data,
                  const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Tanh/Int16");
-  // This is a copy of the reference implementation. We do not currently have a
-  // properly optimized version.
-
   // Support for shifts is limited until we have a parameterized version of
   // SaturatingRoundingMultiplyByPOT().
   TFLITE_DCHECK_GE(input_left_shift, 0);
@@ -4119,25 +4550,91 @@ inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
   const int flat_size = RequiredBufferSizeForDims(output_dims);
   TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
 
-  // F0 uses 0 integer bits, range [-1, 1].
-  // This is the return type of math functions such as tanh, logistic,
-  // whose range is in [-1, 1].
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-  using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+  int c = 0;
+  const int16* input_data_ptr = input_data;
+  int16* output_data_ptr = output_data;
+#ifdef GEMMLOWP_NEON
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
 
-  if (input_left_shift == 0) {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(input_data[i]);
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
+    if (input_left_shift == 0) {
+      for (; c <= flat_size - 16; c += 16) {
+        F3 input0 = F3::FromRaw(vld1q_s16(input_data_ptr));
+        F3 input1 = F3::FromRaw(vld1q_s16(input_data_ptr + 8));
+        F0 output0 = gemmlowp::tanh(input0);
+        F0 output1 = gemmlowp::tanh(input1);
+        vst1q_s16(output_data_ptr, output0.raw());
+        vst1q_s16(output_data_ptr + 8, output1.raw());
+
+        input_data_ptr += 16;
+        output_data_ptr += 16;
+      }
+      for (; c <= flat_size - 8; c += 8) {
+        F3 input = F3::FromRaw(vld1q_s16(input_data_ptr));
+        F0 output = gemmlowp::tanh(input);
+        vst1q_s16(output_data_ptr, output.raw());
+
+        input_data_ptr += 8;
+        output_data_ptr += 8;
+      }
+    } else {
+      for (; c <= flat_size - 16; c += 16) {
+        F3 input0 = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            vld1q_s16(input_data_ptr)));
+        F3 input1 = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            vld1q_s16(input_data_ptr + 8)));
+        F0 output0 = gemmlowp::tanh(input0);
+        F0 output1 = gemmlowp::tanh(input1);
+        vst1q_s16(output_data_ptr, output0.raw());
+        vst1q_s16(output_data_ptr + 8, output1.raw());
+
+        input_data_ptr += 16;
+        output_data_ptr += 16;
+      }
+      for (; c <= flat_size - 8; c += 8) {
+        F3 input = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            vld1q_s16(input_data_ptr)));
+        F0 output = gemmlowp::tanh(input);
+        vst1q_s16(output_data_ptr, output.raw());
+
+        input_data_ptr += 8;
+        output_data_ptr += 8;
+      }
     }
-  } else {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(
-          gemmlowp::SaturatingRoundingMultiplyByPOT<1>(input_data[i]));
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
+  }
+#endif
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+
+    if (input_left_shift == 0) {
+      for (; c < flat_size; ++c) {
+        F3 input = F3::FromRaw(*input_data_ptr);
+        F0 output = gemmlowp::tanh(input);
+        *output_data_ptr = output.raw();
+
+        ++input_data_ptr;
+        ++output_data_ptr;
+      }
+    } else {
+      for (; c < flat_size; ++c) {
+        F3 input = F3::FromRaw(
+            gemmlowp::SaturatingRoundingMultiplyByPOT<1>(*input_data_ptr));
+        F0 output = gemmlowp::tanh(input);
+        *output_data_ptr = output.raw();
+
+        ++input_data_ptr;
+        ++output_data_ptr;
+      }
     }
   }
 }

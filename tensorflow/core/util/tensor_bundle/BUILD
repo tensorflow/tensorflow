@@ -75,18 +75,3 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

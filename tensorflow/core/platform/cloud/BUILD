@@ -14,20 +14,6 @@ load(
     "if_windows",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "expiring_lru_cache",
     hdrs = ["expiring_lru_cache.h"],
@@ -80,18 +66,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gce_env_utils",
-    srcs = ["gce_env_utils.cc"],
-    hdrs = ["gce_env_utils.h"],
-    copts = tf_copts(),
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
     name = "gcs_file_system",
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
@@ -111,6 +85,7 @@ cc_library(
         ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
     ],
@@ -170,7 +145,6 @@ cc_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
-        ":gce_env_utils",
         ":oauth_client",
         ":retrying_utils",
         "//tensorflow/core:lib",
@@ -256,21 +230,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "fake_env",
-    srcs = [
-        "fake_env.cc",
-    ],
-    hdrs = [
-        "fake_env.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
 tf_cc_test(
     name = "expiring_lru_cache_test",
     size = "small",
@@ -305,6 +264,7 @@ tf_cc_test(
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -376,7 +336,6 @@ tf_cc_test(
         "testdata/service_account_credentials.json",
     ],
     deps = [
-        ":fake_env",
         ":google_auth_provider",
         ":http_request_fake",
         ":oauth_client",
@@ -419,18 +378,6 @@ tf_cc_test(
         ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "gce_env_utils_test",
-    size = "small",
-    srcs = ["gcp_env_utils_test.cc"],
-    deps = [
-        ":fake_env",
-        ":gce_env_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

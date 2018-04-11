@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <fstream>
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -584,8 +585,9 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
   TF_EXPECT_OK(file->Append("content2"));
   const auto& status = file->Close();
   EXPECT_EQ(errors::Code::ABORTED, status.code());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("All 10 retry attempts failed. The last failure: "
+  EXPECT_TRUE(
+      str_util::StrContains(status.error_message(),
+                            "All 10 retry attempts failed. The last failure: "
                             "Unavailable: important HTTP error 503"))
       << status;
 }
@@ -641,13 +643,12 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
   const auto& status = file->Close();
   EXPECT_EQ(errors::Code::UNAVAILABLE, status.code());
   EXPECT_TRUE(
-      StringPiece(status.error_message())
-          .contains(
-              "Upload to gs://bucket/path/writeable.txt failed, caused by: "
-              "Not found: important HTTP error 410"))
+      str_util::StrContains(status.error_message(),
+                            "Upload to gs://bucket/path/writeable.txt failed, "
+                            "caused by: Not found: important HTTP error 410"))
       << status;
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("when uploading gs://bucket/path/writeable.txt"))
+  EXPECT_TRUE(str_util::StrContains(
+      status.error_message(), "when uploading gs://bucket/path/writeable.txt"))
       << status;
 }
 

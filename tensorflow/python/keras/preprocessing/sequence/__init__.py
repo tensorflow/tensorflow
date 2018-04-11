@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.keras._impl.keras.preprocessing.sequence import make_sampling_table
 from tensorflow.python.keras._impl.keras.preprocessing.sequence import pad_sequences
 from tensorflow.python.keras._impl.keras.preprocessing.sequence import skipgrams
+from tensorflow.python.keras._impl.keras.preprocessing.sequence import TimeseriesGenerator
 
 del absolute_import
 del division

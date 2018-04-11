@@ -24,6 +24,18 @@ def if_mkl(if_true, if_false = []):
         "//conditions:default": if_false
     })
 
+def if_mkl_lnx_x64(if_true, if_false = []):
+    """Shorthand for select()'ing on whether we're building with MKL.
+
+    Returns a select statement which evaluates to if_true if we're building
+    with MKL enabled.  Otherwise, the select statement evaluates to if_false.
+
+    """
+    return select({
+        str(Label("//third_party/mkl:using_mkl_lnx_x64")): if_true,
+        "//conditions:default": if_false
+    })
+
 
 def _enable_local_mkl(repository_ctx):
   return _TF_MKL_ROOT in repository_ctx.os.environ

@@ -98,6 +98,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
   }
 
+  if (instruction->opcode() == HloOpcode::kTrace) {
+    TF_RET_CHECK(instruction->operands().size() == 1)
+        << "Trace instruction should have 1 operand but sees "
+        << instruction->operands().size();
+    instruction->mutable_operand(0)->set_tracing(instruction.get());
+  }
+
   TF_RET_CHECK(!proto.name().empty());
   instruction->name_ = proto.name();
 
@@ -170,6 +177,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
   instruction->literal_ = Literal::CreateR1U8(tag);
+  operand->set_tracing(instruction.get());
   return instruction;
 }
 
@@ -672,6 +680,15 @@ HloInstruction::CreateSelectAndScatter(
   instruction->AppendOperand(operand);
   instruction->dimensions_.assign(broadcast_dimensions.begin(),
                                   broadcast_dimensions.end());
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBroadcastDimOne(const Shape& shape,
+                                      HloInstruction* operand) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBroadcastDimOne, shape));
+  instruction->AppendOperand(operand);
   return instruction;
 }
 
@@ -1267,6 +1284,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBroadcast(shape, new_operands[0], dimensions_);
       break;
+    case HloOpcode::kBroadcastDimOne:
+      CHECK_EQ(new_operands.size(), 1);
+      clone = CreateBroadcastDimOne(shape, new_operands[0]);
+      break;
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
       break;
@@ -1818,6 +1839,8 @@ bool HloInstruction::IdenticalSlowPath(
 
     // Remaining instructions with special values.
     case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcastDimOne:
+    case HloOpcode::kDynamicUpdateSlice:
       return eq_shapes(shape(), other.shape());
     case HloOpcode::kBroadcast:
       return eq_shapes(shape(), other.shape()) &&
@@ -1836,8 +1859,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDynamicSlice:
       return eq_shapes(shape(), other.shape()) &&
              dynamic_slice_sizes_ == other.dynamic_slice_sizes_;
-    case HloOpcode::kDynamicUpdateSlice:
-      return eq_shapes(shape(), other.shape());
     case HloOpcode::kCall:
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
@@ -2638,6 +2659,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
       return visitor->HandleBroadcast(this);
+    case HloOpcode::kBroadcastDimOne:
+      return visitor->HandleBroadcastDimOne(this);
     case HloOpcode::kPad:
       return visitor->HandlePad(this);
     case HloOpcode::kReshape:

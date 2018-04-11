@@ -103,6 +103,8 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_hlo_profile(bool enabled) {
   return *this;
 }
 
-bool ExecutableBuildOptions::hlo_profile() const { return hlo_profile_; }
+tensorflow::gtl::optional<bool> ExecutableBuildOptions::hlo_profile() const {
+  return hlo_profile_;
+}
 
 }  // namespace xla

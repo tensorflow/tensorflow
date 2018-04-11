@@ -80,6 +80,7 @@ cuda_py_test(
         "//tensorflow/python/data",
         "//tensorflow/python/eager:test",
     ],
+    tags = ["noguitar"],
 )
 
 py_library(
@@ -270,18 +271,8 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
     ],
-    tags = ["notsan"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "notsan",  # b/74395663
+    ],
 )

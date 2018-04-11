@@ -33,6 +33,71 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "context",
+    srcs = [
+        "context.cc",
+    ],
+    hdrs = [
+        "context.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":eager_executor",
+        ":kernel_and_device",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+    ],
+)
+
+tf_cuda_library(
+    name = "tensor_handle",
+    srcs = [
+        "tensor_handle.cc",
+    ],
+    hdrs = [
+        "tensor_handle.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":eager_executor",
+        ":kernel_and_device",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+    ],
+)
+
+tf_cuda_library(
+    name = "copy_to_device_node",
+    hdrs = [
+        "copy_to_device_node.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":eager_executor",
+        ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+    ],
+)
+
+tf_cuda_library(
     name = "kernel_and_device",
     srcs = [
         "kernel_and_device.cc",
@@ -70,17 +135,34 @@ tf_cc_test(
     ],
 )
 
-# -----------------------------------------------------------------------------
-# Google-internal targets.
+cc_library(
+    name = "execute",
+    srcs = ["execute.cc"],
+    hdrs = ["execute.h"],
+    deps = [
+        ":context",
+        ":copy_to_device_node",
+        ":kernel_and_device",
+        ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_library(
+    name = "execute_node",
+    hdrs = ["execute_node.h"],
+    deps = [
+        ":context",
+        ":eager_executor",
+        ":execute",
+        ":kernel_and_device",
+        ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )

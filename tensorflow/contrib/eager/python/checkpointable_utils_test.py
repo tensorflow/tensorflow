@@ -30,8 +30,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras._impl.keras.engine import sequential
 from tensorflow.python.keras._impl.keras.engine import training
 from tensorflow.python.layers import core
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -66,6 +68,87 @@ class MyModel(training.Model):
   def call(self, values):
     ret = self._second(self._named_dense(values))
     return ret
+
+
+def _split_variable_closure(variable):
+  def _fill_save_buffer_fn(save_buffer):
+    save_buffer["first_half"] = variable[:2]
+    save_buffer["second_half"] = variable[2:]
+  return _fill_save_buffer_fn
+
+
+def _combine_variable_closure(variable):
+  def _consume_restore_buffer_fn(restore_buffer):
+    return variable.assign(
+        array_ops.concat([restore_buffer["first_half"],
+                          restore_buffer["second_half"]],
+                         axis=0))
+  return _consume_restore_buffer_fn
+
+
+class SaveTensorSlicesAsDeps(checkpointable.CheckpointableBase):
+
+  def __init__(self):
+    self.combined = resource_variable_ops.ResourceVariable([0., 0., 0., 0.])
+    split_dependencies = checkpointable_utils.split_dependency(
+        component_names=("first_half", "second_half"),
+        component_dtypes=(self.combined.dtype,) * 2,
+        fill_save_buffer_fn=_split_variable_closure(
+            self.combined),
+        consume_restore_buffer_fn=_combine_variable_closure(
+            self.combined))
+    for name, dep in split_dependencies.items():
+      self._track_checkpointable(dep, name=name)
+
+
+class HasRegularDeps(checkpointable.Checkpointable):
+
+  def __init__(self):
+    self.first_half = resource_variable_ops.ResourceVariable([0., 0.])
+    self.second_half = resource_variable_ops.ResourceVariable([0., 0.])
+
+
+class OnlyOneDep(checkpointable.Checkpointable):
+
+  def __init__(self):
+    self.first_half = resource_variable_ops.ResourceVariable([0., 0.])
+
+
+class SplitTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testSaveRestoreSplitDep(self):
+    save_checkpoint = checkpointable_utils.Checkpoint(
+        dep=SaveTensorSlicesAsDeps())
+    self.evaluate(save_checkpoint.dep.combined.assign([1., 2., 3., 4.]))
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = save_checkpoint.save(checkpoint_prefix)
+
+    regular_deps = HasRegularDeps()
+    regular_restore_checkpoint = checkpointable_utils.Checkpoint(
+        dep=regular_deps)
+    regular_restore_checkpoint.restore(
+        save_path).assert_consumed().run_restore_ops()
+    self.assertAllEqual([1., 2.], self.evaluate(regular_deps.first_half))
+    self.assertAllEqual([3., 4.], self.evaluate(regular_deps.second_half))
+
+    one_dep = OnlyOneDep()
+    one_dep_restore_checkpoint = checkpointable_utils.Checkpoint(dep=one_dep)
+    status = one_dep_restore_checkpoint.restore(save_path)
+    with self.assertRaises(AssertionError):
+      # Missing the second dependency.
+      status.assert_consumed()
+    status.run_restore_ops()
+    self.assertAllEqual([1., 2.], self.evaluate(one_dep.first_half))
+
+    restore_checkpoint = checkpointable_utils.Checkpoint()
+    status = restore_checkpoint.restore(save_path)
+    restore_checkpoint.dep = SaveTensorSlicesAsDeps()
+    status.assert_consumed().run_restore_ops()
+    self.assertAllEqual(
+        [1., 2., 3., 4.],
+        self.evaluate(restore_checkpoint.dep.combined))
 
 
 class InterfaceTests(test.TestCase):
@@ -154,14 +237,18 @@ class InterfaceTests(test.TestCase):
     self.assertAllEqual([1., 1., 1.], self.evaluate(v2))
 
 
-class _MirroringSaveable(
-    core_saver.BaseSaverBuilder.ResourceVariableSaveable):
+class _MirroringSaveable(core_saver.BaseSaverBuilder.SaveableObject):
 
   def __init__(self, primary_variable, mirrored_variable, name):
     self._primary_variable = primary_variable
     self._mirrored_variable = mirrored_variable
+    tensor = self._primary_variable.read_value()
+    spec = core_saver.BaseSaverBuilder.SaveSpec(
+        tensor=tensor,
+        slice_spec="",
+        name=name)
     super(_MirroringSaveable, self).__init__(
-        self._primary_variable, "", name)
+        tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into both variables."""
@@ -316,6 +403,12 @@ class CheckpointingTests(test.TestCase):
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
     self.assertEqual(42., self.evaluate(v.non_dep_variable))
     self.assertEqual(42., self.evaluate(v.mirrored))
+    self.evaluate(v.non_dep_variable.assign(44.))
+    save_path = checkpoint.save(prefix)
+    self.evaluate(v.non_dep_variable.assign(45.))
+    checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
+    self.assertEqual(44., self.evaluate(v.non_dep_variable))
+    self.assertEqual(44., self.evaluate(v.mirrored))
 
   @test_util.run_in_graph_and_eager_modes()
   def testMoreComplexSaveableReturnedWithGlobalName(self):
@@ -368,7 +461,11 @@ class CheckpointingTests(test.TestCase):
     if not context.executing_eagerly():
       return  # Restore-on-create is only supported when executing eagerly
     on_create_model = MyModel()
-    on_create_optimizer = adam.AdamOptimizer(0.001)
+    on_create_optimizer = adam.AdamOptimizer(
+        0.001,
+        # Preserve beta1_power and beta2_power when appying gradients so we can
+        # test that they've been restored correctly.
+        beta1=1.0, beta2=1.0)
     on_create_root = checkpointable_utils.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
@@ -385,8 +482,8 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
     self.assertAllEqual(optimizer_variables[2:],
                         self.evaluate(on_create_optimizer.variables()))
-    on_create_optimizer._create_slots(
-        [resource_variable_ops.ResourceVariable([1.])])
+    dummy_var = resource_variable_ops.ResourceVariable([1.])
+    on_create_optimizer.minimize(loss=dummy_var.read_value)
     status.assert_consumed()
     beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
     self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))
@@ -617,13 +714,14 @@ class CheckpointingTests(test.TestCase):
     status.run_restore_ops()
     self.assertEqual(-14., self.evaluate(loaded_dep_after_var.dep.var))
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
     root = checkpointable.Checkpointable()
-    root.var = checkpointable_utils.add_variable(
-        root, name="var", initializer=0.)
+    with ops.device("/cpu:0"):
+      root.var = checkpointable_utils.add_variable(
+          root, name="var", initializer=0.)
     optimizer = adam.AdamOptimizer(0.1)
     if context.executing_eagerly():
       optimizer.minimize(root.var.read_value)
@@ -653,8 +751,9 @@ class CheckpointingTests(test.TestCase):
         new_root).restore(no_slots_path)
     with self.assertRaises(AssertionError):
       no_slot_status.assert_consumed()
-    new_root.var = checkpointable_utils.add_variable(
-        new_root, name="var", shape=[])
+    with ops.device("/cpu:0"):
+      new_root.var = checkpointable_utils.add_variable(
+          new_root, name="var", shape=[])
     no_slot_status.assert_consumed()
     no_slot_status.run_restore_ops()
     self.assertEqual(12., self.evaluate(new_root.var))
@@ -682,7 +781,7 @@ class CheckpointingTests(test.TestCase):
       self.evaluate(train_op)
     slot_status.assert_consumed()
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testOverlappingRestores(self):
     checkpoint_directory = self.get_temp_dir()
     save_root = checkpointable.Checkpointable()
@@ -733,7 +832,7 @@ class CheckpointingTests(test.TestCase):
     second_status.run_restore_ops()
     self.assertEqual(12., self.evaluate(load_dep.var))
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testAmbiguousLoad(self):
     # Not OK to split one checkpoint object into two
     checkpoint_directory = self.get_temp_dir()
@@ -756,7 +855,7 @@ class CheckpointingTests(test.TestCase):
                                  "resolved to different objects"):
       load_root.dep_two.dep_three = checkpointable.Checkpointable()
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testObjectsCombined(self):
     # Currently fine to load two checkpoint objects into one Python object
     checkpoint_directory = self.get_temp_dir()
@@ -1022,10 +1121,42 @@ class CheckpointingTests(test.TestCase):
         beta1_power, _ = optimizer._get_beta_accumulators()
         self.assertAllEqual(3., self.evaluate(beta1_power))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_sequential(self):
+    model = sequential.Sequential()
+    checkpoint = checkpointable_utils.Checkpoint(model=model)
+    model.add(core.Dense(4))
+    second_dense = core.Dense(5)
+    model.add(second_dense)
+    model(constant_op.constant([[1.]]))
+    checkpoint.restore(None).initialize_or_restore()
+    self.evaluate(second_dense.bias.assign(
+        constant_op.constant([1., 2., 3., 4., 5.])))
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.evaluate(second_dense.bias.assign(
+        constant_op.constant([5., 6., 7., 8., 9.])))
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    self.assertAllEqual([1., 2., 3., 4., 5.], self.evaluate(second_dense.bias))
+
+    deferred_sequential = sequential.Sequential()
+    deferred_sequential_checkpoint = checkpointable_utils.Checkpoint(
+        model=deferred_sequential)
+    status = deferred_sequential_checkpoint.restore(save_path)
+    deferred_sequential.add(core.Dense(4))
+    deferred_sequential(constant_op.constant([[1.]]))
+    deferred_second_dense = core.Dense(5)
+    deferred_sequential.add(deferred_second_dense)
+    deferred_sequential(constant_op.constant([[1.]]))
+    status.run_restore_ops()
+    self.assertAllEqual([1., 2., 3., 4., 5.],
+                        self.evaluate(deferred_second_dense.bias))
+
 
 class TemplateTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def test_checkpointable_save_restore(self):
 
     def _templated():
@@ -1056,7 +1187,7 @@ class TemplateTests(test.TestCase):
     self.assertAllEqual([13.], self.evaluate(var_plus_one))
     self.assertAllEqual([14.], self.evaluate(var2))
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def test_checkpointable_save_restore_nested(self):
 
     def _inner_template():

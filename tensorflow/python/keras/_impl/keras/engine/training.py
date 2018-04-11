@@ -874,7 +874,19 @@ class Model(Network):
         whether to build the model's graph in inference mode (False), training
         mode (True), or using the Keras learning phase (None).
     """
-    if context.executing_eagerly():
+    if not getattr(self, '_uses_inputs_arg', True):
+      raise NotImplementedError(
+          'Subclassed Models without "inputs" in their call() signatures do '
+          'not yet support shape inference. File a feature request if this '
+          'limitation bothers you.')
+    if self.__class__.__name__ == 'Sequential':
+      # Note: we can't test whether the model is `Sequential` via `isinstance`
+      # since `Sequential` depends on `Model`.
+      if isinstance(inputs, list):
+        assert len(inputs) == 1
+        inputs = inputs[0]
+      self.build(input_shape=(None,) + inputs.shape[1:])
+    elif context.executing_eagerly():
       self._eager_set_inputs(inputs)
     else:
       self._symbolic_set_inputs(inputs, training=training)
@@ -1169,6 +1181,9 @@ class Model(Network):
           batch_size=batch_size)
 
     elif validation_split and 0. < validation_split < 1.:
+      if training_utils.has_symbolic_tensors(x):
+        raise ValueError('If your data is in the form of symbolic tensors, '
+                         'you cannot use `validation_split`.')
       if hasattr(x[0], 'shape'):
         split_at = int(x[0].shape[0] * (1. - validation_split))
       else:
@@ -1581,9 +1596,9 @@ class Model(Network):
         ValueError: In case the generator yields
             data in an invalid format.
     """
-    if not self._is_graph_network:
+    if not self.built and not self._is_graph_network:
       raise NotImplementedError(
-          '`fit_generator` is not yet enabled for Model subclasses')
+          '`fit_generator` is not yet enabled for unbuilt Model subclasses')
 
     return training_generator.fit_generator(
         self,
@@ -1647,9 +1662,10 @@ class Model(Network):
         ValueError: In case the generator yields
             data in an invalid format.
     """
-    if not self._is_graph_network:
+    if not self.built and not self._is_graph_network:
       raise NotImplementedError(
-          '`evaluate_generator` is not yet enabled for Model subclasses')
+          '`evaluate_generator` is not yet enabled for '
+          'unbuilt Model subclasses')
 
     return training_generator.evaluate_generator(
         self,
@@ -1700,9 +1716,9 @@ class Model(Network):
         ValueError: In case the generator yields
             data in an invalid format.
     """
-    if not self._is_graph_network:
+    if not self.built and not self._is_graph_network:
       raise NotImplementedError(
-          '`predict_generator` is not yet enabled for Model subclasses')
+          '`predict_generator` is not yet enabled for unbuilt Model subclasses')
 
     return training_generator.predict_generator(
         self,

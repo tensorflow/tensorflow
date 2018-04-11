@@ -78,8 +78,7 @@ def tf_record_iterator(path, options=None):
   try:
     while True:
       try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          reader.GetNext(status)
+        reader.GetNext()
       except errors.OutOfRangeError:
         break
       yield reader.record()

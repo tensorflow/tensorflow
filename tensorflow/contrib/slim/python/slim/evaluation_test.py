@@ -177,6 +177,17 @@ class EvaluationTest(test.TestCase):
     # The timeout kicked in.
     self.assertLess(end, start + 1.1)
 
+  def testTimeoutFnOnEvaluationLoop(self):
+    # We require a mutable object (e.g. list but not an int) to maintain state
+    # across calls of a nested function.
+    timeout_fn_calls = [0]
+    def _TimeoutFn():
+      timeout_fn_calls[0] += 1
+      return timeout_fn_calls[0] >= 3
+    # Need not do any evaluation, but should just call timeout_fn repeatedly.
+    evaluation.evaluation_loop('', '', '', timeout=0, timeout_fn=_TimeoutFn)
+    self.assertEqual(timeout_fn_calls[0], 3)
+
   def testMonitorCheckpointsLoopTimeout(self):
     ret = list(
         evaluation_lib.checkpoints_iterator(

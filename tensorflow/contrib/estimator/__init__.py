@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
+from tensorflow.contrib.estimator.python.estimator.boosted_trees import *
 from tensorflow.contrib.estimator.python.estimator.dnn import *
 from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
 from tensorflow.contrib.estimator.python.estimator.extenders import *
@@ -44,11 +45,14 @@ _allowed_symbols = [
     'DNNEstimator',
     'DNNLinearCombinedEstimator',
     'LinearEstimator',
+    'boosted_trees_classifier_train_in_memory',
+    'boosted_trees_regressor_train_in_memory',
     'call_logit_fn',
     'dnn_logit_fn_builder',
     'linear_logit_fn_builder',
     'replicate_model_fn',
     'TowerOptimizer',
+    'RNNClassifier',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
