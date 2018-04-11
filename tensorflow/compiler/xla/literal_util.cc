@@ -97,11 +97,18 @@ Literal::Literal(const Shape& shape, bool allocate_arrays)
     const Shape& subshape = piece.subshape();
     if (ShapeUtil::IsArray(subshape)) {
       if (allocate_arrays) {
-        piece.set_buffer(new char[piece.size_bytes()]);
         if (LayoutUtil::IsSparseArray(subshape)) {
+          // For sparse arrays, the buffer must be of the size of the maximum
+          // number of sparse elements possible.
+          const int64 max_sparse_elements =
+              LayoutUtil::MaxSparseElements(subshape.layout());
+          piece.set_buffer(
+              new char[max_sparse_elements * ShapeUtil::ByteSizeOfPrimitiveType(
+                                                 subshape.element_type())]);
           piece.set_sparse_indices(new SparseIndexArray(
-              LayoutUtil::MaxSparseElements(subshape.layout()),
-              ShapeUtil::Rank(subshape)));
+              max_sparse_elements, ShapeUtil::Rank(subshape)));
+        } else {
+          piece.set_buffer(new char[piece.size_bytes()]);
         }
       } else {
         piece.set_buffer(nullptr);

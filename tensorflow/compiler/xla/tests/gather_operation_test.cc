@@ -405,7 +405,7 @@ class GatherClientLibraryTest : public ClientLibraryTestBase {};
 // GPU and CPU_PARALLEL.
 XLA_TEST_F(GatherClientLibraryTest,
            DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(Basic))) {
-  // We create this HLO, but using the ComputationBuilder API.
+  // We create this HLO, but using the XlaBuilder API.
   //
   // ENTRY main {
   //   operand = s32[3,3] parameter(0)
@@ -418,7 +418,7 @@ XLA_TEST_F(GatherClientLibraryTest,
   //       window_bounds={1, 3}
   // }
 
-  ComputationBuilder builder(client_, "gather_basic");
+  XlaBuilder builder("gather_basic");
 
   Shape operand_shape = ShapeUtil::MakeShape(S32, {3, 3});
   Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
@@ -443,8 +443,8 @@ XLA_TEST_F(GatherClientLibraryTest,
                           client_->GetDeviceHandles(1));
   xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
   *execution_options.add_device_handles() = devices[0];
-  TF_ASSERT_OK_AND_ASSIGN(Computation computation, builder.Build());
-  std::vector<xla::Client::ComputationInstance> computation_instances = {
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
+  std::vector<xla::Client::XlaComputationInstance> computation_instances = {
       {computation,
        {operand_arg.get(), indices_arg.get()},
        execution_options,

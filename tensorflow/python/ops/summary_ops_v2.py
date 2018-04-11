@@ -31,7 +31,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import utils
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_summary_ops
@@ -108,8 +108,10 @@ class SummaryWriter(object):
   - @{tf.contrib.summary.create_db_writer}
   """
 
-  def  __init__(self, resource):
+  def  __init__(self, resource, init_op_fn):
     self._resource = resource
+    # TODO(nickfelt): cache constructed ops in graph mode
+    self._init_op_fn = init_op_fn
     if context.executing_eagerly() and self._resource is not None:
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device="cpu:0")
@@ -129,9 +131,31 @@ class SummaryWriter(object):
       yield self
       # Flushes the summary writer in eager mode or in graph functions, but not
       # in legacy graph mode (you're on your own there).
-      with ops.device("cpu:0"):
-        gen_summary_ops.flush_summary_writer(self._resource)
+      self.flush()
       context.context().summary_writer_resource = old
+
+  def init(self):
+    """Operation to initialize the summary writer resource."""
+    if self._resource is not None:
+      return self._init_op_fn()
+
+  def _flush(self):
+    return _flush_fn(writer=self)
+
+  def flush(self):
+    """Operation to force the summary writer to flush any buffered data."""
+    if self._resource is not None:
+      return self._flush()
+
+  def _close(self):
+    with ops.control_dependencies([self.flush()]):
+      with ops.device("cpu:0"):
+        return gen_summary_ops.close_summary_writer(self._resource)
+
+  def close(self):
+    """Operation to flush and close the summary writer resource."""
+    if self._resource is not None:
+      return self._close()
 
 
 def initialize(
@@ -178,7 +202,7 @@ def create_file_writer(logdir,
                        flush_millis=None,
                        filename_suffix=None,
                        name=None):
-  """Creates a summary file writer in the current context.
+  """Creates a summary file writer in the current context under the given name.
 
   Args:
     logdir: a string, or None. If a string, creates a summary file writer
@@ -186,18 +210,20 @@ def create_file_writer(logdir,
      a mock object which acts like a summary writer but does nothing,
      useful to use as a context manager.
     max_queue: the largest number of summaries to keep in a queue; will
-     flush once the queue gets bigger than this.
-    flush_millis: the largest interval between flushes.
-    filename_suffix: optional suffix for the event file name.
+     flush once the queue gets bigger than this. Defaults to 10.
+    flush_millis: the largest interval between flushes. Defaults to 120,000.
+    filename_suffix: optional suffix for the event file name. Defaults to `.v2`.
     name: Shared name for this SummaryWriter resource stored to default
-      Graph.
+      Graph. Defaults to the provided logdir prefixed with `logdir:`. Note: if a
+      summary writer resource with this shared name already exists, the returned
+      SummaryWriter wraps that resource and the other arguments have no effect.
 
   Returns:
     Either a summary writer or an empty object which can be used as a
     summary writer.
   """
   if logdir is None:
-    return SummaryWriter(None)
+    return SummaryWriter(None, None)
   with ops.device("cpu:0"):
     if max_queue is None:
       max_queue = constant_op.constant(10)
@@ -205,6 +231,8 @@ def create_file_writer(logdir,
       flush_millis = constant_op.constant(2 * 60 * 1000)
     if filename_suffix is None:
       filename_suffix = constant_op.constant(".v2")
+    if name is None:
+      name = "logdir:" + logdir
     return _make_summary_writer(
         name,
         gen_summary_ops.create_summary_file_writer,
@@ -267,13 +295,12 @@ def create_db_writer(db_uri,
 
 def _make_summary_writer(name, factory, **kwargs):
   resource = gen_summary_ops.summary_writer(shared_name=name)
+  init_op_fn = lambda: factory(resource, **kwargs)
   # TODO(apassos): Consider doing this instead.
-  # node = factory(resource, **kwargs)
   # if not context.executing_eagerly():
-  #   ops.get_default_session().run(node)
-  ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME,
-                        factory(resource, **kwargs))
-  return SummaryWriter(resource)
+  #   ops.get_default_session().run(init_op)
+  ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op_fn())
+  return SummaryWriter(resource, init_op_fn)
 
 
 def _cleanse_string(name, pattern, value):
@@ -341,7 +368,7 @@ def summary_writer_function(name, tensor, function, family=None):
   if context.context().summary_writer_resource is None:
     return control_flow_ops.no_op()
   with ops.device("cpu:0"):
-    op = utils.smart_cond(
+    op = smart_cond.smart_cond(
         should_record_summaries(), record, _nothing, name="")
     ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
   return op
@@ -538,7 +565,14 @@ def flush(writer=None, name=None):
     writer = context.context().summary_writer_resource
     if writer is None:
       return control_flow_ops.no_op()
-  return gen_summary_ops.flush_summary_writer(writer, name=name)
+  else:
+    if isinstance(writer, SummaryWriter):
+      writer = writer._resource  # pylint: disable=protected-access
+  with ops.device("cpu:0"):
+    return gen_summary_ops.flush_summary_writer(writer, name=name)
+
+
+_flush_fn = flush  # for within SummaryWriter.flush()
 
 
 def eval_dir(model_dir, name=None):

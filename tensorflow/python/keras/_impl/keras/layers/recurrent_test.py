@@ -435,8 +435,8 @@ class RNNTest(test.TestCase):
     cells[0].add_update(update_1, inputs=x)
     cells[0].add_update(update_2)
     self.assertEqual(len(layer.updates), 2)
-    self.assertEqual(layer.get_updates_for(None), [update_2])
-    self.assertEqual(layer.get_updates_for(x), [update_1])
+    self.assertEqual(len(layer.get_updates_for(None)), 1)
+    self.assertEqual(len(layer.get_updates_for(x)), 1)
 
   def test_rnn_dynamic_trainability(self):
     layer_class = keras.layers.SimpleRNN
