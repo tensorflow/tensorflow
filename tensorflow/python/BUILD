@@ -2955,6 +2955,7 @@ py_library(
         ":framework_ops",
         ":gradients",
         ":init_ops",
+        ":distribute",
         ":io_ops",
         ":io_ops_gen",
         ":layers_base",
@@ -3012,6 +3013,35 @@ py_test(
     ],
 )
 
+py_library(
+    name = "device_util",
+    srcs = ["training/device_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":device",
+        ":framework_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "distribute",
+    srcs = ["training/distribute.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":device_util",
+        ":framework_ops",
+        ":platform",
+        ":resource_variable_ops",
+        ":state_ops",
+        ":util",
+        ":variable_scope",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
 py_test(
     name = "checkpointable_utils_test",
     srcs = ["training/checkpointable_utils_test.py"],
@@ -3052,7 +3082,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
-        ":training",
+        ":distribute",
         ":variable_scope",
     ],
 )
@@ -4316,6 +4346,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":distribute",
         ":framework",
         ":framework_for_generated_wrappers",
         ":platform",
