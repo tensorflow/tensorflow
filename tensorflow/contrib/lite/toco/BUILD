@@ -266,6 +266,7 @@ cc_library(
         "graph_transformations/resolve_constant_gather.cc",
         "graph_transformations/resolve_constant_random_uniform.cc",
         "graph_transformations/resolve_constant_range.cc",
+        "graph_transformations/resolve_constant_reshape.cc",
         "graph_transformations/resolve_constant_shape_or_rank.cc",
         "graph_transformations/resolve_constant_stack.cc",
         "graph_transformations/resolve_constant_strided_slice.cc",
