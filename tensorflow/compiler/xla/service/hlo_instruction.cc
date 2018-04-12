@@ -159,6 +159,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->fft_length_.push_back(fft_len);
   }
 
+  if (proto.has_sharding()) {
+    TF_ASSIGN_OR_RETURN(const auto& sharding,
+                        HloSharding::FromProto(proto.sharding()));
+    instruction->set_sharding(sharding);
+  }
+
   if (proto.has_gather_dimension_numbers()) {
     instruction->gather_dimension_numbers_ =
         MakeUnique<GatherDimensionNumbers>(proto.gather_dimension_numbers());
