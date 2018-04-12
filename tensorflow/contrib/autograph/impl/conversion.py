@@ -56,7 +56,7 @@ class ConversionMap(object):
   This object is mutable, and is updated as functions are converted.
 
   Attributes:
-    recursive: Whether to recusrively convert any functions that the decorator
+    recursive: Whether to recursively convert any functions that the decorator
         function may call.
     nocompile_decorators: tuple of decorator functions that toggle compilation
         off.
