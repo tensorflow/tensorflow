@@ -368,6 +368,12 @@ ComputationDataHandle LocalComputationBuilder::Slice(
   return builder_.Slice(operand, start_indices, limit_indices, strides);
 }
 
+ComputationDataHandle LocalComputationBuilder::SliceInDim(
+    const ComputationDataHandle& operand, int64 start_index, int64 limit_index,
+    int64 stride, int64 dimno) {
+  return builder_.SliceInDim(operand, start_index, limit_index, stride, dimno);
+}
+
 ComputationDataHandle LocalComputationBuilder::DynamicSlice(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& start_indices,
@@ -513,6 +519,17 @@ ComputationDataHandle LocalComputationBuilder::Conditional(
   return builder_.Conditional(predicate, true_operand,
                               true_computation.computation(), false_operand,
                               false_computation.computation());
+}
+
+StatusOr<bool> LocalComputationBuilder::IsConstant(
+    const ComputationDataHandle& operand, int64 num_parameters) {
+  return builder_.IsConstant(operand, num_parameters);
+}
+
+StatusOr<std::unique_ptr<Literal>> LocalComputationBuilder::ComputeConstant(
+    const ComputationDataHandle& operand, const Layout* output_layout,
+    tensorflow::gtl::ArraySlice<Literal> parameters) {
+  return builder_.ComputeConstant(operand, output_layout, parameters);
 }
 
 #define _FORWARD(method_name, return_sig, args_sig, args)    \

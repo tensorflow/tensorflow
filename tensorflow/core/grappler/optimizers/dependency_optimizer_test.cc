@@ -285,6 +285,38 @@ TEST_F(DependencyOptimizerTest, RemoveNoOps_DeviceBoundaries) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
+TEST_F(DependencyOptimizerTest, RemoveIdentityOps_DeviceBoundaries) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::RandomUniform(s.WithOpName("x").WithDevice("/CPU:0"), {1, 2},
+                                DT_FLOAT);
+  Output y = ops::RandomUniform(s.WithOpName("y").WithDevice("/CPU:0"), {1, 2},
+                                DT_FLOAT);
+  // Identity with a single input- and two output dependencies.
+  auto id_a = ops::Identity(s.WithOpName("id_a").WithDevice("/CPU:1"), x);
+  // Identity with a two input- and a single output dependency.
+  auto id_b = ops::Identity(
+      s.WithOpName("id_b").WithControlDependencies(y).WithDevice("/CPU:0"), x);
+
+  Output id =
+      ops::Identity(s.WithControlDependencies(id_a).WithDevice("/CPU:1"), id_b);
+  Output id_1 = ops::Identity(s.WithDevice("/CPU:1"), id_a);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("Identity");
+  item.fetch.push_back("Identity_1");
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // The optimization should be disabled to prevent increasing the number of
+  // nodes crossing device boundaries.
+  TF_CHECK_OK(TopologicalSort(&item.graph));
+  VerifyGraphsEqual(item.graph, output, __FUNCTION__);
+}
+
 TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
@@ -513,6 +545,181 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_Identity) {
       EXPECT_EQ("^ConstantFoldingCtrl/switch_1", node.input(0));
     }
   }
+}
+
+TEST_F(DependencyOptimizerTest, IdentityInputs) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output b = ops::Placeholder(scope.WithOpName("b"), DT_BOOL);
+  Output x = ops::RandomUniform(scope.WithOpName("x"), {1, 2}, DT_FLOAT);
+  auto s = ops::Switch(scope.WithOpName("s"), x, b);
+
+  // Identity nodes to be removed.
+  auto id_f = ops::Identity(scope.WithOpName("id_f"), s.output_false);
+  auto id_t = ops::Identity(scope.WithOpName("id_t"), s.output_true);
+
+  // Output
+  Output out1 = ops::Identity(scope.WithOpName("out1"), id_f);
+  Output out2 = ops::Identity(scope.WithOpName("out2"), id_t);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"out1", "out2"};
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, output.node_size());
+  EXPECT_EQ("out1", output.node(4).name());
+  EXPECT_EQ(1, output.node(4).input_size());
+  EXPECT_EQ("s", output.node(4).input(0));
+
+  EXPECT_EQ("out2", output.node(5).name());
+  EXPECT_EQ(1, output.node(5).input_size());
+  EXPECT_EQ("s:1", output.node(5).input(0));
+}
+
+TEST_F(DependencyOptimizerTest, IdentityN) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output b = ops::Placeholder(scope.WithOpName("b"), DT_BOOL);
+  Output x = ops::RandomUniform(scope.WithOpName("x"), {1, 2}, DT_FLOAT);
+  auto s = ops::Switch(scope.WithOpName("s"), x, b);
+
+  // IdentityN nodes to be removed.
+  auto id_f = ops::IdentityN(scope.WithOpName("id_f"), {s.output_false});
+  auto id_t = ops::IdentityN(scope.WithOpName("id_t"), {s.output_true});
+
+  // IdentityN node that can't be removed.
+  auto id_b =
+      ops::IdentityN(scope.WithOpName("id_b"), {s.output_false, s.output_true});
+
+  // Outputs
+  Output out1 = ops::Identity(scope.WithOpName("out1"), id_f[0]);
+  Output out2 = ops::Identity(scope.WithOpName("out2"), id_t[0]);
+  Output out3 = ops::Identity(scope.WithOpName("out3"), id_b[0]);
+  Output out4 = ops::Identity(scope.WithOpName("out4"), id_b[1]);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"out1", "out2", "out3", "out4"};
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(9, output.node_size());
+  EXPECT_EQ("out1", output.node(5).name());
+  EXPECT_EQ(1, output.node(5).input_size());
+  EXPECT_EQ("s", output.node(5).input(0));
+
+  EXPECT_EQ("out2", output.node(6).name());
+  EXPECT_EQ(1, output.node(6).input_size());
+  EXPECT_EQ("s:1", output.node(6).input(0));
+
+  EXPECT_EQ("out3", output.node(7).name());
+  EXPECT_EQ(1, output.node(7).input_size());
+  EXPECT_EQ("id_b", output.node(7).input(0));
+
+  EXPECT_EQ("out4", output.node(8).name());
+  EXPECT_EQ(1, output.node(8).input_size());
+  EXPECT_EQ("id_b:1", output.node(8).input(0));
+}
+
+TEST_F(DependencyOptimizerTest,
+       Identity_DeviceCrossing_ConsumerOnDifferentDevice) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x_on_1 =
+      ops::Const(s.WithOpName("x_on_1").WithDevice("/gpu:1"), {1.0f}, {});
+  Output one_on_3 =
+      ops::Const(s.WithOpName("one_on_3").WithDevice("/gpu:3"), {1.0f}, {});
+  Output x_on_2 =
+      ops::Identity(s.WithOpName("x_on_2").WithDevice("/gpu:2"), x_on_1);
+  Output result =
+      ops::Add(s.WithOpName("result").WithDevice("/gpu:3"), x_on_2, one_on_3);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"result"};
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  VerifyGraphsEqual(item.graph, output, __FUNCTION__);
+}
+
+TEST_F(DependencyOptimizerTest, Identity_DeviceCrossing_ConsumerOnSameDevice) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x_on_1 =
+      ops::Const(s.WithOpName("x_on_1").WithDevice("/gpu:1"), {1.0f}, {});
+  Output one_on_2 =
+      ops::Const(s.WithOpName("one_on_2").WithDevice("/gpu:2"), {1.0f}, {});
+  Output x_on_2 =
+      ops::Identity(s.WithOpName("x_on_2").WithDevice("/gpu:2"), x_on_1);
+  Output result =
+      ops::Add(s.WithOpName("result").WithDevice("/gpu:2"), x_on_2, one_on_2);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"result"};
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  LOG(INFO) << output.DebugString();
+  EXPECT_EQ(3, output.node_size());
+  for (const auto& node : output.node()) {
+    EXPECT_NE("x_on_2", node.name());
+    if (node.name() == "result") {
+      EXPECT_EQ("x_on_1", node.input(0));
+    }
+  }
+}
+
+TEST_F(DependencyOptimizerTest, RemoveGreaterEqualWithNoOp) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape({}));
+  Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
+                              ops::Placeholder::Shape({}));
+  auto greaterequal = ops::GreaterEqual(s.WithOpName("GreaterEqual"), x, y);
+  auto noop =
+      ops::NoOp(s.WithOpName("NoOp").WithControlDependencies(greaterequal));
+  Output add = ops::Add(
+      s.WithOpName("z").WithControlDependencies({noop.operation}), x, y);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  item.fetch.push_back("z");
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int count = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "x") {
+      count++;
+      EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(0, node.input_size());
+    } else if (node.name() == "y") {
+      count++;
+      EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(0, node.input_size());
+    } else if (node.name() == "GreaterEqual") {
+      count++;
+    } else if (node.name() == "NoOp") {
+      count++;
+    } else if (node.name() == "z") {
+      count++;
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+    }
+  }
+  EXPECT_EQ(3, count);
 }
 
 }  // namespace

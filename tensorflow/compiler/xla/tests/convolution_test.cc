@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -53,26 +53,11 @@ class ConvolutionTest : public ClientLibraryTestBase {
 #endif
 };
 
-// TODO(b/72509305): Enable half data type tests for CPU
-#if (XLA_TEST_BACKEND_GPU)
-using TestTypes = ::testing::Types<float, Eigen::half>;
-#else
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
 using TestTypes = ::testing::Types<float>;
+#else
+using TestTypes = ::testing::Types<float, Eigen::half>;
 #endif
-
-template <typename T>
-Shape MakeShapeWrapper(tensorflow::gtl::ArraySlice<int64> dimensions);
-
-template <>
-Shape MakeShapeWrapper<float>(tensorflow::gtl::ArraySlice<int64> dimensions) {
-  return ShapeUtil::MakeShape(F32, dimensions);
-}
-
-template <>
-Shape MakeShapeWrapper<Eigen::half>(
-    tensorflow::gtl::ArraySlice<int64> dimensions) {
-  return ShapeUtil::MakeShape(F16, dimensions);
-}
 
 template <typename T>
 class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
@@ -103,12 +88,12 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     ASSERT_EQ(2, arhs->width());
     ASSERT_EQ(2, arhs->height());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto lhs = builder.ConstantR4FromArray4D<T>(*alhs);
     auto rhs = builder.ConstantR4FromArray4D<T>(*arhs);
-    auto conv = builder.Conv(lhs, rhs, {1, 1}, Padding::kValid);
+    builder.Conv(lhs, rhs, {1, 1}, Padding::kValid);
 
-    ComputeAndCompare(&builder, conv, {}, error_spec_);
+    ComputeAndCompare(&builder, {}, error_spec_);
   }
 };
 
@@ -121,12 +106,12 @@ template <typename T>
 class Convolve_1x1x1x2_1x1x1x2_Valid : public ConvolutionTest {
  public:
   void RunTest() {
-    ComputationBuilder builder(client_, TestName());
-    Shape input_shape = MakeShapeWrapper<T>({1, 1, 1, 2});
-    Shape filter_shape = MakeShapeWrapper<T>({1, 1, 1, 2});
+    XlaBuilder builder(TestName());
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 1, 2});
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 1, 2});
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
-    auto conv = builder.Conv(input, filter, {1, 1}, Padding::kValid);
+    builder.Conv(input, filter, {1, 1}, Padding::kValid);
 
     Array4D<T> input_data(1, 1, 1, 2);
     input_data.FillWithYX(Array2D<T>({
@@ -137,7 +122,7 @@ class Convolve_1x1x1x2_1x1x1x2_Valid : public ConvolutionTest {
         {5.0f, 6.0f},
     }));
 
-    ComputeAndCompare(&builder, conv,
+    ComputeAndCompare(&builder,
                       {std::move(*Literal::CreateFromArray(input_data)),
                        std::move(*Literal::CreateFromArray(filter_data))},
                       error_spec_);
@@ -152,12 +137,12 @@ template <typename T>
 class Convolve_1x1x4x4_1x1x2x2_Valid : public ConvolutionTest {
  public:
   void RunTest() {
-    ComputationBuilder builder(client_, TestName());
-    Shape input_shape = MakeShapeWrapper<T>({1, 1, 4, 4});
-    Shape filter_shape = MakeShapeWrapper<T>({1, 1, 2, 2});
+    XlaBuilder builder(TestName());
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 2, 2});
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
-    auto conv = builder.Conv(input, filter, {1, 1}, Padding::kValid);
+    builder.Conv(input, filter, {1, 1}, Padding::kValid);
 
     Array4D<T> input_data(1, 1, 4, 4);
     input_data.FillWithYX(Array2D<T>({
@@ -171,7 +156,7 @@ class Convolve_1x1x4x4_1x1x2x2_Valid : public ConvolutionTest {
         {5.0f, 6.0f},
         {7.0f, 8.0f},
     }));
-    ComputeAndCompare(&builder, conv,
+    ComputeAndCompare(&builder,
                       {std::move(*Literal::CreateFromArray(input_data)),
                        std::move(*Literal::CreateFromArray(filter_data))},
                       error_spec_);
@@ -186,12 +171,12 @@ template <typename T>
 class Convolve_1x1x4x4_1x1x2x2_Same : public ConvolutionTest {
  public:
   void RunTest() {
-    ComputationBuilder builder(client_, TestName());
-    Shape input_shape = MakeShapeWrapper<T>({1, 1, 4, 4});
-    Shape filter_shape = MakeShapeWrapper<T>({1, 1, 2, 2});
+    XlaBuilder builder(TestName());
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 2, 2});
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
-    auto conv = builder.Conv(input, filter, {1, 1}, Padding::kSame);
+    builder.Conv(input, filter, {1, 1}, Padding::kSame);
 
     Array4D<T> input_data(1, 1, 4, 4);
     input_data.FillWithYX(Array2D<T>({
@@ -206,7 +191,7 @@ class Convolve_1x1x4x4_1x1x2x2_Same : public ConvolutionTest {
         {7.0f, 8.0f},
     }));
 
-    ComputeAndCompare(&builder, conv,
+    ComputeAndCompare(&builder,
                       {std::move(*Literal::CreateFromArray(input_data)),
                        std::move(*Literal::CreateFromArray(filter_data))},
                       error_spec_);
@@ -222,12 +207,12 @@ template <typename T>
 class Convolve_1x1x4x4_1x1x3x3_Same : public ConvolutionTest {
  public:
   void RunTest() {
-    ComputationBuilder builder(client_, TestName());
-    Shape input_shape = MakeShapeWrapper<T>({1, 1, 4, 4});
-    Shape filter_shape = MakeShapeWrapper<T>({1, 1, 3, 3});
+    XlaBuilder builder(TestName());
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 3, 3});
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
-    auto conv = builder.Conv(input, filter, {1, 1}, Padding::kSame);
+    builder.Conv(input, filter, {1, 1}, Padding::kSame);
 
     Array4D<T> input_data(1, 1, 4, 4);
     input_data.FillWithYX(Array2D<T>({{1.0f, 2.0f, 3.0f, 4.0f},
@@ -238,7 +223,7 @@ class Convolve_1x1x4x4_1x1x3x3_Same : public ConvolutionTest {
     filter_data.FillWithYX(Array2D<T>(
         {{5.0f, 6.0f, 7.0f}, {8.0f, 9.0f, 10.0f}, {11.0f, 12.0f, 13.0f}}));
     // clang-format on
-    ComputeAndCompare(&builder, conv,
+    ComputeAndCompare(&builder,
                       {std::move(*Literal::CreateFromArray(input_data)),
                        std::move(*Literal::CreateFromArray(filter_data))},
                       error_spec_);
@@ -249,7 +234,7 @@ TYPED_TEST_CASE(Convolve_1x1x4x4_1x1x3x3_Same, TestTypes);
 TYPED_TEST(Convolve_1x1x4x4_1x1x3x3_Same, Types) { this->RunTest(); }
 
 XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
@@ -279,10 +264,10 @@ template <typename T>
 class Convolve1D_1x2x5_1x2x2_WithRHSDilation : public ConvolutionTest {
  public:
   void RunTest() {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     {
-      Shape input_shape = MakeShapeWrapper<T>({1, 2, 5});
-      Shape filter_shape = MakeShapeWrapper<T>({1, 2, 2});
+      Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 5});
+      Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 2});
       auto input = builder.Parameter(0, input_shape, "input");
       auto filter = builder.Parameter(1, filter_shape, "filter");
       // Convolution dimensions are bf0_oi0->bo0.
@@ -315,7 +300,7 @@ TYPED_TEST_CASE(Convolve1D_1x2x5_1x2x2_WithRHSDilation, TestTypes);
 TYPED_TEST(Convolve1D_1x2x5_1x2x2_WithRHSDilation, Types) { this->RunTest(); }
 
 XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSDilation) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
@@ -346,7 +331,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSDilation) {
 }
 
 XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
@@ -380,10 +365,10 @@ template <typename T>
 class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
  public:
   void RunTest() {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     {
-      Shape input_shape = MakeShapeWrapper<T>({1, 2, 5});
-      Shape filter_shape = MakeShapeWrapper<T>({1, 2, 2});
+      Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 5});
+      Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 2});
       auto input = builder.Parameter(0, input_shape, "input");
       auto filter = builder.Parameter(1, filter_shape, "filter");
       // Convolution dimensions are bf0_oi0->bo0.
@@ -417,7 +402,7 @@ TYPED_TEST_CASE(Convolve1D_1x2x5_1x2x2_WithPadding, TestTypes);
 TYPED_TEST(Convolve1D_1x2x5_1x2x2_WithPadding, Types) { this->RunTest(); }
 
 XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   std::vector<int64> input_dims = {1, 4, 2, 3, 3};
   std::vector<int64> filter_dims = {2, 2, 2, 3, 3};
   Shape input_shape = ShapeUtil::MakeShape(F32, input_dims);
@@ -484,11 +469,11 @@ template <typename T>
 class Convolve2D_1x3x3x5_3x3x5x5_Valid : public ConvolutionTest {
  public:
   void RunTest() {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     std::vector<int64> input_dims = {1, 3, 3, 5};
     std::vector<int64> filter_dims = {3, 3, 5, 3};
-    Shape input_shape = MakeShapeWrapper<T>(input_dims);
-    Shape filter_shape = MakeShapeWrapper<T>(filter_dims);
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
       auto input = builder.Parameter(0, input_shape, "input");
       auto filter = builder.Parameter(1, filter_shape, "filter");
@@ -552,7 +537,7 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
         "convolution-canonicalization");
   }
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {4, 29});
   Shape filter_shape = ShapeUtil::MakeShape(F32, {4, 10});
 
@@ -566,8 +551,7 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
   dnums.set_kernel_output_feature_dimension(1);
   dnums.set_output_batch_dimension(0);
   dnums.set_output_feature_dimension(1);
-  auto conv = builder.ConvWithGeneralDimensions(input, filter, {},
-                                                Padding::kValid, dnums);
+  builder.ConvWithGeneralDimensions(input, filter, {}, Padding::kValid, dnums);
 
   Array2D<float> param0(4, 29);
   param0.FillUnique();
@@ -578,7 +562,7 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
   Array2D<float> expected_result(29, 10);
   expected_result.Fill(0);
 
-  ComputeAndCompare(&builder, conv,
+  ComputeAndCompare(&builder,
                     {std::move(*Literal::CreateFromArray(param0)),
                      std::move(*Literal::CreateFromArray(param1))},
                     error_spec_);
@@ -602,7 +586,7 @@ class Convolve1D1WindowTestBase
  protected:
   template <typename T>
   void TestImpl() {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     int64 input_feature = GetParam().input_feature;
     int64 output_feature = GetParam().output_feature;
     int64 batch = GetParam().batch;
@@ -612,8 +596,8 @@ class Convolve1D1WindowTestBase
                                      input_feature};
     std::vector<int64> filter_dims = {window_size, input_feature,
                                       output_feature};
-    Shape input_shape = MakeShapeWrapper<T>(input_dims);
-    Shape filter_shape = MakeShapeWrapper<T>(filter_dims);
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
       auto input = builder.Parameter(0, input_shape, "input");
       auto filter = builder.Parameter(1, filter_shape, "filter");
@@ -699,9 +683,7 @@ INSTANTIATE_TEST_CASE_P(
 #if (XLA_TEST_BACKEND_GPU || XLA_TEST_BACKEND_CPU)
 class Convolve1D1WindowTestHalf : public Convolve1D1WindowTestBase {};
 
-// TODO(b/72509305): Enable half data type tests for CPU.
-XLA_TEST_P(Convolve1D1WindowTestHalf,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(Convolve1D1Window))) {
+XLA_TEST_P(Convolve1D1WindowTestHalf, Convolve1D1Window) {
   TestImpl<Eigen::half>();
 }
 
@@ -719,14 +701,16 @@ INSTANTIATE_TEST_CASE_P(
                       Convolve1DTestParam{130, 1, 1, 1, 3},
                       Convolve1DTestParam{64, 1, 1, 1, 1},
                       Convolve1DTestParam{128, 1, 1, 1, 1},
-                      // TODO(b/72566306): the following three tests fail on CPU
-                      // backend due to result miscompare.
+// TODO(b/72566306): The following five tests failed on CPU with unreasonable
+// relative errors.  Last ran on 2018-02-22.
+#if XLA_TEST_BACKEND_GPU
                       Convolve1DTestParam{139, 1, 1, 128, 1},
                       Convolve1DTestParam{640, 3, 3, 128, 1},
                       Convolve1DTestParam{900, 1, 1, 10, 1},
                       Convolve1DTestParam{1, 10, 10, 1, 10},
-                      Convolve1DTestParam{1, 10, 130, 1, 2},
                       Convolve1DTestParam{1, 10, 130, 1, 1},
+#endif
+                      Convolve1DTestParam{1, 10, 130, 1, 2},
                       Convolve1DTestParam{1, 64, 64, 1, 10},
                       Convolve1DTestParam{1, 65, 65, 1, 1},
                       Convolve1DTestParam{1, 128, 128, 1, 1},
@@ -738,13 +722,13 @@ INSTANTIATE_TEST_CASE_P(
 );
 #endif
 
-TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
-  ComputationBuilder builder(client_, TestName());
+XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
+  XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
   Shape filter_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
   auto input = builder.Parameter(0, input_shape, "input");
   auto filter = builder.Parameter(1, filter_shape, "filter");
-  auto conv = builder.Conv(input, filter, {1, 1}, Padding::kValid);
+  builder.Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<bfloat16> input_data(1, 1, 1, 2);
   input_data.FillWithYX(Array2D<bfloat16>({
@@ -755,7 +739,7 @@ TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
       {bfloat16(5), bfloat16(6)},
   }));
 
-  ComputeAndCompare(&builder, conv,
+  ComputeAndCompare(&builder,
                     {std::move(*Literal::CreateFromArray(input_data)),
                      std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);

@@ -61,6 +61,26 @@ static bool cpu_allocator_collect_stats = false;
 // If true, cpu allocator collects full stats.
 static bool cpu_allocator_collect_full_stats = false;
 
+// Individual allocations large than this amount will trigger a warning.
+static const double kLargeAllocationWarningThreshold = 0.1;
+
+// If cpu_allocator_collect_stats is true, warn when the total allocated memory
+// exceeds this threshold.
+static const double kTotalAllocationWarningThreshold = 0.5;
+
+// Cache first invocation to port::AvailableRam, as it can be expensive.
+static int64_t LargeAllocationWarningBytes() {
+  static int64_t value = static_cast<int64>(port::AvailableRam() *
+                                            kLargeAllocationWarningThreshold);
+  return value;
+}
+
+static int64_t TotalAllocationWarningBytes() {
+  static int64_t value = static_cast<int64>(port::AvailableRam() *
+                                            kTotalAllocationWarningThreshold);
+  return value;
+}
+
 void EnableCPUAllocatorStats(bool enable) {
   cpu_allocator_collect_stats = enable;
 }
@@ -70,13 +90,19 @@ void EnableCPUAllocatorFullStats(bool enable) {
 
 class CPUAllocator : public Allocator {
  public:
-  CPUAllocator() {}
+  CPUAllocator() : total_allocation_warning_triggered_(false) {}
 
   ~CPUAllocator() override {}
 
   string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    if (num_bytes > LargeAllocationWarningBytes()) {
+      LOG(WARNING) << "Allocation of " << num_bytes << " exceeds "
+                   << 100 * kLargeAllocationWarningThreshold
+                   << "% of system memory.";
+    }
+
     void* p = port::AlignedMalloc(num_bytes, alignment);
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
@@ -87,6 +113,14 @@ class CPUAllocator : public Allocator {
           std::max<int64>(stats_.max_bytes_in_use, stats_.bytes_in_use);
       stats_.max_alloc_size =
           std::max<int64>(stats_.max_alloc_size, alloc_size);
+
+      if (stats_.bytes_in_use > TotalAllocationWarningBytes() &&
+          !total_allocation_warning_triggered_) {
+        LOG(WARNING) << "Total allocated memory " << stats_.bytes_in_use
+                     << "exceeds " << 100 * kTotalAllocationWarningThreshold
+                     << "% of system memory";
+        total_allocation_warning_triggered_ = true;
+      }
     }
     return p;
   }
@@ -120,6 +154,7 @@ class CPUAllocator : public Allocator {
  private:
   mutex mu_;
   AllocatorStats stats_ GUARDED_BY(mu_);
+  bool total_allocation_warning_triggered_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };

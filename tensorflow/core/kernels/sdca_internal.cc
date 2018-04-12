@@ -226,7 +226,7 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
 }
 
 // Examples contains all the training examples that SDCA uses for a mini-batch.
-Status Examples::SampleAdaptativeProbabilities(
+Status Examples::SampleAdaptiveProbabilities(
     const int num_loss_partitions, const Regularizations& regularization,
     const ModelWeights& model_weights,
     const TTypes<float>::Matrix example_state_data,
@@ -300,6 +300,11 @@ Status Examples::SampleAdaptativeProbabilities(
     sampled_count_[i] = examples_not_seen[i - id].first;
   }
   return Status::OK();
+}
+
+void Examples::RandomShuffle() {
+  std::iota(sampled_index_.begin(), sampled_index_.end(), 0);
+  std::random_shuffle(sampled_index_.begin(), sampled_index_.end());
 }
 
 // TODO(sibyl-Aix6ihai): Refactor/shorten this function.

@@ -301,14 +301,17 @@ def _ProcessNewOps(graph):
   colocation_pairs = {}
 
   for new_op in graph._add_new_tf_operations(compute_devices=False):  # pylint: disable=protected-access
+    original_device = new_op.device
+    new_op._set_device('')  # pylint: disable=protected-access
     colocation_names = _GetColocationNames(new_op)
     if colocation_names:
       colocation_pairs[new_op] = colocation_names
-      # Don't apply this op's device function, since colocation constraints
-      # override device functions. Note that this op's device may still be set
-      # by the loop below.
+      # Don't set a device for this op, since colocation constraints override
+      # device functions and the original device. Note that this op's device may
+      # still be set by the loop below.
+      # TODO(skyewm): why does it override the original device?
     else:
-      with _MaybeDevice(new_op.device):
+      with _MaybeDevice(original_device):
         graph._apply_device_functions(new_op)  # pylint: disable=protected-access
 
   # The following loop populates the device field of ops that are colocated
@@ -475,38 +478,45 @@ def import_graph_def(graph_def,
     _PopulateTFImportGraphDefOptions(options, prefix, input_map,
                                      return_elements)
 
-    with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
-      try:
-        with errors.raise_exception_on_not_ok_status() as status:
+    # _ProcessNewOps mutates the new operations. _lock ensures a Session.run
+    # call cannot occur between creating the TF_Operations in the
+    # TF_GraphImportGraphDefWithResults call and mutating the them in
+    # _ProcessNewOps.
+    with graph._lock:  # pylint: disable=protected-access
+      with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
+        try:
           results = c_api.TF_GraphImportGraphDefWithResults(
-              graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
-      except errors.InvalidArgumentError as e:
-        # Convert to ValueError for backwards compatibility.
-        raise ValueError(str(e))
+              graph._c_graph, serialized, options)  # pylint: disable=protected-access
+          results = c_api_util.ScopedTFImportGraphDefResults(results)
+        except errors.InvalidArgumentError as e:
+          # Convert to ValueError for backwards compatibility.
+          raise ValueError(str(e))
 
-    _ProcessNewOps(graph)
+      # Create _DefinedFunctions for any imported functions.
+      #
+      # We do this by creating _DefinedFunctions directly from `graph_def`, and
+      # adding them to `graph`. Adding an existing function to a TF_Graph is a
+      # no-op, so this only has the effect of updating the Python state (usually
+      # _DefinedFunction.add_to_graph also adds the function to the TF_Graph).
+      #
+      # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
+      # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
+      # TODO(b/74620627): move this after _ProcessNewOps outside the lock once
+      # _USE_C_SHAPES is removed.
+      if graph_def.library and graph_def.library.function:
+        # pylint: disable=protected-access
+        functions = function._from_library(graph_def.library)
+        for f in functions:
+          f.add_to_graph(graph)
+        # pylint: enable=protected-access
 
-    # Create _DefinedFunctions for any imported functions.
-    #
-    # We do this by creating _DefinedFunctions directly from `graph_def`, and
-    # adding them to `graph`. Adding an existing function to a TF_Graph is a
-    # no-op, so this only has the effect of updating the Python state (usually
-    # _DefinedFunction.add_to_graph also adds the function to the TF_Graph).
-    #
-    # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
-    # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
-    if graph_def.library and graph_def.library.function:
-      # pylint: disable=protected-access
-      functions = function._from_library(graph_def.library)
-      for f in functions:
-        f.add_to_graph(graph)
-      # pylint: enable=protected-access
+      _ProcessNewOps(graph)
 
     # Treat input mappings that don't appear in the graph as an error, because
     # they are likely to be due to a typo.
     missing_unused_input_keys = (
         c_api.TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
-            results))
+            results.results))
     if missing_unused_input_keys:
       missing_unused_input_keys = [
           compat.as_str(s) for s in missing_unused_input_keys
@@ -518,7 +528,7 @@ def import_graph_def(graph_def,
     if return_elements is None:
       return None
     else:
-      return _GatherReturnElements(return_elements, graph, results)
+      return _GatherReturnElements(return_elements, graph, results.results)
 
   else:
     g = graph
@@ -675,11 +685,10 @@ def import_graph_def(graph_def,
                      ', '.join(x.name for x in op._input_types))))
         # pylint: enable=protected-access
 
-        if not g._is_function(op.type):  # pylint: disable=protected-access
-          # Execute shape inference for this op.
-          # NOTE(mrry): If the graph contains a cycle, the full shape
-          # information may not be available for this op's inputs.
-          ops.set_shapes_for_outputs(op)
+        # Execute shape inference for this op.
+        # NOTE(mrry): If the graph contains a cycle, the full shape
+        # information may not be available for this op's inputs.
+        ops.set_shape_and_handle_data_for_outputs(op)
         # For nodes with _output_shapes set, set the output shapes.
         if '_output_shapes' in op.node_def.attr:
           for i, output in enumerate(op.outputs):

@@ -358,6 +358,8 @@ class HParams(object):
   ```
   """
 
+  _HAS_DYNAMIC_ATTRIBUTES = True  # Required for pytype checks.
+
   def __init__(self, hparam_def=None, model_structure=None, **kwargs):
     """Create an instance of `HParams` from keyword arguments.
 
@@ -627,6 +629,9 @@ class HParams(object):
 
   def __str__(self):
     return str(sorted(self.values().items()))
+
+  def __repr__(self):
+    return '%s(%s)' % (type(self).__name__, self.__str__())
 
   @staticmethod
   def _get_kind_name(param_type, is_list):

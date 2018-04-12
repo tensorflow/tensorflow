@@ -22,13 +22,13 @@ import os
 import sys
 import threading
 import time
+import warnings
 
 import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.framework import types_pb2
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -37,6 +37,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -46,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -62,6 +64,10 @@ ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 @test_util.with_c_api
 class SessionTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(SessionTest, self).setUp()
+    warnings.simplefilter('always')
 
   def testUseExistingGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
@@ -187,12 +193,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(0.0, shape=[2, 3])
       # NOTE(mrry): The original_op is nonsense, but used here to test that the
       #   errors are reported correctly.
-      # pylint: disable=protected-access
       with sess.graph._original_op(a.op):
         b = array_ops.identity(a, name='id')
       with sess.graph._original_op(b.op):
         c = array_ops.placeholder(dtypes.float32)
-      # pylint: enable=protected-access
 
       def exc_predicate(e):
         return (e.op == c.op and e.op._original_op == b.op and
@@ -1052,6 +1056,43 @@ class SessionTest(test_util.TensorFlowTestCase):
       for t in threads:
         t.join()
 
+  def testParallelRunAndBuild(self):
+    with session.Session() as sess:
+      c = constant_op.constant(5.0)
+      stop = threading.Event()
+
+      def run_loop():
+        while not stop.is_set():
+          self.assertEqual(sess.run(c), 5.0)
+
+      threads = [self.checkedThread(target=run_loop) for _ in range(100)]
+      for t in threads:
+        t.start()
+
+      # Do some graph construction. Try to exercise non-trivial paths.
+      graph = ops.get_default_graph()
+      gdef = None
+      for _ in range(10):
+        x = array_ops.placeholder(dtype=dtypes.float32)
+        with ops.colocate_with(x):
+          y = array_ops.placeholder(dtype=dtypes.float32)
+        with ops.device('/cpu:0'):
+          z = control_flow_ops.while_loop(
+              lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
+        with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
+          gradients_impl.gradients(z, [x, y])
+          if gdef is None:
+            gdef = graph.as_graph_def()
+          else:
+            # NOTE(skyewm): import_graph_def breaks the running threads without
+            # the C API enabled. This is not a regression so I didn't fix it.
+            if ops._USE_C_API:
+              importer.import_graph_def(gdef, name='import')
+
+      stop.set()
+      for t in threads:
+        t.join()
+
   def testRunFeedDict(self):
     with session.Session() as s:
       x = array_ops.zeros([2])
@@ -1152,6 +1193,33 @@ class SessionTest(test_util.TensorFlowTestCase):
       e = math_ops.matmul(c, d)
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
+
+  def testMultipleInteractiveSessionsWarning(self):
+    # Reinitialize the global state to ensure that the expected warnings will
+    # be emitted.
+    session.InteractiveSession._active_session_count = 0  # pylint: disable=protected-access
+
+    sess = session.InteractiveSession()
+    sess.run(constant_op.constant(4.0))  # Run so that the session is "opened".
+    sess.close()
+    # Opening and closing interactive sessions serially should not warn.
+    with warnings.catch_warnings(record=True) as w:
+      sess = session.InteractiveSession()
+      sess.close()
+    self.assertEqual(0, len(w))
+
+    with warnings.catch_warnings(record=True) as w:
+      sess = session.InteractiveSession()
+    self.assertEqual(0, len(w))
+    with warnings.catch_warnings(record=True) as w:
+      sess2 = session.InteractiveSession()
+    self.assertEqual(1, len(w))
+    self.assertTrue('An interactive session is already active. This can cause '
+                    'out-of-memory errors in some cases. You must explicitly '
+                    'call `InteractiveSession.close()` to release resources '
+                    'held by the other session(s).' in str(w[0].message))
+    sess2.close()
+    sess.close()
 
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
@@ -1302,6 +1370,18 @@ class SessionTest(test_util.TensorFlowTestCase):
                               options=run_options,
                               run_metadata=run_metadata))
       self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
+
+  def testOptimizedMakeCallable(self):
+    with session.Session() as sess:
+      ph = array_ops.placeholder(dtypes.float32)
+      a = math_ops.add(ph, 1.0)
+      callable_opts = config_pb2.CallableOptions()
+      callable_opts.feed.append(ph.name)
+      callable_opts.fetch.append(a.name)
+      for _ in range(3):
+        callable_fn = sess._make_callable_from_options(callable_opts)
+        for _ in range(5):
+          self.assertEqual([2.0], callable_fn(np.array(1.0, dtype=np.float32)))
 
   def testFeedError(self):
     with session.Session() as sess:
@@ -1745,8 +1825,8 @@ class SessionTest(test_util.TensorFlowTestCase):
     # Ensure that errors from building the graph get propagated.
     data = array_ops.placeholder(dtypes.float32, shape=[])
     # pylint: disable=protected-access
-    enter_1 = gen_control_flow_ops._enter(data, 'foo_1', False)
-    enter_2 = gen_control_flow_ops._enter(data, 'foo_2', False)
+    enter_1 = gen_control_flow_ops.enter(data, 'foo_1', False)
+    enter_2 = gen_control_flow_ops.enter(data, 'foo_2', False)
     # pylint: enable=protected-access
     res = math_ops.add(enter_1, enter_2)
     with self.assertRaisesOpError('has inputs from different frames'):
@@ -1813,145 +1893,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           TypeError, 'Type of feed value 1 with type <(\w+) \'int\'> is not'):
         sess.run(a, feed_dict={a: 1})
-
-
-class GraphMutationTest(test_util.TensorFlowTestCase):
-
-  def setUp(self):
-    self._original_use_c_api_value = ops._USE_C_API
-    ops._USE_C_API = True
-    super(GraphMutationTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self._original_use_c_api_value
-    super(GraphMutationTest, self).tearDown()
-
-  def testUpdateInputAfterRunning(self):
-    with ops.Graph().as_default() as g:
-      a = constant_op.constant(1.0)
-      b = constant_op.constant(2.0)
-      c = a + b
-
-    with session.Session(graph=g) as sess:
-      self.assertAllEqual(3.0, sess.run(c))
-      c.op._update_input(1, a)  # pylint: disable=protected-access
-      with self.assertRaisesRegexp(
-          errors.FailedPreconditionError,
-          'add.*was changed by updating input tensor after it was run'):
-        sess.run(c)
-
-      # Check that running the graph with a new session is fine
-      with session.Session(graph=g) as sess2:
-        self.assertAllEqual(2.0, sess2.run(c))
-
-  def testSetDeviceAfterRunning(self):
-    with ops.Graph().as_default() as g:
-      a = constant_op.constant(1.0)
-      b = constant_op.constant(2.0)
-      c = a + b
-
-    with session.Session(graph=g) as sess:
-      self.assertAllEqual(3.0, sess.run(c))
-      c.op._set_device('/cpu:0')  # pylint: disable=protected-access
-      with self.assertRaisesRegexp(
-          errors.FailedPreconditionError,
-          'add.*was changed by setting device after it was run'):
-        sess.run(c)
-
-  def testSetAttrAfterRunning(self):
-    with ops.Graph().as_default() as g:
-      a = constant_op.constant(1.0, dtype=dtypes.float32)
-      b = math_ops.cast(a, dtypes.float64)
-
-    with session.Session(graph=g) as sess:
-      self.assertAllEqual(1.0, sess.run(b))
-      b.op._set_attr('DstT', attr_value_pb2.AttrValue(type=types_pb2.DT_FLOAT))
-      with self.assertRaisesRegexp(
-          errors.FailedPreconditionError,
-          'Cast.*was changed by setting attribute after it was run'):
-        sess.run(b)
-
-  def testRunModifyRun(self):
-    with ops.Graph().as_default() as g:
-      a = constant_op.constant(1.0)
-      b = constant_op.constant(2.0)
-      c = a + b
-
-      with session.Session(graph=g) as sess:
-        self.assertAllEqual(3.0, sess.run(c))
-
-        d = b + c
-        d.op._update_input(0, a)  # pylint: disable=protected-access
-        self.assertAllEqual(3.0, sess.run(c))
-        self.assertAllEqual(4.0, sess.run(d))
-
-  def testRunModifyRunTwoSessions(self):
-    with ops.Graph().as_default() as g:
-      a = constant_op.constant(1.0)
-      b = constant_op.constant(2.0)
-      c = a + b
-
-      with session.Session(graph=g) as sess1:
-        with session.Session(graph=g) as sess2:
-          self.assertAllEqual(3.0, sess1.run(c))
-          self.assertAllEqual(3.0, sess2.run(c))
-
-          d = b + c
-          d.op._update_input(0, a)  # pylint: disable=protected-access
-          self.assertAllEqual(3.0, sess2.run(c))
-          self.assertAllEqual(4.0, sess2.run(d))
-
-          d.op._update_input(0, b)  # pylint: disable=protected-access
-          self.assertAllEqual(3.0, sess1.run(c))
-          self.assertAllEqual(5.0, sess1.run(d))
-
-          with self.assertRaisesRegexp(
-              errors.FailedPreconditionError,
-              'add.*was changed by updating input tensor after it was run'):
-            sess2.run(c)
-
-  def testTwoSessionsOneRunBeforeModification(self):
-    with ops.Graph().as_default() as g, ops.device('/cpu:0'):
-      a = constant_op.constant(1.0)
-      b = constant_op.constant(2.0)
-      c = a + b
-
-    with session.Session(graph=g) as sess1:
-      with session.Session(graph=g) as sess2:
-        sess1.run(c)
-
-        c.op._set_device('/cpu:0')  # pylint: disable=protected-access
-
-        with self.assertRaisesRegexp(
-            errors.FailedPreconditionError,
-            'add.*was changed by setting device after it was run'):
-          sess1.run(c)
-
-        # sess2 was not run before modification
-        self.assertAllEqual(3.0, sess2.run(c))
-
-  def testTwoSessionsBothRunBeforeModification(self):
-    with ops.Graph().as_default() as g, ops.device('/cpu:0'):
-      a = constant_op.constant(1.0)
-      b = constant_op.constant(2.0)
-      c = a + b
-
-    with session.Session(graph=g) as sess1:
-      with session.Session(graph=g) as sess2:
-        sess1.run(c)
-        sess2.run(c)
-
-        c.op._set_device('/cpu:0')  # pylint: disable=protected-access
-
-        with self.assertRaisesRegexp(
-            errors.FailedPreconditionError,
-            'add.*was changed by setting device after it was run'):
-          sess1.run(c)
-
-        with self.assertRaisesRegexp(
-            errors.FailedPreconditionError,
-            'add.*was changed by setting device after it was run'):
-          sess2.run(c)
 
 
 if __name__ == '__main__':

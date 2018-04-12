@@ -30,7 +30,7 @@ FLAGS = None
 
 
 def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
-                                     all_tensor_names):
+                                     all_tensor_names=False):
   """Prints tensors in a checkpoint file.
 
   If no `tensor_name` is provided, prints the tensor names and shapes
@@ -139,7 +139,7 @@ if __name__ == "__main__":
       const=True,
       type="bool",
       default=False,
-      help="If True, print the values of all the tensors.")
+      help="If True, print the names and values of all the tensors.")
   parser.add_argument(
       "--all_tensor_names",
       nargs="?",

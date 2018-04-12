@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -218,9 +219,8 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(
-      StringPiece(s.ToString())
-          .contains("Invalid argument: output dimensions must be positive"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(), "Invalid argument: output dimensions must be positive"))
       << s;
 }
 

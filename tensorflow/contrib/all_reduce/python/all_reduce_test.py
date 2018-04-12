@@ -36,6 +36,12 @@ from tensorflow.python.platform import tf_logging
 
 class AllReduceTest(test_util.TensorFlowTestCase):
 
+  def testFlattenTensorsShapesDefined(self):
+    x = array_ops.placeholder(types_pb2.DT_FLOAT, [None])
+    with self.assertRaisesRegexp(ValueError,
+                                 "must have statically known shape"):
+      ar._flatten_tensors([x, x])
+
   def testRingPermutations(self):
     # 0 devices
     pred_by_c_d, rank_by_c_d = ar._ring_permutations(1, 0, [])

@@ -79,11 +79,15 @@ class AotCompilationOptions {
     device_allocator_ = device_allocator;
   }
 
+  const DebugOptions& debug_options() const { return debug_options_; }
+  DebugOptions* mutable_debug_options() { return &debug_options_; }
+
  protected:
-  AotCompilationOptions() = default;
+  AotCompilationOptions();
 
  private:
   DeviceMemoryAllocator* device_allocator_ = nullptr;
+  DebugOptions debug_options_;
 };
 
 // Abstract compiler interface that is subclassed for compilation on a
@@ -123,7 +127,7 @@ class Compiler {
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
   // applied to module. Generally a module should be passed through RunHloPasses
-  // prior to calling this method because the some HLO passes are required for
+  // prior to calling this method because some HLO passes are required for
   // correctness. Takes ownership of the HLO module and is free to transform it.
   //
   // The compiler may optionally specialize to the individual device

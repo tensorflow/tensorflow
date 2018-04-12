@@ -485,6 +485,11 @@ class FileIoTest(test.TestCase):
     f.flush()
     self.assertEqual(content, f.read(len(content) + 1))
 
+  def testUTF8StringPathExists(self):
+    file_path = os.path.join(self._base_dir, "UTF8测试_file_exist")
+    file_io.write_string_to_file(file_path, "testing")
+    v = file_io.file_exists(file_path)
+    self.assertEqual(v, True)
 
 if __name__ == "__main__":
   test.main()

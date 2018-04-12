@@ -60,6 +60,7 @@ bool IsRematerializable(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConstant:
+    case HloOpcode::kConditional:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
     case HloOpcode::kParameter:
@@ -1319,7 +1320,7 @@ StatusOr<bool> HloRematerialization::Run(
 /* static */ StatusOr<bool> HloRematerialization::RematerializeAndSchedule(
     const HloRematerialization::ShapeSizeFunction& size_function,
     int64 memory_limit_bytes, HloModule* hlo_module,
-    SchedulerAlgorithm scheduler_algorithm,
+    MemorySchedulerAlgorithm scheduler_algorithm,
     SequentialHloOrdering::HloModuleSequence* sequence,
     RematerializationSizes* sizes) {
   HloRematerialization remat(scheduler_algorithm, size_function);

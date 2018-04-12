@@ -257,6 +257,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
                                                          physical_device_desc)),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
+      scoped_allocator_mgr_(new ScopedAllocatorMgr(name)),
       tf_gpu_id_(tf_gpu_id),
       sync_every_op_(sync_every_op),
       max_streams_(max_streams) {
@@ -840,6 +841,17 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
   }
 }
 
+Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
+                                             int64 step_id) {
+  if (attr.scope_id > 0) {
+    return scoped_allocator_mgr_->GetContainer(step_id)->GetInstance(
+        attr.scope_id);
+  }
+  LOG(FATAL) << "Unexpected call to BaseGPUDevice::GetScopedAllocator "
+             << "attr.scope_id = " << attr.scope_id;
+  return gpu_allocator_;
+}
+
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
 
@@ -1013,21 +1025,34 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
   CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
   int numa_node = dev_locality.numa_node();
-  Bytes allocated_bytes = static_cast<Bytes>(memory_limit);
 
   gpu::StreamExecutor* se =
       GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
   const gpu::DeviceDescription& desc = se->GetDeviceDescription();
-  LOG(INFO) << "Creating TensorFlow device (" << device_name << " with "
-            << (memory_limit >> 20) << " MB memory) -> physical GPU ("
-            << GetShortDeviceDescription(cuda_gpu_id, desc) << ")";
   ProcessState* process_state = ProcessState::singleton();
+  Allocator* gpu_allocator = process_state->GetGPUAllocator(
+      options.config.gpu_options(), tf_gpu_id, memory_limit);
+  if (gpu_allocator == nullptr) {
+    return errors::Internal("Failed to get memory allocator for TF GPU ",
+                            tf_gpu_id.value(), " with ", memory_limit,
+                            " bytes of memory.");
+  }
+  AllocatorStats stats;
+  gpu_allocator->GetStats(&stats);
+  // 'memory_limit' is the required memory size, but if the allocator with given
+  // tf_gpu_id was created before, we'll use it instead of creating a new one
+  // (as TF gpu device is a shared resource), in which case the actual memory
+  // limit represented by 'stats.bytes_limit' used by that allocator may be
+  // different (which should be an error).
+  //
+  // TODO(laigd): report error if memory_limit doesn't match stats.bytes_limit.
   BaseGPUDevice* gpu_device = CreateGPUDevice(
-      options, device_name, allocated_bytes, dev_locality, tf_gpu_id,
-      GetShortDeviceDescription(cuda_gpu_id, desc),
-      process_state->GetGPUAllocator(options.config.gpu_options(), tf_gpu_id,
-                                     memory_limit),
+      options, device_name, static_cast<Bytes>(stats.bytes_limit), dev_locality,
+      tf_gpu_id, GetShortDeviceDescription(cuda_gpu_id, desc), gpu_allocator,
       process_state->GetCPUAllocator(numa_node));
+  LOG(INFO) << "Created TensorFlow device (" << device_name << " with "
+            << (stats.bytes_limit >> 20) << " MB memory) -> physical GPU ("
+            << GetShortDeviceDescription(cuda_gpu_id, desc) << ")";
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
   devices->push_back(gpu_device);
 

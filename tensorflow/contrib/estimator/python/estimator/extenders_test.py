@@ -18,20 +18,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
 import numpy as np
 
 from tensorflow.contrib.estimator.python.estimator import extenders
+from tensorflow.contrib.predictor import from_saved_model
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import linear
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import training
+from tensorflow.python.util import compat
 
 
 def get_input_fn(x, y):
@@ -176,6 +183,44 @@ class ForwardFeaturesTest(test.TestCase):
     predictions = next(estimator.predict(input_fn=input_fn))
     self.assertIn('id', predictions)
     self.assertEqual(101, predictions['id'])
+
+  def test_forward_in_exported(self):
+
+    def serving_input_fn():
+      features_ph = {
+          'x': array_ops.placeholder(dtypes.float32, [None]),
+          'id': array_ops.placeholder(dtypes.int32, [None])
+      }
+      features = {
+          key: array_ops.expand_dims(tensor, -1)
+          for key, tensor in features_ph.items()
+      }
+      return estimator_lib.export.ServingInputReceiver(features, features_ph)
+    def input_fn():
+      return {'x': [[3.], [5.]], 'id': [[101], [102]]}, [[1.], [2.]]
+    # create estimator
+    feature_columns = [fc.numeric_column('x')]
+    estimator = linear.LinearRegressor(feature_columns)
+    estimator.train(input_fn=input_fn, steps=1)
+    estimator = extenders.forward_features(estimator, 'id')
+
+    # export saved model
+    tmpdir = tempfile.mkdtemp()
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = estimator.export_savedmodel(export_dir_base, serving_input_fn)
+    self.assertTrue(gfile.Exists(export_dir))
+
+    # restore model
+    predict_fn = from_saved_model(export_dir, signature_def_key='predict')
+    predictions = predict_fn({'x': [3], 'id': [101]})
+
+    # verify that 'id' exists in predictions
+    self.assertIn('id', predictions)
+    self.assertEqual(101, predictions['id'])
+
+    # Clean up.
+    gfile.DeleteRecursively(tmpdir)
 
   def test_forward_list(self):
 

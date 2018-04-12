@@ -1,11 +1,18 @@
-FROM nvidia/cuda:9.0-cudnn7-runtime-ubuntu16.04
+FROM nvidia/cuda:9.0-base-ubuntu16.04
 
 LABEL maintainer="Craig Citro <craigcitro@google.com>"
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
+        cuda-command-line-tools-9-0 \
+        cuda-cublas-9-0 \
+        cuda-cufft-9-0 \
+        cuda-curand-9-0 \
+        cuda-cusolver-9-0 \
+        cuda-cusparse-9-0 \
         curl \
+        libcudnn7=7.0.5.15-1+cuda9.0 \
         libfreetype6-dev \
         libpng12-dev \
         libzmq3-dev \
@@ -47,7 +54,7 @@ RUN pip --no-cache-dir install \
     http://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.0.0-cp27-none-linux_x86_64.whl
 # --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 
-# RUN ln -s /usr/bin/python3 /usr/bin/python#
+# RUN ln -s -f /usr/bin/python3 /usr/bin/python#
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/

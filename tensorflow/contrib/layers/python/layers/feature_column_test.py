@@ -329,6 +329,55 @@ class FeatureColumnTest(test.TestCase):
     self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
     self.assertEqual(one_hot.length, 3)
 
+  def testOneHotColumnWithSparseColumnWithHashKeys(self):
+    input_values = ["marlo", "unknown", "omar"]
+    inputs = constant_op.constant(input_values)
+    hash_keys = [[10, 20], [20, 30]]
+    hash_column = fc.sparse_column_with_hash_bucket(
+        column_name="ids", hash_bucket_size=10, hash_keys=hash_keys)
+    columns_to_tensors = {}
+    columns_to_tensors["ids"] = inputs
+    hash_column.insert_transformed_feature(columns_to_tensors)
+    self.assertEqual(len(columns_to_tensors), 2)
+    self.assertTrue(hash_column in columns_to_tensors)
+
+    one_hot_column = fc.one_hot_column(hash_column)
+    one_hot_output = one_hot_column._to_dnn_input_layer(
+        columns_to_tensors[hash_column])
+
+    expected = np.array([[0., 1., 0., 0., 0., 0., 0., 1., 0.,
+                          0.], [0., 1., 0., 0., 0., 0., 0., 0., 0., 1.],
+                         [1., 0., 0., 0., 0., 0., 0., 0., 0., 1.]])
+    with self.test_session() as sess:
+      one_hot_value = sess.run(one_hot_output)
+    self.assertTrue(np.array_equal(one_hot_value, expected))
+
+  def testSparseColumnWithHashKeysWithUnexpectedHashKeys(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 "hash_keys must be a non-empty list."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=[])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "hash_keys must be a non-empty list."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=1)
+
+    with self.assertRaisesRegexp(
+        ValueError, "Each element of hash_keys must be a pair of integers."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=[1, 2])
+
+    with self.assertRaisesRegexp(
+        ValueError, "Each element of hash_keys must be a pair of integers."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=["key"])
+
+    with self.assertRaisesRegexp(
+        ValueError, "Each element of hash_keys must be a pair of integers."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=[[1, 2.0]])
+
   def testMissingValueInOneHotColumnForWeightedSparseColumn(self):
     # Github issue 12583
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])

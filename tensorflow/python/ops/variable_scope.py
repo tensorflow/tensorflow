@@ -24,6 +24,7 @@ import copy
 import enum  # pylint: disable=g-bad-import-order
 import functools
 import sys
+import threading
 import traceback
 
 import six
@@ -211,22 +212,7 @@ class _VariableStore(object):
     """Create a variable store."""
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
     self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
-    self.variable_scopes_count = {}  # Count re-used variable scopes.
     self._store_eager_variables = False
-
-  def open_variable_scope(self, scope_name):
-    if scope_name in self.variable_scopes_count:
-      self.variable_scopes_count[scope_name] += 1
-    else:
-      self.variable_scopes_count[scope_name] = 1
-
-  def close_variable_subscopes(self, scope_name):
-    for k in self.variable_scopes_count:
-      if not scope_name or k.startswith(scope_name + "/"):
-        self.variable_scopes_count[k] = 0
-
-  def variable_scope_count(self, scope_name):
-    return self.variable_scopes_count.get(scope_name, 0)
 
   def get_variable(self, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None, reuse=None,
@@ -321,7 +307,18 @@ class _VariableStore(object):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
-    if context.in_eager_mode():
+    with ops.init_scope():
+      if context.executing_eagerly():
+        # Variable creation and initialization takes place in `init_scope`s;
+        # as such, if an `init_scope` lifts us into the eager context, then we
+        # need to use `ResourceVariable`s.
+        use_resource = True
+
+    # Note that it's fine to reuse eager variables whose initialization was
+    # lifted from a function-building graph into the eager context (that's why
+    # the following clause is not wrapped in an `init_scope`); lifted variables
+    # are tracked by the graph's `VariableStore`.
+    if context.executing_eagerly():
       if not self._store_eager_variables and reuse:
         raise RuntimeError(
             "When eager execution is enabled variable reuse is only supported"
@@ -329,7 +326,6 @@ class _VariableStore(object):
             " EagerVariableStore for example usage.")
       if self._store_eager_variables:
         reuse = AUTO_REUSE
-      use_resource = True
 
     # If a *_ref type is passed in an error would be triggered further down the
     # stack. We prevent this using base_dtype to get a non-ref version of the
@@ -518,7 +514,7 @@ class _VariableStore(object):
         when violating reuse during variable creation, or if an existing
         sharded variable exists for the given name but with different sharding.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise NotImplementedError("Partitioned variables are not yet supported "
                                 "when eager execution is enabled.")
 
@@ -798,7 +794,7 @@ class _VariableStore(object):
         validate_shape=validate_shape,
         constraint=constraint,
         use_resource=use_resource)
-    if context.in_graph_mode() or self._store_eager_variables:
+    if not context.executing_eagerly() or self._store_eager_variables:
       # In eager mode we do not want to keep default references to Variable
       # objects as this will prevent their memory from being released.
       self._vars[name] = v
@@ -811,12 +807,12 @@ class _VariableStore(object):
         with ops.name_scope(name + "/Regularizer/"):
           loss = regularizer(v)
         if loss is not None:
-          if context.in_graph_mode():
-            v_name = v.name
-            loss_name = loss.name
-          else:
+          if context.executing_eagerly():
             v_name = "v_%s" % type(v)
             loss_name = "loss_%s" % type(loss)
+          else:
+            v_name = v.name
+            loss_name = loss.name
           logging.vlog(1, "Applied regularizer to %s and added the result %s "
                        "to REGULARIZATION_LOSSES.", v_name, loss_name)
           ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
@@ -920,7 +916,7 @@ class VariableScope(object):
     self._dtype = dtype
     self._use_resource = use_resource
     self._constraint = constraint
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       if self._caching_device is not None:
         raise NotImplementedError("Caching devices is not yet supported "
                                   "when eager execution is enabled.")
@@ -988,7 +984,7 @@ class VariableScope(object):
 
   def set_use_resource(self, use_resource):
     """Sets whether to use ResourceVariables for this scope."""
-    if context.in_eager_mode() and not use_resource:
+    if context.executing_eagerly() and not use_resource:
       raise ValueError("When eager execution is enabled, "
                        "use_resource cannot be set to false.")
     self._use_resource = use_resource
@@ -999,14 +995,14 @@ class VariableScope(object):
 
   def set_caching_device(self, caching_device):
     """Set caching_device for this scope."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise NotImplementedError("Caching devices are not yet supported "
                                 "when eager execution is enabled.")
     self._caching_device = caching_device
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
-    if partitioner and context.in_eager_mode():
+    if partitioner and context.executing_eagerly():
       raise NotImplementedError("Partitioned variables are not yet supported "
                                 "when eager execution is enabled.")
     self._partitioner = partitioner
@@ -1057,14 +1053,14 @@ class VariableScope(object):
       partitioner = self._partitioner
     if custom_getter is None:
       custom_getter = self._custom_getter
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      reuse = False
+      use_resource = True
+    else:
       if reuse is None:
         reuse = self._reuse
       if use_resource is None:
         use_resource = self._use_resource
-    else:
-      reuse = False
-      use_resource = True
 
     full_name = self.name + "/" + name if self.name else name
     # Variable names only depend on variable_scope (full_name here),
@@ -1107,7 +1103,7 @@ class VariableScope(object):
                                 use_resource=None,
                                 constraint=None):
     """Gets an existing variable with this name or create a new one."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise NotImplementedError("Partitioned variables are not yet supported "
                                 "when eager execution is enabled.")
     if initializer is None:
@@ -1160,18 +1156,49 @@ class VariableScope(object):
 
 
 _VARSTORE_KEY = ("__variable_store",)
-_VARSCOPE_KEY = ("__varscope",)
+_VARSCOPESTORE_KEY = ("__varscope",)
+
+
+class _VariableScopeStore(threading.local):
+  """A thread local store for the current variable scope and scope counts."""
+
+  def __init__(self):
+    super(_VariableScopeStore, self).__init__()
+    self.current_scope = VariableScope(False)
+    self.variable_scopes_count = {}
+
+  def open_variable_scope(self, scope_name):
+    if scope_name in self.variable_scopes_count:
+      self.variable_scopes_count[scope_name] += 1
+    else:
+      self.variable_scopes_count[scope_name] = 1
+
+  def close_variable_subscopes(self, scope_name):
+    for k in list(self.variable_scopes_count.keys()):
+      if not scope_name or k.startswith(scope_name + "/"):
+        self.variable_scopes_count[k] = 0
+
+  def variable_scope_count(self, scope_name):
+    return self.variable_scopes_count.get(scope_name, 0)
+
+
+def get_variable_scope_store():
+  """Returns the variable scope store for current thread."""
+  scope_store = ops.get_collection(_VARSCOPESTORE_KEY)
+
+  if not scope_store:
+    scope_store = _VariableScopeStore()
+    ops.add_to_collection(_VARSCOPESTORE_KEY, scope_store)
+  else:
+    scope_store = scope_store[0]
+
+  return scope_store
 
 
 @tf_export("get_variable_scope")
 def get_variable_scope():
   """Returns the current variable scope."""
-  scope = ops.get_collection(_VARSCOPE_KEY)
-  if scope:  # This collection has at most 1 element, the default scope at [0].
-    return scope[0]
-  scope = VariableScope(False)
-  ops.add_to_collection(_VARSCOPE_KEY, scope)
-  return scope
+  return get_variable_scope_store().current_scope
 
 
 def _get_default_variable_store():
@@ -1274,6 +1301,9 @@ class EagerVariableStore(object):
     # pylint: enable=protected-access
 
 
+# The argument list for get_variable must match arguments to get_local_variable.
+# So, if you are updating the arguments, also update arguments to
+# get_local_variable below.
 @tf_export("get_variable")
 def get_variable(name,
                  shape=None,
@@ -1385,15 +1415,32 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
     "GraphKeys.GLOBAL_VARIABLES")
 
 
-@functools.wraps(get_variable)
+# The argument list for get_local_variable must match arguments to get_variable.
+# So, if you are updating the arguments, also update arguments to get_variable.
 @tf_export("get_local_variable")
-def get_local_variable(*args, **kwargs):
-  kwargs["trainable"] = False
-  if "collections" in kwargs:
-    kwargs["collections"] += [ops.GraphKeys.LOCAL_VARIABLES]
+def get_local_variable(name,
+                       shape=None,
+                       dtype=None,
+                       initializer=None,
+                       regularizer=None,
+                       trainable=False,  # pylint: disable=unused-argument
+                       collections=None,
+                       caching_device=None,
+                       partitioner=None,
+                       validate_shape=True,
+                       use_resource=None,
+                       custom_getter=None,
+                       constraint=None):
+  if collections:
+    collections += [ops.GraphKeys.LOCAL_VARIABLES]
   else:
-    kwargs["collections"] = [ops.GraphKeys.LOCAL_VARIABLES]
-  return get_variable(*args, **kwargs)
+    collections = [ops.GraphKeys.LOCAL_VARIABLES]
+  return get_variable(
+      name, shape=shape, dtype=dtype, initializer=initializer,
+      regularizer=regularizer, trainable=False, collections=collections,
+      caching_device=caching_device, partitioner=partitioner,
+      validate_shape=validate_shape, use_resource=use_resource,
+      custom_getter=custom_getter, constraint=constraint)
 get_local_variable.__doc__ = get_variable_or_local_docstring % (
     "Gets an existing *local* variable or creates a new one.",
     "Behavior is the same as in `get_variable`, except that variables are\n"
@@ -1555,10 +1602,8 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
     self._dtype = dtype
     self._use_resource = use_resource
     self._constraint = constraint
-    get_variable_scope()  # Ensure that a default exists, then get a pointer.
-    # Get the reference to the collection as we want to modify it in place.
-    self._default_varscope = ops.get_collection_ref(_VARSCOPE_KEY)
     self._var_store = _get_default_variable_store()
+    self._var_scope_store = get_variable_scope_store()
     if isinstance(self._name_or_scope, VariableScope):
       self._new_name = self._name_or_scope.name
       name_scope = self._name_or_scope._name_scope  # pylint: disable=protected-access
@@ -1606,10 +1651,11 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
         a reuse scope, or if reuse is not `None` or `True`.
       TypeError: when the types of some arguments are not appropriate.
     """
-    self._old = self._default_varscope[0]
+    self._old = self._var_scope_store.current_scope
     if isinstance(self._name_or_scope, VariableScope):
-      self._var_store.open_variable_scope(self._new_name)
-      self._old_subscopes = copy.copy(self._var_store.variable_scopes_count)
+      self._var_scope_store.open_variable_scope(self._new_name)
+      self._old_subscopes = copy.copy(
+          self._var_scope_store.variable_scopes_count)
       variable_scope_object = self._cached_variable_scope_object
     else:
       # Handler for the case when we just prolong current variable scope.
@@ -1652,17 +1698,17 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
         variable_scope_object.set_dtype(self._dtype)
       if self._use_resource is not None:
         variable_scope_object.set_use_resource(self._use_resource)
-      self._var_store.open_variable_scope(self._new_name)
-    self._default_varscope[0] = variable_scope_object
+      self._var_scope_store.open_variable_scope(self._new_name)
+    self._var_scope_store.current_scope = variable_scope_object
     return variable_scope_object
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     # If jumping out from a non-prolonged scope, restore counts.
     if isinstance(self._name_or_scope, VariableScope):
-      self._var_store.variable_scopes_count = self._old_subscopes
+      self._var_scope_store.variable_scopes_count = self._old_subscopes
     else:
-      self._var_store.close_variable_subscopes(self._new_name)
-    self._default_varscope[0] = self._old
+      self._var_scope_store.close_variable_subscopes(self._new_name)
+    self._var_scope_store.current_scope = self._old
 
 
 def _maybe_wrap_custom_getter(custom_getter, old_getter):
@@ -1687,13 +1733,13 @@ def _maybe_wrap_custom_getter(custom_getter, old_getter):
 
 def _get_unique_variable_scope(prefix):
   """Get a name with the given prefix unique in the current variable scope."""
-  var_store = _get_default_variable_store()
+  var_scope_store = get_variable_scope_store()
   current_scope = get_variable_scope()
   name = current_scope.name + "/" + prefix if current_scope.name else prefix
-  if var_store.variable_scope_count(name) == 0:
+  if var_scope_store.variable_scope_count(name) == 0:
     return prefix
   idx = 1
-  while var_store.variable_scope_count(name + ("_%d" % idx)) > 0:
+  while var_scope_store.variable_scope_count(name + ("_%d" % idx)) > 0:
     idx += 1
   return prefix + ("_%d" % idx)
 
@@ -1709,9 +1755,10 @@ class variable_scope(object):
   graph, ensures that graph is the default graph, and pushes a name scope and a
   variable scope.
 
-  If `name_or_scope` is not None, it is used as is. If `scope` is None, then
-  `default_name` is used.  In that case, if the same name has been previously
-  used in the same scope, it will be made unique by appending `_N` to it.
+  If `name_or_scope` is not None, it is used as is. If `name_or_scope` is None,
+  then `default_name` is used.  In that case, if the same name has been
+  previously used in the same scope, it will be made unique by appending `_N`
+  to it.
 
   Variable scope allows you to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
@@ -1790,6 +1837,32 @@ class variable_scope(object):
   discouraged) to pass False to the reuse argument, yielding undocumented
   behaviour slightly different from None. Starting at 1.1.0 passing None and
   False as reuse has exactly the same effect.
+
+  A note about using variable scopes in multi-threaded environment: Variable
+  scopes are thread local, so one thread will not see another thread's current
+  scope. Also, when using `default_name`, unique scopes names are also generated
+  only on a per thread basis. If the same name was used within a different
+  thread, that doesn't prevent a new thread from creating the same scope.
+  However, the underlying variable store is shared across threads (within the
+  same graph). As such, if another thread tries to create a new variable with
+  the same name as a variable created by a previous thread, it will fail unless
+  reuse is True.
+
+  Further, each thread starts with an empty variable scope. So if you wish to
+  preserve name prefixes from a scope from the main thread, you should capture
+  the main thread's scope and re-enter it in each thread. For e.g.
+
+  ```
+  main_thread_scope = variable_scope.get_variable_scope()
+
+  # Thread's target function:
+  def thread_target_fn(captured_scope):
+    with variable_scope.variable_scope(captured_scope):
+      # .... regular code for this thread
+
+
+  thread = threading.Thread(target=thread_target_fn, args=(main_thread_scope,))
+  ```
   """
 
   def __init__(self,
@@ -1871,7 +1944,7 @@ class variable_scope(object):
       raise ValueError("The reuse parameter must be True or False or None.")
     if self._values is None:
       self._values = []
-    self._in_graph_mode = not context.in_eager_mode()
+    self._in_graph_mode = not context.executing_eagerly()
     if self._in_graph_mode:
       self._graph = ops._get_graph_from_inputs(self._values)  # pylint: disable=protected-access
     self._cached_pure_variable_scope = None
@@ -2111,13 +2184,13 @@ def default_variable_creator(next_creator=None, **kwargs):
   use_resource = kwargs.get("use_resource", None)
   if use_resource is None:
     use_resource = get_variable_scope().use_resource
-  if use_resource or (use_resource is None and context.in_eager_mode()):
+  if use_resource or (use_resource is None and context.executing_eagerly()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,
         collections=collections, validate_shape=validate_shape,
         caching_device=caching_device, name=name, dtype=dtype,
         constraint=constraint)
-  elif not use_resource and context.in_eager_mode():
+  elif not use_resource and context.executing_eagerly():
     raise RuntimeError(
         "VariableScope should use resource variable when eager execution is"
         " enabled, but use_resource is False."
@@ -2145,7 +2218,7 @@ def variable(initial_value=None,
              constraint=None,
              use_resource=None):
   previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
-  for getter in ops.get_default_graph()._get_variable_creator_stack():  # pylint: disable=protected-access
+  for getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
     previous_getter = _make_getter(getter, previous_getter)
   return previous_getter(initial_value=initial_value,
                          trainable=trainable,

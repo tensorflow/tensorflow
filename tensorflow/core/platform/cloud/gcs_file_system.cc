@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -171,7 +172,7 @@ Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
                                    fname);
   }
-  objectp.Consume("/");
+  str_util::ConsumePrefix(&objectp, "/");
   *object = objectp.ToString();
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("GCS path doesn't contain an object name: ",
@@ -534,7 +535,8 @@ class GcsWritableFile : public WritableFile {
       *uploaded = 0;
     } else {
       StringPiece range_piece(received_range);
-      range_piece.Consume("bytes=");  // May or may not be present.
+      str_util::ConsumePrefix(&range_piece,
+                              "bytes=");  // May or may not be present.
       std::vector<int64> range_parts;
       if (!str_util::SplitAndParseAsInts(range_piece, '-', &range_parts) ||
           range_parts.size() != 2) {
@@ -783,13 +785,13 @@ Status GcsFileSystem::NewRandomAccessFile(
 // A helper function to build a FileBlockCache for GcsFileSystem.
 std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
     size_t block_size, size_t max_bytes, uint64 max_staleness) {
-  std::unique_ptr<FileBlockCache> file_block_cache(
-      new FileBlockCache(block_size, max_bytes, max_staleness,
-                         [this](const string& filename, size_t offset, size_t n,
-                                char* buffer, size_t* bytes_transferred) {
-                           return LoadBufferFromGCS(filename, offset, n, buffer,
-                                                    bytes_transferred);
-                         }));
+  std::unique_ptr<FileBlockCache> file_block_cache(new RamFileBlockCache(
+      block_size, max_bytes, max_staleness,
+      [this](const string& filename, size_t offset, size_t n, char* buffer,
+             size_t* bytes_transferred) {
+        return LoadBufferFromGCS(filename, offset, n, buffer,
+                                 bytes_transferred);
+      }));
   return file_block_cache;
 }
 
@@ -812,6 +814,10 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   request->SetResultBufferDirect(buffer, n);
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.read);
 
+  if (stats_ != nullptr) {
+    stats_->RecordBlockLoadRequest(filename, offset);
+  }
+
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                   bucket, "/", object);
 
@@ -819,6 +825,10 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   *bytes_transferred = bytes_read;
   VLOG(1) << "Successful read of gs://" << bucket << "/" << object << " @ "
           << offset << " of size: " << bytes_read;
+
+  if (stats_ != nullptr) {
+    stats_->RecordBlockRetrieved(filename, offset, bytes_read);
+  }
 
   throttle_.RecordResponse(bytes_read);
 
@@ -1163,7 +1173,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         // 'object_prefix', which is part of 'dirname', should be removed from
         // the beginning of 'name'.
         StringPiece relative_path(name);
-        if (!relative_path.Consume(object_prefix)) {
+        if (!str_util::ConsumePrefix(&relative_path, object_prefix)) {
           return errors::Internal(strings::StrCat(
               "Unexpected response: the returned file name ", name,
               " doesn't match the prefix ", object_prefix));
@@ -1192,7 +1202,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         }
         const string& prefix_str = prefix.asString();
         StringPiece relative_path(prefix_str);
-        if (!relative_path.Consume(object_prefix)) {
+        if (!str_util::ConsumePrefix(&relative_path, object_prefix)) {
           return errors::Internal(
               "Unexpected response: the returned folder name ", prefix_str,
               " doesn't match the prefix ", object_prefix);
@@ -1454,6 +1464,13 @@ void GcsFileSystem::FlushCaches() {
   matching_paths_cache_->Clear();
 }
 
+void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
+  CHECK(stats_ == nullptr) << "SetStats() has already been called.";
+  CHECK(stats != nullptr);
+  stats_ = stats;
+  stats_->Init(this, &throttle_, file_block_cache_.get());
+}
+
 // Creates an HttpRequest and sets several parameters that are common to all
 // requests.  All code (in GcsFileSystem) that creates an HttpRequest should
 // go through this method, rather than directly using http_request_factory_.
@@ -1471,6 +1488,10 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   if (additional_header_) {
     new_request->AddHeader(additional_header_->first,
                            additional_header_->second);
+  }
+
+  if (stats_ != nullptr) {
+    new_request->SetRequestStats(stats_->HttpStats());
   }
 
   if (!throttle_.AdmitRequest()) {

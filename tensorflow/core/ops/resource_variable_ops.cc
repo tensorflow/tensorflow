@@ -167,27 +167,75 @@ REGISTER_OP("ResourceGather")
       return Status::OK();
     });
 
+namespace {
+
+Status ResourceScatterUpdateShape(InferenceContext* c) {
+  ShapeAndType handle_shape_and_type;
+  TF_RETURN_IF_ERROR(ValidateVariableResourceHandle(c, &handle_shape_and_type));
+  ShapeHandle var_shape = handle_shape_and_type.shape;
+  ShapeHandle indices_shape = c->input(1);
+
+  ShapeHandle unused_updates_shape;
+  ShapeHandle concat;
+  ShapeHandle var_subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
+  TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
+  TF_RETURN_IF_ERROR(
+      InferenceContext::Rank(c->input(2)) == 0
+          ? Status::OK()
+          : c->Merge(c->input(2), concat, &unused_updates_shape));
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ResourceScatterAdd")
     .Input("resource: resource")
     .Input("indices: Tindices")
     .Input("updates: dtype")
     .Attr("dtype: numbertype")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeAndType handle_shape_and_type;
-      TF_RETURN_IF_ERROR(
-          ValidateVariableResourceHandle(c, &handle_shape_and_type));
-      ShapeHandle var_shape = handle_shape_and_type.shape;
-      ShapeHandle indices_shape = c->input(1);
+    .SetShapeFn(ResourceScatterUpdateShape);
 
-      ShapeHandle unused_updates_shape;
-      ShapeHandle concat;
-      ShapeHandle var_subshape;
-      TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
-      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
-      TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
-      return Status::OK();
-    });
+REGISTER_OP("ResourceScatterSub")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
+
+REGISTER_OP("ResourceScatterMul")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
+
+REGISTER_OP("ResourceScatterDiv")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
+
+REGISTER_OP("ResourceScatterMin")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
+
+REGISTER_OP("ResourceScatterMax")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
 
 REGISTER_OP("ResourceScatterUpdate")
     .Input("resource: resource")
@@ -195,23 +243,9 @@ REGISTER_OP("ResourceScatterUpdate")
     .Input("updates: dtype")
     .Attr("dtype: type")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeAndType handle_shape_and_type;
-      TF_RETURN_IF_ERROR(
-          ValidateVariableResourceHandle(c, &handle_shape_and_type));
-      ShapeHandle var_shape = handle_shape_and_type.shape;
-      ShapeHandle indices_shape = c->input(1);
+    .SetShapeFn(ResourceScatterUpdateShape);
 
-      ShapeHandle unused_updates_shape;
-      ShapeHandle concat;
-      ShapeHandle var_subshape;
-      TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
-      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
-      TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
-      return Status::OK();
-    });
-
-REGISTER_OP("CriticalSectionOp")
+REGISTER_OP("MutexV2")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Output("resource: resource")
@@ -221,24 +255,18 @@ REGISTER_OP("CriticalSectionOp")
       return Status::OK();
     });
 
-REGISTER_OP("ExecuteInCriticalSection")
-    .Input("critical_section: resource")
-    .Input("arguments: Targuments")
-    .Output("outputs: output_types")
-    .Attr("f: func")
-    .Attr("Targuments: list(type) >= 0")
-    .Attr("output_types: list(type) >= 0")
-    .Attr("output_shapes: list(shape) >= 0")
+REGISTER_OP("MutexLock")
+    .Input("mutex: resource")
+    .Output("mutex_lock: variant")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      std::vector<PartialTensorShape> output_shapes;
-      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
-      for (int i = 0; i < output_shapes.size(); ++i) {
-        ShapeHandle s;
-        TF_RETURN_IF_ERROR(
-            c->MakeShapeFromPartialTensorShape(output_shapes[i], &s));
-        c->set_output(i, s);
-      }
+      c->set_output(0, c->Scalar());
       return Status::OK();
     });
+
+REGISTER_OP("ConsumeMutexLock")
+    .Input("mutex_lock: variant")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
 
 }  // namespace tensorflow

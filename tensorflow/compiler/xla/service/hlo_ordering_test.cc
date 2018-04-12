@@ -34,53 +34,6 @@ namespace {
 
 class HloOrderingTest : public HloTestBase {};
 
-TEST_F(HloOrderingTest, LastUseScheduledFirst) {
-  // Tests scheduling of the following HLO code:
-  //
-  //   %ab = abs(%param)
-  //   %exp = exp(%param)
-  //   %add = add(%ab, %exp)
-  //   %negate = negate(%exp)
-  //   %sub = subtract(%add, %negate)
-  //
-  // %add should be scheduled before %negate because %add is the last (and only)
-  // use of %ab. Scheduling %add first then frees up %ab's buffer.
-  const Shape vec = ShapeUtil::MakeShape(xla::F32, {42});
-  auto builder = HloComputation::Builder(TestName());
-  auto param =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, vec, "param"));
-  auto ab = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kAbs, param));
-  auto exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kExp, param));
-
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(vec, HloOpcode::kAdd, ab, exp));
-  auto negate = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kNegate, exp));
-  auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(vec, HloOpcode::kSubtract, add, negate));
-
-  auto module = CreateNewModule();
-  module->AddEntryComputation(builder.Build());
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      SequentialHloOrdering::HloModuleSequence sequence,
-      CreateMemoryMinimizingSequence(*module, [](const LogicalBuffer& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape());
-      }));
-  // Verify that all instructions are in the sequence.
-  EXPECT_EQ(module->entry_computation()->instruction_count(),
-            sequence.at(module->entry_computation()).size());
-
-  // The first instruction should be the parameter and the last the root "sub".
-  EXPECT_EQ(param, sequence.at(module->entry_computation()).front());
-  EXPECT_EQ(sub, sequence.at(module->entry_computation()).back());
-
-  SequentialHloOrdering ordering(module.get(), sequence);
-  EXPECT_TRUE(ordering.ExecutesBefore(add, negate));
-}
-
 TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   // Tests the ordering of instructions in different computations using the
   // following HLO code:
@@ -262,8 +215,8 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
       scalar_shape, HloOpcode::kAdd, constant, xla_while));
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto dataflow, HloDataflowAnalysis::Run(module.get(), /*ssa_form=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
 
   // Init value is defined before the while, but live range is not before the
@@ -360,6 +313,67 @@ ENTRY while.v11 {
                           tools::Parse(module_str));
   DependencyHloOrdering ordering(module.get());
   ordering.ToString();  // Shouldn't crash.
+}
+
+TEST_F(HloOrderingTest, ConditionalInstructionOrdering) {
+  const char* module_str = R"(
+HloModule test_conditional_module
+
+true_branch {
+  param.1 = (s32[], s32[]) parameter(0)
+  get-tuple-element.1 = s32[] get-tuple-element(param.1), index=0
+  get-tuple-element.2 = s32[] get-tuple-element(param.1), index=1
+  add.1 = s32[] add(get-tuple-element.1, get-tuple-element.2)
+  ROOT tuple.1 = (s32[], s32[]) tuple(add.1, get-tuple-element.1)
+}
+
+false_branch {
+  param.2 = (s32[], s32[]) parameter(0)
+  get-tuple-element.3 = s32[] get-tuple-element(param.2), index=0
+  get-tuple-element.4 = s32[] get-tuple-element(param.2), index=1
+  add.2 = s32[] add(get-tuple-element.3, get-tuple-element.4)
+  ROOT tuple.2 = (s32[], s32[]) tuple(add.2, get-tuple-element.4)
+}
+
+ENTRY root {
+  param.3 = (pred[], (s32[], s32[])) parameter(0)
+  pred.1 = pred[] get-tuple-element(param.3), index=0
+  cond_arg.1 = (s32[], s32[]) get-tuple-element(param.3), index=1
+  conditional = (s32[], s32[]) conditional(pred.1, cond_arg.1, cond_arg.1), true_computation=true_branch, false_computation=false_branch
+  cond_res.1 = s32[] get-tuple-element(conditional), index=0
+  cond_res.2 = s32[] get-tuple-element(conditional), index=1
+  add.3 = s32[] add(cond_res.1, cond_res.2)
+  ROOT result = (s32[], s32[], s32[]) tuple(add.3, cond_res.1, cond_res.2)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  DependencyHloOrdering ordering(module.get());
+
+  // Even though the true and false branches has no ordering, since they do not
+  // interfere (as they are mutually exclusive), we define the true computation
+  // to be before the false one.
+  // Similarly, any instruction in the true or false branches are considered
+  // before the conditional instruction. The roots are effectively "at the same
+  // time" WRT the conditional, but they are Phi-ed anyway.
+  HloInstruction* add_1 = FindInstruction(module.get(), "add.1");
+  HloInstruction* add_2 = FindInstruction(module.get(), "add.2");
+  HloInstruction* add_3 = FindInstruction(module.get(), "add.3");
+  HloInstruction* conditional = FindInstruction(module.get(), "conditional");
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_1),
+                                       dataflow->GetValueDefinedAt(add_2)));
+  EXPECT_TRUE(
+      ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_2),
+                               dataflow->GetValueDefinedAt(conditional)));
+  EXPECT_TRUE(
+      ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_1),
+                               dataflow->GetValueDefinedAt(conditional)));
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_1),
+                                       dataflow->GetValueDefinedAt(add_3)));
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_2),
+                                       dataflow->GetValueDefinedAt(add_3)));
 }
 
 }  // namespace

@@ -31,18 +31,19 @@ band_part = array_ops.matrix_band_part
 cholesky = linalg_ops.cholesky
 cholesky_solve = linalg_ops.cholesky_solve
 det = linalg_ops.matrix_determinant
-# pylint: disable=protected-access
-slogdet = gen_linalg_ops._log_matrix_determinant
-# pylint: disable=protected-access
+slogdet = gen_linalg_ops.log_matrix_determinant
+tf_export('linalg.slogdet')(slogdet)
 diag = array_ops.matrix_diag
 diag_part = array_ops.matrix_diag_part
 eigh = linalg_ops.self_adjoint_eig
 eigvalsh = linalg_ops.self_adjoint_eigvals
 einsum = special_math_ops.einsum
-expm = gen_linalg_ops._matrix_exponential
+expm = gen_linalg_ops.matrix_exponential
+tf_export('linalg.expm')(expm)
 eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
-logm = gen_linalg_ops._matrix_logarithm
+logm = gen_linalg_ops.matrix_logarithm
+tf_export('linalg.logm')(logm)
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr

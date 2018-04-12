@@ -16,6 +16,7 @@ limitations under the License.
 syntax = "proto3";
 
 import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
@@ -188,6 +189,12 @@ message DebugOptions {
   // directory.
   string xla_dump_per_pass_hlo_proto_to = 96;
 
+  // Generate calls to MKL-DNN in the CPU backend.
+  bool xla_cpu_use_mkl_dnn = 97;
+
+  // Maximum kernel unroll factor for the GPU backend.
+  int32 xla_gpu_max_kernel_unroll_factor = 98;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
@@ -298,6 +305,11 @@ message ComputationStatsRequest {
   DebugOptions debug_options = 2;
 }
 
+message ComputationGraphStatsRequest {
+  HloModuleProto computation = 1;
+  DebugOptions debug_options = 2;
+}
+
 message ComputationStatsResponse {
   ComputationStats stats = 1;
 }
@@ -342,8 +354,20 @@ message ExecuteRequest {
   ExecutionOptions execution_options = 5;
 }
 
+message ExecuteGraphRequest {
+  HloModuleProto computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 3;
+}
+
 message ExecuteParallelRequest {
   repeated ExecuteRequest requests = 1;
+}
+
+message ExecuteGraphParallelRequest {
+  repeated ExecuteGraphRequest requests = 1;
 }
 
 message ExecuteResponse {
@@ -394,6 +418,11 @@ message ComputeConstantRequest {
   ComputationDataHandle operand = 2;
   Layout output_layout = 3;
   repeated LiteralProto parameters = 4;
+}
+
+message ComputeConstantGraphRequest {
+  HloModuleProto computation = 1;
+  Layout output_layout = 2;
 }
 
 message ComputeConstantResponse {
