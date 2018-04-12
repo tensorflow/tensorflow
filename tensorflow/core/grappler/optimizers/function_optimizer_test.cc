@@ -26,7 +26,22 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class FunctionOptimizerTest : public GrapplerTest {};
+constexpr char kDevice[] = "/device:CPU:0";
+
+class FunctionOptimizerTest : public GrapplerTest {
+ protected:
+  Tensor MakeScalarTensor(float value) {
+    Tensor tensor(DT_FLOAT, {});
+    tensor.scalar<float>()() = value;
+    return tensor;
+  }
+
+  Tensor MakeScalarTensor(int value) {
+    Tensor tensor(DT_INT32, {});
+    tensor.scalar<int>()() = value;
+    return tensor;
+  }
+};
 
 TEST_F(FunctionOptimizerTest, SimpleFunction) {
   // Build a graph to compute y = XTimesTwo(x)
@@ -94,9 +109,8 @@ TEST_F(FunctionOptimizerTest, SimpleFunction) {
   }
   EXPECT_EQ(7, count);
 
+  Tensor pi = MakeScalarTensor(3.14f);
   item.fetch = {"z"};
-  Tensor pi(DT_FLOAT, {});
-  pi.flat<float>()(0) = 3.14f;
   item.feed.emplace_back("x", pi);
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized(item, std::move(output));
@@ -183,9 +197,8 @@ TEST_F(FunctionOptimizerTest, FixedTypeFunction) {
   }
   EXPECT_EQ(6, count);
 
+  Tensor pi = MakeScalarTensor(3.14f);
   item.fetch = {"z"};
-  Tensor pi(DT_FLOAT, {});
-  pi.flat<float>()(0) = 3.14f;
   item.feed.emplace_back("x", pi);
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized(item, std::move(output));
@@ -268,9 +281,8 @@ TEST_F(FunctionOptimizerTest, FunctionWithOutputMapping) {
   }
   EXPECT_EQ(6, count);
 
+  Tensor pi = MakeScalarTensor(3.14f);
   item.fetch = {"z"};
-  Tensor pi(DT_FLOAT, {});
-  pi.flat<float>()(0) = 3.14f;
   item.feed.emplace_back("x", pi);
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized(item, std::move(output));
@@ -325,18 +337,11 @@ TEST_F(FunctionOptimizerTest, FunctionWithInputForwarding) {
   TF_EXPECT_OK(status);
 
   item.fetch = {"z0", "z1", "z2"};
-  Tensor in(DT_FLOAT, {});
-  in.flat<float>()(0) = 3.14f;
-  item.feed.emplace_back("x0", in);
-  in.flat<float>()(0) = 2.7f;
-  item.feed.emplace_back("x1", in);
-  in.flat<float>()(0) = 1.0f;
-  item.feed.emplace_back("x2", in);
-  in.flat<float>()(0) = -1.0f;
-  item.feed.emplace_back("x4", in);
-  Tensor in_int(DT_INT32, {});
-  in_int.flat<int>()(0) = 1234;
-  item.feed.emplace_back("x3", in_int);
+  item.feed.emplace_back("x0", MakeScalarTensor(3.14f));
+  item.feed.emplace_back("x1", MakeScalarTensor(2.7f));
+  item.feed.emplace_back("x2", MakeScalarTensor(1.0f));
+  item.feed.emplace_back("x4", MakeScalarTensor(-1.0f));
+  item.feed.emplace_back("x3", MakeScalarTensor(1234));
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized(item, std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
@@ -379,6 +384,100 @@ TEST_F(FunctionOptimizerTest, FunctionWithoutInput) {
   EXPECT_EQ(item.graph.DebugString(), output.DebugString());
 }
 
+TEST_F(FunctionOptimizerTest, InlineFunctionWithNestedFunctionCall) {
+  // Define square via function library:
+  //   MySquare(x) = MyMul(x, x)
+
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+      {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "output:z:0"}});
+
+  FunctionDef square_func = FunctionDefHelper::Create(
+      "MySquare", {"x:T"}, {"z:T"}, {"T: {float, double}"},
+      {{{"output"}, "MyMul", {"x", "x"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "output:z:0"}});
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {test::function::NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}},
+                            kDevice),
+       test::function::NDef("square", "MySquare", {"a"}, {{"T", DT_FLOAT}},
+                            kDevice),
+       test::function::NDef("outputs", "Identity", {"square:0"},
+                            {{"T", DT_FLOAT}}, kDevice)},
+      // FunctionLib
+      {mul_func, square_func});
+
+  GraphDef output;
+  FunctionOptimizer optimizer(RewriterConfig::ON);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int count = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "square/inlined_inputs" && count++) {
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("a", node.input(0));
+    } else if (node.name() == "square/x" && count++) {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("square/inlined_inputs:0", node.input(0));
+    } else if (node.name() == "square/output/inlined_inputs" && count++) {
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("square/x", node.input(0));
+      EXPECT_EQ("square/x", node.input(1));
+    } else if (node.name() == "square/output/x" && count++) {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("square/output/inlined_inputs:0", node.input(0));
+    } else if (node.name() == "square/output/y" && count++) {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("square/output/inlined_inputs:1", node.input(0));
+    } else if (node.name() == "square/output/output" && count++) {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("square/output/x", node.input(0));
+      EXPECT_EQ("square/output/y", node.input(1));
+    } else if (node.name() == "square/output" && count++) {
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("square/output/output:0", node.input(0));
+    } else if (node.name() == "square" && count++) {
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("square/output:0", node.input(0));
+    } else if (node.name() == "outputs" && count++) {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("square:0", node.input(0));
+    }
+  }
+  EXPECT_EQ(9, count);
+
+  item.fetch = {"outputs"};
+  item.feed.emplace_back("a", MakeScalarTensor(2.0f));
+  auto tensors_expected = EvaluateFetchNodes(item);
+
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 TEST_F(FunctionOptimizerTest, SymbolicGradients) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
@@ -409,7 +508,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradients) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -451,7 +550,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradientsIdentity) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -514,7 +613,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradientsNoInlineFunc) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   // The optimizer should succeed but the graphs should be the same.

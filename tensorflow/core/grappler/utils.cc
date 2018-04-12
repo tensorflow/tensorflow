@@ -255,6 +255,14 @@ int NumOutputs(const NodeDef& node, GraphDef* graph) {
   return num_outputs;
 }
 
+bool HasControlInputs(const NodeDef& node) {
+  int num_inputs = node.input_size();
+  if (num_inputs > 0 && IsControlInput(node.input(num_inputs - 1))) {
+    return true;
+  }
+  return false;
+}
+
 int NumNonControlInputs(const NodeDef& node) {
   int num_inputs = node.input_size();
   for (const string& input : node.input()) {
@@ -422,18 +430,28 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
 }
 
 void SimpleGraphView::DepthFirstSearch(
-    const std::unordered_set<string>& op_types_to_traverse, int node_idx,
+    const std::unordered_set<string>& op_types_to_traverse, int root_node,
     std::set<int>* nodes_found) const {
-  if (nodes_found->find(node_idx) != nodes_found->end()) {
-    return;
-  }
-  nodes_found->insert(node_idx);
-  const string& op_type = graph_->node(node_idx).op();
+  nodes_found->clear();
+  const string& op_type = graph_->node(root_node).op();
   if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
     return;
   }
-  for (auto output_idx : this->outputs(node_idx)) {
-    DepthFirstSearch(op_types_to_traverse, output_idx, nodes_found);
+  std::vector<int> stack;
+  stack.reserve(32);
+  stack.push_back(root_node);
+  while (!stack.empty()) {
+    const int node_idx = stack.back();
+    stack.pop_back();
+    nodes_found->insert(node_idx);
+    const string& op_type = graph_->node(node_idx).op();
+    if (op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
+      for (auto output_idx : this->outputs(node_idx)) {
+        if (nodes_found->find(output_idx) == nodes_found->end()) {
+          stack.push_back(output_idx);
+        }
+      }
+    }
   }
 }
 

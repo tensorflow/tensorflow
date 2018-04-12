@@ -291,12 +291,14 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Dequantize)
     HANDLE_OPERATORTYPENAME_CASE(L2Normalization)
     HANDLE_OPERATORTYPENAME_CASE(LocalResponseNormalization)
+    HANDLE_OPERATORTYPENAME_CASE(Log)
     HANDLE_OPERATORTYPENAME_CASE(Logistic)
     HANDLE_OPERATORTYPENAME_CASE(LstmCell)
     HANDLE_OPERATORTYPENAME_CASE(MaxPool)
     HANDLE_OPERATORTYPENAME_CASE(L2Pool)
     HANDLE_OPERATORTYPENAME_CASE(FakeQuant)
     HANDLE_OPERATORTYPENAME_CASE(Mul)
+    HANDLE_OPERATORTYPENAME_CASE(RandomUniform)
     HANDLE_OPERATORTYPENAME_CASE(Relu)
     HANDLE_OPERATORTYPENAME_CASE(Relu1)
     HANDLE_OPERATORTYPENAME_CASE(Relu6)
@@ -1377,12 +1379,22 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     const float mean_value = input_array_proto.mean_value();
     const float std_value = input_array_proto.std_value();
     MinMax input_minmax;
-    input_minmax.min = (0.f - mean_value) / std_value;
-    input_minmax.max = (255.f - mean_value) / std_value;
+    float qmin = 0, qmax = 255;
+    if (input_array.data_type == ArrayDataType::kInt16) {
+      qmin = -32768;
+      qmax = 32767;
+    }
+    input_minmax.min = (qmin - mean_value) / std_value;
+    input_minmax.max = (qmax - mean_value) / std_value;
     if (input_array.minmax) {
       if (input_array_proto.has_mean_value() ||
           input_array_proto.has_std_value()) {
-        CHECK(input_minmax == *input_array.minmax)
+        const double width = input_minmax.max - input_minmax.min;
+        const double kMinMaxAllowedDiff = 1e-6 * width;
+        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
+                  kMinMaxAllowedDiff &&
+              std::abs(input_minmax.max - input_array.minmax->max) <
+                  kMinMaxAllowedDiff)
             << input_minmax.min << ", " << input_minmax.max
             << " != " << input_array.minmax->min << ", "
             << input_array.minmax->max;
@@ -1402,7 +1414,8 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       CHECK(input_array.shape().dims_size());
     }
   }
-
+  model->flags.set_change_concat_input_ranges(
+      model_flags.change_concat_input_ranges());
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
   model->flags.set_allow_nonexistent_arrays(
       model_flags.allow_nonexistent_arrays());
@@ -1920,6 +1933,35 @@ bool IsDiscardableArray(const Model& model, const string& array_name) {
   return true;
 }
 
+bool ReshapeIsEquivalentToTranspose(const Model& model,
+                                    const TensorFlowReshapeOperator* op,
+                                    bool allow_extra_unary_dims) {
+  CHECK(!op->shape.empty());
+  CHECK(model.HasArray(op->inputs[0]));
+  CHECK(model.HasArray(op->outputs[0]));
+
+  const auto& input_array = model.GetArray(op->inputs[0]);
+  const auto& output_array = model.GetArray(op->outputs[0]);
+
+  CHECK(input_array.has_shape());
+  CHECK(output_array.has_shape());
+
+  std::vector<int> in_shape = input_array.shape().dims();
+  std::vector<int> out_shape = output_array.shape().dims();
+
+  // If the reshape changes the number of dimensions so it cannot be interpreted
+  // as a transpose.
+  if (!allow_extra_unary_dims && in_shape.size() != out_shape.size()) {
+    return false;
+  }
+
+  in_shape.erase(std::remove(in_shape.begin(), in_shape.end(), 1),
+                 in_shape.end());
+  out_shape.erase(std::remove(out_shape.begin(), out_shape.end(), 1),
+                  out_shape.end());
+  return in_shape == out_shape;
+}
+
 void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
@@ -1970,19 +2012,19 @@ void FinishBuildingRNNStates(Model* model) {
   }
 }
 
-void UseArraysExtraInfo(Model* model) {
+void UseArraysExtraInfo(Model* model, bool quantize_output) {
   for (const auto& entry : model->flags.arrays_extra_info().entries()) {
     if (!model->HasArray(entry.name())) {
       continue;
     }
     auto& array = model->GetArray(entry.name());
-    auto& minmax = array.GetOrCreateMinMax();
     if (entry.has_min() || entry.has_max()) {
       CHECK_EQ(entry.has_min(), entry.has_max());
+      auto& minmax = array.GetOrCreateMinMax();
       minmax.min = entry.min();
       minmax.max = entry.max();
     }
-    if (entry.has_data_type()) {
+    if (entry.has_data_type() && quantize_output) {
       array.final_data_type =
           ConvertIODataTypeToArrayDataType(entry.data_type());
     }
@@ -1997,11 +2039,12 @@ void UseArraysExtraInfo(Model* model) {
     }
     if (entry.has_constant_float_value()) {
       CHECK(array.has_shape());
-      CHECK(array.data_type == ArrayDataType::kFloat);
-      auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
-      data.resize(RequiredBufferSizeForShape(array.shape()));
-      for (float& f : data) {
-        f = entry.constant_float_value();
+      if (array.data_type == ArrayDataType::kFloat) {
+        auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
+        data.resize(RequiredBufferSizeForShape(array.shape()));
+        for (float& f : data) {
+          f = entry.constant_float_value();
+        }
       }
     }
   }

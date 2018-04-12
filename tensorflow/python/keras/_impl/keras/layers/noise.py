@@ -23,6 +23,8 @@ import numpy as np
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -58,7 +60,7 @@ class GaussianNoise(Layer):
 
     def noised():
       return inputs + K.random_normal(
-          shape=K.shape(inputs), mean=0., stddev=self.stddev)
+          shape=array_ops.shape(inputs), mean=0., stddev=self.stddev)
 
     return K.in_train_phase(noised, inputs, training=training)
 
@@ -104,7 +106,7 @@ class GaussianDropout(Layer):
       def noised():
         stddev = np.sqrt(self.rate / (1.0 - self.rate))
         return inputs * K.random_normal(
-            shape=K.shape(inputs), mean=1.0, stddev=stddev)
+            shape=array_ops.shape(inputs), mean=1.0, stddev=stddev)
 
       return K.in_train_phase(noised, inputs, training=training)
     return inputs
@@ -153,7 +155,7 @@ class AlphaDropout(Layer):
     self.supports_masking = True
 
   def _get_noise_shape(self, inputs):
-    return self.noise_shape if self.noise_shape else K.shape(inputs)
+    return self.noise_shape if self.noise_shape else array_ops.shape(inputs)
 
   def call(self, inputs, training=None):
     if 0. < self.rate < 1.:
@@ -164,9 +166,9 @@ class AlphaDropout(Layer):
         scale = 1.0507009873554804934193349852946
         alpha_p = -alpha * scale
 
-        kept_idx = K.greater_equal(
+        kept_idx = math_ops.greater_equal(
             K.random_uniform(noise_shape, seed=seed), rate)
-        kept_idx = K.cast(kept_idx, K.floatx())
+        kept_idx = math_ops.cast(kept_idx, K.floatx())
 
         # Get affine transformation params
         a = ((1 - rate) * (1 + rate * alpha_p**2))**-0.5

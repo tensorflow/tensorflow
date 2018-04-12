@@ -902,7 +902,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"c"}},
       },
       {{"f_0_retval", "F:o:0"}});
@@ -1046,7 +1047,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"key", "host_compute_channel_F1_O2"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O2"},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O2"}},
            {"F"}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
@@ -1056,7 +1058,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
       {{"i_0_retval", "I:o:0"}});
@@ -1193,7 +1196,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
       {{"d_0_retval", "D:o:0"}, {"f_0_retval", "F:o:0"}});
@@ -1214,7 +1218,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
             {"key", "host_compute_channel_F2_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})}}},
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"g_0_retval", "G:o:0"}, {"i_0_retval", "I:o:0"}});
 
@@ -1321,7 +1326,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})}}},
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1403,7 +1409,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})}},
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
       {{"f_0_retval", "F:o:0"}});
@@ -1482,7 +1489,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
             {"Toutputs", gtl::ArraySlice<DataType>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})}}},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1561,7 +1569,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
             {"Toutputs", gtl::ArraySlice<DataType>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})}}},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1725,7 +1734,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"c"}},
       },
       {{"f_0_retval", "F:o:0"}});

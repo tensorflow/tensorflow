@@ -121,8 +121,8 @@ class Interpreter(object):
     Raises:
       ValueError: If the interpreter could not resize the input tensor.
     """
-    if not self.ResizeInputTensor.SetTensor(input_index, tensor_size):
-      raise ValueError('Failed to set input')
+    if not self._interpreter.ResizeInputTensor(input_index, tensor_size):
+      raise ValueError('Failed to resize input')
 
   def get_output_details(self):
     """Gets model output details.

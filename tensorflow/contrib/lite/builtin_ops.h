@@ -80,6 +80,8 @@ typedef enum {
   kTfLiteBuiltinCast = 53,
   kTfLiteBuiltinPrelu = 54,
   kTfLiteBuiltinMaximum = 55,
+  kTfLiteBuiltinArgMax = 56,
+  kTfLiteBuiltinMinimum = 57,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

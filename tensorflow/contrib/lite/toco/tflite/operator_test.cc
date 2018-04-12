@@ -111,6 +111,8 @@ TEST_F(OperatorTest, SimpleOperators) {
                                           OperatorType::kLogSoftmax);
   CheckSimpleOperator<TensorFlowMaximumOperator>(
       "MAXIMUM", OperatorType::kTensorFlowMaximum);
+  CheckSimpleOperator<TensorFlowMinimumOperator>(
+      "MINIMUM", OperatorType::kTensorFlowMinimum);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -131,7 +133,7 @@ TEST_F(OperatorTest, BuiltinMean) {
   EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
 }
 
-TEST_F(OperatorTest, CustomCast) {
+TEST_F(OperatorTest, BuiltinCast) {
   CastOperator op;
   op.src_data_type = ArrayDataType::kFloat;
   op.dst_data_type = ArrayDataType::kUint8;
@@ -163,10 +165,12 @@ TEST_F(OperatorTest, CustomFakeQuant) {
   minmax->min = -10;
   minmax->max = 200;
   op.minmax.reset(minmax);
+  op.num_bits = 16;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("FAKE_QUANT", OperatorType::kFakeQuant), op);
   EXPECT_EQ(op.minmax->min, output_toco_op->minmax->min);
   EXPECT_EQ(op.minmax->max, output_toco_op->minmax->max);
+  EXPECT_EQ(op.num_bits, output_toco_op->num_bits);
 }
 
 TEST_F(OperatorTest, CustomFullyConnected) {
@@ -389,6 +393,13 @@ TEST_F(OperatorTest, BuiltinTopKV2) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("TOPK_V2", OperatorType::kTopK_V2), op);
   ASSERT_NE(nullptr, output_toco_op.get());
+}
+
+TEST_F(OperatorTest, BuiltinArgMax) {
+  ArgMaxOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ARG_MAX", OperatorType::kArgMax), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

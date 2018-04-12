@@ -92,9 +92,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Convenience methods for building and running a computation with the member
   // execution options. Modify execution_options_ in your test if you want to
   // customize the options.
+  template <typename BuilderT>
   StatusOr<std::unique_ptr<GlobalData>> Execute(
-      ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+      BuilderT* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
   // TODO(b/74197823): Remove the template type 'BuilderT' in all methods once
   // the migration to XlaBuilder is complete.
@@ -110,6 +110,14 @@ class ClientLibraryTestBase : public ::testing::Test {
       const Shape* shape_with_output_layout = nullptr);
 
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+      const XlaComputation& computation,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const Shape* shape_with_output_layout = nullptr);
+
+  // This executes the computation via the reference client (which connects a
+  // interpreter backend). The result is used as the expected values of the
+  // computation.
+  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransferReference(
       const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const Shape* shape_with_output_layout = nullptr);
@@ -236,6 +244,14 @@ class ClientLibraryTestBase : public ::testing::Test {
                          tensorflow::gtl::ArraySlice<Literal> arguments,
                          ErrorSpec error);
 
+  // Convenience method for running a built computation and comparing the result
+  // with the reference result.
+  void ComputeAndCompare(XlaBuilder* builder,
+                         tensorflow::gtl::ArraySlice<Literal> arguments);
+  void ComputeAndCompare(XlaBuilder* builder,
+                         tensorflow::gtl::ArraySlice<Literal> arguments,
+                         ErrorSpec error);
+
   // Create scalar operations for use in reductions.
   Computation CreateScalarRelu();
   Computation CreateScalarMax();
@@ -300,10 +316,15 @@ class ClientLibraryTestBase : public ::testing::Test {
   // set exactly once. The first added parameter gets index 0, then 1 and so on.
   ComputationDataHandle AddParam(const Literal& argument,
                                  ComputationBuilder* builder);
+  XlaOp AddParam(const Literal& argument, XlaBuilder* builder);
 
   template <class T>
   ComputationDataHandle AddParam(const Array<T>& argument,
                                  ComputationBuilder* builder) {
+    return AddParam(*Literal::CreateFromArray(argument), builder);
+  }
+  template <class T>
+  XlaOp AddParam(const Array<T>& argument, XlaBuilder* builder) {
     return AddParam(*Literal::CreateFromArray(argument), builder);
   }
 
@@ -312,6 +333,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   // will be converted to BF16s.
   ComputationDataHandle CreateConstantFromLiteral(const Literal& literal,
                                                   ComputationBuilder* builder);
+  XlaOp CreateConstantFromLiteral(const Literal& literal, XlaBuilder* builder);
 
   // Creates a constant instruction with the given array. When the use_bfloat16
   // flag is set but the array has float elements, the elements will be
@@ -322,10 +344,22 @@ class ClientLibraryTestBase : public ::testing::Test {
     return CreateConstantFromLiteral(*Literal::CreateFromArray(array), builder);
   }
 
+  template <typename NativeT>
+  XlaOp CreateConstantFromArray(const Array<NativeT>& array,
+                                XlaBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateFromArray(array), builder);
+  }
+
   // Same as CreateConstantFromArray, but for scalars.
   template <typename NativeT>
   ComputationDataHandle CreateConstantFromScalar(NativeT value,
                                                  ComputationBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateR0<NativeT>(value),
+                                     builder);
+  }
+
+  template <typename NativeT>
+  XlaOp CreateConstantFromScalar(NativeT value, XlaBuilder* builder) {
     return CreateConstantFromLiteral(*Literal::CreateR0<NativeT>(value),
                                      builder);
   }
@@ -395,6 +429,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   PrimitiveType FloatType() const { return use_bfloat16_ ? BF16 : F32; }
 
   Client* client_;
+  Client* ref_client_;  // To compute reference result.
   ExecutionOptions execution_options_;
 
  private:
@@ -426,10 +461,17 @@ class ClientLibraryTestBase : public ::testing::Test {
       const Shape* output_with_layout = nullptr);
 
   // Executes the computation and calculates the expected reference value using
-  // the HloEvaluator. Returns two literal in the order of (expected, actual).
+  // the HloEvaluator. Returns two literals in the order of (expected, actual).
   StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
   ComputeValueAndReference(ComputationBuilder* builder,
                            const ComputationDataHandle& operand,
+                           tensorflow::gtl::ArraySlice<Literal> arguments);
+
+  // Executes the computation and calculates the expected reference value using
+  // the reference client. Returns two literals in the order of (expected,
+  // actual).
+  StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
+  ComputeValueAndReference(XlaBuilder* builder,
                            tensorflow::gtl::ArraySlice<Literal> arguments);
 
   // Whether to run tests with all float-type input/output converted to

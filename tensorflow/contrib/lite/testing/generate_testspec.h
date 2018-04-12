@@ -34,7 +34,7 @@ namespace testing {
 //   input_layer_type: datatypes of input tensors. Example: float
 //   input_layer_shape: shapes of input tensors, separated by comma. example:
 //   1,3,4 output_layer: names of output tensors. Example: output
-void GenerateTestSpecFromTensorflowModel(
+bool GenerateTestSpecFromTensorflowModel(
     std::iostream& stream, const string& tensorflow_model_path,
     const string& tflite_model_path, const std::vector<string>& input_layer,
     const std::vector<string>& input_layer_type,

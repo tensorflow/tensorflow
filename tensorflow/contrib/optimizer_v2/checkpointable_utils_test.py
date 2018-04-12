@@ -29,13 +29,14 @@ from tensorflow.contrib.optimizer_v2 import adam
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl.keras.engine import training
-from tensorflow.python.layers import core
+from tensorflow.python.keras._impl.keras.layers import core
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -371,6 +372,50 @@ class CheckpointingTests(test.TestCase):
                          self.evaluate(root.global_step))
         self.assertEqual(training_continuation + 1,
                          self.evaluate(root.save_counter))
+
+  # pylint: disable=cell-var-from-loop
+  @test_util.run_in_graph_and_eager_modes()
+  def testWithDefun(self):
+    num_training_steps = 2
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    for training_continuation in range(3):
+      with ops.Graph().as_default(), self.test_session(
+          graph=ops.get_default_graph()), test_util.device(use_gpu=True):
+        model = MyModel()
+        # Don't actually train so we can test variable values
+        optimizer = adam.AdamOptimizer(0.)
+        root = checkpointable_utils.Checkpoint(
+            optimizer=optimizer, model=model,
+            global_step=training_util.get_or_create_global_step())
+        checkpoint_path = core_saver.latest_checkpoint(checkpoint_directory)
+        status = root.restore(save_path=checkpoint_path)
+        def train_fn():
+          @function.defun
+          def _call_model(x):
+            return model(x)
+          with backprop.GradientTape() as tape:
+            loss = _call_model(constant_op.constant([[3.]]))
+          gradients = tape.gradient(loss, model.variables)
+          return optimizer.apply_gradients(zip(gradients, model.variables),
+                                           global_step=root.global_step)
+        if not context.executing_eagerly():
+          train_fn = functools.partial(
+              self.evaluate, train_fn())
+        status.initialize_or_restore()
+        for _ in range(num_training_steps):
+          train_fn()
+        if training_continuation > 0:
+          status.assert_consumed()
+          self.assertAllClose([[42.]], self.evaluate(model.variables[0]))
+        else:
+          self.evaluate(model.variables[0].assign([[42.]]))
+        root.save(file_prefix=checkpoint_prefix)
+        self.assertEqual((training_continuation + 1) * num_training_steps,
+                         self.evaluate(root.global_step))
+        self.assertEqual(training_continuation + 1,
+                         self.evaluate(root.save_counter))
+  # pylint: enable=cell-var-from-loop
 
   def _get_checkpoint_name(self, name):
     root = checkpointable.Checkpointable()

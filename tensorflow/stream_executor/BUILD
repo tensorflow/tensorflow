@@ -33,6 +33,7 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
         "@local_config_cuda//cuda:cuda_headers",
     ],
@@ -45,6 +46,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/compiler/xla:statusor",
         "@local_config_cuda//cuda:cuda_headers",
     ] + if_static([":stream_executor_impl"]),
 )
@@ -75,7 +77,6 @@ cc_library(
         ":stream_executor",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:ops_util",
-        "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
     ] + if_cuda_is_configured([
         "//tensorflow/core:cuda",

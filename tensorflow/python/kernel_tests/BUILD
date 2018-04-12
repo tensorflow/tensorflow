@@ -295,7 +295,6 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
     ],
     data = ["//tensorflow/core:image_testdata"],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -1030,12 +1029,14 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
     tags = ["no_windows"],
 )
@@ -1142,7 +1143,6 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/core:lmdb_testdata"],
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -1202,6 +1202,22 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
     ],
+)
+
+cuda_py_test(
+    name = "inplace_ops_test",
+    size = "small",
+    srcs = ["inplace_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+    ],
+    shard_count = 10,
 )
 
 cuda_py_test(
@@ -2344,7 +2360,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 4,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2475,7 +2490,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2535,7 +2549,10 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
     ],
     shard_count = 5,
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "optonly",  # b/77589990
+    ],
 )
 
 cuda_py_test(
@@ -2738,6 +2755,7 @@ cuda_py_test(
     ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(

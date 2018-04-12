@@ -80,6 +80,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
 
   StatusOr<std::unique_ptr<ShapedBuffer>> return_value =
       ExecuteOnStream(run_options, arguments, profile_ptr.get());
+  TF_RETURN_IF_ERROR(return_value.status());
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include "tensorflow/core/lib/strings/str_util.h"
 
 #define EIGEN_USE_THREADS
 
@@ -130,7 +131,7 @@ TEST(VariantOpShapeRegistryTest, TestBasic) {
   Variant v = vv_early_exit;
   Status s0 = (*shape_fn)(v, &shape);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit!"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit!"));
 
   VariantValue vv_ok{false /* early_exit */};
   v = vv_ok;
@@ -229,7 +230,7 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(
-      StringPiece(s0.error_message()).contains("early exit zeros_like"));
+      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -254,7 +255,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(
-      StringPiece(s0.error_message()).contains("early exit zeros_like"));
+      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -299,7 +300,7 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
   Status s0 = BinaryOpVariants<CPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit add"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;
@@ -325,7 +326,7 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   Status s0 = BinaryOpVariants<GPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit add"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;

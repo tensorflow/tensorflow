@@ -73,7 +73,7 @@ class DistributedValues(object):
 
   @property
   def devices(self):
-    return self._index.keys()
+    return list(self._index.keys())
 
   def __str__(self):
     return "%s:%s" % (self.__class__.__name__, self._index)

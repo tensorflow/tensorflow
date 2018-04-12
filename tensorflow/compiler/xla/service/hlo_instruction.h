@@ -401,6 +401,10 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
+  // Creates a broadcast-size-one-dimensions instruction.
+  static std::unique_ptr<HloInstruction> CreateBroadcastDimOne(
+      const Shape& shape, HloInstruction* operand);
+
   // Creates a sequence of instructions that performs an explicit broadcast of
   // the operand to the target shape.
   //
@@ -927,6 +931,13 @@ class HloInstruction {
   // Returns the sharding applied to this operator, or default_ if none exists.
   const HloSharding& sharding_or_default(const HloSharding& default_) const {
     return sharding_ ? *sharding_ : default_;
+  }
+  // Returns the sharding unique device, if any.
+  tensorflow::gtl::optional<int64> sharding_unique_device() const {
+    if (sharding_ == nullptr || !sharding_->HasUniqueDevice()) {
+      return tensorflow::gtl::optional<int64>();
+    }
+    return sharding_->UniqueDevice().ValueOrDie();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.

@@ -81,6 +81,9 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
     test_input = np.array([[1, 2, 3, 4]], dtype=np.uint8)
     expected_output = np.array([[4, 3, 2, 1]], dtype=np.uint8)
+    interpreter.resize_tensor_input(input_details[0]['index'],
+                                    np.array(test_input.shape, dtype=np.int32))
+    interpreter.allocate_tensors()
     interpreter.set_tensor(input_details[0]['index'], test_input)
     interpreter.invoke()
 
