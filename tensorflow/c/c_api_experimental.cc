@@ -7088,7 +7088,7 @@ static std::vector<UniqueFuncPtr> CreateMNISTDatasetFunctions(
   status->status = tensorflow::errors::Unimplemented(
       "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
       "is not implemented for Windows");
-  return nullptr;
+  return std::vector<UniqueFuncPtr>();
 #else
   const char* func_def = R"PREFIX(
 library {
