@@ -194,27 +194,10 @@ tf_py_wrap_cc(
 )
 
 tf_cuda_library(
-    name = "trt_resource_manager_impl",
-    srcs = [
-        "resources/trt_resource_manager.cc",
-    ],
-    hdrs = [
-        "resources/trt_resource_manager.h",
-    ],
-    deps = [
-        ":trt_logging",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
-    ]),
-)
-
-tf_cuda_library(
     name = "trt_resources",
     srcs = [
         "resources/trt_int8_calibrator.cc",
+        "resources/trt_resource_manager.cc",
     ],
     hdrs = [
         "resources/trt_int8_calibrator.h",
@@ -228,8 +211,6 @@ tf_cuda_library(
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
-    ]) + if_static([
-        ":trt_resource_manager_impl",
     ]),
 )
 
@@ -248,7 +229,6 @@ tf_cuda_library(
         ":segment",
         ":trt_logging",
         ":trt_resources",
-        ":trt_resource_manager_impl",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core:framework",
