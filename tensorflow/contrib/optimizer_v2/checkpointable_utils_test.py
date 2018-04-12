@@ -411,7 +411,7 @@ class CheckpointingTests(test.TestCase):
         optimizer.apply_gradients(
             [(g, v) for g, v in zip(grad, model.vars)])
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @test_util.run_in_graph_and_eager_modes()
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
