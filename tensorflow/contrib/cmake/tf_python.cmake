@@ -586,6 +586,12 @@ add_library(pywrap_tensorflow_internal SHARED
     ${pywrap_tensorflow_deffile}
 )
 
+# There is a bug in GCC 5 resulting in undefined reference to a __cpu_model function when
+# linking to the tensorflow library. Adding the following libraries fixes it.
+if(CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
+    target_link_libraries(pywrap_tensorflow_internal PRIVATE gcc_s gcc)
+endif()
+
 if(WIN32)
     add_dependencies(pywrap_tensorflow_internal pywrap_tensorflow_internal_static)
 endif(WIN32)
