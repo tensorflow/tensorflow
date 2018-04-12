@@ -127,9 +127,9 @@ def main():
     def_fp.write("LIBRARY " + args.target + "\n")
     def_fp.write("EXPORTS\n")
     if args.bitness == "64":
-        def_fp.write("\t??1OpDef@tensorflow@@UEAA@XZ\n")
+      def_fp.write("\t??1OpDef@tensorflow@@UEAA@XZ\n")
     else:
-        def_fp.write("\t??1OpDef@tensorflow@@UAE@XZ\n")
+      def_fp.write("\t??1OpDef@tensorflow@@UAE@XZ\n")
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.
