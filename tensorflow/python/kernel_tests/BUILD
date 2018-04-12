@@ -1607,7 +1607,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "linalg_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["linalg_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
