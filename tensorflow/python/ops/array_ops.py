@@ -144,6 +144,7 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=redefined-builtin,protected-access
 @tf_export("expand_dims")
+@deprecation.deprecated_args(None, "Use the `axis` argument instead", "dim")
 def expand_dims(input, axis=None, name=None, dim=None):
   """Inserts a dimension of 1 into a tensor's shape.
 
@@ -193,11 +194,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
   Raises:
     ValueError: if both `dim` and `axis` are specified.
   """
-  # TODO(aselle): Remove argument dim
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("can't specify both 'dim' and 'axis'")
-    axis = dim
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   return gen_array_ops.expand_dims(input, axis, name)
 
 
