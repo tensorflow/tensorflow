@@ -268,6 +268,13 @@ class Scaffold(object):
 
   @staticmethod
   def default_local_init_op():
+    """Returns an op that groups the default local init ops.
+
+    This op is used during session initialization when a Scaffold is
+    initialized without specifying the local_init_op arg. It includes
+    `tf.local_variables_initializer`, `tf.tables_initializer`, and also
+    initializes local session resources.
+    """
     return control_flow_ops.group(
         variables.local_variables_initializer(),
         lookup_ops.tables_initializer(),
