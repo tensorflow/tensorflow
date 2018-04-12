@@ -8309,7 +8309,7 @@ TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
   status->status = tensorflow::errors::Unimplemented(
       "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
       "is not implemented for Windows");
-  return nullptr
+  return nullptr;
 #else
   tensorflow::Status s;
 
