@@ -522,12 +522,13 @@ class ResourceVariable(variables.Variable):
     else:
       self._initial_value = None
     if variable_def.snapshot_name:
-      self._cached_value = g.as_graph_element(
+      snapshot = g.as_graph_element(
           ops.prepend_name_scope(
               variable_def.snapshot_name, import_scope=import_scope))
-      self._graph_element = g.as_graph_element(
-          ops.prepend_name_scope(variable_def.snapshot_name,
-                                 import_scope=import_scope))
+      self._cached_value = snapshot
+      while snapshot.op.type != "ReadVariableOp":
+        snapshot = snapshot.op.inputs[0]
+      self._graph_element = snapshot
     else:
       self._cached_value = None
       # Legacy case for protos without the snapshot name; assume it's the
