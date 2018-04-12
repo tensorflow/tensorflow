@@ -1389,6 +1389,8 @@ TEST_F(ConstantFoldingTest, SplitVRemoval) {
   ops::SplitV s1(scope.WithOpName("s1"), in1, size_splits1, split_dim, 1);
   ops::SplitV s2(scope.WithOpName("s2"), in2, size_splits2, split_dim, 2);
 
+  LOG(INFO) << s1.output.size();
+  LOG(INFO) << s2.output.size();
   ops::Add out(scope.WithOpName("out"), s1[0], s2[0]);
 
   GrapplerItem item;
@@ -1416,45 +1418,7 @@ TEST_F(ConstantFoldingTest, SplitVRemoval) {
   CompareGraphs(want, got);
 }
 
-TEST_F(ConstantFoldingTest, TransposeOnSize1DimsRemoval) {
-  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-
-  Output in1 = ops::Variable(scope.WithOpName("in1"), TensorShape({1, 2, 4, 1}),
-                             DT_FLOAT);
-  Output p1 = ops::Const(scope.WithOpName("p1"), {3, 2, 1, 0}, {4});
-  Output in2 = ops::Variable(scope.WithOpName("in2"), TensorShape({1, 4, 2, 1}),
-                             DT_FLOAT);
-  Output p2 = ops::Const(scope.WithOpName("p2"), {3, 1, 2, 0}, {4});
-  ops::Transpose t1(scope.WithOpName("t1"), in1, p1);
-  ops::Transpose t2(scope.WithOpName("t2").WithControlDependencies({in1}), in2,
-                    p2);
-
-  ops::Add out1(scope.WithOpName("out1"), t1, t2);
-
-  GrapplerItem item;
-  item.fetch = {"out1"};
-  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-
-  ConstantFolding optimizer(nullptr /* cpu_device */);
-  GraphDef got;
-  Status status = optimizer.Optimize(nullptr, item, &got);
-  TF_EXPECT_OK(status);
-
-  GraphDef want;
-  AddNode("in1", "VariableV2", {}, {}, &want);
-  AddNode("in2", "VariableV2", {}, {}, &want);
-  AddNode("p1", "Const", {}, {}, &want);
-  AddNode("p2", "Const", {}, {}, &want);
-  AddNode("t1", "Transpose", {"in1", "p1"}, {}, &want);
-  AddNode("t2", "Identity",
-          {"in2", AsControlDependency("in1"), AsControlDependency("p2")}, {},
-          &want);
-  AddNode("out1", "Add", {"t1", "t2"}, {}, &want);
-
-  CompareGraphs(want, got);
-}
-
-TEST_F(ConstantFoldingTest, RandomShuffleOnScalarRemoval) {
+TEST_F(ConstantFoldingTest, ShuffleReverseOnScalarRemoval) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
   Output in1 =
@@ -1484,44 +1448,6 @@ TEST_F(ConstantFoldingTest, RandomShuffleOnScalarRemoval) {
   AddNode("s2", "Identity", {"in2", AsControlDependency("in1")}, {}, &want);
   AddNode("out1", "Add", {"s1", "s2"}, {}, &want);
   AddNode("out2", "Identity", {"s2"}, {}, &want);
-
-  CompareGraphs(want, got);
-}
-
-TEST_F(ConstantFoldingTest, ReverseOnSize1DimsRemoval) {
-  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-
-  Output in1 = ops::Variable(scope.WithOpName("in1"), TensorShape({1, 2, 4, 1}),
-                             DT_FLOAT);
-  Output a1 = ops::Const(scope.WithOpName("a1"), {3, 2, 1, 0}, {4});
-  Output in2 = ops::Variable(scope.WithOpName("in2"), TensorShape({1, 2, 4, 1}),
-                             DT_FLOAT);
-  Output a2 = ops::Const(scope.WithOpName("a2"), {0, 3}, {2});
-  ops::Reverse r1(scope.WithOpName("r1"), in1, a1);
-  ops::Reverse r2(scope.WithOpName("r2").WithControlDependencies({in1}), in2,
-                  a2);
-
-  ops::Add out1(scope.WithOpName("out1"), r1, r2);
-
-  GrapplerItem item;
-  item.fetch = {"out1"};
-  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-
-  ConstantFolding optimizer(nullptr /* cpu_device */);
-  GraphDef got;
-  Status status = optimizer.Optimize(nullptr, item, &got);
-  TF_EXPECT_OK(status);
-
-  GraphDef want;
-  AddNode("in1", "VariableV2", {}, {}, &want);
-  AddNode("in2", "VariableV2", {}, {}, &want);
-  AddNode("a1", "Const", {}, {}, &want);
-  AddNode("a2", "Const", {}, {}, &want);
-  AddNode("r1", "ReverseV2", {"in1", "a1"}, {}, &want);
-  AddNode("r2", "Identity",
-          {"in2", AsControlDependency("in1"), AsControlDependency("a2")}, {},
-          &want);
-  AddNode("out1", "Add", {"r1", "r2"}, {}, &want);
 
   CompareGraphs(want, got);
 }
