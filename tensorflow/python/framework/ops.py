@@ -3430,9 +3430,9 @@ class Graph(object):
     # the name will still appear in _names_in_use even though the name hasn't
     # been used. This is ok, just leave _names_in_use as-is in this case.
     # TODO(skyewm): make the C API guarantee no name conflicts.
-    name = ret.name.lower()
-    if name not in self._names_in_use:
-      self._names_in_use[name] = 1
+    name_key = ret.name.lower()
+    if name_key not in self._names_in_use:
+      self._names_in_use[name_key] = 1
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
