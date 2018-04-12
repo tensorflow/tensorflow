@@ -27,7 +27,6 @@ load(
     "if_tensorrt",
 )
 
-
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
