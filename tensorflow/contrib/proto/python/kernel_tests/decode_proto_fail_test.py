@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib import proto
+from tensorflow.contrib.proto import decode_proto
 from tensorflow.contrib.proto.python.kernel_tests import test_case
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -46,7 +46,7 @@ class DecodeProtoFailTest(test_case.ProtoOpTestCase):
     field_types = [dtypes.int32]
 
     with self.test_session() as sess:
-      ctensor, vtensor = proto.decode_proto(
+      ctensor, vtensor = decode_proto(
           batch,
           message_type=msg_type,
           field_names=field_names,
