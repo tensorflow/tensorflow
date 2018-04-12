@@ -1064,6 +1064,7 @@ cc_library(
     hdrs = [
         "common_runtime/function_testlib.h",
         "common_runtime/kernel_benchmark_testlib.h",
+        "common_runtime/test_collective_executor_mgr.h",
         "framework/fake_input.h",
         "framework/function_testlib.h",
         "framework/shape_inference_testutil.h",
@@ -2261,6 +2262,7 @@ tf_cuda_library(
 
 CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/allocator_retry.h",
+    "common_runtime/base_collective_executor.h",
     "common_runtime/bfc_allocator.h",
     "common_runtime/buf_rendezvous.h",
     "common_runtime/build_graph_options.h",
@@ -2289,6 +2291,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/renamed_device.h",
     "common_runtime/rendezvous_mgr.h",
     "common_runtime/rendezvous_util.h",
+    "common_runtime/ring_reducer.h",
     "common_runtime/scoped_allocator.h",
     "common_runtime/scoped_allocator_mgr.h",
     "common_runtime/session_factory.h",
@@ -2306,6 +2309,7 @@ tf_cuda_library(
     srcs = [
         "common_runtime/accumulate_n_optimizer.cc",
         "common_runtime/allocator_retry.cc",
+        "common_runtime/base_collective_executor.cc",
         "common_runtime/bfc_allocator.cc",
         "common_runtime/buf_rendezvous.cc",
         "common_runtime/build_graph_options.cc",
@@ -2336,6 +2340,7 @@ tf_cuda_library(
         "common_runtime/renamed_device.cc",
         "common_runtime/rendezvous_mgr.cc",
         "common_runtime/rendezvous_util.cc",
+        "common_runtime/ring_reducer.cc",
         "common_runtime/scoped_allocator.cc",
         "common_runtime/scoped_allocator_mgr.cc",
         "common_runtime/session.cc",
@@ -3098,6 +3103,34 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_tests_gpu(
+    name = "ring_reducer_test",
+    size = "medium",
+    srcs = [
+        "common_runtime/ring_reducer_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":all_kernels",
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":protos_test_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
     ],
 )
 
