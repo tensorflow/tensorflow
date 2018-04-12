@@ -32,6 +32,7 @@ from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batc
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
