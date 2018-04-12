@@ -57,7 +57,6 @@ tf_custom_op_library(
         "ops/trt_engine_op.cc",
     ],
     deps = [
-        # ":trt_engine_op_kernel",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
@@ -195,11 +194,11 @@ tf_py_wrap_cc(
 )
 
 tf_cuda_library(
-  name = "trt_resource_manager_impl",
-  srcs = [
-    "resources/trt_resource_manager.cc",
+    name = "trt_resource_manager_impl",
+    srcs = [
+        "resources/trt_resource_manager.cc",
     ],
-  hdrs = [
+    hdrs = [
         "resources/trt_resource_manager.h",
     ],
     deps = [
@@ -230,7 +229,7 @@ tf_cuda_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + if_static([
-      ":trt_resource_manager_impl",
+        ":trt_resource_manager_impl",
     ]),
 )
 
