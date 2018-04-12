@@ -18,6 +18,7 @@ gen_zipped_test_files(
     name = "optest",
     files = [
         "add.zip",
+        "arg_max.zip",
         "avg_pool.zip",
         "batch_to_space_nd.zip",
         "concat.zip",
@@ -38,9 +39,9 @@ gen_zipped_test_files(
         "max_pool.zip",
         "maximum.zip",
         "mean.zip",
+        "minimum.zip",
         "mul.zip",
         "pad.zip",
-        "prelu.zip",
         "relu.zip",
         "relu1.zip",
         "relu6.zip",
@@ -194,7 +195,6 @@ cc_library(
 
 cc_library(
     name = "util",
-    testonly = 1,
     hdrs = ["util.h"],
 )
 
@@ -249,7 +249,6 @@ cc_test(
 
 cc_library(
     name = "generate_testspec",
-    testonly = 1,
     srcs = ["generate_testspec.cc"],
     hdrs = ["generate_testspec.h"],
     deps = [
@@ -275,7 +274,6 @@ cc_test(
 
 cc_library(
     name = "tflite_diff_util",
-    testonly = 1,
     srcs = ["tflite_diff_util.cc"],
     hdrs = ["tflite_diff_util.h"],
     deps = [
@@ -293,7 +291,6 @@ cc_library(
 
 cc_library(
     name = "tflite_diff_flags",
-    testonly = 1,
     hdrs = ["tflite_diff_flags.h"],
     deps = [
         ":split",
@@ -330,6 +327,15 @@ tf_cc_test(
         "no_oss",
         "tflite_not_portable",
     ],
+    deps = [
+        ":tflite_diff_flags",
+        ":tflite_diff_util",
+    ],
+)
+
+cc_binary(
+    name = "tflite_diff",
+    srcs = ["tflite_diff_example_test.cc"],
     deps = [
         ":tflite_diff_flags",
         ":tflite_diff_util",

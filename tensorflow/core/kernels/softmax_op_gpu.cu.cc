@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/lib/strings/str_util.h"
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
@@ -128,7 +129,7 @@ template <typename T>
 class SoftmaxOpGPU : public OpKernel {
  public:
   explicit SoftmaxOpGPU(OpKernelConstruction* context) : OpKernel(context) {
-    log_ = StringPiece(type_string()).starts_with("Log");
+    log_ = str_util::StartsWith(type_string(), "Log");
   }
 
   void Compute(OpKernelContext* context) override {

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/mem.h"
 
@@ -53,7 +54,32 @@ XlaTransferManager::XlaTransferManager(se::Stream* stream,
                                        bool transfer_as_literal)
     : stream_(stream),
       client_(client),
+      transfer_manager_(client->backend().transfer_manager()),
       transfer_as_literal_(transfer_as_literal) {}
+
+Status XlaTransferManager::TransferLiteralToDevice(
+    const Tensor& host_tensor, Tensor* device_tensor) const {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(HostTensorToLiteral(host_tensor, &literal));
+  VLOG(1) << "Transfer to device as literal: " << literal.ToString();
+
+  const xla::ShapedBuffer& shaped_buffer =
+      XlaTensor::FromTensor(device_tensor)->shaped_buffer();
+  return transfer_manager_->TransferLiteralToDevice(stream_->parent(), literal,
+                                                    shaped_buffer);
+}
+
+Status XlaTransferManager::TransferLiteralFromDevice(
+    Tensor* host_tensor, const Tensor& device_tensor) const {
+  const xla::ShapedBuffer& shaped_buffer =
+      XlaTensor::FromTensor(&device_tensor)->shaped_buffer();
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
+                      transfer_manager_->TransferLiteralFromDevice(
+                          stream_->parent(), shaped_buffer));
+  VLOG(1) << "Transfer from device as literal: " << literal->ToString();
+  return LiteralToHostTensor(*literal, host_tensor->dtype(), host_tensor);
+}
 
 void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                                Device* device,
@@ -86,9 +112,7 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
         XlaTensor::DeviceMemoryFromTensor(*device_tensor);
     Status status;
     if (transfer_as_literal_) {
-      status = xla::Unimplemented(
-          "XlaTransferManager::CopyCPUTensorToDevice not implemented for "
-          "literals");
+      status = TransferLiteralToDevice(*cpu_tensor, device_tensor);
     } else {
       stream_->ThenMemcpy(&dev_dst_ptr, src_ptr, total_bytes);
       // TODO(hpucha): Make this asynchronous.
@@ -129,9 +153,7 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
 
     Status status;
     if (transfer_as_literal_) {
-      status = xla::Unimplemented(
-          "XlaTransferManager::CopyDeviceTensorToCPU not implemented for "
-          "literals");
+      status = TransferLiteralFromDevice(cpu_tensor, *device_tensor);
     } else {
       stream_->ThenMemcpy(dst_ptr, dev_src_ptr, total_bytes);
       // TODO(hpucha): Make this asynchronous.

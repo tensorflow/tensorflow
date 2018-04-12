@@ -204,14 +204,14 @@ cc_library(
         ":common",
         ":xla_compilation_cache",
         ":xla_tensor",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -316,6 +316,25 @@ cc_library(
 cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
+)
+
+cc_library(
+    name = "producer_consumer_queue",
+    hdrs = ["producer_consumer_queue.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+tf_cc_test(
+    name = "producer_consumer_queue_test",
+    size = "small",
+    srcs = ["producer_consumer_queue_test.cc"],
+    deps = [
+        ":producer_consumer_queue",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cc_test(

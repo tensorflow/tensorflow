@@ -401,25 +401,6 @@ package_group(
     ],
 )
 
-py_library(
-    name = "tensorflow_py",
-    srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python"],
-)
-
-py_library(
-    name = "experimental_tensorflow_py",
-    srcs = ["experimental_api.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow/tools/api/tests:__subpackages__"],
-    deps = [
-        "//tensorflow/python",
-        "//tensorflow/tools/api/generator:python_api",
-    ],
-)
-
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
@@ -469,11 +450,12 @@ tf_cc_shared_object(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:core_cpu_impl",
-        "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:gpu_runtime_impl",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+        "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/stream_executor:stream_executor_impl",
     ] + tf_additional_binary_deps(),
 )
 
@@ -551,5 +533,16 @@ exports_files(
     [
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
+    ],
+)
+
+py_library(
+    name = "tensorflow_py",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python",
+        "//tensorflow/tools/api/generator:python_api",
     ],
 )

@@ -422,7 +422,7 @@ class TestWholeModelSaving(test.TestCase):
         f = keras.layers.Dense(2, name='nested_model_dense_%d' % (i,))(f)
       # This layer name will make the `weights_name`
       # HDF5 attribute blow out of proportion.
-      f = keras.layers.Dense(2, name='nested_model_output' + ('x' * (2**15)))(f)
+      f = keras.layers.Dense(2, name='nested_model_output' + ('x' * (2**14)))(f)
       nested_model = keras.Model(inputs=[x], outputs=[f], name='nested_model')
 
       x = keras.Input(shape=(2,), name='outer_model_input')

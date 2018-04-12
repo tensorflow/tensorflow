@@ -88,6 +88,16 @@ class RollTest(test_util.TensorFlowTestCase):
         x = np.random.rand(3, 2, 1, 1).astype(t)
         self._testAll(x + 1j * x, [2, 1, 1, 0], [0, 3, 1, 2])
 
+  def testNegativeAxis(self):
+    self._testAll(np.random.randint(-100, 100, (5)).astype(np.int32), 3, -1)
+    self._testAll(np.random.randint(-100, 100, (4, 4)).astype(np.int32), 3, -2)
+    # Make sure negative axis shoudl be 0 <= axis + dims < dims
+    with self.test_session():
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "is out of range"):
+        manip_ops.roll(np.random.randint(-100, 100, (4, 4)).astype(np.int32),
+                       3, -10).eval()
+
   def testRollInputMustVectorHigherRaises(self):
     tensor = 7
     shift = 1

@@ -81,6 +81,7 @@ py_library(
         "//tensorflow/contrib/quantize:quantize_graph",
         "//tensorflow/contrib/autograph",
         "//tensorflow/contrib/receptive_field:receptive_field_py",
+        "//tensorflow/contrib/recurrent:recurrent_py",
         "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/resampler:resampler_py",

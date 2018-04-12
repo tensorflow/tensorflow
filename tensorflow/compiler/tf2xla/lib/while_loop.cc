@@ -54,7 +54,6 @@ xla::StatusOr<std::vector<xla::ComputationDataHandle>> XlaWhileLoop(
         auto result,
         condition_function(unpack_tuple(parameter, arity, cond_builder.get()),
                            cond_builder.get()));
-    TF_RETURN_IF_ERROR(cond_builder->SetReturnValue(result));
   }
   TF_ASSIGN_OR_RETURN(auto cond, cond_builder->Build());
 

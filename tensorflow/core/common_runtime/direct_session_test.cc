@@ -81,6 +81,7 @@ class DirectSessionMinusAXTest : public ::testing::Test {
     test::FillValues<float>(&a_tensor, a_values);
     Node* a = test::graph::Constant(&graph, a_tensor);
     a->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+    a_ = a->name();
 
     Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
     test::FillValues<float>(&x_tensor, {1, 1});
@@ -97,12 +98,18 @@ class DirectSessionMinusAXTest : public ::testing::Test {
     y_neg_ = y_neg->name();
     y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
 
+    Node* z = test::graph::Unary(&graph, "Identity", y_neg);
+    z_ = z->name();
+    z->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+
     test::graph::ToGraphDef(&graph, &def_);
   }
 
+  string a_;
   string x_;
   string y_;
   string y_neg_;
+  string z_;
   GraphDef def_;
 };
 
@@ -133,7 +140,6 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
 
   // Run the test twice to ensure that the Make/Run/Release cycle is hermetic.
   for (int i = 0; i < 2; ++i) {
@@ -172,6 +178,159 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
     EXPECT_TRUE(errors::IsInvalidArgument(s));
     EXPECT_TRUE(
         str_util::StrContains(s.error_message(), "No such callable handle"));
+  }
+}
+
+TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  {
+    // Directly wire the output of node a to the output of node y, making the
+    // callable graph into "Neg(a);".
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":0");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_fetch(y_neg_ + ":0");
+
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+    ASSERT_EQ(1, outputs.size());
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(-3.0, mat(0, 0));
+    EXPECT_FLOAT_EQ(-2.0, mat(0, 1));
+    EXPECT_FLOAT_EQ(1.0, mat(1, 0));
+    EXPECT_FLOAT_EQ(0.0, mat(1, 1));
+    TF_ASSERT_OK(session->ReleaseCallable(handle));
+  }
+
+  {
+    // Directly wire the output of node a to the output of node y, making the
+    // callable graph into "Neg(a);"; also fetch the result of a.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":0");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_fetch(a_ + ":0");
+    callable_options.add_fetch(y_neg_ + ":0");
+
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+    ASSERT_EQ(2, outputs.size());
+    auto mat_a = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(3.0, mat_a(0, 0));
+    EXPECT_FLOAT_EQ(2.0, mat_a(0, 1));
+    EXPECT_FLOAT_EQ(-1.0, mat_a(1, 0));
+    EXPECT_FLOAT_EQ(0.0, mat_a(1, 1));
+
+    auto mat_y_neg = outputs[1].matrix<float>();
+    ASSERT_TRUE(outputs[1].IsInitialized());
+    EXPECT_FLOAT_EQ(-3.0, mat_y_neg(0, 0));
+    EXPECT_FLOAT_EQ(-2.0, mat_y_neg(0, 1));
+    EXPECT_FLOAT_EQ(1.0, mat_y_neg(1, 0));
+    EXPECT_FLOAT_EQ(0.0, mat_y_neg(1, 1));
+    TF_ASSERT_OK(session->ReleaseCallable(handle));
+  }
+
+  {
+    // Wire the output of "Neg(Matmul(a, x))" to the output of "a",
+    // creating an invalid cycle.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(y_ + ":0");
+    c->set_to_tensor(a_ + ":0");
+    callable_options.add_fetch(y_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(
+        str_util::StrContains(s.error_message(), "would create a cycle"));
+  }
+
+  {
+    // Attempt to wire a non-existent node to a node that does exist.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor("unknown_node:0");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_fetch(y_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown node"));
+  }
+
+  {
+    // Attempt to wire a non-existent output from a node that does
+    // exist to another node.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":17");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_fetch(y_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown edge"));
+  }
+
+  {
+    // Attempt to wire a tensor to a node that doesn't exist.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":0");
+    c->set_to_tensor("unknown_node:0");
+    callable_options.add_fetch(y_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsNotFound(s));
+    EXPECT_TRUE(
+        str_util::StrContains(s.error_message(), "unable to find feed output"));
+  }
+
+  {
+    // Attempt to wire two tensors to the same tensor.
+    CallableOptions callable_options;
+    TensorConnection* c1 = callable_options.add_tensor_connection();
+    c1->set_from_tensor(a_ + ":0");
+    c1->set_to_tensor(y_neg_ + ":0");
+    TensorConnection* c2 = callable_options.add_tensor_connection();
+    c2->set_from_tensor(x_ + ":0");
+    c2->set_to_tensor(y_neg_ + ":0");
+    callable_options.add_fetch(z_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+  }
+
+  {
+    // Attempt to wire a tensor to a tensor that is also being fed.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":0");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_feed(y_ + ":0");
+    callable_options.add_fetch(y_neg_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
   }
 }
 
@@ -652,6 +811,55 @@ TEST(DirectSessionTest, MultipleFeedTest_Callable) {
       &handle);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
   EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+}
+
+TEST(DirectSessionTest, TestTensorConnectionUseTwice) {
+  Graph graph(OpRegistry::Global());
+
+  Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&a_tensor, {1.0, 2.0, 3.0, 4.0});
+  Node* a = test::graph::Constant(&graph, a_tensor);
+
+  Tensor dummy_tensor(DT_FLOAT, TensorShape({1}));
+  test::FillValues<float>(&dummy_tensor, {-1.0});
+
+  Node* left = test::graph::Constant(&graph, dummy_tensor);
+  Node* right = test::graph::Constant(&graph, dummy_tensor);
+
+  // y = A * x
+  Node* y = test::graph::Add(&graph, left, right);
+
+  GraphDef def;
+  test::graph::ToGraphDef(&graph, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  CallableOptions callable_options;
+  // Directly wire the output of node a to the outputs of nodes left
+  // and right, making the callable graph into "a + a;".
+  TensorConnection* c_left = callable_options.add_tensor_connection();
+  c_left->set_from_tensor(a->name() + ":0");
+  c_left->set_to_tensor(left->name() + ":0");
+  TensorConnection* c_right = callable_options.add_tensor_connection();
+  c_right->set_from_tensor(a->name() + ":0");
+  c_right->set_to_tensor(right->name() + ":0");
+
+  callable_options.add_fetch(y->name() + ":0");
+
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+  ASSERT_EQ(1, outputs.size());
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(2.0, mat(0, 0));
+  EXPECT_FLOAT_EQ(4.0, mat(0, 1));
+  EXPECT_FLOAT_EQ(6.0, mat(1, 0));
+  EXPECT_FLOAT_EQ(8.0, mat(1, 1));
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
 }
 
 TEST(DirectSessionTest, FetchMultipleTimes) {

@@ -59,6 +59,7 @@ from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.seed_stream import *
 from tensorflow.contrib.distributions.python.ops.sinh_arcsinh import *
 from tensorflow.contrib.distributions.python.ops.test_util import *
 from tensorflow.contrib.distributions.python.ops.vector_diffeomixture import *
@@ -126,6 +127,7 @@ _allowed_symbols = [
     'NormalWithSoftplusScale',
     'Poisson',
     'PoissonLogNormalQuadratureCompound',
+    'SeedStream',
     'SinhArcsinh',
     'StudentT',
     'StudentTWithAbsDfSoftplusScale',

@@ -25,6 +25,7 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/eager/python:checkpointable_utils",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
