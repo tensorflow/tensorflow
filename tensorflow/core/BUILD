@@ -255,6 +255,7 @@ closure_js_proto_library(
         "example/example.proto",
         "example/feature.proto",
     ],
+    visibility = ["//visibility:public"],
 )
 
 exports_files([
