@@ -4135,6 +4135,10 @@ op {
     name: "num_attempted_layers"
     type: DT_INT32
   }
+  output_arg {
+    name: "last_layer_nodes_range"
+    type: DT_INT32
+  }
   is_stateful: true
 }
 op {
