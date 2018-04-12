@@ -60,7 +60,7 @@ namespace tensorflow {
 #ifndef INTEL_MKL_ML
 
 template <typename T>
-class Conv2DFwd: public DnnOp {
+class Conv2DFwd : public DnnOp {
  public:
   Conv2DFwd(memory::dims src_dims,
             memory::dims filter_dims,
@@ -139,7 +139,7 @@ class Conv2DFwd: public DnnOp {
     // create convolution primitive and add it to net
     if (!bias_dims.empty()) {
         bias_mem_.reset(new memory({{{bias_dims}, MklDnnType<T>(),
-                                   memory::format::x}, cpu_engine_}, DummyData));
+                             memory::format::x}, cpu_engine_}, DummyData));
         conv_fwd_.reset(new convolution_forward(*fwd_pd_, *src_mem_,
                         *filter_mem_, *bias_mem_, *dst_mem_));
     } else {
@@ -223,10 +223,6 @@ class Conv2DFwd: public DnnOp {
 
 template <typename T>
 class Conv2DFwdFactory : public DnnOpFactory<T> {
- private:
-    Conv2DFwdFactory() {}
-    ~Conv2DFwdFactory() {}
-
  public:
   static Conv2DFwd<T>* Get(
                          memory::dims src_dims,
@@ -259,6 +255,9 @@ class Conv2DFwdFactory : public DnnOpFactory<T> {
   }
 
  private:
+  Conv2DFwdFactory() {}
+  ~Conv2DFwdFactory() {}
+
   static const int kDilationH = 0, kDilationW = 1;
 
   static Conv2DFwdFactory& GetInstance() {
@@ -877,7 +876,6 @@ class MklConv2DOp : public OpKernel {
                         bias_dims, dst_dims_mkl_order,
                         strides, dilations, padding_l, padding_r);
       } else {
-        conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
         conv2d_fwd = Conv2DFwdFactory<T>::Get(src_dims, filter_dims,
                         NONE_DIMS, dst_dims_mkl_order,
                         strides, dilations, padding_l, padding_r);
