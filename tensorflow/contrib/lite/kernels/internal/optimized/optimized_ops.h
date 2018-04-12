@@ -3938,7 +3938,7 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-  gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
+gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);

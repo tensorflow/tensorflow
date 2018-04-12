@@ -106,6 +106,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 #undef TF_LITE_DIV
 }
 
+
+
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteDivParams*>(node->builtin_data);
@@ -118,7 +120,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (output->type == kTfLiteFloat32) {
     EvalFloat<kernel_type>(context, node, params, data, input1, input2, output);
   } else {
-    context->ReportError(context, "Inputs and outputs not all float types.");
+    context->ReportError(context,
+                         "Div only supports FLOAT32 and quantized UINT8 now.");
     return kTfLiteError;
   }
 
