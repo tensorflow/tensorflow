@@ -38,6 +38,8 @@ RUN pip --no-cache-dir install \
         && \
     python -m ipykernel.kernelspec
 
+# RUN ln -s -f /usr/bin/python3 /usr/bin/python#
+
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
 
