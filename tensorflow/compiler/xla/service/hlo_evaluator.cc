@@ -1193,7 +1193,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           // specifically:
           // - For lhs, the non-contracting dimensions, including the batch
           // dimension have the same index as the `result_index`.
-          // - For rhs, the batch dimension is set seperately from other
+          // - For rhs, the batch dimension is set separately from other
           // non-contracting dimensions, since these other non-contracting
           // dimensions in rhs follow the non-contracting dimensions of lhs in
           // the resulting index.
