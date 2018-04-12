@@ -28,12 +28,13 @@ py_library(
     srcs = ["model.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":estimator_utils",
         ":trainer_hooks",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",
         "//tensorflow/contrib/boosted_trees:model_ops_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
+        "//tensorflow/python:training_util",
     ],
 )
 
