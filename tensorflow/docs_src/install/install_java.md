@@ -93,6 +93,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
 
               // Execute the "MyConst" operation in a Session.
               try (Session s = new Session(g);
+                   // Generally, there may be multiple output tensors, all of them must be closed to prevent resource leaks.
                    Tensor output = s.runner().fetch("MyConst").run().get(0)) {
                 System.out.println(new String(output.bytesValue(), "UTF-8"));
               }
@@ -207,6 +208,7 @@ public class HelloTF {
 
       // Execute the "MyConst" operation in a Session.
       try (Session s = new Session(g);
+           // Generally, there may be multiple output tensors, all of them must be closed to prevent resource leaks.
            Tensor output = s.runner().fetch("MyConst").run().get(0)) {
         System.out.println(new String(output.bytesValue(), "UTF-8"));
       }
