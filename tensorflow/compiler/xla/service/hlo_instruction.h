@@ -949,6 +949,13 @@ class HloInstruction {
   // Return true if this operator has a sharding assigned.
   bool has_sharding() const { return sharding_ != nullptr; }
 
+  // When creating a new instruction which either replaces, or shifts up (kCopy
+  // insertion case), another instruction, we need to make sure the certain
+  // properties of the new instruction are copied into the derived one. As of
+  // today, the metadata and sharding will be propagated to the derived
+  // instruction.
+  void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
+
   // Adds a new operand the fusion instruction.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
 

@@ -838,6 +838,16 @@ static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
   return instruction;
 }
 
+void HloInstruction::SetupDerivedInstruction(
+    HloInstruction* derived_instruction) const {
+  if (sharding_ != nullptr) {
+    derived_instruction->set_sharding(*sharding_);
+  } else {
+    derived_instruction->clear_sharding();
+  }
+  derived_instruction->set_metadata(metadata_);
+}
+
 HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
   CHECK_EQ(opcode(), HloOpcode::kFusion);
   CHECK_EQ(operand_count(),
@@ -1480,10 +1490,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
-  clone->set_metadata(metadata_);
-  if (has_sharding()) {
-    clone->set_sharding(sharding());
-  }
+  SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
   return clone;
 }
