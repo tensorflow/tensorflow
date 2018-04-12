@@ -1542,7 +1542,7 @@ def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
   Args:
      tensor: An `int` `Tensor` to be converted to a `Sparse`.
      eos_token: An integer.
-       It is part of the target label that signfies the end of a sentence.
+       It is part of the target label that signifies the end of a sentence.
      outputs_collections: Collection to add the outputs.
      scope: Optional scope for name_scope.
   """
@@ -1686,7 +1686,7 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
     output_collections: Collection to which the outputs will be added.
     scope: Optional scope for `name_scope`.
   Returns:
-    A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
+    A `Tensor` or `SparseTensor` containing the same values as `inputs`, but
     with innermost dimensions flattened to obtain rank `new_rank`.
 
   Raises:
