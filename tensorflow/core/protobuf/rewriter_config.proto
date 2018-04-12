@@ -6,6 +6,9 @@ option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+// this might be a little bit overkill
+import "tensorflow/core/framework/attr_value.proto";
+
 message AutoParallelOptions {
   bool enable = 1;
   int32 num_replicas = 2;
@@ -119,4 +122,14 @@ message RewriterConfig {
   // Custom registered optimizers will be run after the base optimizers, in
   // the order that they are specified.
   repeated string optimizers = 100;
+
+  // Message to describe custom graph optimizer and its parameters
+  message CustomGraphOptimizer{
+    string name = 1 ;
+    //instead of AttrValue, some POD structure might be better
+    map<string,AttrValue> parameter_map = 2;
+  }
+
+  // list of CustomGraphOptimizers to apply. Overrides optimizers 
+  repeated CustomGraphOptimizer custom_optimizers = 200;
 }
