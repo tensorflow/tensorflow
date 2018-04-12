@@ -71,7 +71,9 @@ cuda_py_test(
     additional_deps = [
         ":datasets",
         ":checkpointable_utils",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
+        "//tensorflow/contrib/data/python/ops:threadpool",
+        "//tensorflow/contrib/data/python/ops:unique",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",

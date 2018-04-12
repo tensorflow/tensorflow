@@ -22,7 +22,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":prefetching_ops_v2",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:checkpointable",
