@@ -223,6 +223,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 1
+          last_layer_node_start: 1
+          last_layer_node_end: 3
         }
         """
     second_round = """
@@ -307,6 +309,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 2
+          last_layer_node_start: 0
+          last_layer_node_end: 1
         }
         """
     third_round = """
@@ -407,6 +411,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 2
           num_layers_attempted: 3
+          last_layer_node_start: 1
+          last_layer_node_end: 3
         }
         """
     return (first_round, second_round, third_round)
@@ -444,6 +450,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 1
+          last_layer_node_start: 1
+          last_layer_node_end: 3
         }
         """
     second_round = """
@@ -528,6 +536,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 2
+          last_layer_node_start: 0
+          last_layer_node_end: 1
         }
         """
     third_round = """
@@ -628,6 +638,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 2
           num_layers_attempted: 3
+          last_layer_node_start: 1
+          last_layer_node_end: 3
         }
         """
     return (first_round, second_round, third_round)

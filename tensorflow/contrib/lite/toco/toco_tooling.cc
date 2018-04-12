@@ -279,10 +279,13 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
           {new HardcodeMinMax});
     }
     CheckIsReadyForQuantization(*model);
-    RunGraphTransformations(
-        model, "quantization graph transformations",
-        {new Quantize, new RemoveTrivialQuantizedActivationFunc,
-         new RemoveFinalDequantizeOp});
+    RunGraphTransformations(model, "quantization graph transformations",
+                            {
+                                new RemoveTrivialQuantizedActivationFunc,
+                                new RemoveTrivialQuantizedMinMax,
+                                new Quantize,
+                                new RemoveFinalDequantizeOp,
+                            });
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
     // Dequantize creates FakeQuant nodes. We may want to discard
