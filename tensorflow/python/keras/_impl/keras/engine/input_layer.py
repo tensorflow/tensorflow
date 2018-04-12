@@ -23,7 +23,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import base_layer
-from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -95,7 +94,7 @@ class InputLayer(base_layer.Layer):
 
       if context.executing_eagerly():
         # In eager mode, create a temporary placeholder to call the layer on.
-        input_tensor = tf_base_layers._DeferredTensor(  # pylint: disable=protected-access
+        input_tensor = base_layer.DeferredTensor(  # pylint: disable=protected-access
             shape=batch_input_shape,
             dtype=dtype,
             name=self.name)
@@ -123,7 +122,7 @@ class InputLayer(base_layer.Layer):
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
     input_tensor._keras_history = (self, 0, 0)  # pylint: disable=protected-access
-    tf_base_layers.Node(
+    base_layer.Node(
         self,
         inbound_layers=[],
         node_indices=[],

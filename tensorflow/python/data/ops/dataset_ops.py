@@ -121,7 +121,7 @@ class Dataset(object):
       An `Iterator` over the elements of this dataset.
 
     Raises:
-      RuntimeError: If eager execution is enabled.
+      RuntimeError: If eager execution is not enabled.
     """
     if context.executing_eagerly():
       return iterator_ops.EagerIterator(self)

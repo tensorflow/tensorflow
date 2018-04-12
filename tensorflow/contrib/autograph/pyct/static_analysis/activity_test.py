@@ -204,6 +204,8 @@ class ActivityAnalizerTest(test.TestCase):
     self.assertScopeIsRmc(
         anno.getanno(while_node, NodeAnno.BODY_SCOPE).parent, ('a', 'b', 'c'),
         ('b', 'c'), ('a', 'b', 'c'))
+    self.assertScopeIsRmc(
+        anno.getanno(while_node, NodeAnno.COND_SCOPE), ('b',), (), ())
 
   def test_for(self):
 

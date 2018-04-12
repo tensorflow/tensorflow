@@ -302,6 +302,11 @@ Status Examples::SampleAdaptiveProbabilities(
   return Status::OK();
 }
 
+void Examples::RandomShuffle() {
+  std::iota(sampled_index_.begin(), sampled_index_.end(), 0);
+  std::random_shuffle(sampled_index_.begin(), sampled_index_.end());
+}
+
 // TODO(sibyl-Aix6ihai): Refactor/shorten this function.
 Status Examples::Initialize(OpKernelContext* const context,
                             const ModelWeights& weights,

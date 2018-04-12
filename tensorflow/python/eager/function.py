@@ -223,6 +223,16 @@ class HelperContext(object):
     else:
       return val
 
+  def EnterGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.EnterGradientColocation(op, gradient_uid)
+
+  def ExitGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.ExitGradientColocation(op, gradient_uid)
+
   def __enter__(self):
     # pylint: disable=protected-access
     self._g = ops.get_default_graph()
@@ -294,7 +304,7 @@ class _EagerDefinedFunction(object):
     self.signature = function_def.signature
     self.grad_func_name = None
     self.python_grad_func = None
-    self._c_func = fn
+    self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
 
 
@@ -661,7 +671,7 @@ def _defun_internal(name, func, args, kwds):
   if context.executing_eagerly():
     for f in tmp_graph._functions.values():  # pylint: disable=protected-access
       # TODO(ashankar): What about the gradient registry?
-      _register(f._c_func)  # pylint: disable=protected-access
+      _register(f._c_func.func)  # pylint: disable=protected-access
   return GraphModeFunction(
       fname, all_inputs, extra_inputs, tmp_graph, operations, func_def_outputs,
       func_outputs, output_shapes, variables)

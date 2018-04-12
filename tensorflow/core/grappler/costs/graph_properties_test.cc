@@ -742,8 +742,6 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   EXPECT_EQ("float: [128,256]", PropToString(prop));
 }
 
-#if 0
-// Disabled for now since this doesnt' seem to work when functions are instantiated inside while loops. It's also unclear whether it's correct when the same function is instantiated twice.
 TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   // Test graph produced in python using:
   /*
@@ -757,27 +755,26 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
       z = MyAdd(x, y)
       z = MyAdd(x, z)
   */
-  // Check that the shape of the second MyAdd node propagates
-  // correctly.
+  // Check that the shape inference code infers what it can.
   GrapplerItem item;
   string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
                                  "simple_function.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
   TF_CHECK_OK(properties.InferStatically(false));
-  const auto props = properties.GetOutputProperties("MyAdd_55e046a8_1");
-  const OpInfo::TensorProperties& prop = props[0];
-  EXPECT_EQ(DT_FLOAT, prop.dtype());
-  EXPECT_FALSE(prop.shape().unknown_rank());
-  EXPECT_EQ(2, prop.shape().dim_size());
-  EXPECT_EQ(1, prop.shape().dim(0).size());
-  EXPECT_EQ(2, prop.shape().dim(1).size());
+  const auto out_props = properties.GetOutputProperties("MyAdd_55e046a8");
+  const OpInfo::TensorProperties& out_prop = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop.dtype());
+  EXPECT_TRUE(out_prop.shape().unknown_rank());
 
-  PartialTensorShape shape(prop.shape());
-  EXPECT_TRUE(shape.IsFullyDefined());
-  EXPECT_FALSE(shape.unknown_rank());
+  const auto in_props = properties.GetInputProperties("MyAdd_55e046a8");
+  const OpInfo::TensorProperties& in_prop = in_props[0];
+  EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+  EXPECT_FALSE(in_prop.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop.shape().dim_size());
+  EXPECT_EQ(1, in_prop.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop.shape().dim(1).size());
 }
-#endif
 
 TEST_F(GraphPropertiesTest, SymbolicShapes) {
   // Build a simple graph with placeholders of unknown dimensions. These

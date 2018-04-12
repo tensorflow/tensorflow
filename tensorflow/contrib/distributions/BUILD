@@ -491,6 +491,16 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "seed_stream_test",
+    size = "small",
+    srcs = ["python/kernel_tests/seed_stream_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "statistical_testing_test",
     size = "medium",
     srcs = [

@@ -810,7 +810,33 @@ def tf_cc_test_mkl(srcs,
                    tags=[],
                    size="medium",
                    args=None):
-  if_mkl(tf_cc_tests(srcs, deps, name, linkstatic=linkstatic, tags=tags, size=size, args=args, nocopts="-fno-exceptions"))
+  for src in srcs:
+    native.cc_test(
+      name=src_to_test_name(src),
+      srcs=if_mkl([src]) + tf_binary_additional_srcs(),
+      copts=tf_copts(),
+      linkopts=select({
+        clean_dep("//tensorflow:android"): [
+            "-pie",
+          ],
+        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows_msvc"): [],
+        "//conditions:default": [
+            "-lpthread",
+            "-lm"
+        ],
+      }) + _rpath_linkopts(src_to_test_name(src)),
+      deps=deps + if_mkl(
+          [
+              "//third_party/mkl:intel_binary_blob",
+          ],
+      ),
+      linkstatic=linkstatic,
+      tags=tags,
+      size=size,
+      args=args,
+      nocopts="-fno-exceptions")
+
 
 def tf_cc_tests_gpu(srcs,
                     deps,
@@ -1029,16 +1055,12 @@ register_extension_info(
 def tf_mkl_kernel_library(name,
                           prefix=None,
                           srcs=None,
-                          gpu_srcs=None,
                           hdrs=None,
                           deps=None,
                           alwayslink=1,
                           copts=tf_copts(),
-                          nocopts="-fno-exceptions",
-                          **kwargs):
+                          nocopts="-fno-exceptions"):
   """A rule to build MKL-based TensorFlow kernel libraries."""
-  gpu_srcs = gpu_srcs  # unused argument
-  kwargs = kwargs  # unused argument
 
   if not bool(srcs):
     srcs = []
@@ -1051,16 +1073,15 @@ def tf_mkl_kernel_library(name,
     hdrs = hdrs + native.glob(
         [prefix + "*.h"])
 
-  if_mkl(
-      native.cc_library(
-          name=name,
-          srcs=srcs,
-          hdrs=hdrs,
-          deps=deps,
-          alwayslink=alwayslink,
-          copts=copts,
-          nocopts=nocopts
-      ))
+  native.cc_library(
+      name=name,
+      srcs=if_mkl(srcs),
+      hdrs=hdrs,
+      deps=deps,
+      alwayslink=alwayslink,
+      copts=copts,
+      nocopts=nocopts
+  )
 
 register_extension_info(
     extension_name = "tf_mkl_kernel_library",

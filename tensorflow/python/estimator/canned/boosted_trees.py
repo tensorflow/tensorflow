@@ -209,8 +209,8 @@ class _CacheTrainingStatesUsingVariables(object):
         name='cache_insert')
 
 
-class StopAtAttemptsHook(session_run_hook.SessionRunHook):
-  """Hook that requests stop at the number of trees."""
+class _StopAtAttemptsHook(session_run_hook.SessionRunHook):
+  """Hook that requests stop at the number of attempts."""
 
   def __init__(self, num_finalized_trees_tensor, num_attempted_layers_tensor,
                max_trees, max_depth):
@@ -224,25 +224,17 @@ class StopAtAttemptsHook(session_run_hook.SessionRunHook):
         [self._num_finalized_trees_tensor, self._num_attempted_layers_tensor])
 
   def after_run(self, run_context, run_values):
+    # num_* tensors should be retrieved by a separate session than the training
+    # one, in order to read the values after growing.
+    # So, if it's approaching to the limit, get the actual value by additional
+    # session.
     num_finalized_trees, num_attempted_layers = run_values.results
+    if (num_finalized_trees >= self._max_trees - 1 or
+        num_attempted_layers > 2 * self._max_trees * self._max_depth - 1):
+      num_finalized_trees, num_attempted_layers = run_context.session.run(
+          [self._num_finalized_trees_tensor, self._num_attempted_layers_tensor])
     if (num_finalized_trees >= self._max_trees or
-        1.0 * num_attempted_layers / self._max_depth > 2 * self._max_trees):
-      run_context.request_stop()
-
-
-class StopAtNumTreesHook(session_run_hook.SessionRunHook):
-  """Hook that requests stop at the number of trees."""
-
-  def __init__(self, num_trees_tensor, max_trees):
-    self._num_trees_tensor = num_trees_tensor
-    self._max_trees = max_trees
-
-  def before_run(self, run_context):
-    return session_run_hook.SessionRunArgs(self._num_trees_tensor)
-
-  def after_run(self, run_context, run_values):
-    num_trees = run_values.results
-    if num_trees > self._max_trees:
+        num_attempted_layers > 2 * self._max_trees * self._max_depth):
       run_context.request_stop()
 
 
@@ -468,7 +460,8 @@ def _bt_model_fn(
     # Add an early stop hook.
     estimator_spec = estimator_spec._replace(
         training_hooks=estimator_spec.training_hooks +
-        (StopAtNumTreesHook(num_trees, tree_hparams.n_trees),))
+        (_StopAtAttemptsHook(num_finalized_trees, num_attempted_layers,
+                             tree_hparams.n_trees, tree_hparams.max_depth),))
   return estimator_spec
 
 

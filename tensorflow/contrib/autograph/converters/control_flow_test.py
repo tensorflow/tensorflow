@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.autograph.converters import control_flow
 from tensorflow.contrib.autograph.converters import converter_test_base
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 
@@ -93,6 +94,77 @@ class ControlFlowTest(converter_test_base.TestCase):
     with self.compiled(node, control_flow_ops.cond) as result:
       with self.test_session() as sess:
         self.assertEqual(-1, sess.run(result.test_fn(constant_op.constant(1))))
+
+  def test_simple_for(self):
+
+    def test_fn(l):
+      s1 = 0
+      s2 = 0
+      for e in l:
+        s1 += e
+        s2 += e * e
+      return s1, s2
+
+    node = self.parse_and_analyze(test_fn, {})
+    node = control_flow.transform(node, self.ctx)
+
+    with self.compiled(node) as result:
+      with self.test_session() as sess:
+        l = [1, 2, 3]
+        self.assertEqual(
+            test_fn(l), sess.run(result.test_fn(constant_op.constant(l))))
+        l = []
+        self.assertEqual(
+            test_fn(l),
+            sess.run(
+                result.test_fn(
+                    constant_op.constant(l, shape=(0,), dtype=dtypes.int32))))
+
+  def test_for_single_var(self):
+
+    def test_fn(l):
+      s = 0
+      for e in l:
+        s += e
+      return s
+
+    node = self.parse_and_analyze(test_fn, {})
+    node = control_flow.transform(node, self.ctx)
+
+    with self.compiled(node) as result:
+      with self.test_session() as sess:
+        l = [1, 2, 3]
+        self.assertEqual(
+            test_fn(l), sess.run(result.test_fn(constant_op.constant(l))))
+        l = []
+        self.assertEqual(
+            test_fn(l),
+            sess.run(
+                result.test_fn(
+                    constant_op.constant(l, shape=(0,), dtype=dtypes.int32))))
+
+  def test_for_with_iterated_expression(self):
+
+    eval_count = [0]
+
+    def count_evals(x):
+      eval_count[0] += 1
+      return x
+
+    def test_fn(n):
+      s = 0
+      for e in count_evals(range(n)):
+        s += e
+      return s
+
+    node = self.parse_and_analyze(test_fn, {'count_evals': count_evals})
+    node = control_flow.transform(node, self.ctx)
+
+    with self.compiled(node) as result:
+      result.count_evals = count_evals
+      self.assertEqual(test_fn(5), result.test_fn(5))
+      # count_evals ran twice, once for test_fn and another for result.test_fn
+      self.assertEqual(eval_count[0], 2)
 
 
 if __name__ == '__main__':

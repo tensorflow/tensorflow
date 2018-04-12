@@ -120,13 +120,13 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/contrib/eager/python:checkpointable_utils",
-        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
@@ -140,11 +140,11 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
-        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/contrib/summary:summary_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -161,10 +161,10 @@ py_library(
     deps = [
         ":datasets",
         ":metrics",
-        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "@six_archive//:six",
@@ -272,8 +272,7 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = [
-        "no_oss",  # b/74395663
         "no_windows",  # TODO: needs investigation on Windows
-        "notsan",
+        "notsan",  # b/74395663
     ],
 )

@@ -102,11 +102,11 @@ print(a.numpy())
 #     [3 4]]
 ```
 
-The `tfe` module contains symbols available to both eager and graph execution
+The `tf.contrib.eager` module contains symbols available to both eager and graph execution
 environments and is useful for writing code to [work with graphs](#work_with_graphs):
 
 ```py
-import tensorflow.contrib.eager as tfe
+tfe = tf.contrib.eager
 ```
 
 ## Dynamic control flow
@@ -213,25 +213,25 @@ their objects.
 [Automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation)
 is useful for implementing machine learning algorithms such as
 [backpropagation](https://en.wikipedia.org/wiki/Backpropagation) for training
-neural networks. During eager execution, use `tfe.GradientTape` to trace
+neural networks. During eager execution, use `tf.GradientTape` to trace
 operations for computing gradients later.
 
-`tfe.GradientTape` is an opt-in feature to provide maximal performance when
+`tf.GradientTape` is an opt-in feature to provide maximal performance when
 not tracing. Since different operations can occur during each call, all
 forward-pass operations get recorded to a "tape". To compute the gradient, play
-the tape backwards and then discard. A particular `tfe.GradientTape` can only
+the tape backwards and then discard. A particular `tf.GradientTape` can only
 compute one gradient; subsequent calls throw a runtime error.
 
 ```py
 w = tfe.Variable([[1.0]])
-with tfe.GradientTape() as tape:
+with tf.GradientTape() as tape:
   loss = w * w
 
 grad = tape.gradient(loss, [w])
 print(grad)  # => [tf.Tensor([[ 2.]], shape=(1, 1), dtype=float32)]
 ```
 
-Here's an example of `tfe.GradientTape` that records forward-pass operations
+Here's an example of `tf.GradientTape` that records forward-pass operations
 to train a simple model:
 
 ```py
@@ -251,8 +251,8 @@ def loss(weights, biases):
 
 # Return the derivative of loss with respect to weight and bias
 def grad(weights, biases):
-  with tfe.GradientTape() as tape:
-    loss_value = loss(weights, biases) 
+  with tf.GradientTape() as tape:
+    loss_value = loss(weights, biases)
   return tape.gradient(loss_value, [weights, biases])
 
 train_steps = 200
@@ -292,7 +292,7 @@ Final loss: 0.974
 W = 3.01582956314, B = 2.1191945076
 ```
 
-Replay the `tfe.GradientTape` to compute the gradients and apply them in a
+Replay the `tf.GradientTape` to compute the gradients and apply them in a
 training loop. This is demonstrated in an excerpt from the
 [mnist_eager.py](https://github.com/tensorflow/models/blob/master/official/mnist/mnist_eager.py)
 example:
@@ -301,9 +301,9 @@ example:
 dataset = tf.data.Dataset.from_tensor_slices((data.train.images,
                                               data.train.labels))
 ...
-for (batch, (images, labels)) in enumerate(tfe.Iterator(dataset)):
+for (batch, (images, labels)) in enumerate(dataset):
   ...
-  with tfe.GradientTape() as tape:
+  with tf.GradientTape() as tape:
     logits = model(images, training=True)
     loss_value = loss(logits, labels)
   ...
@@ -353,17 +353,17 @@ def loss(model, x, y):
   return tf.losses.sparse_softmax_cross_entropy(labels=y, logits=prediction)
 
 def grad(model, inputs, targets):
-  with tfe.GradientTape() as tape:
+  with tf.GradientTape() as tape:
     loss_value = loss(model, inputs, targets)
   return tape.gradient(loss_value, model.variables)
 
 optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
 
-x, y = tfe.Iterator(dataset_train).next()
+x, y = iter(dataset_train).next()
 print("Initial loss: {:.3f}".format(loss(model, x, y)))
 
 # Training loop
-for (i, (x, y)) in enumerate(tfe.Iterator(dataset_train)):
+for (i, (x, y)) in enumerate(dataset_train):
   # Calculate derivatives of the input function with respect to its parameters.
   grads = grad(model, x, y)
   # Apply the gradient to the model
@@ -398,7 +398,7 @@ And for faster training, move the computation to a GPU:
 
 ```py
 with tf.device("/gpu:0"):
-  for (i, (x, y)) in enumerate(tfe.Iterator(dataset_train)):
+  for (i, (x, y)) in enumerate(dataset_train):
     # minimize() is equivalent to the grad() and apply_gradients() calls.
     optimizer.minimize(lambda: loss(model, x, y),
                        global_step=tf.train.get_or_create_global_step())
@@ -411,7 +411,7 @@ training to make automatic differentiation easier. The parameters of a model can
 be encapsulated in classes as variables.
 
 Better encapsulate model parameters by using `tfe.Variable` with
-`tfe.GradientTape`. For example, the automatic differentiation example above
+`tf.GradientTape`. For example, the automatic differentiation example above
 can be rewritten:
 
 ```py
@@ -435,7 +435,7 @@ def loss(model, inputs, targets):
   return tf.reduce_mean(tf.square(error))
 
 def grad(model, inputs, targets):
-  with tfe.GradientTape() as tape:
+  with tf.GradientTape() as tape:
     loss_value = loss(model, inputs, targets)
   return tape.gradient(loss_value, [model.W, model.B])
 
@@ -585,14 +585,14 @@ for _ in range(iterations):
 
 ### Dynamic models
 
-`tfe.GradientTape` can also be used in dynamic models. This example for a
+`tf.GradientTape` can also be used in dynamic models. This example for a
 [backtracking line search](https://wikipedia.org/wiki/Backtracking_line_search)
 algorithm looks like normal NumPy code, except there are gradients and is
 differentiable, despite the complex control flow:
 
 ```py
 def line_search_step(fn, init_x, rate=1.0):
-  with tfe.GradientTape() as tape:
+  with tf.GradientTape() as tape:
     # Variables are automatically recorded, but manually watch a tensor
     tape.watch(init_x)
     value = fn(init_x)
@@ -608,7 +608,7 @@ def line_search_step(fn, init_x, rate=1.0):
 
 ### Additional functions to compute gradients
 
-`tfe.GradientTape` is a powerful interface for computing gradients, but there
+`tf.GradientTape` is a powerful interface for computing gradients, but there
 is another [Autograd](https://github.com/HIPS/autograd)-style API available for
 automatic differentiation. These functions are useful if writing math code with
 only tensors and gradient functions, and without `tfe.Variables`:

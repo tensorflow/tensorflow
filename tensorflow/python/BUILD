@@ -835,6 +835,7 @@ py_library(
     srcs = ["framework/tensor_shape.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dtypes",
         ":util",
         "//tensorflow/core:protos_all_py",
     ],
@@ -1616,7 +1617,10 @@ py_library(
 
 py_library(
     name = "array_ops",
-    srcs = ["ops/array_ops.py"],
+    srcs = [
+        "ops/array_ops.py",
+        "ops/inplace_ops.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops_gen",
@@ -2270,7 +2274,6 @@ py_library(
         ":clip_ops",
         ":framework_for_generated_wrappers",
         ":init_ops",
-        ":layers_base",
         ":math_ops",
         ":nn_ops",
         ":partitioned_variables",
@@ -2544,6 +2547,30 @@ py_library(
         ":framework_for_generated_wrappers",
         ":logging_ops_gen",
         ":summary_op_util",
+    ],
+)
+
+py_library(
+    name = "summary_ops_v2",
+    srcs = ["ops/summary_ops_v2.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":array_ops",
+        ":constant_op",
+        ":control_flow_ops",
+        ":dtypes",
+        ":framework_ops",
+        ":math_ops",
+        ":resource_variable_ops",
+        ":smart_cond",
+        ":summary_op_util",
+        ":summary_ops_gen",
+        ":training_util",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "@six_archive//:six",
     ],
 )
 
@@ -2909,7 +2936,10 @@ py_library(
     name = "training",
     srcs = glob(
         ["training/**/*.py"],
-        exclude = ["**/*test*"],
+        exclude = [
+            "**/*test*",
+            "training/training_util.py",  # See :training_util
+        ],
     ),
     srcs_version = "PY2AND3",
     deps = [
@@ -2943,14 +2973,17 @@ py_library(
         ":string_ops",
         ":summary",
         ":training_ops_gen",
+        ":training_util",
         ":util",
         ":variable_scope",
         ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/losses",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
+        # `layers` dependency only exists due to the use of a small utility.
+        "//tensorflow/python/keras:layers",
     ],
 )
 
@@ -3343,6 +3376,10 @@ tf_py_wrap_cc(
         "util/transform_graph.i",
         "util/util.i",
     ],
+    win_def_file = select({
+        "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
+        "//conditions:default": None,
+    }),
     deps = [
         ":bfloat16_lib",
         ":cost_analyzer_lib",
@@ -3363,6 +3400,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/grappler:grappler_item",
@@ -4185,6 +4223,25 @@ py_test(
     ],
 )
 
+py_library(
+    name = "training_util",
+    srcs = ["training/training_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework",
+        ":framework_ops",
+        ":init_ops",
+        ":platform",
+        ":resource_variable_ops",
+        ":state_ops",
+        ":util",
+        ":variable_scope",
+        ":variables",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
 py_test(
     name = "training_util_test",
     size = "small",
@@ -4195,6 +4252,7 @@ py_test(
         ":framework",
         ":platform",
         ":training",
+        ":training_util",
         ":variables",
     ],
 )
@@ -4239,6 +4297,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":client",
         ":constant_op",
         ":errors",
         ":framework",
@@ -4251,6 +4310,7 @@ py_library(
         ":summary_op_util",
         ":summary_ops",
         ":summary_ops_gen",
+        ":summary_ops_v2",
         ":util",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
@@ -4277,7 +4337,7 @@ py_tests(
         ":platform",
         ":platform_test",
         ":summary",
-        ":training",
+        ":summary_ops_v2",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -4302,6 +4362,7 @@ py_library(
         ":variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
     ],
 )
@@ -4338,6 +4399,7 @@ py_library(
         ":variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/keras:layers",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
