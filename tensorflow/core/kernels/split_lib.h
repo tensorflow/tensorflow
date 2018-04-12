@@ -50,7 +50,7 @@ struct Split<Eigen::ThreadPoolDevice, T, NDims> {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T, int NDims>
-struct Split<Eigen::SyclDevice, T> {
+struct Split<Eigen::SyclDevice, T, NDims> {
   void operator()(const Eigen::SyclDevice& d,
                   typename TTypes<T, NDims>::Tensor output,
                   typename TTypes<T, NDims>::ConstTensor input,
