@@ -27,10 +27,6 @@ load(
     "if_tensorrt",
 )
 
-load(
-  "//tensorflow/core:platform/default/build_config_root.bzl",
-  "if_static",
-)
 
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
