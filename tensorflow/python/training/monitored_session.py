@@ -274,6 +274,9 @@ class Scaffold(object):
     initialized without specifying the local_init_op arg. It includes
     `tf.local_variables_initializer`, `tf.tables_initializer`, and also
     initializes local session resources.
+
+    Returns:
+      The default Scaffold local init op.
     """
     return control_flow_ops.group(
         variables.local_variables_initializer(),
