@@ -19,11 +19,9 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-std::shared_ptr<tensorflow::tensorrt::TRTResourceManager>
-tensorflow::tensorrt::TRTResourceManager::instance()
-{
-  static std::shared_ptr<tensorflow::tensorrt::TRTResourceManager> instance_(
-    new tensorflow::tensorrt::TRTResourceManager);
+std::shared_ptr<TRTResourceManager>
+tensorflow::tensorrt::TRTResourceManager::instance() {
+  static std::shared_ptr<TRTResourceManager> instance_(new TRTResourceManager);
   return instance_;
 }
 
