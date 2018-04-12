@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-
+from six.moves import xrange
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -104,10 +104,7 @@ class ConfusionMatrixTest(test.TestCase):
       d, l, cm_out = sess.run([data, lab, cm], {m_neg: 0.0, m_pos: 1.0, s: 1.0})
 
       truth = np.zeros([2, 2], dtype=np_dtype)
-      try:
-        range_builder = xrange
-      except NameError:  # In Python 3.
-        range_builder = range
+      range_builder = xrange
       for i in range_builder(len(d)):
         truth[l[i], d[i]] += 1
 
