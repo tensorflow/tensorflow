@@ -26,20 +26,17 @@ void BilinearInitializerOp<T>::Compute(OpKernelContext* context) {
         {shape[0], shape[1], shape[2], shape[3]},
         &output_tensor));
 
-    auto output = output_tensor->tensor<T, 4>();
+    T* output_ptr = &output_tensor->unaligned_flat<T>()(0);
+    size_t num = shape[0] * shape[1] * shape[2] * shape[3];
+    memset(output_ptr, 0, num * sizeof(T));
 
+    auto output = output_tensor->tensor<T, 4>();
     for (int i = 0; i < shape[0]; i++) {
       for (int j = 0; j < shape[1]; j++) {
         for (int k = 0; k < shape[2]; k++) {
-          for (int l = 0; l < shape[3]; l++) {
-            if (k == l) {
-              output(i, j, k, l) =
-                (1 - fabs(i - center) / factor) *
-                (1 - fabs(j - center) / factor);
-            } else {
-              output(i, j, k, l) = 0.0;
-            }
-          }
+          output(i, j, k, k) =
+            (1 - fabs(i - center) / factor) *
+            (1 - fabs(j - center) / factor);
         }
       }
     }

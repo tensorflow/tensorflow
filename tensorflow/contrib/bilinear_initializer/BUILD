@@ -25,7 +25,6 @@ tf_proto_library(
         ["proto/*.proto"],
     ),
     cc_api_version = 2,
-    go_api_version = 2,
     java_api_version = 2,
     py_api_version = 2,
     visibility = ["//visibility:private"],
