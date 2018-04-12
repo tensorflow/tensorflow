@@ -26,6 +26,7 @@ limitations under the License.
 #endif
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 
@@ -201,6 +202,7 @@ struct ParsedModelFlags {
   Arg<toco::IntList> input_shape;
   Arg<toco::StringMapList> rnn_states;
   Arg<toco::StringMapList> model_checks;
+  Arg<bool> change_concat_input_ranges = Arg<bool>(true);
   // Debugging output options.
   // TODO(benoitjacob): these shouldn't be ModelFlags.
   Arg<string> graphviz_first_array;
@@ -210,6 +212,7 @@ struct ParsedModelFlags {
   Arg<bool> allow_nonexistent_arrays = Arg<bool>(false);
   Arg<bool> allow_nonascii_arrays = Arg<bool>(false);
   Arg<string> arrays_extra_info_file;
+  Arg<string> model_flags_file;
 };
 
 // Flags that describe the operation you would like to do (what conversion
@@ -220,7 +223,7 @@ struct ParsedTocoFlags {
   Arg<string> output_file;
   Arg<string> input_format = Arg<string>("TENSORFLOW_GRAPHDEF");
   Arg<string> output_format = Arg<string>("TFLITE");
-  Arg<string> savedmodel_tagset;
+  Arg<string> savedmodel_tagset = Arg<string>(tensorflow::kSavedModelTagServe);
   // TODO(aselle): command_line_flags  doesn't support doubles
   Arg<float> default_ranges_min = Arg<float>(0.);
   Arg<float> default_ranges_max = Arg<float>(0.);

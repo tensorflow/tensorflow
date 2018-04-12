@@ -283,6 +283,10 @@ Status FoldConstants(const GraphDef& input_graph_def,
     };
   }
 
+  TF_RETURN_IF_ERROR(context.GetOneInt64Parameter(
+      "max_constant_size_in_bytes", cf_opts.max_constant_size_in_bytes,
+      &cf_opts.max_constant_size_in_bytes));
+
   // Constant folding.
   bool was_mutated;
   TF_RETURN_IF_ERROR(ConstantFold(cf_opts, nullptr, Env::Default(), nullptr,

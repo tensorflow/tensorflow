@@ -94,6 +94,10 @@ class HloSharding {
   // Create a new sharding from a protobuf OpSharding.
   static StatusOr<HloSharding> FromProto(const OpSharding& proto);
 
+  // Checks whether device is a reserved device number. A reserved device number
+  // has usually a special meaning, with dedicated handling logic.
+  static bool IsReservedDevice(int64 device) { return device < 0; }
+
   OpSharding ToProto() const;
   string ToString() const;
 

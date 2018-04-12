@@ -2341,6 +2341,38 @@ class MetaGraphTest(test.TestCase):
               10, size=[1, 10])
       })
 
+  def testImportIntoImplicitNamescope(self):
+    # Test that we can import a meta graph into an implicit namescope.
+    test_dir = self._get_test_dir("import_into_namescope")
+    filename = os.path.join(test_dir, "ckpt")
+    image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
+    label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
+    with session.Session() as sess:
+      weights = variables.Variable(
+          random_ops.random_uniform([784, 10]), name="weights")
+      bias = variables.Variable(array_ops.zeros([10]), name="bias")
+      logit = nn_ops.relu(math_ops.matmul(image, weights) + bias, name="logits")
+      nn_ops.softmax(logit, name="prediction")
+      cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
+                                                      logits=logit, name="cost")
+      adam.AdamOptimizer().minimize(cost, name="optimize")
+      saver = saver_module.Saver()
+      sess.run(variables.global_variables_initializer())
+      saver.save(sess, filename)
+
+    graph = ops_lib.Graph()
+    with session.Session(graph=graph) as sess:
+      with ops_lib.name_scope("new_model"):
+        new_saver = saver_module.import_meta_graph(
+            filename + ".meta", graph=graph)
+
+      new_saver.restore(sess, filename)
+      sess.run(["new_model/optimize"], {
+          "new_model/image:0": np.random.random([1, 784]),
+          "new_model/label:0": np.random.randint(
+              10, size=[1, 10])
+      })
+
   def testClearDevicesOnImport(self):
     # Test that we import a graph without its devices and run successfully.
     with ops_lib.Graph().as_default():
@@ -2947,6 +2979,37 @@ class CheckpointableCompatibilityTests(test.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual(42., self.evaluate(v.non_dep_variable))
       self.assertEqual(42., self.evaluate(v.mirrored))
+
+  def testSingleTensorEvaluation(self):
+
+    class _CountingSaveable(saver_module.BaseSaverBuilder.SaveableObject):
+
+      def __init__(self, name):
+        self.eval_count = 0
+        def _tensor():
+          self.eval_count += 1
+          return constant_op.constant([1.])
+        dummy_op = constant_op.constant([2.])
+        super(_CountingSaveable, self).__init__(
+            dummy_op,
+            [saver_module.BaseSaverBuilder.SaveSpec(
+                _tensor, "", name, dtype=dummy_op.dtype)],
+            name)
+
+      def restore(self, restored_tensors, restored_shapes):
+        """Restore the same value into both variables."""
+        pass
+
+    with context.eager_mode():
+      v = _CountingSaveable("foo")
+      saver = saver_module.Saver(var_list=[v])
+      test_dir = self.get_temp_dir()
+      prefix = os.path.join(test_dir, "ckpt")
+      with self.test_session() as sess:
+        save_path = saver.save(sess, prefix)
+        self.assertEqual(1, v.eval_count)
+        saver.restore(sess, save_path)
+        self.assertEqual(1, v.eval_count)
 
 
 if __name__ == "__main__":

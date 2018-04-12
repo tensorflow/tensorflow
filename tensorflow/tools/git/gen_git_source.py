@@ -238,7 +238,7 @@ def generate(arglist):
   write_version_info(dest_file, git_version)
 
 
-def raw_generate(output_file):
+def raw_generate(output_file, source_dir):
   """Simple generator used for cmake/make build systems.
 
   This does not create any symlinks. It requires the build system
@@ -246,9 +246,10 @@ def raw_generate(output_file):
 
   Args:
     output_file: Output filename for the version info cc
+    source_dir: Base path of the source code
   """
 
-  git_version = get_git_version(".")
+  git_version = get_git_version(source_dir)
   write_version_info(output_file, git_version)
 
 
@@ -281,6 +282,11 @@ parser.add_argument(
     type=str,
     help="Generate version_info.cc (simpler version used for cmake/make)")
 
+parser.add_argument(
+    "--source_dir",
+    type=str,
+    help="Base path of the source code (used for cmake/make)")
+
 args = parser.parse_args()
 
 if args.configure is not None:
@@ -290,7 +296,10 @@ if args.configure is not None:
 elif args.generate is not None:
   generate(args.generate)
 elif args.raw_generate is not None:
-  raw_generate(args.raw_generate)
+  source_path = "."
+  if args.source_dir is not None:
+    source_path = args.source_dir
+  raw_generate(args.raw_generate, source_path)
 else:
   raise RuntimeError("--configure or --generate or --raw_generate "
                      "must be used")

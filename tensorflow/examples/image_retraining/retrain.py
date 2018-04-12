@@ -870,15 +870,16 @@ def run_final_eval(sess, model_info, class_count, image_lists, jpeg_data_tensor,
     resized_image_tensor: The input node of the recognition graph.
     bottleneck_tensor: The bottleneck output layer of the CNN graph.
   """
-  (sess, bottleneck_input, ground_truth_input, evaluation_step,
-   prediction) = build_eval_session(model_info, class_count)
-
   test_bottlenecks, test_ground_truth, test_filenames = (
       get_random_cached_bottlenecks(sess, image_lists, FLAGS.test_batch_size,
                                     'testing', FLAGS.bottleneck_dir,
                                     FLAGS.image_dir, jpeg_data_tensor,
                                     decoded_image_tensor, resized_image_tensor,
                                     bottleneck_tensor, FLAGS.architecture))
+
+  (sess, bottleneck_input, ground_truth_input, evaluation_step,
+   prediction) = build_eval_session(model_info, class_count)
+
   test_accuracy, predictions = sess.run(
       [evaluation_step, prediction],
       feed_dict={

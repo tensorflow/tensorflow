@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/platform/s3/s3_file_system.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/s3/aws_logging.h"
 #include "tensorflow/core/platform/s3/s3_crypto.h"
@@ -155,7 +156,7 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("S3 path doesn't contain a bucket name: ",
                                    fname);
   }
-  objectp.Consume("/");
+  str_util::ConsumePrefix(&objectp, "/");
   *object = objectp.ToString();
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("S3 path doesn't contain an object name: ",
@@ -495,6 +496,11 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
     return errors::NotFound("Object ", fname, " does not exist");
   }
   return Status::OK();
+}
+
+Status S3FileSystem::GetMatchingPaths(const string& pattern,
+                                      std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status S3FileSystem::DeleteFile(const string& fname) {

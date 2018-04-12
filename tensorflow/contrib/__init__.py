@@ -1,3 +1,4 @@
+# pylint: disable=g-import-not-at-top
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
@@ -30,6 +33,7 @@ from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
 from tensorflow.contrib import data
 from tensorflow.contrib import deprecated
+from tensorflow.contrib import distribute
 from tensorflow.contrib import distributions
 from tensorflow.contrib import estimator
 from tensorflow.contrib import factorization
@@ -62,6 +66,7 @@ from tensorflow.contrib import periodic_resample
 from tensorflow.contrib import predictor
 from tensorflow.contrib import quantization
 from tensorflow.contrib import quantize
+from tensorflow.contrib import recurrent
 from tensorflow.contrib import reduce_slice_ops
 from tensorflow.contrib import resampler
 from tensorflow.contrib import rnn
@@ -83,7 +88,9 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
-from tensorflow.contrib.lite.python import lite
+if os.name != "nt":
+  from tensorflow.contrib.lite.python import lite
+from tensorflow.contrib.optimizer_v2 import optimizer_v2_symbols as optimizer_v2
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
@@ -92,6 +99,7 @@ from tensorflow.contrib.summary import summary
 from tensorflow.python.util.lazy_loader import LazyLoader
 ffmpeg = LazyLoader("ffmpeg", globals(),
                     "tensorflow.contrib.ffmpeg")
+del os
 del LazyLoader
 
 del absolute_import

@@ -44,6 +44,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowMinimum ||
          type == OperatorType::kTensorFlowMaximum ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
+         type == OperatorType::kLogSoftmax ||
          type == OperatorType::kTensorFlowSplit || type == OperatorType::kSub ||
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
          type == OperatorType::kTensorFlowReshape ||
@@ -52,7 +53,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||
-         type == OperatorType::kTranspose;
+         type == OperatorType::kTranspose || type == OperatorType::kMean;
 }
 
 template <ArrayDataType A>
@@ -394,6 +395,19 @@ bool ChooseHardcodedQuantizationForOperatorOutput(
                                  *quantization_params));
     return true;
   }
+  if (op.type == OperatorType::kLogSoftmax) {
+    // LogSoftmax has range: [LogSoftmaxOperator::kOutputRangeMin, 0].
+    *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
+    const QuantizationPoints qp = GetQuantizationPoints(*quantized_data_type);
+    quantization_params->zero_point = qp.max_value;
+    quantization_params->scale =
+        -LogSoftmaxOperator::kOutputRangeMin / (qp.max_value + 1);
+    // While not strictly necessary, it is easier to interpret output data and
+    // quantization if the scale is similar to others (such as power of 2).
+    CHECK(IsExactlyRepresentable(LogSoftmaxOperator::kOutputRangeMin / 2,
+                                 *quantized_data_type, *quantization_params));
+    return true;
+  }
   if (op.type == OperatorType::kTanh) {
     // Tanh has the range: [-1, 1].
     *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
@@ -431,7 +445,8 @@ bool ChooseQuantizationForOperatorOutput(
       (op.type == OperatorType::kSpaceToDepth) ||
       (op.type == OperatorType::kTensorFlowReshape) ||
       (op.type == OperatorType::kTensorFlowSplit) ||
-      (op.type == OperatorType::kConcatenation)) {
+      (op.type == OperatorType::kConcatenation &&
+       model->flags.change_concat_input_ranges())) {
     int data_input_index = 0;
     if (op.type == OperatorType::kTensorFlowSplit) {
       data_input_index = 1;
@@ -471,6 +486,44 @@ bool ChooseQuantizationForOperatorOutput(
       quantization_params->zero_point, quantization_params->scale);
 
   return true;
+}
+
+// Fixes array minmax info to match the quantization parameters.
+// This is required for when quantization parameters change for an array during
+// quantization (such as ChooseQuantizationForOperatorOutput).
+void FixMinMaxPostQuantization(ArrayDataType quantized_data_type,
+                               const QuantizationParams& quantization_params,
+                               MinMax* minmax) {
+  double qmin, qmax;
+  switch (quantized_data_type) {
+    case ArrayDataType::kUint8:
+      qmin = 0;
+      qmax = 255;
+      break;
+    case ArrayDataType::kInt16:
+      qmin = -32768;
+      qmax = 32767;
+      break;
+    default:
+      // No update required.
+      return;
+  }
+
+  // Compute new minmax values.
+  double min =
+      (qmin - quantization_params.zero_point) * quantization_params.scale;
+  double max =
+      (qmax - quantization_params.zero_point) * quantization_params.scale;
+
+  // If we are close to the existing minmax values don't bother changing them.
+  // This prevents propagating small floating point precision errors.
+  constexpr double kMinMaxThreshold = 1e-5;
+  const double width = max - min;
+  if (std::abs(min - minmax->min) > kMinMaxThreshold * width ||
+      std::abs(max - minmax->max) > kMinMaxThreshold * width) {
+    minmax->min = min;
+    minmax->max = max;
+  }
 }
 }  // namespace
 
@@ -618,12 +671,21 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
                                             &quantization_params)) {
       changed = true;
       const auto& output = op.outputs[output_index];
+      auto& output_array = model->GetArray(output);
+
+      // Fix up the min/max information on the output array to match the chosen
+      // quantization parameters.
+      CHECK(output_array.minmax)
+          << "Output array named " << output << " lacks minmax";
+      auto& output_minmax = output_array.GetMinMax();
+      FixMinMaxPostQuantization(quantized_data_type, quantization_params,
+                                &output_minmax);
+
       QuantizeArray(this, model, output, quantized_data_type,
                     quantization_params);
+
       const auto& dequantized_output =
           AvailableArrayName(*model, output + "_dequantized");
-      const auto& output_array = model->GetArray(output);
-      const auto& output_minmax = output_array.GetMinMax();
       auto& dequantized_output_array =
           model->GetOrCreateArray(dequantized_output);
       dequantized_output_array.data_type = ArrayDataType::kFloat;

@@ -44,6 +44,7 @@ cc_library(
     hdrs = ["xla_builder.h"],
     deps = [
         ":xla_computation",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -70,22 +71,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/core:test",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

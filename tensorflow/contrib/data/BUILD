@@ -8,6 +8,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
     "tf_gen_op_libs",
+    "if_not_windows",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -31,30 +32,21 @@ py_library(
     ],
 )
 
+cc_library(
+    name = "lib_proto_parsing_for_dataset_ops",
+    deps = if_not_windows(["//tensorflow/core:lib_proto_parsing"]),
+)
+
 tf_custom_op_library(
     name = "_dataset_ops.so",
     srcs = ["ops/dataset_ops.cc"],
     deps = ["//tensorflow/contrib/data/kernels:dataset_kernels"] +
            if_static(
-               extra_deps = ["//tensorflow/core:lib_proto_parsing"],
+               extra_deps = [":lib_proto_parsing_for_dataset_ops"],
                otherwise = [],
            ),
 )
 
 tf_gen_op_libs(
     op_lib_names = ["dataset_ops"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

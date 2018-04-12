@@ -172,7 +172,7 @@ Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
                                    fname);
   }
-  objectp.Consume("/");
+  str_util::ConsumePrefix(&objectp, "/");
   *object = objectp.ToString();
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("GCS path doesn't contain an object name: ",
@@ -535,7 +535,8 @@ class GcsWritableFile : public WritableFile {
       *uploaded = 0;
     } else {
       StringPiece range_piece(received_range);
-      range_piece.Consume("bytes=");  // May or may not be present.
+      str_util::ConsumePrefix(&range_piece,
+                              "bytes=");  // May or may not be present.
       std::vector<int64> range_parts;
       if (!str_util::SplitAndParseAsInts(range_piece, '-', &range_parts) ||
           range_parts.size() != 2) {
@@ -1172,7 +1173,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         // 'object_prefix', which is part of 'dirname', should be removed from
         // the beginning of 'name'.
         StringPiece relative_path(name);
-        if (!relative_path.Consume(object_prefix)) {
+        if (!str_util::ConsumePrefix(&relative_path, object_prefix)) {
           return errors::Internal(strings::StrCat(
               "Unexpected response: the returned file name ", name,
               " doesn't match the prefix ", object_prefix));
@@ -1201,7 +1202,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         }
         const string& prefix_str = prefix.asString();
         StringPiece relative_path(prefix_str);
-        if (!relative_path.Consume(object_prefix)) {
+        if (!str_util::ConsumePrefix(&relative_path, object_prefix)) {
           return errors::Internal(
               "Unexpected response: the returned folder name ", prefix_str,
               " doesn't match the prefix ", object_prefix);

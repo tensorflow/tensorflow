@@ -102,7 +102,7 @@ class MklSoftmaxOp : public OpKernel {
       // Softmax MklDnn output layout is same as input layout.
       auto dst_pd = src.GetUsrMemPrimDesc();
 
-      // if input is MKL shape, ouput is also MKL shape.
+      // if input is MKL shape, output is also MKL shape.
       // if input is TF shape, output is also TF shape
       if (src_mkl_shape.IsMklTensor()) {
         output_mkl_shape.SetMklTensor(true);

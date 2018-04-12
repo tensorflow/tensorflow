@@ -448,7 +448,7 @@ string AttrValueToPython(const string& type, const AttrValue& value,
     return TensorToPython(value.tensor());
   } else if (type == "func") {
     return StringToPython(value.func().name());
-  } else if (StringPiece(type).starts_with("list(")) {
+  } else if (str_util::StartsWith(type, "list(")) {
     return strings::StrCat("[", AttrListToPython(value, dtype_module), "]");
   } else {
     return "?";

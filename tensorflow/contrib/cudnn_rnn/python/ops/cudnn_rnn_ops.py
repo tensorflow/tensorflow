@@ -17,12 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.layers import base as base_layer
+from tensorflow.python.keras._impl.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import init_ops
@@ -31,6 +32,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.training import checkpointable as checkpointable_lib
 from tensorflow.python.training import saver
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
@@ -86,19 +88,23 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
 
   Cudnn compatible GRU (from Cudnn library user guide):
   ```python
-  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
-  u_t = sigma(x_t * W_u + h_t-1 * R_u + b_Wu + b_Ru)  # update gate
-  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
-  h_t = (1 - u_t) .* h'_t + u_t .* h_t-1
+  # reset gate
+  $$r_t = \sigma(x_t * W_r + h_t-1 * R_h + b_{Wr} + b_{Rr})$$
+  # update gate
+  $$u_t = \sigma(x_t * W_u + h_t-1 * R_u + b_{Wu} + b_{Ru})$$
+  # new memory gate
+  $$h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_{Rh}) + b_{Wh})$$
+  $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
   ```
 
   Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
   ```python
-  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
+  # new memory gate
+  \\(h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_{Wh})\\)
   ```
   which is not equivalent to Cudnn GRU: in addition to the extra bias term b_Rh,
   ```python
-  r .* (h * R) != (r .* h) * R
+  \\(r .* (h * R) != (r .* h) * R\\)
   ```
   """
 
@@ -262,13 +268,16 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     # instead of having the master pull all slices and then save them.
     slice_spec = ""
     params = weights + biases
-    param_names = weight_names + bias_names
+    self._weight_names = weight_names
+    self._bias_names = bias_names
+    self._param_names = weight_names + bias_names
+    prefixed_param_names = weight_names + bias_names
     if self._scope:
-      param_names = ["%s/%s" % (self._scope, pn) for pn in param_names]
-
+      prefixed_param_names = [
+          "%s/%s" % (self._scope, pn) for pn in prefixed_param_names]
     specs = [
         saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param_name)
-        for param, param_name in zip(params, param_names)
+        for param, param_name in zip(params, prefixed_param_names)
     ]
     super(CudnnOpaqueParamsSaveable, self).__init__(
         array_ops.identity(self._variables), specs, name)
@@ -280,6 +289,45 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
 
     return state_ops.assign(
         self._variables, opaque_params, validate_shape=False)
+
+  def _checkpointable_save(self, save_buffer):
+    weights, biases = self._OpaqueParamsToCanonical()
+    with ops.device("gpu:0"):
+      (weights, _), (biases, _) = self._TransformCanonical(
+          weights, biases)
+    for name, tensor in zip(self._param_names, weights + biases):
+      save_buffer[name] = array_ops.identity(tensor)
+
+  def _checkpointable_restore(self, restore_buffer):
+    tensors = [array_ops.identity(restore_buffer[name])
+               for name in self._param_names]
+    return self.restore(
+        restored_tensors=tensors,
+        restored_shapes=None  # Unused
+    )
+
+  def _add_checkpointable_dependencies(self, checkpointable, dtype):
+    """Add canonical weight dependencies to `checkpointable`.
+
+    When saving or restoring, converts to or from the opaque buffer
+    format. Weights are saved and loaded in the configuration expected by
+    cuDNN-compatible cells.
+
+    Args:
+      checkpointable: An object inheriting from `CheckpointableBase` to add
+        dependencies too (typically the cuDNN `Layer`).
+      dtype: The dtype for the canonical parameter Tensors.
+    """
+    split_dependencies = checkpointable_utils.split_dependency(
+        component_names=self._param_names,
+        component_dtypes=(dtype,) * len(self._param_names),
+        fill_save_buffer_fn=self._checkpointable_save,
+        consume_restore_buffer_fn=self._checkpointable_restore)
+    self._checkpointable_track_params(checkpointable, split_dependencies)
+
+  def _checkpointable_track_params(self, checkpointable, params):
+    """Tracks parameters in a canonical configuration."""
+    return  # NotImplementedError raised by the Layer.
 
   def _TFCanonicalNamePrefix(self, layer, is_fwd=True):
     if self._direction == CUDNN_RNN_UNIDIRECTION:
@@ -476,10 +524,7 @@ class CudnnLSTMSaveable(CudnnOpaqueParamsSaveable):
   _rnn_mode = CUDNN_LSTM
   _num_params_per_layer = CUDNN_LSTM_PARAMS_PER_LAYER
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(CudnnCompatibleLSTMCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(CudnnCompatibleLSTMCell.__name__)
 
   def _cudnn_to_tf_gate_params(self, *cu_gate_order):
     i_g, f_g, c_g, o_g = cu_gate_order
@@ -570,6 +615,29 @@ class CudnnLSTMSaveable(CudnnOpaqueParamsSaveable):
     tf_biases.append(b)
     tf_bias_names.append(prefix + "/bias")
 
+  def _checkpointable_track_params(self, checkpointable, params):
+    """Track parameters for compatibility with CudnnCompatibleLSTMCell."""
+    biases = []
+    weights = []
+    for name in self._weight_names:
+      weights.append(params[name])
+    for name in self._bias_names:
+      biases.append(params[name])
+    assert len(params) == len(weights) + len(biases)
+    if len(weights) == 1 and len(biases) == 1:
+      # For single-layer cells, allow substituting a cell with no MultiRNNCell
+      # wrapping.
+      kernel, = weights  # pylint: disable=unbalanced-tuple-unpacking
+      bias, = biases  # pylint: disable=unbalanced-tuple-unpacking
+      checkpointable._track_checkpointable(kernel, name="kernel")  # pylint: disable=protected-access
+      checkpointable._track_checkpointable(bias, name="bias")  # pylint: disable=protected-access
+    assert len(biases) == len(weights)
+    for cell_index, (bias, kernel) in enumerate(zip(biases, weights)):
+      cell = checkpointable_lib.Checkpointable()
+      checkpointable._track_checkpointable(cell, name="cell-%d" % cell_index)  # pylint: disable=protected-access
+      cell.bias = bias
+      cell.kernel = kernel
+
 
 class CudnnGRUSaveable(CudnnOpaqueParamsSaveable):
   """SaveableObject implementation handling Cudnn GRU opaque params."""
@@ -577,10 +645,7 @@ class CudnnGRUSaveable(CudnnOpaqueParamsSaveable):
   _rnn_mode = CUDNN_GRU
   _num_params_per_layer = CUDNN_GRU_PARAMS_PER_LAYER
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(CudnnCompatibleGRUCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(CudnnCompatibleGRUCell.__name__)
 
   def _cudnn_to_tf_weights(self, *cu_weights):
     r"""Stitching cudnn canonical weights to generate tf canonical weights."""
@@ -659,11 +724,7 @@ class CudnnGRUSaveable(CudnnOpaqueParamsSaveable):
 class CudnnRNNSimpleSaveable(CudnnLSTMSaveable):
   """SaveableObject implementation handling Cudnn RNN Tanh opaque params."""
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(
-      rnn_cell_impl.BasicRNNCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(rnn_cell_impl.BasicRNNCell.__name__)
 
   def _cudnn_to_tf_weights(self, *cu_weights):
     r"""Stitching cudnn canonical weights to generate tf canonical weights."""

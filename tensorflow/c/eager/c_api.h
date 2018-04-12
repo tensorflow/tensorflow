@@ -61,17 +61,15 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetConfig(
 // Controls how to act when we try to run an operation on a given device but
 // some input tensors are not on that device.
 typedef enum TFE_ContextDevicePlacementPolicy {
-  // Running operations with input tensors on the wrong device will fail. When
-  // soft placement is enabled acts like TFE_DEVICE_PLACEMENT_SILENT.
+  // Running operations with input tensors on the wrong device will fail.
   TFE_DEVICE_PLACEMENT_EXPLICIT = 0,
   // Copy the tensor to the right device but log a warning.
   TFE_DEVICE_PLACEMENT_WARN = 1,
-  // Silently copy the tensor, which has a performance cost since the
-  // operation will be blocked till the copy completes.
+  // Silently copy the tensor, which has a performance cost since the operation
+  // will be blocked till the copy completes. This is the default placement
+  // policy.
   TFE_DEVICE_PLACEMENT_SILENT = 2,
-  // Default placement policy which silently copies int32 tensors but not other
-  // dtypes.  When soft placement is enabled acts like
-  // TFE_DEVICE_PLACEMENT_SILENT.
+  // Placement policy which silently copies int32 tensors but not other dtypes.
   TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 } TFE_ContextDevicePlacementPolicy;
 
@@ -162,7 +160,11 @@ TF_CAPI_EXPORT extern int64_t TFE_TensorHandleDim(TFE_TensorHandle* h,
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceName(
     TFE_TensorHandle* h, TF_Status* status);
 
-// This function will block till the operation that produces `h` has completed.
+// This function will block till the operation that produces `h` has
+// completed. The memory returned might alias the internal memory used by
+// TensorFlow. Hence, callers should not mutate this memory (for example by
+// modifying the memory region pointed to by TF_TensorData() on the returned
+// TF_Tensor).
 TF_CAPI_EXPORT extern TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h,
                                                          TF_Status* status);
 

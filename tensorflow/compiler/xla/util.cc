@@ -243,8 +243,8 @@ string HumanReadableNumOps(double flops, double nanoseconds,
       static_cast<int64>(nano_flops * 1e9));
   tensorflow::StringPiece sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
-  if (sp.ends_with("B") ||  // Ends in 'B', ignoring case
-      sp.ends_with("b")) {
+  if (tensorflow::str_util::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
+      tensorflow::str_util::EndsWith(sp, "b")) {
     *throughput.rbegin() = 'G';
   }
   throughput += tensorflow::strings::StrCat(op_prefix, "OP/s");

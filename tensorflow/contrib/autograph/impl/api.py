@@ -247,7 +247,10 @@ def to_graph(e,
   # The compiled code should see everything the entry function saw.
   # TODO(mdan): This might not work well if the call tree spans modules?
   if tf_inspect.isfunction(e):
-    compiled_node.__dict__.update(inspect_utils.getnamespace(e))
+    for key, val in inspect_utils.getnamespace(e).items():
+      # Avoid overwriting entities that have been transformed.
+      if key not in compiled_node.__dict__:
+        compiled_node.__dict__[key] = val
   compiled_fn = getattr(compiled_node, name)
 
   if verbose:

@@ -336,12 +336,16 @@ class FisherFactor(object):
 
     new_cov = math_ops.add_n(new_cov_contribs) / float(self._num_towers)
 
-    # I have no idea if the TPU code below is still correct since I don't know
-    # what it actually does.  Also, this code is not present in some of the
-    # other versions of make_covariance_update_op.  Does it matter?
-    # Synchronize value across all TPU cores.
+    # Compute average of 'new_cov' across all TPU cores. On a TPU, each
+    # instance of 'new_cov' will be based on a different minibatch. This ensures
+    # that by the end of assign_moving_average(), all TPU cores see the same
+    # value for self._cov.
+    #
+    # Other implementations of make_covariance_update_op() that accumulate
+    # statistics in other variables should mimic this behavior.
     if utils.on_tpu():
       new_cov = utils.cross_replica_mean(new_cov)
+
     return moving_averages.assign_moving_average(
         self._cov, new_cov, ema_decay, zero_debias=ZERO_DEBIAS)
 
@@ -1397,6 +1401,10 @@ class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
 
       new_cov_dt1 = (math_ops.add_n(new_cov_dt1_contribs)
                      / float(self._num_towers))
+
+      # See comments in FisherFactor.make_covariance_update_op() for details.
+      if utils.on_tpu():
+        new_cov_dt1 = utils.cross_replica_mean(new_cov_dt1)
 
       op2 = moving_averages.assign_moving_average(
           self._cov_dt1, new_cov_dt1, ema_decay, zero_debias=ZERO_DEBIAS)

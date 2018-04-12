@@ -30,7 +30,40 @@ limitations under the License.
 
 namespace tflite {
 
+namespace {
+// Ensure that ErrorReporter is non-null.
+ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
+  return e ? e : DefaultErrorReporter();
+}
+}  // namespace
+
 const char* kEmptyTensorName = "";
+
+TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
+                               ErrorReporter* error_reporter) {
+  switch (tensor_type) {
+    case TensorType_FLOAT32:
+      *type = kTfLiteFloat32;
+      break;
+    case TensorType_INT32:
+      *type = kTfLiteInt32;
+      break;
+    case TensorType_UINT8:
+      *type = kTfLiteUInt8;
+      break;
+    case TensorType_INT64:
+      *type = kTfLiteInt64;
+      break;
+    case TensorType_STRING:
+      *type = kTfLiteString;
+      break;
+    default:
+      error_reporter->Report("Unimplemented data type %s (%d) in tensor\n",
+                             EnumNameTensorType(tensor_type), tensor_type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
 
 // Loads a model from `filename`. If `mmap_file` is true then use mmap,
 // otherwise make a copy of the model in a buffer.
@@ -52,6 +85,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
   auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
                                           error_reporter, /*use_nnapi=*/true);
@@ -63,6 +98,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
     const char* filename, TfLiteVerifier* verifier,
     ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
   auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
                                           error_reporter, /*use_nnapi=*/true);
@@ -78,6 +115,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
     const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
   Allocation* allocation =
       new MemoryAllocation(buffer, buffer_size, error_reporter);
@@ -88,6 +127,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
     const tflite::Model* model_spec, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
   model.reset(new FlatBufferModel(model_spec, error_reporter));
   if (!model->initialized()) model.reset();
@@ -107,15 +148,13 @@ bool FlatBufferModel::CheckModelIdentifier() const {
 
 FlatBufferModel::FlatBufferModel(const Model* model,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
+    : error_reporter_(ValidateErrorReporter(error_reporter)) {
   model_ = model;
 }
 
 FlatBufferModel::FlatBufferModel(Allocation* allocation,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
+    : error_reporter_(ValidateErrorReporter(error_reporter)) {
   allocation_ = allocation;
   if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
@@ -128,7 +167,7 @@ InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
     : model_(model.GetModel()),
       op_resolver_(op_resolver),
-      error_reporter_(model.error_reporter()),
+      error_reporter_(ValidateErrorReporter(model.error_reporter())),
       allocation_(model.allocation()) {}
 
 InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
@@ -136,8 +175,7 @@ InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
                                        ErrorReporter* error_reporter)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {}
+      error_reporter_(ValidateErrorReporter(error_reporter)) {}
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
@@ -223,13 +261,11 @@ T* MallocPOD() {
 // Parse the appropriate data out of the op.
 //
 // This handles builtin data explicitly as there are flatbuffer schemas.
-//
-// Returns memory that must be feed.
-//
-// TODO(nupurgarg): Pass in void ** and return TfLiteStatus to ensure program
-// crashes if error reporter is called.
-void* ParseOpData(const Operator* op, BuiltinOperator op_type,
-                  ErrorReporter* error_reporter) {
+// If it returns kTfLiteOk, it passes the data out with `builtin_data`, which
+// need to be released by calling `free`.`
+// If it returns kTfLiteError, `builtin_data` will be `nullptr`.
+TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
+                         ErrorReporter* error_reporter, void** builtin_data) {
   auto parse_padding = [](Padding padding) {
     switch (padding) {
       case Padding_SAME:
@@ -278,7 +314,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     }
   };
 
-  void* builtin_data = nullptr;
+  *builtin_data = nullptr;
   switch (op_type) {
     case BuiltinOperator_CALL:
       // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
@@ -295,7 +331,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(conv_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_TANH:
@@ -307,17 +343,33 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_EXP:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_CAST:
     case BuiltinOperator_DEQUANTIZE:
     case BuiltinOperator_PRELU:
       break;
+    case BuiltinOperator_CAST: {
+      TfLiteCastParams* params = MallocPOD<TfLiteCastParams>();
+      if (auto* schema_params = op->builtin_options_as_CastOptions()) {
+        auto in_status =
+            ConvertTensorType(schema_params->in_data_type(),
+                              &params->in_data_type, error_reporter);
+        auto out_status =
+            ConvertTensorType(schema_params->out_data_type(),
+                              &params->out_data_type, error_reporter);
+        if (in_status != kTfLiteOk || out_status != kTfLiteOk) {
+          free(params);
+          return kTfLiteError;
+        }
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_LSH_PROJECTION: {
       TfLiteLSHProjectionParams* params =
           MallocPOD<TfLiteLSHProjectionParams>();
       if (auto* lshParams = op->builtin_options_as_LSHProjectionOptions()) {
         params->type = parseLSHProjectionType(lshParams->type());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_AVERAGE_POOL_2D:
@@ -333,7 +385,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(pool_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
@@ -347,7 +399,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(conv_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_SVDF: {
@@ -357,7 +409,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(svdf_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
@@ -369,7 +421,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
             parse_activation(sequence_rnn_params->fused_activation_function());
         params->time_major = sequence_rnn_params->time_major();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_RNN: {
@@ -378,7 +430,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(rnn_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_EMBEDDING_LOOKUP:
@@ -391,7 +443,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_EmbeddingLookupSparseOptions()) {
         params->combiner = parseCombinerType(embedding_params->combiner());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_FULLY_CONNECTED: {
@@ -402,7 +454,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation = parse_activation(
             fully_connected_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_HASHTABLE_LOOKUP:
@@ -413,7 +465,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (auto* softmax_params = op->builtin_options_as_SoftmaxOptions()) {
         params->beta = softmax_params->beta();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_CONCATENATION: {
@@ -425,7 +477,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
             parse_activation(concatenation_params->fused_activation_function());
         params->axis = concatenation_params->axis();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_MUL: {
@@ -434,7 +486,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_ADD: {
@@ -443,7 +495,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_DIV: {
@@ -452,7 +504,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_SUB: {
@@ -461,7 +513,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_L2_NORMALIZATION: {
@@ -470,7 +522,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION: {
@@ -482,7 +534,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->alpha = schema_params->alpha();
         params->beta = schema_params->beta();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
@@ -495,7 +547,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->cell_clip = lstm_params->cell_clip();
         params->proj_clip = lstm_params->proj_clip();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_RESIZE_BILINEAR: {
@@ -504,7 +556,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_ResizeBilinearOptions()) {
         params->align_corners = schema_params->align_corners();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_PAD: {
@@ -518,7 +570,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
                                    params->shape, error_reporter);
         params->num_dimensions = new_shape->Length();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_SKIP_GRAM: {
@@ -528,7 +580,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->max_skip_size = skip_gram_params->max_skip_size();
         params->include_all_ngrams = skip_gram_params->include_all_ngrams();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_SPACE_TO_DEPTH: {
@@ -536,7 +588,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (auto* schema_params = op->builtin_options_as_SpaceToDepthOptions()) {
         params->block_size = schema_params->block_size();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_GATHER: {
@@ -546,7 +598,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->axis = gather_params->axis();
       }
 
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_SPACE_TO_BATCH_ND: {
@@ -563,7 +615,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
         params->keep_dims = schema_params->keep_dims();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_SPLIT: {
@@ -571,7 +623,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (auto* schema_params = op->builtin_options_as_SplitOptions()) {
         params->num_splits = schema_params->num_splits();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_SQUEEZE: {
@@ -582,7 +634,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
                                    params->squeeze_dims, error_reporter);
         params->num_squeeze_dims = squeeze_dims->Length();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_STRIDED_SLICE: {
@@ -594,19 +646,29 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->new_axis_mask = schema_params->new_axis_mask();
         params->shrink_axis_mask = schema_params->shrink_axis_mask();
       }
-      builtin_data = reinterpret_cast<void*>(params);
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_MAXIMUM: {
+    case BuiltinOperator_MAXIMUM:
+    case BuiltinOperator_MINIMUM: {
+      break;
+    }
+    case BuiltinOperator_ARG_MAX: {
+      auto* params = MallocPOD<TfLiteArgMaxParams>();
+      if (auto* schema_params = op->builtin_options_as_ArgMaxOptions()) {
+        ConvertTensorType(schema_params->output_type(), &params->output_type,
+                          error_reporter);
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
-      break;
+      return kTfLiteError;
     }
   }
-  return builtin_data;
+  return kTfLiteOk;
 }
 
 }  // namespace
@@ -646,10 +708,13 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           reinterpret_cast<const char*>(op->custom_options()->data()),
           op->custom_options()->size(), nullptr, reg);
     } else {
+      void* builtin_data = nullptr;
+      TF_LITE_ENSURE_STATUS(
+          ParseOpData(op, op_type, error_reporter_, &builtin_data));
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()), nullptr, 0,
-          ParseOpData(op, op_type, error_reporter_), reg);
+          FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
+          reg);
     }
   }
 
@@ -707,29 +772,10 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     }
 
     TfLiteType type;
-    switch (tensor->type()) {
-      case TensorType_FLOAT32:
-        type = kTfLiteFloat32;
-        break;
-      case TensorType_INT32:
-        type = kTfLiteInt32;
-        break;
-      case TensorType_UINT8:
-        type = kTfLiteUInt8;
-        break;
-      case TensorType_INT64:
-        type = kTfLiteInt64;
-        break;
-      case TensorType_STRING:
-        type = kTfLiteString;
-        break;
-      default:
-        // tensorType = ArrayType::NONE;
-        error_reporter_->Report("Unimplemented data type %s (%d) in tensor\n",
-                                EnumNameTensorType(tensor->type()),
-                                tensor->type());
-        status = kTfLiteError;
-        continue;
+    if (ConvertTensorType(tensor->type(), &type, error_reporter_) !=
+        kTfLiteOk) {
+      status = kTfLiteError;
+      continue;
     }
     auto get_readonly_data = [&](const char** buffer_data,
                                  size_t* buffer_size) {

@@ -154,6 +154,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":quantization_util",
         ":types",
         ":round",
         "//third_party/eigen3",
@@ -238,6 +239,7 @@ cc_library(
         "reference/reference_ops.h",
     ],
     deps = [
+        ":quantization_util",
         ":round",
         ":types",
         "//third_party/eigen3",
@@ -431,15 +433,3 @@ cc_library(
 )
 
 exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

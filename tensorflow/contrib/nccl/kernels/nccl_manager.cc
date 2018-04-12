@@ -76,6 +76,8 @@ struct NcclManager::Communicator {
 namespace {
 ncclDataType_t ToNcclType(DataType t) {
   switch (t) {
+    case DT_HALF:
+      return ncclHalf;
     case DT_FLOAT:
       return ncclFloat;
     case DT_DOUBLE:
