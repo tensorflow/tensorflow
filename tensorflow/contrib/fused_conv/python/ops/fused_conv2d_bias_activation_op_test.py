@@ -828,9 +828,9 @@ class FusedConvInt8Tests(test.TestCase):
             dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
 
     output_height = CalculateConvolvedOutputDim(input_height, filter_height,
-                                               vertical_stride, padding_type)
+                                                vertical_stride, padding_type)
     output_width = CalculateConvolvedOutputDim(input_width, filter_width,
-                                              horizontal_stride, padding_type)
+                                               horizontal_stride, padding_type)
     print("output_height=", output_height, ", output_width=", output_width)
 
     side_input, _, _ = gen_array_ops.quantize_v2(
