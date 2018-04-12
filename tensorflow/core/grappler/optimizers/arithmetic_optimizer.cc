@@ -253,9 +253,8 @@ NodeDef* GetTailOfValuePreservingChain(
     const NodeDef& node, const NodeMap& node_map,
     const std::unordered_set<string>& nodes_to_preserve) {
   auto is_value_preserving_non_branching = [&](const NodeDef& node) {
-    return IsValuePreserving(node) &&
-           NumNonControlOutputs(node, node_map) == 1 &&
-           nodes_to_preserve.count(node.name()) == 0;
+    return nodes_to_preserve.find(node.name()) == nodes_to_preserve.end() &&
+           IsValuePreserving(node) && NumNonControlOutputs(node, node_map) == 1;
   };
   return GetTailOfChain(node, node_map, /*follow_control_input=*/false,
                         is_value_preserving_non_branching);
@@ -2023,12 +2022,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
 Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
                                      const GrapplerItem& item,
                                      GraphDef* optimized_graph) {
-  GrapplerItem optimized_item(item);
-  optimized_graph_ = &optimized_item.graph;
-
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
+  *optimized_graph = item.graph;
+  optimized_graph_ = optimized_graph;
   node_map_.reset(new NodeMap(optimized_graph_));
 
   DedupComputations();
@@ -2037,8 +2035,9 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   // optimize larger subgraphs starting from the roots with more inputs.
   TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
 
-  // Shapes are only needed in aggressive mode.
-  graph_properties_.reset(new GraphProperties(item));
+  GrapplerItem optimized_item(item, optimized_graph);
+  optimized_graph_ = &optimized_item.graph;
+  graph_properties_.reset(new GraphProperties(optimized_item));
   const Status status = graph_properties_->InferStatically(false);
   const bool can_use_shapes = status.ok();
   if (!can_use_shapes) {
