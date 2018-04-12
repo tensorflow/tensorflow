@@ -98,6 +98,7 @@ See the @{$python/nn} guide.
 @@fixed_unigram_candidate_sampler
 @@compute_accidental_hits
 @@quantized_conv2d
+@@quantized_relu
 @@quantized_relu_x
 @@quantized_max_pool
 @@quantized_avg_pool
