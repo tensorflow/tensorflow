@@ -7085,6 +7085,7 @@ static std::vector<UniqueFuncPtr> CreateMNISTDatasetFunctions(
     const char* file_path, int batch_size, std::string* dataset_name,
     TF_Status* status) {
 #if defined(PLATFORM_WINDOWS)
+  // TODO(ashankar): cover CreateMNISTDatasetFunctions in Windows tests.
   status->status = tensorflow::errors::Unimplemented(
       "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
       "is not implemented for Windows");
