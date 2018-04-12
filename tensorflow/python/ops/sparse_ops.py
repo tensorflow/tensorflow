@@ -56,10 +56,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
@@ -760,9 +762,7 @@ def sparse_to_dense(sparse_indices,
   All other values in `dense` are set to `default_value`.  If `sparse_values`
   is a scalar, all sparse indices are set to this single value.
 
-  Indices should be sorted in lexicographic order, and indices must not
-  contain any repeats. If `validate_indices` is True, these properties
-  are checked during execution.
+  This function is a convenience wrapper for `scatter_nd_add`.
 
   Args:
     sparse_indices: A 0-D, 1-D, or 2-D `Tensor` of type `int32` or `int64`.
@@ -775,20 +775,21 @@ def sparse_to_dense(sparse_indices,
     default_value: A 0-D `Tensor` of the same type as `sparse_values`.  Value
       to set for indices not specified in `sparse_indices`.  Defaults to zero.
     validate_indices: A boolean value.  If True, indices are checked to make
-      sure they are sorted in lexicographic order and that there are no repeats.
+      sure they are sorted in lexicographic order and that there are no
+      repeats. (Deprecated argument, without effect.)
     name: A name for the operation (optional).
 
   Returns:
     Dense `Tensor` of shape `output_shape`.  Has the same type as
     `sparse_values`.
   """
-  return gen_sparse_ops.sparse_to_dense(
-      sparse_indices,
-      output_shape,
-      sparse_values,
-      default_value=default_value,
-      validate_indices=validate_indices,
-      name=name)
+  values = [sparse_indices, sparse_values]
+  with ops.name_scope(name, "SparseToDense", values) as name:
+    default_value = ops.convert_to_tensor(default_value,
+                                          dtype=sparse_values.dtype)
+    filled = variables.Variable(array_ops.fill(output_shape, default_value))
+    return state_ops.scatter_nd_add(filled, indices=sparse_indices,
+                                    updates=sparse_values, name=name)
 
 
 @tf_export("sparse_reduce_max")

@@ -21,7 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -193,6 +195,22 @@ class SparseToDenseTest(test.TestCase):
       shape = array_ops.placeholder(dtypes.int64)
       output = sparse_ops.sparse_to_dense(indices, shape, 1, 0)
       self.assertEqual(output.get_shape().ndims, None)
+
+  def testGradients(self):
+    indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
+    shape = constant_op.constant([2, 2], dtype=dtypes.int32)
+    values = constant_op.constant([1, 4], dtype=dtypes.float64)
+    outputs = self.sparse_to_dense(indices, shape, values)
+
+    grad_vals = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float64)
+    updates_grad, input_grad = gradients_impl.gradients(
+        [outputs], [values], [grad_vals])
+    expected_updates_grad = np.array([1, 4], dtype=np.float64)
+    expected_input_grad = np.array([[1, 2], [3, 4]], dtype=np.float64)
+    with self.test_session():
+      self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+      if self.non_aliasing_add_test:
+        self.assertAllEqual(expected_input_grad, input_grad.eval())
 
 
 if __name__ == "__main__":
