@@ -592,9 +592,9 @@ class BatchNormalization(Layer):
         # used during evaluation, it is more efficient to just update in one
         # step and should not make a significant difference in the result.
         new_mean = math_ops.reduce_mean(new_mean,
-                                        axis=1, keep_dims=True)
+                                        axis=1, keepdims=True)
         new_variance = math_ops.reduce_mean(new_variance,
-                                            axis=1, keep_dims=True)
+                                            axis=1, keepdims=True)
 
       def _do_update(var, value):
         if in_eager_mode and not self.trainable:
