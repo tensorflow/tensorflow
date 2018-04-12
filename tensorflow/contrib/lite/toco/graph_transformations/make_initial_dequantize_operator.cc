@@ -78,15 +78,21 @@ bool AddDequantizeOperatorToInput(const string& input_name, const Operator* op,
   image_input_op->outputs = {dequantized_input_name};
   model->operators.emplace(model->operators.begin(), image_input_op);
 
-  CHECK(input_array.final_data_type == ArrayDataType::kUint8);
-  input_array.data_type = ArrayDataType::kUint8;
   dequantized_input_array.data_type = ArrayDataType::kFloat;
   const auto& input_minmax = input_array.GetMinMax();
   auto& dequantized_input_minmax = dequantized_input_array.GetOrCreateMinMax();
   dequantized_input_minmax = input_minmax;
   auto& input_qparams = input_array.GetOrCreateQuantizationParams();
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(input_minmax,
-                                                         &input_qparams);
+  input_array.data_type = input_array.final_data_type;
+  if (input_array.data_type == ArrayDataType::kUint8) {
+    GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(input_minmax,
+                                                           &input_qparams);
+  } else if (input_array.data_type == ArrayDataType::kInt16) {
+    GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(input_minmax,
+                                                           &input_qparams);
+  } else {
+    LOG(FATAL) << "unhandled data type";
+  }
 
   transformation->AddMessageF(
       "Created %s"

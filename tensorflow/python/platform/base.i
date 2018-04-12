@@ -229,3 +229,25 @@ _COPY_TYPEMAPS(unsigned int, mode_t);
 %define final %enddef
 %define override %enddef
 #endif
+
+// Typemaps to automatically raise a Python exception from bad output TF_Status.
+// TODO(b/77295559): expand this to all TF_Status* output params and deprecate
+// raise_exception_on_not_ok_status (currently it only affects the C API).
+%typemap(in, numinputs=0) TF_Status* status (TF_Status* status) {
+  $1 = TF_NewStatus();
+}
+
+%typemap(freearg) (TF_Status* status) {
+ TF_DeleteStatus($1);
+}
+
+%typemap(argout) TF_Status* status {
+  TF_Code code = TF_GetCode($1);
+  if (code != TF_OK) {
+    PyObject* exc = tensorflow::PyExceptionRegistry::Lookup(code);
+    // Arguments to OpError.
+    PyObject* exc_args = Py_BuildValue("sss", nullptr, nullptr, TF_Message($1));
+    SWIG_SetErrorObj(exc, exc_args);
+    SWIG_fail;
+  }
+}

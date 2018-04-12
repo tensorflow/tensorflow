@@ -250,17 +250,3 @@ exports_files([
     "benchmark_main.template",  # used by tf_library(...,gen_benchmark=True)
     "test.cc",  # used by tf_library(...,gen_test=True)
 ])
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

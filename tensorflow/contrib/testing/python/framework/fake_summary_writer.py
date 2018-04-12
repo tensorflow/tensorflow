@@ -52,6 +52,7 @@ class FakeSummaryWriter(object):
     self._added_graphs = []
     self._added_meta_graphs = []
     self._added_session_logs = []
+    self._added_run_metadata = {}
 
   @property
   def summaries(self):
@@ -126,6 +127,11 @@ class FakeSummaryWriter(object):
   def add_session_log(self, session_log, global_step=None):
     # pylint: disable=unused-argument
     self._added_session_logs.append(session_log)
+
+  def add_run_metadata(self, run_metadata, tag, global_step=None):
+    if (global_step is not None) and (global_step < 0):
+      raise ValueError('Invalid global_step %s.' % global_step)
+    self._added_run_metadata[tag] = run_metadata
 
   def flush(self):
     pass

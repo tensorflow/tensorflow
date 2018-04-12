@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/public/version.h"
 
@@ -432,6 +433,9 @@ string DescribeCycle(const GraphCycles& cycles, const Graph& graph, int src,
   }
 
   auto node_name = [&cycles, &graph](int node_id) {
+    if (!FastBoundsCheck(node_id, graph.num_node_ids())) {
+      return string("(null)");
+    }
     auto* node = graph.FindNodeId(node_id);
     if (node == nullptr) {
       return string("(null)");
@@ -728,11 +732,15 @@ Status MarkForCompilationPass::RunImpl(
     }
   }
 
-  // Count the number of elements in each cluster.
-  std::vector<int> cluster_sizes(graph->num_node_ids());
+  // Count the number of non-trivial elements in each cluster.
+  std::vector<int> effective_cluster_sizes(graph->num_node_ids());
   for (const Node* n : compilation_candidates) {
     int cluster = clusters[n->id()].Get().representative;
-    cluster_sizes[cluster]++;
+    // Identity nodes will be removed if the node gets marked for compilation.
+    // Therefore we don't want to count them towards the effective cluster size.
+    if (n->def().op() != "Identity") {
+      effective_cluster_sizes[cluster]++;
+    }
   }
 
   // Names for each cluster.
@@ -765,9 +773,12 @@ Status MarkForCompilationPass::RunImpl(
     const XlaOpRegistry::DeviceRegistration* registration;
     XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration);
 
-    // Or compile if this is a cluster of >= min_cluster_size compilable
-    // operators.
-    if (cluster_sizes[cluster] >= min_cluster_size || marked_for_compilation ||
+    // Compile if this is a cluster of >= min_cluster_size compilable operators.
+    // Also, always compile if the operator is placed on a device that requires
+    // compilation, or if it contains at least one op that is marked for
+    // compilation that is not an Identity op.
+    if (effective_cluster_sizes[cluster] >= min_cluster_size ||
+        (effective_cluster_sizes[cluster] > 0 && marked_for_compilation) ||
         registration->requires_compilation) {
       string& name = cluster_names[cluster];
 

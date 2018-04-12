@@ -69,7 +69,7 @@ class KumaraswamyBijectorTest(test.TestCase):
       bijector = Kumaraswamy(
           concentration1=concentration1,
           concentration0=concentration0, validate_args=True)
-      # Omitting the endpoints 0 and 1, since idlj will be inifinity at these
+      # Omitting the endpoints 0 and 1, since idlj will be infinity at these
       # endpoints.
       y = np.linspace(.01, 0.99, num=10).astype(np.float32)
       x = 1 - (1 - y ** concentration1) ** concentration0

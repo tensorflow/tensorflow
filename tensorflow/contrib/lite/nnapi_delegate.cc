@@ -162,7 +162,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
     };
 
     auto duplicate_state_tensor_float32 =
-        [interpreter, &nn_model, &augmented_inputs, &next_id](int tensor_id) {
+        [interpreter, &nn_model, &augmented_inputs](int tensor_id) {
           const TfLiteTensor* tensor = interpreter->tensor(tensor_id);
           CHECK_NN(ANeuralNetworksModel_setOperandValue(
               nn_model, tensor_id, tensor->data.raw, tensor->bytes));
@@ -351,6 +351,8 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_CAST:
       case tflite::BuiltinOperator_PRELU:
       case tflite::BuiltinOperator_MAXIMUM:
+      case tflite::BuiltinOperator_MINIMUM:
+      case tflite::BuiltinOperator_ARG_MAX:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid
         break;

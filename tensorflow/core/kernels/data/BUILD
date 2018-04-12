@@ -10,18 +10,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_kernel_library",
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    "tf_cc_test",
 )
 
 cc_library(
@@ -295,11 +284,31 @@ tf_kernel_library(
     ],
 )
 
+cc_library(
+    name = "prefetch_autotuner",
+    srcs = ["prefetch_autotuner.cc"],
+    hdrs = ["prefetch_autotuner.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "prefetch_autotuner_test",
+    srcs = ["prefetch_autotuner_test.cc"],
+    deps = [
+        ":prefetch_autotuner",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "prefetch_dataset_op",
     srcs = ["prefetch_dataset_op.cc"],
     deps = [
         ":dataset",
+        ":prefetch_autotuner",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

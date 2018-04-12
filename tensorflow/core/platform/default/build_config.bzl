@@ -122,6 +122,7 @@ def cc_proto_library(
     protoc="@protobuf_archive//:protoc",
     internal_bootstrap_hack=False,
     use_grpc_plugin=False,
+    use_grpc_namespace=False,
     default_header=False,
     **kargs):
   """Bazel rule to create a C++ protobuf library from proto source files.
@@ -169,8 +170,11 @@ def cc_proto_library(
     return
 
   grpc_cpp_plugin = None
+  plugin_options = []
   if use_grpc_plugin:
     grpc_cpp_plugin = "//external:grpc_cpp_plugin"
+    if use_grpc_namespace:
+      plugin_options = ["services_namespace=grpc"]
 
   gen_srcs = _proto_cc_srcs(srcs, use_grpc_plugin)
   gen_hdrs = _proto_cc_hdrs(srcs, use_grpc_plugin)
@@ -184,6 +188,7 @@ def cc_proto_library(
       protoc=protoc,
       plugin=grpc_cpp_plugin,
       plugin_language="grpc",
+      plugin_options=plugin_options,
       gen_cc=1,
       outs=outs,
       visibility=["//visibility:public"],

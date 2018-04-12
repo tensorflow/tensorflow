@@ -29,6 +29,14 @@ message RewriterConfig {
     AGGRESSIVE = 3;
   }
 
+  // Enum controling the number of times to run optimizers. The default is to
+  // run them once.
+  enum NumIterationsType {
+    DEFAULT_NUM_ITERS = 0;
+    ONE = 1;
+    TWO = 2;
+  }
+
   // Optimize tensor layouts (default is ON)
   // e.g. This will try to use NCHW layout on GPU which is faster.
   Toggle layout_optimizer = 1;
@@ -50,6 +58,10 @@ message RewriterConfig {
   Toggle debug_stripper = 11;
   // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;
+
+  // Controls how many times we run the optimizers in meta optimizer (default
+  // is once).
+  NumIterationsType meta_optimizer_iterations = 12;
 
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)

@@ -212,8 +212,8 @@ DeviceProperties GetDeviceInfo(const string& device_str) {
       CudaGpuId cuda_gpu_id;
       Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
       if (!s.ok()) {
-        LOG(ERROR) << s;
-        return unknown;
+        // We are probably running simulation without linking cuda libraries.
+        cuda_gpu_id = CudaGpuId(parsed.id);
       }
       return GetLocalGPUInfo(cuda_gpu_id);
     } else if (parsed.type == "CPU") {

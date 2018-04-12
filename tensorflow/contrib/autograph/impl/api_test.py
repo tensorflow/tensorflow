@@ -37,8 +37,12 @@ class ApiTest(test.TestCase):
   def setUp(self):
     config.COMPILED_IMPORT_STATEMENTS = (
         'from __future__ import print_function',
-        'from tensorflow.contrib.autograph import utils as '
-        'autograph_utils', 'tf = autograph_utils.fake_tf()')
+        'from tensorflow.contrib.autograph import utils'
+        ' as autograph_utils',
+        'from tensorflow.contrib.autograph import operators'
+        ' as __ops',
+        'tf = autograph_utils.fake_tf()',
+    )
 
   def test_decorator_recurses(self):
 
@@ -197,8 +201,7 @@ class ApiTest(test.TestCase):
 
     compiled_code = api.to_code(test_fn)
 
-    # Just check for some key words and that it is parseable Python code.
-    self.assertRegexpMatches(compiled_code, 'autograph_utils\\.run_while')
+    # Just check that it is parseable Python code.
     self.assertIsNotNone(parser.parse_str(compiled_code))
 
 

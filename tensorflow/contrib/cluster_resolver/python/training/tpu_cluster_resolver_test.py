@@ -117,7 +117,8 @@ class TPUClusterResolverTest(test.TestCase):
         zone=None,
         tpu=['test-tpu-1'],
         credentials=None,
-        service=self.mock_service_client(tpu_map=tpu_map))
+        service=self.mock_service_client(tpu_map=tpu_map),
+        coordinator_name='coordinator')
 
     actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
     expected_proto = """
@@ -170,6 +171,7 @@ class TPUClusterResolverTest(test.TestCase):
         project='test-project',
         zone='us-central1-c',
         tpu=['test-tpu-1'],
+        coordinator_name='coordinator',
         coordinator_address='10.128.1.5:10203',
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
@@ -196,6 +198,7 @@ class TPUClusterResolverTest(test.TestCase):
         project='test-project',
         zone='us-central1-c',
         tpu='test-tpu-1',
+        coordinator_name='coordinator',
         coordinator_address='10.128.1.5:10203',
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
@@ -239,7 +242,8 @@ class TPUClusterResolverTest(test.TestCase):
     tpu_cluster_resolver = TPUClusterResolver(
         tpu='test-tpu-1',
         credentials=None,
-        service=self.mock_service_client(tpu_map=tpu_map))
+        service=self.mock_service_client(tpu_map=tpu_map),
+        coordinator_name='coordinator')
 
     actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
     expected_proto = """
@@ -358,14 +362,10 @@ class TPUClusterResolverTest(test.TestCase):
   def testGkeEnvironment(self):
     os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'] = 'grpc://10.120.27.5:8470'
     self.assertTrue('KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS' in os.environ)
-    tpu_cluster_resolver = TPUClusterResolver()
-    self.assertTrue(tpu_cluster_resolver._inGke())
+    self.assertTrue(TPUClusterResolver._inGke())
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470'),
-        compat.as_bytes(tpu_cluster_resolver._gkeMaster()))
-    self.assertEqual(
-        compat.as_bytes('grpc://10.120.27.5:8470'),
-        compat.as_bytes(tpu_cluster_resolver.get_master()))
+        compat.as_bytes(TPUClusterResolver._gkeMaster()))
     del os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS']
 
 

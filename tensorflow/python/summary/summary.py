@@ -50,6 +50,7 @@ from tensorflow.core.util.event_pb2 import TaggedRunMetadata
 
 
 from tensorflow.python.eager import context as _context
+from tensorflow.python.framework import constant_op as _constant_op
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
@@ -98,6 +99,8 @@ def scalar(name, tensor, collections=None, family=None):
   Raises:
     ValueError: If tensor has the wrong shape or type.
   """
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
     val = _gen_logging_ops.scalar_summary(tags=tag, values=tensor, name=scope)
@@ -151,6 +154,8 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
     val = _gen_logging_ops.image_summary(
@@ -189,6 +194,8 @@ def histogram(name, values, collections=None, family=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[values],
       default_name='HistogramSummary') as (tag, scope):
@@ -234,6 +241,8 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family=family, values=[tensor]) as (tag, scope):
     sample_rate = _ops.convert_to_tensor(
@@ -282,6 +291,8 @@ def merge(inputs, collections=None, name=None):
     raise RuntimeError(
         'Merging tf.summary.* ops is not compatible with eager execution. '
         'Use tf.contrib.summary instead.')
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   name = _summary_op_util.clean_tag(name)
   with _ops.name_scope(name, 'Merge', inputs):
     val = _gen_logging_ops.merge_summary(inputs=inputs, name=name)

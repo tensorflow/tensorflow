@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import with_shape
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
@@ -343,6 +344,45 @@ class _RestructuredDataset(dataset_ops.Dataset):
   @property
   def output_shapes(self):
     return self._output_shapes
+
+
+def assert_element_shape(expected_shapes):
+  """Assert the shape of this `Dataset`.
+
+  ```python
+  shapes = [tf.TensorShape([16, 256]), tf.TensorShape(None)]
+  result = dataset.apply(tf.contrib.data.assert_element_shape(shapes))
+  print(result.output_shapes)  # ==> "((16, 256), <unknown>)"
+  ```
+
+  If dataset shapes and expected_shape, are fully defined, assert they match.
+  Otherwise, add assert op that will validate the shapes when tensors are
+  evaluated, and set shapes on tensors, respectively.
+
+  Args:
+    expected_shapes: A nested structure of `tf.TensorShape` objects.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    @{tf.data.Dataset.apply}
+  """
+
+  def _check_shape(*elements):
+    flatten_tensors = nest.flatten(elements)
+    flatten_shapes = nest.flatten(expected_shapes)
+    checked_tensors = [with_shape(shape, tensor)
+                       for shape, tensor in zip(flatten_shapes,
+                                                flatten_tensors)]
+    return nest.pack_sequence_as(elements, checked_tensors)
+
+  def _apply_fn(dataset):
+    return _RestructuredDataset(
+        dataset.map(_check_shape),
+        dataset.output_types,
+        output_shapes=expected_shapes,
+        output_classes=dataset.output_classes)
+
+  return _apply_fn
 
 
 class _MapAndBatchDataset(dataset_ops.MapDataset):

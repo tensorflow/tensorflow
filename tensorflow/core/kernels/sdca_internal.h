@@ -322,10 +322,7 @@ class Examples {
     return examples_.at(example_index);
   }
 
-  int sampled_index(const int id, const bool adaptive) const {
-    if (adaptive) return sampled_index_[id];
-    return id;
-  }
+  int sampled_index(const int id) const { return sampled_index_[id]; }
 
   // Adaptive SDCA in the current implementation only works for
   // binary classification, where the input argument for num_weight_vectors
@@ -336,6 +333,8 @@ class Examples {
       const TTypes<float>::Matrix example_state_data,
       const std::unique_ptr<DualLossUpdater>& loss_updater,
       const int num_weight_vectors);
+
+  void RandomShuffle();
 
   int num_examples() const { return examples_.size(); }
 

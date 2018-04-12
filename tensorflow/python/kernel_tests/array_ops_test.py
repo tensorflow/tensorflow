@@ -780,6 +780,14 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       grad = GradSliceChecker(self, sess, var, np.array(8))
       _ = grad[tuple()]
 
+  def testInt64Indices(self):
+    with self.test_session(use_gpu=True) as sess:
+      a = math_ops.range(3)
+      index = constant_op.constant(1, dtype=dtypes.int64)
+      b = 2 * a[index]
+      grad, = gradients_impl.gradients(b, a)
+      self.assertAllEqual(sess.run(grad), [0, 2, 0])
+
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
   """Test varied index types and host located memory."""
@@ -999,30 +1007,38 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testDenseShape(self):
-    with self.test_session():
-      t_value = [[0, 42], [24, 0]]
-      self.assertAllEqual((2, 2), array_ops.shape(t_value).eval())
-      self.assertEqual(4, array_ops.size(t_value).eval())
-      self.assertEqual(2, array_ops.rank(t_value).eval())
+    t_value = [[0, 42], [24, 0]]
+    self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(t_value)))
+    self.assertEqual(4, self.evaluate(array_ops.size(t_value)))
+    self.assertEqual(2, self.evaluate(array_ops.rank(t_value)))
 
-      t = constant_op.constant(t_value)
-      self.assertAllEqual((2, 2), array_ops.shape(t).eval())
-      self.assertEqual(4, array_ops.size(t).eval())
-      self.assertEqual(2, array_ops.rank(t).eval())
+    t = constant_op.constant(t_value)
+    self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(t)))
+    self.assertEqual(4, self.evaluate(array_ops.size(t)))
+    self.assertEqual(2, self.evaluate(array_ops.rank(t)))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSparseShape(self):
-    with self.test_session():
-      sp_value = sparse_tensor.SparseTensorValue(
-          indices=((0, 1), (1, 0)), values=(42, 24), dense_shape=(2, 2))
-      self.assertAllEqual((2, 2), array_ops.shape(sp_value).eval())
-      self.assertEqual(4, array_ops.size(sp_value).eval())
-      self.assertEqual(2, array_ops.rank(sp_value).eval())
+    sp_value = sparse_tensor.SparseTensorValue(
+        indices=((0, 1), (1, 0)), values=(42, 24), dense_shape=(2, 2))
+    self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(sp_value)))
+    self.assertEqual(4, self.evaluate(array_ops.size(sp_value)))
+    self.assertEqual(2, self.evaluate(array_ops.rank(sp_value)))
 
-      sp = sparse_tensor.SparseTensor.from_value(sp_value)
-      self.assertAllEqual((2, 2), array_ops.shape(sp).eval())
-      self.assertEqual(4, array_ops.size(sp).eval())
-      self.assertEqual(2, array_ops.rank(sp).eval())
+    sp = sparse_tensor.SparseTensor.from_value(sp_value)
+    self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(sp)))
+    self.assertEqual(4, self.evaluate(array_ops.size(sp)))
+    self.assertEqual(2, self.evaluate(array_ops.rank(sp)))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testSizeDtype(self):
+    tensor = [1]
+    self.assertEqual(dtypes.int32, self.evaluate(array_ops.size(tensor)).dtype)
+    self.assertEqual(
+        dtypes.int64,
+        self.evaluate(array_ops.size(tensor, out_type=dtypes.int64)).dtype)
 
 
 @test_util.with_c_api

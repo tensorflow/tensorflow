@@ -52,10 +52,9 @@ namespace {
 // Creates an HloModule from the given proto.
 StatusOr<std::unique_ptr<HloModule>> HloProtoToModule(
     const HloProto& proto, const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig config,
-      HloModule::CreateModuleConfigFromProto(proto.hlo_module()));
-  config.set_debug_options(debug_options);
+  TF_ASSIGN_OR_RETURN(HloModuleConfig config,
+                      HloModule::CreateModuleConfigFromProto(proto.hlo_module(),
+                                                             debug_options));
   TF_ASSIGN_OR_RETURN(auto module,
                       HloModule::CreateFromProto(proto.hlo_module(), config));
   return std::move(module);

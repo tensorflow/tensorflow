@@ -339,7 +339,8 @@ def _luong_score(query, keys, scale):
   if scale:
     # Scalar used in weight scaling
     g = variable_scope.get_variable(
-        "attention_g", dtype=dtype, initializer=1.)
+        "attention_g", dtype=dtype,
+        initializer=init_ops.ones_initializer, shape=())
     score = g * score
   return score
 
@@ -609,8 +610,8 @@ def monotonic_attention(p_choose_i, previous_attention, mode):
   addition, once an input sequence element is attended to at a given output
   timestep, elements occurring before it cannot be attended to at subsequent
   output timesteps.  This function generates attention distributions according
-  to these assumptions.  For more information, see ``Online and Linear-Time
-  Attention by Enforcing Monotonic Alignments''.
+  to these assumptions.  For more information, see `Online and Linear-Time
+  Attention by Enforcing Monotonic Alignments`.
 
   Args:
     p_choose_i: Probability of choosing input sequence/memory element i.  Should

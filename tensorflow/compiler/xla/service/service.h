@@ -126,6 +126,15 @@ class Service : public ServiceInterface {
   tensorflow::Status ExecuteParallel(const ExecuteParallelRequest* arg,
                                      ExecuteParallelResponse* result) override;
 
+  // Executes one or more computations in parallel with the provided global data
+  // passed as immutable arguments. Returns global data output for each
+  // computation.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  tensorflow::Status ExecuteGraphParallel(
+      const ExecuteGraphParallelRequest* arg,
+      ExecuteParallelResponse* result) override;
+
   // Requests one or more device handles from the target.
   //
   // When N device handles are requested and the number of replicas is R, at
@@ -197,6 +206,9 @@ class Service : public ServiceInterface {
   // Computes the value of a constant expression.
   tensorflow::Status ComputeConstant(const ComputeConstantRequest* arg,
                                      ComputeConstantResponse* result) override;
+  tensorflow::Status ComputeConstantGraph(
+      const ComputeConstantGraphRequest* arg,
+      ComputeConstantResponse* result) override;
 
   // Returns the shape (with layout) of an array associated with a given data
   // handle.
@@ -222,6 +234,13 @@ class Service : public ServiceInterface {
   // Retrieves the statistics of a computation.
   tensorflow::Status GetComputationStats(
       const ComputationStatsRequest* arg,
+      ComputationStatsResponse* result) override;
+
+  // Retrieves the statistics of a computation.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  tensorflow::Status GetComputationGraphStats(
+      const ComputationGraphStatsRequest* arg,
       ComputationStatsResponse* result) override;
 
   // Snapshots the current state of a computation handle into a serializable
@@ -262,6 +281,20 @@ class Service : public ServiceInterface {
       const ExecutionOptions& execution_options,
       const UserComputation* user_computation = nullptr);
 
+  // Picks a parallel response and fills the result.
+  Status PickParallelResponse(const ExecuteParallelResponse& parallel_result,
+                              ExecuteResponse* result);
+
+  // Prepare the executors for executing parallel.
+  StatusOr<std::vector<perftools::gputools::StreamExecutor*>> GetExecutors(
+      const ExecutionOptions& execution_options, int64 requests_size,
+      int64 request_index) const;
+
+  // Prepare the arguments for executing parallel.
+  StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(
+      const ExecutionOptions& execution_options,
+      tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments);
+
  protected:
   friend class LocalExecutable;
 
@@ -269,8 +302,6 @@ class Service : public ServiceInterface {
   // service objects.
   Service(const ServiceOptions& options,
           std::unique_ptr<Backend> execute_backend);
-
-  static StatusOr<std::unique_ptr<Backend>> CreateComputeConstantBackend();
 
   // Resolves the given argument handles in the allocation tracker and returns
   // the corresponding allocations for every replica. The function also verifies
@@ -314,6 +345,12 @@ class Service : public ServiceInterface {
   // given computations that may interact with each other.
   StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
       std::vector<VersionedComputationHandle> versioned_handles,
+      std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+      Backend* backend,
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
+      DeviceMemoryAllocator* device_allocator);
+  StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
+      const std::vector<const HloModuleProto*>& module_protos,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend,
       std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
@@ -362,6 +399,8 @@ class Service : public ServiceInterface {
   // will be the result of this computation.
   tensorflow::Status ExecuteOneToN(const ExecuteRequest* arg,
                                    ExecuteResponse* result);
+  tensorflow::Status ExecuteOneToN(const ExecuteGraphRequest* arg,
+                                   ExecuteResponse* result);
 
   // Convenience function which checks whether the given shape_with_layout
   // (presumably passed by the client to set the result layout) is valid for the
@@ -399,8 +438,6 @@ class Service : public ServiceInterface {
   CompilationCache compilation_cache_;
 
   // Backend to compile and execute computations on.
-  //
-  // TODO(b/28616830): Support multiple backends for execution.
   std::unique_ptr<Backend> execute_backend_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Service);

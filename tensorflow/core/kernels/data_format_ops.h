@@ -27,15 +27,25 @@ namespace functor {
 template <typename Device, typename T>
 struct DataFormatDimMap {
   void operator()(const Device& d, typename TTypes<T>::ConstFlat x,
-                  typename TTypes<T>::Flat y) {
+                  typename TTypes<T>::Flat y, const TTypes<int>::Vec dst) {
     auto zero = x.constant(0);
     auto one = x.constant(1);
-    auto three = x.constant(3);
+    auto two = x.constant(2);
+
+    auto f_zero = x.constant(dst(0));
+    auto f_one = x.constant(dst(1));
+    auto f_two = x.constant(dst(2));
+    auto f_three = x.constant(dst(3));
+
     auto four = x.constant(4);
     auto x_mod = (x + four) % 4;
+
     auto is_zero = (x_mod == zero);
-    auto is_three = (x_mod == three);
-    y.device(d) = is_zero.select(zero, is_three.select(one, x_mod + one));
+    auto is_one = (x_mod == one);
+    auto is_two = (x_mod == two);
+
+    y.device(d) = is_zero.select(
+        f_zero, is_one.select(f_one, is_two.select(f_two, f_three)));
   }
 };
 

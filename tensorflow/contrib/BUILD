@@ -8,6 +8,7 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "contrib_py",
@@ -33,13 +34,13 @@ py_library(
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
         "//tensorflow/contrib/data",
+        "//tensorflow/contrib/distribute:distribute",
         "//tensorflow/contrib/deprecated:deprecated_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/contrib/estimator:estimator_py",
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/fused_conv:fused_conv_py",
         "//tensorflow/contrib/gan",
@@ -62,7 +63,6 @@ py_library(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
-        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/losses:metric_learning_py",
@@ -74,12 +74,14 @@ py_library(
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/contrib/optimizer_v2:optimizer_v2_py",
         "//tensorflow/contrib/periodic_resample:init_py",
         "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",
         "//tensorflow/contrib/autograph",
         "//tensorflow/contrib/receptive_field:receptive_field_py",
+        "//tensorflow/contrib/recurrent:recurrent_py",
         "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/resampler:resampler_py",
@@ -115,7 +117,10 @@ py_library(
             "//tensorflow/contrib/kafka",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_not_windows([
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
+    ]),
 )
 
 cc_library(
@@ -173,16 +178,4 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

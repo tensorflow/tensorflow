@@ -1,0 +1,41 @@
+op {
+  graph_op_name: "BoostedTreesPredict"
+  visibility: HIDDEN
+  in_arg {
+    name: "bucketized_features"
+    description: <<END
+A list of rank 1 Tensors containing bucket id for each
+feature.
+END
+  }
+  out_arg {
+    name: "logits"
+    description: <<END
+Output rank 2 Tensor containing logits for each example.
+END
+  }
+  attr {
+    name: "num_bucketized_features"
+    description: <<END
+Inferred.
+END
+  }
+  attr {
+    name: "logits_dimension"
+    description: <<END
+scalar, dimension of the logits, to be used for partial logits
+shape.
+END
+  }
+  attr {
+    name: "max_depth"
+    description: <<END
+scalar, max depth of trees. To be used for parallelization costs.
+END
+  }
+  summary: "Runs multiple additive regression ensemble predictors on input instances and"
+  description: <<END
+computes the logits. It is designed to be used during prediction.
+It traverses all the trees and calculates the final score for each instance.
+END
+}

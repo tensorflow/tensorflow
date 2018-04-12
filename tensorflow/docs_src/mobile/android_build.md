@@ -51,7 +51,8 @@ If you haven't already, do the following two things:
         // set to 'bazel', 'cmake', 'makefile', 'none'
         def nativeBuildSystem = 'none'
 
-4. Click the Run button (the green arrow) or use **Run -> Run 'android'** from the top menu.
+4. Click the *Run* button (the green arrow) or select *Run > Run 'android'* from the
+    top menu. You may need to rebuild the project using *Build > Rebuild Project*.
 
     If it asks you to use Instant Run, click **Proceed Without Instant Run**.
 

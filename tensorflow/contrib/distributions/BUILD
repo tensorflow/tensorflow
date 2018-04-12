@@ -454,6 +454,21 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+)
+
+cuda_py_test(
+    name = "batch_reshape_test",
+    size = "small",
+    srcs = ["python/kernel_tests/batch_reshape_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
 )
 
 cuda_py_test(
@@ -476,6 +491,16 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "seed_stream_test",
+    size = "small",
+    srcs = ["python/kernel_tests/seed_stream_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "statistical_testing_test",
     size = "medium",
     srcs = [
@@ -486,12 +511,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = [
-        "manual",
-        "noasan",
-        "noguitar",
-        "optonly",
-    ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -743,18 +763,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 # === Bijector Tests ==========================================================
@@ -1125,6 +1133,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 cuda_py_test(

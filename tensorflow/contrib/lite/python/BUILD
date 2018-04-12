@@ -101,12 +101,18 @@ py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     visibility = ["//visibility:public"],
     deps = [
         ":convert_saved_model",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
     ],
 )
@@ -117,16 +123,4 @@ py_library(
     deps = [
         ":convert_saved_model",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

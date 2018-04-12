@@ -52,13 +52,14 @@ class XlaCompilationCache : public ResourceBase {
   // Compiles a function into a XlaCompiler::CompilationResult that can be used
   // to execute an XLA Computation. Compilation results are cached.
   // `function` is the name of a Tensorflow function to compile.
-  // `constant_args` is a maps of tensorflow argument number to constant value.
+  // `constant_args` is a map of tensorflow argument number to its constant
+  //  value.
   // `variable_args` is a snapshot of the current values of the
   // resource variable arguments to `function`; uninitialized variables are
   // represented by an absent OptionalTensor.
   // The result of compilation is written to `*compilation_result`, which must
   // be non-null. If `executable` is non-null, also builds an
-  // xla::LocalExecutable and sets `executable to point to it. The resulting
+  // xla::LocalExecutable and sets `executable` to point to it. The resulting
   // executable pointer may be null if the computation has no non-constant
   // outputs.
   Status Compile(const XlaCompiler::Options& options,
@@ -96,6 +97,7 @@ class XlaCompilationCache : public ResourceBase {
                      xla::LocalExecutable** executable,
                      const XlaCompiler::CompileOptions* compile_options,
                      bool compile_single_op);
+
   // Takes `result` which has been compiled from a Tensorflow subgraph to a
   // XLA computation already, and generates an XLA LocalExecutable `executable`.
   Status BuildExecutable(const XlaCompiler::Options& options,
