@@ -8306,15 +8306,9 @@ TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
     unsigned char is_mnist, TF_Status* status) {
 #if defined(PLATFORM_WINDOWS)
   // TODO(ashankar): get these functions working on Windows.
-  if (is_mnist) {
-    status->status = tensorflow::errors::Unimplemented(
-        "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
-        "is not implemented for Windows");
-  } else {
-    status->status = tensorflow::errors::Unimplemented(
-        "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
-        "is not implemented for Windows");
-  }
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
   return nullptr
 #else
   tensorflow::Status s;
