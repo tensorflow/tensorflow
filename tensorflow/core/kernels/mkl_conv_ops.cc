@@ -869,8 +869,8 @@ class MklConv2DOp : public OpKernel {
 
       // get a conv2d fwd from primitive pool
       Conv2DFwd<T> *conv2d_fwd = nullptr;
-      memory::dims bias_dims = {};
       if (biasEnabled) {
+        memory::dims bias_dims = {};
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
         conv2d_fwd = Conv2DFwdFactory<T>::Get(src_dims, filter_dims,
                         bias_dims, dst_dims_mkl_order,
