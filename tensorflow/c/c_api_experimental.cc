@@ -184,6 +184,7 @@ library {
   return std::move(functions[0]);
 }
 
+#if not defined(PLATFORM_WINDOWS)
 //  On success, returns a set of TF_Function instances encoding a dataset
 //  node stack that reads a Imagenet TFRecordFile dataset from `file_path`, and
 //  sets `dataset_name` to the created dataset name. The returned functions must
@@ -7069,6 +7070,7 @@ library {
       };
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
 }
+#endif
 
 #if not defined(PLATFORM_WINDOWS)
 //  On success, returns a set of TF_Function instances encoding a dataset
@@ -8210,7 +8212,6 @@ library {
 }
 #endif
 
-#if not defined(PLATFORM_WINDOWS)
 // Adds the input functions to `graph`.  On success, returns the created
 // IteratorGetNext node.
 static TF_Operation* AddDatasetFunctionAndIteratorNodesToGraph(
@@ -8275,7 +8276,6 @@ static TF_Operation* AddDatasetFunctionAndIteratorNodesToGraph(
   VLOG(1) << "Output graph: " << graph->graph.ToGraphDefDebug().DebugString();
   return ToTF_Operation(getnext_node);
 }
-#endif
 
 TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(TF_Graph* graph,
                                                      TF_Status* status) {
