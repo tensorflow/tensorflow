@@ -831,7 +831,8 @@ class FusedConvInt8Tests(test.TestCase):
                                                vertical_stride, padding_type)
     output_width = CalculateCovolvedOutputDim(input_width, filter_width,
                                               horizontal_stride, padding_type)
-    tf_logging.info("output_height=", output_height, ", output_width=", output_width)
+    tf_logging.info("output_height=", output_height, ", output_width=", 
+			output_width)
 
     side_input, _, _ = gen_array_ops.quantize_v2(
         random_ops.random_uniform(
