@@ -876,9 +876,9 @@ enum class ElementwiseOperation { kAdd, kMultiply };
 
 string ElementwiseOperationString(ElementwiseOperation op);
 
-// A simple class to workaround the too perfect forwarding issue at
-// gcc6+ compilers. See PR#16309 and issue #18402 for links discussing
-// the issue
+// A simple class representing the version of the backing library, to 
+// workaround the "too perfect forwarding" issue in gcc6+ compilers. 
+// See PR#16309 and issue #18402 for links discussing the issue.
 class VersionInfo {
  public:
   VersionInfo(int major = 0, int minor = 0, int patch = 0)
