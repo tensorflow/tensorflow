@@ -101,7 +101,7 @@ bool ShouldIncludeWinogradNonfusedAlgo(const Shape& input_shape,
   // Skip this check for cudnn7 and newer.
   auto version =
       stream_exec->AsDnn()->GetVersion();
-  if (version.ok() && version.ValueOrDie().maj() >= 7) {
+  if (version.ok() && version.ValueOrDie().major_version() >= 7) {
     return true;
   }
 
