@@ -17,6 +17,14 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
+
+namespace custom {
+
+TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
+TfLiteRegistration* Register_MFCC();
+
+}  // namespace custom
+
 namespace builtin {
 
 TfLiteRegistration* Register_RELU();
@@ -67,6 +75,10 @@ TfLiteRegistration* Register_TOPK_V2();
 TfLiteRegistration* Register_LOG_SOFTMAX();
 TfLiteRegistration* Register_CAST();
 TfLiteRegistration* Register_DEQUANTIZE();
+TfLiteRegistration* Register_PRELU();
+TfLiteRegistration* Register_MAXIMUM();
+TfLiteRegistration* Register_MINIMUM();
+TfLiteRegistration* Register_ARG_MAX();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -123,6 +135,16 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX());
   AddBuiltin(BuiltinOperator_CAST, Register_CAST());
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE());
+  AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
+  AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
+  AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
+  AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
+
+  // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
+  // custom ops aren't always included by default.
+  AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
+  AddCustom("AudioSpectrogram",
+            tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
 }
 
 TfLiteRegistration* BuiltinOpResolver::FindOp(

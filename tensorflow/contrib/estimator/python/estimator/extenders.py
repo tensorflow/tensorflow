@@ -23,6 +23,7 @@ import six
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import util as estimator_util
+from tensorflow.python.estimator.export.export_output import PredictOutput
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.ops import clip_ops
@@ -96,7 +97,10 @@ def add_metrics(estimator, metric_fn):
   return estimator_lib.Estimator(
       model_fn=new_model_fn,
       model_dir=estimator.model_dir,
-      config=estimator.config)
+      config=estimator.config,
+      # pylint: disable=protected-access
+      warm_start_from=estimator._warm_start_settings)
+      # pylint: enable=protected-access
 
 
 def clip_gradients_by_norm(optimizer, clip_norm):
@@ -233,7 +237,17 @@ def forward_features(estimator, keys=None):
             'argument of forward_features to filter unwanted features. Type of '
             'features[{}] is {}.'.format(key, key, type(feature)))
       predictions[key] = feature
-    return spec._replace(predictions=predictions)
+    spec = spec._replace(predictions=predictions)
+    if spec.export_outputs:
+      for ekey in ['predict', 'serving_default']:
+        if (ekey in spec.export_outputs and
+            isinstance(spec.export_outputs[ekey],
+                       PredictOutput)):
+          export_outputs = spec.export_outputs[ekey].outputs
+          for key in get_keys(features):
+            export_outputs[key] = predictions[key]
+
+    return spec
 
   return estimator_lib.Estimator(
       model_fn=new_model_fn,

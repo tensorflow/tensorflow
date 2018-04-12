@@ -296,7 +296,9 @@ class LocalRendezvousImpl : public Rendezvous {
   Status status_ GUARDED_BY(mu_);
 
   ~LocalRendezvousImpl() override {
-    StartAbort(errors::Cancelled("LocalRendezvousImpl deleted"));
+    if (!table_.empty()) {
+      StartAbort(errors::Cancelled("LocalRendezvousImpl deleted"));
+    }
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvousImpl);

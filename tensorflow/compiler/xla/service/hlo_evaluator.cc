@@ -202,6 +202,25 @@ void IterateThroughWindow(
   } while (IndexUtil::BumpIndices(window_shape, &window_index));
 }
 
+// Creates a vector of multipliers which can be used to create a linear index
+// into shape.
+//
+// Given the multidimensional index {i1, ..., iN} and
+// M = MakeDimMultipliers(shape), the corresponding linear index LI is simply
+//
+//   LI = i1 * M[1] + i2 * M[2] + ... + iN * M[N].
+//
+// This lets you calculate LI given the multidimensional indices in any order.
+DimensionVector MakeDimMultipliers(const Shape& shape) {
+  DimensionVector v(ShapeUtil::Rank(shape));
+  int64 scale = 1;
+  for (auto dim : LayoutUtil::MinorToMajor(shape)) {
+    v[dim] = scale;
+    scale *= shape.dimensions(dim);
+  }
+  return v;
+}
+
 }  // namespace
 
 template <typename ReturnT, typename ElementwiseT>
@@ -369,6 +388,22 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> result,
                         parent_->GetEvaluatedLiteralFor(operand).Convert(
+                            convert->shape().element_type()));
+
+    if (LayoutUtil::LayoutsInShapesEqual(result->shape(), convert->shape())) {
+      parent_->evaluated_[convert] = std::move(result);
+    } else {
+      parent_->evaluated_[convert] =
+          result->Relayout(convert->shape().layout());
+    }
+    return Status::OK();
+  }
+
+  Status HandleBitcastConvert(HloInstruction* convert) override {
+    const HloInstruction* operand = convert->operand(0);
+    TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> result,
+                        parent_->GetEvaluatedLiteralFor(operand).BitcastConvert(
                             convert->shape().element_type()));
 
     if (LayoutUtil::LayoutsInShapesEqual(result->shape(), convert->shape())) {
@@ -875,7 +910,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
-          return std::fmax(low, std::fmin(value, high));
+          return std::fmin(high, std::fmax(value, low));
         };
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[clamp],
@@ -896,6 +931,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleSelect(HloInstruction* select) override {
+    CHECK(!ShapeUtil::IsScalar(select->operand(0)->shape()));
     CHECK(!ShapeUtil::IsTuple(select->shape()));
     std::function<ReturnT(bool, ReturnT, ReturnT)> select_op =
         [](bool pred, ReturnT on_true, ReturnT on_false) {
@@ -978,18 +1014,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
-    // Dimension number applicable for input (lhs).
-    const int64 input_batch_dim = dnums.input_batch_dimension();
-    const int64 input_z_dim = dnums.input_feature_dimension();
-    // Dimension number applicable for kernel (rhs).
-    const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
-    const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
-    // Dimension number applicable for output.
-    const int64 output_batch_dim = dnums.output_batch_dimension();
-    const int64 output_z_dim = dnums.output_feature_dimension();
-
-    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, input_z_dim);
-
     std::vector<int64> window_dimension_sizes;
     for (auto i : dnums.kernel_spatial_dimensions()) {
       window_dimension_sizes.push_back(ShapeUtil::GetDimension(rhs_shape, i));
@@ -998,25 +1022,43 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Shape& window_shape =
         ShapeUtil::MakeShape(rhs_shape.element_type(), window_dimension_sizes);
 
-    DimensionVector lhs_index(lhs_rank);
-    DimensionVector rhs_index(rhs_rank);
-    DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size());
+    DimensionVector lhs_dim_multipliers = MakeDimMultipliers(lhs_shape);
+    DimensionVector rhs_dim_multipliers = MakeDimMultipliers(rhs_shape);
 
-    auto func = [&](ArraySlice<int64> out_index) {
+    auto lhs_literal_data = lhs_literal.data<ReturnT>();
+    auto rhs_literal_data = rhs_literal.data<ReturnT>();
+
+    auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
+                 &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
+                 rhs_literal_data](ArraySlice<int64> out_index) {
+      // Dimension number applicable for input (lhs).
+      const int64 input_batch_dim = dnums.input_batch_dimension();
+      const int64 input_z_dim = dnums.input_feature_dimension();
+      // Dimension number applicable for kernel (rhs).
+      const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
+      const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+      // Dimension number applicable for output.
+      const int64 output_batch_dim = dnums.output_batch_dimension();
+      const int64 output_z_dim = dnums.output_feature_dimension();
+
+      const int64 z_size = ShapeUtil::GetDimension(lhs_shape, input_z_dim);
+
       ElementwiseT result_val = static_cast<ElementwiseT>(0);
-
-      std::fill(lhs_index.begin(), lhs_index.end(), 0);
-      std::fill(rhs_index.begin(), rhs_index.end(), 0);
-      std::fill(rhs_spatial_index.begin(), rhs_spatial_index.end(), 0);
-
-      lhs_index[input_batch_dim] = out_index[output_batch_dim];
-      rhs_index[kernel_output_z_dim] = out_index[output_z_dim];
+      DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size(),
+                                        0);
 
       // Convolve input feature with kernel.
       do {
         for (int64 iz = 0; iz < z_size; ++iz) {
-          lhs_index[input_z_dim] = iz;
-          rhs_index[kernel_input_z_dim] = iz;
+          int64 lhs_linear_index = 0;
+          lhs_linear_index += out_index[output_batch_dim] *
+                              lhs_dim_multipliers[input_batch_dim];
+          lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
+
+          int64 rhs_linear_index = 0;
+          rhs_linear_index += out_index[output_z_dim] *
+                              rhs_dim_multipliers[kernel_output_z_dim];
+          rhs_linear_index += iz * rhs_dim_multipliers[kernel_input_z_dim];
 
           // Find corresponding spatial dimension index for input (lhs).
           for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
@@ -1041,29 +1083,32 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
             // Calculate the actual lhs (input) index after dilation.  As an
             // optimization, skip this integer divide if there's no dilation.
+            int64 lhs_spatial_index;
             if (window_dim.base_dilation() > 1) {
-              lhs_index[input_spatial_dim] =
-                  undilated_index / window_dim.base_dilation();
+              lhs_spatial_index = undilated_index / window_dim.base_dilation();
             } else {
-              lhs_index[input_spatial_dim] = undilated_index;
+              lhs_spatial_index = undilated_index;
             }
+            lhs_linear_index +=
+                lhs_spatial_index * lhs_dim_multipliers[input_spatial_dim];
 
-            // Skip if input index is not in bound.
-            if (!(lhs_index[input_spatial_dim] >= 0 &&
-                  lhs_index[input_spatial_dim] <
+            // Skip if input index is not in bounds.
+            if (!(lhs_spatial_index >= 0 &&
+                  lhs_spatial_index <
                       lhs_shape.dimensions(input_spatial_dim))) {
               goto cnt;
             }
 
-            rhs_index[dnums.kernel_spatial_dimensions(ki)] =
-                window_dim.window_reversal()
-                    ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
-                    : rhs_spatial_index[ki];
+            rhs_linear_index +=
+                (window_dim.window_reversal()
+                     ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
+                     : rhs_spatial_index[ki]) *
+                rhs_dim_multipliers[dnums.kernel_spatial_dimensions(ki)];
           }
 
           result_val +=
-              static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index)) *
-              static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+              static_cast<ElementwiseT>(lhs_literal_data[lhs_linear_index]) *
+              static_cast<ElementwiseT>(rhs_literal_data[rhs_linear_index]);
         }
       cnt : {}
       } while (IndexUtil::BumpIndices(window_shape, &rhs_spatial_index));
@@ -1072,7 +1117,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     };
 
     auto result = Literal::CreateFromShape(result_shape);
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(func));
+    TF_RETURN_IF_ERROR(result->PopulateParallel<ReturnT>(func));
 
     parent_->evaluated_[conv] = std::move(result);
     return Status::OK();
@@ -1519,14 +1564,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       arg_dim_counts[dim] = arg_dimensions[dim];
     }
 
-    // Create mapping from result index to arg index.
-    const int64 result_rank = ShapeUtil::Rank(result->shape());
-    int64 result_dim = 0;
-    std::vector<int64> result_to_arg_index(result_rank);
+    // Map each dimension in the result to a dimension in arg that isn't
+    // being reduced.
+    std::vector<int64> result_to_arg_index;
     for (int64 i = 0; i < arg_dimensions.size(); ++i) {
       if (arg_dim_steps[i] == 0) {
-        result_to_arg_index[result_dim] = i;
-        ++result_dim;
+        result_to_arg_index.push_back(i);
       }
     }
 
@@ -1541,6 +1584,20 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             base[result_to_arg_index[i]] = multi_index[i];
           }
 
+          // When the reduction is addition of floats, accumulate in a double
+          // for better precision. Also, avoid creating Literals for the
+          // intermediate results; it's much faster.
+          if (ShapeUtil::ElementIsFloating(init_literal.shape()) &&
+              IsScalarAdd(function)) {
+            double computed_result = 0;
+            auto func = [&](ArraySlice<int64> input_index) {
+              computed_result += arg_literal.Get<float>(input_index);
+              return true;
+            };
+            ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,
+                                    arg_dim_steps, func);
+            return static_cast<ReturnT>(computed_result);
+          }
           auto func = [&](ArraySlice<int64> input_index) {
             auto curr_val = arg_literal.Get<ReturnT>(input_index);
 
@@ -1553,24 +1610,36 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator.Evaluate<const Literal*>(*function, args)
                     .ConsumeValueOrDie();
-            // Clear visit states so that the we can use the evaluate again on
+            // Clear visit states so that we can use the evaluator again on
             // the same computation.
             embedded_evaluator.ResetVisitStates();
-
             // Assign computed result to result_val.
             result_val = computed_result->Get<ReturnT>({});
-
             return true;
           };
-
+          // Computes one element of the result, reducing all dimensions that
+          // contribute to that element.
           ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,
                                   arg_dim_steps, func);
-
           return result_val;
         }));
 
     parent_->evaluated_[reduce] = std::move(result);
     return Status::OK();
+  }
+
+  bool IsScalarAdd(HloComputation* computation) {
+    HloInstruction* instruction = computation->root_instruction();
+    if (instruction->opcode() == HloOpcode::kAdd &&
+        computation->num_parameters() == 2) {
+      const HloInstruction* lhs = instruction->operand(0);
+      const HloInstruction* rhs = instruction->operand(1);
+      return lhs->opcode() == HloOpcode::kParameter &&
+             ShapeUtil::IsScalar(lhs->shape()) &&
+             rhs->opcode() == HloOpcode::kParameter &&
+             ShapeUtil::IsScalar(rhs->shape()) && lhs != rhs;
+    }
+    return false;
   }
 
   Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override {
@@ -1636,11 +1705,11 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 Literal::CreateR0<ReturnT>(*selected_val);
 
             const std::vector<const Literal*> args = {
-                curr_val_literal.get(), selected_val_literal.get()};
+                selected_val_literal.get(), curr_val_literal.get()};
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator.Evaluate<const Literal*>(*select, args)
                     .ConsumeValueOrDie();
-            bool selected = computed_result->Get<bool>({});
+            bool selected = !computed_result->Get<bool>({});
             if (selected) {
               selected_val = curr_val;
               selected_index = operand_index;
@@ -2106,13 +2175,15 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);
   typed_visitors_[U8] = MakeUnique<TypedVisitor<uint8>>(this);
   typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: U16.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: U16.");
   });
   typed_visitors_[U32] = MakeUnique<TypedVisitor<uint32>>(this);
   typed_visitors_[U64] = MakeUnique<TypedVisitor<uint64>>(this);
   typed_visitors_[S8] = MakeUnique<TypedVisitor<int8>>(this);
   typed_visitors_[S16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: S16.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: S16.");
   });
   typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
   typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
@@ -2126,11 +2197,14 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   // elementwise computations to be done in F32 and do BF16<->F32 conversion
   // around the input and the output of the computations.
   typed_visitors_[BF16] = MakeUnique<TypedVisitor<bfloat16, float>>(this);
+
   typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: TUPLE.");
+    return Unimplemented(
+        "HloEvaluator::TypedVistor: unhandled primitive type: TUPLE.");
   });
   typed_visitors_[OPAQUE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: OPAQUE.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: OPAQUE.");
   });
 }
 
@@ -2154,6 +2228,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     const HloComputation& computation, ArraySlice<LiteralPtr> arg_literals) {
+  CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
 
@@ -2764,6 +2839,8 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
       /*output_shape=*/shape);
 
+  const Shape& operand_shape = operand.shape();
+
   auto gather_inner_loop_body =
       [&](ArraySlice<int64> output_window_index,
           ArraySlice<int64> input_gather_index,
@@ -2773,9 +2850,16 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
         output_window_index_to_input_index(output_window_index));
     for (int i = 0, e = output_index.size(); i < e; i++) {
       output_index[i] = output_gather_index[i] + output_window_index[i];
+      DCHECK_LT(output_index[i], shape.dimensions(i));
     }
     for (int i = 0, e = input_index.size(); i < e; i++) {
-      input_index[i] = input_gather_index[i] + input_window_index[i];
+      // TODO(b/74360564): We should implement whatever out of bounds behavior
+      // we decide for dynamic-slice here as well.
+      input_index[i] = (input_gather_index[i] + input_window_index[i]) %
+                       operand_shape.dimensions(i);
+      if (input_index[i] < 0) {
+        input_index[i] += operand_shape.dimensions(i);
+      }
     }
     TF_RETURN_IF_ERROR(
         result->CopyElementFrom(operand, input_index, output_index));
@@ -2850,6 +2934,37 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
+  // Attach cloned computation to an empty HLO module so the existing ones are
+  // not modified.
+  HloModule empty_hlo_module("EmptyModuleForFusion");
+  auto cloned_fused_computation =
+      fusion->fused_instructions_computation()->Clone(
+          /*suffix=*/"clone_with_layout", &empty_hlo_module);
+  for (auto* instruction : cloned_fused_computation->instructions()) {
+    LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+  }
+  auto readded_computation =
+      empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
+
+  auto operands = fusion->operands();
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(operands.size());
+  for (auto operand : operands) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result =
+      embedded_evaluator
+          .Evaluate<const Literal*>(*readded_computation, arg_literals)
+          .ConsumeValueOrDie();
+
+  evaluated_[fusion] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   const auto& pred = GetEvaluatedLiteralFor(conditional->operand(0));
   const auto& true_computation_arg =
@@ -2876,6 +2991,26 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
 
   evaluated_[conditional] = std::move(result);
   return Status::OK();
+}
+
+Status HloEvaluator::HandleSelect(HloInstruction* select) {
+  const auto& pred = GetEvaluatedLiteralFor(select->operand(0));
+  const auto& on_true = GetEvaluatedLiteralFor(select->operand(1));
+  const auto& on_false = GetEvaluatedLiteralFor(select->operand(2));
+
+  // If predicate is of scalar type, no element-wise selection would be needed.
+  // This would also handle output array of tuple types as the DefaultAction
+  // would go through the TypedVisitor which doesn't handle tuples.
+  if (ShapeUtil::IsScalar(pred.shape())) {
+    if (pred.Get<bool>({})) {
+      evaluated_[select] = on_true.CloneToUnique();
+    } else {
+      evaluated_[select] = on_false.CloneToUnique();
+    }
+    return Status::OK();
+  }
+
+  return DefaultAction(select);
 }
 
 Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {

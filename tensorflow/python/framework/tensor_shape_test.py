@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -34,12 +35,20 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.Dimension(15),
                      dim + tensor_shape.Dimension(3))
     self.assertEqual(tensor_shape.Dimension(15), dim + 3)
+    self.assertEqual(tensor_shape.Dimension(15), 3 + dim)
+    self.assertEqual(tensor_shape.Dimension(9), dim - 3)
+    self.assertEqual(tensor_shape.Dimension(1), 13 - dim)
     self.assertEqual(tensor_shape.Dimension(24),
                      dim * tensor_shape.Dimension(2))
     self.assertEqual(tensor_shape.Dimension(24), dim * 2)
+    self.assertEqual(tensor_shape.Dimension(24), 2 * dim)
+    self.assertEqual([4] * 12, [4] * dim)
+    self.assertEqual(12 * [4], dim * [4])
+    self.assertEqual(tensor_shape.Dimension(24), 2 * dim)
     self.assertEqual(
         tensor_shape.Dimension(6), dim // tensor_shape.Dimension(2))
     self.assertEqual(tensor_shape.Dimension(6), dim // 2)
+    self.assertEqual(tensor_shape.Dimension(0), 2 // dim)
     self.assertEqual(tensor_shape.Dimension(12),
                      dim.merge_with(tensor_shape.Dimension(12)))
     self.assertEqual(tensor_shape.Dimension(12), dim.merge_with(12))
@@ -175,6 +184,18 @@ class DimensionTest(test_util.TensorFlowTestCase):
   def testStr(self):
     self.assertEqual(str(tensor_shape.Dimension(7)), "7")
     self.assertEqual(str(tensor_shape.Dimension(None)), "?")
+
+  def testUnsupportedType(self):
+    with self.assertRaises(TypeError):
+      tensor_shape.Dimension(dtypes.string)
+      
+  def testMod(self):
+    four = tensor_shape.Dimension(4)
+    nine = tensor_shape.Dimension(9)
+    self.assertEqual(nine % four, 1)
+    # test both __mod__ and __rmod__.
+    self.assertEqual(nine % 4, 1)
+    self.assertEqual(4 % nine, 4)
 
 
 class ShapeTest(test_util.TensorFlowTestCase):

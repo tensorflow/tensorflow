@@ -343,7 +343,9 @@ tf_export("uint8").export_constant(__name__, "uint8")
 uint16 = DType(types_pb2.DT_UINT16)
 tf_export("uint16").export_constant(__name__, "uint16")
 uint32 = DType(types_pb2.DT_UINT32)
+tf_export("uint32").export_constant(__name__, "uint32")
 uint64 = DType(types_pb2.DT_UINT64)
+tf_export("uint64").export_constant(__name__, "uint64")
 int16 = DType(types_pb2.DT_INT16)
 tf_export("int16").export_constant(__name__, "int16")
 int8 = DType(types_pb2.DT_INT8)
@@ -646,6 +648,10 @@ QUANTIZED_DTYPES = frozenset([
 ])
 tf_export("QUANTIZED_DTYPES").export_constant(__name__, "QUANTIZED_DTYPES")
 
+_PYTHON_TO_TF = {
+    float: float32,
+    bool: bool,
+}
 
 @tf_export("as_dtype")
 def as_dtype(type_value):
@@ -674,6 +680,11 @@ def as_dtype(type_value):
 
   try:
     return _STRING_TO_TF[type_value]
+  except KeyError:
+    pass
+
+  try:
+    return _PYTHON_TO_TF[type_value]
   except KeyError:
     pass
 

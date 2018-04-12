@@ -263,6 +263,7 @@ BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
 Bucketize
+ClipByValue
 Complex
 ComplexAbs
 Conj

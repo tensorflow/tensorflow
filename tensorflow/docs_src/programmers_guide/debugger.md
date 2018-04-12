@@ -4,29 +4,28 @@
 
 [TOC]
 
-TensorFlow debugger (**tfdbg**) is a specialized debugger for TensorFlow. It
-lets you view the internal structure and states of running TensorFlow graphs
-during training and inference, which is difficult to debug with general-purpose
-debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
+`tfdbg` is a specialized debugger for TensorFlow. It lets you view the internal
+structure and states of running TensorFlow graphs during training and inference,
+which is difficult to debug with general-purpose debuggers such as Python's `pdb`
+due to TensorFlow's computation-graph paradigm.
 
-> NOTE: TensorFlow debugger uses a
-> [curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based
-> text user interface. On Mac OS X, the `ncurses` library is required and can
-> be installed with `brew install homebrew/dupes/ncurses`. On Windows, curses
-> isn't as well supported, so a
-> [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based interface can
-> be used with tfdbg by installing `pyreadline` with pip.
-> If you use Anaconda3, you can install it with a command
-> such as `"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`.
-> Unofficial Windows curses packages can be downloaded
-> [here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
-> installed using `pip install <your_version>.whl`, however curses on Windows
-> may not work as reliably as curses on Linux or Mac.
+This guide focuses on the command-line interface (CLI) of `tfdbg`. For guide on
+how to use the graphical user interface (GUI) of tfdbg, i.e., the
+**TensorBoard Debugger Plugin**, please visit
+[its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
 
-> NOTE: This guide focuses on the command-line interface (CLI) of tfdbg. For
-> guide on how to use the graphical user interface (GUI) of tfdbg, i.e., the
-> **TensorBoard Debugger Plugin**, please visit
-> [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
+Note: The TensorFlow debugger uses a
+[curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based text
+user interface. On Mac OS X, the `ncurses` library is required and can be
+installed with `brew install homebrew/dupes/ncurses`. On Windows, curses isn't as
+well supported, so a [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based
+interface can be used with tfdbg by installing `pyreadline` with `pip`. If you
+use Anaconda3, you can install it with a command such as
+`"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`. Unofficial
+Windows curses packages can be downloaded
+[here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
+installed using `pip install <your_version>.whl`, however curses on Windows may
+not work as reliably as curses on Linux or Mac.
 
 This tutorial demonstrates how to use the **tfdbg** CLI to debug the appearance
 of [`nan`s](https://en.wikipedia.org/wiki/NaN)
@@ -155,6 +154,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-n <name_pattern>` | List dumped tensors with names matching given regular-expression pattern. | `lt -n Softmax.*` |
 | | `-t <op_pattern>` | List dumped tensors with op types matching given regular-expression pattern. | `lt -t MatMul` |
 | | `-f <filter_name>` | List only the tensors that pass a registered tensor filter. | `lt -f has_inf_or_nan` |
+| | `-f <filter_name> -fenn <regex>` | List only the tensors that pass a registered tensor filter, excluding nodes with names matching the regular expression. | `lt -f has_inf_or_nan` `-fenn .*Sqrt.*` |
 | | `-s <sort_key>` | Sort the output by given `sort_key`, whose possible values are `timestamp` (default), `dump_size`, `op_type` and `tensor_name`. | `lt -s dump_size` |
 | | `-r` | Sort in reverse order. | `lt -r -s dump_size` |
 | **`pt`** | | **Print value of a dumped tensor.** | |
@@ -200,6 +200,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-n` | Execute through the next `Session.run` without debugging, and drop to CLI right before the run after that. | `run -n` |
 | | `-t <T>` | Execute `Session.run` `T - 1` times without debugging, followed by a run with debugging. Then drop to CLI right after the debugged run. | `run -t 10` |
 | | `-f <filter_name>` | Continue executing `Session.run` until any intermediate tensor triggers the specified Tensor filter (causes the filter to return `True`). | `run -f has_inf_or_nan` |
+| | `-f <filter_name> -fenn <regex>` | Continue executing `Session.run` until any intermediate tensor whose node names doesn't match the regular expression triggers the specified Tensor filter (causes the filter to return `True`). | `run -f has_inf_or_nan -fenn .*Sqrt.*` |
 | | `--node_name_filter <pattern>` | Execute the next `Session.run`, watching only nodes with names matching the given regular-expression pattern. | `run --node_name_filter Softmax.*` |
 | | `--op_type_filter <pattern>` | Execute the next `Session.run`, watching only nodes with op types matching the given regular-expression pattern. | `run --op_type_filter Variable.*` |
 | | `--tensor_dtype_filter <pattern>` | Execute the next `Session.run`, dumping only Tensors with data types (`dtype`s) matching the given regular-expression pattern. | `run --tensor_dtype_filter int.*` |
@@ -459,7 +460,7 @@ accuracy_score = classifier.evaluate(x=test_set.data,
 
 
 [debug_tflearn_iris.py](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py),
-based on {$tflearn$tf-learn's iris tutorial}, contains a full example of how to
+based on [tf-learn's iris tutorial](https://www.tensorflow.org/versions/r1.2/get_started/tflearn), contains a full example of how to
 use the tfdbg with `Estimator`s. To run this example, do:
 
 ```none
@@ -746,15 +747,16 @@ There are three possible workarounds or solutions:
    to which tfdbg dumps the debug data. You can use it to let tfdbg dump the
    debug data on a disk with larger free space. For example:
 
-   ``` python
-   # For LocalCLIDebugWrapperSession
-   sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
+```python
+# For LocalCLIDebugWrapperSession
+sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
 
-   # For LocalCLIDebugHook
-   hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
-   ```
+# For LocalCLIDebugHook
+hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
+```
    Make sure that the directory pointed to by dump_root is empty or nonexistent.
-   tfdbg cleans up the dump directories before exiting.
+   `tfdbg` cleans up the dump directories before exiting.
+
 *  Reduce the batch size used during the runs.
 *  Use the filtering options of tfdbg's `run` command to watch only specific
    nodes in the graph. For example:
@@ -811,6 +813,20 @@ sess.run(b)
 
 the constant-folding would not occur and `tfdbg` should show the intermediate
 tensor dumps.
+
+
+**Q**: I am debugging a model that generates unwanted infinities or NaNs. But
+       there are some nodes in my model that are known to generate infinities
+       or NaNs in their output tensors even under completely normal conditions.
+       How can I skip those nodes during my `run -f has_inf_or_nan` actions?
+
+**A**: Use the `--filter_exclude_node_names` (`-fenn` for short) flag. For
+       example, if you known you have a node with name matching the regular
+       expression `.*Sqrt.*` that generates infinities or NaNs regardless
+       of whether the model is behaving correctly, you can exclude the nodes
+       from the infinity/NaN-finding runs with the command
+       `run -f has_inf_or_nan -fenn .*Sqrt.*`.
+
 
 **Q**: Is there a GUI for tfdbg?
 

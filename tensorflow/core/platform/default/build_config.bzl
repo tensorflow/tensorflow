@@ -122,6 +122,7 @@ def cc_proto_library(
     protoc="@protobuf_archive//:protoc",
     internal_bootstrap_hack=False,
     use_grpc_plugin=False,
+    use_grpc_namespace=False,
     default_header=False,
     **kargs):
   """Bazel rule to create a C++ protobuf library from proto source files.
@@ -169,8 +170,11 @@ def cc_proto_library(
     return
 
   grpc_cpp_plugin = None
+  plugin_options = []
   if use_grpc_plugin:
     grpc_cpp_plugin = "//external:grpc_cpp_plugin"
+    if use_grpc_namespace:
+      plugin_options = ["services_namespace=grpc"]
 
   gen_srcs = _proto_cc_srcs(srcs, use_grpc_plugin)
   gen_hdrs = _proto_cc_hdrs(srcs, use_grpc_plugin)
@@ -184,6 +188,7 @@ def cc_proto_library(
       protoc=protoc,
       plugin=grpc_cpp_plugin,
       plugin_language="grpc",
+      plugin_options=plugin_options,
       gen_cc=1,
       outs=outs,
       visibility=["//visibility:public"],
@@ -219,7 +224,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                         cc_stubby_versions = None,
                         cc_grpc_version = None,
                         j2objc_api_version = 1,
-                        cc_api_version = 2, go_api_version = 2,
+                        cc_api_version = 2,
                         java_api_version = 2, py_api_version = 2,
                         js_api_version = 2, js_codegen = "jspb",
                         default_header = False):
@@ -280,7 +285,6 @@ def tf_proto_library(name, srcs = [], has_services = None,
                      visibility = [], testonly = 0,
                      cc_libs = [],
                      cc_api_version = 2, cc_grpc_version = None,
-                     go_api_version = 2,
                      j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
                      js_api_version = 2, js_codegen = "jspb",

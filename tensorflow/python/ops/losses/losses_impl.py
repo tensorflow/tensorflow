@@ -29,6 +29,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -194,6 +195,11 @@ def compute_weighted_loss(
   """
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
+    # Save the `reduction` argument for loss normalization when distributing
+    # to multiple towers.
+    # TODO(josh11b): Associate it with the returned op for more precision.
+    ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
+
     with ops.control_dependencies((
         weights_broadcast_ops.assert_broadcastable(weights, losses),)):
       losses = ops.convert_to_tensor(losses)
@@ -301,11 +307,8 @@ def cosine_distance(
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `axis`, `labels`, `predictions` or `weights` is `None`.
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
-  if axis is None and dim is None:
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  if axis is None:
     raise ValueError("You must specify 'axis'.")
   if labels is None:
     raise ValueError("labels must not be None.")

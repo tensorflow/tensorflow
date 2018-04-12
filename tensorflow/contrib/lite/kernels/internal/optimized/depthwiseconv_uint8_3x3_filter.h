@@ -440,6 +440,47 @@ struct ConvKernel3x3FilterDepth16<1, 1> {
   }
 };
 
+inline bool Fast3by3FilterKernelSupported(const Dims<4>& input_dims,
+                                          const Dims<4>& filter_dims,
+                                          int stride_width, int stride_height,
+                                          int pad_width, int pad_height,
+                                          int depth_multiplier,
+                                          const Dims<4>& output_dims) {
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int input_depth = ArraySize(input_dims, 0);
+  const int filter_height = ArraySize(filter_dims, 2);
+  const int filter_width = ArraySize(filter_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
+
+  bool supported = filter_width == 3 && filter_height == 3 &&
+                   depth_multiplier == 1 &&
+                   (stride_width == 1 || stride_width == 2) &&
+                   (stride_height == 1 || stride_height == 2) &&
+                   pad_width == 0 && pad_height == 0 && (input_depth % 16) == 0;
+
+  if (!supported) {
+    return false;
+  }
+
+  // Handle case where padding is zero but type is not kValid. This would
+  // require special boundary case handling that is not supported yet.
+
+  const int out_x = output_width - 1;
+  const int out_y = output_height - 1;
+
+  const int in_x_origin = (out_x * stride_width) - pad_width;
+  const int in_y_origin = (out_y * stride_height) - pad_height;
+
+  const int in_x_end = in_x_origin + filter_width;
+  const int in_y_end = in_y_origin + filter_height;
+
+  // Supported only if filter on the right and bottom boundary lies completely
+  // within the input.
+  return in_x_end <= input_width && in_y_end <= input_height;
+}
+
 inline void DepthwiseConv3by3FilterDepth16(
     const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
     const uint8* filter_data, const Dims<4>& filter_dims, int32 filter_offset,
@@ -466,8 +507,8 @@ inline void DepthwiseConv3by3FilterDepth16(
   TFLITE_DCHECK(filter_width == 3);
   TFLITE_DCHECK(pad_height == 0);
   TFLITE_DCHECK(pad_width == 0);
-  TFLITE_DCHECK(stride_width == 1);
-  TFLITE_DCHECK(stride_height == 1);
+  TFLITE_DCHECK(stride_width == 1 || stride_width == 2);
+  TFLITE_DCHECK(stride_height == 1 || stride_height == 2);
 
   // The number of outputs to process in the main loop.
   const int num_x_outputs = 1;
@@ -513,6 +554,16 @@ inline void DepthwiseConv3by3FilterDepth16(
     }
   }
 
+  using dot_product_func_t =
+      decltype(&ConvKernel3x3FilterDepth16<1, 2, 1>::Run);
+  dot_product_func_t dot_product_func = nullptr;
+
+  if (stride_width == 1 && stride_height == 1) {
+    dot_product_func = ConvKernel3x3FilterDepth16<1, 2, 1>::Run;
+  } else {
+    dot_product_func = ConvKernel3x3FilterDepth16<1, 2, 2>::Run;
+  }
+
   // Offsets for preloading inputs.
   const int i0 = 0;
   const int i1 = input_depth;
@@ -526,6 +577,9 @@ inline void DepthwiseConv3by3FilterDepth16(
   const int i9 = 3 * input_row_width;
   const int i10 = 3 * input_row_width + input_depth;
   const int i11 = 3 * input_row_width + 2 * input_depth;
+  const int i12 = 4 * input_row_width;
+  const int i13 = 4 * input_row_width + input_depth;
+  const int i14 = 4 * input_row_width + 2 * input_depth;
 
   for (int b = 0; b < batches; ++b) {
     const int32* bias_ptr = bias_data;
@@ -551,10 +605,6 @@ inline void DepthwiseConv3by3FilterDepth16(
         const uint8* input_ptr =
             input_data + depth + in_x_offset + in_y_offset + in_batch_offset;
 
-        uint8* output_ptr = output_data + depth + (out_x * output_depth) +
-                            (output_depth * output_width * out_y) +
-                            out_batch_offset;
-
         // Preload inputs. If input depth is large, preload every value of the
         // input for this depth range. Otherwise, preload only the first values
         // of each row.
@@ -571,19 +621,33 @@ inline void DepthwiseConv3by3FilterDepth16(
           preload_l1_keep(input_ptr + i9);
           preload_l1_keep(input_ptr + i10);
           preload_l1_keep(input_ptr + i11);
+
+          if (stride_height == 2) {
+            preload_l1_keep(input_ptr + i12);
+            preload_l1_keep(input_ptr + i13);
+            preload_l1_keep(input_ptr + i14);
+          }
         } else {
           preload_l1_keep(input_ptr + i0);
           preload_l1_keep(input_ptr + i3);
           preload_l1_keep(input_ptr + i6);
           preload_l1_keep(input_ptr + i9);
+
+          if (stride_height == 2) {
+            preload_l1_keep(input_ptr + i12);
+          }
         }
 
+        uint8* output_ptr = output_data + depth + (out_x * output_depth) +
+                            (output_depth * output_width * out_y) +
+                            out_batch_offset;
+
         for (; out_x < out_x_end; out_x += num_x_outputs) {
-          ConvKernel3x3FilterDepth16<1, 2, 1>::Run(
-              filter, input_ptr, input_depth, input_offset, input_row_width,
-              bias_ptr, output_offset, output_multiplier, output_shift,
-              output_activation_min, output_activation_max, output_ptr,
-              output_depth, output_width);
+          dot_product_func(filter, input_ptr, input_depth, input_offset,
+                           input_row_width, bias_ptr, output_offset,
+                           output_multiplier, output_shift,
+                           output_activation_min, output_activation_max,
+                           output_ptr, output_depth, output_width);
 
           input_ptr += input_ptr_x_increment * num_x_outputs;
           output_ptr += output_depth * num_x_outputs;
@@ -603,13 +667,15 @@ inline void DepthwiseConv3by3FilterDepth16(
             preload_l1_keep(input_ptr + i8);
             preload_l1_keep(input_ptr + i10);
             preload_l1_keep(input_ptr + i11);
+            preload_l1_keep(input_ptr + i13);
+            preload_l1_keep(input_ptr + i14);
           }
         }
 
         // Handle the rest of the right side.
         for (; out_x < output_width; out_x++) {
           // This code path can only be reached if we're handling >1 x outputs
-          // at a time or support padding.
+          // at a time or support kSame padding.
         }
       }
 
@@ -624,6 +690,21 @@ inline void DepthwiseConv3by3FilterDepth16(
         const uint8* input_ptr =
             input_data + depth + in_x_offset + in_y_offset + in_batch_offset;
 
+        if (input_depth >= 32) {
+          preload_l1_keep(input_ptr + i0);
+          preload_l1_keep(input_ptr + i1);
+          preload_l1_keep(input_ptr + i2);
+          preload_l1_keep(input_ptr + i3);
+          preload_l1_keep(input_ptr + i4);
+          preload_l1_keep(input_ptr + i5);
+          preload_l1_keep(input_ptr + i6);
+          preload_l1_keep(input_ptr + i7);
+        } else {
+          preload_l1_keep(input_ptr + i0);
+          preload_l1_keep(input_ptr + i3);
+          preload_l1_keep(input_ptr + i6);
+        }
+
         uint8* output_ptr = output_data + depth + (out_x * output_depth) +
                             (output_depth * output_width * out_y) +
                             out_batch_offset;
@@ -637,6 +718,19 @@ inline void DepthwiseConv3by3FilterDepth16(
 
           input_ptr += input_ptr_x_increment;
           output_ptr += output_depth;
+
+          if (stride_width == 1) {
+            preload_l1_keep(input_ptr + i2);
+            preload_l1_keep(input_ptr + i5);
+            preload_l1_keep(input_ptr + i8);
+          } else if (stride_width == 2) {
+            preload_l1_keep(input_ptr + i1);
+            preload_l1_keep(input_ptr + i2);
+            preload_l1_keep(input_ptr + i4);
+            preload_l1_keep(input_ptr + i5);
+            preload_l1_keep(input_ptr + i7);
+            preload_l1_keep(input_ptr + i8);
+          }
         }
       }
       filter_ptr += 16;

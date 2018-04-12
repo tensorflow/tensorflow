@@ -1802,7 +1802,8 @@ class Stream {
                          DeviceMemory<Eigen::half> *output_c_data,
                          bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1819,7 +1820,8 @@ class Stream {
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<float> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1836,7 +1838,8 @@ class Stream {
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<double> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   // Enqueue a backward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnBackward for more details.
@@ -1863,7 +1866,8 @@ class Stream {
       DeviceMemory<Eigen::half> *input_c_backprop_data,
       DeviceMemory<Eigen::half> *params_backprop_data,
       DeviceMemory<uint8> *reserve_space_data,
-      ScratchAllocator *workspace_allocator);
+      ScratchAllocator *workspace_allocator,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1887,7 +1891,8 @@ class Stream {
                           DeviceMemory<float> *input_c_backprop_data,
                           DeviceMemory<float> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator);
+                          ScratchAllocator *workspace_allocator,
+                          dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1911,7 +1916,8 @@ class Stream {
                           DeviceMemory<double> *input_c_backprop_data,
                           DeviceMemory<double> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator);
+                          ScratchAllocator *workspace_allocator,
+                          dnn::ProfileResult *output_profile_result);
 
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
@@ -1968,15 +1974,14 @@ class Stream {
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
+  //
   // Behavior is undefined when synchronizing using OpenCL user events.
   // Behavior is undefined if host callbacks call device routines or insert
   // them into any stream.
+  //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
   Stream &ThenDoHostCallback(std::function<void()> callback);
-
-  // Identical to ThenDoHostCallback; only exposed for testing purposes.
-  Stream &ThenDoHostCallbackForTest(std::function<void()> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {

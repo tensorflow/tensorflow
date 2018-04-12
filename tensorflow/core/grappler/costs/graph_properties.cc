@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -251,8 +252,7 @@ typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
 }
 
 bool IsQueue(const Node& node) {
-  StringPiece type(node.type_string());
-  return type.ends_with("QueueV2");
+  return str_util::EndsWith(node.type_string(), "QueueV2");
 }
 
 // Returns true if the node is an Enter op AND its input is a Queue.
@@ -920,13 +920,12 @@ Status GraphProperties::UpdateResource(
 }
 
 Status GraphProperties::InferStatically(bool assume_valid_feeds) {
-  Graph graph(OpRegistry::Global());
-  FunctionLibraryDefinition function_library(graph.op_registry(),
+  FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item_.graph.library());
+  Graph graph(function_library);
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   shape_refiner.set_disable_constant_propagation(true);
-  shape_refiner.set_function_library_for_shape_inference(&function_library);
   ImportGraphDefOptions options;
   // Graph optimization happens at the late stage of graph execution,
   // when colocation constraints are already validated previously and
@@ -1012,6 +1011,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
     }
     // Skip any information that comes from fed nodes.
     if (fed_ports.find(node->name()) != fed_ports.end()) {
+      VLOG(2) << "Skipping feed node shape: " << node->name();
       continue;
     }
     for (const auto& merged_shapes : node_ctx->MergedShapes()) {
@@ -1180,6 +1180,13 @@ GraphProperties::GetOutputProperties(const string& node_name) const {
     return it->second;
   }
   return missing_properties_;
+}
+
+void GraphProperties::ClearInputProperties(const string& node_name) {
+  input_properties_.erase(node_name);
+}
+void GraphProperties::ClearOutputProperties(const string& node_name) {
+  output_properties_.erase(node_name);
 }
 
 }  // end namespace grappler

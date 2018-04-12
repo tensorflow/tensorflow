@@ -23,6 +23,7 @@ from tensorflow.contrib import graph_editor as ge
 from tensorflow.contrib.graph_editor.tests import match
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -84,9 +85,9 @@ class TransformTest(test.TestCase):
   def test_transform(self):
     transformer = ge.Transformer()
 
-    def my_transform_op_handler(info, op):
+    def my_transform_op_handler(info, op, new_inputs):
       add_noise = op.name.startswith("Add")
-      op_, op_outputs_ = ge.transform.copy_op_handler(info, op)
+      op_, op_outputs_ = ge.transform.copy_op_handler(info, op, new_inputs)
       if not add_noise:
         return op_, op_outputs_
       # add some noise to op
@@ -201,14 +202,55 @@ class TransformTest(test.TestCase):
                         get_operation_by_name("res/grad/mul1_grad/Mul_1"))
 
     # Make sure _original_ops are as expected.
-    self.assertEquals(original_mul1_grad._original_op.name, u"mul1")
-    self.assertEquals(result_mul1_grad._original_op.name, u"res/mul1")
-    self.assertNotEquals(res.name, g.name)
+    self.assertEqual(original_mul1_grad._original_op.name, u"mul1")
+    self.assertEqual(result_mul1_grad._original_op.name, u"res/mul1")
+    self.assertNotEqual(res.name, g.name)
     with session.Session() as sess:
       sess.run(variables.global_variables_initializer())
       g_val, res_val = sess.run([g, res])
     self.assertNear(g_val, 0.0, ERROR_TOLERANCE)
     self.assertNear(res_val, 0.0, ERROR_TOLERANCE)
+
+  def test_graph_while_loop(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      max_index = array_ops.placeholder(dtype=dtypes.int32, shape=tuple())
+      index_start = constant_op.constant(1)
+      sum_start = constant_op.constant(0)
+      _, result = control_flow_ops.while_loop(
+          cond=lambda i, unused_s: i <= max_index,
+          body=lambda i, s: (i + 1, s + i),
+          loop_vars=[index_start, sum_start])
+    copied_graph = ops.Graph()
+    _, copy_info = ge.copy(
+        graph, dst_graph=copied_graph, dst_scope="imported")
+    copied_result = copy_info.transformed(result)
+    copied_max_index = copy_info.transformed(max_index)
+    with copied_graph.as_default():
+      with session.Session() as sess:
+        n = 10
+        sum_val = sess.run(copied_result, feed_dict={copied_max_index: n})
+        self.assertEqual(sum_val, 55)
+
+  def test_graph_cond(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      choice = array_ops.placeholder(shape=(), dtype=dtypes.bool)
+      result = control_flow_ops.cond(
+          choice,
+          lambda: constant_op.constant(1),
+          lambda: constant_op.constant(2))
+    copied_graph = ops.Graph()
+    _, copy_info = ge.copy(
+        graph, dst_graph=copied_graph, dst_scope="imported")
+    copied_result = copy_info.transformed(result)
+    copied_choice = copy_info.transformed(choice)
+    with copied_graph.as_default():
+      with session.Session() as sess:
+        res = sess.run(copied_result, feed_dict={copied_choice: True})
+        self.assertEqual(res, 1)
+        res = sess.run(copied_result, feed_dict={copied_choice: False})
+        self.assertEqual(res, 2)
 
 
 if __name__ == "__main__":

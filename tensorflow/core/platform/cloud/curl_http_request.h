@@ -276,15 +276,6 @@ Status CURLcodeToStatus(CURLcode code);
     }                                                                       \
   } while (0)
 
-#define TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(_code, ...)                       \
-  do {                                                                      \
-    if (_code != CURLE_OK) {                                                \
-      ::tensorflow::Status _status = ::tensorflow::CURLcodeToStatus(_code); \
-      ::tensorflow::errors::AppendToMessage(&_status, __VA_ARGS__);         \
-      LOG(ERROR) << "curl error: " << _status.error_message();              \
-    }                                                                       \
-  } while (0)
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_CURL_HTTP_REQUEST_H_

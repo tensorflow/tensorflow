@@ -88,12 +88,12 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
   }
 }
 
-IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock(
+std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
     tensorflow::StringPiece loop_name) {
   if (ShapeUtil::IsScalar(shape_)) {
     // No loop needed, so set exit_bb_ to nullptr.
     exit_bb_ = nullptr;
-    return IrArray::Index();
+    return {IrArray::Index()};
   }
 
   // Create loop nest with one for-loop for each dimension of the target shape.
@@ -121,12 +121,14 @@ IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock(
   exit_bb_ = loop_nest.GetOuterLoopExitBasicBlock();
   CHECK_NOTNULL(exit_bb_);
 
-  return array_index;
+  return {array_index};
 }
 
 tensorflow::Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name) {
-  IrArray::Index array_index = EmitIndexAndSetExitBasicBlock(loop_name);
-  TF_RETURN_IF_ERROR(body_emitter_(array_index));
+  for (const IrArray::Index& array_index :
+       EmitIndexAndSetExitBasicBlock(loop_name)) {
+    TF_RETURN_IF_ERROR(body_emitter_(array_index));
+  }
 
   // Set the insertion point of ir_builder_ to the loop exit, so that
   // code emitted for later instructions will be correctly placed.

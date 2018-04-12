@@ -198,6 +198,13 @@ TEST(TensorShapeTest, DataType) {
   EXPECT_EQ(TensorShapeTestHelper::data_type(&s2), DT_INVALID);
 }
 
+TEST(TensorShapeTest, ostream) {
+  TensorShape s({10, 5, 4});
+  std::stringstream ss;
+  ss << s;
+  EXPECT_EQ(ss.str(), "[10,5,4]");
+}
+
 // -----------------------------------------------------------------------
 // An old implementation of TensorShape using a different representation,
 // preserved here in the unittest to allow us to have a randomized unittest

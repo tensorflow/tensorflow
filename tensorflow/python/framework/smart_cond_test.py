@@ -24,8 +24,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
+
+
+def raise_exception():
+  raise RuntimeError("did not expect to be called")
 
 
 @test_util.with_c_api
@@ -68,8 +73,6 @@ class SmartCondTest(test_util.TensorFlowTestCase):
         y = constant_op.constant(2)
         # x * y > 0 can be evaluated at graph construction time, so the false
         # branch shouldn't be evaluated at all.
-        def raise_exception():
-          raise RuntimeError("did not expect to be called")
         z = smart_cond.smart_cond(x * y > 0, lambda: constant_op.constant(1),
                                   raise_exception)
         self.assertEqual(z.eval(feed_dict={x: 1}), 1)
@@ -96,6 +99,67 @@ class SmartCondTest(test_util.TensorFlowTestCase):
         x = constant_op.constant(1)
         with self.assertRaises(TypeError):
           smart_cond.smart_cond(True, lambda: x)
+
+
+@test_util.with_c_api
+class SmartCaseTest(test_util.TensorFlowTestCase):
+
+  def testTrue(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(True, lambda: constant_op.constant(1)),
+                  (x == 0, raise_exception)]
+    y = smart_cond.smart_case(conditions, default=raise_exception,
+                              exclusive=False)
+    z = smart_cond.smart_case(conditions, default=raise_exception,
+                              exclusive=True)
+    with session.Session() as sess:
+      # No feed_dict necessary
+      self.assertEqual(sess.run(y), 1)
+      self.assertEqual(sess.run(z), 1)
+
+  def testFalse(self):
+    conditions = [(False, raise_exception)]
+    y = smart_cond.smart_case(conditions,
+                              default=lambda: constant_op.constant(1),
+                              exclusive=False)
+    z = smart_cond.smart_case(conditions,
+                              default=lambda: constant_op.constant(1),
+                              exclusive=True)
+    with session.Session() as sess:
+      self.assertEqual(sess.run(y), 1)
+      self.assertEqual(sess.run(z), 1)
+
+  def testMix(self):
+    # Constant expression evaluation only works with the C API enabled.
+    if not ops._USE_C_API: return
+
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    y = constant_op.constant(10)
+    conditions = [(x > 1, lambda: constant_op.constant(1)),
+                  (y < 1, raise_exception),
+                  (False, raise_exception),
+                  (True, lambda: constant_op.constant(3))]
+    z = smart_cond.smart_case(conditions, default=raise_exception)
+    with session.Session() as sess:
+      self.assertEqual(sess.run(z, feed_dict={x: 2}), 1)
+      self.assertEqual(sess.run(z, feed_dict={x: 0}), 3)
+
+
+@test_util.with_c_api
+class SmartConstantValueTest(test_util.TensorFlowTestCase):
+
+  # TODO(skyewm): this is essentially a regression test for
+  # TF_TryEvaluateConstant, and is not really a valid smart_constant_value test
+  # (smart_constant_value is only supposed to return bools). Move the
+  # TF_TryEvaluateConstant call to tensor_util.constant_value and make this a
+  # constant_value test instead.
+  def testCond(self):
+    with ops.Graph().as_default():
+      pred = array_ops.placeholder_with_default(True, shape=())
+      x = control_flow_ops.cond(pred,
+                                lambda: constant_op.constant(1),
+                                lambda: constant_op.constant(2))
+      self.assertIsNone(smart_cond.smart_constant_value(x))
 
 
 if __name__ == "__main__":

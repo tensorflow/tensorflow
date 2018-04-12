@@ -17,27 +17,49 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace grappler {
 
+GrapplerTest::GrapplerTest() {
+  // Turn off all the automatic optimizations to ensure that we run the graph
+  // exactly as it is given to us. This ensures that we can compare the results
+  // before and after manual optimization, without any of the automatic
+  // optimizations interfering in the comparison.
+  RewriterConfig* cfg =
+      options_.config.mutable_graph_options()->mutable_rewrite_options();
+  cfg->set_constant_folding(RewriterConfig::OFF);
+  cfg->set_arithmetic_optimization(RewriterConfig::OFF);
+  cfg->set_dependency_optimization(RewriterConfig::OFF);
+  cfg->set_loop_optimization(RewriterConfig::OFF);
+  cfg->set_function_optimization(RewriterConfig::OFF);
+  cfg->set_layout_optimizer(RewriterConfig::OFF);
+  cfg->set_debug_stripper(RewriterConfig::OFF);
+}
+
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
-    const GraphDef& graph, const std::vector<string>& node_names) {
-  SessionOptions options;
-  std::unique_ptr<tensorflow::Session> session(NewSession(options));
+    const GraphDef& graph, const std::vector<string>& node_names) const {
+  return EvaluateNodes(graph, node_names, {});
+}
+
+std::vector<Tensor> GrapplerTest::EvaluateNodes(
+    const GraphDef& graph, const std::vector<string>& node_names,
+    const std::vector<std::pair<string, Tensor>>& inputs) const {
+  std::unique_ptr<tensorflow::Session> session(NewSession(options_));
   TF_CHECK_OK(session->Create(graph));
   RunOptions run_options;
   std::vector<Tensor> output_tensors;
-  TF_CHECK_OK(session->Run(run_options, {}, node_names, node_names,
+  TF_CHECK_OK(session->Run(run_options, inputs, node_names, node_names,
                            &output_tensors, nullptr));
   TF_CHECK_OK(session->Close());
   return output_tensors;
 }
 
-std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(const GrapplerItem& item) {
-  SessionOptions options;
-  std::unique_ptr<tensorflow::Session> session(NewSession(options));
+std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(
+    const GrapplerItem& item) const {
+  std::unique_ptr<tensorflow::Session> session(NewSession(options_));
   TF_CHECK_OK(session->Create(item.graph));
   RunOptions run_options;
   if (!item.init_ops.empty()) {
@@ -52,17 +74,23 @@ std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(const GrapplerItem& item) {
   return output_tensors;
 }
 
-void GrapplerTest::AddNode(const string& name, const string& op,
-                           const std::vector<string>& inputs, GraphDef* graph) {
-  auto* node = graph->add_node();
+NodeDef* GrapplerTest::AddNode(
+    const string& name, const string& op, const std::vector<string>& inputs,
+    const std::vector<std::pair<string, AttrValue>>& attributes,
+    GraphDef* graph) const {
+  NodeDef* node = graph->add_node();
   node->set_name(name);
   node->set_op(op);
-  for (const auto& input : inputs) {
+  for (const string& input : inputs) {
     node->add_input(input);
   }
+  for (auto attr : attributes) {
+    (*node->mutable_attr())[attr.first] = attr.second;
+  }
+  return node;
 }
 
-void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) {
+void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) const {
   auto comparator = [](const NodeDef& n1, const NodeDef& n2) -> bool {
     return n1.name() < n2.name();
   };
@@ -88,6 +116,21 @@ void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) {
       EXPECT_TRUE(IsSameInput(want.node(i).input(j), got.node(i).input(j)));
     }
   }
+}
+
+bool GrapplerTest::IsNodesDirectlyConnected(const NodeMap& node_map,
+                                            const string& src,
+                                            const string& dst, int position) {
+  const NodeDef* src_node = node_map.GetNode(src);
+  const NodeDef* dst_node = node_map.GetNode(dst);
+  EXPECT_TRUE(src_node != nullptr) << src << " node not found";
+  EXPECT_TRUE(dst_node != nullptr) << dst << " node not found";
+  return src_node && dst_node && dst_node->input(position) == src_node->name();
+}
+
+int GrapplerTest::CountOpNodes(const GraphDef& graph, const string& op) {
+  return std::count_if(graph.node().begin(), graph.node().end(),
+                       [&op](const NodeDef& node) { return node.op() == op; });
 }
 
 }  // namespace grappler

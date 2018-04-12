@@ -24,6 +24,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
 
 
@@ -229,6 +232,7 @@ class RNNTest(test.TestCase):
       cell = RNNCellWithConstants(32)
       layer = keras.layers.RNN(cell)
       y = layer(x, constants=c)
+
       model = keras.models.Model([x, c], y)
       model.compile(optimizer='rmsprop', loss='mse')
       model.train_on_batch(
@@ -267,6 +271,20 @@ class RNNTest(test.TestCase):
       cells = [keras.layers.recurrent.GRUCell(8),
                RNNCellWithConstants(12),
                RNNCellWithConstants(32)]
+      layer = keras.layers.recurrent.RNN(cells)
+      y = layer(x, constants=c)
+      model = keras.models.Model([x, c], y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          [np.zeros((6, 5, 5)), np.zeros((6, 3))],
+          np.zeros((6, 32))
+      )
+
+    with self.test_session():
+      # Test GRUCell reset_after property.
+      x = keras.Input((None, 5))
+      c = keras.Input((3,))
+      cells = [keras.layers.recurrent.GRUCell(32, reset_after=True)]
       layer = keras.layers.recurrent.RNN(cells)
       y = layer(x, constants=c)
       model = keras.models.Model([x, c], y)
@@ -395,8 +413,8 @@ class RNNTest(test.TestCase):
 
     # Test `get_losses_for` and `losses`
     x = keras.Input((None, 1))
-    loss_1 = keras.backend.sum(x)
-    loss_2 = keras.backend.sum(cells[0].kernel)
+    loss_1 = math_ops.reduce_sum(x)
+    loss_2 = math_ops.reduce_sum(cells[0].kernel)
     cells[0].add_loss(loss_1, inputs=x)
     cells[0].add_loss(loss_2)
     self.assertEqual(len(layer.losses), 2)
@@ -410,15 +428,15 @@ class RNNTest(test.TestCase):
     layer.build((None, None, 1))
 
     x = keras.Input((None, 1))
-    update_1 = keras.backend.update_add(
-        cells[0].kernel, x[0, 0, 0] * cells[0].kernel)
-    update_2 = keras.backend.update_add(
-        cells[0].kernel, keras.backend.ones_like(cells[0].kernel))
+    update_1 = state_ops.assign_add(cells[0].kernel,
+                                    x[0, 0, 0] * cells[0].kernel)
+    update_2 = state_ops.assign_add(cells[0].kernel,
+                                    array_ops.ones_like(cells[0].kernel))
     cells[0].add_update(update_1, inputs=x)
     cells[0].add_update(update_2)
     self.assertEqual(len(layer.updates), 2)
-    self.assertEqual(layer.get_updates_for(None), [update_2])
-    self.assertEqual(layer.get_updates_for(x), [update_1])
+    self.assertEqual(len(layer.get_updates_for(None)), 1)
+    self.assertEqual(len(layer.get_updates_for(x)), 1)
 
   def test_rnn_dynamic_trainability(self):
     layer_class = keras.layers.SimpleRNN
@@ -537,7 +555,6 @@ class RNNTest(test.TestCase):
     self.assertEqual(
         [tuple(o.as_list()) for o in output_shape],
         expected_output_shape)
-
 
 if __name__ == '__main__':
   test.main()

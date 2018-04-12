@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -65,7 +66,7 @@ void ExpectFailure(const NodeDef& bad, const OpDef& op_def,
       << "; OpDef: " << SummarizeOpDef(op_def);
 
   LOG(INFO) << "Message: " << status.error_message();
-  EXPECT_TRUE(StringPiece(status.ToString()).contains(message))
+  EXPECT_TRUE(str_util::StrContains(status.ToString(), message))
       << "NodeDef: " << SummarizeNodeDef(bad)
       << "; OpDef: " << SummarizeOpDef(op_def) << "\nActual error: " << status
       << "\nDoes not contain: " << message;
@@ -265,7 +266,7 @@ void ExpectInvalidSyntax(const NodeDef& bad, const string& message) {
   EXPECT_TRUE(errors::IsInvalidArgument(status))
       << status << "; NodeDef: " << SummarizeNodeDef(bad);
 
-  EXPECT_TRUE(StringPiece(status.ToString()).contains(message))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.ToString()), message))
       << "NodeDef: " << SummarizeNodeDef(bad) << ", " << status << ", "
       << message;
 }

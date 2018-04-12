@@ -19,10 +19,13 @@ limitations under the License.
 int main(int argc, char** argv) {
   ::tflite::testing::DiffOptions options =
       ::tflite::testing::ParseTfliteDiffFlags(&argc, argv);
+  if (options.tensorflow_model.empty()) return 1;
+  int failure_count = 0;
   for (int i = 0; i < 100; i++) {
     if (!tflite::testing::RunDiffTest(options)) {
-      return 1;
+      ++failure_count;
     }
   }
-  return 0;
+  fprintf(stderr, "Num errors: %d\n", failure_count);
+  return failure_count != 0 ? 1 : 0;
 }

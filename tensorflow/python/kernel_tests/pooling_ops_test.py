@@ -123,8 +123,9 @@ class PoolingTest(test.TestCase):
       if input_sizes[-1] % 4 != 0:
         tf_logging.info("Skipping test for depth %d", input_sizes[-1])
         return
-    tf_logging.info("Running %s test. %r %r %d %r %r %r", data_format, v2,
-                    input_sizes, total_size, pool_func, ksize, strides)
+    tf_logging.info("Running %s test. %r %r %d %r %r %r %s", data_format, v2,
+                    input_sizes, total_size, pool_func, ksize, strides,
+                    data_type)
     # Initializes the input tensor with array containing incrementing
     # numbers from 1, wrapping round to -127 after 127 to support int8.
     x = [((f + 128) % 255) - 127 for f in range(total_size)]
@@ -193,6 +194,8 @@ class PoolingTest(test.TestCase):
 
     self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                         data_format, dtypes.float32, expected, use_gpu, v2)
+    self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
+                        data_format, dtypes.float64, expected, use_gpu, v2)
 
     if not use_gpu or test_util.CudaSupportsHalfMatMulAndConv():
       self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
@@ -814,9 +817,6 @@ class PoolingTest(test.TestCase):
           cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def testMaxPoolingWithArgmax(self):
-    # MaxPoolWithArgMax is implemented only on CUDA.
-    if not test.is_gpu_available(cuda_only=True):
-      return
     tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     with self.test_session(use_gpu=True) as sess:
       t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
@@ -833,9 +833,6 @@ class PoolingTest(test.TestCase):
       self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5])
 
   def testMaxPoolingGradWithArgmax(self):
-    # MaxPoolWithArgMax is implemented only on CUDA.
-    if not test.is_gpu_available(cuda_only=True):
-      return
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0]
     tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))

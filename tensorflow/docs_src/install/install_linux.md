@@ -31,21 +31,22 @@ If you are installing TensorFlow with GPU support using one of the
 mechanisms described in this guide, then the following NVIDIA software
 must be installed on your system:
 
-  * **CUDA® Toolkit 9.0.** For details, see
-    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/#axzz4VZnqTJ2A).
+  * [CUDA Toolkit 9.0](http://nvidia.com/cuda). For details, see
+    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
     Ensure that you append the relevant CUDA pathnames to the
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
-  * The **NVIDIA drivers** associated with CUDA Toolkit 9.0.
-  * **cuDNN v7.0.**  Select the cuDNN 7.0.5 Runtime and Developer library
-    deb packages for Ubuntu from the [cuDNN Download Page](https://developer.nvidia.com/rdp/cudnn-download).
-    Ensure that you create the `CUDA_HOME` environment variable as described
-    in the NVIDIA documentation.
-  * An **NVIDIA GPU** with CUDA Compute Capability 3.0 or higher for building
+  * [cuDNN SDK v7](http://developer.nvidia.com/cudnn). For details, see
+    [NVIDIA's documentation](http://docs.nvidia.com/deeplearning/sdk/cudnn-install/).
+    Ensure that you create the `CUDA_HOME` environment variable as
+    described in the NVIDIA documentation.
+  * GPU card with CUDA Compute Capability 3.0 or higher for building
     from source and 3.5 or higher for our binaries. See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for
     a list of supported GPU cards.
-  * The **libcupti-dev** library, which is the NVIDIA CUDA Profile Tools Interface.
+  * [GPU drivers](http://nvidia.com/driver) supporting your version of the CUDA
+    Toolkit.
+  * The libcupti-dev library, which is the NVIDIA CUDA Profile Tools Interface.
     This library provides advanced profiling support. To install this library,
     issue the following command for CUDA Toolkit >= 8.0:
 
@@ -99,14 +100,7 @@ must be installed on your system:
 
 If you have an earlier version of the preceding packages, please upgrade to
 the specified versions. If upgrading is not possible, then you may still run
-TensorFlow with GPU support, but only if you do the following:
-
-  * Install TensorFlow from sources as documented in
-    @{$install_sources$Installing TensorFlow from Sources}.
-  * Install or upgrade to at least the following NVIDIA versions:
-    * CUDA toolkit 7.0 or greater
-    * cuDNN v3 or greater
-    * GPU card with CUDA Compute Capability 3.0 or higher.
+TensorFlow with GPU support, if you @{$install_sources$install TensorFlow from Sources}.
 
 
 ## Determine how to install TensorFlow
@@ -181,7 +175,8 @@ Take the following steps to install TensorFlow with Virtualenv:
      commands:
 
      <pre>$ <b>source ~/tensorflow/bin/activate</b> # bash, sh, ksh, or zsh
-    $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh</pre>
+    $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh
+    $ <b>. ~/tensorflow/bin/activate.fish</b>  # fish</pre>
 
      The preceding <tt>source</tt> command should change your prompt
      to the following:
@@ -562,10 +557,17 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with TensorFlow}.
-
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
+
+If you are new to machine learning, we recommend the following:
+
+*  [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course)
+*  @{$get_started/get_started_for_beginners$Getting Started for ML Beginners}
+
+If you are experienced with machine learning but new to TensorFlow, see
+@{$get_started/premade_estimators$Getting Started with TensorFlow}.
+
 
 ## Common installation problems
 

@@ -144,6 +144,18 @@ void FixOperatorOrdering(Model* model);
 void FixNoMissingArray(Model* model);
 void FixNoOrphanedArray(Model* model);
 
+// Fixes input/output arrays that may have issues during export or inference.
+void FixEdgeArrays(Model* model);
+
+// Inserts a no-op reshape operator between the source array and the target
+// array. This effectively just copies the data.
+void InsertCopyOperator(Model* model, const string& source_array_name,
+                        const string& target_array_name);
+
+// Clones an array with all data and parameters.
+void CloneArray(Model* model, const string& source_array_name,
+                const string& target_array_name);
+
 void ResolveModelFlags(const ModelFlags& model_flags, Model* model);
 
 template <ArrayDataType A>
@@ -157,9 +169,22 @@ void GetQuantizationParamsFromMinMax(const MinMax& minmax,
       ::tflite::ChooseQuantizationParams<Integer>(rmin, rmax);
 }
 
+template <typename T>
+T ConvertOperator(Operator* o, OperatorType type) {
+  if (o != nullptr && o->type == type) {
+    return static_cast<T>(o);
+  }
+
+  return nullptr;
+}
+
 void CheckIsReadyForQuantization(const Model& model);
 void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
                                  double default_ranges_max);
+
+bool ReshapeIsEquivalentToTranspose(const Model& model,
+                                    const TensorFlowReshapeOperator* op,
+                                    bool allow_extra_unary_dims);
 
 inline int Offset(const Shape& shape, const std::vector<int>& indices) {
   DCHECK_EQ(shape.dimensions_count(), indices.size());
@@ -260,7 +285,7 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 // already quantized, then case (a) should hold.
 void FinishBuildingRNNStates(Model* model);
 
-void UseArraysExtraInfo(Model* model);
+void UseArraysExtraInfo(Model* model, bool quantize_output);
 
 }  // namespace toco
 

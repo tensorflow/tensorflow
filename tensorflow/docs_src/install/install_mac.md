@@ -238,7 +238,7 @@ take the following steps:
      operating system and Python version. Find the appropriate
      value for <i>tfBinaryURL</i>
      [here](#the_url_of_the_tensorflow_python_package).  For example, if
-     you are installing TensorFlow for Mac OS and Python 2.7
+     you are installing TensorFlow for macOS and Python 2.7
      issue the following command:
 
      <pre> $ <b>sudo pip3 install --upgrade \
@@ -400,11 +400,17 @@ writing TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see
-@{$get_started/premade_estimators$Getting Started with TensorFlow}.
-
 If the system outputs an error message instead of a greeting, see
 [Common installation problems](#common_installation_problems).
+
+If you are new to machine learning, we recommend the following:
+
+*  [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course)
+*  @{$get_started/get_started_for_beginners$Getting Started for ML Beginners}
+
+If you are experienced with machine learning but new to TensorFlow, see
+@{$get_started/premade_estimators$Getting Started with TensorFlow}.
+
 
 ## Common installation problems
 
@@ -512,12 +518,7 @@ RuntimeError: Broken toolchain: cannot link a simple C program</pre>
 ## The URL of the TensorFlow Python package
 
 A few installation mechanisms require the URL of the TensorFlow Python package.
-The value you specify depends on three factors:
-
-  * operating system
-  * Python version
-
-This section documents the relevant values for Mac OS installations.
+The value you specify depends on your Python version.
 
 ### Python 2.7
 

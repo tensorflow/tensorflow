@@ -150,14 +150,12 @@ class _NonAtrousConvolution(object):
                                                               conv_dims))
     if conv_dims == 1:
       # conv1d uses the 2-d data format names
-      if data_format is None or data_format == "NWC":
-        data_format_2d = "NHWC"
-      elif data_format == "NCW":
-        data_format_2d = "NCHW"
-      else:
+      if data_format is None:
+        data_format = "NWC"
+      elif data_format not in {"NCW", "NWC", "NCHW", "NHWC"}:
         raise ValueError("data_format must be \"NWC\" or \"NCW\".")
       self.strides = strides[0]
-      self.data_format = data_format_2d
+      self.data_format = data_format
       self.conv_op = self._conv1d
     elif conv_dims == 2:
       if data_format is None or data_format == "NHWC":
@@ -699,7 +697,7 @@ def convolution(
   `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
-  @{tf.nn.convolution$comment here}.
+  @{$python/nn#Convolution$comment here}.
 
   In the case that `data_format` does start with `"NC"`, the `input` and output
   (but not the `filter`) are simply transposed as follows:
@@ -1043,9 +1041,7 @@ def pool(
 
 @tf_export("nn.atrous_conv2d")
 def atrous_conv2d(value, filters, rate, padding, name=None):
-  """Atrous convolution (a.k.a.
-
-  convolution with holes or dilated convolution).
+  """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
   This function is a simpler wrapper around the more general
   @{tf.nn.convolution}, and exists only for backwards compatibility. You can
@@ -1812,7 +1808,7 @@ def softmax_cross_entropy_with_logits_v2(
   or `float64`).
 
   Backpropagation will happen into both `logits` and `labels`.  To disallow
-  backpropagation into `labels`, pass label tensors through a `stop_gradients`
+  backpropagation into `labels`, pass label tensors through @{tf.stop_gradient}
   before feeding it to this function.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
@@ -1840,8 +1836,10 @@ def softmax_cross_entropy_with_logits_v2(
                       [logits, labels]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
+    convert_to_float32 = (
+        logits.dtype == dtypes.float16 or logits.dtype == dtypes.bfloat16)
     precise_logits = math_ops.cast(
-        logits, dtypes.float32) if (logits.dtype == dtypes.float16) else logits
+        logits, dtypes.float32) if convert_to_float32 else logits
     # labels and logits must be of the same type
     labels = math_ops.cast(labels, precise_logits.dtype)
     input_rank = array_ops.rank(precise_logits)
@@ -1887,8 +1885,8 @@ def softmax_cross_entropy_with_logits_v2(
       del shape[dim]
       cost.set_shape(shape)
 
-    if logits.dtype == dtypes.float16:
-      return math_ops.cast(cost, dtypes.float16)
+    if convert_to_float32:
+      return math_ops.cast(cost, logits.dtype)
     else:
       return cost
 
@@ -1897,7 +1895,7 @@ _XENT_DEPRECATION = """
 Future major versions of TensorFlow will allow gradients to flow
 into the labels input on backprop by default.
 
-See tf.nn.softmax_cross_entropy_with_logits_v2.
+See @{tf.nn.softmax_cross_entropy_with_logits_v2}.
 """
 
 

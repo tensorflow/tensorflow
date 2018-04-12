@@ -280,7 +280,7 @@ class GmmAlgorithm(object):
     self._define_score_samples()
 
   def _define_full_covariance_probs(self, shard_id, shard):
-    """Defines the full covariance probabilties per example in a class.
+    """Defines the full covariance probabilities per example in a class.
 
     Updates a matrix with dimension num_examples X num_classes.
 
@@ -344,7 +344,7 @@ class GmmAlgorithm(object):
   def _define_prior_log_prob_operation(self, shard_id):
     """Computes the prior probability of all samples.
 
-    Updates a vector where each item is the prior probabibility of an
+    Updates a vector where each item is the prior probability of an
     input example.
 
     Args:
@@ -357,8 +357,8 @@ class GmmAlgorithm(object):
     # Shape broadcasting.
     probs = array_ops.expand_dims(self._probs[shard_id], 0)
     # Membership weights are computed as:
-    # w_{ik} = \frac{\alpha_k f(\mathbf{y_i}|\mathbf{\theta}_k)}
-    #               {\sum_{m=1}^{K}\alpha_mf(\mathbf{y_i}|\mathbf{\theta}_m)}
+    # $$w_{ik} = \frac{\alpha_k f(\mathbf{y_i}|\mathbf{\theta}_k)}$$
+    # $$            {\sum_{m=1}^{K}\alpha_mf(\mathbf{y_i}|\mathbf{\theta}_m)}$$
     # where "i" is the i-th example, "k" is the k-th mixture, theta are
     # the model parameters and y_i the observations.
     # These are defined for each shard.

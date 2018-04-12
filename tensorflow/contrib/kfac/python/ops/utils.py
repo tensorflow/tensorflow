@@ -24,11 +24,13 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -430,6 +432,127 @@ def batch_execute(global_step, thunks, batch_size, name=None):
     return result
 
 
+def extract_convolution_patches(inputs,
+                                filter_shape,
+                                padding,
+                                strides=None,
+                                dilation_rate=None,
+                                name=None,
+                                data_format=None):
+  """Extracts inputs to each output coordinate in tf.nn.convolution.
+
+  This is a generalization of tf.extract_image_patches() to tf.nn.convolution(),
+  where the number of spatial dimensions may be something other than 2.
+
+  Assumes,
+  - First dimension of inputs is batch_size
+  - Convolution filter is applied to all input channels.
+
+  Args:
+    inputs: Tensor of shape [batch_size, ..spatial_image_shape..,
+      ..spatial_filter_shape.., in_channels]. Inputs to tf.nn.convolution().
+    filter_shape: List of ints. Shape of filter passed to tf.nn.convolution().
+    padding: string. Padding method. One of "VALID", "SAME".
+    strides: None or list of ints. Strides along spatial dimensions.
+    dilation_rate: None or list of ints. Dilation along spatial dimensions.
+    name: None or str. Name of Op.
+    data_format: None or str. Format of data.
+
+  Returns:
+    Tensor of shape [batch_size, ..spatial_image_shape..,
+      ..spatial_filter_shape.., in_channels]
+
+  Raises:
+    ValueError: If data_format does not put channel last.
+    ValueError: If inputs and filter disagree on in_channels.
+  """
+  if not is_data_format_channel_last(data_format):
+    raise ValueError("Channel must be last dimension.")
+  with ops.name_scope(name, "extract_convolution_patches",
+                      [inputs, filter_shape, padding, strides, dilation_rate]):
+    batch_size = inputs.shape.as_list()[0]
+    in_channels = inputs.shape.as_list()[-1]
+
+    # filter_shape = spatial_filter_shape + [in_channels, out_channels]
+    spatial_filter_shape = filter_shape[:-2]
+    if in_channels != filter_shape[-2]:
+      raise ValueError("inputs and filter_shape must agree on in_channels.")
+
+    # Map each input feature to a location in the output.
+    out_channels = np.prod(spatial_filter_shape) * in_channels
+    filters = linalg_ops.eye(out_channels)
+    filters = array_ops.reshape(
+        filters,
+        list(spatial_filter_shape) + [in_channels, out_channels])
+
+    result = nn_ops.convolution(
+        inputs,
+        filters,
+        padding=padding,
+        strides=strides,
+        dilation_rate=dilation_rate)
+    spatial_output_shape = result.shape.as_list()[1:-1]
+    result = array_ops.reshape(result,
+                               [batch_size or -1] + spatial_output_shape +
+                               list(spatial_filter_shape) + [in_channels])
+
+    return result
+
+
+def extract_pointwise_conv2d_patches(inputs,
+                                     filter_shape,
+                                     name=None,
+                                     data_format=None):
+  """Extract patches for a 1x1 conv2d.
+
+  Args:
+    inputs: 4-D Tensor of shape [batch_size, height, width, in_channels].
+    filter_shape: List of 4 ints. Shape of filter to apply with conv2d()
+    name: None or str. Name for Op.
+    data_format: None or str. Format for data. See 'data_format' in
+      tf.nn.conv2d() for details.
+
+  Returns:
+    Tensor of shape [batch_size, ..spatial_input_shape..,
+    ..spatial_filter_shape.., in_channels]
+
+  Raises:
+    ValueError: if inputs is not 4-D.
+    ValueError: if filter_shape is not [1, 1, ?, ?]
+    ValueError: if data_format is not channels-last.
+  """
+  if inputs.shape.ndims != 4:
+    raise ValueError("inputs must have 4 dims.")
+  if len(filter_shape) != 4:
+    raise ValueError("filter_shape must have 4 dims.")
+  if filter_shape[0] != 1 or filter_shape[1] != 1:
+    raise ValueError("filter_shape must have shape 1 along spatial dimensions.")
+  if not is_data_format_channel_last(data_format):
+    raise ValueError("data_format must be channels last.")
+  with ops.name_scope(name, "extract_pointwise_conv2d_patches",
+                      [inputs, filter_shape]):
+    ksizes = [1, 1, 1, 1]  # Spatial shape is 1x1.
+    strides = [1, 1, 1, 1]  # Operate on all pixels.
+    rates = [1, 1, 1, 1]  # Dilation has no meaning with spatial shape = 1.
+    padding = "VALID"  # Doesn't matter.
+    result = array_ops.extract_image_patches(inputs, ksizes, strides, rates,
+                                             padding)
+
+    batch_size, input_height, input_width, in_channels = inputs.shape.as_list()
+    filter_height, filter_width, in_channels, _ = filter_shape
+    return array_ops.reshape(result, [
+        batch_size, input_height, input_width, filter_height, filter_width,
+        in_channels
+    ])
+
+
+def is_data_format_channel_last(data_format):
+  """True if data_format puts channel last."""
+  if data_format is None:
+    return True
+  return data_format.endswith("C")
+
+
 def matmul_sparse_dense(A, B, name=None):  # pylint: disable=invalid-name
   """Computes matmul(A, B) where A is sparse, B is dense.
 
@@ -481,6 +604,94 @@ def matmul_diag_sparse(A_diag, B, name=None):  # pylint: disable=invalid-name
     a = array_ops.gather(A_diag, B.indices)
     a = array_ops.reshape(a, list(a.shape) + [1] * (B.values.shape.ndims - 1))
     return ops.IndexedSlices(a * B.values, B.indices, dense_shape=B.dense_shape)
+
+
+class PartitionedTensor(object):
+  """A Tensor partitioned across its 0-th dimension."""
+
+  def __init__(self, tensors):
+    """Initializes PartitionedTensor.
+
+    Args:
+      tensors: List of Tensors. All Tensors must agree on shape (excepting
+        batch dimension) and dtype.
+
+    Raises:
+      ValueError: If 'tensors' has length zero.
+      ValueError: if contents of 'tensors' don't agree on shape or dtype.
+    """
+    if not tensors:
+      raise ValueError("tensors must be a list of 1+ Tensors.")
+
+    dtype = tensors[0].dtype
+    if not all(tensor.dtype == dtype for tensor in tensors):
+      raise ValueError("all tensors must have dtype = %s." % dtype)
+
+    shape = tensors[0].shape[1:]
+    if not all(tensor.shape[1:] == shape for tensor in tensors):
+      raise ValueError("All tensors must have shape = %s (excluding batch "
+                       "dimension)." % shape)
+
+    self.tensors = tensors
+    self._concats = {}  # {device: Tensor}
+
+  @property
+  def shape(self):
+    feature_shape = self.tensors[0].shape[1:]
+    batch_size = sum([tensor.shape[0] for tensor in self.tensors],
+                     tensor_shape.Dimension(0))
+    return tensor_shape.TensorShape([batch_size]).concatenate(feature_shape)
+
+  def get_shape(self):
+    return self.shape
+
+  @property
+  def dtype(self):
+    return self.tensors[0].dtype
+
+  def __str__(self):
+    return "PartitionedTensor([%s, ...], dtype=%s, shape=%s)" % (
+        self.tensors[0].name, self.dtype.name, tuple(self.shape.as_list()))
+
+  def __hash__(self):
+    return hash(tuple(self.tensors))
+
+  def __eq__(self, other):
+    if not isinstance(other, PartitionedTensor):
+      return False
+    return self.tensors == other.tensors
+
+  def __ne__(self, other):
+    return not self == other  # pylint: disable=g-comparison-negation
+
+  def __getitem__(self, key):
+    return self.as_tensor()[key]
+
+  def as_tensor(self, dtype=None, name=None, as_ref=False):
+    with ops.name_scope(name, "PartitionedTensor.as_tensor", self.tensors):
+      assert not as_ref
+      assert dtype in [None, self.dtype]
+      result = array_ops.concat(self.tensors, axis=0)
+
+      # Cache 'result' if we haven't already cached a value for this device.
+      if result.device not in self._concats:
+        self._concats[result.device] = result
+      return self._concats[result.device]
+
+  @property
+  def device(self):
+    # PartitionedTensors in general do not live on a single device.  If the
+    # device cannot be determined unambiguously this property will return None.
+    device = self.tensors[0].device
+    if all(tensor.device == device for tensor in self.tensors):
+      return device
+    return None
+
+
+ops.register_tensor_conversion_function(
+    PartitionedTensor,
+    lambda val, dtype, name, as_ref: val.as_tensor(dtype, name, as_ref))
+
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients
 # to eliminate redundant fisher factor computations.
