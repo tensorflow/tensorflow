@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/util/bcast.h"
 
 #include <poplar/Engine.hpp>
+#include <poplar/OptionFlags.hpp>
 #include <poputil/TileMapping.hpp>
 
 namespace sep = ::perftools::gputools::poplarplugin;
@@ -171,7 +172,7 @@ AddConvolutionInput(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
   auto name = port::StrCat(inst->name(), "_input");
-  popconv::ConvOptions opts;
+  poplar::OptionFlags opts;
   poplar::Tensor out = popconv::createInput(graph, params, name, opts,
                                             &resources.convolution_cache);
   return ShuffleConvolutionInputToTensorflow(conv_target, out);
@@ -187,7 +188,7 @@ AddConvolutionWeights(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
   auto name = port::StrCat(inst->name(), "_weights");
-  popconv::ConvOptions opts;
+  poplar::OptionFlags opts;
   poplar::Tensor out = popconv::createWeights(graph, params, name, opts,
                                               &resources.convolution_cache);
 
@@ -206,7 +207,7 @@ AddLeftMatMul(poplar::Graph& graph,
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
   auto name = port::StrCat(inst->name(), "_lhs");
-  poplin::MatMulOptions opts;
+  poplar::OptionFlags opts;
   return poplin::createMatMulInputLHS(graph,type,aShape,bShape, name, opts,
                                       &resources.dot_cache);
 }
@@ -221,7 +222,7 @@ AddRightMatMul(poplar::Graph& graph,
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
   auto name = port::StrCat(inst->name(), "_rhs");
-  poplin::MatMulOptions opts;
+  poplar::OptionFlags opts;
   return poplin::createMatMulInputRHS(graph,type,aShape,bShape, name, opts,
                                       &resources.dot_cache);
 }

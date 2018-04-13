@@ -103,17 +103,17 @@ GetConvolutionParameters(const HloInstruction* operands_inst,
   return params;
 }
 
-static popconv::Pass GetConvolutionPass(const HloInstruction* inst) {
+static std::string GetConvolutionPass(const HloInstruction* inst) {
   if (IsForwardConvolution(inst)) {
-    return popconv::Pass::TRAINING_FWD;
+    return "TRAINING_FWD";
   }
   if (IsGradientConvolution(inst)) {
-    return popconv::Pass::TRAINING_BWD;
+    return "TRAINING_BWD";
   }
   if (IsWeightUpdateConvolution(inst)) {
-    return popconv::Pass::TRAINING_WU;
+    return "TRAINING_WU";
   }
-  return popconv::Pass::NONE;
+  return "NONE";
 }
 
 static bool is_identity_shuffle(const std::vector<unsigned int> shuffle) {
@@ -272,8 +272,8 @@ CreateConv2D(poplar::Graph &graph,
   poplar::Tensor kernel;
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
-  popconv::ConvOptions opts;
-  opts.pass = GetConvolutionPass(conv);
+  poplar::OptionFlags opts;
+  opts.set("pass", GetConvolutionPass(conv));
 
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
@@ -314,8 +314,8 @@ Create2DConvWithReverse(poplar::Graph &graph,
   poplar::Tensor kernel;
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
-  popconv::ConvOptions opts;
-  opts.pass = GetConvolutionPass(inst);
+  poplar::OptionFlags opts;
+  opts.set("pass", GetConvolutionPass(inst));
 
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));

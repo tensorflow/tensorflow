@@ -164,17 +164,17 @@ LookupBinaryInPlaceFn(const HloInstruction* inst) {
                                    HloOpcodeString(opcode)));
 }
 
-static poplin::FullyConnectedPass GetMatMulPass(const HloInstruction* inst) {
+static std::string GetMatMulPass(const HloInstruction* inst) {
   if (IsForwardMatMul(inst)) {
-    return poplin::FullyConnectedPass::TRAINING_FWD;
+    return "TRAINING_FWD";
   }
   if (IsGradientMatMul(inst)) {
-    return poplin::FullyConnectedPass::TRAINING_BWD;
+    return "TRAINING_BWD";
   }
   if (IsWeightUpdateMatMul(inst)) {
-    return poplin::FullyConnectedPass::TRAINING_WU;
+    return "TRAINING_WU";
   }
-  return poplin::FullyConnectedPass::INFERENCE_FWD;
+  return "INFERENCE_FWD";
 }
 
 port::StatusOr<poplar::program::Program>
@@ -304,8 +304,8 @@ CreateMatMulOp(poplar::Graph &graph,
     in1 = in1.reshape({in1.dim(0), 1});
   }
 
-  poplin::MatMulOptions opts;
-  opts.fullyConnectedPass = GetMatMulPass(inst);
+  poplar::OptionFlags opts;
+  opts.set("fullyConnectedPass", GetMatMulPass(inst));
 
   out = poplin::matMul(graph, in0, in1, seq, inst->name(), opts,
                        &res.dot_cache);
