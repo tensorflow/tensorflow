@@ -272,3 +272,12 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+py_test(
+  name = "tf_trt_integration_test",
+  srcs = ["test/test_integration.py"],
+  srcs_version = "PY2AND3",
+  deps = [
+    ":init_py"
+  ]
+)
