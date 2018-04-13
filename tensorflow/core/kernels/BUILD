@@ -4323,6 +4323,7 @@ tf_kernel_library(
     deps = [
         ":random_op",
         ":random_ops",
+        ":stateless_random_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

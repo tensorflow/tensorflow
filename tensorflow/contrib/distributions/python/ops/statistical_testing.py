@@ -130,7 +130,7 @@ import itertools
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -169,31 +169,27 @@ def _do_maximum_mean(samples, envelope, high, name=None):
     samples = array_ops.transpose(samples, perm)
 
     samples = _batch_sort_vector(samples)
-    batch_shape = array_ops.shape(samples)[:-1]
-    n = array_ops.shape(samples)[-1]
-    step = 1. / math_ops.cast(n, dtype=samples.dtype.base_dtype)
 
-    def _loop_body(iter_, total, to_skip):
-      total = array_ops.where(
-          step <= to_skip,
-          total,
-          array_ops.where(
-              to_skip > 0.,
-              total + (step - to_skip) * samples[..., iter_],
-              total + step * samples[..., iter_]))
-      to_skip = array_ops.where(step <= to_skip, to_skip - step, 0.)
-      return [iter_ + 1, total, to_skip]
-
-    _, total, _ = control_flow_ops.while_loop(
-        cond=lambda iter_, *args: iter_ < n,
-        body=_loop_body,
-        loop_vars=[
-            0,
-            array_ops.zeros(batch_shape, dtype=samples.dtype.base_dtype),
-            envelope,  # to_skip
-        ])
-
-  return total + envelope * high
+    # The maximum mean is given by taking `envelope`-worth of
+    # probability from the smallest samples and moving it to the
+    # maximum value.  This amounts to:
+    # - ignoring the smallest k samples, where `k/n < envelope`
+    # - taking a `1/n - (envelope - k/n)` part of the index k sample
+    # - taking all the other samples
+    # - and adding `envelope * high` at the end.
+    # The following is a vectorized and batched way of computing this.
+    # `max_mean_contrib` is a mask implementing the previous.
+    batch_size = array_ops.shape(samples)[-1]
+    batch_size = math_ops.cast(batch_size, dtype=samples.dtype.base_dtype)
+    step = 1. / batch_size
+    cum_steps = step * math_ops.range(
+        1, batch_size + 1, dtype=samples.dtype.base_dtype)
+    max_mean_contrib = clip_ops.clip_by_value(
+        cum_steps - envelope[..., array_ops.newaxis],
+        clip_value_min=0.,
+        clip_value_max=step)
+    return math_ops.reduce_sum(
+        samples * max_mean_contrib, axis=-1) + envelope * high
 
 
 def _maximum_mean(samples, envelope, high, name=None):

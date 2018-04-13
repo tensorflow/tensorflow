@@ -26,7 +26,6 @@ from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import export as export_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config as run_config_lib
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -38,6 +37,7 @@ from tensorflow.python.keras._impl.keras.engine.network import Network
 from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import saver as saver_lib
@@ -53,6 +53,19 @@ def _cast_tensor_to_floatx(x):
     return x
   else:
     return math_ops.cast(x, K.floatx())
+
+
+def _any_variable_initalized():
+  """Check if any variable has been initialized in the Keras model.
+
+  Returns:
+    boolean, True if at least one variable has been initalized, else False.
+  """
+  variables = variables_module.global_variables()
+  for v in variables:
+    if getattr(v, '_keras_initialized', False):
+      return True
+  return False
 
 
 def _create_ordered_io(keras_model, estimator_io, is_input=True):
@@ -396,7 +409,8 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
                                      custom_objects)
       # save to checkpoint
       with session.Session(config=estimator._session_config) as sess:
-        model.set_weights(keras_weights)
+        if keras_weights:
+          model.set_weights(keras_weights)
         # Make update ops and initialize all variables.
         if not model.train_function:
           # pylint: disable=protected-access
@@ -466,20 +480,21 @@ def model_to_estimator(keras_model=None,
   estimator = estimator_lib.Estimator(
       keras_model_fn, model_dir=model_dir, config=config)
 
-  old_session = K._SESSION
-  # Pass the config into keras backend's default session.
-  sess = session.Session(config=estimator._session_config)
-  K.set_session(sess)
-  try:
+  # Check if we need to call get_weights:
+  if _any_variable_initalized():
     keras_weights = keras_model.get_weights()
-  except errors.FailedPreconditionError as e:
-    if old_session is None:
-      raise e
-    logging.warning(
-        'The Keras backend session has already been '
-        'set. The _session_config passed to model_to_estimator is not used.')
-    K.set_session(old_session)
-    keras_weights = keras_model.get_weights()
+    # Warn if config passed to estimator tries to update GPUOptions. If a
+    # session has already been created, the GPUOptions passed to the first
+    # session sticks.
+    if estimator._session_config.HasField('gpu_options'):
+      logging.warning(
+          'The Keras backend session has already been set. '
+          'The _session_config passed to model_to_estimator will not be used.')
+  else:
+    # Pass the config into keras backend's default session.
+    sess = session.Session(config=estimator._session_config)
+    K.set_session(sess)
+    keras_weights = None
 
   if keras_model._is_graph_network:
     # TODO(yifeif): move checkpoint initialization to scaffold.init_fn

@@ -1063,15 +1063,12 @@ struct R2ReduceWindowTestData {
      /*strides=*/{1, 1}, /*pad_low=*/{0, 130}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kAdd},
-// TODO(b/76025683): These tests fail on TPU.
-#if defined(XLA_TEST_BACKEND_CPU) || defined(XLA_TEST_BACKEND_GPU)
-    {/*base_bounds=*/{4096, 4096}, /*window_bounds=*/{1, 4},
-     /*strides=*/{1, 1024}, /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
-     /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{8, 256}, /*window_bounds=*/{1, 4},
      /*strides=*/{1, 64}, /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
-#endif
+    {/*base_bounds=*/{4096, 4096}, /*window_bounds=*/{1, 4},
+     /*strides=*/{1, 1024}, /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
+     /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
 };
 
 string R2ReduceWindowTestDataToString(

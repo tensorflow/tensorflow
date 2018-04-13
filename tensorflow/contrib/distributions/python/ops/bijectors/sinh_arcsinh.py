@@ -91,7 +91,6 @@ class SinhArcsinh(bijector.Bijector):
   def __init__(self,
                skewness=None,
                tailweight=None,
-               event_ndims=0,
                validate_args=False,
                name="SinhArcsinh"):
     """Instantiates the `SinhArcsinh` bijector.
@@ -101,8 +100,6 @@ class SinhArcsinh(bijector.Bijector):
         of type `float32`.
       tailweight:  Tailweight parameter.  Positive `Tensor` of same `dtype` as
         `skewness` and broadcastable `shape`.  Default is `1` of type `float32`.
-      event_ndims: Python scalar indicating the number of dimensions associated
-        with a particular draw from the distribution.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
@@ -125,7 +122,9 @@ class SinhArcsinh(bijector.Bijector):
                 message="Argument tailweight was not positive")
         ], self._tailweight)
     super(SinhArcsinh, self).__init__(
-        event_ndims=event_ndims, validate_args=validate_args, name=name)
+        forward_min_event_ndims=0,
+        validate_args=validate_args,
+        name=name)
 
   @property
   def skewness(self):
@@ -149,31 +148,29 @@ class SinhArcsinh(bijector.Bijector):
     # dx/dy
     # = cosh(arcsinh(y) / tailweight - skewness)
     #     / (tailweight * sqrt(y**2 + 1))
-    event_dims = self._event_dims_tensor(y)
-    return math_ops.reduce_sum(
-        # This is computed inside the log to avoid catastrophic cancellations
-        # from cosh((arcsinh(y) / tailweight) - skewness) and sqrt(x**2 + 1).
+
+    # This is computed inside the log to avoid catastrophic cancellations
+    # from cosh((arcsinh(y) / tailweight) - skewness) and sqrt(x**2 + 1).
+    return (
         math_ops.log(math_ops.cosh(
             math_ops.asinh(y) / self.tailweight - self.skewness)
                      # TODO(srvasude): Consider using cosh(arcsinh(x)) in cases
                      # where (arcsinh(x) / tailweight) - skewness ~= arcsinh(x).
                      / _sqrtx2p1(y))
-        - math_ops.log(self.tailweight),
-        axis=event_dims)
+        - math_ops.log(self.tailweight))
 
   def _forward_log_det_jacobian(self, x):
     # y = sinh((arcsinh(x) + skewness) * tailweight)
     # Using sinh' = cosh, arcsinh'(x) = 1 / sqrt(x**2 + 1),
     # dy/dx
     # = cosh((arcsinh(x) + skewness) * tailweight) * tailweight / sqrt(x**2 + 1)
-    event_dims = self._event_dims_tensor(x)
-    return math_ops.reduce_sum(
-        # This is computed inside the log to avoid catastrophic cancellations
-        # from cosh((arcsinh(x) + skewness) * tailweight) and sqrt(x**2 + 1).
+
+    # This is computed inside the log to avoid catastrophic cancellations
+    # from cosh((arcsinh(x) + skewness) * tailweight) and sqrt(x**2 + 1).
+    return (
         math_ops.log(math_ops.cosh(
             (math_ops.asinh(x) + self.skewness) * self.tailweight)
                      # TODO(srvasude): Consider using cosh(arcsinh(x)) in cases
                      # where (arcsinh(x) + skewness) * tailweight ~= arcsinh(x).
                      / _sqrtx2p1(x))
-        + math_ops.log(self.tailweight),
-        axis=event_dims)
+        + math_ops.log(self.tailweight))

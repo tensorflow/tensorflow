@@ -29,7 +29,6 @@ import numpy as np
 
 from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
-from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.rnn.python.ops import rnn as contrib_rnn_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -55,6 +54,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
+from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import momentum
 from tensorflow.python.training import rmsprop

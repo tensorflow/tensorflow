@@ -38,29 +38,29 @@ class FunctionNameScopeTransformer(converter_test_base.TestCase):
     node = name_scopes.transform(node, self.ctx)
 
     with self.compiled(node, ops.name_scope) as result:
-      result_op = result.test_fn(constant_op.constant([1, 2, 3]))
+      result_op = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', result_op.op.name)
 
   def test_nested_name(self):
 
     def test_fn(l):
 
-      def body(i):
-        return i**2
+      def inner_fn(i):
+        return i ** 2
 
-      l += [4]
-      return body(l)
+      l += 4
+      return inner_fn(l)
 
     node = self.parse_and_analyze(test_fn, {})
     node = name_scopes.transform(node, self.ctx)
 
     with self.compiled(node, ops.name_scope) as result:
-      result_op = result.test_fn(constant_op.constant([1, 2, 3]))
+      result_op = result.test_fn(constant_op.constant(1))
       first_result_input_name = result_op.op.inputs[0].name
       second_result_input_name = result_op.op.inputs[1].name
       self.assertIn('test_fn/', first_result_input_name)
-      self.assertNotIn('body/', first_result_input_name)
-      self.assertIn('test_fn/body/', second_result_input_name)
+      self.assertNotIn('inner_fn', first_result_input_name)
+      self.assertIn('test_fn/inner_fn/', second_result_input_name)
 
   def test_class_name(self):
 
@@ -68,11 +68,11 @@ class FunctionNameScopeTransformer(converter_test_base.TestCase):
 
       def test_fn(self, l):
 
-        def body(i):
-          return i**2
+        def inner_fn(i):
+          return i ** 2
 
-        l += [4]
-        return body(l)
+        l += 4
+        return inner_fn(l)
 
     # Note that 'TestClass' was needed in the namespace here.
     node = self.parse_and_analyze(
@@ -80,12 +80,37 @@ class FunctionNameScopeTransformer(converter_test_base.TestCase):
     node = name_scopes.transform(node, self.ctx)
 
     with self.compiled(node, ops.name_scope) as result:
-      result_op = result.TestClass().test_fn(constant_op.constant([1, 2, 3]))
+      result_op = result.TestClass().test_fn(constant_op.constant(1))
       first_result_input_name = result_op.op.inputs[0].name
       second_result_input_name = result_op.op.inputs[1].name
       self.assertIn('TestClass/test_fn/', first_result_input_name)
-      self.assertNotIn('body/', first_result_input_name)
-      self.assertIn('TestClass/test_fn/body/', second_result_input_name)
+      self.assertNotIn('inner_fn', first_result_input_name)
+      self.assertIn('TestClass/test_fn/inner_fn/', second_result_input_name)
+
+  def test_special_name(self):
+
+    class TestClass(object):
+
+      def __call__(self, l):
+
+        def inner_fn(i):
+          return i ** 2
+
+        l += 4
+        return inner_fn(l)
+
+    # Note that 'TestClass' was needed in the namespace here.
+    node = self.parse_and_analyze(
+        TestClass.__call__, {'TestClass': TestClass}, owner_type=TestClass)
+    node = name_scopes.transform(node, self.ctx)
+
+    with self.compiled(node, ops.name_scope) as result:
+      result_op = result.__call__(TestClass(), constant_op.constant(1))
+      first_result_input_name = result_op.op.inputs[0].name
+      second_result_input_name = result_op.op.inputs[1].name
+      self.assertIn('call__/', first_result_input_name)
+      self.assertNotIn('inner_fn', first_result_input_name)
+      self.assertIn('call__/inner_fn/', second_result_input_name)
 
 
 if __name__ == '__main__':

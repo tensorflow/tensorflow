@@ -2535,6 +2535,7 @@ cc_library(
     srcs = ["hlo_runner.cc"],
     hdrs = ["hlo_runner.h"],
     deps = [
+        ":computation_placer",
         ":executable",
         ":hlo",
         ":transfer_manager",
@@ -2551,6 +2552,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
     ],
 )
 

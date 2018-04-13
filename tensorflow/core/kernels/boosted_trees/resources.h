@@ -93,6 +93,26 @@ class BoostedTreesEnsembleResource : public StampedResource {
         new_num_layers);
   }
 
+  void UpdateLastLayerNodesRange(const int32 node_range_start,
+                                 int32 node_range_end) const {
+    tree_ensemble_->mutable_growing_metadata()->set_last_layer_node_start(
+        node_range_start);
+    tree_ensemble_->mutable_growing_metadata()->set_last_layer_node_end(
+        node_range_end);
+  }
+
+  void GetLastLayerNodesRange(int32* node_range_start,
+                              int32* node_range_end) const {
+    *node_range_start =
+        tree_ensemble_->growing_metadata().last_layer_node_start();
+    *node_range_end = tree_ensemble_->growing_metadata().last_layer_node_end();
+  }
+
+  int64 GetNumNodes(const int32 tree_id) {
+    DCHECK_LT(tree_id, tree_ensemble_->trees_size());
+    return tree_ensemble_->trees(tree_id).nodes_size();
+  }
+
   void UpdateGrowingMetadata() const;
 
   int32 GetNumLayersAttempted() {
