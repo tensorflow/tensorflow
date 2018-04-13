@@ -149,6 +149,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("@io_bazel_rules_closure//closure:defs.bzl","closure_proto_library")
 
 exports_files(["ops/ops.pbtxt"])
 
@@ -242,6 +243,21 @@ tf_nano_proto_library(
     generate_intdefs = 1,
     visibility = ["//visibility:public"],
     deps = [":protos_all_cc"],
+)
+
+proto_library(
+    name = "example_protos",
+    srcs = [
+        "example/example.proto",
+        "example/feature.proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+closure_proto_library(
+    name = "example_protos_closure",
+    deps = [":example_protos"],
+    visibility = ["//visibility:public"],
 )
 
 exports_files([
