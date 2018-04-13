@@ -1341,6 +1341,7 @@ def sampled_softmax_loss(weights,
       name=name,
       seed=seed)
   labels = array_ops.stop_gradient(labels, name="labels_stop_gradient")
-  sampled_losses = nn_ops.softmax_cross_entropy_with_logits_v2(labels=labels, logits=logits)
+  sampled_losses = nn_ops.softmax_cross_entropy_with_logits_v2(
+      labels=labels, logits=logits)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses
