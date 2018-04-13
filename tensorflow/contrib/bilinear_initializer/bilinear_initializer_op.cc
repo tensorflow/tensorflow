@@ -63,7 +63,15 @@ REGISTER_OP("BilinearInitializer")
     .Doc(R"doc(
 Generates the initial value with bilinear interpolation.
 
-shape: A tensor representing the shape of the filter to be initialized.
+Specifically, it generates a 4D kernel with shape
+[filter_height, filter_width, input_depth, output_depth]
+
+The weights are inversely proportional to their distances (w.r.t. width and
+height respectively) to the center of the kernel. When applying this kernel map
+in a convolution, it conducts a per-feature-map spatial weighted average, i.e.,
+bilinear interpolation.
+
+shape: A 4D tensor representing the shape of the filter to be initialized.
 filter: The tensor generated with bilinear interpolation.
 )doc");
 

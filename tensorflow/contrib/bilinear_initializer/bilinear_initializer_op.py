@@ -37,6 +37,12 @@ def bilinear_initializer(shape, dtype=dtypes.float32, name=None):
   (2) W = width of kernel
   (3) C = number of input channels
   (4) N = number of output channels (number of filters)
+
+  The weights are inversely proportional to their distances (w.r.t. width and
+  height respectively) to the center of the kernel. When applying this kernel
+  map in a convolution, it conducts a per-feature-map spatial weighted average,
+  i.e., bilinear interpolation.
+
   Typical use case is weight initialization for deconvolution layer.
 
   Args:
