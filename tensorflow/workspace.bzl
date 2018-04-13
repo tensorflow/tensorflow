@@ -50,11 +50,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_linux",
       urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
-          "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.13/mklml_lnx_2018.0.2.20180127.tgz",
+          "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_lnx_2018.0.2.20180127.tgz",
       ],
-      sha256 = "feacc3d82565c1231470359b42c696236fae873704e0b013436afba5fd4fd30f",
-      strip_prefix = "mklml_lnx_2018.0.1.20171227",
+      sha256 = "74844bd77294742bf2396ff040369d1aa4cdd9e826fcd38cf8398ae83564d146",
+      strip_prefix = "mklml_lnx_2018.0.2.20180127",
       build_file = clean_dep("//third_party/mkl:mkl.BUILD")
   )
   mkl_repository(
@@ -85,11 +85,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "mkl_dnn",
       urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/v0.12.tar.gz",
-          "https://github.com/intel/mkl-dnn/archive/v0.12.tar.gz",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/v0.13.tar.gz",
+          "https://github.com/intel/mkl-dnn/archive/v0.13.tar.gz",
       ],
-      sha256 = "86fa2a8c12a56e3b725945acedeaa82492746be02545aba6d710f097e013e19e",
-      strip_prefix = "mkl-dnn-0.12",
+      sha256 = "d2cfd93a70cfe86ebe054477c530c9b5c1218b70f75856eb6d1956c68ee89e8f",
+      strip_prefix = "mkl-dnn-0.13",
       build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
   )
 
