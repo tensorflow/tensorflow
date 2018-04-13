@@ -44,6 +44,9 @@ class XlaComputation {
 
   const HloModuleProto& proto() const { return proto_; }
 
+  // Returns true if this object is a null Computation.
+  bool IsNull() const { return unique_id_ == -1; }
+
  private:
   XlaComputation(const int64 unique_id) : unique_id_(unique_id) {}
   HloModuleProto* mutable_proto() { return &proto_; }

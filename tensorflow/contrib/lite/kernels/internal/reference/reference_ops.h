@@ -602,6 +602,67 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline void ExperimentalShuffledFullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims,
+    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
+    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    int16* output_data, const Dims<4>& output_dims,
+    gemmlowp::GemmContext* gemm_context) {
+  (void)gemm_context;  // only used in optimized code.
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  // TODO(benoitjacob): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                      ArraySize(output_dims, 3);
+  const int output_depth = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  const int accum_depth = ArraySize(weights_dims, 0);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
+  // The experimental shuffling is an optimization for matrix*vector product.
+  // We aren't interested in supporting non-matrix*vector-product cases, i.e.
+  // batches>1.
+  TFLITE_DCHECK_EQ(batches, 1);
+  // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+  // so that just reinterpreting them as int8 values is equivalent to
+  // subtracting 128 from them, thus implementing for free the subtraction of
+  // the zero_point value 128.
+  const int8* shuffled_weights_ptr =
+      reinterpret_cast<const int8*>(shuffled_weights_data);
+  for (int c = 0; c < output_depth; c += 4) {
+    // Internal accumulation.
+    // Initialize accumulator with the bias-value.
+    int32 accum[4] = {0};
+    // Accumulation loop.
+    for (int d = 0; d < accum_depth; d += 16) {
+      for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 16; j++) {
+          int8 input_val = input_data[d + j] - 128;
+          int8 weights_val = *shuffled_weights_ptr++;
+          accum[i] += weights_val * input_val;
+        }
+      }
+    }
+    for (int i = 0; i < 4; i++) {
+      // Add bias value
+      int acc = accum[i] + bias_data[c + i];
+      // Down-scale the final int32 accumulator to the scale used by our
+      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
+      // multiplier and shift here have been pre-computed offline
+      // (e.g. by toco).
+      acc =
+          MultiplyByQuantizedMultiplier(acc, output_multiplier, -output_shift);
+      // Saturate, cast to int16, and store to output array.
+      acc = std::max(acc, output_activation_min);
+      acc = std::min(acc, output_activation_max);
+      output_data[c + i] = acc;
+    }
+  }
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
@@ -2888,24 +2949,37 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
 template <typename T>
 inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
                            const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims, T* output_data,
-                           const Dims<4>& output_dims) {
+                           const Dims<4>& block_shape_dims,
+                           const int32* crops_data, const Dims<4>& crops_dims,
+                           T* output_data, const Dims<4>& output_dims) {
   const int output_batch_size = ArraySize(output_dims, 3);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   const int input_batch_size = ArraySize(input_dims, 3);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int depth = ArraySize(input_dims, 0);
   const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
+  const int crops_top = crops_data[0];
+  const int crops_left = crops_data[2];
 
   for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
+    const int out_batch = in_batch % output_batch_size;
+    const int spatial_offset = in_batch / output_batch_size;
     for (int in_h = 0; in_h < input_height; ++in_h) {
+      const int out_h = in_h * block_shape_height +
+                        spatial_offset / block_shape_width - crops_top;
+      if (out_h < 0 || out_h >= output_height) {
+        continue;
+      }
       for (int in_w = 0; in_w < input_width; ++in_w) {
-        int out_batch = in_batch % output_batch_size;
-        int out_w = in_w * block_shape_width +
-                    (in_batch / output_batch_size) % block_shape_width;
-        int out_h = in_h * block_shape_height +
-                    (in_batch / output_batch_size) / block_shape_width;
+        const int out_w = in_w * block_shape_width +
+                          spatial_offset % block_shape_width - crops_left;
+
+        if (out_w < 0 || out_w >= output_width) {
+          continue;
+        }
         T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_batch);
         const T* in = input_data + Offset(input_dims, 0, in_w, in_h, in_batch);
         memcpy(out, in, depth * sizeof(T));
@@ -3374,6 +3448,51 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
               }
             }
           }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void Less(int64_t num_elements, const T* input1, const T* input2,
+                 bool* output) {
+  for (int64_t i = 0; i < num_elements; ++i) {
+    output[i] = input1[i] < input2[i];
+  }
+}
+
+template <typename T>
+inline void Less(const T* input1_data, const Dims<4>& input1_dims,
+                 const T* input2_data, const Dims<4>& input2_dims,
+                 bool* output_data, const Dims<4>& output_dims) {
+  const int64_t batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int64_t width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int64_t depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  Less(batches * height * width * depth, input1_data, input2_data, output_data);
+}
+
+template <typename T1, typename T2>
+inline void BroadcastLess(T1* input1_data, const Dims<4>& input1_dims,
+                          T2* input2_data, const Dims<4>& input2_dims,
+                          bool* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastLess");
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              input1_data[SubscriptToIndex(desc1, c, x, y, b)] <
+              input2_data[SubscriptToIndex(desc2, c, x, y, b)];
         }
       }
     }

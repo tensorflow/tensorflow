@@ -425,6 +425,7 @@ struct SpaceToDepthOperator : Operator {
 // input activations as a matrix, followed by a MatMul node.
 struct FullyConnectedOperator : Operator {
   FullyConnectedOperator() : Operator(OperatorType::kFullyConnected) {}
+  bool experimental_shuffled_weights = false;
 };
 
 // Dequantization operator, converting a quantized array of integers with
@@ -1420,8 +1421,7 @@ struct SpaceToBatchNDOperator : Operator {
 };
 
 // BatchToSpaceND operator. Rearranges data from batch into blocks of
-// spatial data. Currently, only 2-d blocks are supported. Cropping is not
-// supported, either, and the crops array should be all zero.
+// spatial data. Currently, only 2-d blocks are supported.
 //
 // Inputs:
 //   inputs[0]: required: the input array

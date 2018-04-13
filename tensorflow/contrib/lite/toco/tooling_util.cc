@@ -1084,22 +1084,29 @@ void InsertCopyOperator(Model* model, const string& source_array_name,
   model->operators.emplace_back(copy_op);
 }
 
-namespace {
-template <ArrayDataType A>
-void CopyArrayBuffer(const Array& source_array, Array* target_array) {
-  if (source_array.buffer) {
-    const auto& source_buffer = source_array.GetBuffer<A>();
-    auto& target_buffer = target_array->GetMutableBuffer<A>();
-    target_buffer.data = source_buffer.data;
-  }
-}
-}  // namespace
-
 void CloneArray(Model* model, const string& source_array_name,
                 const string& target_array_name) {
   CHECK(!model->HasArray(target_array_name));
   const Array& source_array = model->GetArray(source_array_name);
   Array& target_array = model->GetOrCreateArray(target_array_name);
+
+  if (source_array.minmax) {
+    const auto& smm = source_array.GetMinMax();
+    auto& tmm = target_array.GetOrCreateMinMax();
+    tmm.min = smm.min;
+    tmm.max = smm.max;
+  }
+
+  if (source_array.quantization_params) {
+    const auto& sqp = source_array.GetQuantizationParams();
+    auto& tqp = target_array.GetOrCreateQuantizationParams();
+    tqp.zero_point = sqp.zero_point;
+    tqp.scale = sqp.scale;
+  }
+
+  target_array.data_type = source_array.data_type;
+  target_array.final_data_type = source_array.final_data_type;
+  target_array.copy_shape(source_array.shape());
 
   switch (source_array.data_type) {
     case ArrayDataType::kBool:
@@ -1140,25 +1147,6 @@ void CloneArray(Model* model, const string& source_array_name,
                  << ArrayDataTypeName(source_array.data_type);
       return;
   }
-
-  if (source_array.minmax) {
-    const auto& smm = source_array.GetMinMax();
-    auto& tmm = target_array.GetOrCreateMinMax();
-    tmm.min = smm.min;
-    tmm.max = smm.max;
-  }
-
-  if (source_array.quantization_params) {
-    const auto& sqp = source_array.GetQuantizationParams();
-    auto& tqp = target_array.GetOrCreateQuantizationParams();
-    tqp.zero_point = sqp.zero_point;
-    tqp.scale = sqp.scale;
-  }
-
-  target_array.data_type = source_array.data_type;
-  target_array.final_data_type = source_array.final_data_type;
-
-  target_array.copy_shape(source_array.shape());
 }
 
 void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,

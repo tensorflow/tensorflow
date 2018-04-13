@@ -340,8 +340,8 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
 }
 
 Status VerifyHloModule(const perftools::gputools::Platform& platform,
-                       HloModule* const module) {
-  return HloVerifier().Run(module).status();
+                       HloModule* const module, bool allow_mixed_precision) {
+  return HloVerifier(allow_mixed_precision).Run(module).status();
 }
 
 }  // namespace xla

@@ -125,3 +125,14 @@ py_test(
         "@gast_archive//:gast",
     ],
 )
+
+py_test(
+    name = "transformer_test",
+    srcs = ["transformer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)

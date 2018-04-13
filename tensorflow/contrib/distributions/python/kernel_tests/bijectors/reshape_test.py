@@ -65,8 +65,8 @@ class _ReshapeBijectorTest(object):
        ildj_) = sess.run((
            bijector.inverse(expected_y),
            bijector.forward(expected_x),
-           bijector.forward_log_det_jacobian(expected_x),
-           bijector.inverse_log_det_jacobian(expected_y),
+           bijector.forward_log_det_jacobian(expected_x, event_ndims=2),
+           bijector.inverse_log_det_jacobian(expected_y, event_ndims=2),
        ), feed_dict=feed_dict)
       self.assertEqual("reshape", bijector.name)
       self.assertAllClose(expected_y, y_, rtol=1e-6, atol=0)
@@ -301,7 +301,8 @@ class ReshapeBijectorTestStatic(test.TestCase, _ReshapeBijectorTest):
           event_shape_in=[2, 3],
           event_shape_out=[1, 2, 3],
           validate_args=True)
-      assert_bijective_and_finite(bijector, x, y, rtol=1e-6, atol=0)
+      assert_bijective_and_finite(
+          bijector, x, y, event_ndims=2, rtol=1e-6, atol=0)
 
   def testInvalidDimensionsOpError(self):
     if ops._USE_C_API:

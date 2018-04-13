@@ -151,6 +151,9 @@ struct MaximumMinimumOptionsT;
 struct ArgMaxOptions;
 struct ArgMaxOptionsT;
 
+struct LessOptions;
+struct LessOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -173,18 +176,20 @@ enum TensorType {
   TensorType_UINT8 = 3,
   TensorType_INT64 = 4,
   TensorType_STRING = 5,
+  TensorType_BOOL = 6,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_STRING
+  TensorType_MAX = TensorType_BOOL
 };
 
-inline TensorType (&EnumValuesTensorType())[6] {
+inline TensorType (&EnumValuesTensorType())[7] {
   static TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
     TensorType_INT32,
     TensorType_UINT8,
     TensorType_INT64,
-    TensorType_STRING
+    TensorType_STRING,
+    TensorType_BOOL
   };
   return values;
 }
@@ -197,6 +202,7 @@ inline const char **EnumNamesTensorType() {
     "UINT8",
     "INT64",
     "STRING",
+    "BOOL",
     nullptr
   };
   return names;
@@ -264,11 +270,12 @@ enum BuiltinOperator {
   BuiltinOperator_MAXIMUM = 55,
   BuiltinOperator_ARG_MAX = 56,
   BuiltinOperator_MINIMUM = 57,
+  BuiltinOperator_LESS = 58,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_MINIMUM
+  BuiltinOperator_MAX = BuiltinOperator_LESS
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[56] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[57] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -325,7 +332,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[56] {
     BuiltinOperator_PRELU,
     BuiltinOperator_MAXIMUM,
     BuiltinOperator_ARG_MAX,
-    BuiltinOperator_MINIMUM
+    BuiltinOperator_MINIMUM,
+    BuiltinOperator_LESS
   };
   return values;
 }
@@ -390,6 +398,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "MAXIMUM",
     "ARG_MAX",
     "MINIMUM",
+    "LESS",
     nullptr
   };
   return names;
@@ -442,11 +451,12 @@ enum BuiltinOptions {
   BuiltinOptions_DequantizeOptions = 38,
   BuiltinOptions_MaximumMinimumOptions = 39,
   BuiltinOptions_ArgMaxOptions = 40,
+  BuiltinOptions_LessOptions = 41,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_ArgMaxOptions
+  BuiltinOptions_MAX = BuiltinOptions_LessOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[41] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[42] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -488,7 +498,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[41] {
     BuiltinOptions_CastOptions,
     BuiltinOptions_DequantizeOptions,
     BuiltinOptions_MaximumMinimumOptions,
-    BuiltinOptions_ArgMaxOptions
+    BuiltinOptions_ArgMaxOptions,
+    BuiltinOptions_LessOptions
   };
   return values;
 }
@@ -536,6 +547,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "DequantizeOptions",
     "MaximumMinimumOptions",
     "ArgMaxOptions",
+    "LessOptions",
     nullptr
   };
   return names;
@@ -708,6 +720,10 @@ template<> struct BuiltinOptionsTraits<MaximumMinimumOptions> {
 
 template<> struct BuiltinOptionsTraits<ArgMaxOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_ArgMaxOptions;
+};
+
+template<> struct BuiltinOptionsTraits<LessOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_LessOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1060,6 +1076,14 @@ struct BuiltinOptionsUnion {
   const ArgMaxOptionsT *AsArgMaxOptions() const {
     return type == BuiltinOptions_ArgMaxOptions ?
       reinterpret_cast<const ArgMaxOptionsT *>(value) : nullptr;
+  }
+  LessOptionsT *AsLessOptions() {
+    return type == BuiltinOptions_LessOptions ?
+      reinterpret_cast<LessOptionsT *>(value) : nullptr;
+  }
+  const LessOptionsT *AsLessOptions() const {
+    return type == BuiltinOptions_LessOptions ?
+      reinterpret_cast<const LessOptionsT *>(value) : nullptr;
   }
 };
 
@@ -1454,11 +1478,15 @@ struct Conv2DOptionsT : public flatbuffers::NativeTable {
   int32_t stride_w;
   int32_t stride_h;
   ActivationFunctionType fused_activation_function;
+  int32_t dilation_w_factor;
+  int32_t dilation_h_factor;
   Conv2DOptionsT()
       : padding(Padding_SAME),
         stride_w(0),
         stride_h(0),
-        fused_activation_function(ActivationFunctionType_NONE) {
+        fused_activation_function(ActivationFunctionType_NONE),
+        dilation_w_factor(0),
+        dilation_h_factor(0) {
   }
 };
 
@@ -1468,7 +1496,9 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
     VT_STRIDE_H = 8,
-    VT_FUSED_ACTIVATION_FUNCTION = 10
+    VT_FUSED_ACTIVATION_FUNCTION = 10,
+    VT_DILATION_W_FACTOR = 12,
+    VT_DILATION_H_FACTOR = 14
   };
   Padding padding() const {
     return static_cast<Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -1482,12 +1512,20 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   ActivationFunctionType fused_activation_function() const {
     return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  int32_t dilation_w_factor() const {
+    return GetField<int32_t>(VT_DILATION_W_FACTOR, 0);
+  }
+  int32_t dilation_h_factor() const {
+    return GetField<int32_t>(VT_DILATION_H_FACTOR, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_PADDING) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR) &&
            verifier.EndTable();
   }
   Conv2DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1510,6 +1548,12 @@ struct Conv2DOptionsBuilder {
   void add_fused_activation_function(ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(Conv2DOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
+  void add_dilation_w_factor(int32_t dilation_w_factor) {
+    fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_W_FACTOR, dilation_w_factor, 0);
+  }
+  void add_dilation_h_factor(int32_t dilation_h_factor) {
+    fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 0);
+  }
   explicit Conv2DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1527,8 +1571,12 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(
     Padding padding = Padding_SAME,
     int32_t stride_w = 0,
     int32_t stride_h = 0,
-    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE) {
+    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
+    int32_t dilation_w_factor = 0,
+    int32_t dilation_h_factor = 0) {
   Conv2DOptionsBuilder builder_(_fbb);
+  builder_.add_dilation_h_factor(dilation_h_factor);
+  builder_.add_dilation_w_factor(dilation_w_factor);
   builder_.add_stride_h(stride_h);
   builder_.add_stride_w(stride_w);
   builder_.add_fused_activation_function(fused_activation_function);
@@ -3924,6 +3972,46 @@ inline flatbuffers::Offset<ArgMaxOptions> CreateArgMaxOptions(
 
 flatbuffers::Offset<ArgMaxOptions> CreateArgMaxOptions(flatbuffers::FlatBufferBuilder &_fbb, const ArgMaxOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct LessOptionsT : public flatbuffers::NativeTable {
+  typedef LessOptions TableType;
+  LessOptionsT() {
+  }
+};
+
+struct LessOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef LessOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  LessOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(LessOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<LessOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const LessOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct LessOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit LessOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  LessOptionsBuilder &operator=(const LessOptionsBuilder &);
+  flatbuffers::Offset<LessOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<LessOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<LessOptions> CreateLessOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  LessOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<LessOptions> CreateLessOptions(flatbuffers::FlatBufferBuilder &_fbb, const LessOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -4161,6 +4249,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const ArgMaxOptions *builtin_options_as_ArgMaxOptions() const {
     return builtin_options_type() == BuiltinOptions_ArgMaxOptions ? static_cast<const ArgMaxOptions *>(builtin_options()) : nullptr;
   }
+  const LessOptions *builtin_options_as_LessOptions() const {
+    return builtin_options_type() == BuiltinOptions_LessOptions ? static_cast<const LessOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -4345,6 +4436,10 @@ template<> inline const MaximumMinimumOptions *Operator::builtin_options_as<Maxi
 
 template<> inline const ArgMaxOptions *Operator::builtin_options_as<ArgMaxOptions>() const {
   return builtin_options_as_ArgMaxOptions();
+}
+
+template<> inline const LessOptions *Operator::builtin_options_as<LessOptions>() const {
+  return builtin_options_as_LessOptions();
 }
 
 struct OperatorBuilder {
@@ -4814,6 +4909,8 @@ inline void Conv2DOptions::UnPackTo(Conv2DOptionsT *_o, const flatbuffers::resol
   { auto _e = stride_w(); _o->stride_w = _e; };
   { auto _e = stride_h(); _o->stride_h = _e; };
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; };
+  { auto _e = dilation_w_factor(); _o->dilation_w_factor = _e; };
+  { auto _e = dilation_h_factor(); _o->dilation_h_factor = _e; };
 }
 
 inline flatbuffers::Offset<Conv2DOptions> Conv2DOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv2DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4828,12 +4925,16 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatB
   auto _stride_w = _o->stride_w;
   auto _stride_h = _o->stride_h;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _dilation_w_factor = _o->dilation_w_factor;
+  auto _dilation_h_factor = _o->dilation_h_factor;
   return tflite::CreateConv2DOptions(
       _fbb,
       _padding,
       _stride_w,
       _stride_h,
-      _fused_activation_function);
+      _fused_activation_function,
+      _dilation_w_factor,
+      _dilation_h_factor);
 }
 
 inline Pool2DOptionsT *Pool2DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -5930,6 +6031,29 @@ inline flatbuffers::Offset<ArgMaxOptions> CreateArgMaxOptions(flatbuffers::FlatB
       _output_type);
 }
 
+inline LessOptionsT *LessOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new LessOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void LessOptions::UnPackTo(LessOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<LessOptions> LessOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const LessOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateLessOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<LessOptions> CreateLessOptions(flatbuffers::FlatBufferBuilder &_fbb, const LessOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const LessOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateLessOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -6270,6 +6394,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const ArgMaxOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_LessOptions: {
+      auto ptr = reinterpret_cast<const LessOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -6448,6 +6576,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const ArgMaxOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_LessOptions: {
+      auto ptr = reinterpret_cast<const LessOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -6614,6 +6746,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const ArgMaxOptionsT *>(value);
       return CreateArgMaxOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_LessOptions: {
+      auto ptr = reinterpret_cast<const LessOptionsT *>(value);
+      return CreateLessOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -6778,6 +6914,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_ArgMaxOptions: {
       value = new ArgMaxOptionsT(*reinterpret_cast<ArgMaxOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_LessOptions: {
+      value = new LessOptionsT(*reinterpret_cast<LessOptionsT *>(u.value));
       break;
     }
     default:
@@ -6984,6 +7124,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_ArgMaxOptions: {
       auto ptr = reinterpret_cast<ArgMaxOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_LessOptions: {
+      auto ptr = reinterpret_cast<LessOptionsT *>(value);
       delete ptr;
       break;
     }
