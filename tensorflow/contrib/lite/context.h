@@ -137,6 +137,7 @@ typedef enum {
   kTfLiteUInt8 = 3,
   kTfLiteInt64 = 4,
   kTfLiteString = 5,
+  kTfLiteBool = 6,
 } TfLiteType;
 
 // Parameters for asymmetric quantization. Quantized values can be converted
@@ -155,6 +156,7 @@ typedef union {
   char* raw;
   const char* raw_const;
   uint8_t* uint8;
+  bool* b;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped

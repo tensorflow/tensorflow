@@ -4,7 +4,7 @@ op {
   in_arg {
     name: "node_id_range"
     description: <<END
-A Rank 1 tensor (shape=[2]) to specify the range [first, last] of node ids to process within `stats_summary_list`. The nodes are iterated between the two nodes specified by the tensor, as like `for node_id in range(node_id_range[0], node_id_range[1]+1)` (Note that the last index node_id_range[1] is inclusive).
+A Rank 1 tensor (shape=[2]) to specify the range [first, last) of node ids to process within `stats_summary_list`. The nodes are iterated between the two nodes specified by the tensor, as like `for node_id in range(node_id_range[0], node_id_range[1])` (Note that the last index node_id_range[1] is exclusive).
 END
   }
   in_arg {
