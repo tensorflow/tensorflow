@@ -278,23 +278,6 @@ Step-by-step Windows build
    D:\...\build> MSBuild /p:Configuration=Release tf_python_build_pip_package.vcxproj
    ```
 
-Windows build using make.bat
-==================================
-
-The `make.bat` script helps you to easily configure and generate CMake project targets. You must execute make.bat in VS prompt. For typical command of Visual Studio 2017 is:
-
-```
-D:\temp> "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat"
-```
-
-You can just run `make.bat` to configure cmake and generate Visual Studio project files in `.\build\`
-
-To start build tensorflow project, you can simply run
-```
-make.bat build\tensorflow.sln 
-```
-`make.bat` supports to change options. All the options are listed before **line 38**. 
-
 
 Linux Continuous Integration build
 ==================================
