@@ -42,8 +42,8 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
     const Tensor* node_id_range_t;
     OP_REQUIRES_OK(context, context->input("node_id_range", &node_id_range_t));
     const auto node_id_range = node_id_range_t->vec<int32>();
-    int32 node_id_first = node_id_range(0);
-    int32 node_id_last = node_id_range(1);  // inclusive.
+    const int32 node_id_first = node_id_range(0);  // inclusive
+    const int32 node_id_last = node_id_range(1);   // exclusive
     // stats_summary_list
     OpInputList stats_summary_list;
     OP_REQUIRES_OK(context, context->input_list("stats_summary_list",
@@ -86,7 +86,7 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
       std::vector<int32> output_thresholds;
       std::vector<float> output_left_node_contribs;
       std::vector<float> output_right_node_contribs;
-      for (int node_id = node_id_first; node_id <= node_id_last; ++node_id) {
+      for (int node_id = node_id_first; node_id < node_id_last; ++node_id) {
         // Calculate gains.
         cum_grad.clear();
         cum_hess.clear();

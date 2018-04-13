@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-import types
 
 import gast
 
@@ -114,7 +113,7 @@ class CallTreeTransformer(transformer.Base):
   def _function_is_compilable(self, target_entity):
     """Determines whether an entity can be compiled at all."""
     # TODO(mdan): This is just a placeholder. Implement.
-    return not isinstance(target_entity, types.BuiltinFunctionType)
+    return not inspect_utils.isbuiltin(target_entity)
 
   def _should_compile(self, node, fqn):
     """Determines whether an entity should be compiled in the context."""

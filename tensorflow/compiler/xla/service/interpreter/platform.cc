@@ -35,17 +35,19 @@ namespace perftools {
 namespace gputools {
 namespace interpreter {
 
-InterpreterPlatform::InterpreterPlatform() : name_("Interpreter") {}
+XlaInterpreterPlatform::XlaInterpreterPlatform() : name_("Interpreter") {}
 
-InterpreterPlatform::~InterpreterPlatform() {}
+XlaInterpreterPlatform::~XlaInterpreterPlatform() {}
 
-Platform::Id InterpreterPlatform::id() const { return kInterpreterPlatformId; }
+Platform::Id XlaInterpreterPlatform::id() const {
+  return kXlaInterpreterPlatformId;
+}
 
-int InterpreterPlatform::VisibleDeviceCount() const { return 1; }
+int XlaInterpreterPlatform::VisibleDeviceCount() const { return 1; }
 
-const string& InterpreterPlatform::Name() const { return name_; }
+const string& XlaInterpreterPlatform::Name() const { return name_; }
 
-port::StatusOr<StreamExecutor*> InterpreterPlatform::ExecutorForDevice(
+port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
     int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
@@ -55,7 +57,7 @@ port::StatusOr<StreamExecutor*> InterpreterPlatform::ExecutorForDevice(
 }
 
 port::StatusOr<StreamExecutor*>
-InterpreterPlatform::ExecutorForDeviceWithPluginConfig(
+XlaInterpreterPlatform::ExecutorForDeviceWithPluginConfig(
     int device_ordinal, const PluginConfig& plugin_config) {
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
@@ -64,16 +66,17 @@ InterpreterPlatform::ExecutorForDeviceWithPluginConfig(
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> InterpreterPlatform::GetExecutor(
+port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
-InterpreterPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
+XlaInterpreterPlatform::GetUncachedExecutor(
+    const StreamExecutorConfig& config) {
   auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<InterpreterExecutor>(config.plugin_config));
+      this, port::MakeUnique<XlaInterpreterExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
@@ -86,17 +89,17 @@ InterpreterPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   return std::move(executor);
 }
 
-void InterpreterPlatform::RegisterTraceListener(
+void XlaInterpreterPlatform::RegisterTraceListener(
     std::unique_ptr<TraceListener> listener) {
   LOG(FATAL) << "not yet implemented: register executor trace listener";
 }
 
-void InterpreterPlatform::UnregisterTraceListener(TraceListener* listener) {
+void XlaInterpreterPlatform::UnregisterTraceListener(TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister executor trace listener";
 }
 
-static void InitializeInterpreterPlatform() {
-  std::unique_ptr<se::Platform> platform(new sep::InterpreterPlatform);
+static void InitializeXlaInterpreterPlatform() {
+  std::unique_ptr<se::Platform> platform(new sep::XlaInterpreterPlatform);
   SE_CHECK_OK(se::MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
@@ -105,7 +108,7 @@ static void InitializeInterpreterPlatform() {
 }  // namespace perftools
 
 REGISTER_MODULE_INITIALIZER(interpreter_platform,
-                            sep::InitializeInterpreterPlatform());
+                            sep::InitializeXlaInterpreterPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 

@@ -488,7 +488,8 @@ class AllReduceCrossTowerOps(CrossTowerOps):
           "agg_small_grads_max_group = %d", len(per_device_values),
           self.all_reduce_alg, self.agg_small_grads_max_bytes,
           self.agg_small_grads_max_group)
-      tensor_packer = AggregateSmallTensorPacker(100, 10)
+      tensor_packer = AggregateSmallTensorPacker(
+          self.agg_small_grads_max_bytes, self.agg_small_grads_max_group)
       device_grad_packs = tensor_packer.pack(grouped)
     else:
       logging.info(
