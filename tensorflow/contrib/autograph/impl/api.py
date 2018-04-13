@@ -137,7 +137,7 @@ def converted_call(f, recursive, verbose, arg_types, *args, **kwargs):
 
   unknown_arg_value = object()  # Sentinel for arguments of unknown value
 
-  if tf_inspect.isbuiltin(f):
+  if inspect_utils.isbuiltin(f):
     return builtins.dynamic_builtin(f, *args, **kwargs)
 
   if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
