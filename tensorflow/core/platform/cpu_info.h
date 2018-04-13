@@ -25,6 +25,9 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 
+// TODO(jeff,sanjay): Make portable
+constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
+
 // Returns an estimate of the number of schedulable CPUs for this
 // process.  Usually, it's constant throughout the lifetime of a
 // process, but it might change if the underlying cluster management
