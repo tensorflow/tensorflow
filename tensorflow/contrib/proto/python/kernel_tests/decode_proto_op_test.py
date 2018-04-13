@@ -27,7 +27,7 @@ import numpy as np
 
 from google.protobuf import text_format
 
-from tensorflow.contrib.proto import decode_proto
+from tensorflow.contrib import proto
 from tensorflow.contrib.proto.python.kernel_tests import test_case
 from tensorflow.contrib.proto.python.kernel_tests import test_example_pb2
 from tensorflow.python.framework import dtypes
@@ -175,7 +175,7 @@ class DecodeProtoOpTest(test_case.ProtoOpTestCase):
     output_types = [f.dtype for f in fields]
 
     with self.test_session() as sess:
-      sizes, vtensor = decode_proto(
+      sizes, vtensor = proto.decode_proto(
           batch,
           message_type=message_type,
           field_names=field_names,

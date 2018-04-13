@@ -30,8 +30,7 @@ import numpy as np
 
 from google.protobuf import text_format
 
-from tensorflow.contrib.proto import decode_proto
-from tensorflow.contrib.proto import encode_proto
+from tensorflow.contrib import proto
 from tensorflow.contrib.proto.python.kernel_tests import test_case
 from tensorflow.contrib.proto.python.kernel_tests import test_example_pb2
 from tensorflow.python.framework import dtypes
@@ -51,7 +50,7 @@ class EncodeProtoOpTest(test_case.ProtoOpTestCase):
     # Invalid field name
     with self.test_session():
       with self.assertRaisesOpError('Unknown field: non_existent_field'):
-        encode_proto(
+        proto.encode_proto(
             sizes=[[1]],
             values=[np.array([[0.0]], dtype=np.int32)],
             message_type='tensorflow.contrib.proto.RepeatedPrimitiveValue',
@@ -61,7 +60,7 @@ class EncodeProtoOpTest(test_case.ProtoOpTestCase):
     with self.test_session():
       with self.assertRaisesOpError(
           'Incompatible type for field double_value.'):
-        encode_proto(
+        proto.encode_proto(
             sizes=[[1]],
             values=[np.array([[0.0]], dtype=np.int32)],
             message_type='tensorflow.contrib.proto.RepeatedPrimitiveValue',
@@ -73,7 +72,7 @@ class EncodeProtoOpTest(test_case.ProtoOpTestCase):
           r'sizes should be batch_size \+ \[len\(field_names\)\]'):
         sizes = array_ops.placeholder(dtypes.int32)
         values = array_ops.placeholder(dtypes.float64)
-        encode_proto(
+        proto.encode_proto(
             sizes=sizes,
             values=[values],
             message_type='tensorflow.contrib.proto.RepeatedPrimitiveValue',
@@ -89,7 +88,7 @@ class EncodeProtoOpTest(test_case.ProtoOpTestCase):
         sizes = array_ops.placeholder(dtypes.int32)
         values1 = array_ops.placeholder(dtypes.float64)
         values2 = array_ops.placeholder(dtypes.int32)
-        (encode_proto(
+        (proto.encode_proto(
             sizes=[[1, 1]],
             values=[values1, values2],
             message_type='tensorflow.contrib.proto.RepeatedPrimitiveValue',
@@ -104,13 +103,13 @@ class EncodeProtoOpTest(test_case.ProtoOpTestCase):
     out_types = [f.dtype for f in fields]
 
     with self.test_session() as sess:
-      sizes, field_tensors = decode_proto(
+      sizes, field_tensors = proto.decode_proto(
           in_bufs,
           message_type=message_type,
           field_names=field_names,
           output_types=out_types)
 
-      out_tensors = encode_proto(
+      out_tensors = proto.encode_proto(
           sizes,
           field_tensors,
           message_type=message_type,
