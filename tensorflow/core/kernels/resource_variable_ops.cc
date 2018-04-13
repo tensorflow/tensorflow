@@ -306,8 +306,9 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(DT_VARIANT)));
 
+    // For purposes of forwarding DT_VARIANT, we want the least
+    // restrictive attr; we already know the input is on host.
     AllocatorAttributes attr;
-    attr.set_on_host(true);
 
     // Copying is unnecessary if we are the last user of the value
     // tensor, we can just adopt the input tensor's buffer instead.
@@ -320,7 +321,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
     std::unique_ptr<Tensor> input_alias = context->forward_input(
         1, OpKernelContext::Params::kNoReservation /*output_index*/, DT_VARIANT,
         value.shape(),
-        std::is_same<Device, CPUDevice>::value ? HOST_MEMORY : DEVICE_MEMORY,
+        DEVICE_MEMORY /* HOST_MEMORY is only reserved for special cases */,
         attr);
 
     mutex_lock ml(*variable->mu());
@@ -337,6 +338,8 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
         !variable->tensor()->shape().IsSameSize(value.shape())) {
       PersistentTensor unused;
       Tensor* tmp;
+      // Allocation of DT_VARIANT is always on host.
+      attr.set_on_host(true);
       OP_REQUIRES_OK(context,
                      context->allocate_persistent(DT_VARIANT, value.shape(),
                                                   &unused, &tmp, attr));

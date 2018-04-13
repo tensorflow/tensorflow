@@ -22,6 +22,10 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+// Compute a topological ordering for the graph nodes.
+Status ComputeTopologicalOrder(
+    const GraphDef& graph, std::unordered_map<const NodeDef*, int>* topo_order);
+
 // Sort a graph in topological order.
 Status TopologicalSort(GraphDef* graph);
 

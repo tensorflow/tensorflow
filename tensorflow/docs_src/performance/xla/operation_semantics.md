@@ -854,12 +854,13 @@ calculation of 'start_indices') is currently implementation-defined.
 | `operand`       | `ComputationDataHandle` | N dimensional array of type T    |
 | `update`        | `ComputationDataHandle` | N dimensional array of type T    |
 :                 :                         : containing the slice update.     :
-:                 :                         : Each dimension of update shape    :
+:                 :                         : Each dimension of update shape   :
 :                 :                         : must be strictly greater than    :
 :                 :                         : zero, and start + update must be :
-:                 :                         : less than operand size for each  :
-:                 :                         : dimension to avoid generating    :
-:                 :                         : out-of-bounds update indices.    :
+:                 :                         : less than or equal to the operand:
+:                 :                         : size for each dimension to avoid :
+:                 :                         : generating out-of-bounds update  :
+:                 :                         : indices.                         :
 | `start_indices` | `ComputationDataHandle` | Rank 1 array of N integers       |
 :                 :                         : containing the starting indices  :
 :                 :                         : of the slice for each dimension. :

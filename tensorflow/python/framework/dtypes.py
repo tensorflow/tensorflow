@@ -297,6 +297,9 @@ class DType(object):
   def __hash__(self):
     return self._type_enum
 
+  def __reduce__(self):
+    return as_dtype, (self.name,)
+
   @property
   def size(self):
     if (self._type_enum == types_pb2.DT_VARIANT or

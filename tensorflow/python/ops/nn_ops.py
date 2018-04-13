@@ -1803,8 +1803,11 @@ def softmax_cross_entropy_with_logits_v2(
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  `logits` and `labels` must have the same shape, e.g.
-  `[batch_size, num_classes]` and the same dtype (either `float16`, `float32`,
+  A common use case is to have logits and labels of shape
+  `[batch_size, num_classes]`, but higher dimensions are supported, with
+  the `dim` argument specifying the class dimension.
+
+  `logits` and `labels` must have the same dtype (either `float16`, `float32`,
   or `float64`).
 
   Backpropagation will happen into both `logits` and `labels`.  To disallow
@@ -1816,14 +1819,17 @@ def softmax_cross_entropy_with_logits_v2(
 
   Args:
     _sentinel: Used to prevent positional parameters. Internal, do not use.
-    labels: Each row `labels[i]` must be a valid probability distribution.
+    labels: Each vector along the class dimension should hold a valid
+      probability distribution e.g. for the case in which labels are of shape
+      `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
+      probability distribution.
     logits: Unscaled log probabilities.
     dim: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
 
   Returns:
-    A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
-    softmax cross entropy loss.
+    A `Tensor` of the same shape as `labels` and of the same type as `logits`
+    with the softmax cross entropy loss.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
@@ -1926,9 +1932,9 @@ def softmax_cross_entropy_with_logits(
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  `logits` and `labels` must have the same shape, e.g.
-  `[batch_size, num_classes]` and the same dtype (either `float16`, `float32`,
-  or `float64`).
+  A common use case is to have logits and labels of shape
+  `[batch_size, num_classes]`, but higher dimensions are supported, with
+  the `dim` argument specifying the class dimension.
 
   Backpropagation will happen only into `logits`.  To calculate a cross entropy
   loss that allows backpropagation into both `logits` and `labels`, see
@@ -1939,14 +1945,17 @@ def softmax_cross_entropy_with_logits(
 
   Args:
     _sentinel: Used to prevent positional parameters. Internal, do not use.
-    labels: Each row `labels[i]` must be a valid probability distribution.
+    labels: Each vector along the class dimension should hold a valid
+      probability distribution e.g. for the case in which labels are of shape
+      `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
+      probability distribution.
     logits: Unscaled log probabilities.
     dim: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
 
   Returns:
-    A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
-    softmax cross entropy loss.
+    A `Tensor` of the same shape as `labels` and of the same type as `logits`
+    with the softmax cross entropy loss.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
@@ -1983,8 +1992,11 @@ def sparse_softmax_cross_entropy_with_logits(
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  A common use case is to have logits of shape `[batch_size, num_classes]` and
-  labels of shape `[batch_size]`. But higher dimensions are supported.
+  A common use case is to have logits and labels of shape
+  `[batch_size, num_classes]`, but higher dimensions are supported, in which
+  case the `dim`-th dimension is assumed to be of size `num_classes`.
+  `logits` and `labels` must have the same dtype (either `float16`, `float32`,
+  or `float64`).
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**
