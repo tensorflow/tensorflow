@@ -895,6 +895,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "MAXIMUM", OperatorType::kTensorFlowMaximum));
   ops.emplace_back(new SimpleOperator<TensorFlowMinimumOperator>(
       "MINIMUM", OperatorType::kTensorFlowMinimum));
+  ops.emplace_back(new SimpleOperator<TensorFlowLessOperator>(
+      "LESS", OperatorType::kTensorFlowLess));
 
   return ops;
 }

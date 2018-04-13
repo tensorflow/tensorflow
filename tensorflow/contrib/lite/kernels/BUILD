@@ -136,6 +136,7 @@ cc_library(
         "bidirectional_sequence_lstm.cc",
         "bidirectional_sequence_rnn.cc",
         "cast.cc",
+        "comparisons.cc",
         "concatenation.cc",
         "conv.cc",
         "depthwise_conv.cc",
@@ -810,6 +811,24 @@ tf_cc_test(
     size = "small",
     srcs = ["strided_slice_test.cc"],
     tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "comparisons_test",
+    size = "small",
+    srcs = [
+        "comparisons_test.cc",
+    ],
+    tags = [
+        "tflite_not_portable_ios_arm64",
+        "tflite_not_portable_ios_x86_64",
+    ],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

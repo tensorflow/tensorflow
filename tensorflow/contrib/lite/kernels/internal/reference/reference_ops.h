@@ -3378,6 +3378,51 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+template <typename T>
+inline void Less(int64_t num_elements, const T* input1, const T* input2,
+                 bool* output) {
+  for (int64_t i = 0; i < num_elements; ++i) {
+    output[i] = input1[i] < input2[i];
+  }
+}
+
+template <typename T>
+inline void Less(const T* input1_data, const Dims<4>& input1_dims,
+                 const T* input2_data, const Dims<4>& input2_dims,
+                 bool* output_data, const Dims<4>& output_dims) {
+  const int64_t batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int64_t width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int64_t depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  Less(batches * height * width * depth, input1_data, input2_data, output_data);
+}
+
+template <typename T1, typename T2>
+inline void BroadcastLess(T1* input1_data, const Dims<4>& input1_dims,
+                          T2* input2_data, const Dims<4>& input2_dims,
+                          bool* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastLess");
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              input1_data[SubscriptToIndex(desc1, c, x, y, b)] <
+              input2_data[SubscriptToIndex(desc2, c, x, y, b)];
+        }
+      }
+    }
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 
