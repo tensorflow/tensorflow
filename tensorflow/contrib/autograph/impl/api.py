@@ -156,7 +156,7 @@ def converted_call(f, recursive, verbose, arg_types, *args, **kwargs):
     # Constructors
     target_entity = f
     arg_map_target = f.__init__
-    effective_args = (unknown_arg_value,) + args
+    effective_args = args
     partial_types = ()
 
   elif hasattr(f, '__call__') and hasattr(f, '__class__'):
