@@ -54,8 +54,6 @@ _OPTIMIZER_SLOTS_NAME = _ESCAPE_CHAR + "OPTIMIZER_SLOT"
 # attribute in checkpoint names. Used like:
 #   <path to variable>/<_OBJECT_ATTRIBUTES_NAME>/<name of attribute>
 _OBJECT_ATTRIBUTES_NAME = _ESCAPE_CHAR + "ATTRIBUTES"
-# Key where the object graph proto is saved in a TensorBundle
-_OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
 
 
 class _CheckpointRestoreCoordinator(object):
@@ -680,10 +678,11 @@ class CheckpointableSaver(object):
         object_graph_tensor = constant_op.constant(
             graph_proto.SerializeToString(), dtype=dtypes.string)
       feed_additions = None
-    assert _OBJECT_GRAPH_PROTO_KEY not in named_variables
-    named_variables[_OBJECT_GRAPH_PROTO_KEY] = _NoRestoreSaveable(
-        tensor=object_graph_tensor,
-        name=_OBJECT_GRAPH_PROTO_KEY)
+    assert checkpointable_lib.OBJECT_GRAPH_PROTO_KEY not in named_variables
+    named_variables[checkpointable_lib.OBJECT_GRAPH_PROTO_KEY] = (
+        _NoRestoreSaveable(
+            tensor=object_graph_tensor,
+            name=checkpointable_lib.OBJECT_GRAPH_PROTO_KEY))
     if (self._last_save_object_graph != graph_proto
         # When executing eagerly, we need to re-create SaveableObjects each time
         # save() is called so they pick up new Tensors passed to their
@@ -786,7 +785,8 @@ class CheckpointableSaver(object):
       file_prefix_feed_dict = None
     reader = pywrap_tensorflow.NewCheckpointReader(save_path)
     try:
-      object_graph_string = reader.get_tensor(_OBJECT_GRAPH_PROTO_KEY)
+      object_graph_string = reader.get_tensor(
+          checkpointable_lib.OBJECT_GRAPH_PROTO_KEY)
     except errors_impl.NotFoundError:
       # The object graph proto does not exist in this checkpoint. Try again with
       # name-based saving.

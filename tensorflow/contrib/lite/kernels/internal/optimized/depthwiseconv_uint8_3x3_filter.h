@@ -386,12 +386,13 @@ inline void DotProductAndStore2yStride1(
 }
 
 // A kernel that is optimized on the number of output cells in the x and y
-// direction, and the stride. Assumes 3x3 filters of 16 depth.
-template <int kFixedOutputY, int kFixedOutputX, int kFixedStride = 1>
+// direction, and the stride. Assumes 3x3 filters of 8 depth.
+template <int kFixedOutputY, int kFixedOutputX, int kFixedStrideWidth,
+          int kFixedStrideHeight>
 struct ConvKernel3x3FilterDepth8 {};
 
 template <>
-struct ConvKernel3x3FilterDepth8<8, 8, 1> {
+struct ConvKernel3x3FilterDepth8<8, 8, 1, 1> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -1642,7 +1643,7 @@ struct ConvKernel3x3FilterDepth8<8, 8, 1> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<4, 4, 1> {
+struct ConvKernel3x3FilterDepth8<4, 4, 1, 1> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -1957,7 +1958,7 @@ struct ConvKernel3x3FilterDepth8<4, 4, 1> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<4, 2, 1> {
+struct ConvKernel3x3FilterDepth8<4, 2, 1, 1> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -2123,7 +2124,7 @@ struct ConvKernel3x3FilterDepth8<4, 2, 1> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<4, 1, 1> {
+struct ConvKernel3x3FilterDepth8<4, 1, 1, 1> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -2235,7 +2236,7 @@ struct ConvKernel3x3FilterDepth8<4, 1, 1> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<2, 2, 1> {
+struct ConvKernel3x3FilterDepth8<2, 2, 1, 1> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -2373,7 +2374,7 @@ struct ConvKernel3x3FilterDepth8<2, 2, 1> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<2, 4, 1> {
+struct ConvKernel3x3FilterDepth8<2, 4, 1, 1> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -2554,7 +2555,7 @@ struct ConvKernel3x3FilterDepth8<2, 4, 1> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<1, 4, 1> {
+struct ConvKernel3x3FilterDepth8<1, 4, 1, 1> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -2669,7 +2670,7 @@ struct ConvKernel3x3FilterDepth8<1, 4, 1> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<2, 1, 1> {
+struct ConvKernel3x3FilterDepth8<2, 1, 1, 1> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -2746,7 +2747,7 @@ struct ConvKernel3x3FilterDepth8<2, 1, 1> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<4, 2, 2> {
+struct ConvKernel3x3FilterDepth8<4, 2, 2, 2> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3063,7 +3064,7 @@ struct ConvKernel3x3FilterDepth8<4, 2, 2> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<4, 4, 2> {
+struct ConvKernel3x3FilterDepth8<4, 4, 2, 2> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3073,13 +3074,13 @@ struct ConvKernel3x3FilterDepth8<4, 4, 2> {
                          int32 output_activation_max, uint8* output_ptr,
                          int output_depth, int output_width) {
     // Reuse 4x2 kernel twice.
-    ConvKernel3x3FilterDepth8<4, 2, 2>::Run(
+    ConvKernel3x3FilterDepth8<4, 2, 2, 2>::Run(
         input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
         filter_offset, bias_ptr, output_offset, output_multiplier, output_shift,
         output_activation_min, output_activation_max, output_ptr, output_depth,
         output_width);
 
-    ConvKernel3x3FilterDepth8<4, 2, 2>::Run(
+    ConvKernel3x3FilterDepth8<4, 2, 2, 2>::Run(
         input_ptr + 4 * input_depth, input_depth, input_offset, input_row_size,
         filter_ptr, filter_offset, bias_ptr, output_offset, output_multiplier,
         output_shift, output_activation_min, output_activation_max,
@@ -3088,7 +3089,7 @@ struct ConvKernel3x3FilterDepth8<4, 4, 2> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<4, 1, 2> {
+struct ConvKernel3x3FilterDepth8<4, 1, 2, 2> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3243,7 +3244,7 @@ struct ConvKernel3x3FilterDepth8<4, 1, 2> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<2, 2, 2> {
+struct ConvKernel3x3FilterDepth8<2, 2, 2, 2> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3433,7 +3434,7 @@ struct ConvKernel3x3FilterDepth8<2, 2, 2> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<2, 4, 2> {
+struct ConvKernel3x3FilterDepth8<2, 4, 2, 2> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3443,13 +3444,13 @@ struct ConvKernel3x3FilterDepth8<2, 4, 2> {
                          int32 output_activation_max, uint8* output_ptr,
                          int output_depth, int output_width) {
     // Reuse 2x2 kernel twice.
-    ConvKernel3x3FilterDepth8<2, 2, 2>::Run(
+    ConvKernel3x3FilterDepth8<2, 2, 2, 2>::Run(
         input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
         filter_offset, bias_ptr, output_offset, output_multiplier, output_shift,
         output_activation_min, output_activation_max, output_ptr, output_depth,
         output_width);
 
-    ConvKernel3x3FilterDepth8<2, 2, 2>::Run(
+    ConvKernel3x3FilterDepth8<2, 2, 2, 2>::Run(
         input_ptr + 4 * input_depth, input_depth, input_offset, input_row_size,
         filter_ptr, filter_offset, bias_ptr, output_offset, output_multiplier,
         output_shift, output_activation_min, output_activation_max,
@@ -3458,7 +3459,7 @@ struct ConvKernel3x3FilterDepth8<2, 4, 2> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<2, 1, 2> {
+struct ConvKernel3x3FilterDepth8<2, 1, 2, 2> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3551,7 +3552,7 @@ struct ConvKernel3x3FilterDepth8<2, 1, 2> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<1, 2, 2> {
+struct ConvKernel3x3FilterDepth8<1, 2, 2, 2> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3643,7 +3644,7 @@ struct ConvKernel3x3FilterDepth8<1, 2, 2> {
 };
 
 template <>
-struct ConvKernel3x3FilterDepth8<1, 4, 2> {
+struct ConvKernel3x3FilterDepth8<1, 4, 2, 2> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3798,8 +3799,8 @@ struct ConvKernel3x3FilterDepth8<1, 4, 2> {
   }
 };
 
-template <>
-struct ConvKernel3x3FilterDepth8<1, 1> {
+template <int kFixedStrideWidth, int kFixedStrideHeight>
+struct ConvKernel3x3FilterDepth8<1, 1, kFixedStrideWidth, kFixedStrideHeight> {
   static inline void Run(const uint8* input_ptr, int input_depth,
                          int32 input_offset, int input_row_size,
                          const uint8* filter_ptr, int32 filter_offset,
@@ -3872,12 +3873,11 @@ inline void ShuffleInput(const uint8* input_ptr, int input_depth,
   }
 }
 
-template <int kFixedHeight, int kFixedStrideWidth,
-          int kFixedStrideHeight = kFixedStrideWidth>
+template <int kFixedHeight, int kFixedStrideWidth, int kFixedStrideHeight>
 struct ConvRow3x3FilterDepth8 {};
 
-template <int kFixedStrideWidth>
-struct ConvRow3x3FilterDepth8<1, kFixedStrideWidth> {
+template <int kFixedStrideWidth, int kFixedStrideHeight>
+struct ConvRow3x3FilterDepth8<1, kFixedStrideWidth, kFixedStrideHeight> {
   static inline void Run(const uint8* input_data, int start_x, int start_y,
                          int input_depth, int input_width, int input_height,
                          int input_row_size, int32 input_offset,
@@ -3899,11 +3899,11 @@ struct ConvRow3x3FilterDepth8<1, kFixedStrideWidth> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<1, 4, kFixedStrideWidth>::Run(
-            input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
-            filter_offset, bias_ptr, output_offset, output_multiplier,
-            output_shift, output_activation_min, output_activation_max,
-            output_ptr, output_depth, output_width);
+        ConvKernel3x3FilterDepth8<1, 4, kFixedStrideWidth, kFixedStrideHeight>::
+            Run(input_ptr, input_depth, input_offset, input_row_size,
+                filter_ptr, filter_offset, bias_ptr, output_offset,
+                output_multiplier, output_shift, output_activation_min,
+                output_activation_max, output_ptr, output_depth, output_width);
 
         input_ptr += 8;
         output_ptr += 8;
@@ -3924,11 +3924,11 @@ struct ConvRow3x3FilterDepth8<1, kFixedStrideWidth> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<1, 1>::Run(
-            input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
-            filter_offset, bias_ptr, output_offset, output_multiplier,
-            output_shift, output_activation_min, output_activation_max,
-            output_ptr, output_depth, output_width);
+        ConvKernel3x3FilterDepth8<1, 1, kFixedStrideWidth, kFixedStrideHeight>::
+            Run(input_ptr, input_depth, input_offset, input_row_size,
+                filter_ptr, filter_offset, bias_ptr, output_offset,
+                output_multiplier, output_shift, output_activation_min,
+                output_activation_max, output_ptr, output_depth, output_width);
 
         input_ptr += 8;
         output_ptr += 8;
@@ -3942,8 +3942,8 @@ struct ConvRow3x3FilterDepth8<1, kFixedStrideWidth> {
   }
 };
 
-template <int kFixedStrideWidth>
-struct ConvRow3x3FilterDepth8<2, kFixedStrideWidth> {
+template <int kFixedStrideWidth, int kFixedStrideHeight>
+struct ConvRow3x3FilterDepth8<2, kFixedStrideWidth, kFixedStrideHeight> {
   static inline void Run(const uint8* input_data, int start_x, int start_y,
                          int input_depth, int input_width, int input_height,
                          int input_row_size, int32 input_offset,
@@ -3965,11 +3965,11 @@ struct ConvRow3x3FilterDepth8<2, kFixedStrideWidth> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<2, 4, kFixedStrideWidth>::Run(
-            input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
-            filter_offset, bias_ptr, output_offset, output_multiplier,
-            output_shift, output_activation_min, output_activation_max,
-            output_ptr, output_depth, output_width);
+        ConvKernel3x3FilterDepth8<2, 4, kFixedStrideWidth, kFixedStrideHeight>::
+            Run(input_ptr, input_depth, input_offset, input_row_size,
+                filter_ptr, filter_offset, bias_ptr, output_offset,
+                output_multiplier, output_shift, output_activation_min,
+                output_activation_max, output_ptr, output_depth, output_width);
 
         input_ptr += 8;
         output_ptr += 8;
@@ -3990,11 +3990,11 @@ struct ConvRow3x3FilterDepth8<2, kFixedStrideWidth> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<2, 2, kFixedStrideWidth>::Run(
-            input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
-            filter_offset, bias_ptr, output_offset, output_multiplier,
-            output_shift, output_activation_min, output_activation_max,
-            output_ptr, output_depth, output_width);
+        ConvKernel3x3FilterDepth8<2, 2, kFixedStrideWidth, kFixedStrideHeight>::
+            Run(input_ptr, input_depth, input_offset, input_row_size,
+                filter_ptr, filter_offset, bias_ptr, output_offset,
+                output_multiplier, output_shift, output_activation_min,
+                output_activation_max, output_ptr, output_depth, output_width);
 
         input_ptr += 8;
         output_ptr += 8;
@@ -4015,11 +4015,11 @@ struct ConvRow3x3FilterDepth8<2, kFixedStrideWidth> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<2, 1, kFixedStrideWidth>::Run(
-            input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
-            filter_offset, bias_ptr, output_offset, output_multiplier,
-            output_shift, output_activation_min, output_activation_max,
-            output_ptr, output_depth, output_width);
+        ConvKernel3x3FilterDepth8<2, 1, kFixedStrideWidth, kFixedStrideHeight>::
+            Run(input_ptr, input_depth, input_offset, input_row_size,
+                filter_ptr, filter_offset, bias_ptr, output_offset,
+                output_multiplier, output_shift, output_activation_min,
+                output_activation_max, output_ptr, output_depth, output_width);
 
         input_ptr += 8;
         output_ptr += 8;
@@ -4034,7 +4034,7 @@ struct ConvRow3x3FilterDepth8<2, kFixedStrideWidth> {
 };
 
 template <>
-struct ConvRow3x3FilterDepth8<4, 1> {
+struct ConvRow3x3FilterDepth8<4, 1, 1> {
   static inline void Run(const uint8* input_data, int start_x, int start_y,
                          int input_depth, int input_width, int input_height,
                          int input_row_size, int32 input_offset,
@@ -4056,7 +4056,7 @@ struct ConvRow3x3FilterDepth8<4, 1> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<4, 4, 1>::Run(
+        ConvKernel3x3FilterDepth8<4, 4, 1, 1>::Run(
             input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
             filter_offset, bias_ptr, output_offset, output_multiplier,
             output_shift, output_activation_min, output_activation_max,
@@ -4082,7 +4082,7 @@ struct ConvRow3x3FilterDepth8<4, 1> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<4, 2, 1>::Run(
+        ConvKernel3x3FilterDepth8<4, 2, 1, 1>::Run(
             input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
             filter_offset, bias_ptr, output_offset, output_multiplier,
             output_shift, output_activation_min, output_activation_max,
@@ -4107,7 +4107,7 @@ struct ConvRow3x3FilterDepth8<4, 1> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<4, 1, 1>::Run(
+        ConvKernel3x3FilterDepth8<4, 1, 1, 1>::Run(
             input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
             filter_offset, bias_ptr, output_offset, output_multiplier,
             output_shift, output_activation_min, output_activation_max,
@@ -4126,7 +4126,7 @@ struct ConvRow3x3FilterDepth8<4, 1> {
 };
 
 template <>
-struct ConvRow3x3FilterDepth8<4, 2> {
+struct ConvRow3x3FilterDepth8<4, 2, 2> {
   // The buffer size of the shuffled input.
   static inline constexpr int ShuffleWorkspaceSize() { return 64 * 9 * 9; }
 
@@ -4195,7 +4195,7 @@ struct ConvRow3x3FilterDepth8<4, 2> {
         const uint8* shuffled_ptr = &shuffle_workspace[0];
 
         for (int micro_depth = 0; micro_depth <= 64 - 8; micro_depth += 8) {
-          ConvKernel3x3FilterDepth8<4, 4, 2>::Run(
+          ConvKernel3x3FilterDepth8<4, 4, 2, 2>::Run(
               shuffled_ptr, 64, input_offset, 64 * 9, filter_ptr, filter_offset,
               bias_ptr, output_offset, output_multiplier, output_shift,
               output_activation_min, output_activation_max, output_ptr,
@@ -4221,7 +4221,7 @@ struct ConvRow3x3FilterDepth8<4, 2> {
       DEPTHWISECONV_PRELOAD_ROW(input_ptr, 8);
 
       for (; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<4, 4, 2>::Run(
+        ConvKernel3x3FilterDepth8<4, 4, 2, 2>::Run(
             input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
             filter_offset, bias_ptr, output_offset, output_multiplier,
             output_shift, output_activation_min, output_activation_max,
@@ -4249,7 +4249,7 @@ struct ConvRow3x3FilterDepth8<4, 2> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<4, 2, 2>::Run(
+        ConvKernel3x3FilterDepth8<4, 2, 2, 2>::Run(
             input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
             filter_offset, bias_ptr, output_offset, output_multiplier,
             output_shift, output_activation_min, output_activation_max,
@@ -4274,7 +4274,7 @@ struct ConvRow3x3FilterDepth8<4, 2> {
       uint8* output_ptr = output_data;
 
       for (int depth = 0; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<4, 1, 2>::Run(
+        ConvKernel3x3FilterDepth8<4, 1, 2, 2>::Run(
             input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
             filter_offset, bias_ptr, output_offset, output_multiplier,
             output_shift, output_activation_min, output_activation_max,
@@ -4293,7 +4293,7 @@ struct ConvRow3x3FilterDepth8<4, 2> {
 };
 
 template <>
-struct ConvRow3x3FilterDepth8<8, 2> {
+struct ConvRow3x3FilterDepth8<8, 2, 2> {
   static inline void Run(const uint8* input_data, int start_x, int start_y,
                          int input_depth, int input_width, int input_height,
                          int input_row_size, int32 input_offset,
@@ -4305,14 +4305,14 @@ struct ConvRow3x3FilterDepth8<8, 2> {
                          int output_depth, int output_width,
                          uint8* shuffle_workspace) {
     // Reuse 4 row kernels twice.
-    ConvRow3x3FilterDepth8<4, 2>::Run(
+    ConvRow3x3FilterDepth8<4, 2, 2>::Run(
         input_data, start_x, start_y, input_depth, input_width, input_height,
         input_row_size, input_offset, filter_data, filter_offset, bias_data,
         output_offset, output_multiplier, output_shift, output_activation_min,
         output_activation_max, output_data, output_depth, output_width,
         shuffle_workspace);
 
-    ConvRow3x3FilterDepth8<4, 2>::Run(
+    ConvRow3x3FilterDepth8<4, 2, 2>::Run(
         input_data + 2 * 4 * input_row_size, start_x, start_y + 4, input_depth,
         input_width, input_height, input_row_size, input_offset, filter_data,
         filter_offset, bias_data, output_offset, output_multiplier,
@@ -4323,7 +4323,7 @@ struct ConvRow3x3FilterDepth8<8, 2> {
 };
 
 template <>
-struct ConvRow3x3FilterDepth8<8, 1> {
+struct ConvRow3x3FilterDepth8<8, 1, 1> {
   // The buffer size of the shuffled input.
   static inline constexpr int ShuffleWorkspaceSize() { return 64 * 10 * 10; }
 
@@ -4359,7 +4359,7 @@ struct ConvRow3x3FilterDepth8<8, 1> {
         const uint8* shuffled_ptr = shuffle_workspace;
 
         for (int micro_depth = 0; micro_depth <= 64 - 8; micro_depth += 8) {
-          ConvKernel3x3FilterDepth8<8, 8, 1>::Run(
+          ConvKernel3x3FilterDepth8<8, 8, 1, 1>::Run(
               shuffled_ptr, 64, input_offset, 64 * 10, filter_ptr,
               filter_offset, bias_ptr, output_offset, output_multiplier,
               output_shift, output_activation_min, output_activation_max,
@@ -4374,7 +4374,7 @@ struct ConvRow3x3FilterDepth8<8, 1> {
       }
 
       for (; depth <= output_depth - 8; depth += 8) {
-        ConvKernel3x3FilterDepth8<8, 8, 1>::Run(
+        ConvKernel3x3FilterDepth8<8, 8, 1, 1>::Run(
             input_ptr, input_depth, input_offset, input_row_size, filter_ptr,
             filter_offset, bias_ptr, output_offset, output_multiplier,
             output_shift, output_activation_min, output_activation_max,
@@ -4391,14 +4391,14 @@ struct ConvRow3x3FilterDepth8<8, 1> {
     }
 
     // Handle the rest of the right side by re-using 4 row kernels twice.
-    ConvRow3x3FilterDepth8<4, 1>::Run(
+    ConvRow3x3FilterDepth8<4, 1, 1>::Run(
         input_data, out_x, start_y, input_depth, input_width, input_height,
         input_row_size, input_offset, filter_data, filter_offset, bias_data,
         output_offset, output_multiplier, output_shift, output_activation_min,
         output_activation_max, output_data, output_depth, output_width,
         shuffle_workspace);
 
-    ConvRow3x3FilterDepth8<4, 1>::Run(
+    ConvRow3x3FilterDepth8<4, 1, 1>::Run(
         input_data + 4 * input_row_size, out_x, start_y + 4, input_depth,
         input_width, input_height, input_row_size, input_offset, filter_data,
         filter_offset, bias_data, output_offset, output_multiplier,
@@ -4426,7 +4426,8 @@ inline bool Fast3x3FilterKernelSupported(const Dims<4>& input_dims,
                    depth_multiplier == 1 &&
                    (stride_width == 1 || stride_width == 2) &&
                    (stride_height == 1 || stride_height == 2) &&
-                   pad_width == 0 && pad_height == 0 && (input_depth % 8) == 0;
+                   (stride_width == stride_height) && pad_width == 0 &&
+                   pad_height == 0 && (input_depth % 8) == 0;
 
   if (!supported) {
     return false;
@@ -4477,23 +4478,24 @@ inline void DepthwiseConv3x3Filter(
   TFLITE_DCHECK(pad_width == 0);
   TFLITE_DCHECK(stride_height == 1 || stride_height == 2);
   TFLITE_DCHECK(stride_width == 1 || stride_width == 2);
+  TFLITE_DCHECK(stride_width == stride_height);
 
   const int input_row_size = input_depth * (input_width + 2 * pad_width);
   const int output_row_size = output_depth * output_width;
   const int input_batch_size = input_row_size * (input_height + 2 * pad_height);
   const int output_batch_size = output_depth * output_width * output_height;
 
-  using conv_row_func_t = decltype(&ConvRow3x3FilterDepth8<1, 1>::Run);
-  conv_row_func_t conv_1_output_row = ConvRow3x3FilterDepth8<1, 1>::Run;
-  conv_row_func_t conv_2_output_rows = ConvRow3x3FilterDepth8<2, 1>::Run;
-  conv_row_func_t conv_4_output_rows = ConvRow3x3FilterDepth8<4, 1>::Run;
-  conv_row_func_t conv_8_output_rows = ConvRow3x3FilterDepth8<8, 1>::Run;
+  using conv_row_func_t = decltype(&ConvRow3x3FilterDepth8<1, 1, 1>::Run);
+  conv_row_func_t conv_1_output_row = ConvRow3x3FilterDepth8<1, 1, 1>::Run;
+  conv_row_func_t conv_2_output_rows = ConvRow3x3FilterDepth8<2, 1, 1>::Run;
+  conv_row_func_t conv_4_output_rows = ConvRow3x3FilterDepth8<4, 1, 1>::Run;
+  conv_row_func_t conv_8_output_rows = ConvRow3x3FilterDepth8<8, 1, 1>::Run;
 
   if (stride_width == 2) {
-    conv_1_output_row = ConvRow3x3FilterDepth8<1, 2>::Run;
-    conv_2_output_rows = ConvRow3x3FilterDepth8<2, 2>::Run;
-    conv_4_output_rows = ConvRow3x3FilterDepth8<4, 2>::Run;
-    conv_8_output_rows = ConvRow3x3FilterDepth8<8, 2>::Run;
+    conv_1_output_row = ConvRow3x3FilterDepth8<1, 2, 2>::Run;
+    conv_2_output_rows = ConvRow3x3FilterDepth8<2, 2, 2>::Run;
+    conv_4_output_rows = ConvRow3x3FilterDepth8<4, 2, 2>::Run;
+    conv_8_output_rows = ConvRow3x3FilterDepth8<8, 2, 2>::Run;
   }
 
   // Allocate maximum memory needed for shuffled input.
@@ -4505,10 +4507,10 @@ inline void DepthwiseConv3x3Filter(
   uint8 shuffle_workspace[DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE];
 
   // Make sure the kernels using this buffer will not run out of bounds.
-  static_assert(ConvRow3x3FilterDepth8<8, 1>::ShuffleWorkspaceSize() <=
+  static_assert(ConvRow3x3FilterDepth8<8, 1, 1>::ShuffleWorkspaceSize() <=
                     DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE,
                 "Shuffle workspace size is too small.");
-  static_assert(ConvRow3x3FilterDepth8<4, 2>::ShuffleWorkspaceSize() <=
+  static_assert(ConvRow3x3FilterDepth8<4, 2, 2>::ShuffleWorkspaceSize() <=
                     DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE,
                 "Shuffle workspace size is too small.");
 

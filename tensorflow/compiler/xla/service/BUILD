@@ -303,6 +303,29 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "pattern_matcher",
+    hdrs = ["pattern_matcher.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "pattern_matcher_test",
+    srcs = ["pattern_matcher_test.cc"],
+    deps = [
+        ":hlo",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],

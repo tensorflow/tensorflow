@@ -76,6 +76,8 @@ class SquareLinearOperatorBlockDiagTest(
         build_info((1, 1)),
         build_info((1, 3, 3)),
         build_info((5, 5), blocks=[(2, 2), (3, 3)]),
+        build_info((3, 7, 7), blocks=[(1, 2, 2), (3, 2, 2), (1, 3, 3)]),
+        build_info((2, 1, 5, 5), blocks=[(2, 1, 2, 2), (1, 3, 3)]),
     ]
 
   def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
@@ -182,71 +184,6 @@ class SquareLinearOperatorBlockDiagTest(
   def test_empty_operators_raises(self):
     with self.assertRaisesRegexp(ValueError, "non-empty"):
       block_diag.LinearOperatorBlockDiag([])
-
-
-# This test is for blocks with different batch dimensions.
-# LinearOperatorFullMatrix doesn't broadcast matmul/solve.
-class SquareDiagLinearOperatorBlockDiagTest(
-    linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
-  """Most tests done in the base class LinearOperatorDerivedClassTest."""
-
-  def setUp(self):
-    # Increase from 1e-6 to 1e-4
-    self._atol[dtypes.float32] = 1e-4
-    self._atol[dtypes.complex64] = 1e-4
-    self._rtol[dtypes.float32] = 1e-4
-    self._rtol[dtypes.complex64] = 1e-4
-
-  @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
-    return [
-        build_info((3, 7, 7), blocks=[(1, 2, 2), (3, 2, 2), (1, 3, 3)]),
-        build_info((2, 1, 6, 6), blocks=[(2, 1, 2, 2), (1, 1, 4, 4)]),
-    ]
-
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
-    shape = list(build_info.shape)
-    expected_blocks = (
-        build_info.__dict__["blocks"] if "blocks" in build_info.__dict__
-        else [shape])
-    diag_matrices = [
-        linear_operator_test_util.random_uniform(
-            shape=block_shape[:-1], minval=1., maxval=20., dtype=dtype)
-        for block_shape in expected_blocks
-    ]
-
-    if use_placeholder:
-      diag_matrices_ph = [
-          array_ops.placeholder(dtype=dtype) for _ in expected_blocks
-      ]
-      diag_matrices = self.evaluate(diag_matrices)
-      # Evaluate here because (i) you cannot feed a tensor, and (ii)
-      # values are random and we want the same value used for both mat and
-      # feed_dict.
-      operator = block_diag.LinearOperatorBlockDiag(
-          [linalg.LinearOperatorDiag(m_ph) for m_ph in diag_matrices_ph])
-      feed_dict = {m_ph: m for (m_ph, m) in zip(
-          diag_matrices_ph, diag_matrices)}
-    else:
-      operator = block_diag.LinearOperatorBlockDiag(
-          [linalg.LinearOperatorDiag(m) for m in diag_matrices])
-      feed_dict = None
-      # Should be auto-set.
-      self.assertTrue(operator.is_square)
-
-    # Broadcast the shapes.
-    expected_shape = list(build_info.shape)
-
-    matrices = linear_operator_util.broadcast_matrix_batch_dims(
-        [array_ops.matrix_diag(diag_block) for diag_block in diag_matrices])
-
-    block_diag_dense = _block_diag_dense(expected_shape, matrices)
-    if not use_placeholder:
-      block_diag_dense.set_shape(
-          expected_shape[:-2] + [expected_shape[-1], expected_shape[-1]])
-
-    return operator, block_diag_dense, feed_dict
 
 
 if __name__ == "__main__":
