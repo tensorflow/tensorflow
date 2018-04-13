@@ -308,6 +308,5 @@ class TypesTest(test_util.TensorFlowTestCase):
       reconstructed = ctor(*args)
       self.assertEquals(reconstructed, dtype)
 
-
 if __name__ == "__main__":
   googletest.main()
