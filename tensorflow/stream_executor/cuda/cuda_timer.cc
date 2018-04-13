@@ -73,16 +73,22 @@ float CUDATimer::GetElapsedMilliseconds() const {
   return elapsed_milliseconds;
 }
 
-bool CUDATimer::Start(CUDAStream *stream) {
-  return CUDADriver::RecordEvent(parent_->cuda_context(), start_event_,
-                                 stream->cuda_stream())
-      .ok();
+bool CUDATimer::Start(CUDAStream* stream) {
+  port::Status status = CUDADriver::RecordEvent(
+      parent_->cuda_context(), start_event_, stream->cuda_stream());
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
 
-bool CUDATimer::Stop(CUDAStream *stream) {
-  return CUDADriver::RecordEvent(parent_->cuda_context(), stop_event_,
-                                 stream->cuda_stream())
-      .ok();
+bool CUDATimer::Stop(CUDAStream* stream) {
+  port::Status status = CUDADriver::RecordEvent(
+      parent_->cuda_context(), stop_event_, stream->cuda_stream());
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
 
 }  // namespace cuda
