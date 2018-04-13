@@ -87,6 +87,7 @@ py_library(
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/resampler:resampler_py",
         "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/contrib/rpc",
         "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/contrib/seq2seq:seq2seq_py",
         "//tensorflow/contrib/signal:signal_py",

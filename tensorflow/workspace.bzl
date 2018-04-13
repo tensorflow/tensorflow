@@ -763,6 +763,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "grpc_cpp_plugin",
       actual = "@grpc//:grpc_cpp_plugin",
   )
+  native.bind(
+      name = "grpc_python_plugin",
+      actual = "@grpc//:grpc_python_plugin",
+  )
 
   # gRPC has three empty C++ functions which it wants the user to define
   # at build time. https://github.com/grpc/grpc/issues/13590
