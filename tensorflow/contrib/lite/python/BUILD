@@ -106,8 +106,13 @@ py_test(
     deps = [
         ":convert_saved_model",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
     ],
 )

@@ -149,6 +149,19 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.framework.ops import enable_eager_execution
 
+# Necessary for the symbols in this module to be taken into account by
+# the namespace management system (API decorators).
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
+
+# Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
+# (due to a circular dependency issue: rnn depends on layers).
+nn.dynamic_rnn = rnn.dynamic_rnn
+nn.static_rnn = rnn.static_rnn
+nn.raw_rnn = rnn.raw_rnn
+nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
+nn.rnn_cell = rnn_cell
+
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
 # documentation, or remove.

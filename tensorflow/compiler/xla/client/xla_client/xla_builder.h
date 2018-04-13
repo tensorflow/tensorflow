@@ -835,6 +835,20 @@ class XlaBuilder {
   void IsConstantVisitor(const int64 op_handle, std::set<int64>* visited,
                          bool* is_constant) const;
 
+  // Checks bounds for convolution parameters.
+  Status VerifyConvolution(
+      const Shape& lhs_shape, const Shape& rhs_shape,
+      const ConvolutionDimensionNumbers& dimension_numbers) const;
+
+  // Helper function for creating a Window proto from user-supplied data.
+  // Returns error if the user-supplied data was invalid.
+  StatusOr<Window> MakeWindow(
+      tensorflow::gtl::ArraySlice<int64> window_dimensions,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+      tensorflow::gtl::ArraySlice<int64> lhs_dilation,
+      tensorflow::gtl::ArraySlice<int64> rhs_dilation) const;
+
   string name_;  // Name to use for the built computation.
 
   // The first error encountered while building the computation.

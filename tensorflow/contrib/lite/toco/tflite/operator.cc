@@ -260,12 +260,15 @@ class FakeQuant : public CustomOperator<FakeQuantOperator> {
                     flexbuffers::Builder* fbb) const override {
     fbb->Float("min", op.minmax->min);
     fbb->Float("max", op.minmax->max);
+    fbb->Int("num_bits", op.num_bits);
   }
   void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
     auto* minmax = new MinMax;
     minmax->min = m["min"].AsFloat();
     minmax->max = m["max"].AsFloat();
     op->minmax.reset(minmax);
+    const auto& num_bits = m["num_bits"];
+    op->num_bits = num_bits.IsInt() ? num_bits.AsInt32() : 8;
   }
 };
 

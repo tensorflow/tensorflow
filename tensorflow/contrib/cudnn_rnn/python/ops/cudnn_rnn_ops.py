@@ -23,7 +23,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.layers import base as base_layer
+from tensorflow.python.keras._impl.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import init_ops
@@ -524,10 +524,7 @@ class CudnnLSTMSaveable(CudnnOpaqueParamsSaveable):
   _rnn_mode = CUDNN_LSTM
   _num_params_per_layer = CUDNN_LSTM_PARAMS_PER_LAYER
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(CudnnCompatibleLSTMCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(CudnnCompatibleLSTMCell.__name__)
 
   def _cudnn_to_tf_gate_params(self, *cu_gate_order):
     i_g, f_g, c_g, o_g = cu_gate_order
@@ -648,10 +645,7 @@ class CudnnGRUSaveable(CudnnOpaqueParamsSaveable):
   _rnn_mode = CUDNN_GRU
   _num_params_per_layer = CUDNN_GRU_PARAMS_PER_LAYER
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(CudnnCompatibleGRUCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(CudnnCompatibleGRUCell.__name__)
 
   def _cudnn_to_tf_weights(self, *cu_weights):
     r"""Stitching cudnn canonical weights to generate tf canonical weights."""
@@ -730,11 +724,7 @@ class CudnnGRUSaveable(CudnnOpaqueParamsSaveable):
 class CudnnRNNSimpleSaveable(CudnnLSTMSaveable):
   """SaveableObject implementation handling Cudnn RNN Tanh opaque params."""
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(
-      rnn_cell_impl.BasicRNNCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(rnn_cell_impl.BasicRNNCell.__name__)
 
   def _cudnn_to_tf_weights(self, *cu_weights):
     r"""Stitching cudnn canonical weights to generate tf canonical weights."""
