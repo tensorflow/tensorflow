@@ -27,9 +27,10 @@ from tensorflow.python.platform import test
 
 class FunctionNameScopeTransformer(converter_test_base.TestCase):
 
-  def test_basic_name(self):
+  def test_basic(self):
 
     def test_fn(l):
+      """This should stay here."""
       a = 5
       l += a
       return l
@@ -41,7 +42,28 @@ class FunctionNameScopeTransformer(converter_test_base.TestCase):
       result_op = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', result_op.op.name)
 
-  def test_nested_name(self):
+      self.assertEqual('This should stay here.', result.test_fn.__doc__)
+
+  def test_long_docstring(self):
+
+    def test_fn(l):
+      """Multi-line docstring.
+
+      Args:
+        l: A thing.
+      Returns:
+        l
+      """
+      return l
+
+    node = self.parse_and_analyze(test_fn, {})
+    node = name_scopes.transform(node, self.ctx)
+
+    with self.compiled(node, ops.name_scope) as result:
+      self.assertIn('Multi-line', result.test_fn.__doc__)
+      self.assertIn('Returns:', result.test_fn.__doc__)
+
+  def test_nested_functions(self):
 
     def test_fn(l):
 
@@ -62,7 +84,7 @@ class FunctionNameScopeTransformer(converter_test_base.TestCase):
       self.assertNotIn('inner_fn', first_result_input_name)
       self.assertIn('test_fn/inner_fn/', second_result_input_name)
 
-  def test_class_name(self):
+  def test_method(self):
 
     class TestClass(object):
 
@@ -87,7 +109,7 @@ class FunctionNameScopeTransformer(converter_test_base.TestCase):
       self.assertNotIn('inner_fn', first_result_input_name)
       self.assertIn('TestClass/test_fn/inner_fn/', second_result_input_name)
 
-  def test_special_name(self):
+  def test_operator(self):
 
     class TestClass(object):
 

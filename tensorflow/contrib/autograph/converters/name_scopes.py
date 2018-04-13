@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Wraps a function body with a `name_scope` of the function name.
-"""
+"""Wraps a function body with a `name_scope` of the function name."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -48,15 +47,26 @@ class FunctionNameScopeTransformer(transformer.Base):
     return name
 
   def visit_FunctionDef(self, node):
-    self.generic_visit(node)
+    node = self.generic_visit(node)
+
+    unscoped_body = []
+    scoped_body = node.body
+    if scoped_body:
+      first = scoped_body[0]
+      if isinstance(first, gast.Expr) and isinstance(first.value, gast.Str):
+        # Skip any docstring.
+        unscoped_body = scoped_body[:1]
+        scoped_body = scoped_body[1:]
+
     template = """
       with tf.name_scope(scope_name):
         body
     """
-    node.body = templates.replace(
+    scoped_body = templates.replace(
         template,
         scope_name=gast.Str(self._name_for_current_scope()),
-        body=node.body)
+        body=scoped_body)
+    node.body = unscoped_body + scoped_body
     return node
 
 
