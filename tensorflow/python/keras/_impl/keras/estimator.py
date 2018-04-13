@@ -56,14 +56,14 @@ def _cast_tensor_to_floatx(x):
 
 
 def _convert_tensor(x):
-    """ Create or cast tensor if needed"""
-    if not isinstance(x, (ops.Tensor, sparse_tensor_lib.SparseTensor)):
-        # x is a numpy array
-        x = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(x)
-    if check_ops.is_numeric_tensor(x):
-        # is_numeric_tensor returns False if provided with a numpy array
-        x = _cast_tensor_to_floatx(x)
-    return x
+  """Create or cast tensor if needed."""
+  if not isinstance(x, (ops.Tensor, sparse_tensor_lib.SparseTensor)):
+    # x is a numpy array
+    x = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(x)
+  if check_ops.is_numeric_tensor(x):
+    # is_numeric_tensor returns False if provided with a numpy array
+    x = _cast_tensor_to_floatx(x)
+  return x
 
 
 def _create_ordered_io(keras_model, estimator_io, is_input=True):

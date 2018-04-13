@@ -29,7 +29,6 @@ from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
-from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.applications import mobilenet
 from tensorflow.python.platform import gfile
@@ -141,11 +140,11 @@ def randomize_io_type(array, name):
 
 
 def lambda_string_to(k):
-    # Dummy function which reads a number.
-    # This will fail if k.dtype != string.
-    # Locally importing gen_parsing_ops for it to be available in the scope.
-    from tensorflow.python.ops.parsing_ops import gen_parsing_ops
-    return gen_parsing_ops.string_to_number(k)
+  # Dummy function which reads a number.
+  # This will fail if k.dtype != string.
+  # Locally importing gen_parsing_ops for it to be available in the scope.
+  from tensorflow.python.ops.parsing_ops import gen_parsing_ops
+  return gen_parsing_ops.string_to_number(k)
 
 
 def multi_inputs_multi_outputs_model():
