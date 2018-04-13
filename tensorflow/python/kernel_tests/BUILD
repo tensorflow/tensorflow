@@ -2669,10 +2669,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
-    tags = [
-        "manual",
-        "notap",  # b/30226163
-    ],
 )
 
 cuda_py_test(
