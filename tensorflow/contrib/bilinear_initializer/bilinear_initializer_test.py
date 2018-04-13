@@ -27,7 +27,7 @@ class BilinearInitializerTest(test.TestCase):
   def testBilinearInitializer(self):
     with self.test_session() as sess:
       # Define parameters.
-      height, width, channel = 3, 3, 3
+      height, width, channel = 4, 2, 3
       factor = 2
       kernel_width = 2 * factor - factor % 2
       num_output = 3
