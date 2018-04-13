@@ -61,14 +61,3 @@ cc_library(
         "@protobuf_archive//:protobuf_headers",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-)

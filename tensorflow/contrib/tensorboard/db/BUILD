@@ -135,9 +135,3 @@ tf_cc_binary(
         "//tensorflow/core/lib/db:sqlite",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["*"]),
-    visibility = ["//tensorflow:__pkg__"],
-)

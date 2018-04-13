@@ -46,7 +46,7 @@ py_library(
     deps = [
         ":tpu_lib",
         ":tpu_py",
-        "//tensorflow/contrib/summary:summary_ops",
+        "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -56,6 +56,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -119,6 +120,8 @@ py_library(
     srcs = ["python/profiler/__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_pb2_grpc",
+        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_proto_py",
         "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
         "//tensorflow/python:util",
     ],
@@ -157,6 +160,7 @@ py_library(
     name = "tpu_lib",
     srcs = [
         "python/tpu/__init__.py",
+        "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
@@ -212,6 +216,7 @@ tf_py_test(
         ":datasets",
     ],
     grpc_enabled = True,
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -225,12 +230,24 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 tf_py_test(
     name = "tpu_sharding_test",
     size = "small",
     srcs = ["python/tpu/tpu_sharding_test.py"],
+    additional_deps = [
+        ":tpu",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+    ],
+)
+
+tf_py_test(
+    name = "bfloat16_test",
+    size = "small",
+    srcs = ["python/tpu/bfloat16_test.py"],
     additional_deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
@@ -280,17 +297,4 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

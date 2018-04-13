@@ -30,7 +30,8 @@ REGISTER_OP("EmptyTensorList")
       DataType t;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
       shape_inference::ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(0, &s));
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{{s, t}});
       return Status::OK();
@@ -193,6 +194,7 @@ REGISTER_OP("TensorListReserve")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       DataType t;

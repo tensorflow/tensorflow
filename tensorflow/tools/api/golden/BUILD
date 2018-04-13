@@ -10,15 +10,3 @@ filegroup(
     name = "api_golden",
     srcs = glob(["*.pbtxt"]),
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

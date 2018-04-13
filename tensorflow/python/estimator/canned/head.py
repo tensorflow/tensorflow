@@ -57,8 +57,8 @@ _PREDICT_SERVING_KEY = 'predict'
 
 # A LossSpec contains
 # * a scalar `Tensor` representing reduced weighted training loss
-# * a scalar `Tensor` representing the unreduced unweighted loss
-# * a scalar `Tensor` representing the example weights
+# * a `Tensor` representing the unreduced unweighted loss
+# * a `Tensor` representing the example weights
 # * possibly processed labels (e.g. vocabulary lookup, shape manipulation, etc)
 LossSpec = collections.namedtuple(
     'LossSpec', ['training_loss', 'unreduced_loss', 'weights',
@@ -163,8 +163,8 @@ class _Head(object):
     Returns:
       A LossSpec that contains
       * the scalar `Tensor` representing reduced weighted training loss
-      * the scalar `Tensor` representing the unreduced unweighted loss
-      * the scalar `Tensor` representing the example weights
+      * the `Tensor` representing the unreduced unweighted loss
+      * the `Tensor` representing the example weights
       * possibly processed labels (e.g. vocabulary lookup, shape manipulation,
         etc.)
 
@@ -263,9 +263,12 @@ def _check_dense_labels_match_logits_and_reshape(
         if (dim1 is not None) and (dim1 != expected_labels_dimension):
           raise ValueError(
               'Mismatched label shape. '
-              'Classifier configured with n_classes=%s.  Received %s. '
-              'Suggested Fix: check your n_classes argument to the estimator '
-              'and/or the shape of your label.' %
+              'Expected labels dimension=%s.  Received %s. '
+              'Suggested Fix:'
+              'If your classifier expects one-hot encoding label,'
+              'check your n_classes argument to the estimator'
+              'and/or the shape of your label.'
+              'Otherwise, check the shape of your label.' %
               (expected_labels_dimension, dim1))
       expected_labels_shape = array_ops.concat(
           [logits_shape[:-1], [expected_labels_dimension]], axis=0)

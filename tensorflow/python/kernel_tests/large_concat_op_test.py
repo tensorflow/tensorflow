@@ -19,10 +19,12 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
+@test_util.with_c_api
 class LargeConcatOpTest(test.TestCase):
   """Tests that belong in concat_op_test.py, but run over large tensors."""
 

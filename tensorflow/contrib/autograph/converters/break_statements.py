@@ -27,11 +27,12 @@ from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
 class BreakCanonicalizationTransformer(transformer.Base):
-  """Canonicalizes continue statements into additional conditionals."""
+  """Canonicalizes break statements into additional conditionals."""
 
   def __init__(self, context):
     super(BreakCanonicalizationTransformer, self).__init__(context)
     # This is a stack structure, to correctly process nested loops.
+    # Each item is a list [break_used, break_variable_name]
     self.break_uses = []
 
   def _create_break_check(self):
@@ -99,9 +100,9 @@ class BreakCanonicalizationTransformer(transformer.Base):
     self.break_uses.append([False, break_var])
     node.body = self._manual_visit_list(node.body)
     if self.break_uses[-1][0]:
-      anno.setanno(node, 'extra_cond',
-                   gast.UnaryOp(gast.Not(),
-                                gast.Name(break_var, gast.Load(), None)))
+      extra_cond = templates.replace_as_expression(
+          'not var_name', var_name=break_var)
+      anno.setanno(node, 'extra_cond', extra_cond)
       final_nodes = [self._create_break_init(), node]
     else:
       final_nodes = node

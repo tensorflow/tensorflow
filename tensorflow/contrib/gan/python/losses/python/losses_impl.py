@@ -306,6 +306,7 @@ def wasserstein_gradient_penalty(
     discriminator_scope,
     epsilon=1e-10,
     target=1.0,
+    one_sided=False,
     weights=1.0,
     scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -327,6 +328,8 @@ def wasserstein_gradient_penalty(
       computing the gradient norm.
     target: Optional Python number or `Tensor` indicating the target value of
       gradient norm. Defaults to 1.0.
+    one_sided: If `True`, penalty proposed in https://arxiv.org/abs/1709.08894
+      is used. Defaults to `False`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `real_data` and `generated_data`, and must be broadcastable to
       them (i.e., all dimensions must be either `1`, or the same as the
@@ -377,10 +380,13 @@ def wasserstein_gradient_penalty(
     # For numerical stability, add epsilon to the sum before taking the square
     # root. Note tf.norm does not add epsilon.
     slopes = math_ops.sqrt(gradient_squares + epsilon)
-    penalties = math_ops.square(slopes / target - 1.0)
+    penalties = slopes / target - 1.0
+    if one_sided:
+      penalties = math_ops.maximum(0., penalties)
+    penalties_squared = math_ops.square(penalties)
     penalty = losses.compute_weighted_loss(
-        penalties, weights, scope=scope, loss_collection=loss_collection,
-        reduction=reduction)
+        penalties_squared, weights, scope=scope,
+        loss_collection=loss_collection, reduction=reduction)
 
     if add_summaries:
       summary.scalar('gradient_penalty_loss', penalty)
@@ -665,7 +671,7 @@ def least_squares_discriminator_loss(
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
     add_summaries=False):
-  """Least squares generator loss.
+  """Least squares discriminator loss.
 
   This loss comes from `Least Squares Generative Adversarial Networks`
   (https://arxiv.org/abs/1611.04076).

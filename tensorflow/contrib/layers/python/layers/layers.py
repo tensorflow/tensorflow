@@ -932,7 +932,8 @@ def convolution(inputs,
                 variables_collections=None,
                 outputs_collections=None,
                 trainable=True,
-                scope=None):
+                scope=None,
+                conv_dims=None):
   """Adds an N-D convolution followed by an optional batch_norm layer.
 
   It is required that 1 <= N <= 3.
@@ -993,6 +994,10 @@ def convolution(inputs,
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for `variable_scope`.
+    conv_dims: Optional convolution dimensionality, when set it would use the
+      corresponding convolution (e.g. 2 for Conv 2D, 3 for Conv 3D, ..). When
+      leaved to None it would select the convolution dimensionality based on
+      the input rank (i.e. Conv ND, with N = input_rank - 2).
 
   Returns:
     A tensor representing the output of the operation.
@@ -1015,6 +1020,9 @@ def convolution(inputs,
     inputs = ops.convert_to_tensor(inputs)
     input_rank = inputs.get_shape().ndims
 
+    if conv_dims is not None and conv_dims + 2 != input_rank:
+      raise ValueError('Convolution expects input with rank %d, got %d' %
+                       (conv_dims + 2, input_rank))
     if input_rank == 3:
       layer_class = convolutional_layers.Convolution1D
     elif input_rank == 4:
@@ -1061,10 +1069,134 @@ def convolution(inputs,
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
+@add_arg_scope
+def convolution1d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=1)
 
-convolution2d = convolution
-convolution3d = convolution
+convolution1d.__doc__ = convolution.__doc__
 
+@add_arg_scope
+def convolution2d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=2)
+
+convolution2d.__doc__ = convolution.__doc__
+
+@add_arg_scope
+def convolution3d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=3)
+
+convolution3d.__doc__ = convolution.__doc__
 
 @add_arg_scope
 def convolution2d_in_plane(
@@ -1410,7 +1542,7 @@ def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
   Args:
      tensor: An `int` `Tensor` to be converted to a `Sparse`.
      eos_token: An integer.
-       It is part of the target label that signfies the end of a sentence.
+       It is part of the target label that signifies the end of a sentence.
      outputs_collections: Collection to add the outputs.
      scope: Optional scope for name_scope.
   """
@@ -1554,7 +1686,7 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
     output_collections: Collection to which the outputs will be added.
     scope: Optional scope for `name_scope`.
   Returns:
-    A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
+    A `Tensor` or `SparseTensor` containing the same values as `inputs`, but
     with innermost dimensions flattened to obtain rank `new_rank`.
 
   Raises:
@@ -3045,16 +3177,16 @@ def legacy_fully_connected(x,
   `activation_fn` is `None`, the result of `y = w * x + b` is
   returned.
 
-  If `x` has shape [\\\(\\text{dim}_0, \\text{dim}_1, ..., \\text{dim}_n\\\)]
-  with more than 2 dimensions (\\\(n > 1\\\)), then we repeat the matrix
+  If `x` has shape [\\(\text{dim}_0, \text{dim}_1, ..., \text{dim}_n\\)]
+  with more than 2 dimensions (\\(n > 1\\)), then we repeat the matrix
   multiply along the first dimensions. The result r is a tensor of shape
-  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`],
-  where \\\( r_{i_0, ..., i_{n-1}, k} =
-  \\sum_{0 \\leq j < \\text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\\).
+  [\\(\text{dim}_0, ..., \text{dim}_{n-1},\\) `num_output_units`],
+  where \\( r_{i_0, ..., i_{n-1}, k} =
+  \sum_{0 \leq j < \text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\).
   This is accomplished by reshaping `x` to 2-D
-  [\\\(\\text{dim}_0 \\cdot ... \\cdot \\text{dim}_{n-1}, \\text{dim}_n\\\)]
+  [\\(\text{dim}_0 \cdot ... \cdot \text{dim}_{n-1}, \text{dim}_n\\)]
   before the matrix multiply and afterwards reshaping it to
-  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`].
+  [\\(\text{dim}_0, ..., \text{dim}_{n-1},\\) `num_output_units`].
 
   This op creates `w` and optionally `b`. Bias (`b`) can be disabled by setting
   `bias_init` to `None`.

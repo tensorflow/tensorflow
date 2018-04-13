@@ -1162,8 +1162,8 @@ class PoissonRegressionHead(test.TestCase):
     #         exp(-1) - 2 * (-1) + 2*ln(2) - 2 + 0.5*ln(2*pi*2),
     #         exp(1) - 3 * 1 + 3*ln(3) - 3 + 0.5*ln(2*pi*3)]
     #      = [1.0, 3.020, 1.482]
-    # sum_loss = 5.502
-    expected_loss = 5.502
+    # training_loss = (1.0 + 3.020 + 1.482) / 3
+    expected_loss = 1.834
     atol = 0.001
     expected_train_result = b'my_train_op'
     def _train_op_fn(loss):

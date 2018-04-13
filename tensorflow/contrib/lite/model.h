@@ -56,27 +56,37 @@ class TfLiteVerifier {
 // or mmapped. This uses flatbuffers as the serialization format.
 class FlatBufferModel {
  public:
-  // Builds a model based on a file. Returns a nullptr in case of failure.
+  // Builds a model based on a file.
+  // Caller retains ownership of `error_reporter` and must ensure its lifetime
+  // is longer than the FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromFile(
       const char* filename,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Verifies whether the content of the file is legit, then builds a model
-  // based on the file. Returns a nullptr in case of failure.
+  // based on the file.
+  // Caller retains ownership of `error_reporter` and must ensure its lifetime
+  // is longer than the FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromFile(
       const char* filename, TfLiteVerifier* verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Builds a model based on a pre-loaded flatbuffer. The caller retains
   // ownership of the buffer and should keep it alive until the returned object
-  // is destroyed. Returns a nullptr in case of failure.
+  // is destroyed. Caller retains ownership of `error_reporter` and must ensure
+  // its lifetime is longer than the FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromBuffer(
       const char* buffer, size_t buffer_size,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Builds a model directly from a flatbuffer pointer. The caller retains
   // ownership of the buffer and should keep it alive until the returned object
-  // is destroyed. Returns a nullptr in case of failure.
+  // is destroyed. Caller retains ownership of `error_reporter` and must ensure
+  // its lifetime is longer than the FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromModel(
       const tflite::Model* model_spec,
       ErrorReporter* error_reporter = DefaultErrorReporter());
@@ -100,7 +110,10 @@ class FlatBufferModel {
 
  private:
   // Loads a model from a given allocation. FlatBufferModel will take over the
-  // ownership of `allocation`, and delete it in desctructor.
+  // ownership of `allocation`, and delete it in destructor. The ownership of
+  // `error_reporter`remains with the caller and must have lifetime at least
+  // as much as FlatBufferModel. This is to allow multiple models to use the
+  // same ErrorReporter instance.
   FlatBufferModel(Allocation* allocation,
                   ErrorReporter* error_reporter = DefaultErrorReporter());
 
@@ -111,7 +124,10 @@ class FlatBufferModel {
   // Flatbuffer traverser pointer. (Model* is a pointer that is within the
   // allocated memory of the data allocated by allocation's internals.
   const tflite::Model* model_ = nullptr;
+  // The error reporter to use for model errors and subsequent errors when
+  // the interpreter is created
   ErrorReporter* error_reporter_;
+  // The allocator used for holding memory of the model.
   Allocation* allocation_ = nullptr;
 };
 

@@ -121,7 +121,7 @@ class Dataset(object):
       An `Iterator` over the elements of this dataset.
 
     Raises:
-      RuntimeError: If eager execution is enabled.
+      RuntimeError: If eager execution is not enabled.
     """
     if context.executing_eagerly():
       return iterator_ops.EagerIterator(self)
@@ -2043,6 +2043,8 @@ class PrefetchDataset(Dataset):
     """See `Dataset.prefetch()` for details."""
     super(PrefetchDataset, self).__init__()
     self._input_dataset = input_dataset
+    if buffer_size is None:
+      buffer_size = -1  # This is the sentinel for auto-tuning.
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
 

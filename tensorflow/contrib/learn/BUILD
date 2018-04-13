@@ -117,6 +117,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/data_feeder_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
@@ -172,6 +173,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 py_test(
@@ -190,6 +192,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/graph_actions_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",
@@ -591,6 +594,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/learn/python/learn/datasets",
@@ -820,6 +824,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/utils/saved_model_export_utils_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
@@ -873,16 +878,4 @@ py_binary(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:platform",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

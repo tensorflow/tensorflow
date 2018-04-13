@@ -20,11 +20,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#ifdef PLATFORM_GOOGLE
-#include "src/nccl.h"
-#else
+#ifdef WIN32
 #include "nccl.h"
-#endif
+#else
+"third_party/nccl/nccl.h"
+#else
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"

@@ -112,9 +112,11 @@ bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
 
 bool ConsumeCompoundAttrType(StringPiece* sp, StringPiece* out) {
   auto capture_begin = sp->begin();
-  if (sp->Consume("numbertype") || sp->Consume("numerictype") ||
-      sp->Consume("quantizedtype") || sp->Consume("realnumbertype") ||
-      sp->Consume("realnumberictype")) {
+  if (str_util::ConsumePrefix(sp, "numbertype") ||
+      str_util::ConsumePrefix(sp, "numerictype") ||
+      str_util::ConsumePrefix(sp, "quantizedtype") ||
+      str_util::ConsumePrefix(sp, "realnumbertype") ||
+      str_util::ConsumePrefix(sp, "realnumberictype")) {
     *out = StringPiece(capture_begin, sp->begin() - capture_begin);
     return true;
   }
@@ -155,32 +157,32 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   bool is_list = ConsumeListPrefix(&spec);
   string type;
   StringPiece type_string;  // Used if type == "type"
-  if (spec.Consume("string")) {
+  if (str_util::ConsumePrefix(&spec, "string")) {
     type = "string";
-  } else if (spec.Consume("int")) {
+  } else if (str_util::ConsumePrefix(&spec, "int")) {
     type = "int";
-  } else if (spec.Consume("float")) {
+  } else if (str_util::ConsumePrefix(&spec, "float")) {
     type = "float";
-  } else if (spec.Consume("bool")) {
+  } else if (str_util::ConsumePrefix(&spec, "bool")) {
     type = "bool";
-  } else if (spec.Consume("type")) {
+  } else if (str_util::ConsumePrefix(&spec, "type")) {
     type = "type";
-  } else if (spec.Consume("shape")) {
+  } else if (str_util::ConsumePrefix(&spec, "shape")) {
     type = "shape";
-  } else if (spec.Consume("tensor")) {
+  } else if (str_util::ConsumePrefix(&spec, "tensor")) {
     type = "tensor";
-  } else if (spec.Consume("func")) {
+  } else if (str_util::ConsumePrefix(&spec, "func")) {
     type = "func";
   } else if (ConsumeCompoundAttrType(&spec, &type_string)) {
     type = "type";
     AttrValue* allowed = attr->mutable_allowed_values();
     VERIFY(ProcessCompoundType(type_string, allowed),
            "Expected to see a compound type, saw: ", type_string);
-  } else if (spec.Consume("{")) {
+  } else if (str_util::ConsumePrefix(&spec, "{")) {
     // e.g. "{ int32, float, bool }" or "{ \"foo\", \"bar\" }"
     AttrValue* allowed = attr->mutable_allowed_values();
     str_util::RemoveLeadingWhitespace(&spec);
-    if (spec.starts_with("\"") || spec.starts_with("'")) {
+    if (str_util::StartsWith(spec, "\"") || str_util::StartsWith(spec, "'")) {
       type = "string";  // "{ \"foo\", \"bar\" }" or "{ 'foo', 'bar' }"
       while (true) {
         StringPiece escaped_string;
@@ -193,11 +195,12 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
                "Trouble unescaping \"", escaped_string,
                "\", got error: ", error);
         allowed->mutable_list()->add_s(unescaped);
-        if (spec.Consume(",")) {
+        if (str_util::ConsumePrefix(&spec, ",")) {
           str_util::RemoveLeadingWhitespace(&spec);
-          if (spec.Consume("}")) break;  // Allow ending with ", }".
+          if (str_util::ConsumePrefix(&spec, "}"))
+            break;  // Allow ending with ", }".
         } else {
-          VERIFY(spec.Consume("}"),
+          VERIFY(str_util::ConsumePrefix(&spec, "}"),
                  "Expected , or } after strings in list, not: '", spec, "'");
           break;
         }
@@ -215,11 +218,12 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
                  "Unrecognized type string '", type_string, "'");
           allowed->mutable_list()->add_type(dt);
         }
-        if (spec.Consume(",")) {
+        if (str_util::ConsumePrefix(&spec, ",")) {
           str_util::RemoveLeadingWhitespace(&spec);
-          if (spec.Consume("}")) break;  // Allow ending with ", }".
+          if (str_util::ConsumePrefix(&spec, "}"))
+            break;  // Allow ending with ", }".
         } else {
-          VERIFY(spec.Consume("}"),
+          VERIFY(str_util::ConsumePrefix(&spec, "}"),
                  "Expected , or } after types in list, not: '", spec, "'");
           break;
         }
@@ -232,7 +236,8 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
 
   // Write the type into *attr.
   if (is_list) {
-    VERIFY(spec.Consume(")"), "Expected ) to close 'list(', not: '", spec, "'");
+    VERIFY(str_util::ConsumePrefix(&spec, ")"),
+           "Expected ) to close 'list(', not: '", spec, "'");
     str_util::RemoveLeadingWhitespace(&spec);
     attr->set_type(strings::StrCat("list(", type, ")"));
   } else {
@@ -240,7 +245,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   }
 
   // Read optional minimum constraint at the end.
-  if ((is_list || type == "int") && spec.Consume(">=")) {
+  if ((is_list || type == "int") && str_util::ConsumePrefix(&spec, ">=")) {
     int64 min_limit = -999;
     VERIFY(ConsumeAttrNumber(&spec, &min_limit),
            "Could not parse integer lower limit after '>=', found '", spec,
@@ -250,7 +255,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   }
 
   // Parse default value, if present.
-  if (spec.Consume("=")) {
+  if (str_util::ConsumePrefix(&spec, "=")) {
     str_util::RemoveLeadingWhitespace(&spec);
     VERIFY(ParseAttrValue(attr->type(), spec, attr->mutable_default_value()),
            "Could not parse default value '", spec, "'");

@@ -41,11 +41,10 @@ from tensorflow.python.training import training_util
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
-# TODO(b/65403806): Switch loss_reduction default to SUM_OVER_BATCH_SIZE.
 def multi_class_head(n_classes,
                      weight_column=None,
                      label_vocabulary=None,
-                     loss_reduction=losses.Reduction.SUM,
+                     loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
                      loss_fn=None,
                      name=None):
   """Creates a `_Head` for multi class classification.
@@ -86,7 +85,8 @@ def multi_class_head(n_classes,
       have any value in `label_vocabulary`. Note that errors will be raised if
       `label_vocabulary` is not provided but labels are strings.
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
-      reduce training loss over batch. Defaults to `SUM`.
+      reduce training loss over batch. Defaults to `SUM_OVER_BATCH_SIZE`, namely
+      weighted sum of losses divided by batch size. See `tf.losses.Reduction`.
     loss_fn: Optional loss function.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
@@ -111,7 +111,7 @@ def binary_classification_head(
     weight_column=None,
     thresholds=None,
     label_vocabulary=None,
-    loss_reduction=losses.Reduction.SUM,
+    loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
     loss_fn=None,
     name=None):
   """Creates a `_Head` for single label binary classification.
@@ -155,7 +155,8 @@ def binary_classification_head(
       `label_vocabulary`. Note that errors will be raised if `label_vocabulary`
       is not provided but labels are strings.
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
-      reduce training loss over batch. Defaults to `SUM`.
+      reduce training loss over batch. Defaults to `SUM_OVER_BATCH_SIZE`, namely
+      weighted sum of losses divided by batch size. See `tf.losses.Reduction`.
     loss_fn: Optional loss function.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
@@ -178,7 +179,7 @@ def binary_classification_head(
 
 def regression_head(weight_column=None,
                     label_dimension=1,
-                    loss_reduction=losses.Reduction.SUM,
+                    loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
                     loss_fn=None,
                     inverse_link_fn=None,
                     name=None):
@@ -218,7 +219,9 @@ def regression_head(weight_column=None,
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
-      reduce training loss over batch. Defaults to `SUM`.
+      reduce training loss over batch and label dimension. Defaults to
+      `SUM_OVER_BATCH_SIZE`, namely weighted sum of losses divided by
+      `batch size * label_dimension`. See `tf.losses.Reduction`.
     loss_fn: Optional loss function. Defaults to `mean_squared_error`.
     inverse_link_fn: Optional inverse link function, also known as 'mean
       function'. Defaults to identity.
@@ -243,7 +246,7 @@ def regression_head(weight_column=None,
 def poisson_regression_head(
     weight_column=None,
     label_dimension=1,
-    loss_reduction=losses.Reduction.SUM,
+    loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
     compute_full_loss=True,
     name=None):
   """Creates a `_Head` for poisson regression using `tf.nn.log_poisson_loss`.
@@ -275,7 +278,9 @@ def poisson_regression_head(
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
-      reduce training loss over batch. Defaults to `SUM`.
+      reduce training loss over batch and label dimension. Defaults to
+      `SUM_OVER_BATCH_SIZE`, namely weighted sum of losses divided by
+      `batch size * label_dimension`. See `tf.losses.Reduction`.
     compute_full_loss: Whether to include the constant `log(z!)` term in
       computing the poisson loss. See `tf.nn.log_poisson_loss` for the full
       documentation.

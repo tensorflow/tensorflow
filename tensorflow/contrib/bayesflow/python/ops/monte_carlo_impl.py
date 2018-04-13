@@ -44,14 +44,14 @@ def expectation_importance_sampler(f,
                                    n=None,
                                    seed=None,
                                    name='expectation_importance_sampler'):
-  r"""Monte Carlo estimate of `E_p[f(Z)] = E_q[f(Z) p(Z) / q(Z)]`.
+  r"""Monte Carlo estimate of `\\(E_p[f(Z)] = E_q[f(Z) p(Z) / q(Z)]\\)`.
 
-  With `p(z) := exp{log_p(z)}`, this `Op` returns
+  With `\\(p(z) := exp^{log_p(z)}\\)`, this `Op` returns
 
   ```
-  n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ],  z_i ~ q,
-  \approx E_q[ f(Z) p(Z) / q(Z) ]
-  =       E_p[f(Z)]
+  \\(n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ],  z_i ~ q,\\)
+  \\(\approx E_q[ f(Z) p(Z) / q(Z) ]\\)
+  \\(=       E_p[f(Z)]\\)
   ```
 
   This integral is done in log-space with max-subtraction to better handle the
@@ -95,9 +95,9 @@ def expectation_importance_sampler(f,
       log_values = log_f_z + log_p_z - q_log_prob_z
       return _logspace_mean(log_values)
 
-    # With f_plus(z) = max(0, f(z)), f_minus(z) = max(0, -f(z)),
-    # E_p[f(Z)] = E_p[f_plus(Z)] - E_p[f_minus(Z)]
-    #           = E_p[f_plus(Z) + 1] - E_p[f_minus(Z) + 1]
+    # With \\(f_{plus}(z) = max(0, f(z)), f_{minus}(z) = max(0, -f(z))\\),
+    # \\(E_p[f(Z)] = E_p[f_{plus}(Z)] - E_p[f_{minus}(Z)]\\)
+    # \\(          = E_p[f_{plus}(Z) + 1] - E_p[f_{minus}(Z) + 1]\\)
     # Without incurring bias, 1 is added to each to prevent zeros in logspace.
     # The logarithm is approximately linear around 1 + epsilon, so this is good
     # for small values of 'z' as well.
@@ -121,13 +121,13 @@ def expectation_importance_sampler_logspace(
     name='expectation_importance_sampler_logspace'):
   r"""Importance sampling with a positive function, in log-space.
 
-  With `p(z) := exp{log_p(z)}`, and `f(z) = exp{log_f(z)}`, this `Op`
-  returns
+  With `\\(p(z) := exp^{log_p(z)}\\)`, and `\\(f(z) = exp{log_f(z)}\\)`,
+  this `Op` returns
 
   ```
-  Log[ n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ] ],  z_i ~ q,
-  \approx Log[ E_q[ f(Z) p(Z) / q(Z) ] ]
-  =       Log[E_p[f(Z)]]
+  \\(Log[ n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ] ],  z_i ~ q,\\)
+  \\(\approx Log[ E_q[ f(Z) p(Z) / q(Z) ] ]\\)
+  \\(=       Log[E_p[f(Z)]]\\)
   ```
 
   This integral is done in log-space with max-subtraction to better handle the
@@ -196,12 +196,12 @@ def _logspace_mean(log_values):
 
 def expectation(f, samples, log_prob=None, use_reparametrization=True,
                 axis=0, keep_dims=False, name=None):
-  """Computes the Monte-Carlo approximation of `E_p[f(X)]`.
+  """Computes the Monte-Carlo approximation of `\\(E_p[f(X)]\\)`.
 
   This function computes the Monte-Carlo approximation of an expectation, i.e.,
 
   ```none
-  E_p[f(X)] approx= m**-1 sum_i^m f(x_j),  x_j ~iid p(X)
+  \\(E_p[f(X)] \approx= m^{-1} sum_i^m f(x_j),  x_j\  ~iid\ p(X)\\)
   ```
 
   where:
@@ -216,8 +216,8 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
   parameterless distribution (e.g.,
   `Normal(Y; m, s) <=> Y = sX + m, X ~ Normal(0,1)`), we can swap gradient and
   expectation, i.e.,
-  `grad[ Avg{ s_i : i=1...n } ] = Avg{ grad[s_i] : i=1...n }` where
-  `S_n = Avg{s_i}` and `s_i = f(x_i), x_i ~ p`.
+  `grad[ Avg{ \\(s_i : i=1...n\\) } ] = Avg{ grad[\\(s_i\\)] : i=1...n }` where
+  `S_n = Avg{\\(s_i\\)}` and `\\(s_i = f(x_i), x_i ~ p\\)`.
 
   However, if p is not reparameterized, TensorFlow's gradient will be incorrect
   since the chain-rule stops at samples of non-reparameterized distributions.
@@ -296,7 +296,8 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
   Args:
     f: Python callable which can return `f(samples)`.
     samples: `Tensor` of samples used to form the Monte-Carlo approximation of
-      `E_p[f(X)]`.  A batch of samples should be indexed by `axis` dimensions.
+      `\\(E_p[f(X)]\\)`.  A batch of samples should be indexed by `axis`
+      dimensions.
     log_prob: Python callable which can return `log_prob(samples)`. Must
       correspond to the natural-logarithm of the pdf/pmf of each sample. Only
       required/used if `use_reparametrization=False`.
@@ -316,7 +317,7 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
 
   Returns:
     approx_expectation: `Tensor` corresponding to the Monte-Carlo approximation
-      of `E_p[f(X)]`.
+      of `\\(E_p[f(X)]\\)`.
 
   Raises:
     ValueError: if `f` is not a Python `callable`.

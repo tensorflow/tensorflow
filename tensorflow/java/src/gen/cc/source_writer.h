@@ -32,7 +32,8 @@ namespace java {
 class SourceWriter {
  public:
   SourceWriter();
-  virtual ~SourceWriter() = default;
+
+  virtual ~SourceWriter();
 
   // Indents following lines with white spaces.
   //

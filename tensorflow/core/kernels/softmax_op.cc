@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "tensorflow/core/lib/strings/str_util.h"
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -55,7 +56,7 @@ template <typename Device, typename T>
 class SoftmaxOp : public OpKernel {
  public:
   explicit SoftmaxOp(OpKernelConstruction* context) : OpKernel(context) {
-    log_ = StringPiece(type_string()).starts_with("Log");
+    log_ = str_util::StartsWith(type_string(), "Log");
   }
 
   void Compute(OpKernelContext* context) override {

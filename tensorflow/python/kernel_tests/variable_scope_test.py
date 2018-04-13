@@ -24,11 +24,13 @@ import threading
 import numpy
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -118,6 +120,16 @@ class VariableScopeTest(test.TestCase):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.dtype.base_dtype, dtypes.float16)
 
+  def testGetVariableInGraphNestedUnderEagerContext(self):
+    with context.eager_mode():
+
+      @function.defun
+      def f():
+        v = variable_scope.get_variable("should_be_resource", [])
+        self.assertEqual(type(v), resource_variable_ops.ResourceVariable)
+
+      f()
+
   def testEagerVariableStore(self):
     with context.eager_mode():
       store = variable_scope.EagerVariableStore()
@@ -155,6 +167,28 @@ class VariableScopeTest(test.TestCase):
         self.assertEqual(v.numpy(), -1)
       for v in new_store.variables():
         self.assertEqual(v.numpy(), 1)
+
+  def testEagerVariableStoreWithEagerDefun(self):
+    with context.eager_mode():
+
+      @function.defun
+      def f():
+        x = constant_op.constant([[2.0]])
+        d1 = core_layers.Dense(
+            1, name="my_dense", kernel_initializer=init_ops.ones_initializer())
+        _ = d1(x)  # create variables
+        self.assertEqual(len(d1.variables), 2)
+        v1, v2 = d1.variables
+        d2 = core_layers.Dense(
+            1,
+            name="my_dense",
+            kernel_initializer=init_ops.ones_initializer(),
+            _reuse=True)
+        _ = d2(x)
+        self.assertEqual(len(d2.variables), 2)
+        v3, v4 = d2.variables
+        self.assertAllEqual([v1, v2], [v3, v4])
+      f()
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonTensorValue(self):
@@ -209,15 +243,15 @@ class VariableScopeTest(test.TestCase):
 
           with variable_scope.variable_scope("not_cached", caching_device=""):
             v2_not_cached = variable_scope.get_variable("v", [])
-            self.assertFalse(v2_not_cached.value().device.startswith(
-                caching_device))
+            self.assertFalse(
+                v2_not_cached.value().device.startswith(caching_device))
 
           with variable_scope.variable_scope(
               "not_cached_identity_device",
               caching_device=lambda op: op.device):
             v2_identity_device = variable_scope.get_variable("v", [])
-            self.assertFalse(v2_identity_device.value().device.startswith(
-                caching_device))
+            self.assertFalse(
+                v2_identity_device.value().device.startswith(caching_device))
 
           with variable_scope.variable_scope("we_will_do_it_live") as vs_live:
             vs_live.set_caching_device("/job:live")
@@ -484,15 +518,19 @@ class VariableScopeTest(test.TestCase):
 
   def testVarScopeGetOrCreateReuse(self):
     with self.test_session():
+
       def test_value(value):
         x = constant_op.constant(value)
-        with variable_scope.variable_scope("testVarScopeGetOrCreateReuse_bar",
-                                           reuse=variable_scope.AUTO_REUSE):
+        with variable_scope.variable_scope(
+            "testVarScopeGetOrCreateReuse_bar",
+            reuse=variable_scope.AUTO_REUSE):
           _ = state_ops.assign(variable_scope.get_variable("var", []), x)
-        with variable_scope.variable_scope("testVarScopeGetOrCreateReuse_bar",
-                                           reuse=variable_scope.AUTO_REUSE):
+        with variable_scope.variable_scope(
+            "testVarScopeGetOrCreateReuse_bar",
+            reuse=variable_scope.AUTO_REUSE):
           _ = variable_scope.get_variable("var", [])
         self.assertEqual(value, x.eval())
+
       test_value(42.)  # Variable is created.
       test_value(13.)  # Variable is reused hereafter.
       test_value(17.)
@@ -551,19 +589,16 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("default") as default:
         with variable_scope.variable_scope(None, "layer"):
           self.assertEqual(
-              variable_scope.get_variable("w", []).name,
-              "default/layer/w:0")
+              variable_scope.get_variable("w", []).name, "default/layer/w:0")
         with variable_scope.variable_scope(None, "layer"):
           self.assertEqual(
-              variable_scope.get_variable("w", []).name,
-              "default/layer_1/w:0")
+              variable_scope.get_variable("w", []).name, "default/layer_1/w:0")
         with variable_scope.variable_scope(default):
           pass
         # No matter the jump in the middle, unique numbering continues.
         with variable_scope.variable_scope(None, "layer"):
           self.assertEqual(
-              variable_scope.get_variable("w", []).name,
-              "default/layer_2/w:0")
+              variable_scope.get_variable("w", []).name, "default/layer_2/w:0")
 
   def testVarOpScopeReuse(self):
     with self.test_session():
@@ -935,12 +970,12 @@ class VariableScopeTest(test.TestCase):
   def testGetCollection(self):
     with self.test_session():
       _ = variable_scope.get_variable("testGetCollection_a", [])
-      _ = variable_scope.get_variable("testGetCollection_b", [],
-                                      trainable=False)
+      _ = variable_scope.get_variable(
+          "testGetCollection_b", [], trainable=False)
       with variable_scope.variable_scope("testGetCollection_foo_") as scope1:
         _ = variable_scope.get_variable("testGetCollection_a", [])
-        _ = variable_scope.get_variable("testGetCollection_b", [],
-                                        trainable=False)
+        _ = variable_scope.get_variable(
+            "testGetCollection_b", [], trainable=False)
         self.assertEqual([
             v.name
             for v in scope1.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
@@ -954,8 +989,8 @@ class VariableScopeTest(test.TestCase):
         ])
       with variable_scope.variable_scope("testGetCollection_foo") as scope2:
         _ = variable_scope.get_variable("testGetCollection_a", [])
-        _ = variable_scope.get_variable("testGetCollection_b", [],
-                                        trainable=False)
+        _ = variable_scope.get_variable(
+            "testGetCollection_b", [], trainable=False)
         self.assertEqual([
             v.name
             for v in scope2.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
@@ -992,22 +1027,22 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope(
           "testGetTrainableVariables_foo") as scope:
         _ = variable_scope.get_variable("testGetTrainableVariables_b", [])
-        _ = variable_scope.get_variable("testGetTrainableVariables_c", [],
-                                        trainable=False)
-        self.assertEqual([v.name
-                          for v in scope.trainable_variables()],
-                         ["testGetTrainableVariables_foo/"
-                          "testGetTrainableVariables_b:0"])
+        _ = variable_scope.get_variable(
+            "testGetTrainableVariables_c", [], trainable=False)
+        self.assertEqual(
+            [v.name for v in scope.trainable_variables()],
+            ["testGetTrainableVariables_foo/"
+             "testGetTrainableVariables_b:0"])
 
   def testGetGlobalVariables(self):
     with self.test_session():
       _ = variable_scope.get_variable("testGetGlobalVariables_a", [])
       with variable_scope.variable_scope("testGetGlobalVariables_foo") as scope:
         _ = variable_scope.get_variable("testGetGlobalVariables_b", [])
-        self.assertEqual([v.name
-                          for v in scope.global_variables()],
-                         ["testGetGlobalVariables_foo/"
-                          "testGetGlobalVariables_b:0"])
+        self.assertEqual(
+            [v.name for v in scope.global_variables()],
+            ["testGetGlobalVariables_foo/"
+             "testGetGlobalVariables_b:0"])
 
   def testGetLocalVariables(self):
     with self.test_session():
@@ -1016,10 +1051,8 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("foo") as scope:
         _ = variable_scope.get_variable(
             "b", [], collections=[ops.GraphKeys.LOCAL_VARIABLES])
-        _ = variable_scope.get_variable(
-            "c", [])
-        self.assertEqual([v.name
-                          for v in scope.local_variables()], ["foo/b:0"])
+        _ = variable_scope.get_variable("c", [])
+        self.assertEqual([v.name for v in scope.local_variables()], ["foo/b:0"])
 
   def testGetVariableWithRefDtype(self):
     v = variable_scope.get_variable("v", shape=[3, 4], dtype=dtypes.float32)
@@ -1242,10 +1275,8 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
       with ops.name_scope("prod_getter"):
         return g_0 * g_1
 
-    with variable_scope.variable_scope(
-        "prod_scope", custom_getter=prod_getter):
-      with variable_scope.variable_scope(
-          "sum_scope", custom_getter=sum_getter):
+    with variable_scope.variable_scope("prod_scope", custom_getter=prod_getter):
+      with variable_scope.variable_scope("sum_scope", custom_getter=sum_getter):
         with variable_scope.variable_scope(
             "inner_sum_scope", custom_getter=sum_getter):
           # take sums of sums of products
@@ -1270,9 +1301,8 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
       np_vars, np_v = sess.run([true_vars, v])
       # take products of sums of products
       self.assertAllClose(
-          np_v,
-          (((np_vars[0] * np_vars[1]) + (np_vars[2] * np_vars[3]))
-           + ((np_vars[4] * np_vars[5]) + (np_vars[6] * np_vars[7]))))
+          np_v, (((np_vars[0] * np_vars[1]) + (np_vars[2] * np_vars[3])) + (
+              (np_vars[4] * np_vars[5]) + (np_vars[6] * np_vars[7]))))
 
   def testVariableCreator(self):
 
@@ -1368,7 +1398,11 @@ class VariableScopeMultithreadedTest(test.TestCase):
 
     graph = ops.get_default_graph()
     threads = [
-        threading.Thread(target=thread_fn, args=(i, graph,)) for i in range(2)]
+        threading.Thread(target=thread_fn, args=(
+            i,
+            graph,
+        )) for i in range(2)
+    ]
 
     threads[0].start()
     # Allow thread 0 to finish before starting thread 1.

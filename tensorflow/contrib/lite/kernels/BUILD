@@ -135,6 +135,7 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
+        "arg_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
         "batch_to_space_nd.cc",
@@ -156,7 +157,7 @@ cc_library(
         "local_response_norm.cc",
         "lsh_projection.cc",
         "lstm.cc",
-        "maximum.cc",
+        "maximum_minimum.cc",
         "mean.cc",
         "mfcc.cc",
         "mul.cc",
@@ -258,6 +259,22 @@ tf_cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
+    tags = [
+        "tflite_not_portable_ios_arm64",
+        "tflite_not_portable_ios_x86_64",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "arg_max_test",
+    size = "small",
+    srcs = ["arg_max_test.cc"],
     tags = [
         "tflite_not_portable_ios_arm64",
         "tflite_not_portable_ios_x86_64",
@@ -538,9 +555,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "maximum_test",
+    name = "maximum_minimum_test",
     size = "small",
-    srcs = ["maximum_test.cc"],
+    srcs = ["maximum_minimum_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -723,6 +740,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )

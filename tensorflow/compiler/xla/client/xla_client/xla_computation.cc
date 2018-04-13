@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/xla/status_macros.h"
+
 namespace xla {
 
-const ProgramShape& XlaComputation::GetProgramShape() const {
+StatusOr<ProgramShape> XlaComputation::GetProgramShape() const {
+  TF_RET_CHECK(proto_.has_program_shape());
   return proto_.program_shape();
 }
 
