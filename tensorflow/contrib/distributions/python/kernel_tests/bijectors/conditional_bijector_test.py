@@ -27,7 +27,7 @@ class _TestBijector(ConditionalBijector):
 
   def __init__(self):
     super(_TestBijector, self).__init__(
-        event_ndims=0,
+        forward_min_event_ndims=0,
         graph_parents=[],
         is_constant_jacobian=True,
         validate_args=False,
@@ -51,11 +51,15 @@ class ConditionalBijectorTest(test.TestCase):
 
   def testConditionalBijector(self):
     b = _TestBijector()
-    for name in ["forward", "inverse", "inverse_log_det_jacobian",
-                 "forward_log_det_jacobian"]:
+    for name in ["forward", "inverse"]:
       method = getattr(b, name)
       with self.assertRaisesRegexp(ValueError, name + ".*b1.*b2"):
-        method(1.0, arg1="b1", arg2="b2")
+        method(1., arg1="b1", arg2="b2")
+
+    for name in ["inverse_log_det_jacobian", "forward_log_det_jacobian"]:
+      method = getattr(b, name)
+      with self.assertRaisesRegexp(ValueError, name + ".*b1.*b2"):
+        method(1., event_ndims=0., arg1="b1", arg2="b2")
 
 
 if __name__ == "__main__":

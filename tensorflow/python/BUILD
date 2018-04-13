@@ -2944,6 +2944,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":array_ops_gen",
         ":checkpoint_ops_gen",
         ":client",
         ":control_flow_ops",
@@ -2955,6 +2956,7 @@ py_library(
         ":framework_ops",
         ":gradients",
         ":init_ops",
+        ":distribute",
         ":io_ops",
         ":io_ops_gen",
         ":layers_base",
@@ -2979,6 +2981,7 @@ py_library(
         ":variables",
         "//third_party/py/numpy",
         "@six_archive//:six",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/losses",
@@ -3011,6 +3014,68 @@ py_test(
     ],
 )
 
+py_library(
+    name = "device_util",
+    srcs = ["training/device_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":device",
+        ":framework_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "distribute",
+    srcs = ["training/distribute.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":device_util",
+        ":framework_ops",
+        ":platform",
+        ":resource_variable_ops",
+        ":state_ops",
+        ":util",
+        ":variable_scope",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
+py_test(
+    name = "checkpointable_utils_test",
+    srcs = ["training/checkpointable_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "notsan",  # b/74395663
+    ],
+    deps = [
+        ":checkpointable",
+        ":constant_op",
+        ":control_flow_ops",
+        ":dtypes",
+        ":framework_ops",
+        ":framework_test_lib",
+        ":init_ops",
+        ":resource_variable_ops",
+        ":session",
+        ":state_ops",
+        ":template",
+        ":training",
+        ":training_util",
+        ":variable_scope",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
+        "@six_archive//:six",
+    ],
+)
+
 py_test(
     name = "distribute_test",
     size = "small",
@@ -3018,7 +3083,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
-        ":training",
+        ":distribute",
         ":variable_scope",
     ],
 )
@@ -4282,6 +4347,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":distribute",
         ":framework",
         ":framework_for_generated_wrappers",
         ":platform",

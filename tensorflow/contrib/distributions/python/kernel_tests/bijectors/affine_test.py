@@ -40,14 +40,15 @@ class AffineBijectorTest(test.TestCase):
 
   def testNoBatchMultivariateIdentity(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = [1., -1]
@@ -66,18 +67,20 @@ class AffineBijectorTest(test.TestCase):
         x = [[1., 1], [-1., -1]]
         self.assertAllClose([[2., 0], [0., -2]], run(bijector.forward, x))
         self.assertAllClose([[0., 2], [-2., 0]], run(bijector.inverse, x))
-        self.assertAllClose(0., run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            0., run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testNoBatchMultivariateDiag(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = [1., -1]
@@ -89,9 +92,12 @@ class AffineBijectorTest(test.TestCase):
         # = [-1, -1] + [1, -1]
         self.assertAllClose([3., 0], run(bijector.forward, x))
         self.assertAllClose([0., 2], run(bijector.inverse, x))
-        self.assertAllClose(-np.log(2.),
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            -np.log(2.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
+        # Reset bijector.
+        bijector = Affine(shift=mu, scale_diag=[2., 1])
         # x is a 2-batch of 2-vectors.
         # The first vector is [1, 1], the second is [-1, -1].
         # Each undergoes matmul(sigma, x) + shift.
@@ -103,8 +109,9 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose([[0., 2],
                              [-1., 0]],
                             run(bijector.inverse, x))
-        self.assertAllClose(-np.log(2.),
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            -np.log(2.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testNoBatchMultivariateFullDynamic(self):
     with self.test_session() as sess:
@@ -126,18 +133,20 @@ class AffineBijectorTest(test.TestCase):
       self.assertAllClose([[0., 1]], sess.run(bijector.inverse(x), feed_dict))
       self.assertAllClose(
           -np.log(4),
-          sess.run(bijector.inverse_log_det_jacobian(x), feed_dict))
+          sess.run(bijector.inverse_log_det_jacobian(x, event_ndims=1),
+                   feed_dict))
 
   def testBatchMultivariateIdentity(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
-        x_value = np.array(x_value, dtype=np.float32)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+      def dynamic_run(fun, x_value, **kwargs):
+        x_value = np.array(x_value)
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = [[1., -1]]
@@ -147,19 +156,21 @@ class AffineBijectorTest(test.TestCase):
         x = [[[1., 1]]]
         self.assertAllClose([[[3., 1]]], run(bijector.forward, x))
         self.assertAllClose([[[0., 1]]], run(bijector.inverse, x))
-        self.assertAllClose(-np.log(4),
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            -np.log(4),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testBatchMultivariateDiag(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
-        x_value = np.array(x_value, dtype=np.float32)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+      def dynamic_run(fun, x_value, **kwargs):
+        x_value = np.array(x_value)
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = [[1., -1]]
@@ -169,8 +180,9 @@ class AffineBijectorTest(test.TestCase):
         x = [[[1., 1]]]
         self.assertAllClose([[[3., 1]]], run(bijector.forward, x))
         self.assertAllClose([[[0., 1]]], run(bijector.inverse, x))
-        self.assertAllClose([-np.log(4)],
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            [-np.log(4)],
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testBatchMultivariateFullDynamic(self):
     with self.test_session() as sess:
@@ -191,20 +203,22 @@ class AffineBijectorTest(test.TestCase):
       bijector = Affine(shift=mu, scale_diag=scale_diag)
       self.assertAllClose([[[3., 1]]], sess.run(bijector.forward(x), feed_dict))
       self.assertAllClose([[[0., 1]]], sess.run(bijector.inverse(x), feed_dict))
-      self.assertAllClose([-np.log(4)],
-                          sess.run(
-                              bijector.inverse_log_det_jacobian(x), feed_dict))
+      self.assertAllClose(
+          [-np.log(4)],
+          sess.run(bijector.inverse_log_det_jacobian(
+              x, event_ndims=1), feed_dict))
 
   def testIdentityWithDiagUpdate(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -216,19 +230,21 @@ class AffineBijectorTest(test.TestCase):
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
         self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
-        self.assertAllClose(-np.log(2.**3),
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            -np.log(2.**3),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testIdentityWithTriL(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -240,19 +256,21 @@ class AffineBijectorTest(test.TestCase):
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[1., 5]], run(bijector.forward, x))
         self.assertAllClose([[1., 0.5]], run(bijector.inverse, x))
-        self.assertAllClose(-np.log(4.),
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            -np.log(4.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testDiagWithTriL(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -262,19 +280,21 @@ class AffineBijectorTest(test.TestCase):
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[1., 7]], run(bijector.forward, x))
         self.assertAllClose([[1., 1 / 3.]], run(bijector.inverse, x))
-        self.assertAllClose(-np.log(6.),
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            -np.log(6.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testIdentityAndDiagWithTriL(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -287,19 +307,21 @@ class AffineBijectorTest(test.TestCase):
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[2., 9]], run(bijector.forward, x))
         self.assertAllClose([[2 / 3., 5 / 12.]], run(bijector.inverse, x))
-        self.assertAllClose(-np.log(12.),
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            -np.log(12.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testIdentityWithVDVTUpdate(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -319,22 +341,24 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose([0.2, 1.5, 4 / 3.], run(bijector.inverse, x))
         self.assertAllClose(
             run(bijector_ref.inverse, x), run(bijector.inverse, x))
-        self.assertAllClose(-np.log(60.),
-                            run(bijector.inverse_log_det_jacobian, x))
         self.assertAllClose(
-            run(bijector.inverse_log_det_jacobian, x),
-            run(bijector_ref.inverse_log_det_jacobian, x))
+            -np.log(60.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
+        self.assertAllClose(
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1),
+            run(bijector_ref.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testDiagWithVDVTUpdate(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -353,22 +377,24 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose([0.2, 1., 0.8], run(bijector.inverse, x))
         self.assertAllClose(
             run(bijector_ref.inverse, x), run(bijector.inverse, x))
-        self.assertAllClose(-np.log(150.),
-                            run(bijector.inverse_log_det_jacobian, x))
         self.assertAllClose(
-            run(bijector.inverse_log_det_jacobian, x),
-            run(bijector_ref.inverse_log_det_jacobian, x))
+            -np.log(150.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
+        self.assertAllClose(
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1),
+            run(bijector_ref.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testTriLWithVDVTUpdate(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -388,22 +414,24 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose([0.2, 14 / 15., 4 / 25.], run(bijector.inverse, x))
         self.assertAllClose(
             run(bijector_ref.inverse, x), run(bijector.inverse, x))
-        self.assertAllClose(-np.log(150.),
-                            run(bijector.inverse_log_det_jacobian, x))
         self.assertAllClose(
-            run(bijector.inverse_log_det_jacobian, x),
-            run(bijector_ref.inverse_log_det_jacobian, x))
+            -np.log(150.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
+        self.assertAllClose(
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1),
+            run(bijector_ref.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testTriLWithVDVTUpdateNoDiagonal(self):
     with self.test_session() as sess:
+      placeholder = array_ops.placeholder(dtypes.float32, name="x")
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(
+            fun(placeholder, **kwargs), feed_dict={placeholder: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -423,11 +451,12 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose([1 / 3., 8 / 9., 4 / 30.], run(bijector.inverse, x))
         self.assertAllClose(
             run(bijector_ref.inverse, x), run(bijector.inverse, x))
-        self.assertAllClose(-np.log(90.),
-                            run(bijector.inverse_log_det_jacobian, x))
         self.assertAllClose(
-            run(bijector.inverse_log_det_jacobian, x),
-            run(bijector_ref.inverse_log_det_jacobian, x))
+            -np.log(90.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1))
+        self.assertAllClose(
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=1),
+            run(bijector_ref.inverse_log_det_jacobian, x, event_ndims=1))
 
   def testNoBatchMultivariateRaisesWhenSingular(self):
     with self.test_session():
@@ -530,6 +559,7 @@ class AffineBijectorTest(test.TestCase):
             backward = np.squeeze(backward, axis=-1)
           self.assertAllClose(backward, bijector.inverse(x).eval())
 
+          scale *= np.ones(shape=x.shape[:-1], dtype=scale.dtype)
           ildj = -np.log(np.abs(np.linalg.det(scale)))
           # TODO(jvdillon): We need to make it so the scale_identity_multiplier
           # case does not deviate in expected shape. Fixing this will get rid of
@@ -540,7 +570,8 @@ class AffineBijectorTest(test.TestCase):
             ildj = np.squeeze(ildj[0])
           elif ildj.ndim < scale.ndim - 2:
             ildj = np.reshape(ildj, scale.shape[0:-2])
-          self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(x).eval())
+          self.assertAllClose(
+              ildj, bijector.inverse_log_det_jacobian(x, event_ndims=1).eval())
 
   def testLegalInputs(self):
     self._testLegalInputs(

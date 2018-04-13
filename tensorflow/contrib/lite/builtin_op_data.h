@@ -53,6 +53,8 @@ typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  int dilation_width_factor;
+  int dilation_height_factor;
   TfLiteFusedActivation activation;
 } TfLiteConvParams;
 

@@ -137,7 +137,7 @@ def converted_call(f, recursive, verbose, arg_types, *args, **kwargs):
 
   unknown_arg_value = object()  # Sentinel for arguments of unknown value
 
-  if tf_inspect.isbuiltin(f):
+  if inspect_utils.isbuiltin(f):
     return builtins.dynamic_builtin(f, *args, **kwargs)
 
   if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
@@ -156,7 +156,7 @@ def converted_call(f, recursive, verbose, arg_types, *args, **kwargs):
     # Constructors
     target_entity = f
     arg_map_target = f.__init__
-    effective_args = (unknown_arg_value,) + args
+    effective_args = args
     partial_types = ()
 
   elif hasattr(f, '__call__') and hasattr(f, '__class__'):
@@ -235,7 +235,8 @@ def to_graph(e,
       nocompile_decorators=(convert, do_not_convert, converted_call),
       partial_types=partial_types,
       api_module=tf_inspect.getmodule(to_graph))
-  _, name = conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)
+  _, name, namespace = conversion.entity_to_graph(e, conversion_map, arg_values,
+                                                  arg_types)
 
   module = gast.Module([])
   for import_line in config.COMPILED_IMPORT_STATEMENTS:
@@ -244,13 +245,12 @@ def to_graph(e,
     module.body.append(dep)
   compiled_node, compiled_src = compiler.ast_to_object(module)
 
-  # The compiled code should see everything the entry function saw.
+  # The compiled code should see everything the entry entity saw.
   # TODO(mdan): This might not work well if the call tree spans modules?
-  if tf_inspect.isfunction(e):
-    for key, val in inspect_utils.getnamespace(e).items():
-      # Avoid overwriting entities that have been transformed.
-      if key not in compiled_node.__dict__:
-        compiled_node.__dict__[key] = val
+  for key, val in namespace.items():
+    # Avoid overwriting entities that have been transformed.
+    if key not in compiled_node.__dict__:
+      compiled_node.__dict__[key] = val
   compiled_fn = getattr(compiled_node, name)
 
   if verbose:

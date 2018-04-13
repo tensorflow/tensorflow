@@ -473,15 +473,29 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called with partioned variable regularization and
         eager execution is enabled.
+      ValueError: When giving unsupported dtype and no initializer.
     """
     if dtype is None:
       dtype = self.dtype or backend.floatx()
+    else:
+      dtype = dtypes.as_dtype(dtype)
     initializer = initializers.get(initializer)
-    if initializer is None:
-      # Default TensorFlow initializer.
-      initializer = initializers.glorot_uniform()
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
+
+    # Initialize variable when no initializer provided
+    if initializer is None:
+      # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
+      if dtype.is_floating:
+        initializer = initializers.glorot_uniform()
+      # If dtype is DT_INT/DT_UINT, provide a default value `zero`
+      # If dtype is DT_BOOL, provide a default value `FALSE`
+      elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
+        initializer = initializers.zeros()
+      # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
+      else:
+        raise ValueError('An initializer for variable %s of type %s is required'
+                         ' for layer %s' % (name, dtype.base_dtype, self.name))
 
     variable = self._add_variable_with_custom_getter(
         name=name,
