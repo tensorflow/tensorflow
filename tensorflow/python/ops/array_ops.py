@@ -2578,6 +2578,8 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
 
 
 @tf_export("squeeze")
+@deprecation.deprecated_args(None, "Use the `axis` argument instead",
+                             "squeeze_dims")
 def squeeze(input, axis=None, name=None, squeeze_dims=None):
   # pylint: disable=redefined-builtin
   """Removes dimensions of size 1 from the shape of a tensor.
@@ -2618,10 +2620,8 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   Raises:
     ValueError: When both `squeeze_dims` and `axis` are specified.
   """
-  if squeeze_dims is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'squeeze_dims' and 'axis'")
-    axis = squeeze_dims
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "squeeze_dims", squeeze_dims)
   if np.isscalar(axis):
     axis = [axis]
   return gen_array_ops.squeeze(input, axis, name)
