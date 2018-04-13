@@ -217,6 +217,11 @@ class BackendUtilsTest(test.TestCase):
       outs = f([y4, y2, None])
       self.assertEqual(outs, [5., 2.])
 
+      # Test with a different dtype
+      y5 = keras.backend.constant(10., dtype='float64')
+      outs = f([y5, y2, None])
+      self.assertEqual(outs, [11., 2.])
+
   def test_function_tf_fetches(self):
     # Additional operations can be passed to tf.Session().run() via its
     # `fetches` arguments. In contrast to `updates` argument of
