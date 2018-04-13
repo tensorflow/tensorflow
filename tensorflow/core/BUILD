@@ -256,8 +256,8 @@ proto_library(
 
 closure_proto_library(
     name = "example_protos_closure",
-    deps = [":example_protos"],
     visibility = ["//visibility:public"],
+    deps = [":example_protos"],
 )
 
 exports_files([
