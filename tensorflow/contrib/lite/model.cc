@@ -333,6 +333,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->stride_height = conv_params->stride_h();
         params->activation =
             parse_activation(conv_params->fused_activation_function());
+        params->dilation_width_factor = conv_params->dilation_w_factor();
+        params->dilation_height_factor = conv_params->dilation_h_factor();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;

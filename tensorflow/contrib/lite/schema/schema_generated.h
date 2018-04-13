@@ -1478,11 +1478,15 @@ struct Conv2DOptionsT : public flatbuffers::NativeTable {
   int32_t stride_w;
   int32_t stride_h;
   ActivationFunctionType fused_activation_function;
+  int32_t dilation_w_factor;
+  int32_t dilation_h_factor;
   Conv2DOptionsT()
       : padding(Padding_SAME),
         stride_w(0),
         stride_h(0),
-        fused_activation_function(ActivationFunctionType_NONE) {
+        fused_activation_function(ActivationFunctionType_NONE),
+        dilation_w_factor(0),
+        dilation_h_factor(0) {
   }
 };
 
@@ -1492,7 +1496,9 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
     VT_STRIDE_H = 8,
-    VT_FUSED_ACTIVATION_FUNCTION = 10
+    VT_FUSED_ACTIVATION_FUNCTION = 10,
+    VT_DILATION_W_FACTOR = 12,
+    VT_DILATION_H_FACTOR = 14
   };
   Padding padding() const {
     return static_cast<Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -1506,12 +1512,20 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   ActivationFunctionType fused_activation_function() const {
     return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  int32_t dilation_w_factor() const {
+    return GetField<int32_t>(VT_DILATION_W_FACTOR, 0);
+  }
+  int32_t dilation_h_factor() const {
+    return GetField<int32_t>(VT_DILATION_H_FACTOR, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_PADDING) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR) &&
            verifier.EndTable();
   }
   Conv2DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1534,6 +1548,12 @@ struct Conv2DOptionsBuilder {
   void add_fused_activation_function(ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(Conv2DOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
+  void add_dilation_w_factor(int32_t dilation_w_factor) {
+    fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_W_FACTOR, dilation_w_factor, 0);
+  }
+  void add_dilation_h_factor(int32_t dilation_h_factor) {
+    fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 0);
+  }
   explicit Conv2DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1551,8 +1571,12 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(
     Padding padding = Padding_SAME,
     int32_t stride_w = 0,
     int32_t stride_h = 0,
-    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE) {
+    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
+    int32_t dilation_w_factor = 0,
+    int32_t dilation_h_factor = 0) {
   Conv2DOptionsBuilder builder_(_fbb);
+  builder_.add_dilation_h_factor(dilation_h_factor);
+  builder_.add_dilation_w_factor(dilation_w_factor);
   builder_.add_stride_h(stride_h);
   builder_.add_stride_w(stride_w);
   builder_.add_fused_activation_function(fused_activation_function);
@@ -4885,6 +4909,8 @@ inline void Conv2DOptions::UnPackTo(Conv2DOptionsT *_o, const flatbuffers::resol
   { auto _e = stride_w(); _o->stride_w = _e; };
   { auto _e = stride_h(); _o->stride_h = _e; };
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; };
+  { auto _e = dilation_w_factor(); _o->dilation_w_factor = _e; };
+  { auto _e = dilation_h_factor(); _o->dilation_h_factor = _e; };
 }
 
 inline flatbuffers::Offset<Conv2DOptions> Conv2DOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv2DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4899,12 +4925,16 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatB
   auto _stride_w = _o->stride_w;
   auto _stride_h = _o->stride_h;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _dilation_w_factor = _o->dilation_w_factor;
+  auto _dilation_h_factor = _o->dilation_h_factor;
   return tflite::CreateConv2DOptions(
       _fbb,
       _padding,
       _stride_w,
       _stride_h,
-      _fused_activation_function);
+      _fused_activation_function,
+      _dilation_w_factor,
+      _dilation_h_factor);
 }
 
 inline Pool2DOptionsT *Pool2DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

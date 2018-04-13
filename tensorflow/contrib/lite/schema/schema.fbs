@@ -199,6 +199,8 @@ table Conv2DOptions {
   stride_w:int;
   stride_h:int;
   fused_activation_function:ActivationFunctionType;
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table Pool2DOptions {

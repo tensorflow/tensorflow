@@ -1039,6 +1039,7 @@ def make_conv_tests(zip_path):
           "input_shape": [[1, 3, 4, 3]],
           "filter_shape": [[1, 1, 3, 2]],
           "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
           "padding": ["SAME", "VALID"],
           "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
           "constant_filter": [True, False],
@@ -1047,6 +1048,7 @@ def make_conv_tests(zip_path):
           "input_shape": [[2, 14, 14, 2]],
           "filter_shape": [[6, 6, 2, 2]],
           "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 2, 2, 1]],
           "padding": ["SAME", "VALID"],
           "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
           "constant_filter": [True, False],
@@ -1072,6 +1074,7 @@ def make_conv_tests(zip_path):
         input_tensor,
         filter_input,
         strides=parameters["strides"],
+        dilations=parameters["dilations"],
         padding=parameters["padding"],
         data_format=parameters["data_format"])
     return input_tensors, [out]
