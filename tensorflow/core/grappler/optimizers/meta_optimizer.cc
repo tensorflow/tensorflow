@@ -94,7 +94,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  if (cfg_.optimizers().empty()) {
+  if (cfg_.custom_optimizers().empty()) {
     if (!cfg_.disable_model_pruning()) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(new ModelPruner()));
     }
@@ -147,21 +147,21 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         "pruning",    "function",      "constfold",  "layout",
         "memory",     "autoparallel",  "arithmetic", "loop",
         "dependency", "debug_stripper"};
-    std::vector<string> custom_optimizer_names;
-    for (const auto& optimizer_name : cfg_.optimizers()) {
-      if (available_optimizers.find(optimizer_name) !=
+    std::vector<tensorflow::RewriterConfig_CustomGraphOptimizer> custom_optimizer_list;
+    for (const auto& optimizer : cfg_.custom_optimizers()) {
+      if (available_optimizers.find(optimizer.name()) !=
           available_optimizers.end()) {
-        optimizers.push_back(NewOptimizer(optimizer_name));
+        optimizers.push_back(NewOptimizer(optimizer.name()));
       } else {
-        custom_optimizer_names.push_back(optimizer_name);
+        custom_optimizer_list.push_back(optimizer);
       }
     }
     // Now run the custom optimizers.
-    for (const auto& optimizer_name : custom_optimizer_names) {
+    for (const auto& optimizer : custom_optimizer_list) {
       std::unique_ptr<CustomGraphOptimizer> opt =
-          CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer_name);
+          CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer.name());
       if (opt == nullptr) continue;
-      TF_RETURN_IF_ERROR(opt->Init());
+      TF_RETURN_IF_ERROR(opt->Init(&optimizer));
       optimizers.push_back(std::move(opt));
     }
   }
@@ -260,7 +260,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
-         !cfg.optimizers().empty();
+         !cfg.custom_optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
