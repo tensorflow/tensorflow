@@ -33,18 +33,18 @@ void BilinearInitializerOp<T>::Compute(OpKernelContext* context) {
     auto output = output_tensor->tensor<T, 4>();
     // The four dimensions of the kernel are in the order
     // [filter_height, filter_width, input_depth, output_depth]
-    for (int i = 0; i < shape[0]; i++) {  // height
-      for (int j = 0; j < shape[1]; j++) {  // width
+    for (int i = 0; i < shape[0]; i++) {      // height
+      for (int j = 0; j < shape[1]; j++) {    // width
         for (int k = 0; k < shape[2]; k++) {  // input feature map
           // Since interpolation is done per-feature-map and there should be
           // no exchange of information between feature maps, only k-th input
           // feature map affects the k-th output feature map. Thus, only
           // output(i, j, k, k) contains non-zero.
-          // The weight value at position (i, j) is proportional to its
-          // distance to the center of the kernel map.
+          // The weight value at position (i, j) is inversely proportional to
+          // its distance to the center of the kernel map.
           output(i, j, k, k) =
-            (1 - fabs(i - center) / factor) *
-            (1 - fabs(j - center) / factor);
+            (1 - fabs(i - center) / factor) *  // vertical distance
+            (1 - fabs(j - center) / factor);   // horizontal distance
         }
       }
     }
