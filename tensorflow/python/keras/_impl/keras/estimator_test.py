@@ -140,25 +140,30 @@ def randomize_io_type(array, name):
     return {name: array}
 
 
+def lambda_string_to(k):
+    # Dummy function which reads a number.
+    # This will fail if k.dtype != string.
+    # Locally importing gen_parsing_ops for it to be available in the scope.
+    from tensorflow.python.ops.parsing_ops import gen_parsing_ops
+    return gen_parsing_ops.string_to_number(k)
+
+
 def multi_inputs_multi_outputs_model():
   # test multi-input layer
   a = keras.layers.Input(shape=(16,), name='input_a')
   b = keras.layers.Input(shape=(16,), name='input_b')
-  mask = keras.layers.Input(shape=(8,), dtype='bool', name='mask_a')
+  inp_s = keras.layers.Input(shape=(8,), dtype='string', name='input_s')
+  # Convert string to number
+  s = keras.layers.Lambda(lambda_string_to)(inp_s)
   dense = keras.layers.Dense(8, name='dense_1')
+
   a_2 = dense(a)
-  # We masked a_2 following a Input mask.
-  masked_a2 = keras.layers.Lambda(lambda k:
-                                  K.switch(k[0],
-                                           k[1],
-                                           K.zeros_like(
-                                               k[1])))([mask,
-                                                        a_2])
+  s_2 = keras.layers.Lambda(lambda k: k[0] * k[1])([s, a_2])
   b_2 = dense(b)
-  merged = keras.layers.concatenate([masked_a2, b_2], name='merge')
+  merged = keras.layers.concatenate([s_2, b_2], name='merge')
   c = keras.layers.Dense(3, activation='softmax', name='dense_2')(merged)
   d = keras.layers.Dense(2, activation='softmax', name='dense_3')(merged)
-  model = keras.models.Model(inputs=[a, b, mask], outputs=[c, d])
+  model = keras.models.Model(inputs=[a, b, inp_s], outputs=[c, d])
   model.compile(
       loss='categorical_crossentropy',
       optimizer='rmsprop',
@@ -360,10 +365,11 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         input_shape=(16,),
         num_classes=2)
     np.random.seed(_RANDOM_SEED)
-    mask_train, mask_test = testing_utils.get_test_random_mask(
+    (input_s_train, _), (input_s_test, _) = testing_utils.get_test_data(
         train_samples=_TRAIN_SIZE,
         test_samples=50,
-        input_shape=(8,))
+        input_shape=(8,),
+        num_classes=2)
 
     c_train = keras.utils.to_categorical(c_train)
     c_test = keras.utils.to_categorical(c_test)
@@ -372,13 +378,13 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
 
     def train_input_fn():
       input_dict = {'input_a': a_train, 'input_b': b_train,
-                    'mask_a': mask_train}
+                    'input_s': input_s_train.astype('str')}
       output_dict = {'dense_2': c_train, 'dense_3': d_train}
       return input_dict, output_dict
 
     def eval_input_fn():
       input_dict = {'input_a': a_test, 'input_b': b_test,
-                    'mask_a': mask_test}
+                    'input_s': input_s_test.astype('str')}
       output_dict = {'dense_2': c_test, 'dense_3': d_test}
       return input_dict, output_dict
 

@@ -50,11 +50,20 @@ _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 def _cast_tensor_to_floatx(x):
   """Cast tensor to keras's floatx dtype if it is not already the same dtype."""
   if x.dtype == K.floatx():
-    if not check_ops.is_numeric_tensor(x):
-      return sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(x)
     return x
   else:
     return math_ops.cast(x, K.floatx())
+
+
+def _convert_tensor(x):
+    """ Create or cast tensor if needed"""
+    if not isinstance(x, (ops.Tensor, sparse_tensor_lib.SparseTensor)):
+        # x is a numpy array
+        x = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(x)
+    if check_ops.is_numeric_tensor(x):
+        # is_numeric_tensor returns False if provided with a numpy array
+        x = _cast_tensor_to_floatx(x)
+    return x
 
 
 def _create_ordered_io(keras_model, estimator_io, is_input=True):
@@ -75,7 +84,7 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
   if isinstance(estimator_io, (list, tuple)):
     # Case currently not supported by most built-in input_fn,
     # but it's good to have for sanity
-    return [_cast_tensor_to_floatx(x) for x in estimator_io]
+    return [_convert_tensor(x) for x in estimator_io]
   elif isinstance(estimator_io, dict):
     if is_input:
       if keras_model._is_graph_network:
@@ -97,12 +106,12 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
             'It needs to match one '
             'of the following: %s' % ('input' if is_input else 'output', key,
                                       ', '.join(keras_io_names)))
-      tensors = [_cast_tensor_to_floatx(estimator_io[io_name])
+      tensors = [_convert_tensor(estimator_io[io_name])
                  for io_name in keras_io_names]
     return tensors
   else:
     # Plain array.
-    return _cast_tensor_to_floatx(estimator_io)
+    return _convert_tensor(estimator_io)
 
 
 def _in_place_subclassed_model_reset(model):
@@ -263,7 +272,7 @@ def _clone_and_build_model(mode,
                                         is_input=False)
   else:
     target_tensors = [
-        _cast_tensor_to_floatx(
+        _convert_tensor(
             sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(labels))
     ]
 
