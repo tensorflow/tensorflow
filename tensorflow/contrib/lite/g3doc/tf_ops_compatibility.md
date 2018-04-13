@@ -302,6 +302,19 @@ Options {
 }
 ```
 
+**LESS**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is less
+  than the corresponding element of the second tensor.
+}
+```
+
 **LOCAL_RESPONSE_NORMALIZATION**
 
 ```

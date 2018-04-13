@@ -1607,7 +1607,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "linalg_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["linalg_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2822,7 +2822,7 @@ sycl_py_test(
 
 tf_py_test(
     name = "sets_test",
-    size = "small",
+    size = "medium",
     srcs = ["sets_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

@@ -10981,6 +10981,10 @@ op {
     name: "num_attempted_layers"
     type: DT_INT32
   }
+  output_arg {
+    name: "last_layer_nodes_range"
+    type: DT_INT32
+  }
   is_stateful: true
 }
 op {
@@ -65533,6 +65537,71 @@ op {
   is_stateful: true
 }
 op {
+  name: "StatelessMultinomial"
+  input_arg {
+    name: "logits"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "num_samples"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "seed"
+    type_attr: "Tseed"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "output_dtype"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tseed"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "output_dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "StatelessRandomNormal"
   input_arg {
     name: "shape"
@@ -68620,6 +68689,25 @@ op {
   }
   output_arg {
     name: "output_handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}
+op {
+  name: "TensorListPushBackBatch"
+  input_arg {
+    name: "input_handles"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  output_arg {
+    name: "output_handles"
     type: DT_VARIANT
   }
   attr {

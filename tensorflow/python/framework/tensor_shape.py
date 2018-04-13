@@ -459,6 +459,9 @@ class Dimension(object):
     else:
       return self._value >= other.value
 
+  def __reduce__(self):
+    return Dimension, (self._value,)
+
 
 def as_dimension(value):
   """Converts the given value to a Dimension.
@@ -930,6 +933,9 @@ class TensorShape(object):
     if self.ndims != other.ndims:
       return True
     return self._dims != other.dims
+
+  def __reduce__(self):
+    return TensorShape, (self._dims,)
 
 
 def as_shape(shape):

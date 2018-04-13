@@ -1696,15 +1696,15 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
 #ifdef __aarch64__
   // Call kernel optimized for depthwise convolutions using 3x3 filters if
   // parameters are supported.
-  if (Fast3by3FilterKernelSupported(input_dims, filter_dims, stride_width,
-                                    stride_height, pad_width, pad_height,
-                                    depth_multiplier, output_dims)) {
-    DepthwiseConv3by3FilterDepth16(
-        input_data, input_dims, input_offset, filter_data, filter_dims,
-        filter_offset, bias_data, bias_dims, stride_width, stride_height,
-        pad_width, pad_height, depth_multiplier, output_offset,
-        output_multiplier, output_shift, output_activation_min,
-        output_activation_max, output_data, output_dims);
+  if (Fast3x3FilterKernelSupported(input_dims, filter_dims, stride_width,
+                                   stride_height, pad_width, pad_height,
+                                   depth_multiplier, output_dims)) {
+    DepthwiseConv3x3Filter(input_data, input_dims, input_offset, filter_data,
+                           filter_dims, filter_offset, bias_data, bias_dims,
+                           stride_width, stride_height, pad_width, pad_height,
+                           depth_multiplier, output_offset, output_multiplier,
+                           output_shift, output_activation_min,
+                           output_activation_max, output_data, output_dims);
     return;
   }
 #endif
