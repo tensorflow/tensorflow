@@ -29,6 +29,8 @@ namespace xla {
 // TODO(b/74197823): Replace xla::Computation with this one.
 class XlaComputation {
  public:
+  XlaComputation() : unique_id_(-1) {}
+
   XlaComputation(const XlaComputation&) = delete;
   XlaComputation& operator=(const XlaComputation&) = delete;
 
@@ -38,8 +40,12 @@ class XlaComputation {
 
   // Returns the "program shape" (parameter and return shapes) for this
   // computation.
-  const ProgramShape& GetProgramShape() const;
+  StatusOr<ProgramShape> GetProgramShape() const;
+
   const HloModuleProto& proto() const { return proto_; }
+
+  // Returns true if this object is a null Computation.
+  bool IsNull() const { return unique_id_ == -1; }
 
  private:
   XlaComputation(const int64 unique_id) : unique_id_(unique_id) {}

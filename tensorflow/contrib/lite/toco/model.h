@@ -56,10 +56,12 @@ enum class OperatorType {
   kL2Pool,
   kLstmCell,
   kLocalResponseNormalization,
+  kLog,
   kLogistic,
   kMaxPool,
   kFakeQuant,
   kMul,
+  kRandomUniform,
   kRange,
   kRank,
   kRelu,
@@ -423,6 +425,7 @@ struct SpaceToDepthOperator : Operator {
 // input activations as a matrix, followed by a MatMul node.
 struct FullyConnectedOperator : Operator {
   FullyConnectedOperator() : Operator(OperatorType::kFullyConnected) {}
+  bool experimental_shuffled_weights = false;
 };
 
 // Dequantization operator, converting a quantized array of integers with
@@ -590,6 +593,17 @@ struct LogisticOperator : Operator {
   LogisticOperator() : Operator(OperatorType::kLogistic) {}
 };
 
+// Element-wise natural log operator:
+//   x -> ln(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Log
+struct LogOperator : Operator {
+  LogOperator() : Operator(OperatorType::kLog) {}
+};
+
 // Element-wise Tanh operator:
 //   x -> Tanh(x) = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
 //
@@ -711,8 +725,7 @@ struct L2PoolOperator : Operator {
 // The expected [min, max] range of values in a given array.
 // Used for quantization only.
 // This information typically comes from special nodes found in quantized
-// models,
-// see FakeQuantOperator, and is used during quantization to resolve
+// models, see FakeQuantOperator, and is used during quantization to resolve
 // actual quantization parameters (see QuantizationParams).
 struct MinMax {
   double min = 0.;
@@ -740,6 +753,7 @@ inline bool operator==(const MinMax& m1, const MinMax& m2) {
 struct FakeQuantOperator : Operator {
   FakeQuantOperator() : Operator(OperatorType::kFakeQuant) {}
   std::unique_ptr<MinMax> minmax;
+  int num_bits = 8;
 };
 
 // Element-wise division operator.
@@ -944,6 +958,13 @@ struct FloorDivOperator : Operator {
 // TensorFlow equivalent: FloorMod
 struct FloorModOperator : Operator {
   FloorModOperator() : Operator(OperatorType::kFloorMod) {}
+};
+
+struct RandomUniformOperator : Operator {
+  RandomUniformOperator() : Operator(OperatorType::kRandomUniform) {}
+  ArrayDataType dtype = ArrayDataType::kNone;
+  int64 seed;
+  int64 seed2;
 };
 
 // Creates a sequence of numbers that begins at start and extends by increments
@@ -1309,6 +1330,15 @@ struct SoftmaxOperator : Operator {
 // TensorFlow equivalent: LogSoftmax
 struct LogSoftmaxOperator : Operator {
   LogSoftmaxOperator() : Operator(OperatorType::kLogSoftmax) {}
+
+  // LogSoftmax can in principal have very large negative output, depending on
+  // the input size.  However, input x_i that is less than x_max-10 is
+  // accumulated as exp(x_i-x_max), which is truncated to zero.
+  //
+  // Since we effectively disregard smallish inputs in the normalizing factor,
+  // we also drop them in the output (set to minimum output), and in doing so
+  // make better use of the quantization range / resolution.
+  static constexpr float kOutputRangeMin = -16.0;
 };
 
 // Cast operator.
@@ -1391,8 +1421,7 @@ struct SpaceToBatchNDOperator : Operator {
 };
 
 // BatchToSpaceND operator. Rearranges data from batch into blocks of
-// spatial data. Currently, only 2-d blocks are supported. Cropping is not
-// supported, either, and the crops array should be all zero.
+// spatial data. Currently, only 2-d blocks are supported.
 //
 // Inputs:
 //   inputs[0]: required: the input array
@@ -1499,7 +1528,14 @@ class Shape {
 
   // We still have that one convenience accessor to avoid
   // the awkward double bracket issue:  shape.dims()[i].
-  int dims(int i) const { return dims_[i]; }
+  int dims(int i) const {
+    // Always check for out-of-bounds accesses, even in optimized builds where
+    // standard assertions are disabled. Out-of-bounds access here is a common
+    // occurrence.
+    CHECK_GE(i, 0);
+    CHECK_GT(dims_.size(), i);
+    return dims_[i];
+  }
 
   bool operator==(const Shape& comp) const {
     return (this->dims_ == comp.dims());

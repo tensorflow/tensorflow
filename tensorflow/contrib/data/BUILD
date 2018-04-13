@@ -8,6 +8,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
     "tf_gen_op_libs",
+    "if_not_windows",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -21,14 +22,13 @@ py_library(
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
-        "//tensorflow/contrib/data/python/ops:prefetching_ops",
-        "//tensorflow/contrib/data/python/ops:readers",
-        "//tensorflow/contrib/data/python/ops:shuffle_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
-        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:iterator_ops",
     ],
+)
+
+cc_library(
+    name = "lib_proto_parsing_for_dataset_ops",
+    deps = if_not_windows(["//tensorflow/core:lib_proto_parsing"]),
 )
 
 tf_custom_op_library(
@@ -36,25 +36,11 @@ tf_custom_op_library(
     srcs = ["ops/dataset_ops.cc"],
     deps = ["//tensorflow/contrib/data/kernels:dataset_kernels"] +
            if_static(
-               extra_deps = ["//tensorflow/core:lib_proto_parsing"],
+               extra_deps = [":lib_proto_parsing_for_dataset_ops"],
                otherwise = [],
            ),
 )
 
 tf_gen_op_libs(
     op_lib_names = ["dataset_ops"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

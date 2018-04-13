@@ -9,24 +9,13 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "estimator_py",
     srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":baseline",
+        ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
         ":estimator",
@@ -252,6 +241,54 @@ py_test(
 )
 
 py_library(
+    name = "boosted_trees",
+    srcs = ["canned/boosted_trees.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":head",
+        ":model_fn",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:boosted_trees_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:distribute",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
+py_test(
+    name = "boosted_trees_test",
+    size = "medium",
+    srcs = ["canned/boosted_trees_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":boosted_trees",
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_library(
     name = "dnn",
     srcs = ["canned/dnn.py"],
     srcs_version = "PY2AND3",
@@ -291,6 +328,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -347,6 +385,7 @@ py_library(
         ":model_fn",
         ":optimizers",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
@@ -430,6 +469,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:metrics",
         "//tensorflow/python:platform",
@@ -707,6 +747,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -930,5 +971,6 @@ cuda_py_test(
     tags = [
         "multi_gpu",
         "noasan",  # flaky time outs
+        "notsan",  # flaky
     ],
 )

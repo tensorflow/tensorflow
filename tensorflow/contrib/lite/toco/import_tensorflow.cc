@@ -74,7 +74,7 @@ const string& GetStringAttr(const NodeDef& node, const string& attr_name) {
   return attr.s();
 }
 
-int GetIntAttr(const NodeDef& node, const string& attr_name) {
+int64 GetIntAttr(const NodeDef& node, const string& attr_name) {
   CHECK(HasAttr(node, attr_name)) << attr_name << " not found in:\n"
                                   << node.DebugString();
   const auto& attr = node.attr().at(attr_name);
@@ -569,6 +569,23 @@ void ConvertBiasAddOperator(const NodeDef& node,
   model->operators.emplace_back(biasadd);
 }
 
+void ConvertRandomUniform(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK_EQ(node.op(), "RandomUniform");
+  CheckInputsCount(node, tf_import_flags, 1);
+
+  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_INT32);
+  auto op = absl::make_unique<RandomUniformOperator>();
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  op->dtype = ConvertDataType(GetDataTypeAttr(node, "dtype"));
+  op->seed = GetIntAttr(node, "seed");
+  op->seed2 = GetIntAttr(node, "seed2");
+  CHECK(model != nullptr);
+  model->operators.emplace_back(std::move(op));
+}
+
 void ConvertReluOperator(const NodeDef& node,
                          const TensorFlowImportFlags& tf_import_flags,
                          Model* model) {
@@ -592,6 +609,18 @@ void ConvertRelu6Operator(const NodeDef& node,
   op->inputs.push_back(input_name);
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+}
+
+void ConvertLogOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Log");
+  CheckInputsCount(node, tf_import_flags, 1);
+
+  auto op = absl::make_unique<LogOperator>();
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(std::move(op));
 }
 
 void ConvertLogisticOperator(const NodeDef& node,
@@ -665,6 +694,8 @@ void ConvertFakeQuantWithMinMaxArgs(
   minmax.min = GetFloatAttr(node, "min");
   minmax.max = GetFloatAttr(node, "max");
   op->outputs.push_back(node.name());
+  // tf.fake_quant_with_min_max_args num_bits defaults to 8.
+  op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
   model->operators.emplace_back(op);
 }
 
@@ -682,6 +713,7 @@ void ConvertFakeQuantWithMinMaxVars(
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
+  op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
   model->operators.emplace_back(op);
 }
 
@@ -1343,13 +1375,16 @@ void ConvertFloorOperator(const NodeDef& node,
 void ConvertGatherOperator(const NodeDef& node,
                            const TensorFlowImportFlags& tf_import_flags,
                            Model* model) {
-  CHECK_EQ(node.op(), "Gather");
-  CheckInputsCount(node, tf_import_flags, 2);
+  CHECK(node.op() == "Gather" || node.op() == "GatherV2");
+  if (node.op() == "Gather") CheckInputsCount(node, tf_import_flags, 2);
+  if (node.op() == "GatherV2") CheckInputsCount(node, tf_import_flags, 3);
   const auto indices_data_type = GetDataTypeAttr(node, "Tindices");
   CHECK(indices_data_type == DT_INT32 || indices_data_type == DT_INT64);
   auto* op = new GatherOperator;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
+  // TODO(ahentz): we currently ignore the third tensor in GatherV2 but we
+  // should read it an pass it on to the TF Lite Interpreter.
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
 }
@@ -1928,7 +1963,7 @@ void ConvertTopKV2Operator(const NodeDef& node,
   // K can be encoded as attr (TopK) convert it to a const.
   if (HasAttr(node, "k")) {
     string k_array = CreateConstArray<ArrayDataType::kInt32>(
-        model, node.name() + "k", {GetIntAttr(node, "k")});
+        model, node.name() + "k", {static_cast<int32>(GetIntAttr(node, "k"))});
     op->inputs.push_back(k_array);
   } else {
     CheckInputsCount(node, tf_import_flags, 2);
@@ -2071,6 +2106,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertLRNOperator(node, tf_import_flags, model);
     } else if (node.op() == "Softmax") {
       ConvertSoftmaxOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Log") {
+      ConvertLogOperator(node, tf_import_flags, model);
     } else if (node.op() == "LogSoftmax") {
       ConvertLogSoftmaxOperator(node, tf_import_flags, model);
     } else if (node.op() == "All") {
@@ -2119,7 +2156,7 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertCastOperator(node, tf_import_flags, model);
     } else if (node.op() == "Floor") {
       ConvertFloorOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Gather") {
+    } else if (node.op() == "Gather" || node.op() == "GatherV2") {
       ConvertGatherOperator(node, tf_import_flags, model);
     } else if (node.op() == "ResizeBilinear") {
       ConvertResizeBilinearOperator(node, tf_import_flags, model);
@@ -2165,6 +2202,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
     } else if (node.op() == "DynamicStitch" ||
                node.op() == "ParallelDynamicStitch") {
       ConvertDynamicStitchOperator(node, tf_import_flags, model);
+    } else if (node.op() == "RandomUniform") {
+      ConvertRandomUniform(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }

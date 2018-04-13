@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
-#include "tensorflow/core/framework/visitable_allocator.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"

@@ -94,6 +94,10 @@ class HloSharding {
   // Create a new sharding from a protobuf OpSharding.
   static StatusOr<HloSharding> FromProto(const OpSharding& proto);
 
+  // Checks whether device is a reserved device number. A reserved device number
+  // has usually a special meaning, with dedicated handling logic.
+  static bool IsReservedDevice(int64 device) { return device < 0; }
+
   OpSharding ToProto() const;
   string ToString() const;
 
@@ -170,6 +174,10 @@ class HloSharding {
       return ShapeTree<HloSharding>(shape, *this);
     }
   }
+
+  // Retrieves the sub sharding at a given index, out of a tuple sharding.
+  // REQUIRES: IsTuple()
+  HloSharding GetSubSharding(const Shape& shape, const ShapeIndex& index) const;
 
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&

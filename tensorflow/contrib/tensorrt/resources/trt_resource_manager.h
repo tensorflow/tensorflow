@@ -29,11 +29,7 @@ class TRTResourceManager {
   TRTResourceManager() = default;
 
  public:
-  static std::shared_ptr<TRTResourceManager> instance() {
-    static std::shared_ptr<TRTResourceManager> instance_(
-        new TRTResourceManager);
-    return instance_;
-  }
+  static std::shared_ptr<TRTResourceManager> instance();
   // returns a manager for given op, if it doesn't exists it creates one
   std::shared_ptr<tensorflow::ResourceMgr> getManager(const string& op_name);
 

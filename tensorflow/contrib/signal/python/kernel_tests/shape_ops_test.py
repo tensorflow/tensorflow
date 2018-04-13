@@ -338,7 +338,7 @@ class FrameTest(test.TestCase):
 
   def test_constant_folding(self):
     """frame should be constant foldable for constant inputs."""
-    for pad_end in [False, True]:
+    for pad_end in [True, False]:
       g = ops.Graph()
       with g.as_default():
         frame_length, frame_step = 32, 16

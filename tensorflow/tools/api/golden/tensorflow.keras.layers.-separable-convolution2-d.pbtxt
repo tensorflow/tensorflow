@@ -1,11 +1,9 @@
 path: "tensorflow.keras.layers.SeparableConvolution2D"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.SeparableConv2D\'>"
-  is_instance: "<class \'tensorflow.python.layers.convolutional.SeparableConv2D\'>"
-  is_instance: "<class \'tensorflow.python.layers.convolutional._SeparableConv\'>"
-  is_instance: "<class \'tensorflow.python.layers.convolutional._Conv\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.SeparableConv\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.Conv\'>"
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -14,10 +12,6 @@ tf_class {
   }
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "graph"
     mtype: "<type \'property\'>"
   }
   member {
@@ -69,10 +63,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "scope_name"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "trainable_variables"
     mtype: "<type \'property\'>"
   }
@@ -106,11 +96,11 @@ tf_class {
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'getter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"

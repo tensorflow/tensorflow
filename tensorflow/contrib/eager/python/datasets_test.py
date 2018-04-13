@@ -24,9 +24,9 @@ import time
 import numpy as np
 
 from tensorflow.contrib import lookup
+from tensorflow.contrib.data.python.ops import prefetching_ops
 from tensorflow.contrib.data.python.ops import threadpool
 from tensorflow.contrib.data.python.ops import unique
-from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
 from tensorflow.python.eager import test
@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.training import checkpointable_utils
 
 
 class IteratorTest(test.TestCase):
@@ -191,6 +192,18 @@ class IteratorTest(test.TestCase):
       x = datasets.Iterator(ds).next()
       x = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], x.numpy())
+
+  def testTensorsExplicitPrefetchToDevice(self):
+    ds = Dataset.from_tensor_slices([0., 1.])
+    ds = ds.apply(prefetching_ops.prefetch_to_device(test.gpu_device_name()))
+
+    with self.assertRaisesRegexp(TypeError, 'prefetch_to_device'):
+      datasets.Iterator(ds)
+
+    for i, x in enumerate(ds):
+      with ops.device(test.gpu_device_name()):
+        x = math_ops.add(x, x)
+        self.assertEqual(float(i) + float(i), x.numpy())
 
   def testOverrideThreadPool(self):
 

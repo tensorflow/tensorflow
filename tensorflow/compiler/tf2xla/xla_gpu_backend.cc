@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
@@ -24,6 +25,12 @@ bool GpuOpFilter(KernelDef* kdef) {
   if (kdef->op() == "RandomStandardNormal" || kdef->op() == "RandomUniform" ||
       kdef->op() == "RandomUniformInt" || kdef->op() == "TruncatedNormal") {
     return false;
+  }
+  if (kdef->op() == "Const") {
+    AddDtypeToKernalDefConstraint("dtype", DT_STRING, kdef);
+  }
+  if (kdef->op() == "Assert") {
+    AddDtypeToKernalDefConstraint("T", DT_STRING, kdef);
   }
   return true;
 }

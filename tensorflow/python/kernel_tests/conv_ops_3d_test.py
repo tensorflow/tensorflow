@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
@@ -343,6 +344,8 @@ class Conv3DTest(test.TestCase):
 
         if data_format == "NCDHW":
           conv = test_util.NCHWToNHWC(conv)
+
+        self.assertEqual(conv.shape, tensor_shape.TensorShape(output_shape))
 
         if test_input:
           jacob_t, jacob_n = gradient_checker.compute_gradient(

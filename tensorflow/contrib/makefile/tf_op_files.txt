@@ -151,6 +151,7 @@ tensorflow/core/kernels/decode_bmp_op.cc
 tensorflow/core/kernels/depthtospace_op.cc
 tensorflow/core/kernels/data_format_ops.cc
 tensorflow/core/kernels/spacetodepth_op.cc
+tensorflow/core/kernels/dense_update_functor.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
 tensorflow/core/kernels/decode_wav_op.cc
@@ -228,6 +229,11 @@ tensorflow/core/kernels/cast_op_impl_int64.cc
 tensorflow/core/kernels/cast_op_impl_int8.cc
 tensorflow/core/kernels/cast_op_impl_uint16.cc
 tensorflow/core/kernels/cast_op_impl_uint8.cc
+tensorflow/core/kernels/boosted_trees/prediction_ops.cc
+tensorflow/core/kernels/boosted_trees/resource_ops.cc
+tensorflow/core/kernels/boosted_trees/resources.cc
+tensorflow/core/kernels/boosted_trees/stats_ops.cc
+tensorflow/core/kernels/boosted_trees/training_ops.cc
 tensorflow/core/kernels/bias_op.cc
 tensorflow/core/kernels/bcast_ops.cc
 tensorflow/core/kernels/batch_norm_op.cc
@@ -286,6 +292,7 @@ tensorflow/core/ops/data_flow_ops.cc
 tensorflow/core/ops/ctc_ops.cc
 tensorflow/core/ops/control_flow_ops.cc
 tensorflow/core/ops/candidate_sampling_ops.cc
+tensorflow/core/ops/boosted_trees_ops.cc
 tensorflow/core/ops/array_ops.cc
 tensorflow/core/ops/array_grad.cc
 tensorflow/core/kernels/spacetobatch_functor.cc
@@ -295,3 +302,5 @@ tensorflow/core/kernels/warn_about_ints.cc
 tensorflow/core/kernels/segment_reduction_ops.cc
 tensorflow/core/kernels/batch_util.cc
 tensorflow/core/ops/audio_ops.cc
+tensorflow/core/kernels/decode_proto_op.cc
+tensorflow/core/kernels/encode_proto_op.cc

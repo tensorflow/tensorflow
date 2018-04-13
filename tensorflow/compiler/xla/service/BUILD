@@ -285,6 +285,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "dfs_hlo_visitor_with_default_test",
+    srcs = ["dfs_hlo_visitor_with_default_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_runner",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
@@ -713,7 +730,6 @@ cc_library(
         ":computation_layout",
         ":device_memory_allocator",
         ":hlo",
-        ":hlo_cost_analysis",
         ":hlo_execution_profile",
         ":hlo_graph_dumper",
         ":pool",
@@ -1580,6 +1596,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -2518,6 +2535,7 @@ cc_library(
     srcs = ["hlo_runner.cc"],
     hdrs = ["hlo_runner.h"],
     deps = [
+        ":computation_placer",
         ":executable",
         ":hlo",
         ":transfer_manager",
@@ -2534,6 +2552,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2623,6 +2642,21 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "despecializer",
+    srcs = ["despecializer.cc"],
+    hdrs = ["despecializer.h"],
+    deps = [
+        ":bfloat16_normalization",
+        ":defuser",
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
+        ":implicit_broadcast_remover",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+cc_library(
     name = "source_map_util",
     srcs = ["source_map_util.cc"],
     hdrs = ["source_map_util.h"],
@@ -2632,18 +2666,4 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

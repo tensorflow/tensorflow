@@ -664,6 +664,23 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(42.0, grad.eval(feed_dict={c: 1}))
       self.assertAllEqual(3.0, grad.eval(feed_dict={c: 3}))
 
+  def testCondGrad_3(self):
+    with self.test_session():
+      c = array_ops.placeholder(dtypes.int32, shape=[])
+      ox = constant_op.constant(10.0)
+      pred = math_ops.less(c, 2)
+
+      def fn1(x):
+        m = x * x
+        return gradients_impl.gradients(m, [ox])[0]
+
+      fn2 = lambda: math_ops.multiply(ox, 3.0)
+      y = math_ops.multiply(7.0, ox)
+      r = control_flow_ops.cond(pred, lambda: fn1(y), fn2)
+
+      self.assertAllEqual(980.0, r.eval(feed_dict={c: 1}))
+      self.assertAllEqual(30.0, r.eval(feed_dict={c: 3}))
+
   def testNestedCond_Simple(self):
     with self.test_session():
       x = constant_op.constant(0., name="X")

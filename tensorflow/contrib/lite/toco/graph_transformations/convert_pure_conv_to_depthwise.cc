@@ -33,6 +33,11 @@ bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
   if (conv_op->stride_width != conv_op->stride_height) {
     return false;
   }
+  if ((conv_op->dilation_width_factor != 1) ||
+      (conv_op->dilation_height_factor != 1)) {
+    // Depthwise conv does not support dilation
+    return false;
+  }
   auto& weights_array = model->GetArray(conv_op->inputs[1]);
   if (!weights_array.buffer) {
     // Yield until the weights are resolved as a constant array.

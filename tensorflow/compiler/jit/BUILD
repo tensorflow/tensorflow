@@ -120,11 +120,13 @@ cc_library(
 )
 
 cc_library(
-    name = "xla_tensor_info",
-    srcs = ["xla_tensor_info.cc"],
-    hdrs = ["xla_tensor_info.h"],
+    name = "xla_tensor",
+    srcs = ["xla_tensor.cc"],
+    hdrs = ["xla_tensor.h"],
     deps = [
         ":common",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -154,7 +156,7 @@ cc_library(
         ":common",
         ":jit_compilation_passes",
         ":xla_launch_util",
-        ":xla_tensor_info",
+        ":xla_tensor",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
@@ -181,6 +183,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shape_inference_helpers",
+    srcs = ["shape_inference_helpers.cc"],
+    hdrs = ["shape_inference_helpers.h"],
+    deps = ["//tensorflow/core:graph"],
+)
+
 # Internal targets below this point.
 
 cc_library(
@@ -201,15 +210,15 @@ cc_library(
     deps = [
         ":common",
         ":xla_compilation_cache",
-        ":xla_tensor_info",
+        ":xla_tensor",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -291,6 +300,7 @@ cc_library(
     deps = [
         ":common",
         ":graph_to_functiondef",
+        ":shape_inference_helpers",
         ":union_find",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
@@ -314,6 +324,25 @@ cc_library(
 cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
+)
+
+cc_library(
+    name = "producer_consumer_queue",
+    hdrs = ["producer_consumer_queue.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+tf_cc_test(
+    name = "producer_consumer_queue_test",
+    size = "small",
+    srcs = ["producer_consumer_queue_test.cc"],
+    deps = [
+        ":producer_consumer_queue",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cc_test(
@@ -359,24 +388,11 @@ tf_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 # This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.

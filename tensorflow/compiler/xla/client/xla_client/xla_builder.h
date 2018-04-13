@@ -335,6 +335,26 @@ class XlaBuilder {
   XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
                    const DotDimensionNumbers& dimension_numbers);
 
+  // Default dimension numbers used for a 2D convolution.
+  static constexpr int64 kConvBatchDimension = 0;
+  static constexpr int64 kConvFeatureDimension = 1;
+  static constexpr int64 kConvFirstSpatialDimension = 2;
+  static constexpr int64 kConvSecondSpatialDimension = 3;
+  static constexpr int64 kConvKernelOutputDimension = 0;
+  static constexpr int64 kConvKernelInputDimension = 1;
+  static constexpr int64 kConvKernelFirstSpatialDimension = 2;
+  static constexpr int64 kConvKernelSecondSpatialDimension = 3;
+
+  // Creates a default ConvolutionDimensionNumbers. For a 2D convolution, for
+  // the input operand {batch, feature, height, width} = {0, 1, 2, 3} and for
+  // the kernel operand
+  // {output_feature, input_feature, height, width} = {0, 1, 2, 3}.
+  static ConvolutionDimensionNumbers CreateDefaultConvDimensionNumbers(
+      int num_spatial_dims = 2);
+
+  // Returns an error if the convolution dimension numbers have conflicts.
+  static Status Validate(const ConvolutionDimensionNumbers& dnum);
+
   // Enqueues a convolution instruction onto the computation, which uses the
   // default convolution dimension numbers.
   XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
@@ -667,11 +687,12 @@ class XlaBuilder {
   XlaOp Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters with index greater than or equal to
-  // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
-  // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
-  // compile-time constant without evaluating the computation.
-  StatusOr<bool> IsConstant(const XlaOp& operand, int64 num_parameters = 0);
+  // constant does not depend on any parameters, or on stateful operators such
+  // as `RngNormal` or `Infeed`.
+  //
+  // This tests whether a computation is a compile-time constant without
+  // evaluating the computation.
+  StatusOr<bool> IsConstant(const XlaOp& operand) const;
 
   // Normalizes operand across spatial and batch dimensions for each feature.
   //
@@ -711,9 +732,31 @@ class XlaBuilder {
                       const XlaOp& grad_output, float epsilon,
                       int64 feature_index);
 
+  // Returns a new XlaBuilder whose resultant Computation is used only by this
+  // XlaBuilder. The sub-XlaBuilder has the same die_immediately_on_error
+  // behavior as the parent.
+  std::unique_ptr<XlaBuilder> CreateSubBuilder(const string& computation_name);
+
   // Builds the computation with the requested operations, or returns a non-ok
-  // status.
+  // status. Note that all ops that have been enqueued will be moved to the
+  // computation being returned.
   StatusOr<XlaComputation> Build();
+
+  // Builds the computation with the requested operations, or notes an error in
+  // the parent XlaBuilder and returns an empty computation if building failed.
+  // This function is intended to be used where the returned XlaComputation is
+  // only used by the parent XlaBuilder and hence further operation on the
+  // returned XlaComputation will simply be error'ed out if an error occurred
+  // while building this computation. If the built computation is to be used by
+  // a XlaBuilder other than the parent XlaBuilder then Build() should be used
+  // instead.
+  XlaComputation BuildAndNoteError();
+
+  // Returns a subgraph that roots on the given root. If the root is not a
+  // compile-time constant (see `IsConstant`), returns an error.
+  //
+  // This will copy the needed ops/computations to the subgraph.
+  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op) const;
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -727,12 +770,15 @@ class XlaBuilder {
   StatusOr<Shape> GetShape(const XlaOp& op) const;
 
   // Returns the (inferred) result for the current computation's shape.
-  StatusOr<ProgramShape> GetProgramShape();
+  StatusOr<ProgramShape> GetProgramShape() const;
 
  private:
   StatusOr<XlaOp> AddInstruction(
       HloInstructionProto&& instr, HloOpcode opcode,
       tensorflow::gtl::ArraySlice<XlaOp> operands = {});
+
+  void AddCalledComputation(const XlaComputation& computation,
+                            HloInstructionProto* instr);
 
   // Notes that the error occurred by:
   // * storing it internally and capturing a backtrace if it's the first error
@@ -740,13 +786,7 @@ class XlaBuilder {
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
-  XlaOp NoteErrorOrReturn(StatusOr<XlaOp>&& op) {
-    if (!op.ok()) {
-      NoteError(op.status());
-      return XlaOp();
-    }
-    return op.ConsumeValueOrDie();
-  }
+  XlaOp NoteErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
 
   // Helper method that creates an empty op and notes error.
   XlaOp UnimplementedOp();
@@ -766,6 +806,10 @@ class XlaBuilder {
   XlaOp TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
                   const XlaOp& ehs);
 
+  XlaOp RngOp(RandomDistribution distribution,
+              tensorflow::gtl::ArraySlice<XlaOp> parameters,
+              const Shape& shape);
+
   StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, const XlaOp& operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
@@ -781,7 +825,29 @@ class XlaBuilder {
 
   // Returns the (inferred) result for the program shape for the current
   // computation and fills the root_id in the pointer.
-  StatusOr<ProgramShape> GetProgramShape(int64* root_id);
+  StatusOr<ProgramShape> GetProgramShape(int64* root_id) const;
+
+  // A visitor which checks whether an operation is a compile-time constant,
+  // meaning that it doesn't depend on any parameters, or on any stateful
+  // operation such as `RngNormal` or `Infeed`. The visitor walks the
+  // computation starting at a given operation and sets is_constant to false iff
+  // a parameter or stateful operation is encountered.
+  void IsConstantVisitor(const int64 op_handle, std::set<int64>* visited,
+                         bool* is_constant) const;
+
+  // Checks bounds for convolution parameters.
+  Status VerifyConvolution(
+      const Shape& lhs_shape, const Shape& rhs_shape,
+      const ConvolutionDimensionNumbers& dimension_numbers) const;
+
+  // Helper function for creating a Window proto from user-supplied data.
+  // Returns error if the user-supplied data was invalid.
+  StatusOr<Window> MakeWindow(
+      tensorflow::gtl::ArraySlice<int64> window_dimensions,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+      tensorflow::gtl::ArraySlice<int64> lhs_dilation,
+      tensorflow::gtl::ArraySlice<int64> rhs_dilation) const;
 
   string name_;  // Name to use for the built computation.
 
@@ -814,6 +880,8 @@ class XlaBuilder {
 
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_ = false;
+
+  XlaBuilder* parent_builder_{nullptr};
 };
 
 template <typename NativeT>
@@ -890,6 +958,37 @@ template <typename NativeT>
 XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
   return ConstantFromArray(values);
 }
+
+// RAII-style object: sets the current sharding assignment in builder on
+// construction, and sets back to the previous assignment on destruction.
+//
+// TODO(b/74197823): This is a part of a NOT YET ready refactor.
+class XlaScopedShardingAssignment {
+ public:
+  XlaScopedShardingAssignment(xla::XlaBuilder* builder,
+                              tensorflow::gtl::optional<OpSharding> sharding)
+      : builder_(builder), prev_sharding_(builder->sharding()) {
+    SetSharding(sharding);
+  }
+
+  XlaScopedShardingAssignment(const XlaScopedShardingAssignment&) = delete;
+  XlaScopedShardingAssignment& operator=(const XlaScopedShardingAssignment&) =
+      delete;
+
+  ~XlaScopedShardingAssignment() { SetSharding(prev_sharding_); }
+
+ private:
+  void SetSharding(const tensorflow::gtl::optional<OpSharding>& sharding) {
+    if (sharding.has_value()) {
+      builder_->SetSharding(sharding.value());
+    } else {
+      builder_->ClearSharding();
+    }
+  }
+
+  xla::XlaBuilder* const builder_;
+  tensorflow::gtl::optional<OpSharding> prev_sharding_;
+};
 
 }  // namespace xla
 

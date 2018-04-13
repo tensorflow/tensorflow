@@ -350,8 +350,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   elif save_summaries_steps == USE_DEFAULT:
     save_summaries_steps = None
 
-  if save_checkpoint_steps == USE_DEFAULT and \
-    save_checkpoint_secs == USE_DEFAULT:
+  if (save_checkpoint_steps == USE_DEFAULT and
+      save_checkpoint_secs == USE_DEFAULT):
     save_checkpoint_steps = None
     save_checkpoint_secs = 600
   elif save_checkpoint_secs == USE_DEFAULT:

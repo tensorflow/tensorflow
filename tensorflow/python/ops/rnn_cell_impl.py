@@ -599,9 +599,9 @@ class BasicLSTMCell(LayerRNNCell):
     Args:
       inputs: `2-D` tensor with shape `[batch_size, input_size]`.
       state: An `LSTMStateTuple` of state tensors, each shaped
-        `[batch_size, self.state_size]`, if `state_is_tuple` has been set to
+        `[batch_size, num_units]`, if `state_is_tuple` has been set to
         `True`.  Otherwise, a `Tensor` shaped
-        `[batch_size, 2 * self.state_size]`.
+        `[batch_size, 2 * num_units]`.
 
     Returns:
       A pair containing the new hidden state, and the new state (either a
@@ -1206,7 +1206,16 @@ class DeviceWrapper(RNNCell):
 
 @tf_export("nn.rnn_cell.MultiRNNCell")
 class MultiRNNCell(RNNCell):
-  """RNN cell composed sequentially of multiple simple cells."""
+  """RNN cell composed sequentially of multiple simple cells.
+
+  Example:
+
+  ```python
+  num_units = [128, 64]
+  cells = [BasicLSTMCell(num_units=n) for n in num_units]
+  stacked_rnn_cell = MultiRNNCell(cells)
+  ```
+  """
 
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.

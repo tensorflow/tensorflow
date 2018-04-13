@@ -347,16 +347,3 @@ cuda_py_test(
     ],
     main = "python/kernel_tests/masked_matmul_benchmark.py",
 )
-
-# All files
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

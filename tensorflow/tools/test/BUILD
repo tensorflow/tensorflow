@@ -92,15 +92,3 @@ tf_py_logged_benchmark(
     name = "rnn_op_benchmark",
     target = "//tensorflow/python/kernel_tests:rnn_test",
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
