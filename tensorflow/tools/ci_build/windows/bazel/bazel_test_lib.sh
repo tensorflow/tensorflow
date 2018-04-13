@@ -140,6 +140,13 @@ function run_configure_for_gpu_build {
   echo "" | ./configure
 }
 
+function set_gcs_remote_cache_options {
+  echo "build --experimental_remote_spawn_cache" >> .bazelrc
+  echo "build --experimental_remote_platform_override='properties:{name:\"build\" value:\"windows-x64\"}'" >> .bazelrc
+  echo "build --remote_http_cache=https://storage.googleapis.com/$GCS_BUCKET_NAME" >> .bazelrc
+  echo "build --google_credentials=$GOOGLE_CLOUD_CREDENTIAL" >> .bazelrc
+}
+
 function create_python_test_dir() {
   rm -rf "$1"
   mkdir -p "$1"
