@@ -959,6 +959,37 @@ XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
   return ConstantFromArray(values);
 }
 
+// RAII-style object: sets the current sharding assignment in builder on
+// construction, and sets back to the previous assignment on destruction.
+//
+// TODO(b/74197823): This is a part of a NOT YET ready refactor.
+class XlaScopedShardingAssignment {
+ public:
+  XlaScopedShardingAssignment(xla::XlaBuilder* builder,
+                              tensorflow::gtl::optional<OpSharding> sharding)
+      : builder_(builder), prev_sharding_(builder->sharding()) {
+    SetSharding(sharding);
+  }
+
+  XlaScopedShardingAssignment(const XlaScopedShardingAssignment&) = delete;
+  XlaScopedShardingAssignment& operator=(const XlaScopedShardingAssignment&) =
+      delete;
+
+  ~XlaScopedShardingAssignment() { SetSharding(prev_sharding_); }
+
+ private:
+  void SetSharding(const tensorflow::gtl::optional<OpSharding>& sharding) {
+    if (sharding.has_value()) {
+      builder_->SetSharding(sharding.value());
+    } else {
+      builder_->ClearSharding();
+    }
+  }
+
+  xla::XlaBuilder* const builder_;
+  tensorflow::gtl::optional<OpSharding> prev_sharding_;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_XLA_CLIENT_XLA_BUILDER_H_

@@ -28,6 +28,7 @@ from collections import defaultdict
 from collections import OrderedDict
 from contextlib import contextmanager
 from functools import partial
+import warnings
 
 import math
 import six
@@ -171,6 +172,9 @@ class LayerCollection(object):
   def __init__(self,
                graph=None,
                name="LayerCollection"):
+    warnings.warn(
+        "tf.contrib.kfac is deprecated and will be removed by 2018-11-01. "
+        "Use https://pypi.python.org/pypi/kfac instead.")
     self.fisher_blocks = LayerParametersDict()
     self.fisher_factors = OrderedDict()
     self._linked_parameters = dict(

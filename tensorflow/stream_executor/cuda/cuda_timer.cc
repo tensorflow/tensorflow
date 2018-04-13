@@ -27,16 +27,18 @@ namespace cuda {
 bool CUDATimer::Init() {
   CHECK(start_event_ == nullptr && stop_event_ == nullptr);
   CudaContext* context = parent_->cuda_context();
-  if (!CUDADriver::CreateEvent(context, &start_event_,
-                               CUDADriver::EventFlags::kDefault)
-           .ok()) {
+  port::Status status = CUDADriver::CreateEvent(
+      context, &start_event_, CUDADriver::EventFlags::kDefault);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
     return false;
   }
 
-  if (!CUDADriver::CreateEvent(context, &stop_event_,
-                               CUDADriver::EventFlags::kDefault)
-           .ok()) {
-    port::Status status = CUDADriver::DestroyEvent(context, &start_event_);
+  status = CUDADriver::CreateEvent(context, &stop_event_,
+                                   CUDADriver::EventFlags::kDefault);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+    status = CUDADriver::DestroyEvent(context, &start_event_);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }

@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import statistical_testing as st
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
@@ -214,6 +215,28 @@ class StatisticalTestingTest(test.TestCase):
       op = st.true_mean_confidence_interval_by_dkwm(
           samples, [[0., 1.]], [[1., 2.]], error_rate=0.5)
       _ = sess.run(op)
+
+  def test_do_maximum_mean(self):
+    n = 117
+    envelope = 0.02  # > 2 / n, but < 3 / n
+    rng = np.random.RandomState(seed=8)
+    samples = rng.uniform(size=n).astype(np.float32)
+
+    # Compute the answer in TF using the code under test
+    with self.test_session() as sess:
+      envelope_t = ops.convert_to_tensor(envelope)
+      max_mean = st._do_maximum_mean(samples, envelope_t, 1)
+      max_mean = sess.run(max_mean)
+
+    # Compute the correct answer for this case in numpy.  In this
+    # example, `n` and `envelope` are such that `samples[2]` is the
+    # element that should be taken partially, regardless of the
+    # content of the `samples` array (see algorithm description in
+    # `../ops/statistical_testing.py`).
+    samples = sorted(samples)
+    weight = 1. / n - (envelope - 2. / n)
+    answer = samples[2] * weight + sum(samples[3:]) / n + envelope * 1.
+    self.assertAllClose(max_mean, answer, rtol=1e-9)
 
 
 if __name__ == '__main__':

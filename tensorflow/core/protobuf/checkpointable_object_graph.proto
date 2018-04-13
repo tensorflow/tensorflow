@@ -2,14 +2,14 @@ syntax = "proto3";
 
 option cc_enable_arenas = true;
 
-package tensorflow.contrib.eager;
+package tensorflow;
 
-// Prototype format which saves extra information about the objects which own
-// variables, allowing for more robust checkpoint loading into modified
-// programs. Currently stored in its own entry in a TensorBundle.
+// A TensorBundle addition which saves extra information about the objects which
+// own variables, allowing for more robust checkpoint loading into modified
+// programs.
 
 message CheckpointableObjectGraph {
-  message Object {
+  message CheckpointableObject {
     message ObjectReference {
       // An index into `CheckpointableObjectGraph.nodes`, indicating the object
       // being referenced.
@@ -51,5 +51,5 @@ message CheckpointableObjectGraph {
     repeated SlotVariableReference slot_variables = 3;
   }
 
-  repeated Object nodes = 1;
+  repeated CheckpointableObject nodes = 1;
 }

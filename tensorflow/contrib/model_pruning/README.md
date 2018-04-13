@@ -45,7 +45,7 @@ The pruning library allows for specification of the following hyper parameters:
 | do_not_prune | list of strings | [""] | list of layers names that are not pruned |
 | threshold_decay | float | 0.9 | The decay factor to use for exponential decay of the thresholds |
 | pruning_frequency | integer | 10 | How often should the masks be updated? (in # of global_steps) |
-| nbins | integer | 255 | Number of bins to use for histogram computation |
+| nbins | integer | 256 | Number of bins to use for histogram computation |
 | block_height|integer | 1 | Number of rows in a block for block sparse matrices|
 | block_width |integer | 1 | Number of cols in a block for block sparse matrices|
 | block_pooling_function| string | AVG | The function to use to pool weight values in a block: average (AVG) or max (MAX)|
