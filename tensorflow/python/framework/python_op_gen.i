@@ -38,4 +38,4 @@ limitations under the License.
 
 %ignoreall;
 %unignore tensorflow::GetEagerPythonWrappers;
-%include "third_party/tensorflow/python/eager/python_eager_op_gen.h"
+%include "tensorflow/python/eager/python_eager_op_gen.h"
