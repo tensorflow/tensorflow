@@ -282,7 +282,7 @@ class LinearOperator(object):
     `[B1,...,Bb, M, N]`, equivalent to `tf.shape(A)`.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `int32` `Tensor`
@@ -316,7 +316,7 @@ class LinearOperator(object):
     `[B1,...,Bb]`.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `int32` `Tensor`
@@ -338,7 +338,7 @@ class LinearOperator(object):
     `A.shape = [B1,...,Bb, M, N]`, then this returns `b + 2`.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       Python integer, or None if the tensor rank is undefined.
@@ -354,7 +354,7 @@ class LinearOperator(object):
     `A.shape = [B1,...,Bb, M, N]`, then this returns `b + 2`.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `int32` `Tensor`, determined at runtime.
@@ -579,7 +579,7 @@ class LinearOperator(object):
       adjoint: Python `bool`.  If `True`, left multiply by the adjoint: `A^H x`.
       adjoint_arg:  Python `bool`.  If `True`, compute `A x^H` where `x^H` is
         the hermitian transpose (transposition and complex conjugation).
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       A `Tensor` with shape `[..., M, R]` and same `dtype` as `self`.
@@ -621,7 +621,7 @@ class LinearOperator(object):
         dimensions, the last dimension defines a vector.
         See class docstring for definition of compatibility.
       adjoint: Python `bool`.  If `True`, left multiply by the adjoint: `A^H x`.
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
@@ -645,7 +645,7 @@ class LinearOperator(object):
     """Determinant for every batch member.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
@@ -674,7 +674,7 @@ class LinearOperator(object):
     """Log absolute value of determinant for every batch member.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
