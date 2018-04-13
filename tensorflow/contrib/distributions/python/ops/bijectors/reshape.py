@@ -128,9 +128,11 @@ class Reshape(bijector_lib.Bijector):
       self._event_shape_in = event_shape_in
       self._event_shape_out = event_shape_out
 
-      super(Reshape, self).__init__(is_constant_jacobian=True,
-                                    validate_args=validate_args,
-                                    name=name or "reshape")
+      super(Reshape, self).__init__(
+          forward_min_event_ndims=0,
+          is_constant_jacobian=True,
+          validate_args=validate_args,
+          name=name or "reshape")
 
   def _maybe_check_valid_shape(self, shape, validate_args):
     """Check that a shape Tensor is int-type and otherwise sane."""

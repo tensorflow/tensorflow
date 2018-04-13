@@ -5212,6 +5212,7 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
                            const int32* paddings_data,
                            const Dims<4>& paddings_dims, T* output_data,
                            const Dims<4>& output_dims) {
+  // Unoptimized - Straight copy from reference ops.
   gemmlowp::ScopedProfilingLabel label("SpaceToBatchND");
 
   const int output_batch_size = ArraySize(output_dims, 3);
@@ -5253,29 +5254,76 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
+// Helper methods for BatchToSpaceND.
+// `spatial_index_dim` specifies post-crop offset index in this spatial
+// dimension, i.e. spatial offset introduced by flattening batch to spatial
+// dimension minus the crop size at beginning. `block_shape_dim` is the block
+// size in current dimension. `input_dim` and `output_dim` are input and output
+// size of BatchToSpaceND operation in current dimension.
+// Output start index is inclusive and end index is exclusive.
+inline void GetIndexRange(int spatial_index_dim, int block_shape_dim,
+                          int input_dim, int output_dim, int* start_index,
+                          int* end_index) {
+  // (*start_index) * block_shape_dim is effectively rounded up to the next
+  // multiple of block_shape_dim by the integer division.
+  *start_index =
+      std::max(0, (-spatial_index_dim + block_shape_dim - 1) / block_shape_dim);
+  // Similarly, (*end_index) * block_shape_dim is rounded up too (note that
+  // end_index is exclusive).
+  *end_index = std::min(
+      input_dim,
+      (output_dim - spatial_index_dim + block_shape_dim - 1) / block_shape_dim);
+}
+
 template <typename T>
 inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
                            const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims, T* output_data,
-                           const Dims<4>& output_dims) {
+                           const Dims<4>& block_shape_dims,
+                           const int32* crops_data, const Dims<4>& crops_dims,
+                           T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
 
   const int output_batch_size = ArraySize(output_dims, 3);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   const int input_batch_size = ArraySize(input_dims, 3);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int depth = ArraySize(input_dims, 0);
   const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
+  const int crops_top = crops_data[0];
+  const int crops_left = crops_data[2];
 
   for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      for (int in_w = 0; in_w < input_width; ++in_w) {
-        int out_batch = in_batch % output_batch_size;
-        int out_w = in_w * block_shape_width +
-                    (in_batch / output_batch_size) % block_shape_width;
-        int out_h = in_h * block_shape_height +
-                    (in_batch / output_batch_size) / block_shape_width;
+    const int out_batch = in_batch % output_batch_size;
+    const int spatial_offset = in_batch / output_batch_size;
+
+    int in_h_start = 0;
+    int in_h_end = 0;
+    // GetIndexRange ensures start and end indices are in [0, output_height).
+    GetIndexRange(spatial_offset / block_shape_width - crops_top,
+                  block_shape_height, input_height, output_height, &in_h_start,
+                  &in_h_end);
+
+    for (int in_h = in_h_start; in_h < in_h_end; ++in_h) {
+      const int out_h = in_h * block_shape_height +
+                        spatial_offset / block_shape_width - crops_top;
+      TFLITE_DCHECK_GE(out_h, 0);
+      TFLITE_DCHECK_LT(out_h, output_height);
+
+      int in_w_start = 0;
+      int in_w_end = 0;
+      // GetIndexRange ensures start and end indices are in [0, output_width).
+      GetIndexRange(spatial_offset % block_shape_width - crops_left,
+                    block_shape_width, input_width, output_width, &in_w_start,
+                    &in_w_end);
+
+      for (int in_w = in_w_start; in_w < in_w_end; ++in_w) {
+        const int out_w = in_w * block_shape_width +
+                          spatial_offset % block_shape_width - crops_left;
+        TFLITE_DCHECK_GE(out_w, 0);
+        TFLITE_DCHECK_LT(out_w, output_width);
         T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_batch);
         const T* in = input_data + Offset(input_dims, 0, in_w, in_h, in_batch);
         memcpy(out, in, depth * sizeof(T));

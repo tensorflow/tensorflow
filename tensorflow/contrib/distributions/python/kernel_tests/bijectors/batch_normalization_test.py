@@ -83,10 +83,11 @@ class BatchNormTest(test_util.VectorDistributionTestHelpers,
           moving_mean = array_ops.identity(batch_norm.batchnorm.moving_mean)
           moving_var = array_ops.identity(batch_norm.batchnorm.moving_variance)
           denorm_x = batch_norm.forward(array_ops.identity(norm_x))
-          fldj = batch_norm.forward_log_det_jacobian(x)
+          fldj = batch_norm.forward_log_det_jacobian(
+              x, event_ndims=len(event_dims))
           # Use identity to invalidate cache.
           ildj = batch_norm.inverse_log_det_jacobian(
-              array_ops.identity(denorm_x))
+              array_ops.identity(denorm_x), event_ndims=len(event_dims))
         variables.global_variables_initializer().run()
         # Update variables.
         norm_x_ = sess.run(norm_x)

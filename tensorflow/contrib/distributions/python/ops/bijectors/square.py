@@ -59,7 +59,7 @@ class Square(bijector.Bijector):
     """
     self._name = name
     super(Square, self).__init__(
-        event_ndims=0,
+        forward_min_event_ndims=0,
         validate_args=validate_args,
         name=name)
 

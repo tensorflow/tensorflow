@@ -28,22 +28,34 @@ from tensorflow.contrib.autograph.pyct import transformer
 class FunctionNameScopeTransformer(transformer.Base):
   """Wrap a function body with a `name_scope` of the function name."""
 
-  def __init__(self, context):
-    super(FunctionNameScopeTransformer, self).__init__(context)
-    self._function_level = 0
+  def _name_for_current_scope(self):
+    innermost = self.enclosing_entities[-1]
+    if len(self.enclosing_entities) > 1:
+      parent = self.enclosing_entities[-2]
+      if isinstance(parent, gast.ClassDef):
+        # Methods also take the name of their class.
+        name = '%s/%s' % (parent.name, innermost.name)
+      else:
+        name = innermost.name
+    else:
+      name = innermost.name
+
+    # Sanitize the name.
+    # See https://www.tensorflow.org/api_docs/python/tf/Graph#name_scope
+    # TensorFlow doesn't like leading underscores at the top level.
+    while name[0] == '_':
+      name = name[1:]
+    return name
 
   def visit_FunctionDef(self, node):
-    self._function_level += 1
-    try:
-      self.generic_visit(node)
-    finally:
-      self._function_level -= 1
-    scope_name = node.name
-    if self._function_level == 0 and self.context.owner_type is not None:
-      scope_name = '{}/{}'.format(self.context.owner_type.__name__, scope_name)
+    self.generic_visit(node)
+    template = """
+      with tf.name_scope(scope_name):
+        body
+    """
     node.body = templates.replace(
-        'with tf.name_scope(scope_name): body',
-        scope_name=gast.Str(scope_name),
+        template,
+        scope_name=gast.Str(self._name_for_current_scope()),
         body=node.body)
     return node
 

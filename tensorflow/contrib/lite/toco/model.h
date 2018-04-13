@@ -1420,8 +1420,7 @@ struct SpaceToBatchNDOperator : Operator {
 };
 
 // BatchToSpaceND operator. Rearranges data from batch into blocks of
-// spatial data. Currently, only 2-d blocks are supported. Cropping is not
-// supported, either, and the crops array should be all zero.
+// spatial data. Currently, only 2-d blocks are supported.
 //
 // Inputs:
 //   inputs[0]: required: the input array

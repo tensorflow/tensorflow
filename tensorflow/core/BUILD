@@ -71,6 +71,10 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load(
+    "@io_bazel_rules_closure//closure:defs.bzl",
+    "closure_js_proto_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "full_path",
     "if_android",
@@ -242,6 +246,14 @@ tf_nano_proto_library(
     generate_intdefs = 1,
     visibility = ["//visibility:public"],
     deps = [":protos_all_cc"],
+)
+
+closure_js_proto_library(
+    name = "example_js_protos",
+    srcs = [
+        "example/example.proto",
+        "example/feature.proto",
+    ],
 )
 
 exports_files([

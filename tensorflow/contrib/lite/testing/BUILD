@@ -161,6 +161,9 @@ cc_test(
     size = "small",
     srcs = ["tflite_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":tflite_driver",
         "@com_google_googletest//:gtest_main",

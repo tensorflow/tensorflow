@@ -1661,7 +1661,14 @@ tensorflow::Status Service::GetComputationStats(
 
 tensorflow::Status Service::GetComputationGraphStats(
     const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
-  HloModuleConfig config;
+  if (!arg->has_computation()) {
+    return InvalidArgument("Computations may not be empty.");
+  }
+  if (!arg->computation().has_program_shape()) {
+    return InvalidArgument("Program shape may not be empty.");
+  }
+
+  HloModuleConfig config(arg->computation().program_shape());
   config.set_debug_options(arg->debug_options());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       HloModule::CreateFromProto(arg->computation(), config));

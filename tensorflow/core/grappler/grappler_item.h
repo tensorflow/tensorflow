@@ -35,8 +35,9 @@ namespace grappler {
 // nodes, and potentially a set of nodes to feed.
 // TODO(volunteer_needed): turn this struct into a class.
 struct GrapplerItem {
-  GrapplerItem() {}
+  GrapplerItem() = default;
   GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef);
+  virtual ~GrapplerItem() = default;
 
   string id;  // A unique id for this item
 
