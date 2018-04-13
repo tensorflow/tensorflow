@@ -602,6 +602,67 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline void ExperimentalShuffledFullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims,
+    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
+    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    int16* output_data, const Dims<4>& output_dims,
+    gemmlowp::GemmContext* gemm_context) {
+  (void)gemm_context;  // only used in optimized code.
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  // TODO(benoitjacob): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                      ArraySize(output_dims, 3);
+  const int output_depth = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  const int accum_depth = ArraySize(weights_dims, 0);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
+  // The experimental shuffling is an optimization for matrix*vector product.
+  // We aren't interested in supporting non-matrix*vector-product cases, i.e.
+  // batches>1.
+  TFLITE_DCHECK_EQ(batches, 1);
+  // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+  // so that just reinterpreting them as int8 values is equivalent to
+  // subtracting 128 from them, thus implementing for free the subtraction of
+  // the zero_point value 128.
+  const int8* shuffled_weights_ptr =
+      reinterpret_cast<const int8*>(shuffled_weights_data);
+  for (int c = 0; c < output_depth; c += 4) {
+    // Internal accumulation.
+    // Initialize accumulator with the bias-value.
+    int32 accum[4] = {0};
+    // Accumulation loop.
+    for (int d = 0; d < accum_depth; d += 16) {
+      for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 16; j++) {
+          int8 input_val = input_data[d + j] - 128;
+          int8 weights_val = *shuffled_weights_ptr++;
+          accum[i] += weights_val * input_val;
+        }
+      }
+    }
+    for (int i = 0; i < 4; i++) {
+      // Add bias value
+      int acc = accum[i] + bias_data[c + i];
+      // Down-scale the final int32 accumulator to the scale used by our
+      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
+      // multiplier and shift here have been pre-computed offline
+      // (e.g. by toco).
+      acc =
+          MultiplyByQuantizedMultiplier(acc, output_multiplier, -output_shift);
+      // Saturate, cast to int16, and store to output array.
+      acc = std::max(acc, output_activation_min);
+      acc = std::min(acc, output_activation_max);
+      output_data[c + i] = acc;
+    }
+  }
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
