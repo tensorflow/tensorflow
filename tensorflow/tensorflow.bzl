@@ -67,38 +67,38 @@ def if_android_x86(a):
 
 def if_android_arm(a):
   return select({
-      clean_dep("//tensorflow:android_arm"): a,
+      clean_dep("//tensorflow:rem_android_arm"): a,
       "//conditions:default": [],
   })
 
 def if_android_arm64(a):
   return select({
-      clean_dep("//tensorflow:android_arm64"): a,
+      clean_dep("//tensorflow:rem_android_arm64"): a,
       "//conditions:default": [],
   })
 
 def if_android_mips(a):
   return select({
-      clean_dep("//tensorflow:android_mips"): a,
+      clean_dep("//tensorflow:rem_android_mips"): a,
       "//conditions:default": [],
   })
 
 def if_not_android(a):
   return select({
-      clean_dep("//tensorflow:android"): [],
+      clean_dep("//tensorflow:rem_android"): [],
       "//conditions:default": a,
   })
 
 def if_not_android_mips_and_mips64(a):
   return select({
-      clean_dep("//tensorflow:android_mips"): [],
-      clean_dep("//tensorflow:android_mips64"): [],
+      clean_dep("//tensorflow:rem_android_mips"): [],
+      clean_dep("//tensorflow:rem_android_mips64"): [],
       "//conditions:default": a,
   })
 
 def if_android(a):
   return select({
-      clean_dep("//tensorflow:android"): a,
+      clean_dep("//tensorflow:rem_android"): a,
       "//conditions:default": [],
   })
 
@@ -116,14 +116,14 @@ def if_ios_x86_64(a):
 
 def if_mobile(a):
   return select({
-      clean_dep("//tensorflow:android"): a,
+      clean_dep("//tensorflow:rem_android"): a,
       clean_dep("//tensorflow:ios"): a,
       "//conditions:default": [],
   })
 
 def if_not_mobile(a):
   return select({
-      clean_dep("//tensorflow:android"): [],
+      clean_dep("//tensorflow:rem_android"): [],
       clean_dep("//tensorflow:ios"): [],
       "//conditions:default": a,
   })

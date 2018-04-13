@@ -5081,7 +5081,7 @@ filegroup(
 cc_library(
     name = "android_tensorflow_kernels",
     srcs = select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             "//tensorflow/core/kernels:android_core_ops",
             "//tensorflow/core/kernels:android_extended_ops",
         ],
@@ -5268,7 +5268,7 @@ tf_cc_binary(
     ],
     deps = [
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             ":android_tensorflow_kernels",
             "//tensorflow/core:android_tensorflow_lib",
             "//tensorflow/core:android_tensorflow_test_lib",
@@ -5329,7 +5329,7 @@ cc_binary(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             ":android_tensorflow_kernels",
             "//tensorflow/core:android_tensorflow_lib",
             "//tensorflow/core:android_tensorflow_test_lib",
@@ -5413,7 +5413,7 @@ cc_binary(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             ":android_tensorflow_kernels",
             "//tensorflow/core:android_tensorflow_lib",
             "//tensorflow/core:android_tensorflow_test_lib",
@@ -5531,7 +5531,7 @@ cc_binary(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             ":android_tensorflow_kernels",
             "//tensorflow/core:android_tensorflow_lib",
             "//tensorflow/core:android_tensorflow_test_lib",
@@ -5669,7 +5669,7 @@ cc_binary(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             ":android_tensorflow_kernels",
             "//tensorflow/core:android_tensorflow_lib",
             "//tensorflow/core:android_tensorflow_test_lib",

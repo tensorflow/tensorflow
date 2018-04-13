@@ -141,9 +141,10 @@ cc_library(
     ],
     defines = [
     ],
-    linkopts = [
+    linkopts = select({"@org_tensorflow//tensorflow:android":[],
+                       "//conditions:default": [
         "-lpthread",
-    ],
+    ]}),
     visibility = ["//visibility:public"],
     deps = [
         "@boringssl//:ssl",

@@ -21,6 +21,7 @@ cc_library(
     linkopts = select({
         ":windows": ["-DEFAULTLIB:advapi32.lib"],  # InitializeSecurityDescriptor, SetSecurityDescriptorDacl
         ":windows_msvc": ["-DEFAULTLIB:advapi32.lib"],
+        "@org_tensorflow//tensorflow:android": [],
         "//conditions:default": ["-lpthread"],
     }),
     visibility = ["//visibility:public"],

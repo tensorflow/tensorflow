@@ -26,7 +26,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             "//tensorflow/core:android_tensorflow_lib",
             "//tensorflow/core:android_tensorflow_test_lib",
         ],

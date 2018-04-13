@@ -317,7 +317,7 @@ def tf_library(name, graph, config,
         srcs=[benchmark_file],
         testonly = testonly,
         copts = tf_copts(),
-        linkopts = if_android(["-pie", "-s"]),
+        linkopts = select({"//tensorflow:android":(["-pie", "-s"])}, {"//conditions:default": []}),
         deps=[
             ":" + name,
             "//tensorflow/compiler/aot:benchmark",

@@ -22,6 +22,17 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/notification.h"
 
+#include <string>
+#include <sstream>
+
+template <typename T>
+std::string to_string(T value)
+{
+    std::ostringstream os ;
+    os << value ;
+    return os.str() ;
+}
+
 namespace tensorflow {
 
 /* static */
@@ -167,7 +178,7 @@ Status CapturedFunction::MaybeInstantiate(
     DCHECK(f_handle_ == kInvalidHandle);
     FunctionLibraryRuntime::InstantiateOptions inst_opts;
     inst_opts.overlay_lib = ctx->function_library().get();
-    inst_opts.state_handle = std::to_string(random::New64());
+    inst_opts.state_handle = to_string(random::New64());
     TF_RETURN_IF_ERROR(lib_->Instantiate(func_.name(), AttrSlice(&func_.attr()),
                                          inst_opts, &f_handle_));
     const FunctionBody* fbody = lib_->GetFunctionBody(f_handle_);
