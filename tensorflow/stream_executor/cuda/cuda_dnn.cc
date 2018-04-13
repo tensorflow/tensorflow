@@ -477,11 +477,12 @@ port::Status CudnnSupport::Init() {
                                    ToString(status))};
 }
 
-port::StatusOr<std::tuple<int, int, int>> CudnnSupport::GetVersion() {
+port::StatusOr<perftools::gputools::dnn::VersionInfo>
+CudnnSupport::GetVersion() {
   CudnnVersion version;
   TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&version));
-  return std::make_tuple(version.major_version, version.minor_version,
-                         version.patch_level);
+  return perftools::gputools::dnn::VersionInfo(
+      version.major_version, version.minor_version, version.patch_level);
 }
 
 // Turns a BatchDescriptor structure into a cudnn tensor handle within a scope.
