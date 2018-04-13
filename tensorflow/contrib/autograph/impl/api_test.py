@@ -39,8 +39,6 @@ class ApiTest(test.TestCase):
         'from __future__ import print_function',
         'from tensorflow.contrib.autograph import utils'
         ' as autograph_utils',
-        'from tensorflow.contrib.autograph import operators'
-        ' as __ops',
         'tf = autograph_utils.fake_tf()',
     )
 
