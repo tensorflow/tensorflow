@@ -18,7 +18,7 @@ namespace perftools {
 namespace gputools {
 namespace interpreter {
 
-PLATFORM_DEFINE_ID(kInterpreterPlatformId);
+PLATFORM_DEFINE_ID(kXlaInterpreterPlatformId);
 
 }  // namespace interpreter
 }  // namespace gputools

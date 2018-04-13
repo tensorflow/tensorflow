@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.contrib.boosted_trees.estimator_batch import estimator_utils
 from tensorflow.contrib.boosted_trees.estimator_batch import trainer_hooks
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
@@ -60,6 +61,7 @@ def model_builder(features, labels, mode, params, config):
   feature_columns = params["feature_columns"]
   weight_column_name = params["weight_column_name"]
   num_trees = params["num_trees"]
+  use_core_libs = params["use_core_libs"]
   logits_modifier_function = params["logits_modifier_function"]
   if features is None:
     raise ValueError("At least one feature must be specified.")
@@ -93,7 +95,8 @@ def model_builder(features, labels, mode, params, config):
       learner_config=learner_config,
       feature_columns=feature_columns,
       logits_dimension=head.logits_dimension,
-      features=training_features)
+      features=training_features,
+      use_core_columns=use_core_libs)
   with ops.name_scope("gbdt", "gbdt_optimizer"):
     predictions_dict = gbdt_model.predict(mode)
     logits = predictions_dict["predictions"]
@@ -108,12 +111,22 @@ def model_builder(features, labels, mode, params, config):
         update_op = state_ops.assign_add(global_step, 1).op
         return update_op
 
-  model_fn_ops = head.create_model_fn_ops(
-      features=features,
-      mode=mode,
-      labels=labels,
-      train_op_fn=_train_op_fn,
-      logits=logits)
+  create_estimator_spec_op = getattr(head, "create_estimator_spec", None)
+  if use_core_libs and callable(create_estimator_spec_op):
+    model_fn_ops = head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        logits=logits)
+    model_fn_ops = estimator_utils.estimator_spec_to_model_fn_ops(model_fn_ops)
+  else:
+    model_fn_ops = head.create_model_fn_ops(
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        logits=logits)
   if num_trees:
     if center_bias:
       num_trees += 1

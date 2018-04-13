@@ -353,6 +353,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_MAXIMUM:
       case tflite::BuiltinOperator_MINIMUM:
       case tflite::BuiltinOperator_ARG_MAX:
+      case tflite::BuiltinOperator_LESS:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid
         break;

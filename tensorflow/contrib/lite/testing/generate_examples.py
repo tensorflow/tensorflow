@@ -93,9 +93,6 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
-    # BatchToSpaceND doesn't support cropping. This catches test cases with
-    # const tensors as crops.
-    r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
@@ -1042,6 +1039,7 @@ def make_conv_tests(zip_path):
           "input_shape": [[1, 3, 4, 3]],
           "filter_shape": [[1, 1, 3, 2]],
           "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
           "padding": ["SAME", "VALID"],
           "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
           "constant_filter": [True, False],
@@ -1050,6 +1048,7 @@ def make_conv_tests(zip_path):
           "input_shape": [[2, 14, 14, 2]],
           "filter_shape": [[6, 6, 2, 2]],
           "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 2, 2, 1]],
           "padding": ["SAME", "VALID"],
           "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
           "constant_filter": [True, False],
@@ -1075,6 +1074,7 @@ def make_conv_tests(zip_path):
         input_tensor,
         filter_input,
         strides=parameters["strides"],
+        dilations=parameters["dilations"],
         padding=parameters["padding"],
         data_format=parameters["data_format"])
     return input_tensors, [out]
@@ -1595,7 +1595,7 @@ def make_batch_to_space_nd_tests(zip_path):
   test_parameters = [
       {
           "dtype": [tf.float32, tf.int64, tf.int32],
-          "input_shape": [[12, 2, 2, 1]],
+          "input_shape": [[12, 3, 3, 1]],
           "block_shape": [[1, 4], [2, 2], [3, 4]],
           "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
           "constant_block_shape": [True, False],
@@ -1999,6 +1999,39 @@ def make_arg_max_tests(zip_path):
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
+
+def make_less_tests(zip_path):
+  """Make a set of tests to do less."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
+      "input_shape_pair": [([1, 1, 1, 3], [1, 1, 1, 3]),
+                           ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
+                           ([5, 5], [1]), ([10], [2, 4, 10])],
+  }]
+
+  def build_graph(parameters):
+    """Build the less op testing graph."""
+    input_value1 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape_pair"][0])
+    input_value2 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input2",
+        shape=parameters["input_shape_pair"][1])
+    out = tf.less(input_value1, input_value2)
+    return [input_value1, input_value2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value1 = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape_pair"][0])
+    input_value2 = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape_pair"][1])
+    return [input_value1, input_value2], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 # Toco binary path provided by the generate rule.
 bin_path = None

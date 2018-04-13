@@ -24,7 +24,6 @@ import os
 
 import six
 
-from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.optimizer_v2 import adam
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
@@ -42,6 +41,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import checkpointable
+from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import saver as core_saver
 from tensorflow.python.training import training_util
 
