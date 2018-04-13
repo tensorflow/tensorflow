@@ -119,6 +119,7 @@ py_library(
     deps = [
         ":contrib_op_loader",
         ":gen_dataset_ops",
+        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -182,16 +183,4 @@ py_library(
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -147,7 +147,7 @@ class CallTreeTransformer(transformer.Base):
       # Inspect the target function decorators. If any include a @convert
       # or @graph_ready annotation, then they must be called as they are.
       # TODO(mdan): This may be quite heavy.
-      # To parse and re-analize each function for every call site could be quite
+      # To parse and re-analyze each function for every call site could be quite
       # wasteful. Maybe we could cache the parsed AST?
       try:
         target_node, _ = parser.parse_entity(target_entity)

@@ -143,6 +143,7 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -233,6 +234,7 @@ cc_library(
         "graph_transformations/identify_relu1.cc",
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
+        "graph_transformations/merge_reshape_into_preceding_transpose.cc",
         "graph_transformations/propagate_activation_function_into_constants.cc",
         "graph_transformations/propagate_array_data_types.cc",
         "graph_transformations/propagate_fixed_sizes.cc",
@@ -250,7 +252,8 @@ cc_library(
         "graph_transformations/remove_trivial_reshape.cc",
         "graph_transformations/remove_trivial_slice.cc",
         "graph_transformations/remove_unused_op.cc",
-        "graph_transformations/reorder_activation_functions.cc",
+        "graph_transformations/reorder_elementwise_unary.cc",
+        "graph_transformations/reorder_reshape_transpose.cc",
         "graph_transformations/resolve_batch_normalization.cc",
         "graph_transformations/resolve_batch_to_space_nd_attributes.cc",
         "graph_transformations/resolve_constant_binary.cc",
@@ -258,6 +261,7 @@ cc_library(
         "graph_transformations/resolve_constant_fake_quant.cc",
         "graph_transformations/resolve_constant_fill.cc",
         "graph_transformations/resolve_constant_gather.cc",
+        "graph_transformations/resolve_constant_random_uniform.cc",
         "graph_transformations/resolve_constant_range.cc",
         "graph_transformations/resolve_constant_shape_or_rank.cc",
         "graph_transformations/resolve_constant_stack.cc",
@@ -417,16 +421,4 @@ tf_cc_test(
         ":toco_port",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

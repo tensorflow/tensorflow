@@ -139,7 +139,9 @@ function main() {
     fi
     mkdir "${TMPDIR}/tensorflow/aux-bin"
     # Install toco as a binary in aux-bin.
-    cp bazel-bin/tensorflow/contrib/lite/toco/toco ${TMPDIR}/tensorflow/aux-bin/
+    # TODO(aselle): Re-enable this when we find a way to do it without doubling
+    # the whl size (over the limit).
+    # cp bazel-bin/tensorflow/contrib/lite/toco/toco ${TMPDIR}/tensorflow/aux-bin/
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers
@@ -160,7 +162,9 @@ function main() {
 
   # Before we leave the top-level directory, make sure we know how to
   # call python.
-  source tools/python_bin_path.sh
+  if [[ -e tools/python_bin_path.sh ]]; then
+    source tools/python_bin_path.sh
+  fi
 
   pushd ${TMPDIR}
   rm -f MANIFEST

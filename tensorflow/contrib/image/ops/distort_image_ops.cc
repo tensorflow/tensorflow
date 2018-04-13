@@ -36,9 +36,9 @@ REGISTER_OP("AdjustHsvInYiq")
 Adjust the YIQ hue of one or more images.
 
 `images` is a tensor of at least 3 dimensions.  The last dimension is
-interpretted as channels, and must be three.
+interpreted as channels, and must be three.
 
-We used linear transfomation described in:
+We used linear transformation described in:
  beesbuzz.biz/code/hsv_color_transforms.php
 The input image is considered in the RGB colorspace. Conceptually, the RGB
 colors are first mapped into YIQ space, rotated around the Y channel by

@@ -103,7 +103,7 @@ ScopedAllocatorContainer::~ScopedAllocatorContainer() {
   // In normal execution the table should be empty and all of its
   // contents deleted via Drop.  When when a step ends early
   // (e.g. through abnormal termination) we need to clean up
-  // explicitly.  So long as graph exection of the associated step has
+  // explicitly.  So long as graph execution of the associated step has
   // completey terminated this should be safe.
   for (auto& it : allocators_) {
     if (it.second.field_index == ScopedAllocator::kBackingIndex) {

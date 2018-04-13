@@ -27,6 +27,7 @@ namespace tensorflow {
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
+using shape_inference::UnchangedShape;
 
 namespace {
 
@@ -178,46 +179,88 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
     c->set_output(0, out);
     return Status::OK();
   }
-  DimensionHandle num_in_elems = c->NumElements(in);
-  if (c->FullyDefined(out)) {
-    DimensionHandle num_out_elems = c->NumElements(out);
-    if (c->ValueKnown(num_in_elems) &&
-        c->Value(num_in_elems) != c->Value(num_out_elems)) {
-      return errors::InvalidArgument(
-          "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
-          " elements to shape ", c->DebugString(out), " (",
-          c->DebugString(num_out_elems), " elements)");
-    }
-    c->set_output(0, out);
-    return Status::OK();
-  }
 
-  if (c->ValueKnown(num_in_elems)) {
+  if (c->RankKnown(out) && c->RankKnown(in)) {
     // We don't know the number of output elements, but we can try to infer
     // the missing dimension.
-    int32 unknown_idx = -1;
     bool too_many_unknown = false;
-    DimensionHandle known_elems = c->MakeDim(1);
-    for (int32 i = 0; i < c->Rank(out); ++i) {
-      DimensionHandle dim = c->Dim(out, i);
-      if (!c->ValueKnown(dim)) {
-        if (unknown_idx >= 0) {
-          too_many_unknown = true;
-          break;
+    int32 out_unknown_idx = -1;
+
+    DimensionHandle known_out_elems = c->NumElements(out);
+    if (!c->ValueKnown(known_out_elems)) {
+      known_out_elems = c->MakeDim(1);
+      for (int32 i = 0; i < c->Rank(out); ++i) {
+        DimensionHandle dim = c->Dim(out, i);
+        if (!c->ValueKnown(dim)) {
+          if (out_unknown_idx >= 0) {
+            too_many_unknown = true;
+            break;
+          }
+          out_unknown_idx = i;
+        } else {
+          TF_RETURN_IF_ERROR(
+              c->Multiply(known_out_elems, dim, &known_out_elems));
         }
-        unknown_idx = i;
-      } else {
-        TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
       }
     }
-    if (!too_many_unknown && c->Value(known_elems) != 0) {
-      DimensionHandle inferred_dim;
-      TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
-                                   true /* evenly_divisible */, &inferred_dim));
-      TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+    int32 in_unknown_idx = -1;
+    DimensionHandle known_in_elems = c->NumElements(in);
+    if (!c->ValueKnown(known_in_elems)) {
+      known_in_elems = c->MakeDim(1);
+      for (int32 i = 0; i < c->Rank(in); ++i) {
+        DimensionHandle dim = c->Dim(in, i);
+        if (!c->ValueKnown(dim)) {
+          if (in_unknown_idx >= 0) {
+            too_many_unknown = true;
+            break;
+          }
+          in_unknown_idx = i;
+        } else {
+          TF_RETURN_IF_ERROR(c->Multiply(known_in_elems, dim, &known_in_elems));
+        }
+      }
+    }
+
+    if (!too_many_unknown) {
+      if (in_unknown_idx < 0 && out_unknown_idx < 0) {
+        // Just check that the dimensions match.
+        if (c->Value(known_in_elems) != c->Value(known_out_elems)) {
+          return errors::InvalidArgument(
+              "Cannot reshape a tensor with ", c->DebugString(known_in_elems),
+              " elements to shape ", c->DebugString(out), " (",
+              c->DebugString(known_out_elems), " elements)");
+        }
+      } else if (in_unknown_idx < 0 && out_unknown_idx >= 0 &&
+                 c->Value(known_out_elems) > 0) {
+        // Input fully known, infer the one missing output dim
+        DimensionHandle inferred_dim;
+        TF_RETURN_IF_ERROR(c->Divide(known_in_elems, c->Value(known_out_elems),
+                                     true /* evenly_divisible */,
+                                     &inferred_dim));
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(out, out_unknown_idx, inferred_dim, &out));
+
+      } else if (in_unknown_idx >= 0 && out_unknown_idx < 0 &&
+                 c->Value(known_in_elems) != 0) {
+        // Output fully known, infer the one missing input dim
+        DimensionHandle inferred_dim;
+        TF_RETURN_IF_ERROR(c->Divide(known_out_elems, c->Value(known_in_elems),
+                                     true /* evenly_divisible */,
+                                     &inferred_dim));
+        DimensionHandle unknown_in_dim = c->Dim(in, in_unknown_idx);
+        TF_RETURN_IF_ERROR(
+            c->Merge(unknown_in_dim, inferred_dim, &unknown_in_dim));
+      } else if (in_unknown_idx >= 0 && out_unknown_idx >= 0) {
+        // Exactly one unknown dimension in both input and output. These 2 are
+        // equal iff the known elements are equal.
+        if (c->Value(known_in_elems) == c->Value(known_out_elems)) {
+          DimensionHandle unknown_in_dim = c->Dim(in, in_unknown_idx);
+          TF_RETURN_IF_ERROR(
+              c->ReplaceDim(out, out_unknown_idx, unknown_in_dim, &out));
+        }
+      }
     }
   }
-
   c->set_output(0, out);
   return Status::OK();
 }
@@ -296,6 +339,50 @@ REGISTER_OP("Pack")
       while (index < rank) dims.push_back(c->Dim(cur, index++));
 
       c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    });
+
+REGISTER_OP("DeepCopy")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetIsStateful()
+    .SetShapeFn(UnchangedShape);
+
+REGISTER_OP("InplaceUpdate")
+    .Input("x: T")
+    .Input("i: int32")
+    .Input("v: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetShapeFn(UnchangedShape);
+
+REGISTER_OP("InplaceAdd")
+    .Input("x: T")
+    .Input("i: int32")
+    .Input("v: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetShapeFn(UnchangedShape);
+
+REGISTER_OP("InplaceSub")
+    .Input("x: T")
+    .Input("i: int32")
+    .Input("v: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetShapeFn(UnchangedShape);
+
+REGISTER_OP("Empty")
+    .Input("shape: int32")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("init: bool = false")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
       return Status::OK();
     });
 
@@ -452,9 +539,9 @@ REGISTER_OP("SplitV")
       const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
         // If the rank of input tensor is unknown, then return unknown shapes.
-        output_shape = c->UnknownShape();
+        // Note that the shape of each output can be different.
         for (int i = 0; i < num_outputs; ++i) {
-          c->set_output(i, output_shape);
+          c->set_output(i, c->UnknownShape());
         }
       } else if (rank == 0) {
         // Throw error if input is a scalar.
@@ -463,18 +550,19 @@ REGISTER_OP("SplitV")
         // If split dimension is known, but the sizes are unknown, then
         // only the split dimension is unknown
         output_shape = input;
-        TF_RETURN_IF_ERROR(c->ReplaceDim(output_shape,
-                                         c->Value(split_dimension),
-                                         c->UnknownDim(), &output_shape));
         for (int i = 0; i < num_outputs; ++i) {
+          TF_RETURN_IF_ERROR(c->ReplaceDim(output_shape,
+                                           c->Value(split_dimension),
+                                           c->UnknownDim(), &output_shape));
           c->set_output(i, output_shape);
         }
       } else if (size_splits == nullptr && !c->ValueKnown(split_dimension)) {
         // If split dimension or tensor containing the split sizes is unknown,
-        // then return unknown shapes of same rank as input.
-        output_shape = c->UnknownShapeOfRank(rank);
+        // then return unknown shapes of same rank as input. Note that each
+        // output shape can be different since splitv doesn't always split
+        // tensors evenly.
         for (int i = 0; i < num_outputs; ++i) {
-          c->set_output(i, output_shape);
+          c->set_output(i, c->UnknownShapeOfRank(rank));
         }
       } else {
         // Determine the output shape if split dimension and split sizes are
@@ -579,7 +667,7 @@ REGISTER_OP("OnesLike")
     .Input("x: T")
     .Output("y: T")
     .Attr(
-        "T: {bfloat16, float, double, int8, uint8, int16, uint16, int32, "
+        "T: {bfloat16, half, float, double, int8, uint8, int16, uint16, int32, "
         "int64, complex64, complex128, bool}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
@@ -587,7 +675,9 @@ REGISTER_OP("OnesLike")
 REGISTER_OP("Diag")
     .Input("diagonal: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double, int32, int64, complex64, complex128}")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle in = c->input(0);
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(in, 1, &in));
@@ -602,7 +692,9 @@ REGISTER_OP("Diag")
 REGISTER_OP("DiagPart")
     .Input("input: T")
     .Output("diagonal: T")
-    .Attr("T: {bfloat16, float, double, int32, int64, complex64, complex128}")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle in = c->input(0);
       if (!c->RankKnown(in)) {
@@ -746,7 +838,7 @@ REGISTER_OP("ReverseV2")
     .Output("output: T")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, bfloat16, "
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, bfloat16, half, "
         "float, double, complex64, complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -776,7 +868,7 @@ REGISTER_OP("ReverseV2")
           }
           if (axes_dense[canonical_axis]) {
             return errors::InvalidArgument("axis ", canonical_axis,
-                                            " specified more than once.");
+                                           " specified more than once.");
           }
           axes_dense[canonical_axis] = true;
         }
@@ -1122,7 +1214,7 @@ REGISTER_OP("PreventGradient")
 REGISTER_OP("CheckNumerics")
     .Input("tensor: T")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("message: string")
     .SetShapeFn(shape_inference::UnchangedShape);
 
@@ -2407,13 +2499,12 @@ REGISTER_OP("Bitcast")
     .Output("output: type")
     // All supported dtypes are listed here to include qint16 and quint16.
     .Attr(
-        "T: {bfloat16, float, double, int64, int32, uint8, uint16, int8, int16,"
-        " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
-        " half}")
+        "T: {bfloat16, half, float, double, int64, int32, uint8, uint16, int8, "
+        "int16, complex64, complex128, qint8, quint8, qint16, quint16, qint32}")
     .Attr(
-        "type: {bfloat16, float, double, int64, int32, uint8, uint16, int8, "
-        "int16, complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
-        " half}")
+        "type: {bfloat16, half, float, double, int64, int32, uint8, uint16, "
+        "int8, int16, complex64, complex128, qint8, quint8, qint16, quint16, "
+        "qint32}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       if (!c->RankKnown(input)) {
@@ -2509,7 +2600,7 @@ REGISTER_OP("QuantizeAndDequantize")
     .Attr("input_min: float = 0")
     .Attr("input_max: float = 0")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Deprecated(22, "Replaced by QuantizeAndDequantizeV2");
 
@@ -2522,7 +2613,7 @@ REGISTER_OP("QuantizeAndDequantizeV2")
     .Attr("num_bits: int = 8")
     .Attr("range_given: bool = false")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -2539,7 +2630,7 @@ REGISTER_OP("QuantizeAndDequantizeV3")
     .Attr("signed_input: bool = true")
     .Attr("range_given: bool = true")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));

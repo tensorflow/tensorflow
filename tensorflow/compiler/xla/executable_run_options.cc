@@ -87,4 +87,11 @@ const DeviceAssignment* ExecutableRunOptions::device_assignment() const {
   return device_assignment_;
 }
 
+ExecutableRunOptions& ExecutableRunOptions::set_rng_seed(int rng_seed) {
+  rng_seed_ = rng_seed;
+  return *this;
+}
+
+int ExecutableRunOptions::rng_seed() const { return rng_seed_; }
+
 }  // namespace xla

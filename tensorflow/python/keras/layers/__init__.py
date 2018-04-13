@@ -49,6 +49,7 @@ from tensorflow.python.keras._impl.keras.layers.convolutional import Convolution
 from tensorflow.python.keras._impl.keras.layers.convolutional import Convolution3DTranspose
 from tensorflow.python.keras._impl.keras.layers.convolutional import SeparableConvolution1D
 from tensorflow.python.keras._impl.keras.layers.convolutional import SeparableConvolution2D
+from tensorflow.python.keras._impl.keras.layers.convolutional import DepthwiseConv2D
 
 # Image processing layers.
 from tensorflow.python.keras._impl.keras.layers.convolutional import UpSampling1D

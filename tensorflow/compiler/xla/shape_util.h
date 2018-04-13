@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/optional.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -583,34 +585,7 @@ class ShapeUtil {
                                        tensorflow::gtl::ArraySlice<int64> count,
                                        tensorflow::gtl::ArraySlice<int64> incr,
                                        const FnType& visitor_function) {
-    if (ShapeUtil::HasZeroElements(shape)) {
-      return Status::OK();
-    }
-    CHECK_EQ(Rank(shape), base.size());
-    CHECK_EQ(incr.size(), base.size());
-    CHECK_EQ(count.size(), base.size());
-    const int64 rank = LayoutUtil::MinorToMajor(shape).size();
-    // Allows handling R0 arrays, such that the visitor function will be called
-    // once with the proper empty indexes.
-    int64 n = -1;
-    std::vector<int64> indexes(base.begin(), base.end());
-    while (n < rank) {
-      TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
-      if (!should_continue) {
-        break;
-      }
-      // Increments dimensions in minor to major order.
-      for (n = 0; n < rank; ++n) {
-        int64 dim = LayoutUtil::Minor(shape.layout(), n);
-        indexes[dim] += incr[dim];
-        if (indexes[dim] < base[dim] + count[dim]) {
-          break;
-        }
-        indexes[dim] = base[dim];
-      }
-    }
-
-    return Status::OK();
+    return ForEachIndexInternal(shape, base, count, incr, visitor_function);
   }
 
   // Simple ergonomic wrapper around ShapeUtil::ForEachIndexWithStatus.
@@ -642,10 +617,82 @@ class ShapeUtil {
         .IgnoreError();
   }
 
+  // A parallel version of ForEachIndex(WithStatus). This can only be used if
+  // the visitor_function is thread-safe and the order of iteration does not
+  // matter.
+  //
+  // visitor_function must be a callable of type
+  // void(ArraySlice<int64>) or compatible.
+  template <typename FnType>
+  static void ForEachIndexParallel(const Shape& shape,
+                                   tensorflow::gtl::ArraySlice<int64> base,
+                                   tensorflow::gtl::ArraySlice<int64> count,
+                                   tensorflow::gtl::ArraySlice<int64> incr,
+                                   const FnType& visitor_function) {
+    // The parallel version of ForEachIndexInternal can never fail.
+    CHECK(ForEachIndexInternal(
+              shape, base, count, incr,
+              [&visitor_function](tensorflow::gtl::ArraySlice<int64> indexes)
+                  -> StatusOr<bool> {
+                visitor_function(indexes);
+                return true;
+              },
+              /*parallel=*/true)
+              .ok());
+  }
+
  private:
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);
+
+  template <typename FnType>
+  static Status ForEachIndexInternal(const Shape& shape,
+                                     tensorflow::gtl::ArraySlice<int64> base,
+                                     tensorflow::gtl::ArraySlice<int64> count,
+                                     tensorflow::gtl::ArraySlice<int64> incr,
+                                     const FnType& visitor_function,
+                                     bool parallel = false) {
+    if (ShapeUtil::HasZeroElements(shape)) {
+      return Status::OK();
+    }
+    CHECK_EQ(Rank(shape), base.size());
+    CHECK_EQ(incr.size(), base.size());
+    CHECK_EQ(count.size(), base.size());
+    const int64 rank = LayoutUtil::MinorToMajor(shape).size();
+    // Allows handling R0 arrays, such that the visitor function will be called
+    // once with the proper empty indexes.
+    int64 n = -1;
+    std::vector<int64> indexes(base.begin(), base.end());
+    const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
+    tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+    if (parallel) {
+      pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
+    }
+
+    while (n < rank) {
+      if (pool != tensorflow::gtl::nullopt) {
+        pool->Schedule(
+            [indexes, &visitor_function] { visitor_function(indexes); });
+      } else {
+        TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
+        if (!should_continue) {
+          break;
+        }
+      }
+      // Increments dimensions in minor to major order.
+      for (n = 0; n < rank; ++n) {
+        int64 dim = LayoutUtil::Minor(shape.layout(), n);
+        indexes[dim] += incr[dim];
+        if (indexes[dim] < base[dim] + count[dim]) {
+          break;
+        }
+        indexes[dim] = base[dim];
+      }
+    }
+
+    return Status::OK();
+  }
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
 };

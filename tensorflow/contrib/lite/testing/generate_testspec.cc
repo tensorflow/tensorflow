@@ -22,7 +22,22 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-void GenerateTestSpecFromTensorflowModel(
+template <typename T>
+void GenerateCsv(const std::vector<int>& shape, float min, float max,
+                 string* out) {
+  auto random_float = [](int min, int max) {
+    static unsigned int seed;
+    return min + (max - min) * static_cast<float>(rand_r(&seed)) / RAND_MAX;
+  };
+
+  std::function<T(int)> random_t = [&](int) {
+    return static_cast<T>(random_float(min, max));
+  };
+  std::vector<T> data = GenerateRandomTensor(shape, random_t);
+  *out = Join(data.data(), data.size(), ",");
+}
+
+bool GenerateTestSpecFromTensorflowModel(
     std::iostream& stream, const string& tensorflow_model_path,
     const string& tflite_model_path, const std::vector<string>& input_layer,
     const std::vector<string>& input_layer_type,
@@ -30,12 +45,6 @@ void GenerateTestSpecFromTensorflowModel(
     const std::vector<string>& output_layer) {
   CHECK_EQ(input_layer.size(), input_layer_type.size());
   CHECK_EQ(input_layer.size(), input_layer_shape.size());
-
-  // Initialize random functions.
-  static unsigned int seed = 0;
-  std::function<float(int)> float_rand = [](int idx) {
-    return static_cast<float>(rand_r(&seed)) / RAND_MAX - 0.5f;
-  };
 
   // Generate inputs.
   std::vector<string> input_values;
@@ -46,15 +55,25 @@ void GenerateTestSpecFromTensorflowModel(
     auto shape = Split<int>(input_layer_shape[i], ",");
 
     switch (type) {
-      case tensorflow::DT_FLOAT: {
-        const auto& data = GenerateRandomTensor<float>(shape, float_rand);
-        input_values[i] = Join(data.data(), data.size(), ",");
+      case tensorflow::DT_FLOAT:
+        GenerateCsv<float>(shape, -0.5, 0.5, &input_values[i]);
         break;
-      }
+      case tensorflow::DT_UINT8:
+        GenerateCsv<uint8_t>(shape, 0, 255, &input_values[i]);
+        break;
+      case tensorflow::DT_INT32:
+        GenerateCsv<int32_t>(shape, -100, 100, &input_values[i]);
+        break;
+      case tensorflow::DT_INT64:
+        GenerateCsv<int64_t>(shape, -100, 100, &input_values[i]);
+        break;
+      case tensorflow::DT_BOOL:
+        GenerateCsv<int>(shape, 0.01, 1.99, &input_values[i]);
+        break;
       default:
-
-        fprintf(stderr, "Unsupported type %d when generating testspec\n", type);
-        return;
+        fprintf(stderr, "Unsupported type %d (%s) when generating testspec.\n",
+                type, input_layer_type[i].c_str());
+        return false;
     }
   }
 
@@ -82,6 +101,8 @@ void GenerateTestSpecFromTensorflowModel(
     stream << "  output: \"" << runner.ReadOutput(i) << "\"\n";
   }
   stream << "}\n";
+
+  return true;
 }
 
 }  // namespace testing

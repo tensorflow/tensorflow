@@ -132,6 +132,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "collective_ops",
+    prefix = "collective_ops",
+    deps = [
+        "//tensorflow/core:collective_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
     name = "concat_lib",
     srcs = [
         "concat_lib_cpu.cc",
@@ -1395,6 +1406,7 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         ":bounds_check",
+        ":dense_update_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
@@ -2265,6 +2277,7 @@ tf_cc_tests(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -5120,6 +5133,9 @@ filegroup(
             "summary_interface.*",
             "summary_kernels.*",
             "spectrogram_convert_test_data.cc",
+            "decode_proto_op.cc",
+            "encode_proto_op.cc",
+            "rpc_op.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
@@ -5905,6 +5921,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -5926,8 +5943,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -5942,8 +5958,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -5959,8 +5974,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -5980,8 +5994,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -5997,8 +6010,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6014,8 +6026,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6023,8 +6034,7 @@ tf_mkl_kernel_library(
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = NN_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6032,8 +6042,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_aggregate_ops",
     deps = MATH_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6041,8 +6050,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_concat_op",
     deps = ARRAY_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6050,8 +6058,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_reshape_op",
     deps = ARRAY_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6059,8 +6066,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_identity_op",
     deps = ARRAY_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6068,8 +6074,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_lrn_op",
     deps = NN_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6093,6 +6098,13 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "boosted_trees_ops",
+    deps = [
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_ops",
     ],
 )
 
@@ -6144,20 +6156,52 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "decode_proto_op",
+    srcs = [
+        "decode_proto_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:decode_proto_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/util/proto:decode",
+        "//tensorflow/core/util/proto:descriptors",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "encode_proto_op",
+    srcs = ["encode_proto_op.cc"],
+    deps = [
+        "//tensorflow/core:encode_proto_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/util/proto:descriptors",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "rpc_op",
+    srcs = [
+        "rpc_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:rpc_ops_op_lib",
+        "//tensorflow/core/util/rpc:call_container",
+        "//tensorflow/core/util/rpc:rpc_factory",
+        "//tensorflow/core/util/rpc:rpc_factory_registry",
+        "//third_party/eigen3",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.
@@ -6183,5 +6227,14 @@ cc_library(
         "//tensorflow/core:lib",
         "//third_party/eigen3",
         "@gemmlowp",
+    ],
+)
+
+# Header-only version of cwise_lib for clients that want to use the cwise_ops
+# functionality in their own custom ops.
+cc_header_only_library(
+    name = "cwise_lib_hdrs",
+    deps = [
+        ":cwise_lib",
     ],
 )

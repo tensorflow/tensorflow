@@ -272,7 +272,7 @@ Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index);
 // Shape function for binary operators that broadcast their inputs.
 // Tested by ops/math_ops_test.cc.
 inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
-    return BroadcastBinaryOpOutputShapeFn(c, 0);
+  return BroadcastBinaryOpOutputShapeFn(c, 0);
 }
 
 // Shape function for random operations.

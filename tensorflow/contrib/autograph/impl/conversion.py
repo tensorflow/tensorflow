@@ -28,7 +28,6 @@ from tensorflow.contrib.autograph.converters import call_trees
 from tensorflow.contrib.autograph.converters import continue_statements
 from tensorflow.contrib.autograph.converters import control_flow
 from tensorflow.contrib.autograph.converters import decorators
-from tensorflow.contrib.autograph.converters import for_loops
 from tensorflow.contrib.autograph.converters import ifexp
 from tensorflow.contrib.autograph.converters import lists
 from tensorflow.contrib.autograph.converters import logical_expressions
@@ -57,7 +56,7 @@ class ConversionMap(object):
   This object is mutable, and is updated as functions are converted.
 
   Attributes:
-    recursive: Whether to recusrively convert any functions that the decorator
+    recursive: Whether to recursively convert any functions that the decorator
         function may call.
     nocompile_decorators: tuple of decorator functions that toggle compilation
         off.
@@ -324,8 +323,6 @@ def node_to_graph(node, ctx, nocompile_decorators):
 
   node = _static_analysis_pass(node, ctx)
   node = lists.transform(node, ctx)
-  node = for_loops.transform(node, ctx)
-  # for_loops may insert new global references.
   node = builtin_functions.transform(node, ctx)
 
   node = _static_analysis_pass(node, ctx)
