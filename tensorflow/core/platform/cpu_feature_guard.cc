@@ -18,6 +18,7 @@ limitations under the License.
 #include <mutex>
 #include <string>
 
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 
