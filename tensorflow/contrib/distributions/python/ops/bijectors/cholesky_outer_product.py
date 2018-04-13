@@ -57,7 +57,7 @@ class CholeskyOuterProduct(bijector.Bijector):
   that, if `I = L_3 @ L_3.T`, with L_3 being lower-triangular with positive-
   diagonal, then `L_3 = I`. Thus, `L_1 = L_2`, proving injectivity of g.
 
-  Examples:
+  #### Examples
 
   ```python
   bijector.CholeskyOuterProduct().forward(x=[[1., 0], [2, 1]])
@@ -80,7 +80,7 @@ class CholeskyOuterProduct(bijector.Bijector):
     self._graph_parents = []
     self._name = name
     super(CholeskyOuterProduct, self).__init__(
-        event_ndims=2,
+        forward_min_event_ndims=2,
         validate_args=validate_args,
         name=name)
 

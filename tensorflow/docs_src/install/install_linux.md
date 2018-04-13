@@ -31,20 +31,21 @@ If you are installing TensorFlow with GPU support using one of the
 mechanisms described in this guide, then the following NVIDIA software
 must be installed on your system:
 
-  * CUDA® Toolkit 9.0. For details, see
-    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/#axzz4VZnqTJ2A).
-    Ensure that you append the relevant Cuda pathnames to the
+  * [CUDA Toolkit 9.0](http://nvidia.com/cuda). For details, see
+    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
+    Ensure that you append the relevant CUDA pathnames to the
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
-  * The NVIDIA drivers associated with CUDA Toolkit 9.0.
-  * cuDNN v7.0. For details, see
-    [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
+  * [cuDNN SDK v7](http://developer.nvidia.com/cudnn). For details, see
+    [NVIDIA's documentation](http://docs.nvidia.com/deeplearning/sdk/cudnn-install/).
     Ensure that you create the `CUDA_HOME` environment variable as
     described in the NVIDIA documentation.
   * GPU card with CUDA Compute Capability 3.0 or higher for building
     from source and 3.5 or higher for our binaries. See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for
     a list of supported GPU cards.
+  * [GPU drivers](http://nvidia.com/driver) supporting your version of the CUDA
+    Toolkit.
   * The libcupti-dev library, which is the NVIDIA CUDA Profile Tools Interface.
     This library provides advanced profiling support. To install this library,
     issue the following command for CUDA Toolkit >= 8.0:
@@ -56,7 +57,7 @@ must be installed on your system:
     and add its path to your `LD_LIBRARY_PATH` environment variable:
 
     <pre>
-    $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b>
+    $ <b>export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</b>
     </pre>
 
     For CUDA Toolkit <= 7.5 do:
@@ -65,16 +66,41 @@ must be installed on your system:
     $ <b>sudo apt-get install libcupti-dev</b>
     </pre>
 
+  * **[OPTIONAL]**  For optimized inferencing performance, you can also install
+    **NVIDIA TensorRT 3.0**. The minimal set of TensorRT runtime components needed
+    for use with the pre-built `tensorflow-gpu` package can be installed as follows:
+
+    <pre>
+    $ <b>wget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1404/x86_64/nvinfer-runtime-trt-repo-ubuntu1404-3.0.4-ga-cuda9.0_1.0-1_amd64.deb</b>
+    $ <b>sudo dpkg -i nvinfer-runtime-trt-repo-ubuntu1404-3.0.4-ga-cuda9.0_1.0-1_amd64.deb</b>
+    $ <b>sudo apt-get update</b>
+    $ <b>sudo apt-get install -y --allow-downgrades libnvinfer-dev libcudnn7-dev=7.0.5.15-1+cuda9.0 libcudnn7=7.0.5.15-1+cuda9.0</b>
+    </pre>
+
+    **IMPORTANT:** For compatibility with the pre-built `tensorflow-gpu`
+    package, please use the Ubuntu **14.04** package of TensorRT as shown above,
+    even when installing onto an Ubuntu 16.04 system.<br/>
+    <br/>
+    To build the TensorFlow-TensorRT integration module from source rather than
+    using pre-built binaries, see the [module documentation](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tensorrt#using-tensorrt-in-tensorflow).
+    For detailed TensorRT installation instructions, see [NVIDIA's TensorRT documentation](http://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html).<br/>
+    <br/>
+    To avoid cuDNN version conflicts during later system upgrades, you can hold
+    the cuDNN version at 7.0.5:
+
+    <pre>
+    $ <b> sudo apt-mark hold libcudnn7 libcudnn7-dev</b>
+    </pre>
+
+    To later allow upgrades, you can remove the hold:
+
+    <pre>
+    $ <b> sudo apt-mark unhold libcudnn7 libcudnn7-dev</b>
+    </pre>
+
 If you have an earlier version of the preceding packages, please upgrade to
 the specified versions. If upgrading is not possible, then you may still run
-TensorFlow with GPU support, but only if you do the following:
-
-  * Install TensorFlow from sources as documented in
-    @{$install_sources$Installing TensorFlow from Sources}.
-  * Install or upgrade to at least the following NVIDIA versions:
-    * CUDA toolkit 7.0 or greater
-    * cuDNN v3 or greater
-    * GPU card with CUDA Compute Capability 3.0 or higher.
+TensorFlow with GPU support, if you @{$install_sources$install TensorFlow from Sources}.
 
 
 ## Determine how to install TensorFlow
@@ -149,7 +175,8 @@ Take the following steps to install TensorFlow with Virtualenv:
      commands:
 
      <pre>$ <b>source ~/tensorflow/bin/activate</b> # bash, sh, ksh, or zsh
-    $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh</pre>
+    $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh
+    $ <b>. ~/tensorflow/bin/activate.fish</b>  # fish</pre>
 
      The preceding <tt>source</tt> command should change your prompt
      to the following:
@@ -189,7 +216,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      Virtualenv environment:
 
      <pre>(tensorflow)$ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common_installation_problems).
@@ -294,7 +321,7 @@ take the following steps:
 
      <pre>
      $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0-cp34-cp34m-linux_x86_64.whl</b>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp34-cp34m-linux_x86_64.whl</b>
      </pre>
 
      If this step fails, see
@@ -480,7 +507,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
 
      <pre>
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 <a name="ValidateYourInstallation"></a>
 ## Validate your installation
@@ -530,10 +557,17 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with TensorFlow}.
-
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
+
+If you are new to machine learning, we recommend the following:
+
+*  [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course)
+*  @{$get_started/get_started_for_beginners$Getting Started for ML Beginners}
+
+If you are experienced with machine learning but new to TensorFlow, see
+@{$get_started/premade_estimators$Getting Started with TensorFlow}.
+
 
 ## Common installation problems
 
@@ -647,14 +681,14 @@ This section documents the relevant values for Linux installations.
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0-cp27-none-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp27-none-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.6.0-cp27-none-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.7.0-cp27-none-linux_x86_64.whl
 </pre>
 
 Note that GPU support requires the NVIDIA hardware and software described in
@@ -666,14 +700,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0-cp34-cp34m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp34-cp34m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.6.0-cp34-cp34m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.7.0-cp34-cp34m-linux_x86_64.whl
 </pre>
 
 Note that GPU support requires the NVIDIA hardware and software described in
@@ -685,14 +719,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0-cp35-cp35m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp35-cp35m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.6.0-cp35-cp35m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.7.0-cp35-cp35m-linux_x86_64.whl
 </pre>
 
 
@@ -704,14 +738,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0-cp36-cp36m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp36-cp36m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.6.0-cp36-cp36m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.7.0-cp36-cp36m-linux_x86_64.whl
 </pre>
 
 

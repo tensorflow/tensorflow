@@ -77,6 +77,13 @@ class CUDATimer : public internal::TimerInterface {
                          // executing in a stream.
 };
 
+struct TimerDeleter {
+  void operator()(CUDATimer *t) {
+    t->Destroy();
+    delete t;
+  }
+};
+
 }  // namespace cuda
 }  // namespace gputools
 }  // namespace perftools

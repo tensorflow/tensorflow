@@ -34,20 +34,6 @@ public class TestHelper {
   }
 
   /**
-   * Sets the number of threads for an {@code Interpreter}.
-   *
-   * @param interpreter an instance of {@code Interpreter}. If it is not initialized, an {@code
-   *     IllegalArgumentException} will be thrown.
-   * @param numRecommendedThreads an integer value indicating the number of recommended threads.
-   */
-  public static void setNumThreads(Interpreter interpreter, int numRecommendedThreads) {
-    if (interpreter != null && interpreter.wrapper != null) {
-      interpreter.wrapper.setNumThreads(numRecommendedThreads);
-    } else {
-      throw new IllegalArgumentException("Interpreter has not initialized; Failed to setUseNNAPI.");
-    }
-  }
-  /**
    * Gets the last inference duration in nanoseconds. It returns null if there is no previous
    * inference run or the last inference run failed.
    *

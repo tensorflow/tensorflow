@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/compiler/jit/legacy_flags/encapsulate_subgraphs_pass_flags.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
+#include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -254,7 +256,8 @@ class Encapsulator {
 
     // Adds _RecvAtHost and _SendFromHost nodes, where needed, to graph_out.
     Status AddOutsideCompilationHostIONodes(
-        const string& subgraph_name,
+        const string& group_attribute, const string& subgraph_name,
+        const string& outside_compilation_attribute,
         const std::unordered_map<const Node*, Node*>& node_images,
         Graph* graph_out);
 
@@ -334,8 +337,10 @@ class Encapsulator {
     void ConnectSequencerToCallNode(Graph* graph_out);
 
     Status AddShapeInferenceInfo(
+        const string& subgraph_name,
         const string& outside_compilation_subgraph_name,
-        const std::vector<TensorShapeProto>& shapes, GraphDef* inference_graph);
+        const std::vector<TensorShapeProto>& shapes, Graph* inference_graph,
+        FunctionLibraryDefinition* library);
 
     Status ReplaceFunctionDef(FunctionLibraryDefinition* library);
 
@@ -403,7 +408,9 @@ class Encapsulator {
 
     // Builds a _RecvAtHost node producing all the inputs of an
     // outside_compilation subgraph and stores it in oc_subgraph.recv_at_host.
-    Status AddRecvAtHostNode(const string& subgraph_name,
+    Status AddRecvAtHostNode(const string& group_attribute,
+                             const string& subgraph_name,
+                             const string& outside_compilation_attribute,
                              const string& oc_subgraph_name,
                              OutsideCompilationSubgraph* oc_subgraph,
                              Graph* graph_out);
@@ -412,8 +419,10 @@ class Encapsulator {
     // outside_compilation subgraph and stores it in oc_subgraph.send_from_host.
     Status AddSendFromHostNode(
         const std::unordered_map<const Node*, Node*>& node_images,
-        const string& subgraph_name, const string& oc_subgraph_name,
-        OutsideCompilationSubgraph* oc_subgraph, Graph* graph_out);
+        const string& group_attribute, const string& subgraph_name,
+        const string& outside_compilation_attribute,
+        const string& oc_subgraph_name, OutsideCompilationSubgraph* oc_subgraph,
+        Graph* graph_out);
 
     // The subgraph extracted from the input graph, suitable for being turned
     // into a FunctionDef. Inputs are fed by _Arg nodes, and outputs are
@@ -569,11 +578,12 @@ class Encapsulator {
   // satisfied, e.g., because send_node depends on a node that doesn't have a
   // registered shape inference function.
   Status DoStaticShapeInferenceForOutsideCompilationSend(
-      const Graph& graph_in, const ShapeRefiner& shape_refiner,
+      const Graph& graph_in, const BackEdgeHelper& back_edge_helper,
+      const ShapeRefiner& shape_refiner,
       const std::unordered_set<string>& recv_at_host_nodes, Node* send_node,
       FunctionLibraryDefinition* library,
       std::vector<TensorShapeProto>* static_shape_out,
-      std::unique_ptr<GraphDef>* graphdef_out);
+      std::unique_ptr<Graph>* graph_out);
 
   // Makes a copy of graph containing only nodes that are ancestors of at least
   // one node in send_from_host_nodes and store it in pruned_graph. On exit
@@ -592,7 +602,7 @@ class Encapsulator {
   // to nodes in pruned_graph.
   Status MakeGraphForOutsideCompilationSends(
       const Graph& graph, std::unique_ptr<Graph>* pruned_graph,
-      ShapeRefiner* shape_refiner,
+      BackEdgeHelper* back_edge_helper, ShapeRefiner* shape_refiner,
       std::unordered_map<const Node*, Node*>* node_images,
       FunctionLibraryDefinition* library);
 
@@ -818,6 +828,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
       builder.Attr("key",
                    strings::StrCat("host_compute_channel_", subgraph_name, "_",
                                    oc_subgraph_name));
+      builder.Attr("_outside_compilation_subgraph", oc_subgraph_name);
       Status s = builder.Finalize(&host_compute_def);
       if (!s.ok()) return s;
 
@@ -949,8 +960,10 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
 }
 
 Status Encapsulator::Subgraph::AddShapeInferenceInfo(
+    const string& subgraph_name,
     const string& outside_compilation_subgraph_name,
-    const std::vector<TensorShapeProto>& shapes, GraphDef* inference_graph) {
+    const std::vector<TensorShapeProto>& shapes, Graph* inference_graph,
+    FunctionLibraryDefinition* library) {
   OutsideCompilationSubgraph& oc_subgraph =
       outside_compilation_subgraphs_.at(outside_compilation_subgraph_name);
 
@@ -972,14 +985,15 @@ Status Encapsulator::Subgraph::AddShapeInferenceInfo(
     host_compute->AddAttr("shape_inference_graph", "");
     host_compute->AddAttr("shapes", shapes);
   } else {
-    string serialized_graph;
-    if (!inference_graph->SerializeToString(&serialized_graph)) {
-      return errors::Internal(
-          "Failed to serialize graph for outside compilation subgraph ",
-          oc_subgraph.host_compute_name);
-    }
-    host_compute->AddAttr("shape_inference_graph", serialized_graph);
+    string inference_graph_name =
+        strings::StrCat("_outside_compilation_shape_inference_", subgraph_name,
+                        "_", outside_compilation_subgraph_name);
+    FunctionDef fdef;
+    TF_RETURN_IF_ERROR(
+        GraphToFunctionDef(*inference_graph, inference_graph_name, &fdef));
+    host_compute->AddAttr("shape_inference_graph", inference_graph_name);
     host_compute->AddAttr("shapes", std::vector<TensorShapeProto>());
+    TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
   }
   return Status::OK();
 }
@@ -1109,7 +1123,8 @@ Status Encapsulator::Subgraph::AddHostComputeKeyPlaceholder(
 }
 
 Status Encapsulator::Subgraph::AddRecvAtHostNode(
-    const string& subgraph_name, const string& oc_subgraph_name,
+    const string& group_attribute, const string& subgraph_name,
+    const string& outside_compilation_attribute, const string& oc_subgraph_name,
     OutsideCompilationSubgraph* oc_subgraph, Graph* graph_out) {
   if (host_compute_key_placeholder_ == nullptr) {
     TF_RETURN_IF_ERROR(AddHostComputeKeyPlaceholder(oc_subgraph, graph_out));
@@ -1130,14 +1145,15 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
   NodeDefBuilder builder(strings::StrCat("outside_compilation_", subgraph_name,
                                          "_", oc_subgraph_name, "_recv"),
                          kRecvAtHostOp);
-  // TODO(misard) When we add replication the device placement will have to be
-  // redone.
   builder.Device(device_);
   builder.Attr("Toutputs", dtypes);
-  // TODO(misard) For now we only support TPU device 0.
+  // The correct device_ordinal will be inserted during replication in a
+  // subsequent rewrite.
   builder.Attr("device_ordinal", 0);
   builder.Attr("key", strings::StrCat("host_compute_channel_", subgraph_name,
                                       "_", oc_subgraph_name));
+  builder.Attr(group_attribute, subgraph_name);
+  builder.Attr(outside_compilation_attribute, oc_subgraph_name);
   builder.Input(host_compute_key_placeholder_->name(), 0, DT_STRING);
   Status s = builder.Finalize(&recv_def);
   if (!s.ok()) return s;
@@ -1158,7 +1174,8 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
 
 Status Encapsulator::Subgraph::AddSendFromHostNode(
     const std::unordered_map<const Node*, Node*>& node_images,
-    const string& subgraph_name, const string& oc_subgraph_name,
+    const string& group_attribute, const string& subgraph_name,
+    const string& outside_compilation_attribute, const string& oc_subgraph_name,
     OutsideCompilationSubgraph* oc_subgraph, Graph* graph_out) {
   if (host_compute_key_placeholder_ == nullptr) {
     TF_RETURN_IF_ERROR(AddHostComputeKeyPlaceholder(oc_subgraph, graph_out));
@@ -1183,14 +1200,15 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   NodeDefBuilder builder(strings::StrCat("outside_compilation_", subgraph_name,
                                          "_", oc_subgraph_name, "_send"),
                          kSendFromHostOp);
-  // TODO(misard) When we add replication the device placement will have to be
-  // redone.
   builder.Device(device_);
   builder.Attr("Tinputs", dtypes);
   builder.Attr("key", strings::StrCat("host_compute_channel_", subgraph_name,
                                       "_", oc_subgraph_name));
-  // TODO(misard) For now we only support TPU device 0.
+  // The correct device_ordinal will be inserted during replication in a
+  // subsequent rewrite.
   builder.Attr("device_ordinal", 0);
+  builder.Attr(group_attribute, subgraph_name);
+  builder.Attr(outside_compilation_attribute, oc_subgraph_name);
   builder.Input(inputs);
   builder.Input(host_compute_key_placeholder_->name(), 0, DT_STRING);
   Status s = builder.Finalize(&send_def);
@@ -1211,7 +1229,8 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
 }
 
 Status Encapsulator::Subgraph::AddOutsideCompilationHostIONodes(
-    const string& subgraph_name,
+    const string& group_attribute, const string& subgraph_name,
+    const string& outside_compilation_attribute,
     const std::unordered_map<const Node*, Node*>& node_images,
     Graph* graph_out) {
   for (auto& outside_compilation_subgraph_entry :
@@ -1221,14 +1240,16 @@ Status Encapsulator::Subgraph::AddOutsideCompilationHostIONodes(
         outside_compilation_subgraph_entry.second;
 
     if (!oc_subgraph.inputs.empty() || !oc_subgraph.control_inputs.empty()) {
-      TF_RETURN_IF_ERROR(
-          AddRecvAtHostNode(subgraph_name, oc_name, &oc_subgraph, graph_out));
+      TF_RETURN_IF_ERROR(AddRecvAtHostNode(group_attribute, subgraph_name,
+                                           outside_compilation_attribute,
+                                           oc_name, &oc_subgraph, graph_out));
     }
 
     if (!oc_subgraph.outputs_by_src.empty() ||
         !oc_subgraph.control_outputs.empty()) {
-      TF_RETURN_IF_ERROR(AddSendFromHostNode(node_images, subgraph_name,
-                                             oc_name, &oc_subgraph, graph_out));
+      TF_RETURN_IF_ERROR(AddSendFromHostNode(
+          node_images, group_attribute, subgraph_name,
+          outside_compilation_attribute, oc_name, &oc_subgraph, graph_out));
     }
   }
   return Status::OK();
@@ -1445,8 +1466,6 @@ Status Encapsulator::CopyNodesToOutputGraph(
             "Parallel checking is not supported when outside_compilation "
             "clusters are present.");
       }
-      image->ClearAttr(group_attribute_);
-      image->ClearAttr(outside_compilation_attribute_);
     }
     (*node_images)[node] = image;
   }
@@ -1472,7 +1491,8 @@ Status Encapsulator::AddOutsideCompilationHostIONodes(
     const string& subgraph_name = subgraph_entry.first;
     Subgraph& subgraph = subgraph_entry.second;
     TF_RETURN_IF_ERROR(subgraph.AddOutsideCompilationHostIONodes(
-        subgraph_name, node_images, graph_out));
+        group_attribute_, subgraph_name, outside_compilation_attribute_,
+        node_images, graph_out));
   }
   return Status::OK();
 }
@@ -1695,9 +1715,13 @@ namespace {
 // matter because it will only be used subsequently for shape inference. (It
 // would be possible to add a switch statement over data_type to create a value
 // for the constant, but that would entail maintaining the logic as new types
-// are added, and is not necessary.)
-Node* AddDummyShapedNode(DataType data_type, const TensorShapeProto& shape,
-                         Graph* graph_out) {
+// are added, and is not necessary.) If the node being replaced was within a
+// control flow frame, adds appropriate Enter nodes so that the use of the Const
+// is well-formed.
+Node* AddDummyShapedNode(const Node* src_node, int src_port,
+                         const std::vector<ControlFlowInfo>& control_flow_info,
+                         const TensorShapeProto& shape, Graph* graph_out) {
+  DataType data_type = src_node->output_type(src_port);
   TensorProto dummy_proto;
   dummy_proto.set_dtype(data_type);
   *dummy_proto.mutable_tensor_shape() = shape;
@@ -1708,7 +1732,23 @@ Node* AddDummyShapedNode(DataType data_type, const TensorShapeProto& shape,
   NodeBuilder node_builder(options.GetNameForOp("KnownShape"), "Const",
                            options.op_registry());
   node_builder.Attr("dtype", data_type).Attr("value", dummy_proto);
-  return options.FinalizeBuilder(&node_builder);
+  Node* node = options.FinalizeBuilder(&node_builder);
+  // Add any Enter nodes required to bring the constant to the correct control
+  // flow frame.
+  while (!control_flow_info[src_node->id()].frame_name.empty()) {
+    NodeBuilder enter_builder(options.GetNameForOp("Enter"), "Enter",
+                              options.op_registry());
+    enter_builder.Attr("frame_name",
+                       control_flow_info[src_node->id()].frame_name);
+    enter_builder.Attr("is_constant", true);
+    enter_builder.Input(node, 0);
+    Node* enter_node = options.FinalizeBuilder(&enter_builder);
+    // Adopt the new Enter node as the value in the current frame.
+    node = enter_node;
+    // Recurse to the parent frame to see if more Enter nodes need to be added.
+    src_node = control_flow_info[src_node->id()].parent_frame;
+  }
+  return node;
 }
 
 // Adds a copy of node_in to graph_out and adds the mapping to
@@ -1750,17 +1790,30 @@ Status CopyShapeInferenceNodeToGraph(
       }
     }
   }
+  // Work around the fact that Enter nodes refuse to propagate shape information
+  // unless they are marked loop invariant. Since we are never going to execute
+  // this graph, marking them all loop invariant is fine.
+  if (node_out->type_string() == "Enter") {
+    node_out->ClearAttr("is_constant");
+    node_out->AddAttr("is_constant", true);
+  }
   return Status::OK();
 }
 
 }  // namespace
 
 Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
-    const Graph& graph_in, const ShapeRefiner& shape_refiner,
+    const Graph& graph_in, const BackEdgeHelper& back_edge_helper,
+    const ShapeRefiner& shape_refiner,
     const std::unordered_set<string>& recv_at_host_nodes, Node* send_node,
     FunctionLibraryDefinition* library,
     std::vector<TensorShapeProto>* static_shape_out,
-    std::unique_ptr<GraphDef>* graphdef_out) {
+    std::unique_ptr<Graph>* graph_out) {
+  // Get the control flow structure of the input graph so we can build
+  // well-formed output graphs.
+  std::vector<ControlFlowInfo> control_flow_info;
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(&graph_in, &control_flow_info));
+
   // Maps from nodes in graph_in to nodes in graph_out.
   //
   // When an edge has fully defined shape the source node in graph_in is
@@ -1777,15 +1830,14 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
   std::unordered_map<Node*, Node*> dummy_node_images;
   std::unordered_map<Node*, Node*> copied_node_images;
 
-  std::unique_ptr<Graph> graph_out(new Graph(graph_in.op_registry()));
-  graph_out->set_versions(graph_in.versions());
+  graph_out->reset(new Graph(graph_in.op_registry()));
+  (*graph_out)->set_versions(graph_in.versions());
   // The final input to the send node is the dynamic key, which we don't include
   // in the static shapes.
   static_shape_out->resize(send_node->num_inputs() - 1);
 
   // We don't use the standard ReverseDFS because we want to cut off traversal
   // whenever we find an output with fully defined shape.
-  // TODO(misard) make this work properly in the presence of control flow.
   struct Work {
     Node* node;
     bool leave;  // Are we entering or leaving node?
@@ -1800,7 +1852,7 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
     if (w.leave) {
       TF_RETURN_IF_ERROR(CopyShapeInferenceNodeToGraph(
           n, send_node, dummy_node_images, library, &copied_node_images,
-          graph_out.get()));
+          graph_out->get()));
     } else {
       if (visited[n->id()]) continue;
       visited[n->id()] = true;
@@ -1823,8 +1875,9 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
             TensorShapeProto proto;
             context->ShapeHandleToProto(shape, &proto);
             if (dummy_node_images.find(src_node) == dummy_node_images.end()) {
-              dummy_node_images[src_node] = AddDummyShapedNode(
-                  src_node->output_type(src_port), proto, graph_out.get());
+              dummy_node_images[src_node] =
+                  AddDummyShapedNode(src_node, src_port, control_flow_info,
+                                     proto, graph_out->get());
             }
             // The final input to the send node is the dynamic key, which we
             // don't include in the static shapes.
@@ -1849,7 +1902,7 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
           // The shapes of all the inputs to send_node are statically known. We
           // won't have to do any inference at compile time so return now: the
           // shapes were stored in static_shape_out above.
-          graphdef_out->reset();
+          graph_out->reset();
           return Status::OK();
         } else {
           // Any shape that is being processed is either the original send node
@@ -1872,8 +1925,37 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
     }
   }
 
-  graphdef_out->reset(new GraphDef());
-  graph_out->ToGraphDef(graphdef_out->get());
+  for (const auto edge : back_edge_helper.RemovedEdges()) {
+    if (copied_node_images.find(edge.dst) != copied_node_images.end()) {
+      // The destination of this back edge was added to the inference graph, so
+      // fix it up.
+      Node* dst = copied_node_images[edge.dst];
+      if (dst->type_string() != "Merge") {
+        return errors::InvalidArgument(
+            "outside_compilation cluster contains a back-edge to node ",
+            dst->name(), " of type ", dst->type_string(),
+            ". The analysis pass only supports back-edges to Merge nodes.");
+      }
+      const Edge* existing_input_edge;
+      if (edge.dst_input != 1 || dst->num_inputs() != 2 ||
+          !dst->input_edge(0, &existing_input_edge).ok()) {
+        // TODO(misard) if we see graphs built with a different structure, relax
+        // this constraint. Leaving it here for now to avoid writing unnecessary
+        // complex code since we believe graphs generated by front ends all have
+        // the back edge as the second input to the merge node.
+        return errors::Internal(
+            "Internal assumption failed while rewriting an outside_compilation "
+            "cluster that contains a while loop. Logic assumes back-edge is to "
+            "port 1 of a 2-input "
+            "Merge node.");
+      }
+      // Connect the existing edge to both inputs of the Merge node so that the
+      // graph will be well-formed.
+      (*graph_out)
+          ->AddEdge(existing_input_edge->src(),
+                    existing_input_edge->src_output(), dst, edge.dst_input);
+    }
+  }
 
   return Status::OK();
 }
@@ -1942,7 +2024,7 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
 
 Status Encapsulator::MakeGraphForOutsideCompilationSends(
     const Graph& graph, std::unique_ptr<Graph>* pruned_graph,
-    ShapeRefiner* shape_refiner,
+    BackEdgeHelper* back_edge_helper, ShapeRefiner* shape_refiner,
     std::unordered_map<const Node*, Node*>* node_images,
     FunctionLibraryDefinition* library) {
   // Find all the send_from_host nodes in all subgraphs, to use as roots for the
@@ -1964,10 +2046,15 @@ Status Encapsulator::MakeGraphForOutsideCompilationSends(
   // nodes, inlining any functions as needed.
   TF_RETURN_IF_ERROR(MakePrunedGraphCopyAndInline(
       graph, send_from_host_nodes, pruned_graph, node_images, library));
+  FixupSourceAndSinkEdges(pruned_graph->get());
+
+  // Remove back edges from any cycles in the pruned graph to simplify shape
+  // inference traversal. They will be fixed up in the per-subgraph shape
+  // inference graphs stored in the function library.
+  TF_RETURN_IF_ERROR(back_edge_helper->Remove(pruned_graph->get()));
 
   // Perform shape inference on the pruned graph.
   shape_refiner->set_require_shape_inference_fns(false);
-  FixupSourceAndSinkEdges(pruned_graph->get());
   std::vector<Node*> post_order;
   GetReversePostOrder(*(*pruned_graph), &post_order);
   for (auto node : post_order) {
@@ -1985,11 +2072,13 @@ Status Encapsulator::MakeGraphForOutsideCompilationSends(
 
 Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
     Graph* graph_out, FunctionLibraryDefinition* library) {
+  BackEdgeHelper back_edge_helper;
   std::unique_ptr<Graph> pruned_graph;
   ShapeRefiner shape_refiner(graph_out->versions(), graph_out->op_registry());
   std::unordered_map<const Node*, Node*> node_images;
   TF_RETURN_IF_ERROR(MakeGraphForOutsideCompilationSends(
-      *graph_out, &pruned_graph, &shape_refiner, &node_images, library));
+      *graph_out, &pruned_graph, &back_edge_helper, &shape_refiner,
+      &node_images, library));
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile("pruned_graph_for_shape_inference",
@@ -1997,13 +2086,14 @@ Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
   }
 
   for (auto& subgraph_entry : subgraphs_) {
+    const string& subgraph_name = subgraph_entry.first;
     Subgraph& subgraph = subgraph_entry.second;
     // Find all the recv_at_host nodes in this subgraph.
     std::vector<string> outside_compilation_names;
     subgraph.GetOutsideCompilationSubgraphNames(&outside_compilation_names);
     std::unordered_set<string> recv_at_host_names;
-    for (const auto& name : outside_compilation_names) {
-      Node* recv_node = subgraph.GetRecvAtHostNode(name);
+    for (const auto& oc_name : outside_compilation_names) {
+      Node* recv_node = subgraph.GetRecvAtHostNode(oc_name);
       if (recv_node != nullptr) {
         recv_at_host_names.insert(recv_node->name());
       }
@@ -2012,26 +2102,30 @@ Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
     // without knowing the shape of the recv_at_host nodes, and store the
     // result, along with enough information to complete the job at compile time
     // once the recv_at_host shapes are known.
-    for (const auto& name : outside_compilation_names) {
-      Node* send_node = subgraph.GetSendFromHostNode(name);
+    for (const auto& oc_name : outside_compilation_names) {
+      Node* send_node = subgraph.GetSendFromHostNode(oc_name);
       std::vector<TensorShapeProto> static_shape;
-      std::unique_ptr<GraphDef> graphdef;
+      std::unique_ptr<Graph> graph;
       if (send_node != nullptr) {
         TF_RETURN_IF_ERROR(DoStaticShapeInferenceForOutsideCompilationSend(
-            *pruned_graph, shape_refiner, recv_at_host_names,
-            node_images[send_node], library, &static_shape, &graphdef));
-        if (graphdef == nullptr) {
+            *pruned_graph, back_edge_helper, shape_refiner, recv_at_host_names,
+            node_images[send_node], library, &static_shape, &graph));
+        if (graph == nullptr) {
           VLOG(2) << "Send node  " << send_node->name() << " shapes";
           for (int i = 0; i < static_shape.size(); ++i) {
             VLOG(2) << static_shape[i].DebugString();
           }
         } else {
-          VLOG(2) << "Send node " << send_node->name() << " graph\n"
-                  << graphdef->DebugString();
+          if (VLOG_IS_ON(2)) {
+            GraphDef graphdef;
+            graph->ToGraphDef(&graphdef);
+            VLOG(2) << "Send node " << send_node->name() << " graph\n"
+                    << graphdef.DebugString();
+          }
         }
       }
-      TF_RETURN_IF_ERROR(
-          subgraph.AddShapeInferenceInfo(name, static_shape, graphdef.get()));
+      TF_RETURN_IF_ERROR(subgraph.AddShapeInferenceInfo(
+          subgraph_name, oc_name, static_shape, graph.get(), library));
     }
     if (!outside_compilation_names.empty()) {
       TF_RETURN_IF_ERROR(subgraph.ReplaceFunctionDef(library));

@@ -34,53 +34,6 @@ namespace {
 
 class HloOrderingTest : public HloTestBase {};
 
-TEST_F(HloOrderingTest, LastUseScheduledFirst) {
-  // Tests scheduling of the following HLO code:
-  //
-  //   %ab = abs(%param)
-  //   %exp = exp(%param)
-  //   %add = add(%ab, %exp)
-  //   %negate = negate(%exp)
-  //   %sub = subtract(%add, %negate)
-  //
-  // %add should be scheduled before %negate because %add is the last (and only)
-  // use of %ab. Scheduling %add first then frees up %ab's buffer.
-  const Shape vec = ShapeUtil::MakeShape(xla::F32, {42});
-  auto builder = HloComputation::Builder(TestName());
-  auto param =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, vec, "param"));
-  auto ab = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kAbs, param));
-  auto exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kExp, param));
-
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(vec, HloOpcode::kAdd, ab, exp));
-  auto negate = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kNegate, exp));
-  auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(vec, HloOpcode::kSubtract, add, negate));
-
-  auto module = CreateNewModule();
-  module->AddEntryComputation(builder.Build());
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      SequentialHloOrdering::HloModuleSequence sequence,
-      CreateMemoryMinimizingSequence(*module, [](const LogicalBuffer& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape());
-      }));
-  // Verify that all instructions are in the sequence.
-  EXPECT_EQ(module->entry_computation()->instruction_count(),
-            sequence.at(module->entry_computation()).size());
-
-  // The first instruction should be the parameter and the last the root "sub".
-  EXPECT_EQ(param, sequence.at(module->entry_computation()).front());
-  EXPECT_EQ(sub, sequence.at(module->entry_computation()).back());
-
-  SequentialHloOrdering ordering(module.get(), sequence);
-  EXPECT_TRUE(ordering.ExecutesBefore(add, negate));
-}
-
 TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   // Tests the ordering of instructions in different computations using the
   // following HLO code:

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/java/src/main/native/nativeinterpreterwrapper_jni.h"
-
 namespace {
 
 const int kByteBufferValue = 999;
@@ -316,16 +315,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
   interpreter->UseNNAPI(static_cast<bool>(state));
 }
 
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
-                                                             jclass clazz,
-                                                             jlong handle,
-                                                             jint num_threads) {
-  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
-  if (interpreter == nullptr) return;
-  interpreter->SetNumThreads(static_cast<int>(num_threads));
-}
-
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
     JNIEnv* env, jclass clazz, jint size) {
@@ -401,7 +390,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
-    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle) {
+    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
+    jint num_threads) {
   tflite::FlatBufferModel* model = convertLongToModel(env, model_handle);
   if (model == nullptr) return 0;
   BufferErrorReporter* error_reporter =
@@ -409,8 +399,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   if (error_reporter == nullptr) return 0;
   auto resolver = ::tflite::CreateOpResolver();
   std::unique_ptr<tflite::Interpreter> interpreter;
-  TfLiteStatus status =
-      tflite::InterpreterBuilder(*model, *(resolver.get()))(&interpreter);
+  TfLiteStatus status = tflite::InterpreterBuilder(*model, *(resolver.get()))(
+      &interpreter, static_cast<int>(num_threads));
   if (status != kTfLiteOk) {
     throwException(env, kIllegalArgumentException,
                    "Cannot create interpreter: %s",

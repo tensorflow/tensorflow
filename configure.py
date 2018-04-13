@@ -35,12 +35,13 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
+_DEFAULT_NCCL_VERSION = '1.3'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
 _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
                           'Toolkit/CUDA/v%s' % _DEFAULT_CUDA_VERSION)
-_DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/x86_64-linux-gnu'
+_DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/%s-linux-gnu' % platform.machine()
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
 _DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
@@ -484,6 +485,8 @@ def set_cc_opt_flags(environ_cp):
   if is_ppc64le():
     # gcc on ppc64le does not support -march, use mcpu instead
     default_cc_opt_flags = '-mcpu=native'
+  elif is_windows():
+    default_cc_opt_flags = '/arch:AVX'
   else:
     default_cc_opt_flags = '-march=native'
   question = ('Please specify optimization flags to use during compilation when'
@@ -494,14 +497,13 @@ def set_cc_opt_flags(environ_cp):
   for opt in cc_opt_flags.split():
     write_to_bazelrc('build:opt --copt=%s' % opt)
   # It should be safe on the same build host.
-  if not is_ppc64le():
+  if not is_ppc64le() and not is_windows():
     write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
   # TODO(mikecase): Remove these default defines once we are able to get
   # TF Lite targets building without them.
   write_to_bazelrc('build --copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
   write_to_bazelrc('build --host_copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
-
 
 def set_tf_cuda_clang(environ_cp):
   """set TF_CUDA_CLANG action_env.
@@ -524,7 +526,7 @@ def set_tf_cuda_clang(environ_cp):
 
 def set_tf_download_clang(environ_cp):
   """Set TF_DOWNLOAD_CLANG action_env."""
-  question = 'Do you want to download a fresh release of clang? (Experimental)'
+  question = 'Do you wish to download a fresh release of clang? (Experimental)'
   yes_reply = 'Clang will be downloaded and used to compile tensorflow.'
   no_reply = 'Clang will not be downloaded.'
   set_action_env_var(
@@ -1103,6 +1105,81 @@ def set_tf_tensorrt_install_path(environ_cp):
   write_action_env_to_bazelrc('TF_TENSORRT_VERSION', tf_tensorrt_version)
 
 
+def set_tf_nccl_install_path(environ_cp):
+  """Set NCCL_INSTALL_PATH and TF_NCCL_VERSION.
+
+  Args:
+    environ_cp: copy of the os.environ.
+
+  Raises:
+    ValueError: if this method was called under non-Linux platform.
+    UserInputError: if user has provided invalid input multiple times.
+  """
+  if not is_linux():
+    raise ValueError('Currently NCCL is only supported on Linux platforms.')
+
+  ask_nccl_version = (
+      'Please specify the NCCL version you want to use. '
+      '[Leave empty to default to NCCL %s]: ') % _DEFAULT_NCCL_VERSION
+
+  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
+    tf_nccl_version = get_from_env_or_user_or_default(
+        environ_cp, 'TF_NCCL_VERSION', ask_nccl_version, _DEFAULT_NCCL_VERSION)
+    tf_nccl_version = reformat_version_sequence(str(tf_nccl_version), 1)
+
+    if tf_nccl_version == '1':
+      break  # No need to get install path, NCCL 1 is a GitHub repo.
+
+    # TODO(csigg): Look with ldconfig first if we can find the library in paths
+    # like /usr/lib/x86_64-linux-gnu and the header file in the corresponding
+    # include directory. This is where the NCCL .deb packages install them.
+    # Then ask the user if we should use that. Instead of a single
+    # NCCL_INSTALL_PATH, pass separate NCCL_LIB_PATH and NCCL_HDR_PATH to
+    # nccl_configure.bzl
+    default_nccl_path = environ_cp.get('CUDA_TOOLKIT_PATH')
+    ask_nccl_path = (r'Please specify the location where NCCL %s library is '
+                     'installed. Refer to README.md for more details. [Default '
+                     'is %s]:') % (tf_nccl_version, default_nccl_path)
+    nccl_install_path = get_from_env_or_user_or_default(
+        environ_cp, 'NCCL_INSTALL_PATH', ask_nccl_path, default_nccl_path)
+
+    # Result returned from "read" will be used unexpanded. That make "~"
+    # unusable. Going through one more level of expansion to handle that.
+    nccl_install_path = os.path.realpath(os.path.expanduser(nccl_install_path))
+    if is_windows() or is_cygwin():
+      nccl_install_path = cygpath(nccl_install_path)
+
+    if is_windows():
+      nccl_lib_path = 'lib/x64/nccl.lib'
+    elif is_linux():
+      nccl_lib_path = 'lib/libnccl.so.%s' % tf_nccl_version
+    elif is_macos():
+      nccl_lib_path = 'lib/libnccl.%s.dylib' % tf_nccl_version
+
+    nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
+    nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
+    if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
+      # Set NCCL_INSTALL_PATH
+      environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
+      write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
+      break
+
+    # Reset and Retry
+    print('Invalid path to NCCL %s toolkit, %s or %s not found. Please use the '
+          'O/S agnostic package of NCCL 2' % (tf_nccl_version, nccl_lib_path,
+                                              nccl_hdr_path))
+
+    environ_cp['TF_NCCL_VERSION'] = ''
+  else:
+    raise UserInputError('Invalid TF_NCCL setting was provided %d '
+                         'times in a row. Assuming to be a scripting mistake.' %
+                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
+
+  # Set TF_NCCL_VERSION
+  environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
+  write_action_env_to_bazelrc('TF_NCCL_VERSION', tf_nccl_version)
+
+
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
 
@@ -1397,6 +1474,9 @@ def main():
     environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
+    # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
+    # Windows.
+    environ_cp['TF_DOWNLOAD_CLANG'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
@@ -1411,7 +1491,7 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
                 'with_s3_support', True, 's3')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
-                'with_kafka_support', False, 'kafka')
+                'with_kafka_support', True, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
@@ -1436,6 +1516,8 @@ def main():
     set_tf_cudnn_version(environ_cp)
     if is_linux():
       set_tf_tensorrt_install_path(environ_cp)
+      set_tf_nccl_install_path(environ_cp)
+
     set_tf_cuda_compute_capabilities(environ_cp)
     if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
         'LD_LIBRARY_PATH') != '1':
@@ -1444,16 +1526,8 @@ def main():
 
     set_tf_cuda_clang(environ_cp)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
-      if not is_windows():
-        # Ask if we want to download clang release while building.
-        set_tf_download_clang(environ_cp)
-      else:
-        # We use bazel's generated crosstool on Windows and there is no
-        # way to provide downloaded toolchain for that yet.
-        # TODO(ibiryukov): Investigate using clang as a cuda compiler on
-        # Windows.
-        environ_cp['TF_DOWNLOAD_CLANG'] = '0'
-
+      # Ask whether we should download the clang toolchain.
+      set_tf_download_clang(environ_cp)
       if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
         # Set up which clang we should use as the cuda / host compiler.
         set_clang_cuda_compiler_path(environ_cp)
@@ -1463,6 +1537,13 @@ def main():
       if not is_windows():
         set_gcc_host_compiler_path(environ_cp)
     set_other_cuda_vars(environ_cp)
+  else:
+    # CUDA not required. Ask whether we should download the clang toolchain and
+    # use it for the CPU build.
+    set_tf_download_clang(environ_cp)
+    if environ_cp.get('TF_DOWNLOAD_CLANG') == '1':
+      write_to_bazelrc('build --config=download_clang')
+      write_to_bazelrc('test --config=download_clang')
 
   set_build_var(environ_cp, 'TF_NEED_MPI', 'MPI', 'with_mpi_support', False)
   if environ_cp.get('TF_NEED_MPI') == '1':

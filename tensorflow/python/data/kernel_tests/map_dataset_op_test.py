@@ -624,6 +624,20 @@ class MapDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testConstantOutput(self):
+    iterator = (
+        dataset_ops.Dataset.range(10).map(lambda x: [x, "hello", 10])
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual((i, b"hello", 10), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 class MapDatasetBenchmark(test.Benchmark):
 

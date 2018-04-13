@@ -72,7 +72,12 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     # know the shape and dtype of the variable pointed to by a handle. Since
     # shape inference doesn't run in eager mode we copy this data here for when
     # the handle is captured by an eager mode function.
-    handle._handle_data = h._handle_data  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if h._handle_data is None:
+      ops.set_shape_and_handle_data_for_outputs(h.op)
+    handle._handle_data = h._handle_data
+    # pylint: enable=protected-access
+
   # Clean up our reference cycles to avoid making the garbage collector run.
   # pylint: disable=protected-access
   # OrderedDict, constructed on Graph creation, makes a simple reference loop
@@ -149,7 +154,7 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
-  See the @{$python/state_ops$`Variables`} documentation for more details.
+  See the @{$variables$Variables How To} for a high level overview.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.
@@ -171,7 +176,9 @@ class ResourceVariable(variables.Variable):
   to see all modifications to the value of the variable which happen in any
   operation on which the read_value depends on (either directly, indirectly, or
   via a control dependency) and guaranteed to not see any modification to the
-  value of the variable on which the read_value operation does not depend on.
+  value of the variable from operations that depend on the read_value operation.
+  Updates from operations that have no dependency relationship to the read_value
+  operation might or might not be visible to read_value.
 
   For example, if there is more than one assignment to a ResourceVariable in
   a single session.run call there is a well-defined value for each operation
@@ -179,24 +186,20 @@ class ResourceVariable(variables.Variable):
   by edges in the graph. Consider the following example, in which two writes
   can cause tf.Variable and tf.ResourceVariable to behave differently:
 
-   ```python
-    a = tf.ResourceVariable(1.0)
-    a.initializer.run()
+  ```python
+  a = tf.ResourceVariable(1.0)
+  a.initializer.run()
 
-    assign = a.assign(2.0)
-    with tf.control_dependencies([assign]):
-      b = a.read_value()
-    with tf.control_dependencies([b]):
-      other_assign = a.assign(3.0)
-    with tf.control_dependencies([other_assign]):
-      # Will print 2.0 because the value was read before other_assign ran. If
-      # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
-      tf.Print(b, [b]).eval()
+  assign = a.assign(2.0)
+  with tf.control_dependencies([assign]):
+    b = a.read_value()
+  with tf.control_dependencies([b]):
+    other_assign = a.assign(3.0)
+  with tf.control_dependencies([other_assign]):
+    # Will print 2.0 because the value was read before other_assign ran. If
+    # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
+    tf.Print(b, [b]).eval()
   ```
-
-  To enforce these consistency properties tf.ResourceVariable might make more
-  copies than an equivalent tf.Variable under the hood, so tf.Variable is still
-  not deprecated.
   """
 
   def __init__(self,
@@ -519,11 +522,19 @@ class ResourceVariable(variables.Variable):
     else:
       self._initial_value = None
     if variable_def.snapshot_name:
-      self._cached_value = g.as_graph_element(
+      snapshot = g.as_graph_element(
           ops.prepend_name_scope(
               variable_def.snapshot_name, import_scope=import_scope))
+      self._cached_value = snapshot
+      while snapshot.op.type != "ReadVariableOp":
+        snapshot = snapshot.op.inputs[0]
+      self._graph_element = snapshot
     else:
       self._cached_value = None
+      # Legacy case for protos without the snapshot name; assume it's the
+      # following.
+      self._graph_element = g.get_tensor_by_name(
+          self._handle.op.name + "/Read/ReadVariableOp:0")
     if variable_def.HasField("save_slice_info_def"):
       self._save_slice_info = variables.Variable.SaveSliceInfo(
           save_slice_info_def=variable_def.save_slice_info_def,
@@ -532,8 +543,6 @@ class ResourceVariable(variables.Variable):
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
-    self._graph_element = g.get_tensor_by_name(
-        self._handle.op.name + "/Read/ReadVariableOp:0")
     self._constraint = None
     self._cached_shape_as_list = None
 
@@ -742,6 +751,10 @@ class ResourceVariable(variables.Variable):
       if self._cached_value is not None:
         var_def.snapshot_name = ops.strip_name_scope(self._cached_value.name,
                                                      export_scope)
+      else:
+        # Store the graph_element here
+        var_def.snapshot_name = ops.strip_name_scope(self._graph_element.name,
+                                                     export_scope)
       var_def.is_resource = True
       if self._save_slice_info:
         var_def.save_slice_info_def.MergeFrom(
@@ -907,7 +920,6 @@ class ResourceVariable(variables.Variable):
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     del name
     if dtype is not None and dtype != self.dtype:
-      print("trying to switch the dtype to ", dtype, " from ", self.dtype)
       return NotImplemented
     if as_ref:
       return self.read_value().op.inputs[0]
@@ -1088,6 +1100,11 @@ ops.register_proto_function(
     from_proto=_from_proto_fn)
 ops.register_proto_function(
     ops.GraphKeys.MODEL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.GLOBAL_STEP,
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)

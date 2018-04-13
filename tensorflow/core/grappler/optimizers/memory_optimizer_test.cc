@@ -426,7 +426,7 @@ TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
   EXPECT_EQ(4, count);
 
   std::vector<string> fetch = {"a", "b", "c", "e"};
-  auto tensors = EvaluateNodes(output, fetch);
+  auto tensors = EvaluateNodes(output, fetch, {});
   EXPECT_EQ(4, tensors.size());
 
   for (int i = 0; i < tensors[0].NumElements(); ++i) {

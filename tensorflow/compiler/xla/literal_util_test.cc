@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -217,9 +218,7 @@ TEST_F(LiteralUtilTest, CreateSparse) {
   EXPECT_EQ(literal->sparse_indices()->data(),
             ArraySlice<int64>(expected_indices.data(),
                               expected_indices.num_elements()));
-  EXPECT_EQ(
-      ArraySlice<int64>(literal->data<int64>().data(), expected_values.size()),
-      ArraySlice<int64>(expected_values));
+  EXPECT_EQ(literal->data<int64>(), ArraySlice<int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
@@ -1090,6 +1089,48 @@ TEST_F(LiteralUtilTest, Populate) {
   }
 }
 
+TEST_F(LiteralUtilTest, PopulateParallel) {
+  struct PopulateData {
+    std::vector<int64> dimensions;
+    std::vector<int64> layout;
+  } populate_data[] = {
+      {{}, {}},
+      {{0}, {0}},
+      {{16}, {0}},
+      {{2, 0}, {1, 0}},
+      {{4, 16}, {1, 0}},
+      {{21, 12}, {0, 1}},
+      {{6, 11, 17}, {2, 0, 1}},
+      {{6, 11, 5, 17}, {3, 2, 0, 1}},
+  };
+  for (const auto& data : populate_data) {
+    Shape shape = ShapeUtil::MakeShapeWithLayout(
+        primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
+        data.layout);
+    auto literal = Literal::CreateFromShape(shape);
+    auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
+      // Offsets from linear index just to avoid R0 literals to be initialized
+      // with zero.
+      return IndexUtil::MultidimensionalIndexToLinearIndex(literal->shape(),
+                                                           indexes) +
+             17;
+    };
+    TF_EXPECT_OK(literal->PopulateParallel<uint32>(generator));
+
+    std::vector<int64> zero_base(data.dimensions.size(), 0);
+    std::vector<int64> step(data.dimensions.size(), 1);
+    bool matched = true;
+    auto check_function = [&](ArraySlice<int64> indexes) {
+      auto value = literal->Get<uint32>(indexes);
+      matched = matched && (value == generator(indexes));
+      return matched;
+    };
+    ShapeUtil::ForEachIndex(literal->shape(), zero_base, data.dimensions, step,
+                            check_function);
+    EXPECT_TRUE(matched);
+  }
+}
+
 TEST_F(LiteralUtilTest, ConvertR4) {
   // clang-format off
   auto original = Literal::CreateR4WithLayout<int8>({{
@@ -1241,6 +1282,25 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
             tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64->Convert(S32).status().code(),
             tensorflow::error::UNIMPLEMENTED);
+}
+
+TEST_F(LiteralUtilTest, BitcastConvert) {
+  auto original =
+      Literal::CreateR1<uint32>({tensorflow::bit_cast<uint32>(2.5f),
+                                 tensorflow::bit_cast<uint32>(-42.25f),
+                                 tensorflow::bit_cast<uint32>(100.f), 0xbeef});
+  auto expected = Literal::CreateR1<float>(
+      {2.5f, -42.25f, 100.0f, tensorflow::bit_cast<float>(0xbeef)});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> converted,
+                          original->BitcastConvert(F32));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
+  auto literal = Literal::CreateR0<uint32>(1234);
+  Status status = literal->BitcastConvert(F64).status();
+  EXPECT_NE(Status::OK(), status);
+  EXPECT_TRUE(tensorflow::str_util::StrContains(status.error_message(),
+                                                "bit widths are different"));
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
@@ -1702,7 +1762,7 @@ TEST_F(LiteralUtilTest, GetSparseElementAsString) {
   ASSERT_EQ(Literal::CreateSparse<half>(dimensions, indices,
                                         {half{1.0}, half{2.0}, half{3.0}})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(half{2.0}));
+            tensorflow::strings::StrCat(static_cast<float>(half{2.0})));
   ASSERT_EQ(
       Literal::CreateSparse<complex64>(
           dimensions, indices,

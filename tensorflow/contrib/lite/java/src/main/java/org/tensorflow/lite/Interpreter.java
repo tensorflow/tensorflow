@@ -68,6 +68,19 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
+   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
+   *
+   * @param modelFile: a file of a pre-trained TF Lite model
+   * @param numThreads: number of threads to use for inference
+   */
+  public Interpreter(@NonNull File modelFile, int numThreads) {
+    if (modelFile == null) {
+      return;
+    }
+    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), numThreads);
+  }
+
+  /**
    * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file.
    *
    * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
@@ -75,6 +88,17 @@ public final class Interpreter implements AutoCloseable {
    */
   public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
     wrapper = new NativeInterpreterWrapper(mappedByteBuffer);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file and
+   * specifies the number of threads used for inference.
+   *
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
+   */
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(mappedByteBuffer, numThreads);
   }
 
   /**

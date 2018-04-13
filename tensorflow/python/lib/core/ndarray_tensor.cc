@@ -267,7 +267,9 @@ gtl::InlinedVector<npy_intp, 4> GetPyArrayDimensionsForTensor(
   const int ndims = TF_NumDims(tensor);
   gtl::InlinedVector<npy_intp, 4> dims(ndims);
   if (TF_TensorType(tensor) == TF_RESOURCE) {
-    dims[0] = TF_TensorByteSize(tensor);
+    CHECK_EQ(ndims, 0)
+        << "Fetching of non-scalar resource tensors is not supported.";
+    dims.push_back(TF_TensorByteSize(tensor));
     *nelems = dims[0];
   } else {
     *nelems = 1;

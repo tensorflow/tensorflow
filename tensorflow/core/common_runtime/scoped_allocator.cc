@@ -75,7 +75,8 @@ void* ScopedAllocator::AllocateRaw(int32 field_index, size_t num_bytes) {
   if (num_bytes != f.bytes) {
     LOG(ERROR) << "ScopedAllocator " << name_ << " got request for "
                << num_bytes << " bytes from field " << field_index
-               << " which has precalculated size " << f.bytes;
+               << " which has precalculated size " << f.bytes << " and offset "
+               << f.offset;
     return nullptr;
   }
 

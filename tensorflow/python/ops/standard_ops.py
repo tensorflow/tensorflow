@@ -80,6 +80,8 @@ from tensorflow.python.ops.state_ops import scatter_add
 from tensorflow.python.ops.state_ops import scatter_div
 from tensorflow.python.ops.state_ops import scatter_mul
 from tensorflow.python.ops.state_ops import scatter_sub
+from tensorflow.python.ops.state_ops import scatter_min
+from tensorflow.python.ops.state_ops import scatter_max
 from tensorflow.python.ops.state_ops import scatter_update
 from tensorflow.python.ops.state_ops import scatter_nd_add
 from tensorflow.python.ops.state_ops import scatter_nd_sub
@@ -218,6 +220,7 @@ _allowed_symbols_gradients = [
     # Documented in training.py:
     # Not importing training.py to avoid complex graph dependencies.
     "AggregationMethod",
+    "GradientTape",
     "custom_gradient",
     "gradients",  # tf.gradients = gradients.gradients
     "hessians",

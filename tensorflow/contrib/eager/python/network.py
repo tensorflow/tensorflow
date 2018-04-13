@@ -25,6 +25,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
+from tensorflow.python.keras._impl.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import checkpoint_utils
@@ -149,7 +150,7 @@ class Network(base.Layer):
     # check we might have name collisions if the parent scope on init gets
     # closed before build is called.
     self._variable_scope_counts_on_init = (
-        variable_scope._get_default_variable_store().variable_scopes_count)
+        variable_scope.get_variable_scope_store().variable_scopes_count)
 
   def _name_scope_name(self, current_variable_scope):
     """Overrides Layer op naming to match variable naming."""
@@ -176,7 +177,7 @@ class Network(base.Layer):
         avoid_names = parent_network._owned_layers
         name_uid_map = parent_network._sub_layer_name_uids
       else:
-        name_uid_map = base._get_default_graph_uid_map()
+        name_uid_map = keras_base_layer.get_default_graph_uid_map()
         # Figure out which names we have to avoid based on which variable scope
         # we're nested in.
         strip_name = self._default_parent_variable_scope.name
@@ -326,6 +327,8 @@ class Network(base.Layer):
       raise TypeError(
           "Network.track_layer() passed type %s, not a tf.layers.Layer" %
           (type(layer),))
+    # Always use `ResourceVariable` with legacy layers.
+    layer._use_resource_variables = True
     if isinstance(layer, Network):
       layer._finalize_name(parent_network=self)
     else:

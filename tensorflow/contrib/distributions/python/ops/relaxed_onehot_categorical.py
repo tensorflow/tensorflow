@@ -303,7 +303,7 @@ class RelaxedOneHotCategorical(
   The RelaxedOneHotCategorical is a distribution over random probability
   vectors, vectors of positive real values that sum to one, which continuously
   approximates a OneHotCategorical. The degree of approximation is controlled by
-  a temperature: as the temperaturegoes to 0 the RelaxedOneHotCategorical
+  a temperature: as the temperature goes to 0 the RelaxedOneHotCategorical
   becomes discrete with a distribution described by the `logits` or `probs`
   parameters, as the temperature goes to infinity the RelaxedOneHotCategorical
   becomes the constant distribution that is identically the constant vector of
@@ -409,5 +409,5 @@ class RelaxedOneHotCategorical(
                                        validate_args=validate_args,
                                        allow_nan_stats=allow_nan_stats)
     super(RelaxedOneHotCategorical, self).__init__(dist,
-                                                   bijectors.Exp(event_ndims=1),
+                                                   bijectors.Exp(),
                                                    name=name)

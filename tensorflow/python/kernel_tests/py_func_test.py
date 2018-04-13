@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
@@ -479,6 +480,18 @@ class PyFuncTest(test.TestCase):
         pass
 
       self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerReturningVariableRaisesError(self):
+    def return_variable():
+      variable = resource_variable_ops.ResourceVariable(0.0)
+      return variable
+
+    with self.assertRaisesRegexp(errors.UnknownError,
+                                 "Attempting to return a variable"):
+      output = script_ops.eager_py_func(
+          return_variable, inp=[], Tout=dtypes.float32)
+      self.evaluate(output)
 
 
 if __name__ == "__main__":
