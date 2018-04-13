@@ -29,6 +29,7 @@ from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import models
 from tensorflow.python.keras._impl.keras import optimizers
@@ -55,10 +56,9 @@ def _cast_tensor_to_floatx(x):
   else:
     return math_ops.cast(x, K.floatx())
 
-  
 def _convert_tensor(x):
   """Create or cast tensor if needed."""
-  if not isinstance(x, (ops.Tensor, sparse_tensor_lib.SparseTensor)):
+  if not tensor_util.is_tensor(x):
     # x is a numpy array
     x = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(x)
   if check_ops.is_numeric_tensor(x):

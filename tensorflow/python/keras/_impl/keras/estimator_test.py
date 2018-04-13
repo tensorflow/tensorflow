@@ -142,9 +142,10 @@ def randomize_io_type(array, name):
 
 
 def lambda_string_to(k):
-  # Dummy function which reads a number.
-  # This will fail if k.dtype != string.
-  # Locally importing gen_parsing_ops for it to be available in the scope.
+  """Dummy function which reads a number.
+  This will fail if k.dtype != string.
+  Locally importing gen_parsing_ops for it to be available in the scope.
+  Otherwise, _context is None in `gen_parsing_ops`"""
   from tensorflow.python.ops.parsing_ops import gen_parsing_ops
   return gen_parsing_ops.string_to_number(k)
 
