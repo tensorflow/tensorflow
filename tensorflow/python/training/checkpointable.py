@@ -26,6 +26,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.util import nest
 
+
+# Key where the object graph proto is saved in a TensorBundle
+OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
+
+
 # A key indicating a variable's value in an object's checkpointed Tensors
 # (Checkpointable._gather_saveables_for_checkpoint). If this is the only key and
 # the object has no dependencies, then its value may be restored on object
