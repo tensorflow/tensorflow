@@ -90,9 +90,13 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
     batch_size = array_ops.shape(inputs, out_type=tag_indices.dtype)[0]
     example_inds = array_ops.reshape(
         math_ops.range(batch_size, dtype=tag_indices.dtype), [-1, 1])
-    return array_ops.gather_nd(
+    sequence_scores = array_ops.gather_nd(
         array_ops.squeeze(inputs, [1]),
         array_ops.concat([example_inds, tag_indices], axis=1))
+    sequence_scores = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                                      array_ops.zeros_like(sequence_scores),
+                                      sequence_scores)
+    return sequence_scores
 
   def _multi_seq_fn():
     # Compute the scores of the given tag sequence.
@@ -128,7 +132,12 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
   # If max_seq_len is 1, we skip the algorithm and simply reduce_logsumexp over
   # the "initial state" (the unary potentials).
   def _single_seq_fn():
-    return math_ops.reduce_logsumexp(first_input, [1])
+    log_norm = math_ops.reduce_logsumexp(first_input, [1])
+    # Mask `log_norm` of the sequences with length <= zero.
+    log_norm = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                               array_ops.zeros_like(log_norm),
+                               log_norm)
+    return log_norm
 
   def _multi_seq_fn():
     """Forward computation of alpha values."""
