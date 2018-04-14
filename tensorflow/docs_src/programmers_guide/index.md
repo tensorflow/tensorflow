@@ -5,6 +5,7 @@ works. The units are as follows:
 
 ## High Level APIs
 
+  * @{$programmers_guide/eager}, which is the easiest way to use TensorFlow.
   * @{$programmers_guide/estimators}, which introduces a high-level
     TensorFlow API that greatly simplifies ML programming.
   * @{$programmers_guide/datasets}, which explains how to
@@ -30,8 +31,12 @@ works. The units are as follows:
     can still be helpful.
   * @{$programmers_guide/saved_model}, which
     explains how to save and restore variables and models.
+
+## Accelerators
+
   * @{$using_gpu} explains how TensorFlow assigns operations to
     devices and how you can change the arrangement manually.
+  * @{$using_tpu} explains how to modify `Estimator` programs to run on a TPU.
 
 
 ## ML Concepts

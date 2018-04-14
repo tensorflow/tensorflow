@@ -75,7 +75,7 @@ Other eager execution examples can be found under [tensorflow/contrib/eager/pyth
   should all be separated by spaces. For instance,
 
   ```bash
-  pythons spinn.py --data_root /tmp/spinn-data --logdir /tmp/spinn-logs \
+  python spinn.py --data_root /tmp/spinn-data --logdir /tmp/spinn-logs \
       --inference_premise '( ( The dog ) ( ( is running ) . ) )' \
       --inference_hypothesis '( ( The dog ) ( moves . ) )'
   ```
@@ -93,7 +93,7 @@ Other eager execution examples can be found under [tensorflow/contrib/eager/pyth
   By contrast, the following sentence pair:
 
   ```bash
-  pythons spinn.py --data_root /tmp/spinn-data --logdir /tmp/spinn-logs \
+  python spinn.py --data_root /tmp/spinn-data --logdir /tmp/spinn-logs \
       --inference_premise '( ( The dog ) ( ( is running ) . ) )' \
       --inference_hypothesis '( ( The dog ) ( rests . ) )'
   ```

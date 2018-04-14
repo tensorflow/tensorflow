@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import threading
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
@@ -472,6 +473,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(z.control_inputs, [x, x])
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, x, x, y, y])
+    self.assertEqual(x._control_outputs, [z])
 
   def testAddControlInputC(self):
     # The C API dedups redundant control edges, pure Python does not
@@ -486,6 +488,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(z.control_inputs, [x])
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, y])
+    self.assertEqual(x._control_outputs, [z])
 
   def testRemoveAllControlInputs(self):
     a = constant_op.constant(1)
@@ -762,6 +765,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(g.get_operation_by_name("myop"), op)
     self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
 
+  @test_util.enable_c_shapes
   def testShape(self):
     g = ops.Graph()
     with g.as_default():
@@ -1382,6 +1386,209 @@ class DeviceTest(test_util.TensorFlowTestCase):
 
 
 @test_util.with_c_api
+class MultithreadedGraphStateTest(test_util.TensorFlowTestCase):
+
+  class TestThread(threading.Thread):
+
+    def __init__(self, graph, replica_id):
+      super(MultithreadedGraphStateTest.TestThread, self).__init__()
+      self._graph = graph
+      self._replica_id = replica_id
+      # This thread sets this event when it mutated the graph.  The caller can
+      # wait for that.
+      self.has_mutated_graph = threading.Event()
+      # This thread waits for when it should continue.  The caller can set this
+      # event.
+      self.should_continue = threading.Event()
+
+    def run(self):
+      # Mutate a graph's stack, then set `has_mutated_graph`, then wait for
+      # `should_continue`, then add an op to the graph affected by the graph's
+      # stack.
+      raise NotImplementedError("must be implemented in descendants")
+
+  def testDeviceFunctionStack(self):
+
+    class DeviceSettingThread(self.TestThread):
+
+      def run(self):
+        with g.device("/job:worker/replica:{}".format(self._replica_id)):
+          self.has_mutated_graph.set()
+          self.should_continue.wait()
+          self.should_continue.clear()
+          g.create_op(
+              "FloatOutput", [], [dtypes.float32],
+              name="FloatOutput_{}".format(self._replica_id))
+
+    g = ops.Graph()
+    # If `switch_to_thread` isn't called, then device placement of the ops
+    # below is not deterministic.
+    g.switch_to_thread_local()
+    threads = [DeviceSettingThread(g, i) for i in range(3)]
+    for t in threads:
+      t.start()
+      t.has_mutated_graph.wait()
+      t.has_mutated_graph.clear()
+    for t in threads:
+      t.should_continue.set()
+      t.join()
+
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "FloatOutput_0" op: "FloatOutput"
+             device: "/job:worker/replica:0" }
+      node { name: "FloatOutput_1" op: "FloatOutput"
+             device: "/job:worker/replica:1" }
+      node { name: "FloatOutput_2" op: "FloatOutput"
+             device: "/job:worker/replica:2" }
+    """, gd)
+
+  def testColocateWith(self):
+
+    class ColocatingThread(self.TestThread):
+
+      def __init__(self, graph, replica_id, op_to_colocate_with):
+        super(ColocatingThread, self).__init__(graph, replica_id)
+        self._op_to_colocate_with = op_to_colocate_with
+
+      def run(self):
+        with g.colocate_with(self._op_to_colocate_with):
+          self.has_mutated_graph.set()
+          self.should_continue.wait()
+          self.should_continue.clear()
+          g.create_op(
+              "FloatOutput", [], [dtypes.float32],
+              name="FloatOutput_{}".format(self._replica_id))
+
+    g = ops.Graph()
+    ops_to_colocate_with = []
+    for i in range(3):
+      with g.device("/job:worker/replica:{}".format(i)):
+        ops_to_colocate_with.append(
+            g.create_op(
+                "FloatOutput", [], [dtypes.float32],
+                name="ColocateWithMe_{}".format(i)))
+
+    # If `switch_to_thread` isn't called, then `device` and `attr` values for
+    # the ops below are not deterministic.
+    g.switch_to_thread_local()
+    threads = [
+        ColocatingThread(g, i, ops_to_colocate_with[i]) for i in range(3)
+    ]
+    for t in threads:
+      t.start()
+      t.has_mutated_graph.wait()
+      t.has_mutated_graph.clear()
+    for t in threads:
+      t.should_continue.set()
+      t.join()
+
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "ColocateWithMe_0" op: "FloatOutput"
+             device: "/job:worker/replica:0" }
+      node { name: "ColocateWithMe_1" op: "FloatOutput"
+             device: "/job:worker/replica:1" }
+      node { name: "ColocateWithMe_2" op: "FloatOutput"
+             device: "/job:worker/replica:2" }
+      node { name: "FloatOutput_0" op: "FloatOutput"
+             device: "/job:worker/replica:0"
+             attr { key: "_class"
+               value { list {
+                 s: "loc:@ColocateWithMe_0"}}}}
+      node { name: "FloatOutput_1" op: "FloatOutput"
+             device: "/job:worker/replica:1"
+             attr { key: "_class"
+               value { list {
+                 s: "loc:@ColocateWithMe_1"}}}}
+      node { name: "FloatOutput_2" op: "FloatOutput"
+             device: "/job:worker/replica:2"
+             attr { key: "_class"
+               value { list {
+                 s: "loc:@ColocateWithMe_2"}}}}
+    """, gd)
+
+  def testControlDependencies(self):
+
+    class DependingThread(self.TestThread):
+
+      def __init__(self, graph, replica_id, dependency_op):
+        super(DependingThread, self).__init__(graph, replica_id)
+        self._dependency_op = dependency_op
+
+      def run(self):
+        with g.control_dependencies([self._dependency_op]):
+          self.has_mutated_graph.set()
+          self.should_continue.wait()
+          self.should_continue.clear()
+          g.create_op(
+              "FloatOutput", [], [dtypes.float32],
+              name="FloatOutput_{}".format(self._replica_id))
+
+    g = ops.Graph()
+    dependency_ops = []
+    for i in range(3):
+      dependency_ops.append(
+          g.create_op(
+              "FloatOutput", [], [dtypes.float32],
+              name="ColocateWithMe_{}".format(i)))
+
+    # If `switch_to_thread` isn't called, then `input` values for the ops below
+    # are not deterministic.
+    g.switch_to_thread_local()
+    threads = [DependingThread(g, i, dependency_ops[i]) for i in range(3)]
+    for t in threads:
+      t.start()
+      t.has_mutated_graph.wait()
+      t.has_mutated_graph.clear()
+    for t in threads:
+      t.should_continue.set()
+      t.join()
+
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "ColocateWithMe_0" op: "FloatOutput" }
+      node { name: "ColocateWithMe_1" op: "FloatOutput" }
+      node { name: "ColocateWithMe_2" op: "FloatOutput" }
+      node { name: "FloatOutput_0" op: "FloatOutput"
+             input: "^ColocateWithMe_0" }
+      node { name: "FloatOutput_1" op: "FloatOutput"
+             input: "^ColocateWithMe_1" }
+      node { name: "FloatOutput_2" op: "FloatOutput"
+             input: "^ColocateWithMe_2" }
+    """, gd)
+
+  def testNameStack(self):
+
+    class NameSettingThread(self.TestThread):
+
+      def run(self):
+        with g.name_scope("foo"):
+          op1 = g.create_op("FloatOutput", [], [dtypes.float32])
+          self.has_mutated_graph.set()
+          self.should_continue.wait()
+          self.should_continue.clear()
+          op2 = g.create_op("FloatOutput", [], [dtypes.float32])
+          self.result = (op1, op2)
+
+    g = ops.Graph()
+    threads = [NameSettingThread(g, i) for i in range(3)]
+    for t in threads:
+      t.start()
+      t.has_mutated_graph.wait()
+      t.has_mutated_graph.clear()
+
+    for t in threads:
+      t.should_continue.set()
+      t.join()
+
+    suffixes = ["", "_1", "_2"]
+    for t, s in zip(threads, suffixes):
+      self.assertEquals("foo" + s + "/FloatOutput", t.result[0].name)
+      self.assertEquals("foo" + s + "/FloatOutput_1", t.result[1].name)
+
+
+@test_util.with_c_api
 class ObjectWithName(object):
 
   def __init__(self, name):
@@ -1588,7 +1795,13 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
       return constant_op.constant(2.0)
     future.calls = 0
 
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      a = constant_op.constant(1.0)
+      b = future
+      with ops.control_dependencies([a, b]):
+        c = constant_op.constant(3.0)
+      self.assertEqual(future.calls, 1)
+    else:
       g = ops.Graph()
       with g.as_default():
         a = constant_op.constant(1.0)
@@ -1596,12 +1809,6 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
         with g.control_dependencies([a, b]):
           c = constant_op.constant(3.0)
       self.assertEqual(c.op.control_inputs, [a.op, b.op])
-      self.assertEqual(future.calls, 1)
-    else:
-      a = constant_op.constant(1.0)
-      b = future()
-      with ops.control_dependencies([a, b]):
-        c = constant_op.constant(3.0)
       self.assertEqual(future.calls, 1)
 
   def testBasicWithConversion(self):
@@ -1975,19 +2182,11 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           with ops.init_scope():
             # Because g is building a function, init_scope should
             # escape out to the eager context.
-            self.assertTrue(context.in_eager_mode())
+            self.assertTrue(context.executing_eagerly())
           # g should be reinstated as the default graph, and the
           # graph context should be re-entered.
           self.assertIs(g, ops.get_default_graph())
-          self.assertTrue(context.in_graph_mode())
-
-  def testAllGraphsBuildingFunctionsRaisesError(self):
-    g = ops.Graph()
-    g._building_function = True  # pylint: disable=protected-access
-    with g.as_default():
-      with self.assertRaises(AssertionError):
-        with ops.init_scope():
-          pass
+          self.assertFalse(context.executing_eagerly())
 
   def testStaysInEagerWhenOnlyEagerContextActive(self):
     with context.eager_mode():
@@ -2066,6 +2265,29 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
       self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
 
+  def testFallsBackToGlobalGraphWhenAllGraphsAreBuildingFunctions(self):
+    with context.graph_mode():
+      ops.reset_default_graph()
+      # This doesn't push anything onto the graph stack, but it does
+      # set the stack's global graph.
+      global_graph = ops.get_default_graph()
+      fn_graph = ops.Graph()
+
+      # pylint: disable=protected-access
+      fn_graph._building_function = True
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      with fn_graph.as_default():
+        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+        with ops.init_scope():
+          self.assertGreater(len(ops._default_graph_stack.stack), 1)
+          dummy = constant_op.constant(1.0)
+        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+      # Note that the global graph is _not_ on the graph stack.
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      # Ensure that `dummy` was added to the global graph.
+      self.assertEqual(global_graph, dummy.graph)
+      # pylint: enable=protected-access
+
   def testInstallsDefaultGraphWhenGraphStackIsEmptyInGraphMode(self):
     with context.graph_mode():
       # pylint: disable=protected-access
@@ -2083,16 +2305,24 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           self.assertEqual(ops.get_name_scope(), "inner")
       self.assertEqual(ops.get_name_scope(), "")
 
+  def testEagerGraphContextsExecuteEagerly(self):
+    with context.eager_mode():
+      with ops.Graph().as_default():
+        with context.graph_mode():
+          with ops.init_scope():
+            self.assertTrue(context.executing_eagerly())
+
   def testPreservesNameScopeInEagerExecution(self):
     with context.eager_mode():
       def foo():
         with ops.name_scope("inner"), ops.init_scope():
-          if context.in_graph_mode():
-            self.assertEqual(ops.get_name_scope(), "inner")
-          else:
+          if context.executing_eagerly():
             # A trailing slash is always appended when eager execution is
             # enabled.
             self.assertEqual(context.context().scope_name, "inner/")
+          else:
+            self.assertEqual(ops.get_name_scope(), "inner")
+
       foo()
       self.assertEqual(ops.get_name_scope(), "")
       foo_compiled = eager_function.defun(foo)
@@ -2702,7 +2932,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
     with g.as_default():
       x = constant_op.constant([1, 1, 2, 4, 4, 4, 7, 8, 8],
                                dtype=dtypes.double)
-      y, _ = gen_array_ops._unique(x)
+      y, _ = gen_array_ops.unique(x)
       self.assertEqual([types_pb2.DT_DOUBLE, types_pb2.DT_INT32],
                        y.op._output_types)  # pylint: disable=protected-access
 
@@ -2727,6 +2957,9 @@ class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "device_policy must be one of"):
       c = config_pb2.ConfigProto()
       ops.enable_eager_execution(c, c)
+    with self.assertRaisesRegexp(ValueError, "execution_mode must be one of"):
+      c = config_pb2.ConfigProto()
+      ops.enable_eager_execution(c, execution_mode=c)
 
 
 if __name__ == "__main__":

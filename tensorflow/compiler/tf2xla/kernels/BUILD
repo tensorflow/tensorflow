@@ -93,6 +93,7 @@ tf_kernel_library(
         "shape_util.h",
     ],
     deps = [
+        ":if_op",
         ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -154,6 +155,39 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "if_op",
+    srcs = ["if_op.cc"],
+    hdrs = ["if_op.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+# Kernels that have a dummy (no-op) implementation.
+tf_kernel_library(
+    name = "xla_dummy_ops",
+    srcs = [
+        "assert_op.cc",
+        "check_numerics_op.cc",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:logging_ops_op_lib",
+    ],
+    alwayslink = 1,
+)
+
 # Kernels that only work on CPU, because they use XLA custom calls.
 # Only link this when using the CPU backend for XLA.
 tf_kernel_library(
@@ -199,18 +233,4 @@ cc_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

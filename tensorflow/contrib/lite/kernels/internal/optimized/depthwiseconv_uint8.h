@@ -18,6 +18,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
+#include "tensorflow/contrib/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -1691,6 +1692,22 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
   TFLITE_DCHECK(output_depth == input_depth * depth_multiplier);
+
+#ifdef __aarch64__
+  // Call kernel optimized for depthwise convolutions using 3x3 filters if
+  // parameters are supported.
+  if (Fast3x3FilterKernelSupported(input_dims, filter_dims, stride_width,
+                                   stride_height, pad_width, pad_height,
+                                   depth_multiplier, output_dims)) {
+    DepthwiseConv3x3Filter(input_data, input_dims, input_offset, filter_data,
+                           filter_dims, filter_offset, bias_data, bias_dims,
+                           stride_width, stride_height, pad_width, pad_height,
+                           depth_multiplier, output_offset, output_multiplier,
+                           output_shift, output_activation_min,
+                           output_activation_max, output_data, output_dims);
+    return;
+  }
+#endif
 
   static const int kAccBufferMaxSize = 2048;
   int32 acc_buffer[kAccBufferMaxSize];

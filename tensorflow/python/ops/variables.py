@@ -29,6 +29,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
@@ -36,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("Variable")
-class Variable(object):
+class Variable(checkpointable.CheckpointableBase):
   """See the @{$variables$Variables How To} for a high level overview.
 
   A variable maintains state in the graph across calls to `run()`. You add a
@@ -124,8 +125,8 @@ class Variable(object):
 
   @compatibility(eager)
   `tf.Variable` is not compatible with eager execution.  Use
-  `tfe.Variable` instead which is compatible with both eager execution
-  and graph construction.  See [the TensorFlow Eager Execution
+  `tf.contrib.eager.Variable` instead which is compatible with both eager
+  execution and graph construction.  See [the TensorFlow Eager Execution
   guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
   for details on how variables work in eager execution.
   @end_compatibility
@@ -209,10 +210,11 @@ class Variable(object):
     for details on how variables work in eager execution.
     @end_compatibility
     """
-    if not context.in_graph_mode():
-      raise RuntimeError("tf.Variable not supported in Eager mode. "
-                         "Please use tfe.Variable instead")
-    self._in_graph_mode = context.in_graph_mode()
+    if context.executing_eagerly():
+      raise RuntimeError(
+          "tf.Variable not supported when eager execution is enabled. "
+          "Please use tf.contrib.eager.Variable instead")
+    self._in_graph_mode = True
     if variable_def:
       # If variable_def is provided, recreates the variable from its fields.
       if initial_value:
@@ -233,7 +235,7 @@ class Variable(object):
           constraint=constraint)
 
   def __repr__(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
           self.name, self.get_shape(), self.dtype.name,
           ops.numpy_text(self.read_value(), is_repr=True))
@@ -291,6 +293,7 @@ class Variable(object):
     Raises:
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
+      RuntimeError: If lifted into the eager context.
     """
     _ = expected_shape
     if initial_value is None:
@@ -306,9 +309,22 @@ class Variable(object):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
+    # Store the graph key so optimizers know how to only retrieve variables from
+    # this graph.
+    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
+      self._maybe_initialize_checkpointable()
+      self._update_uid = initial_value.checkpoint_position.restore_uid
+      initial_value = initial_value.wrapped_value
+
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
+      # Ensure that we weren't lifted into the eager context.
+      if context.executing_eagerly():
+        raise RuntimeError(
+            "tf.Variable not supported when eager execution is enabled. "
+            "Please use tf.contrib.eager.Variable instead")
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
 
@@ -731,15 +747,15 @@ class Variable(object):
     Raises:
         ValueError: Session is not passed and no default session
     """
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      self.assign(value)
+    else:
       session = session or ops.get_default_session()
       if session is None:
         raise ValueError(
             "Either session argument should be provided or default session "
             "should be established")
       session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
-    else:
-      self.assign(value)
 
   # Conversion to tensor.
   @staticmethod
@@ -785,6 +801,10 @@ class Variable(object):
       pass
 
     setattr(Variable, operator, _run_op)
+
+  def _gather_saveables_for_checkpoint(self):
+    """For implementing `Checkpointable`. This object is saveable on its own."""
+    return {checkpointable.VARIABLE_VALUE_KEY: self}
 
   def _try_guard_against_uninitialized_dependencies(self, initial_value):
     """Attempt to guard against dependencies on uninitialized variables.
@@ -1235,9 +1255,9 @@ class PartitionedVariable(object):
         information does not match `shape`, or `partitions` has invalid values.
       RuntimeError: If eager execution is enabled
     """
-    if not context.in_graph_mode():
-      raise RuntimeError("tf.PartitionedVariable not supported in "
-                         "eager mode. Please use tfe.Variable instead")
+    if context.executing_eagerly():
+      raise RuntimeError(
+          "tf.PartitionedVariable not supported with eager execution enabled.")
     if not isinstance(variable_list, (list, tuple)):
       raise TypeError(
           "variable_list is not a list or tuple: %s" % variable_list)
@@ -1528,7 +1548,7 @@ def variables_initializer(var_list, name="init"):
   Returns:
     An Op that run the initializers of all the specified variables.
   """
-  if var_list and context.in_graph_mode():
+  if var_list and not context.executing_eagerly():
     return control_flow_ops.group(*[v.initializer for v in var_list], name=name)
   return control_flow_ops.no_op(name=name)
 
@@ -1550,7 +1570,7 @@ def global_variables_initializer():
   Returns:
     An Op that initializes global variables in the graph.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return control_flow_ops.no_op(name="global_variables_initializer")
   return variables_initializer(global_variables())
 
@@ -1572,7 +1592,7 @@ def local_variables_initializer():
   Returns:
     An Op that initializes all local variables in the graph.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return control_flow_ops.no_op(name="local_variables_initializer")
   return variables_initializer(local_variables())
 

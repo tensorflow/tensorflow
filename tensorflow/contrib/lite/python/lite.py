@@ -25,7 +25,7 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import os
+import os as _os
 import subprocess as _subprocess
 import tempfile as _tempfile
 
@@ -74,7 +74,7 @@ else:
   _toco_from_proto_bin = _resource_loader.get_path_to_datafile(
       "../toco/python/toco_from_protos")
 
-if _toco_from_proto_bin and not os.path.exists(_toco_from_proto_bin):
+if _toco_from_proto_bin and not _os.path.exists(_toco_from_proto_bin):
   _toco_from_proto_bin = "toco_from_protos"
 
 
@@ -145,7 +145,8 @@ def toco_convert(input_data,
                  input_format=TENSORFLOW_GRAPHDEF,
                  output_format=TFLITE,
                  quantized_input_stats=None,
-                 drop_control_dependency=True):
+                 drop_control_dependency=True,
+                 allow_custom_ops=None):
   """Convert a model using TOCO from `input_format` to `output_format`.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -178,9 +179,12 @@ def toco_convert(input_data,
   toco = _toco_flags_pb2.TocoFlags()
   toco.input_format = input_format
   toco.output_format = output_format
-  toco.drop_control_dependency = drop_control_dependency
-  model = _model_flags_pb2.ModelFlags()
   toco.inference_type = inference_type
+  toco.drop_control_dependency = drop_control_dependency
+  if allow_custom_ops is not None:
+    toco.allow_custom_ops = allow_custom_ops
+
+  model = _model_flags_pb2.ModelFlags()
   for idx, input_tensor in enumerate(input_tensors):
     if input_tensor.dtype == _dtypes.float32:
       tflite_input_type = FLOAT
@@ -202,11 +206,12 @@ def toco_convert(input_data,
 
     input_array.name = _tensor_name(input_tensor)
     input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
-    toco.inference_input_type = tflite_input_type
 
   for output_tensor in output_tensors:
     model.output_arrays.append(_tensor_name(output_tensor))
 
+  # TODO(aselle): Consider handling the case of allowing quantized
+  # inputs to be converted to float (via the toco.inference_input_type field).
   data = toco_convert_protos(model.SerializeToString(),
                              toco.SerializeToString(),
                              input_data.SerializeToString())

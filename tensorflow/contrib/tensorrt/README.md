@@ -1,40 +1,29 @@
-Using TensorRT in TensorFlow
-============================
+# Using TensorRT in TensorFlow
 
-This module provides necessary bindings and introduces TRT_engine_op
-operator that wraps a subgraph in TensorRT.
+This module provides necessary bindings and introduces TRT_engine_op operator
+that wraps a subgraph in TensorRT. This is still a work in progress but should
+be useable with most common graphs.
 
-Compilation
------------
+## Compilation
 
-In order to compile the module, you need to have a local TensorRT
-installation (libnvinfer.so and respective include files). During the
-configuration step, TensorRT should be enabled and installation path
-should be set. If installed through package managers (deb,rpm),
-configure script should find the necessary components from the system
-automatically. If installed from tar packages, user has to set path to
-location where the library is installed during configuration.
+In order to compile the module, you need to have a local TensorRT installation
+(libnvinfer.so and respective include files). During the configuration step,
+TensorRT should be enabled and installation path should be set. If installed
+through package managers (deb,rpm), configure script should find the necessary
+components from the system automatically. If installed from tar packages, user
+has to set path to location where the library is installed during configuration.
 
-
-```
+```shell
 bazel build --config=cuda --config=opt //tensorflow/tools/pip_package:build_pip_package
 bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/
 ```
 
-After the installation of tensorflow package, TensorRT transformation
-will be available. An example use is shown below.
+After the installation of tensorflow package, TensorRT transformation will be
+available. An example use can be found in test/test_tftrt.py script
 
-```python
-import tensorflow as tf
-import tensorflow.contrib.tensorrt as trt
-#... create and train or load model
-gdef = sess.graph.as_graph_def()
-trt_gdef = trt.create_inference_graph(
-    gdef, #original graph_def
-    ["output"], #name of output node(s)
-    max_batch_size, #maximum batch size to run the inference
-    max_workspace_size_bytes) # max memory for TensorRT to use
-tf.reset_default_graph()
-tf.import_graph_def(graph_def=trt_gdef)
-#...... run inference
-```
+## Installing TensorRT 3.0.4
+
+In order to make use of TensorRT integration, you will need a local installation
+of TensorRT 3.0.4 from the [NVIDIA Developer website](https://developer.nvidia.com/tensorrt).
+Installation instructions for compatibility with TensorFlow are provided on the
+[TensorFlow Installation page](https://www.tensorflow.org/install/install_linux#nvidia_requirements_to_run_tensorflow_with_gpu_support).

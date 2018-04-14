@@ -238,6 +238,18 @@ TEST(ShapeUtilTest, IncompatibleTuplesWithDifferentDimensions) {
   EXPECT_FALSE(ShapeUtil::Compatible(tuple1, tuple2));
 }
 
+TEST(ShapeUtilTest, IncompatibleScalarVsTuple) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {});
+  Shape shape2 = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(U32, {})});
+  EXPECT_FALSE(ShapeUtil::Compatible(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
+}
+
 TEST(ShapeUtilTest, CompareShapesWithPaddedDimensionsMismatch) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
   shape1.mutable_layout()->add_padded_dimensions(10);
@@ -573,10 +585,11 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func = [&invocations](const std::vector<int64>& indexes) {
-      invocations++;
-      return true;
-    };
+    auto increment_func =
+        [&invocations](tensorflow::gtl::ArraySlice<int64> indexes) {
+          invocations++;
+          return true;
+        };
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
@@ -585,6 +598,47 @@ TEST(ShapeUtilTest, ForEachIndex) {
                             increment_func);
 
     EXPECT_EQ(invocations, data.invocations);
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexWithStatus) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  // Increments at every invocation.
+  int invocations = 0;
+  auto increment_func =
+      [&invocations](
+          tensorflow::gtl::ArraySlice<int64> indexes) -> StatusOr<bool> {
+    if (++invocations == 5) {
+      return Unimplemented("Cannot increment beyond 5.");
+    }
+    return true;
+  };
+
+  Status error_status = ShapeUtil::ForEachIndexWithStatus(
+      shape, /*base=*/{0, 0}, /*count=*/{10, 10}, /*incr=*/{0, 1},
+      increment_func);
+
+  EXPECT_FALSE(error_status.ok());
+  EXPECT_THAT(error_status.error_message(),
+              ::testing::HasSubstr("Cannot increment beyond 5."));
+  EXPECT_EQ(invocations, 5);
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64 output[10][10];
+  int init = 5;
+  auto set_func = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{1, 1}, set_func);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      EXPECT_EQ(output[i][j], init + i + j);
+    }
   }
 }
 

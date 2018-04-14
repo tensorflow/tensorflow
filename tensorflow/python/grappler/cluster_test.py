@@ -45,7 +45,7 @@ class ClusterTest(test.TestCase):
       op_perfs, run_time, step_stats = grappler_cluster.MeasureCosts(
           grappler_item)
       self.assertTrue(run_time > 0)
-      self.assertEqual(len(op_perfs), 7)
+      self.assertEqual(len(op_perfs), 8)
       self.assertTrue(step_stats.dev_stats)
 
   def testNoDetailedStats(self):
@@ -87,9 +87,10 @@ class ClusterTest(test.TestCase):
 
   def testVirtualCluster(self):
     with ops.Graph().as_default() as g:
-      a = random_ops.random_uniform(shape=())
-      b = random_ops.random_uniform(shape=())
-      c = a + b
+      with ops.device('/device:GPU:0'):
+        a = random_ops.random_uniform(shape=[1024, 1024])
+        b = random_ops.random_uniform(shape=[1024, 1024])
+        c = a + b
       train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
       train_op.append(c)
       mg = meta_graph.create_meta_graph_def(graph=g)
@@ -102,10 +103,13 @@ class ClusterTest(test.TestCase):
               'architecture': '7'
           })
       named_device = device_properties_pb2.NamedDevice(
-          properties=device_properties, name='/GPU:0')
-      grappler_cluster = cluster.Cluster(devices=[named_device])
+          properties=device_properties, name='/device:GPU:0')
+      grappler_cluster = cluster.Cluster(
+          disable_detailed_stats=False,
+          disable_timeline=False,
+          devices=[named_device])
       op_perfs, run_time, _ = grappler_cluster.MeasureCosts(grappler_item)
-      self.assertGreater(run_time, 0)
+      self.assertEqual(run_time, 0.000545)
       self.assertEqual(len(op_perfs), 15)
 
       estimated_perf = grappler_cluster.EstimatePerformance(named_device)
@@ -125,14 +129,14 @@ class ClusterTest(test.TestCase):
         disable_detailed_stats=False, disable_timeline=False) as gcluster:
       op_perfs, run_time, step_stats = gcluster.MeasureCosts(grappler_item)
       self.assertTrue(run_time > 0)
-      self.assertEqual(len(op_perfs), 7)
+      self.assertEqual(len(op_perfs), 8)
       self.assertTrue(step_stats.dev_stats)
 
   def testAvailableOps(self):
     with cluster.Provision() as gcluster:
       op_names = gcluster.ListAvailableOps()
-      self.assertTrue(b'Add' in op_names)
-      self.assertTrue(b'MatMul' in op_names)
+      self.assertTrue('Add' in op_names)
+      self.assertTrue('MatMul' in op_names)
       self.assertEqual(op_names, sorted(op_names))
 
   def testSupportDevices(self):

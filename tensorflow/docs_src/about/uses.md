@@ -18,9 +18,17 @@ This section describes some of the current uses of the TensorFlow system.
 
 > If you are using TensorFlow for research, for education, or for production
 > usage in some product, we would love to add something about your usage here.
-> Please feel free to email us a brief description of how you're using
-> TensorFlow, or even better, send us a pull request to add an entry to this
-> file.
+> Please feel free to [email us](mailto:usecases@tensorflow.org) a brief
+> description of how you're using TensorFlow, or even better, send us a
+> pull request to add an entry to this file.
+
+* **Deep Speech**
+<ul>
+   <li>**Organization**: Mozilla</li>
+   <li> **Domain**: Speech Recognition</li>
+   <li> **Description**:  A TensorFlow implementation motivated by Baidu's Deep Speech architecture.</li>
+   <li> **More info**: [GitHub Repo](https://github.com/mozilla/deepspeech)</li>
+</ul>
 
 * **RankBrain**
 <ul>

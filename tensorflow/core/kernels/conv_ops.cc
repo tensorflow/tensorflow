@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
 #include "tensorflow/core/lib/core/errors.h"
@@ -60,8 +60,8 @@ template <typename Device, typename T>
 struct LaunchGeneric {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
-                  const Padding& padding, Tensor* output,
-                  TensorFormat data_format) {
+                  int row_dilation, int col_dilation, const Padding& padding,
+                  Tensor* output, TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
     if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
@@ -86,7 +86,8 @@ struct LaunchGeneric {
           filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)}),
           dim_pair);
     } else if (filter.dim_size(0) == input.dim_size(1) &&
-               filter.dim_size(1) == input.dim_size(2) && padding == VALID) {
+               filter.dim_size(1) == input.dim_size(2) && row_dilation == 1 &&
+               col_dilation == 1 && padding == VALID) {
       // If the input data and filter have the same height/width,
       // the 2D convolution is reduced to matrix multiplication.
       const int k =  // Length of reduction dimension.
@@ -103,7 +104,7 @@ struct LaunchGeneric {
       functor::SpatialConvolution<Device, T>()(
           ctx->eigen_device<Device>(), output->tensor<T, 4>(),
           input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
-          BrainPadding2EigenPadding(padding));
+          row_dilation, col_dilation, BrainPadding2EigenPadding(padding));
     }
   }
 };
@@ -122,15 +123,9 @@ struct LaunchConv2DOp<CPUDevice, T> {
                                 "NHWC tensor format for now."));
       return;
     }
-    // TODO(yangzihao): Add the CPU implementation of dilated conv 2D.
-    if (row_dilation > 1 || col_dilation > 1) {
-      ctx->SetStatus(
-          errors::Unimplemented("Generic conv implementation only supports "
-                                "dilated rate of 1 for now."));
-      return;
-    }
     LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
-                                  padding, output, data_format);
+                                  row_dilation, col_dilation, padding, output,
+                                  data_format);
   }
 };
 
@@ -190,7 +185,7 @@ class LaunchDeepConvOp<CPUDevice, float> {
   }
 };
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 template <typename Device, typename T>
 class LaunchXsmmConvOp {
  public:
@@ -406,7 +401,7 @@ class Conv2DOp : public BinaryOp<T> {
       return;
     }
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
     if (LaunchXsmmConvOp<Device, T>::Run(
             context, input, filter, batch, input_rows, input_cols, in_depth,
             filter_rows, filter_cols, pad_rows, pad_cols, out_rows, out_cols,
@@ -451,10 +446,11 @@ class Conv2DOp : public BinaryOp<T> {
 #if !defined(USE_GEMM_FOR_CONV)
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
-template class LaunchConv2DOp<CPUDevice, float>;
+template struct LaunchConv2DOp<CPUDevice, float>;
 
 #if GOOGLE_CUDA
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
@@ -792,7 +788,8 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 4>::Tensor output,              \
       typename TTypes<T, 4>::ConstTensor input,                              \
       typename TTypes<T, 4>::ConstTensor filter, int row_stride,             \
-      int col_stride, const Eigen::PaddingType& padding);                    \
+      int col_stride, int row_dilation, int col_dilation,                    \
+      const Eigen::PaddingType& padding);                                    \
   extern template struct SpatialConvolution<GPUDevice, T>;                   \
   template <>                                                                \
   void MatMulConvFunctor<GPUDevice, T>::operator()(                          \
@@ -814,6 +811,7 @@ namespace functor {
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);     \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
+DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
@@ -826,6 +824,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv2DOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    Conv2DOp<GPUDevice, double>);
 
 // To be used inside depthwise_conv_op.cc.
 template class LaunchConv2DOp<GPUDevice, float>;

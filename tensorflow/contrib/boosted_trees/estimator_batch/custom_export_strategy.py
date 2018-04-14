@@ -39,7 +39,8 @@ _SPARSE_FLOAT_FEATURE_NAME_TEMPLATE = "%s_%d"
 def make_custom_export_strategy(name,
                                 convert_fn,
                                 feature_columns,
-                                export_input_fn):
+                                export_input_fn,
+                                use_core_columns=False):
   """Makes custom exporter of GTFlow tree format.
 
   Args:
@@ -54,11 +55,11 @@ def make_custom_export_strategy(name,
     An `ExportStrategy`.
   """
   base_strategy = saved_model_export_utils.make_export_strategy(
-      serving_input_fn=export_input_fn)
+      serving_input_fn=export_input_fn, strip_default_attrs=True)
   input_fn = export_input_fn()
   (sorted_feature_names, dense_floats, sparse_float_indices, _, _,
    sparse_int_indices, _, _) = gbdt_batch.extract_features(
-       input_fn.features, feature_columns)
+       input_fn.features, feature_columns, use_core_columns)
 
   def export_fn(estimator, export_dir, checkpoint_path=None, eval_result=None):
     """A wrapper to export to SavedModel, and convert it to other formats."""
@@ -93,7 +94,9 @@ def make_custom_export_strategy(name,
                          "w") as f:
           f.write("\n".join("%s, %f" % (k, v) for k, v in sorted_by_importance))
     return result_dir
-  return export_strategy.ExportStrategy(name, export_fn)
+
+  return export_strategy.ExportStrategy(
+      name, export_fn, strip_default_attrs=True)
 
 
 def convert_to_universal_format(dtec, sorted_feature_names,

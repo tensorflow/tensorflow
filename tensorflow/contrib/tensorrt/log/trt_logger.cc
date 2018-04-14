@@ -27,19 +27,19 @@ void Logger::log(Severity severity, const char* msg) {
   // Suppress info-level messages
   switch (severity) {
     case Severity::kINFO: {  // Mark TRT info messages as debug!
-      VLOG(2) << msg;
+      VLOG(2) << name_ << " " << msg;
       break;
     }
     case Severity::kWARNING: {
-      LOG(WARNING) << msg;
+      LOG(WARNING) << name_ << " " << msg;
       break;
     }
     case Severity::kERROR: {
-      LOG(ERROR) << msg;
+      LOG(ERROR) << name_ << " " << msg;
       break;
     }
     case Severity::kINTERNAL_ERROR: {
-      LOG(FATAL) << msg;
+      LOG(FATAL) << name_ << " " << msg;
       break;
     }
     // This is useless for now. But would catch it in future if enum changes. It

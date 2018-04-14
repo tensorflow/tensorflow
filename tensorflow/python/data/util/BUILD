@@ -86,14 +86,26 @@ py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_library(
+    name = "random_seed",
+    srcs = ["random_seed.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+    ],
+)
+
+py_test(
+    name = "random_seed_test",
+    size = "small",
+    srcs = ["random_seed_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":random_seed",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:util",
+    ],
 )

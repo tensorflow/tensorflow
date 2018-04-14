@@ -17,18 +17,26 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LOOP_OPTIMIZER_H_
 
 #include <unordered_set>
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
+constexpr char kLoopOptimizer[] = "LoopOptimizer";
+
 class LoopOptimizer : public GraphOptimizer {
  public:
-  LoopOptimizer() : opt_level_(RewriterConfig::ON) {}
+  LoopOptimizer()
+      : opt_level_(RewriterConfig::ON),
+        options_(LoopOptimizerOptions::Default(RewriterConfig::ON)) {}
   explicit LoopOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+      : opt_level_(opt_level),
+        options_(LoopOptimizerOptions::Default(RewriterConfig::ON)) {}
+
   ~LoopOptimizer() override {}
 
   string name() const override { return "loop_optimizer"; };
@@ -40,7 +48,21 @@ class LoopOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  friend class LoopOptimizerTest;
+
+  // Granular control for loop optimizer stages.
+  struct LoopOptimizerOptions {
+    bool enable_loop_invariant_node_motion = true;
+    bool enable_stack_push_removal = true;
+
+    static LoopOptimizerOptions Default(RewriterConfig::Toggle opt_level) {
+      LoopOptimizerOptions options;
+      return options;
+    }
+  };
+
   RewriterConfig::Toggle opt_level_;
+  LoopOptimizerOptions options_;
 };
 
 }  // end namespace grappler

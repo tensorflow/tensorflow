@@ -34,7 +34,7 @@ limitations under the License.
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/CodeGen/CommandFlags.def"
+#include "llvm/CodeGen/CommandFlags.inc"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -252,7 +252,7 @@ void EmitBitcodeToFile(const Module& module, tensorflow::StringPiece filename) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }
 
-  llvm::WriteBitcodeToFile(&module, outfile.os());
+  llvm::WriteBitcodeToFile(module, outfile.os());
   outfile.keep();
 }
 

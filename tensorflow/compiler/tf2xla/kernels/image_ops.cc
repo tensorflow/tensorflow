@@ -180,9 +180,13 @@ class AdjustContrastOpV2 : public XlaOpKernel {
 
     DataType type = context->input_type(0);
 
-    auto output = b->Reduce(input, /*init_value=*/XlaHelpers::Zero(b, type),
-                            /*computation=*/*context->GetOrCreateAdd(type),
+    const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
+    auto converted =
+        XlaHelpers::ConvertElementType(b, input, accumulation_type);
+    auto reduce = b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                            *context->GetOrCreateAdd(accumulation_type),
                             {height_dim, width_dim});
+    auto output = XlaHelpers::ConvertElementType(b, reduce, type);
     output = b->Div(output, XlaHelpers::FloatLiteral(b, type, height * width));
 
     std::vector<int64> broadcast_dims(input_shape.dims() - 2);

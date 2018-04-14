@@ -26,7 +26,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -238,7 +240,7 @@ static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
 Status ValidateOpDef(const OpDef& op_def) {
   using ::tensorflow::strings::Scanner;
 
-  if (!StringPiece(op_def.name()).starts_with("_")) {
+  if (!str_util::StartsWith(op_def.name(), "_")) {
     VALIDATE(Scanner(op_def.name())
                  .One(Scanner::UPPERLETTER)
                  .Any(Scanner::LETTER_DIGIT)
@@ -258,11 +260,11 @@ Status ValidateOpDef(const OpDef& op_def) {
 
     // Validate type
     StringPiece type(attr.type());
-    bool is_list = type.Consume("list(");
+    bool is_list = str_util::ConsumePrefix(&type, "list(");
     bool found = false;
     for (StringPiece valid : {"string", "int", "float", "bool", "type", "shape",
                               "tensor", "func"}) {
-      if (type.Consume(valid)) {
+      if (str_util::ConsumePrefix(&type, valid)) {
         found = true;
         break;
       }
@@ -270,8 +272,9 @@ Status ValidateOpDef(const OpDef& op_def) {
     VALIDATE(found, "Unrecognized type '", type, "' in attr '", attr.name(),
              "'");
     if (is_list) {
-      VALIDATE(type.Consume(")"), "'list(' is missing ')' in attr ",
-               attr.name(), "'s type ", attr.type());
+      VALIDATE(str_util::ConsumePrefix(&type, ")"),
+               "'list(' is missing ')' in attr ", attr.name(), "'s type ",
+               attr.type());
     }
     VALIDATE(type.empty(), "Extra '", type, "' at the end of attr ",
              attr.name(), "'s type ", attr.type());

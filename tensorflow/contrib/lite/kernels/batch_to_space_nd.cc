@@ -123,6 +123,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        GetTensorDims(op_context.input),                \
                        GetTensorData<int32_t>(op_context.block_shape), \
                        GetTensorDims(op_context.block_shape),          \
+                       GetTensorData<int32_t>(op_context.crops),       \
+                       GetTensorDims(op_context.crops),                \
                        GetTensorData<scalar>(op_context.output),       \
                        GetTensorDims(op_context.output))
   switch (op_context.input->type) {  // Already know in/out types are same.

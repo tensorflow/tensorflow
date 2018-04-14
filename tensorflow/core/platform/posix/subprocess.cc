@@ -20,6 +20,8 @@ limitations under the License.
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <memory>
+#include <vector>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/subprocess.h"
@@ -459,6 +461,14 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
   // Wait for the child process to exit and return its status.
   int status;
   return WaitInternal(&status) ? status : -1;
+}
+
+std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
+  std::unique_ptr<SubProcess> proc(new SubProcess());
+  proc->SetProgram(argv[0], argv);
+  proc->SetChannelAction(CHAN_STDERR, ACTION_DUPPARENT);
+  proc->SetChannelAction(CHAN_STDOUT, ACTION_DUPPARENT);
+  return proc;
 }
 
 }  // namespace tensorflow
