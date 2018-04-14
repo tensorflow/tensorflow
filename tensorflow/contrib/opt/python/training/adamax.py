@@ -87,10 +87,10 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
                                           epsilon, use_locking, name)
 
   def _get_beta_accumulators(self):
-    if context.in_graph_mode():
-      graph = ops.get_default_graph()
-    else:
+    if context.executing_eagerly():
       graph = None
+    else:
+      graph = ops.get_default_graph()
     return self._get_non_slot_variable("beta1_power", graph=graph)
 
   def _create_slots(self, var_list):
