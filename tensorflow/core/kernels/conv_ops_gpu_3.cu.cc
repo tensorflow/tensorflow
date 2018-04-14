@@ -1009,14 +1009,18 @@ struct NCHWToNHWC<GPUDevice, T, NDIMS> {
 
 template struct functor::ShuffleAndReverse<GPUDevice, float, 4, int>;
 template struct functor::ShuffleAndReverse<GPUDevice, Eigen::half, 4, int>;
+template struct functor::ShuffleAndReverse<GPUDevice, double, 4, int>;
 
 template struct functor::ShuffleAndReverse<GPUDevice, float, 4,
                                            Eigen::DenseIndex>;
 template struct functor::ShuffleAndReverse<GPUDevice, Eigen::half, 4,
                                            Eigen::DenseIndex>;
+template struct functor::ShuffleAndReverse<GPUDevice, double, 4,
+                                           Eigen::DenseIndex>;
 
 template struct functor::TransformDepth<GPUDevice, float, int>;
 template struct functor::TransformDepth<GPUDevice, Eigen::half, int>;
+template struct functor::TransformDepth<GPUDevice, double, int>;
 
 template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint8>;
 template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint16>;

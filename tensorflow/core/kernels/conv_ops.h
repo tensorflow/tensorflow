@@ -35,7 +35,7 @@ template <typename Device, typename T>
 struct LaunchConv2DOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
-                  int col_dilation, int row_stride, int col_stride,
+                  int col_dilation, int row_stride, int col_stride, int groups,
                   const Padding& padding, Tensor* output,
                   TensorFormat data_format);
 };
@@ -45,7 +45,7 @@ template <typename T>
 struct LaunchConv2DOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
-                  int col_dilation, int row_stride, int col_stride,
+                  int col_dilation, int row_stride, int col_stride, int groups,
                   const Padding& padding, Tensor* output,
                   TensorFormat data_format);
 };

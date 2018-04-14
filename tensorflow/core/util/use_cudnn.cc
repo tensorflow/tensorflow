@@ -36,6 +36,7 @@ ADD_CUDNN_FLAG(CanUseCudnn, TF_USE_CUDNN, true);
 ADD_CUDNN_FLAG(CudnnUseAutotune, TF_CUDNN_USE_AUTOTUNE, true);
 ADD_CUDNN_FLAG(CudnnDisableConv1x1Optimization,
                TF_CUDNN_DISABLE_CONV_1X1_OPTIMIZATION, false);
+ADD_CUDNN_FLAG(DepthwiseConvUseGroupedConv, TF_DEPTHWISE_CONV_USE_GROUPED_CONV, false);
 
 #undef ADD_CUDNN_FLAG
 

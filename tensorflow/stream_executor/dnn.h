@@ -492,6 +492,7 @@ string PadAlignmentString(PadAlignment alignment);
 //   cells between each filter element in the "y dimension".
 // - horizontal_dilation_rate: there will be (horizontal_dilation_rate - 1)
 //   skipped cells between each filter element in the "x dimension".
+// - group_count: the convolution will be performed in group_count groups of equal size.
 class ConvolutionDescriptor {
  public:
   // By default construction, there is no zero-padding and the filter stride is
@@ -544,6 +545,10 @@ class ConvolutionDescriptor {
     pad_alignment_ = pad_alignment;
     return *this;
   }
+  ConvolutionDescriptor& set_group_count(int64 group_count) {
+    group_count_ = group_count;
+    return *this;
+  }
   int64 zero_padding_height() const {
     return GetDim(zero_padding_, DimIndex::Y);
   }
@@ -566,6 +571,7 @@ class ConvolutionDescriptor {
   int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
   int dilation_rate(DimIndex dim) const { return GetDim(dilation_rates_, dim); }
+  int group_count() const { return group_count_; }
   PadAlignment pad_alignment() const { return pad_alignment_; }
   int ndims() const { return ndims_; }
 
@@ -579,6 +585,7 @@ class ConvolutionDescriptor {
   std::vector<int64> filter_strides_;
   std::vector<int64> dilation_rates_;
   PadAlignment pad_alignment_;
+  int group_count_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.

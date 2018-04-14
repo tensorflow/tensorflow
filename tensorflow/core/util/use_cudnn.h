@@ -32,6 +32,10 @@ enum class FP16ConvMode {
 bool CanUseCudnn();
 bool CudnnUseAutotune();
 bool CudnnDisableConv1x1Optimization();
+// Whether to dispatch depthwise convolutions to
+// grouped convolutions with number of groups being
+// number of input features.
+bool DepthwiseConvUseGroupedConv();
 FP16ConvMode CudnnConvComputeMode();
 
 }  // namespace tensorflow

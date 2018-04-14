@@ -176,7 +176,7 @@ struct LaunchConv2DBackpropInputOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
-                  int col_stride, const Padding& padding, Tensor* in_backprop,
+                  int col_stride, int groups, const Padding& padding, Tensor* in_backprop,
                   TensorFormat data_format);
 };
 
@@ -185,7 +185,7 @@ struct LaunchConv2DBackpropFilterOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& input,
                   int row_dilation, int col_dilation, int row_stride,
-                  int col_stride, const Padding& padding,
+                  int col_stride, int groups, const Padding& padding,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 
@@ -194,7 +194,7 @@ template <typename T>
 struct LaunchConv2DBackpropInputOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
-                  int col_dilation, int row_stride, int col_stride,
+                  int col_dilation, int row_stride, int col_stride, int groups,
                   const Padding& padding, Tensor* output,
                   TensorFormat data_format);
 };
@@ -204,7 +204,7 @@ struct LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& input,
                   int row_dilation, int col_dilation, int row_stride,
-                  int col_stride, const Padding& padding,
+                  int col_stride, int groups, const Padding& padding,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 #endif  // GOOGLE_CUDA
@@ -250,7 +250,7 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
 // The V2 version computes the same outputs with arbitrary dilation rate.
 // TODO(b/67112639): Merge V2 versions and the original versions eventually.
 Status ConvBackpropComputeDimensionsV2(
-    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
+    StringPiece label, int num_spatial_dims, int num_groups, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
     Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);

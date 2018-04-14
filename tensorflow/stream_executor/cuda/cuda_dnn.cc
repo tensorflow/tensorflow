@@ -334,7 +334,8 @@ CUDNN_DNN_ROUTINE_EACH_R6_WITH_STREAM(
 #if CUDNN_VERSION >= 7000
 #define CUDNN_DNN_ROUTINE_EACH_R7(__macro)                    \
   __macro(cudnnSetConvolutionMathType)                        \
-  __macro(cudnnSetRNNMatrixMathType)
+  __macro(cudnnSetRNNMatrixMathType)                          \
+  __macro(cudnnSetConvolutionGroupCount)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R7(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
@@ -773,6 +774,24 @@ class ScopedConvolutionDescriptor {
       LOG(FATAL) << "could not set cudnn convolution descriptor: "
                  << ToString(status);
     }
+
+#if CUDNN_VERSION >= 7000
+    if (convolution_descriptor.group_count() != 1) {
+      status = wrap::cudnnSetConvolutionGroupCount(
+          parent_, handle_, convolution_descriptor.group_count()
+      );
+
+      if (status != CUDNN_STATUS_SUCCESS) {
+        LOG(FATAL) << "could not set cudnn convolution descriptor group count: "
+                  << ToString(status);
+      }
+    }
+#else
+    if (convolution_descriptor.group_count() != 1) {
+      LOG(ERROR) << "Group count > 1 not supported on CUDNN < 7.";
+    }
+#endif
+
     // NOTE(benbarsdell): This only applies if tensor op math is enabled
     //                      and algo selection is set to Default.
     this->set_use_tensor_op_math(true);

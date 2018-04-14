@@ -3292,6 +3292,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         ":ops_util",
+        ":conv_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

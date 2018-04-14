@@ -114,7 +114,7 @@ template <typename T>
 struct LaunchConv2DOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
-                  int col_dilation, int row_stride, int col_stride,
+                  int col_dilation, int row_stride, int col_stride, int groups,
                   const Padding& padding, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
@@ -123,6 +123,14 @@ struct LaunchConv2DOp<CPUDevice, T> {
                                 "NHWC tensor format for now."));
       return;
     }
+
+    if (groups != 1) {
+      ctx->SetStatus(
+          errors::Unimplemented("Generic conv implementation only supports "
+                                "groups = 1 for now."));
+      return;
+    }
+
     LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
                                   row_dilation, col_dilation, padding, output,
                                   data_format);
@@ -420,8 +428,9 @@ class Conv2DOp : public BinaryOp<T> {
     }
 
     launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
-              dilation_rows, dilation_cols, stride_rows, stride_cols, padding_,
-              output, data_format_);
+              dilation_rows, dilation_cols, stride_rows, stride_cols,
+              1, // groups
+              padding_, output, data_format_);
   }
 
  private:
@@ -482,7 +491,7 @@ template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
     const Tensor& input_param, const Tensor& filter, int row_dilation,
-    int col_dilation, int row_stride, int col_stride, const Padding& padding,
+    int col_dilation, int row_stride, int col_stride, int groups, const Padding& padding,
     Tensor* output, TensorFormat data_format) {
   using perftools::gputools::dnn::AlgorithmConfig;
   using perftools::gputools::dnn::AlgorithmDesc;
@@ -500,7 +509,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   Tensor input = input_param;
 
   if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_dilation == 1 &&
-      col_dilation == 1 && row_stride == 1 && col_stride == 1 &&
+      col_dilation == 1 && row_stride == 1 && col_stride == 1 && groups == 1 &&
       data_format == FORMAT_NHWC) {
     // 1x1 filter, so call cublas directly.
     const uint64 m = input.dim_size(0) * input.dim_size(1) * input.dim_size(2);
@@ -527,7 +536,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     return;
   } else if (filter.dim_size(0) == input.dim_size(1) &&
              filter.dim_size(1) == input.dim_size(2) && row_dilation == 1 &&
-             col_dilation == 1 && padding == VALID &&
+             col_dilation == 1 && padding == VALID && groups == 1 &&
              data_format == FORMAT_NHWC) {
     // The input data and filter have the same height/width, so call cublas
     // directly.
@@ -652,7 +661,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       .set_vertical_filter_stride(row_stride)
       .set_horizontal_filter_stride(col_stride)
       .set_zero_padding_height(padding_rows / 2)
-      .set_zero_padding_width(padding_cols / 2);
+      .set_zero_padding_width(padding_cols / 2)
+      .set_group_count(groups);
 
   Tensor transformed_filter;
   OP_REQUIRES_OK(ctx, ctx->allocate_temp(
@@ -696,6 +706,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       out_depths,        // out_depths
       {{patch_rows,      // filter_rows
         patch_cols}},    // filter_cols
+      groups,            // groups
       {{row_dilation,    // dilation_rows
         col_dilation}},  // dilation_cols
       {{row_stride,      // stride_rows
@@ -829,7 +840,9 @@ REGISTER_KERNEL_BUILDER(
     Conv2DOp<GPUDevice, double>);
 
 // To be used inside depthwise_conv_op.cc.
-template class LaunchConv2DOp<GPUDevice, float>;
+template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
+template struct LaunchConv2DOp<GPUDevice, float>;
+template struct LaunchConv2DOp<GPUDevice, double>;
 
 #endif  // GOOGLE_CUDA
 

@@ -252,6 +252,8 @@ extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
 // Extern template instantiated in conv_ops.cc.
 extern template struct LaunchConv2DOp<GPUDevice, float>;
+extern template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
+extern template struct LaunchConv2DOp<GPUDevice, double>;
 
 #endif
 
@@ -377,9 +379,34 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       // conv is supported.
       launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
                 /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
+                /*groups*/1,
                 padding_, output, data_format_);
       return;
     }
+
+    #if GOOGLE_CUDA
+    // CUDNN 7 introduces convolution groups for convolutions.
+    // we can thus use the standard conv2d launcher with groups = in_depth
+    // when CUDNN is enabled.
+    if (std::is_same<Device, GPUDevice>::value &&
+        DepthwiseConvUseGroupedConv() && use_cudnn_) {
+      // Currently, our filter is arranged as:
+      // [rows, cols, in_depth, depth_mul].
+      // However, in the grouped convolution, we should have the filter
+      // arranged as:  [rows, cols, 1, in_depth * depth_mul]
+
+      Tensor filter_reshape;
+      TensorShape filter_conv2d_shape = {
+        filter_rows, filter_cols, 1, in_depth * depth_multiplier };
+    
+      CHECK(filter_reshape.CopyFrom(filter, filter_conv2d_shape));
+
+      launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter_reshape,
+                /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
+                /*groups=*/in_depth, padding_, output, data_format_);
+      return;
+    }
+    #endif
 
     DepthwiseArgs args;
     args.batch = batch;

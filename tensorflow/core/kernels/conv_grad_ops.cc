@@ -95,7 +95,7 @@ Status ConvBackpropExtractAndVerifyDimension(
 }
 
 Status ConvBackpropComputeDimensionsV2(
-    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
+    StringPiece label, int num_spatial_dims, int num_groups, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
     Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims) {
@@ -124,10 +124,14 @@ Status ConvBackpropComputeDimensionsV2(
   }
 
   int feature_dim = GetTensorFeatureDimIndex(num_dims, data_format);
-  dims->in_depth = input_shape.dim_size(feature_dim);
+  int64 in_depth = input_shape.dim_size(feature_dim);
+
+  dims->in_depth = in_depth;
   // The input and output feature dimensions are the second last and last
   // dimensions of the filter Tensor.
-  if (dims->in_depth != filter_shape.dim_size(num_dims - 2)) {
+  // When the number of groups is > 1, the input is divided into that many groups,
+  // and the filter is applied across each group.
+  if (dims->in_depth != filter_shape.dim_size(num_dims - 2) * num_groups) {
     return errors::InvalidArgument(
         label, ": input and filter must have the same depth");
   }
@@ -156,7 +160,7 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
                                      ConvBackpropDimensions* dims) {
   static constexpr std::array<int32, 5> one_dilations = {{1, 1, 1, 1, 1}};
   return ConvBackpropComputeDimensionsV2(
-      label, num_spatial_dims, input_shape, filter_shape, out_backprop_shape,
+      label, num_spatial_dims, 1, input_shape, filter_shape, out_backprop_shape,
       one_dilations, strides, padding, data_format, dims);
 }
 
