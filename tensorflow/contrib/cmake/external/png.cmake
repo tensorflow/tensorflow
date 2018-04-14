@@ -23,24 +23,24 @@ set(png_INSTALL ${CMAKE_BINARY_DIR}/png/install)
 if(WIN32)
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
     set(png_STATIC_LIBRARIES 
-      debug ${CMAKE_BINARY_DIR}/png/install/lib/libpng12_staticd.lib
-      optimized ${CMAKE_BINARY_DIR}/png/install/lib/libpng12_static.lib)
+      debug ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_staticd.lib
+      optimized ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_static.lib)
   else()
     if(CMAKE_BUILD_TYPE EQUAL Debug)
       set(png_STATIC_LIBRARIES 
-        ${CMAKE_BINARY_DIR}/png/install/lib/libpng12_staticd.lib)
+        ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_staticd.lib)
     else()
       set(png_STATIC_LIBRARIES 
-        ${CMAKE_BINARY_DIR}/png/install/lib/libpng12_static.lib)
+        ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_static.lib)
     endif()
   endif()
 else()
-  set(png_STATIC_LIBRARIES ${CMAKE_BINARY_DIR}/png/install/lib/libpng12.a)
+  set(png_STATIC_LIBRARIES ${CMAKE_BINARY_DIR}/png/install/lib/libpng16.a)
 endif()
 
 set(png_HEADERS
-    "${png_INSTALL}/include/libpng12/png.h"
-    "${png_INSTALL}/include/libpng12/pngconf.h"
+    "${png_INSTALL}/include/libpng16/png.h"
+    "${png_INSTALL}/include/libpng16/pngconf.h"
 )
 
 ExternalProject_Add(png
