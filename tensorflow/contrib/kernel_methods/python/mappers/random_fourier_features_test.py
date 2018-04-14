@@ -34,7 +34,7 @@ def _inner_product(x, y):
   """Inner product between tensors x and y.
 
   The input tensors are assumed to be in ROW representation, that is, the method
-  returns x * y^T.
+  returns \\(x * y^T\\).
 
   Args:
     x: input tensor in row format
