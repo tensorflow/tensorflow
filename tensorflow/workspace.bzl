@@ -232,11 +232,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "org_sqlite",
       urls = [
-          "https://mirror.bazel.build/www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
-          "http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
+          "https://mirror.bazel.build/www.sqlite.org/2018/sqlite-amalgamation-3230100.zip",
+          "https://www.sqlite.org/2018/sqlite-amalgamation-3230100.zip",
       ],
-      sha256 = "208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4",
-      strip_prefix = "sqlite-amalgamation-3200000",
+      sha256 = "4239a1f69e5721d07d9a374eb84d594225229e54be4ee628da2995f4315d8dfc",
+      strip_prefix = "sqlite-amalgamation-3230100",
       build_file = clean_dep("//third_party:sqlite.BUILD"),
   )
 
@@ -451,11 +451,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/7e78daafdd22f3f17720a103d29d89590534004e.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/7e78daafdd22f3f17720a103d29d89590534004e.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/15535accd9e1e9d7772202ce51c8428c1994a04b.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/15535accd9e1e9d7772202ce51c8428c1994a04b.tar.gz",
       ],
-      sha256 = "a6d94bd9de23515a1e3792a830421e3885977ea43d03427cdbe68f98cb7e0045",
-      strip_prefix = "llvm-7e78daafdd22f3f17720a103d29d89590534004e",
+      sha256 = "3470c2dde055dc974e859e707aa6cd1d22eadd4f3a1f282e74c3cf1f7dc9510a",
+      strip_prefix = "llvm-15535accd9e1e9d7772202ce51c8428c1994a04b",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
