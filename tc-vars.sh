@@ -63,6 +63,7 @@ export TF_NEED_S3=0
 export TF_NEED_GDR=0
 export TF_SET_ANDROID_WORKSPACE=0
 export GCC_HOST_COMPILER_PATH=/usr/bin/gcc
+export PYTHON_BIN_PATH=/usr/bin/python2.7
 
 ## Below, define or export some build variables
 
