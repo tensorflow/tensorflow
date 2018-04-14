@@ -386,7 +386,7 @@ def embedding_lookup_sparse(params,
 
   Raises:
     TypeError: If `sp_ids` is not a `SparseTensor`, or if `sp_weights` is 
-    neither `None` nor `SparseTensor`.
+      neither `None` nor `SparseTensor`.
     ValueError: If `combiner` is not one of {"mean", "sqrtn", "sum"}.
   """
   if combiner is None:
