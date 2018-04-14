@@ -17,6 +17,14 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
+
+namespace custom {
+
+TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
+TfLiteRegistration* Register_MFCC();
+
+}  // namespace custom
+
 namespace builtin {
 
 TfLiteRegistration* Register_RELU();
@@ -49,6 +57,7 @@ TfLiteRegistration* Register_MUL();
 TfLiteRegistration* Register_L2_NORMALIZATION();
 TfLiteRegistration* Register_LOCAL_RESPONSE_NORMALIZATION();
 TfLiteRegistration* Register_LSTM();
+TfLiteRegistration* Register_BIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_PAD();
 TfLiteRegistration* Register_RESHAPE();
@@ -63,6 +72,14 @@ TfLiteRegistration* Register_SQUEEZE();
 TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_EXP();
 TfLiteRegistration* Register_TOPK_V2();
+TfLiteRegistration* Register_LOG_SOFTMAX();
+TfLiteRegistration* Register_CAST();
+TfLiteRegistration* Register_DEQUANTIZE();
+TfLiteRegistration* Register_PRELU();
+TfLiteRegistration* Register_MAXIMUM();
+TfLiteRegistration* Register_MINIMUM();
+TfLiteRegistration* Register_ARG_MAX();
+TfLiteRegistration* Register_LESS();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -97,6 +114,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORMALIZATION());
   AddBuiltin(BuiltinOperator_LSTM, Register_LSTM());
+  AddBuiltin(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
+             Register_BIDIRECTIONAL_SEQUENCE_LSTM());
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM());
   AddBuiltin(BuiltinOperator_PAD, Register_PAD());
@@ -114,6 +133,20 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
   AddBuiltin(BuiltinOperator_EXP, Register_EXP());
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2());
+  AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX());
+  AddBuiltin(BuiltinOperator_CAST, Register_CAST());
+  AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE());
+  AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
+  AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
+  AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
+  AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
+  AddBuiltin(BuiltinOperator_LESS, Register_LESS());
+
+  // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
+  // custom ops aren't always included by default.
+  AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
+  AddCustom("AudioSpectrogram",
+            tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
 }
 
 TfLiteRegistration* BuiltinOpResolver::FindOp(

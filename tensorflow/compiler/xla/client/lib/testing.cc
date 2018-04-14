@@ -111,4 +111,20 @@ std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
   return fake_arguments;
 }
 
+std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
+    const XlaComputation& computation, Client* client) {
+  CHECK(computation.proto().has_program_shape())
+      << "Computation should have progran shape.";
+  auto program_shape = computation.proto().program_shape();
+
+  // For every (unbound) parameter that the computation wants, we manufacture
+  // some arbitrary data so that we can invoke the computation.
+  std::vector<std::unique_ptr<GlobalData>> fake_arguments;
+  for (const Shape& parameter : program_shape.parameters()) {
+    fake_arguments.push_back(MakeFakeDataOrDie(parameter, client));
+  }
+
+  return fake_arguments;
+}
+
 }  // namespace xla

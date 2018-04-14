@@ -163,13 +163,6 @@ all_cmake_vars = select({
 
 # Performs CMake variable substitutions on configuration header files.
 expand_cmake_vars(
-    name = "datatypes_gen",
-    src = "include/llvm/Support/DataTypes.h.cmake",
-    cmake_vars = all_cmake_vars,
-    dst = "include/llvm/Support/DataTypes.h",
-)
-
-expand_cmake_vars(
     name = "config_gen",
     src = "include/llvm/Config/config.h.cmake",
     cmake_vars = all_cmake_vars,
@@ -305,9 +298,7 @@ cc_binary(
     srcs = glob([
         "utils/TableGen/*.cpp",
         "utils/TableGen/*.h",
-    ]) + [
-        "lib/Target/X86/Disassembler/X86DisassemblerDecoderCommon.h",
-    ],
+    ]),
     linkopts = [
         "-lm",
         "-ldl",
@@ -2014,7 +2005,6 @@ cc_library(
         "include/llvm/Support/WasmRelocs/*.def",
     ]) + [
         "include/llvm/BinaryFormat/MachO.def",
-        "include/llvm/Support/DataTypes.h",
         "include/llvm/Support/VCSRevision.h",
         "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],
@@ -2063,6 +2053,7 @@ cc_library(
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
         "include/llvm/CodeGen/*.def",
+        "include/llvm/CodeGen/*.inc",
     ]),
     deps = [
         ":analysis",

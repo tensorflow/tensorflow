@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -38,8 +36,6 @@ __all__ = [
 
 class CholeskyOuterProduct(bijector.Bijector):
   """Compute `g(X) = X @ X.T`; X is lower-triangular, positive-diagonal matrix.
-
-  `event_ndims` must be 0 or 2, i.e., scalar or matrix.
 
   Note: the upper-triangular part of X is ignored (whether or not its zero).
 
@@ -61,49 +57,34 @@ class CholeskyOuterProduct(bijector.Bijector):
   that, if `I = L_3 @ L_3.T`, with L_3 being lower-triangular with positive-
   diagonal, then `L_3 = I`. Thus, `L_1 = L_2`, proving injectivity of g.
 
-  Examples:
+  #### Examples
 
   ```python
-  bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
+  bijector.CholeskyOuterProduct().forward(x=[[1., 0], [2, 1]])
   # Result: [[1., 2], [2, 5]], i.e., x @ x.T
 
-  bijector.CholeskyOuterProduct(event_ndims=2).inverse(y=[[1., 2], [2, 5]])
+  bijector.CholeskyOuterProduct().inverse(y=[[1., 2], [2, 5]])
   # Result: [[1., 0], [2, 1]], i.e., cholesky(y).
   ```
 
   """
 
-  def __init__(self, event_ndims=2, validate_args=False,
-               name="cholesky_outer_product"):
+  def __init__(self, validate_args=False, name="cholesky_outer_product"):
     """Instantiates the `CholeskyOuterProduct` bijector.
 
     Args:
-      event_ndims: `constant` `int32` scalar `Tensor` indicating the number of
-        dimensions associated with a particular draw from the distribution. Must
-        be 0 or 2.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
-
-    Raises:
-      ValueError: if event_ndims is neither 0 or 2.
     """
     self._graph_parents = []
     self._name = name
-    with self._name_scope("init", values=[event_ndims]):
-      event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
-      event_ndims = tensor_util.constant_value(event_ndims)
-    if event_ndims is None or event_ndims not in [0, 2]:
-      raise ValueError("`event_ndims` must be a TF constant which is 0 or 2")
-    self._static_event_ndims = event_ndims
     super(CholeskyOuterProduct, self).__init__(
-        event_ndims=event_ndims,
+        forward_min_event_ndims=2,
         validate_args=validate_args,
         name=name)
 
   def _forward(self, x):
-    if self._static_event_ndims == 0:
-      return math_ops.square(x)
     if self.validate_args:
       is_matrix = check_ops.assert_rank_at_least(x, 2)
       shape = array_ops.shape(x)
@@ -114,11 +95,7 @@ class CholeskyOuterProduct(bijector.Bijector):
     return math_ops.matmul(x, x, adjoint_b=True)
 
   def _inverse(self, y):
-    return (math_ops.sqrt(y) if self._static_event_ndims == 0
-            else linalg_ops.cholesky(y))
-
-  def _inverse_log_det_jacobian(self, y):
-    return -self._forward_log_det_jacobian(x=self._inverse(y))
+    return linalg_ops.cholesky(y)
 
   def _forward_log_det_jacobian(self, x):
     # Let Y be a symmetric, positive definite matrix and write:
@@ -161,13 +138,6 @@ class CholeskyOuterProduct(bijector.Bijector):
     # Since there is a 2 X[j,j] term for every lower-triangular element of X we
     # conclude:
     #   |Jac(d vec[Y]/d vec[X])| = 2^p prod_{j=0}^{p-1} X[j,j]^{p-j}.
-    if self._static_event_ndims == 0:
-      if self.validate_args:
-        is_positive = check_ops.assert_positive(
-            x, message="All elements must be positive.")
-        x = control_flow_ops.with_dependencies([is_positive], x)
-      return np.log(2.) + math_ops.log(x)
-
     diag = array_ops.matrix_diag_part(x)
 
     # We now ensure diag is columnar. Eg, if `diag = [1, 2, 3]` then the output

@@ -103,7 +103,7 @@ class OneofPattern(Pattern):
 class MatchResult(object):
   r"""Encapsulates the result of a match done by GraphMatcher.
 
-  MatchResult contains a map from OpTypePattern to the matching op and tensor.
+  MatchResult contains a map from Pattern to the matching op and tensor.
   When the matching op has multiple output tensors, the matching tensor is the
   output tensor used by the matching op of the parent pattern. E.g., when we
   match graph
@@ -138,7 +138,7 @@ class MatchResult(object):
       self._name_to_pattern[pattern.name] = pattern
 
   def _to_pattern(self, pattern_or_name):
-    if isinstance(pattern_or_name, OpTypePattern):
+    if isinstance(pattern_or_name, Pattern):
       return pattern_or_name
 
     if isinstance(pattern_or_name, str):
@@ -146,8 +146,8 @@ class MatchResult(object):
         return None
       return self._name_to_pattern[pattern_or_name]
 
-    raise ValueError('pattern_or_name has type %s. Expect OpTypePattern or str.'
-                     % type(pattern_or_name))
+    raise ValueError('pattern_or_name has type %s. Expect Pattern or str.' %
+                     type(pattern_or_name))
 
   def _get_op_tensor(self, pattern_or_name):
     pattern = self._to_pattern(pattern_or_name)

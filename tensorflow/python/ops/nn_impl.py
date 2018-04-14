@@ -303,12 +303,12 @@ def _swish_grad(features, grad):
 # @Defun decorator with noinline=True so that sigmoid(features) is re-computed
 # during backprop, and we can free the sigmoid(features) expression immediately
 # after use during the forward pass.
+@tf_export("nn.swish")
 @function.Defun(
     grad_func=_swish_grad,
     shape_func=_swish_shape,
     func_name="swish",
     noinline=True)
-@tf_export("nn.swish")
 def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
@@ -888,12 +888,10 @@ def fused_batch_norm(
   # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
   # currently only use the V2 version for float16 inputs, which is not supported
   # by the V1 version.
-  # pylint: disable=protected-access
   if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm_v2
+    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
   else:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm
-  # pylint: enable=protected-access
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access
   y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
       x,
       scale,
@@ -1342,7 +1340,8 @@ def sampled_softmax_loss(weights,
       partition_strategy=partition_strategy,
       name=name,
       seed=seed)
-  sampled_losses = nn_ops.softmax_cross_entropy_with_logits(
+  labels = array_ops.stop_gradient(labels, name="labels_stop_gradient")
+  sampled_losses = nn_ops.softmax_cross_entropy_with_logits_v2(
       labels=labels, logits=logits)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses

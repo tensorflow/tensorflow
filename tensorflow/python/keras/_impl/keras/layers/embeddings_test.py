@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
@@ -25,47 +26,44 @@ from tensorflow.python.platform import test
 
 class EmbeddingTest(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def test_embedding(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Embedding,
-          kwargs={'output_dim': 4,
-                  'input_dim': 10,
-                  'input_length': 2},
-          input_shape=(3, 2),
-          input_dtype='int32',
-          expected_output_dtype='float32')
+    testing_utils.layer_test(
+        keras.layers.Embedding,
+        kwargs={'output_dim': 4,
+                'input_dim': 10,
+                'input_length': 2},
+        input_shape=(3, 2),
+        input_dtype='int32',
+        expected_output_dtype='float32')
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Embedding,
-          kwargs={'output_dim': 4,
-                  'input_dim': 10,
-                  'mask_zero': True},
-          input_shape=(3, 2),
-          input_dtype='int32',
-          expected_output_dtype='float32')
+    testing_utils.layer_test(
+        keras.layers.Embedding,
+        kwargs={'output_dim': 4,
+                'input_dim': 10,
+                'mask_zero': True},
+        input_shape=(3, 2),
+        input_dtype='int32',
+        expected_output_dtype='float32')
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Embedding,
-          kwargs={'output_dim': 4,
-                  'input_dim': 10,
-                  'mask_zero': True},
-          input_shape=(3, 4, 2),
-          input_dtype='int32',
-          expected_output_dtype='float32')
+    testing_utils.layer_test(
+        keras.layers.Embedding,
+        kwargs={'output_dim': 4,
+                'input_dim': 10,
+                'mask_zero': True},
+        input_shape=(3, 4, 2),
+        input_dtype='int32',
+        expected_output_dtype='float32')
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Embedding,
-          kwargs={'output_dim': 4,
-                  'input_dim': 10,
-                  'mask_zero': True,
-                  'input_length': (None, 2)},
-          input_shape=(3, 4, 2),
-          input_dtype='int32',
-          expected_output_dtype='float32')
+    testing_utils.layer_test(
+        keras.layers.Embedding,
+        kwargs={'output_dim': 4,
+                'input_dim': 10,
+                'mask_zero': True,
+                'input_length': (None, 2)},
+        input_shape=(3, 4, 2),
+        input_dtype='int32',
+        expected_output_dtype='float32')
 
 
 if __name__ == '__main__':

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
+#include "tensorflow/contrib/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -44,12 +45,16 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowMinimum ||
          type == OperatorType::kTensorFlowMaximum ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
+         type == OperatorType::kLogSoftmax ||
          type == OperatorType::kTensorFlowSplit || type == OperatorType::kSub ||
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
          type == OperatorType::kSpaceToDepth ||
-         type == OperatorType::kDepthToSpace || type == OperatorType::kLstmCell;
+         type == OperatorType::kStridedSlice ||
+         type == OperatorType::kDepthToSpace ||
+         type == OperatorType::kLstmCell || type == OperatorType::kGather ||
+         type == OperatorType::kTranspose || type == OperatorType::kMean;
 }
 
 template <ArrayDataType A>
@@ -62,8 +67,6 @@ std::unique_ptr<GenericBuffer> QuantizeBuffer(
       static_cast<const Buffer<ArrayDataType::kFloat>&>(buffer);
   auto* quantized_buffer = new Buffer<A>;
   quantized_buffer->data.resize(float_buffer.data.size());
-  const auto qmin = static_cast<int32>(std::numeric_limits<DataType<A>>::min());
-  const auto qmax = static_cast<int32>(std::numeric_limits<DataType<A>>::max());
   for (std::size_t i = 0; i < float_buffer.data.size(); i++) {
     const float src_val = float_buffer.data[i];
     double scaled_val;  // Astonishingly, using 'float' degrades accuracy just
@@ -75,9 +78,8 @@ std::unique_ptr<GenericBuffer> QuantizeBuffer(
     } else {
       scaled_val = quantization_params.zero_point + inverse_scale * src_val;
     }
-    const auto rounded_val = static_cast<int32>(std::round(scaled_val));
-    const auto clamped_val = std::min(qmax, std::max(qmin, rounded_val));
-    quantized_buffer->data[i] = static_cast<DataType<A>>(clamped_val);
+    quantized_buffer->data[i] =
+        tflite::SafeCast<DataType<A>>(std::round(scaled_val));
   }
   return std::unique_ptr<GenericBuffer>(quantized_buffer);
 }
@@ -100,7 +102,13 @@ void QuantizeArray(GraphTransformation* transformation, Model* model,
 void QuantizeArray(GraphTransformation* transformation, Model* model,
                    const string& name, ArrayDataType quantized_data_type,
                    const QuantizationParams& quantization_params) {
-  switch (quantized_data_type) {
+  ArrayDataType adjusted_data_type = quantized_data_type;
+  auto& array = model->GetArray(name);
+  if (array.final_data_type == ArrayDataType::kInt16) {
+    adjusted_data_type = array.final_data_type;
+  }
+
+  switch (adjusted_data_type) {
     case ArrayDataType::kUint8:
       return QuantizeArray<ArrayDataType::kUint8>(transformation, model, name,
                                                   quantization_params);
@@ -166,6 +174,38 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
                 "proceed with quantization.";
 }
 
+struct QuantizationPoints {
+  int64 min_value;
+  int64 max_value;
+  int64 central_value;
+};
+
+template <ArrayDataType A>
+QuantizationPoints GetQuantizationPoints() {
+  QuantizationPoints qp;
+  using Integer = DataType<A>;
+  qp.min_value = std::numeric_limits<Integer>::min();
+  qp.max_value = std::numeric_limits<Integer>::max();
+  // eg [-128,127]...
+  qp.central_value = (qp.min_value / 2 +        // -128 -> -64.
+                      (qp.max_value - 1) / 2 +  // 127 -> 63.
+                      1);
+  return qp;
+}
+
+QuantizationPoints GetQuantizationPoints(ArrayDataType data_type) {
+  switch (data_type) {
+    case ArrayDataType::kUint8:
+      return GetQuantizationPoints<ArrayDataType::kUint8>();
+    case ArrayDataType::kInt16:
+      return GetQuantizationPoints<ArrayDataType::kInt16>();
+    case ArrayDataType::kInt32:
+      return GetQuantizationPoints<ArrayDataType::kInt32>();
+    default:
+      LOG(FATAL) << "Unhandled case.";
+  }
+}
+
 bool ChooseQuantizationForOperatorInput(
     GraphTransformation* transformation, Model* model, const Operator& op,
     std::size_t input_index, ArrayDataType* quantized_data_type,
@@ -212,7 +252,7 @@ bool ChooseQuantizationForOperatorInput(
     const auto input_weights_scale = input_weights.quantization_params->scale;
     quantization_params->scale = input_activations_scale * input_weights_scale;
     quantization_params->zero_point = 0;
-    *quantized_data_type = ArrayDataType::kInt32;
+    *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kInt32);
     transformation->AddMessageF(
         "Input array %s is a bias vector. Choosing quantization params "
         "accordingly.",
@@ -224,23 +264,20 @@ bool ChooseQuantizationForOperatorInput(
 
   if (op.type == OperatorType::kLstmCell) {
     if (input_index == LstmCellOperator::PREV_STATE_INPUT) {
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-          model->flags, minmax, quantization_params);
       *quantized_data_type = ArrayDataType::kInt16;
+      GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
       return true;
     }
   }
 
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(model->flags, minmax,
-                                                         quantization_params);
+  *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
+  GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
   transformation->AddMessageF(
-      "For input array %s with min=%g"
-      ", max=%g"
-      ", chose to quantize as uint8 with zero_point=%d"
-      ", scale=%g",
-      input, minmax.min, minmax.max, quantization_params->zero_point,
+      "For input array %s with min=%g, max=%g, chose to quantize as %s (f=%s) "
+      "with zero_point=%d, scale=%g",
+      input, minmax.min, minmax.max, ArrayDataTypeName(*quantized_data_type),
+      ArrayDataTypeName(array.final_data_type), quantization_params->zero_point,
       quantization_params->scale);
-  *quantized_data_type = ArrayDataType::kUint8;
   return true;
 }
 
@@ -262,16 +299,18 @@ bool IsExactlyRepresentable(double real_value, ArrayDataType data_type,
   return true;
 }
 
+// Quantized data type is preset to the type of the input before this function.
 bool ChooseHardcodedQuantizationForOperatorOutput(
-    const Operator& op, ArrayDataType* quantized_data_type,
+    const Operator& op, const Array& array, ArrayDataType* quantized_data_type,
     QuantizationParams* quantization_params) {
   if (op.type == OperatorType::kL2Normalization) {
     // L2Normalization has range: [-1, 1].
     // 0 should be exactly representable, as values will typically be centered
     // around 0, with many values near 0.
-    *quantized_data_type = ArrayDataType::kUint8;
-    quantization_params->zero_point = 128;
-    quantization_params->scale = 1. / 128.;
+    *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
+    const QuantizationPoints qp = GetQuantizationPoints(*quantized_data_type);
+    quantization_params->zero_point = qp.central_value;
+    quantization_params->scale = 1. / (qp.central_value - qp.min_value);
     CHECK(
         IsExactlyRepresentable(0., *quantized_data_type, *quantization_params));
     return true;
@@ -284,18 +323,33 @@ bool ChooseHardcodedQuantizationForOperatorOutput(
     // will typically exploit the symmetry logistic(-x) = 1 - logistic(x), and
     // the glueing of the two halves of the graph will only be seamless if we
     // are accurately representing logistic(0) == 0.5.
-    *quantized_data_type = ArrayDataType::kUint8;
+    *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
+    const QuantizationPoints qp = GetQuantizationPoints(*quantized_data_type);
     quantization_params->zero_point = 0;
-    quantization_params->scale = 1. / 256.;
+    quantization_params->scale = 1. / (qp.max_value + 1);
     CHECK(IsExactlyRepresentable(0.5, *quantized_data_type,
                                  *quantization_params));
     return true;
   }
+  if (op.type == OperatorType::kLogSoftmax) {
+    // LogSoftmax has range: [LogSoftmaxOperator::kOutputRangeMin, 0].
+    *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
+    const QuantizationPoints qp = GetQuantizationPoints(*quantized_data_type);
+    quantization_params->zero_point = qp.max_value;
+    quantization_params->scale =
+        -LogSoftmaxOperator::kOutputRangeMin / (qp.max_value + 1);
+    // While not strictly necessary, it is easier to interpret output data and
+    // quantization if the scale is similar to others (such as power of 2).
+    CHECK(IsExactlyRepresentable(LogSoftmaxOperator::kOutputRangeMin / 2,
+                                 *quantized_data_type, *quantization_params));
+    return true;
+  }
   if (op.type == OperatorType::kTanh) {
     // Tanh has the range: [-1, 1].
-    *quantized_data_type = ArrayDataType::kUint8;
-    quantization_params->zero_point = 128;
-    quantization_params->scale = 1. / 128.;
+    *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
+    const QuantizationPoints qp = GetQuantizationPoints(*quantized_data_type);
+    quantization_params->zero_point = qp.central_value;
+    quantization_params->scale = 1. / (qp.central_value - qp.min_value);
     // 0 should be exactly representable, as values will typically be centered
     // around 0, with many values near 0.
     CHECK(
@@ -314,8 +368,9 @@ bool ChooseQuantizationForOperatorOutput(
   if (array.data_type != ArrayDataType::kFloat) {
     return false;
   }
-  if (ChooseHardcodedQuantizationForOperatorOutput(op, quantized_data_type,
-                                                   quantization_params)) {
+  *quantized_data_type = model->GetArray(op.inputs[0]).data_type;
+  if (ChooseHardcodedQuantizationForOperatorOutput(
+          op, array, quantized_data_type, quantization_params)) {
     transformation->AddMessageF(
         "Output array %s is produced by a %s operator. Choosing fixed "
         "quantization params accordingly.",
@@ -323,12 +378,22 @@ bool ChooseQuantizationForOperatorOutput(
     return true;
   }
   if ((op.type == OperatorType::kDepthToSpace) ||
-      (op.type == OperatorType::kSpaceToDepth)) {
-    // DepthToSpace and SpaceToDepth should preserve the quantization parameters
-    // of the input array, as these are simple reshape operations.
-    const auto& input_quantization_params =
-        model->GetArray(op.inputs[0]).GetQuantizationParams();
-    *quantized_data_type = ArrayDataType::kUint8;
+      (op.type == OperatorType::kSpaceToDepth) ||
+      (op.type == OperatorType::kTensorFlowReshape) ||
+      (op.type == OperatorType::kTensorFlowSplit) ||
+      (op.type == OperatorType::kConcatenation &&
+       model->flags.change_concat_input_ranges())) {
+    int data_input_index = 0;
+    if (op.type == OperatorType::kTensorFlowSplit) {
+      data_input_index = 1;
+    }
+    // Copying and rearrangement ops should preserve the quantization parameters
+    // of the input array.
+    const auto& input_array = model->GetArray(op.inputs[data_input_index]);
+    const auto& input_quantization_params = input_array.GetQuantizationParams();
+    *quantized_data_type =
+        GetQuantizedDataType(input_array, ArrayDataType::kUint8);
+    *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
     quantization_params->zero_point = input_quantization_params.zero_point;
     quantization_params->scale = input_quantization_params.scale;
 
@@ -342,24 +407,61 @@ bool ChooseQuantizationForOperatorOutput(
   if (op.type == OperatorType::kLstmCell) {
     if (output_index == LstmCellOperator::STATE_OUTPUT ||
         output_index == LstmCellOperator::ACTIV_TEMP) {
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-          model->flags, minmax, quantization_params);
       *quantized_data_type = ArrayDataType::kInt16;
+      GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
       return true;
     }
   }
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(model->flags, minmax,
-                                                         quantization_params);
-  *quantized_data_type = ArrayDataType::kUint8;
+  *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
+  GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
   transformation->AddMessageF(
       "For output array %s with min=%g, max=%g"
-      ", chose to quantize as uint8 with zero_point=%d"
+      ", chose to quantize as %s with zero_point=%d"
       ", scale=%g",
-      output, minmax.min, minmax.max, quantization_params->zero_point,
-      quantization_params->scale);
+      output, minmax.min, minmax.max, ArrayDataTypeName(*quantized_data_type),
+      quantization_params->zero_point, quantization_params->scale);
 
   return true;
 }
+
+// Fixes array minmax info to match the quantization parameters.
+// This is required for when quantization parameters change for an array during
+// quantization (such as ChooseQuantizationForOperatorOutput).
+void FixMinMaxPostQuantization(ArrayDataType quantized_data_type,
+                               const QuantizationParams& quantization_params,
+                               MinMax* minmax) {
+  double qmin, qmax;
+  switch (quantized_data_type) {
+    case ArrayDataType::kUint8:
+      qmin = 0;
+      qmax = 255;
+      break;
+    case ArrayDataType::kInt16:
+      qmin = -32768;
+      qmax = 32767;
+      break;
+    default:
+      // No update required.
+      return;
+  }
+
+  // Compute new minmax values.
+  double min =
+      (qmin - quantization_params.zero_point) * quantization_params.scale;
+  double max =
+      (qmax - quantization_params.zero_point) * quantization_params.scale;
+
+  // If we are close to the existing minmax values don't bother changing them.
+  // This prevents propagating small floating point precision errors.
+  constexpr double kMinMaxThreshold = 1e-5;
+  const double width = max - min;
+  if (std::abs(min - minmax->min) > kMinMaxThreshold * width ||
+      std::abs(max - minmax->max) > kMinMaxThreshold * width) {
+    minmax->min = min;
+    minmax->max = max;
+  }
+}
+
 }  // namespace
 
 bool Quantize::Run(Model* model, std::size_t op_index) {
@@ -398,9 +500,11 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
   //
   // Let us just guard this assumption by the following assertion:
   for (const auto& input : op.inputs) {
-    if (IsInputArray(*model, input)) {
-      const auto& input_array = model->GetArray(input);
-      CHECK(input_array.quantization_params);
+    const auto& input_array = model->GetArray(input);
+    if (IsInputArray(*model, input) &&
+        input_array.data_type == ArrayDataType::kFloat) {
+      CHECK(input_array.quantization_params)
+          << "Input array " << input << " is missing quantization_params";
     }
   }
   if (!SupportsQuantization(op)) {
@@ -504,12 +608,21 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
                                             &quantization_params)) {
       changed = true;
       const auto& output = op.outputs[output_index];
+      auto& output_array = model->GetArray(output);
+
+      // Fix up the min/max information on the output array to match the chosen
+      // quantization parameters.
+      CHECK(output_array.minmax)
+          << "Output array named " << output << " lacks minmax";
+      auto& output_minmax = output_array.GetMinMax();
+      FixMinMaxPostQuantization(quantized_data_type, quantization_params,
+                                &output_minmax);
+
       QuantizeArray(this, model, output, quantized_data_type,
                     quantization_params);
+
       const auto& dequantized_output =
           AvailableArrayName(*model, output + "_dequantized");
-      const auto& output_array = model->GetArray(output);
-      const auto& output_minmax = output_array.GetMinMax();
       auto& dequantized_output_array =
           model->GetOrCreateArray(dequantized_output);
       dequantized_output_array.data_type = ArrayDataType::kFloat;

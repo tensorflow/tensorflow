@@ -29,14 +29,17 @@ from __future__ import print_function
 import functools
 import re
 
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.framework.python import ops as contrib_framework_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -46,6 +49,7 @@ from tensorflow.python.util import nest
 __all__ = ["rev_block", "RevBlock", "recompute_grad"]
 
 LAYER_RE = re.compile(".*revlayer_([0-9]*)/([fg])/.*")
+_USE_DEFAULT = "__rev_block_lib_default"
 
 
 def _acc_grads(*lists_of_grads):
@@ -219,7 +223,13 @@ class RevBlock(base.Layer):
 
   def _efficient_grad_fn(self, inputs, variables, ys, grad_ys):
     """Custom gradient fn for a block of reversible residual layers."""
+    # Inputs have passed through an Identity. Recover the original Tensors to
+    # be able to match up side inputs.
+    assert [u"Identity"] == list(set([x.op.type for x in inputs]))
+    inputs = [x.op.inputs[0] for x in inputs]
     side_inputs = inputs[2:]
+    del inputs
+
     f_side_idxs = [None] * len(self.f_side_input)
     g_side_idxs = [None] * len(self.g_side_input)
     assert len(side_inputs) == len(self.f_side_input) + len(self.g_side_input)
@@ -237,9 +247,7 @@ class RevBlock(base.Layer):
     f_vars_idxs = [[] for _ in range(self.num_layers)]
     g_vars_idxs = [[] for _ in range(self.num_layers)]
 
-    for i, t in enumerate(variables):
-      ref = _underlying_variable_ref(t)
-
+    for i, ref in enumerate(variables):
       # Use the name to identify the layer number and function (f or g)
       regex = LAYER_RE.match(ref.name)
       layer_no = int(regex.group(1))
@@ -405,12 +413,36 @@ def rev_block(x1,
   return block.forward(x1, x2)
 
 
-def recompute_grad(fn):
+def enable_with_args(dec):
+  """A decorator for decorators to enable their usage with or without args."""
+
+  @functools.wraps(dec)
+  def new_dec(*args, **kwargs):
+    if len(args) == 1 and not kwargs and callable(args[0]):
+      # Used as decorator without args
+      fn = args[0]
+      return dec(fn)
+    else:
+      return lambda fn: dec(fn, *args, **kwargs)
+
+  return new_dec
+
+
+@enable_with_args
+def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   """Decorator that recomputes the function on the backwards pass.
 
   Args:
     fn: a function that takes Tensors (all as positional arguments) and returns
       a tuple of Tensors.
+    use_data_dep: `bool`, if `True` will use a dummy data dependency to force
+      the recompute to happen. If `False` will use a control dependency. By
+      default will be `True` if in an XLA context and `False` otherwise. XLA
+      ignores control dependencies and so this data dependency is necessary.
+    tupleize_grads: `bool`, if `True` will use control dependencies to ensure
+      that all gradients are produced before any are consumed by downstream ops.
+      If `use_data_dep` is also `True`, will use a data dependency instead of
+      a control dependency.
 
   Returns:
     A wrapped fn that is identical to fn when called, but its activations will
@@ -420,13 +452,25 @@ def recompute_grad(fn):
 
   @functools.wraps(fn)
   def wrapped(*args):
-    return _recompute_grad(fn, args)
+    return _recompute_grad(
+        fn, args, use_data_dep=use_data_dep, tupleize_grads=tupleize_grads)
 
   return wrapped
 
 
-def _recompute_grad(fn, args):
+def _is_on_tpu():
+  ctxt = framework_ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+  return control_flow_util.GetContainingXLAContext(ctxt) is not None
+
+
+def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   """See recompute_grad."""
+  for arg in args:
+    if not isinstance(arg, framework_ops.Tensor):
+      raise ValueError("All inputs to function must be Tensors")
+  use_data_dep_ = use_data_dep
+  if use_data_dep_ == _USE_DEFAULT:
+    use_data_dep_ = _is_on_tpu()
 
   cached_vs = []
   cached_arg_scope = []
@@ -436,6 +480,8 @@ def _recompute_grad(fn, args):
     del outputs
     # Recompute outputs
     with framework_ops.control_dependencies(output_grads):
+      if use_data_dep_:
+        inputs = _force_data_dependency(output_grads, inputs)
       with contrib_framework_ops.arg_scope(cached_arg_scope[0]):
         with variable_scope.variable_scope(cached_vs[0], reuse=True):
           outputs = fn(*inputs)
@@ -444,6 +490,13 @@ def _recompute_grad(fn, args):
       outputs = [outputs]
     outputs = list(outputs)
     grads = gradients_impl.gradients(outputs, inputs + variables, output_grads)
+
+    if tupleize_grads:
+      if use_data_dep_:
+        grads = _tuple_with_data_dep(grads)
+      else:
+        grads = control_flow_ops.tuple(grads)
+
     grad_inputs = grads[:len(inputs)]
     grad_vars = grads[len(inputs):]
     return grad_inputs, grad_vars
@@ -532,7 +585,7 @@ def _fn_with_custom_grad_internal(fn, inputs, grad_fn, use_global_vars=False):
   get_vars_fn = (
       vs.global_variables if use_global_vars else vs.trainable_variables)
   len_before_vars = len(get_vars_fn())
-  inputs = list(inputs)
+  inputs = [array_ops.identity(x) for x in inputs]
   outputs = fn(*inputs)
   train_vars = get_vars_fn()[len_before_vars:]
 
@@ -549,6 +602,7 @@ def _fn_with_custom_grad_internal(fn, inputs, grad_fn, use_global_vars=False):
     """Custom grad fn applying grad_fn for identity Defun."""
     fn_inputs, fn_vars, fn_outputs = nest.pack_sequence_as(
         defun_inputs, list(op.inputs))
+    fn_vars = [_underlying_variable_ref(v) for v in fn_vars]
     dys = list(dys)
     assert len(fn_outputs) == len(outputs)
     assert len(fn_outputs) == len(dys)
@@ -581,3 +635,48 @@ def _fn_with_custom_grad_internal(fn, inputs, grad_fn, use_global_vars=False):
   flat_inputs = nest.flatten(defun_inputs)
   id_out = identity(*flat_inputs)
   return id_out
+
+
+def _force_data_dependency(first_compute, then_compute):
+  """Force all of `then_compute` to depend on all of `first_compute`.
+
+  Uses a dummy data dependency, which is useful when running on TPUs because
+  XLA ignores control dependencies. Only supports float arguments.
+
+  Args:
+    first_compute: `list<Tensor>`. These will be made to run before the
+      `Tensor`s `then_compute`.
+    then_compute: `list<Tensor>`. These will run after all the `Tensor`s in
+      `first_compute`.
+
+  Returns:
+    `list<Tensor>`, same length as `then_compute`.
+
+  Raises:
+    ValueError: if ranks are unknown or types are not floating.
+  """
+
+  def _first_element(x):
+    if x.get_shape().ndims is None:
+      raise ValueError("Rank of Tensor %s must be known" % x)
+    ndims = x.get_shape().ndims
+    begin = framework_ops.convert_to_tensor([0] * ndims, dtype=dtypes.int32)
+    size = framework_ops.convert_to_tensor([1] * ndims, dtype=dtypes.int32)
+    return array_ops.reshape(array_ops.slice(x, begin, size), [])
+
+  first_compute_sum = math_ops.add_n(
+      [_first_element(x) for x in first_compute if x is not None])
+  dtype = first_compute_sum.dtype
+  if not dtype.is_floating:
+    raise ValueError("_force_data_dependency only supports floating dtypes.")
+  epsilon = np.finfo(dtype.as_numpy_dtype).tiny
+  zero = array_ops.stop_gradient(epsilon * first_compute_sum)
+
+  return [
+      array_ops.identity(x) + zero if x is not None else None
+      for x in then_compute
+  ]
+
+
+def _tuple_with_data_dep(tensors):
+  return _force_data_dependency(tensors, tensors)

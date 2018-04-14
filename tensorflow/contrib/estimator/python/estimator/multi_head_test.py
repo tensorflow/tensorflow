@@ -127,8 +127,8 @@ class MultiHeadTest(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        (_DEFAULT_SERVING_KEY, 'head1', 'classification/head1', 'predict/head1',
-         'head2', 'classification/head2', 'predict/head2'),
+        (_DEFAULT_SERVING_KEY, 'predict', 'head1', 'head1/classification',
+         'head1/predict', 'head2', 'head2/classification', 'head2/predict'),
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
@@ -158,6 +158,22 @@ class MultiHeadTest(test.TestCase):
       self.assertAllClose(
           expected_probabilities['head2'],
           sess.run(spec.export_outputs['head2'].scores))
+      self.assertAllClose(
+          expected_probabilities['head1'],
+          sess.run(
+              spec.export_outputs['predict'].outputs['head1/probabilities']))
+      self.assertAllClose(
+          expected_probabilities['head2'],
+          sess.run(
+              spec.export_outputs['predict'].outputs['head2/probabilities']))
+      self.assertAllClose(
+          expected_probabilities['head1'],
+          sess.run(
+              spec.export_outputs['head1/predict'].outputs['probabilities']))
+      self.assertAllClose(
+          expected_probabilities['head2'],
+          sess.run(
+              spec.export_outputs['head2/predict'].outputs['probabilities']))
 
   def test_predict_two_heads_logits_tensor(self):
     """Tests predict with logits as Tensor."""
@@ -181,8 +197,8 @@ class MultiHeadTest(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        (_DEFAULT_SERVING_KEY, 'head1', 'classification/head1', 'predict/head1',
-         'head2', 'classification/head2', 'predict/head2'),
+        (_DEFAULT_SERVING_KEY, 'predict', 'head1', 'head1/classification',
+         'head1/predict', 'head2', 'head2/classification', 'head2/predict'),
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
@@ -238,8 +254,8 @@ class MultiHeadTest(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        (_DEFAULT_SERVING_KEY, 'head1', 'regression/head1', 'predict/head1',
-         'head2', 'regression/head2', 'predict/head2'),
+        (_DEFAULT_SERVING_KEY, 'predict', 'head1', 'head1/regression',
+         'head1/predict', 'head2', 'head2/regression', 'head2/predict'),
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
@@ -283,10 +299,11 @@ class MultiHeadTest(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits =>
     # head1: expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # loss = ( (10 + 10) / 2 + (15 + 0) / 2 ) / 2 = 8.75
     # head2: expected_unweighted_loss = [[20., 20., 20.], [30., 0., 0]]
-    # Average over classes, weighted sum over batch and heads.
-    expected_loss_head1 = 17.5
-    expected_loss_head2 = 30.0
+    # loss = ( (20 + 20 + 20) / 3 + (30 + 0 + 0) / 3 ) / 2 = 15
+    expected_loss_head1 = 8.75
+    expected_loss_head2 = 15.
     expected_loss = 1. * expected_loss_head1 + 2. * expected_loss_head2
 
     spec = multi_head.create_estimator_spec(
@@ -300,14 +317,14 @@ class MultiHeadTest(test.TestCase):
         keys.LOSS + '/head1': expected_loss_head1,
         keys.LOSS + '/head2': expected_loss_head2,
         # Average loss over examples.
-        keys.LOSS_MEAN + '/head1': expected_loss_head1 / 2,
-        keys.LOSS_MEAN + '/head2': expected_loss_head2 / 2,
+        keys.LOSS_MEAN + '/head1': expected_loss_head1,
+        keys.LOSS_MEAN + '/head2': expected_loss_head2,
         # auc and auc_pr cannot be reliably calculated for only 4-6 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC + '/head1': 0.1667,
         keys.AUC + '/head2': 0.3333,
-        keys.AUC_PR + '/head1': 0.49999964,
-        keys.AUC_PR + '/head2': 0.33333313,
+        keys.AUC_PR + '/head1': 0.6667,
+        keys.AUC_PR + '/head2': 0.5000,
     }
 
     # Assert spec contains expected tensors.
@@ -347,8 +364,8 @@ class MultiHeadTest(test.TestCase):
     tol = 1e-3
     with self.test_session():
       # Unreduced loss of the head is [[(10 + 10) / 2], (15 + 0) / 2]
-      # (averaged over classes, sum-reduced over examples).
-      self.assertAllClose(17.5, loss.eval(), rtol=tol, atol=tol)
+      # (averaged over classes, averaged over examples).
+      self.assertAllClose(8.75, loss.eval(), rtol=tol, atol=tol)
 
   def test_train_create_loss_two_heads_with_weights(self):
     # Use different example weighting for each head weighting.
@@ -383,18 +400,18 @@ class MultiHeadTest(test.TestCase):
     with self.test_session():
       # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
       # = [10, 7.5]
-      # training_loss = 1 * 10 + 2 * 7.5 = 25
+      # training_loss = (1 * 10 + 2 * 7.5) / 2 = 12.5
       # head-weighted unreduced_loss = 1 * [10, 7.5]
       self.assertAllClose(
           [[10.], [7.5]], unreduced_losses['head1'].eval(), rtol=tol, atol=tol)
       # loss of the second head is [[(20 + 20 + 20) / 3], [(30 + 0 + 0) / 3]]
       # = [20, 10]
-      # training_loss = 2 * 20 + 3 * 10 = 70
+      # training_loss = (2 * 20 + 3 * 10) / 2 = 35
       # head-weighted unreduced_loss = 2 * [20, 10]
       self.assertAllClose(
           [[40.], [20.]], unreduced_losses['head2'].eval(), rtol=tol, atol=tol)
-      # head-weighted training_loss = 1 * 25 + 2 * 70 = 165
-      self.assertAllClose(165, training_loss.eval(), rtol=tol, atol=tol)
+      # head-weighted training_loss = 1 * 12.5 + 2 * 35 = 82.5
+      self.assertAllClose(82.5, training_loss.eval(), rtol=tol, atol=tol)
       # head-weighted example weights
       self.assertAllClose(
           [[1.], [2.]], weights['head1'].eval(), rtol=tol, atol=tol)
@@ -431,18 +448,18 @@ class MultiHeadTest(test.TestCase):
     with self.test_session():
       # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
       # = [10, 7.5]
-      # training_loss = 1 * 10 + 2 * 7.5 = 25
+      # training_loss = (1 * 10 + 2 * 7.5) / 2 = 12.5
       # head-weighted unreduced_loss = 1 * [10, 7.5]
       self.assertAllClose(
           [[10.], [7.5]], unreduced_losses['head1'].eval(), rtol=tol, atol=tol)
       # loss of the second head is [[(20 + 20 + 20) / 3], [(30 + 0 + 0) / 3]]
       # = [20, 10]
-      # training_loss = 2 * 20 + 3 * 10 = 70
+      # training_loss = (2 * 20 + 3 * 10) / 2 = 35
       # head-weighted unreduced_loss = 2 * [20, 10]
       self.assertAllClose(
           [[40.], [20.]], unreduced_losses['head2'].eval(), rtol=tol, atol=tol)
-      # head-weighted training_loss = 1 * 25 + 2 * 70 = 165
-      self.assertAllClose(165, training_loss.eval(), rtol=tol, atol=tol)
+      # head-weighted training_loss = 1 * 12.5 + 2 * 35 = 82.5
+      self.assertAllClose(82.5, training_loss.eval(), rtol=tol, atol=tol)
       # head-weighted example weights
       self.assertAllClose(
           [[1.], [2.]], weights['head1'].eval(), rtol=tol, atol=tol)
@@ -466,14 +483,14 @@ class MultiHeadTest(test.TestCase):
                            [[2., 2., 0.], [2., 2., 0.]]], dtype=np.float32),
     }
     # Loss for the first head:
-    # loss1 = (1+1)^2 + (0-1)^2 + (1+1)^2 + (0-1)^2 +
-    #         (1.5+1.5)^2 + (1.5-1.5)^2 + (1.5+1.5)^2 + (1.5-1.5)^2
-    #       = 28
+    # loss1 = ((1+1)^2 + (0-1)^2 + (1+1)^2 + (0-1)^2 +
+    #          (1.5+1.5)^2 + (1.5-1.5)^2 + (1.5+1.5)^2 + (1.5-1.5)^2) / 8
+    #       = 3.5
     # Loss for the second head:
-    # loss2 = (0-2)^2 + (1+2)^2 + (0-2)^2 + (0-2)^2 + (1+2)^2 + (0-2)^2 +
-    #         (2+2)^2 + (2-2)^2 + (0+2)^2 + (2+2)^2 + (2-2)^2 + (0+2)^2
-    #       = 74
-    expected_training_loss = 28. + 74.
+    # loss2 = ((0-2)^2 + (1+2)^2 + (0-2)^2 + (0-2)^2 + (1+2)^2 + (0-2)^2 +
+    #          (2+2)^2 + (2-2)^2 + (0+2)^2 + (2+2)^2 + (2-2)^2 + (0+2)^2) / 12
+    #       = 6.167
+    expected_training_loss = 3.5 + 6.167
 
     training_loss = multi_head.create_loss(
         features={},
@@ -495,8 +512,8 @@ class MultiHeadTest(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits =>
     # expected_unweighted_loss = [[10., 10.], [15., 0.]]
-    # Average over classes, sum over weights.
-    expected_loss = 17.5
+    # loss = ( (10 + 10) / 2 + (15 + 0) / 2 ) / 2 = 8.75
+    expected_loss = 8.75
     expected_train_result = 'my_train_op'
     def _train_op_fn(loss):
       return string_ops.string_join(
@@ -530,9 +547,45 @@ class MultiHeadTest(test.TestCase):
       _assert_simple_summaries(self, {
           metric_keys.MetricKeys.LOSS: expected_loss,
           metric_keys.MetricKeys.LOSS + '/head1': expected_loss,
-          # Average loss over examples.
-          metric_keys.MetricKeys.LOSS_MEAN + '/head1': expected_loss / 2,
       }, summary_str, tol)
+
+  def test_train_one_head_with_optimizer(self):
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    multi_head = multi_head_lib.multi_head([head1])
+
+    logits = {'head1': np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)}
+    labels = {'head1': np.array([[1, 0], [1, 1]], dtype=np.int64)}
+    # For large logits, sigmoid cross entropy loss is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits =>
+    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # loss = ( (10 + 10) / 2 + (15 + 0) / 2 ) / 2 = 8.75
+    expected_loss = 8.75
+    expected_train_result = 'my_train_op'
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        return string_ops.string_join(
+            [constant_op.constant(expected_train_result),
+             string_ops.as_string(loss, precision=3)])
+
+    spec = multi_head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    tol = 1e-3
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      self.assertEqual(
+          six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
+          train_result)
 
   def test_train_two_heads_with_weights(self):
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
@@ -553,10 +606,12 @@ class MultiHeadTest(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits =>
     # head1: expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # loss = ( (10 + 10) / 2 + (15 + 0) / 2 ) / 2 = 8.75
     # head2: expected_unweighted_loss = [[20., 20., 20.], [30., 0., 0]]
+    # loss = ( (20 + 20 + 20) / 3 + (30 + 0 + 0) / 3 ) / 2 = 15
     # Average over classes, weighted sum over batch and heads.
-    expected_loss_head1 = 17.5
-    expected_loss_head2 = 30.0
+    expected_loss_head1 = 8.75
+    expected_loss_head2 = 15.0
     expected_loss = 1. * expected_loss_head1 + 2. * expected_loss_head2
     expected_train_result = 'my_train_op'
     def _train_op_fn(loss):
@@ -592,9 +647,6 @@ class MultiHeadTest(test.TestCase):
           metric_keys.MetricKeys.LOSS: expected_loss,
           metric_keys.MetricKeys.LOSS + '/head1': expected_loss_head1,
           metric_keys.MetricKeys.LOSS + '/head2': expected_loss_head2,
-          # Average loss over examples.
-          metric_keys.MetricKeys.LOSS_MEAN + '/head1': expected_loss_head1 / 2,
-          metric_keys.MetricKeys.LOSS_MEAN + '/head2': expected_loss_head2 / 2,
       }, summary_str, tol)
 
 

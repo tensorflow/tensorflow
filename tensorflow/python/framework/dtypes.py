@@ -297,6 +297,9 @@ class DType(object):
   def __hash__(self):
     return self._type_enum
 
+  def __reduce__(self):
+    return as_dtype, (self.name,)
+
   @property
   def size(self):
     if (self._type_enum == types_pb2.DT_VARIANT or
@@ -343,7 +346,9 @@ tf_export("uint8").export_constant(__name__, "uint8")
 uint16 = DType(types_pb2.DT_UINT16)
 tf_export("uint16").export_constant(__name__, "uint16")
 uint32 = DType(types_pb2.DT_UINT32)
+tf_export("uint32").export_constant(__name__, "uint32")
 uint64 = DType(types_pb2.DT_UINT64)
+tf_export("uint64").export_constant(__name__, "uint64")
 int16 = DType(types_pb2.DT_INT16)
 tf_export("int16").export_constant(__name__, "int16")
 int8 = DType(types_pb2.DT_INT8)
@@ -646,6 +651,10 @@ QUANTIZED_DTYPES = frozenset([
 ])
 tf_export("QUANTIZED_DTYPES").export_constant(__name__, "QUANTIZED_DTYPES")
 
+_PYTHON_TO_TF = {
+    float: float32,
+    bool: bool,
+}
 
 @tf_export("as_dtype")
 def as_dtype(type_value):
@@ -677,6 +686,11 @@ def as_dtype(type_value):
   except KeyError:
     pass
 
+  try:
+    return _PYTHON_TO_TF[type_value]
+  except KeyError:
+    pass
+
   if isinstance(type_value, np.dtype):
     # The numpy dtype for strings is variable length. We can not compare
     # dtype with a single constant (np.string does not exist) to decide
@@ -685,11 +699,13 @@ def as_dtype(type_value):
     if type_value.type == np.string_ or type_value.type == np.unicode_:
       return string
 
-  for key, val in _NP_TO_TF:
-    try:
-      if key == type_value:
-        return val
-    except TypeError as e:
-      raise TypeError("Cannot convert {} to a dtype. {}".format(type_value, e))
+  if isinstance(type_value, (type, np.dtype)):
+    for key, val in _NP_TO_TF:
+      try:
+        if key == type_value:
+          return val
+      except TypeError as e:
+        raise TypeError("Cannot convert {} to a dtype. {}".format(
+            type_value, e))
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." % type_value)

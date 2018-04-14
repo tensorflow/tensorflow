@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
@@ -28,6 +29,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -134,6 +136,10 @@ def _num_present(losses, weights, per_batch=False):
       `per_batch` is `True`, the value is returned as a tensor of size
       `[batch_size]`. Otherwise, a single scalar tensor is returned.
   """
+  if ((isinstance(weights, float) and weights != 0.0) or
+      (context.executing_eagerly() and weights._rank() == 0  # pylint: disable=protected-access
+       and not math_ops.equal(weights, 0.0))):
+    return _num_elements(losses)
   with ops.name_scope(None, "num_present", (losses, weights)) as scope:
     weights = math_ops.to_float(weights)
     present = array_ops.where(
@@ -143,8 +149,10 @@ def _num_present(losses, weights, per_batch=False):
     present = weights_broadcast_ops.broadcast_weights(present, losses)
     if per_batch:
       return math_ops.reduce_sum(
-          present, axis=math_ops.range(1, array_ops.rank(present)),
-          keepdims=True, name=scope)
+          present,
+          axis=math_ops.range(1, array_ops.rank(present)),
+          keepdims=True,
+          name=scope)
     return math_ops.reduce_sum(present, name=scope)
 
 
@@ -187,6 +195,11 @@ def compute_weighted_loss(
   """
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
+    # Save the `reduction` argument for loss normalization when distributing
+    # to multiple towers.
+    # TODO(josh11b): Associate it with the returned op for more precision.
+    ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
+
     with ops.control_dependencies((
         weights_broadcast_ops.assert_broadcastable(weights, losses),)):
       losses = ops.convert_to_tensor(losses)
@@ -294,11 +307,8 @@ def cosine_distance(
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `axis`, `labels`, `predictions` or `weights` is `None`.
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
-  if axis is None and dim is None:
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  if axis is None:
     raise ValueError("You must specify 'axis'.")
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -421,8 +431,12 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     # expression when abs_error == delta is 0 (for tf.maximum it would be 1).
     # This is necessary to avoid doubling the gradient, since there is already a
     # nonzero contribution to the gradient from the quadratic term.
-    linear = (abs_error - quadratic)
-    losses = 0.5 * quadratic * quadratic + delta * linear
+    linear = math_ops.subtract(abs_error, quadratic)
+    losses = math_ops.add(
+        math_ops.multiply(
+            ops.convert_to_tensor(0.5, dtype=quadratic.dtype),
+            math_ops.multiply(quadratic, quadratic)),
+        math_ops.multiply(delta, linear))
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -542,7 +556,8 @@ def mean_pairwise_squared_error(
       reduction_indices = math_ops.range(1, array_ops.rank(diffs))
 
       sum_squares_diff_per_batch = math_ops.reduce_sum(
-          math_ops.square(diffs), reduction_indices=reduction_indices,
+          math_ops.square(diffs),
+          reduction_indices=reduction_indices,
           keepdims=True)
       num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
@@ -634,7 +649,7 @@ def sigmoid_cross_entropy(
 
   Args:
     multi_class_labels: `[batch_size, num_classes]` target integer labels in
-      `(0, 1)`.
+      `{0, 1}`.
     logits: Float `[batch_size, num_classes]` logits outputs of the network.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must

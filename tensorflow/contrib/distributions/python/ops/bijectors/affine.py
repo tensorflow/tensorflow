@@ -62,7 +62,7 @@ class Affine(bijector.Bijector):
   matrices, i.e., the matmul is [matrix-free](
   https://en.wikipedia.org/wiki/Matrix-free_methods) when possible.
 
-  Examples:
+  #### Examples
 
   ```python
   # Y = X
@@ -104,7 +104,6 @@ class Affine(bijector.Bijector):
                scale_tril=None,
                scale_perturb_factor=None,
                scale_perturb_diag=None,
-               event_ndims=1,
                validate_args=False,
                name="affine"):
     """Instantiates the `Affine` bijector.
@@ -157,8 +156,6 @@ class Affine(bijector.Bijector):
         matrix. `scale_perturb_diag` has shape [N1, N2, ...  r], which
         represents an `r x r` diagonal matrix. When `None` low rank updates will
         take the form `scale_perturb_factor * scale_perturb_factor.T`.
-      event_ndims: Scalar `int` `Tensor` indicating the number of dimensions
-        associated with a particular draw from the distribution. Must be 0 or 1.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
@@ -187,22 +184,6 @@ class Affine(bijector.Bijector):
     with self._name_scope("init", values=[
         shift, scale_identity_multiplier, scale_diag, scale_tril,
         scale_perturb_diag, scale_perturb_factor]):
-      event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
-      event_ndims_const = tensor_util.constant_value(event_ndims)
-      if event_ndims_const is not None and event_ndims_const not in (0, 1):
-        raise ValueError("event_ndims(%s) was not 0 or 1" % event_ndims_const)
-      else:
-        if validate_args:
-          # Shape tool will catch if event_ndims is negative.
-          event_ndims = control_flow_ops.with_dependencies(
-              [check_ops.assert_less(
-                  event_ndims, 2, message="event_ndims must be 0 or 1")],
-              event_ndims)
-
-      if event_ndims_const == 0 and not self._is_only_identity_multiplier:
-        raise ValueError(
-            "If event_ndims == 0, the only scale argument you can pass is "
-            "scale_identity_multiplier.  All others operate on vectors.")
 
       # In the absence of `loc` and `scale`, we'll assume `dtype` is `float32`.
       dtype = dtypes.float32
@@ -251,12 +232,11 @@ class Affine(bijector.Bijector):
       self._scale = scale
       self._shaper = _DistributionShape(
           batch_ndims=batch_ndims,
-          event_ndims=event_ndims,
+          event_ndims=1,
           validate_args=validate_args)
       super(Affine, self).__init__(
-          event_ndims=event_ndims,
+          forward_min_event_ndims=1,
           graph_parents=(
-              [event_ndims] +
               [self._scale] if tensor_util.is_tensor(self._scale)
               else self._scale.graph_parents +
               [self._shift] if self._shift is not None else []),
@@ -381,18 +361,17 @@ class Affine(bijector.Bijector):
         x, sample_shape, expand_batch_dim=False)
     return x
 
-  def _inverse_log_det_jacobian(self, y):
-    return -self._forward_log_det_jacobian(y)
-
   def _forward_log_det_jacobian(self, x):
+    # is_constant_jacobian = True for this bijector, hence the
+    # `log_det_jacobian` need only be specified for a single input, as this will
+    # be tiled to match `event_ndims`.
     if self._is_only_identity_multiplier:
       # We don't pad in this case and instead let the fldj be applied
       # via broadcast.
-      event_size = distribution_util.pick_vector(
-          math_ops.equal(self._shaper.event_ndims, 0),
-          [1], array_ops.shape(x))[-1]
+      event_size = array_ops.shape(x)[-1]
       event_size = math_ops.cast(event_size, dtype=self._scale.dtype)
       return math_ops.log(math_ops.abs(self._scale)) * event_size
+
     return self.scale.log_abs_determinant()
 
   def _maybe_check_scale(self):

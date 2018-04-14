@@ -241,6 +241,7 @@ cc_library(
         "gpu_executable.cc",
         "infeed_thunk.cc",
         "kernel_thunk.cc",
+        "memset_thunk.cc",
         "sequential_thunk.cc",
         "thunk_schedule.cc",
         "tuple_thunk.cc",
@@ -257,6 +258,7 @@ cc_library(
         "gpu_executable.h",
         "infeed_thunk.h",
         "kernel_thunk.h",
+        "memset_thunk.h",
         "sequential_thunk.h",
         "thunk.h",
         "thunk_schedule.h",
@@ -273,6 +275,7 @@ cc_library(
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -293,6 +296,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
+        "//tensorflow/stream_executor",
     ],
 )
 
@@ -397,6 +401,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
     ],
 )
 
@@ -437,8 +442,10 @@ tf_cc_test(
         ":fusion_merger",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
     ],
 )
 
@@ -452,6 +459,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:shape_inference",
     ],
@@ -510,9 +518,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
+        "//tensorflow/compiler/xla/service:gather_expander",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
@@ -689,18 +699,4 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

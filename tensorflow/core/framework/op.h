@@ -89,6 +89,9 @@ class OpRegistry : public OpRegistryInterface {
   // Get all registered ops.
   void GetRegisteredOps(std::vector<OpDef>* op_defs);
 
+  // Get all `OpRegistrationData`s.
+  void GetOpRegistrationData(std::vector<OpRegistrationData>* op_data);
+
   // Watcher, a function object.
   // The watcher, if set by SetWatcher(), is called every time an op is
   // registered via the Register function. The watcher is passed the Status

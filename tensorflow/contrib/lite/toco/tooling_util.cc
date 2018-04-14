@@ -62,6 +62,37 @@ string LogName(const Operator& op) {
   }
 }
 
+string ArrayDataTypeName(ArrayDataType data_type) {
+  switch (data_type) {
+    case ArrayDataType::kFloat:
+      return "Float";
+    case ArrayDataType::kInt8:
+      return "Int8";
+    case ArrayDataType::kUint8:
+      return "Uint8";
+    case ArrayDataType::kInt16:
+      return "Int16";
+    case ArrayDataType::kUint16:
+      return "Uint16";
+    case ArrayDataType::kInt32:
+      return "Int32";
+    case ArrayDataType::kUint32:
+      return "Uint32";
+    case ArrayDataType::kInt64:
+      return "Int64";
+    case ArrayDataType::kUint64:
+      return "Uint64";
+    case ArrayDataType::kString:
+      return "String";
+    case ArrayDataType::kBool:
+      return "Bool";
+    case ArrayDataType::kNone:
+      return "None";
+    default:
+      LOG(FATAL) << "Unhandled array data type " << static_cast<int>(data_type);
+  }
+}
+
 bool IsInputArray(const Model& model, const string& name) {
   for (const auto& input_array : model.flags.input_arrays()) {
     if (input_array.name() == name) {
@@ -126,6 +157,15 @@ bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
     return true;
   }
   return false;
+}
+
+void DeleteOpAndArraysIfUnused(Model* model, Operator* op) {
+  for (const string& array_name : op->inputs) {
+    DeleteArrayIfUsedOnce(array_name, model);
+  }
+  auto op_it = FindOp(*model, op);
+  CHECK(op_it != model->operators.end());
+  model->operators.erase(op_it);
 }
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
@@ -251,15 +291,18 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Dequantize)
     HANDLE_OPERATORTYPENAME_CASE(L2Normalization)
     HANDLE_OPERATORTYPENAME_CASE(LocalResponseNormalization)
+    HANDLE_OPERATORTYPENAME_CASE(Log)
     HANDLE_OPERATORTYPENAME_CASE(Logistic)
     HANDLE_OPERATORTYPENAME_CASE(LstmCell)
     HANDLE_OPERATORTYPENAME_CASE(MaxPool)
     HANDLE_OPERATORTYPENAME_CASE(L2Pool)
     HANDLE_OPERATORTYPENAME_CASE(FakeQuant)
     HANDLE_OPERATORTYPENAME_CASE(Mul)
+    HANDLE_OPERATORTYPENAME_CASE(RandomUniform)
     HANDLE_OPERATORTYPENAME_CASE(Relu)
     HANDLE_OPERATORTYPENAME_CASE(Relu1)
     HANDLE_OPERATORTYPENAME_CASE(Relu6)
+    HANDLE_OPERATORTYPENAME_CASE(PRelu)
     HANDLE_OPERATORTYPENAME_CASE(ReorderAxes)
     HANDLE_OPERATORTYPENAME_CASE(Softmax)
     HANDLE_OPERATORTYPENAME_CASE(LogSoftmax)
@@ -316,6 +359,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TopK_V2)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
     HANDLE_OPERATORTYPENAME_CASE(Exp)
+    HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
+    HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -363,48 +408,9 @@ void LogSummary(int log_level, const Model& model) {
 void LogArray(int log_level, const Model& model, const string& name) {
   const auto& array = model.GetArray(name);
   VLOG(log_level) << "Array: " << name;
-  switch (array.data_type) {
-    case ArrayDataType::kNone:
-      VLOG(log_level) << "  Data type:";
-      break;
-    case ArrayDataType::kFloat:
-      VLOG(log_level) << "  Data type: kFloat";
-      break;
-    case ArrayDataType::kInt32:
-      VLOG(log_level) << "  Data type: kInt32";
-      break;
-    case ArrayDataType::kUint8:
-      VLOG(log_level) << "  Data type: kUint8";
-      break;
-    case ArrayDataType::kString:
-      VLOG(log_level) << "  Data type: kString";
-      break;
-    default:
-      VLOG(log_level) << "  Data type: other (numerical value: "
-                      << static_cast<int>(array.data_type) << ")";
-      break;
-  }
-  switch (array.final_data_type) {
-    case ArrayDataType::kNone:
-      VLOG(log_level) << "  Final type:";
-      break;
-    case ArrayDataType::kFloat:
-      VLOG(log_level) << "  Final type: kFloat";
-      break;
-    case ArrayDataType::kInt32:
-      VLOG(log_level) << "  Final type: kInt32";
-      break;
-    case ArrayDataType::kUint8:
-      VLOG(log_level) << "  Final type: kUint8";
-      break;
-    case ArrayDataType::kString:
-      VLOG(log_level) << "  Final type: kString";
-      break;
-    default:
-      VLOG(log_level) << "  Final type: other (numerical value: "
-                      << static_cast<int>(array.data_type) << ")";
-      break;
-  }
+  VLOG(log_level) << "  Data type: " << ArrayDataTypeName(array.data_type);
+  VLOG(log_level) << "  Final type: "
+                  << ArrayDataTypeName(array.final_data_type);
   if (array.buffer) {
     VLOG(log_level) << "  Constant Buffer";
   }
@@ -819,9 +825,15 @@ void CheckEachArray(const Model& model) {
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
     CHECK(!array->buffer || !array->alloc);
-    // If there is a buffer, its type should be consistent with data_type.
     if (array->buffer) {
+      // If there is a buffer, its type should be consistent with data_type.
       CHECK(array->buffer->type == array->data_type);
+      // The presence of a fixed buffer should imply the presence of a fixed
+      // shape.
+      CHECK(array->has_shape());
+      // The shape flat-size should agree with the buffer length.
+      CHECK_EQ(array->buffer->Length(),
+               RequiredBufferSizeForShape(array->shape()));
     }
 
     // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not
@@ -1038,6 +1050,105 @@ void CheckModelCounts(const Model& model) {
   }
 }
 
+void FixEdgeArrays(Model* model) {
+  for (const string& output_array_name : model->flags.output_arrays()) {
+    if (!GetOpWithOutput(*model, output_array_name)) {
+      // Output has no operator producing it. Change that by inserting a copy.
+      LOG(WARNING) << "Fixing constant output array " << output_array_name
+                   << " by inserting a copy. This is not optimal.";
+      string intermediate_array_name =
+          AvailableArrayName(*model, output_array_name + "_copy");
+      CloneArray(model, output_array_name, intermediate_array_name);
+      InsertCopyOperator(model, intermediate_array_name, output_array_name);
+    }
+  }
+}
+
+void InsertCopyOperator(Model* model, const string& source_array_name,
+                        const string& target_array_name) {
+  // Drop constant data from the target array as the copy will be done at
+  // runtime.
+  Array& target_array = model->GetOrCreateArray(target_array_name);
+  target_array.buffer.reset();
+
+  // Reshape to the same size. This should be a no-op.
+  const Array& source_array = model->GetArray(source_array_name);
+  std::vector<int> shape = source_array.shape().dims();
+
+  // Insert copy operator.
+  auto* copy_op = new TensorFlowReshapeOperator;
+  copy_op->inputs = {
+      source_array_name,
+      CreateInt32Array(model, target_array_name + "_copy_shape", shape)};
+  copy_op->outputs = {target_array_name};
+  model->operators.emplace_back(copy_op);
+}
+
+void CloneArray(Model* model, const string& source_array_name,
+                const string& target_array_name) {
+  CHECK(!model->HasArray(target_array_name));
+  const Array& source_array = model->GetArray(source_array_name);
+  Array& target_array = model->GetOrCreateArray(target_array_name);
+
+  if (source_array.minmax) {
+    const auto& smm = source_array.GetMinMax();
+    auto& tmm = target_array.GetOrCreateMinMax();
+    tmm.min = smm.min;
+    tmm.max = smm.max;
+  }
+
+  if (source_array.quantization_params) {
+    const auto& sqp = source_array.GetQuantizationParams();
+    auto& tqp = target_array.GetOrCreateQuantizationParams();
+    tqp.zero_point = sqp.zero_point;
+    tqp.scale = sqp.scale;
+  }
+
+  target_array.data_type = source_array.data_type;
+  target_array.final_data_type = source_array.final_data_type;
+  target_array.copy_shape(source_array.shape());
+
+  switch (source_array.data_type) {
+    case ArrayDataType::kBool:
+      CopyArrayBuffer<ArrayDataType::kBool>(source_array, &target_array);
+      break;
+    case ArrayDataType::kFloat:
+      CopyArrayBuffer<ArrayDataType::kFloat>(source_array, &target_array);
+      break;
+    case ArrayDataType::kInt8:
+      CopyArrayBuffer<ArrayDataType::kInt8>(source_array, &target_array);
+      break;
+    case ArrayDataType::kUint8:
+      CopyArrayBuffer<ArrayDataType::kUint8>(source_array, &target_array);
+      break;
+    case ArrayDataType::kInt16:
+      CopyArrayBuffer<ArrayDataType::kInt16>(source_array, &target_array);
+      break;
+    case ArrayDataType::kUint16:
+      CopyArrayBuffer<ArrayDataType::kUint16>(source_array, &target_array);
+      break;
+    case ArrayDataType::kInt32:
+      CopyArrayBuffer<ArrayDataType::kInt32>(source_array, &target_array);
+      break;
+    case ArrayDataType::kUint32:
+      CopyArrayBuffer<ArrayDataType::kUint32>(source_array, &target_array);
+      break;
+    case ArrayDataType::kInt64:
+      CopyArrayBuffer<ArrayDataType::kInt64>(source_array, &target_array);
+      break;
+    case ArrayDataType::kUint64:
+      CopyArrayBuffer<ArrayDataType::kUint64>(source_array, &target_array);
+      break;
+    case ArrayDataType::kString:
+      CopyArrayBuffer<ArrayDataType::kString>(source_array, &target_array);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported data type: "
+                 << ArrayDataTypeName(source_array.data_type);
+      return;
+  }
+}
+
 void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
                    std::vector<int>* out_dims) {
   CHECK(out_dims->empty());
@@ -1201,7 +1312,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       << "This model does not define output arrays, so a "
          "--output_arrays flag must be given on the command-line.";
 
-  for (const auto& input_array_proto : model->flags.input_arrays()) {
+  for (auto& input_array_proto : *model->flags.mutable_input_arrays()) {
     auto& input_array = model->GetOrCreateArray(input_array_proto.name());
     if (input_array_proto.has_data_type()) {
       const ArrayDataType specified_type =
@@ -1245,18 +1356,33 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
         for (int i = 0; i < input_array_dims.size(); i++) {
           CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
         }
+      } else {
+        for (int i = 0; i < input_array.shape().dimensions_count(); i++) {
+          input_array_proto.mutable_shape()->add_dims(
+              input_array.shape().dims(i));
+        }
       }
     }
 
     const float mean_value = input_array_proto.mean_value();
     const float std_value = input_array_proto.std_value();
     MinMax input_minmax;
-    input_minmax.min = (0.f - mean_value) / std_value;
-    input_minmax.max = (255.f - mean_value) / std_value;
+    float qmin = 0, qmax = 255;
+    if (input_array.data_type == ArrayDataType::kInt16) {
+      qmin = -32768;
+      qmax = 32767;
+    }
+    input_minmax.min = (qmin - mean_value) / std_value;
+    input_minmax.max = (qmax - mean_value) / std_value;
     if (input_array.minmax) {
       if (input_array_proto.has_mean_value() ||
           input_array_proto.has_std_value()) {
-        CHECK(input_minmax == *input_array.minmax)
+        const double width = input_minmax.max - input_minmax.min;
+        const double kMinMaxAllowedDiff = 1e-6 * width;
+        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
+                  kMinMaxAllowedDiff &&
+              std::abs(input_minmax.max - input_array.minmax->max) <
+                  kMinMaxAllowedDiff)
             << input_minmax.min << ", " << input_minmax.max
             << " != " << input_array.minmax->min << ", "
             << input_array.minmax->max;
@@ -1276,7 +1402,8 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       CHECK(input_array.shape().dims_size());
     }
   }
-
+  model->flags.set_change_concat_input_ranges(
+      model_flags.change_concat_input_ranges());
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
   model->flags.set_allow_nonexistent_arrays(
       model_flags.allow_nonexistent_arrays());
@@ -1340,6 +1467,8 @@ void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
 
 int ElementSize(ArrayDataType data_type) {
   switch (data_type) {
+    case ArrayDataType::kBool:
+      return sizeof(bool);
     case ArrayDataType::kFloat:
       return 4;
     case ArrayDataType::kInt8:
@@ -1365,7 +1494,7 @@ int ElementSize(ArrayDataType data_type) {
       LOG(FATAL) << "Transient arrays with strings are not supported yet";
       return 0;
     default:
-      LOG(FATAL) << "Should not get here.";
+      LOG(FATAL) << "Unknown data_type = " << static_cast<int>(data_type);
       return 0;
   }
 }
@@ -1792,10 +1921,42 @@ bool IsDiscardableArray(const Model& model, const string& array_name) {
   return true;
 }
 
+bool ReshapeIsEquivalentToTranspose(const Model& model,
+                                    const TensorFlowReshapeOperator* op,
+                                    bool allow_extra_unary_dims) {
+  CHECK(!op->shape.empty());
+  CHECK(model.HasArray(op->inputs[0]));
+  CHECK(model.HasArray(op->outputs[0]));
+
+  const auto& input_array = model.GetArray(op->inputs[0]);
+  const auto& output_array = model.GetArray(op->outputs[0]);
+
+  CHECK(input_array.has_shape());
+  CHECK(output_array.has_shape());
+
+  std::vector<int> in_shape = input_array.shape().dims();
+  std::vector<int> out_shape = output_array.shape().dims();
+
+  // If the reshape changes the number of dimensions so it cannot be interpreted
+  // as a transpose.
+  if (!allow_extra_unary_dims && in_shape.size() != out_shape.size()) {
+    return false;
+  }
+
+  in_shape.erase(std::remove(in_shape.begin(), in_shape.end(), 1),
+                 in_shape.end());
+  out_shape.erase(std::remove(out_shape.begin(), out_shape.end(), 1),
+                  out_shape.end());
+  return in_shape == out_shape;
+}
+
 void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
-    if (array.final_data_type != ArrayDataType::kNone) {
+    // If the final data type is int16, the data type may be float, for example
+    // after dequantization.
+    if (array.final_data_type != ArrayDataType::kNone &&
+        array.final_data_type != ArrayDataType::kInt16) {
       CHECK(array.final_data_type == array.data_type)
           << "Array \"" << array_entry.first
           << "\" has mis-matching actual and final data types ("
@@ -1811,6 +1972,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kFloat;
     case QUANTIZED_UINT8:
       return ArrayDataType::kUint8;
+    case QUANTIZED_INT16:
+      return ArrayDataType::kInt16;
     case INT32:
       return ArrayDataType::kInt32;
     case INT64:
@@ -1837,14 +2000,41 @@ void FinishBuildingRNNStates(Model* model) {
   }
 }
 
-void UseArraysExtraInfo(Model* model) {
+void UseArraysExtraInfo(Model* model, bool quantize_output) {
   for (const auto& entry : model->flags.arrays_extra_info().entries()) {
-    QCHECK(model->HasArray(entry.name()))
-        << "ArraysExtraInfo refers to non-existent array name: "
-        << entry.name();
-    auto& minmax = model->GetArray(entry.name()).GetOrCreateMinMax();
-    minmax.min = entry.min();
-    minmax.max = entry.max();
+    if (!model->HasArray(entry.name())) {
+      continue;
+    }
+    auto& array = model->GetArray(entry.name());
+    if (entry.has_min() || entry.has_max()) {
+      CHECK_EQ(entry.has_min(), entry.has_max());
+      auto& minmax = array.GetOrCreateMinMax();
+      minmax.min = entry.min();
+      minmax.max = entry.max();
+    }
+    if (entry.has_data_type() && quantize_output) {
+      array.final_data_type =
+          ConvertIODataTypeToArrayDataType(entry.data_type());
+    }
+    if (entry.has_shape()) {
+      array.clear_shape();
+      // Make sure to create the shape even if there are no dims, to
+      // correctly record 0-D shapes.
+      array.mutable_shape();
+      for (int dim : entry.shape().dims()) {
+        array.mutable_shape()->mutable_dims()->push_back(dim);
+      }
+    }
+    if (entry.has_constant_float_value()) {
+      CHECK(array.has_shape());
+      if (array.data_type == ArrayDataType::kFloat) {
+        auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
+        data.resize(RequiredBufferSizeForShape(array.shape()));
+        for (float& f : data) {
+          f = entry.constant_float_value();
+        }
+      }
+    }
   }
 }
 

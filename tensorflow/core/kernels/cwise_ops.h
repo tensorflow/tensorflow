@@ -27,27 +27,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace Eigen {
-namespace numext {
-#if GOOGLE_CUDA
-template <>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE std::complex<float> exp(
-    const std::complex<float>& x) {
-  auto com = ::expf(x.real());
-  auto res_real = com * ::cosf(x.imag());
-  auto res_imag = com * ::sinf(x.imag());
-  return std::complex<float>(res_real, res_imag);
-}
-template <>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE std::complex<double> exp(
-    const std::complex<double>& x) {
-  auto com = ::exp(x.real());
-  auto res_real = com * ::cos(x.imag());
-  auto res_imag = com * ::sin(x.imag());
-  return std::complex<double>(res_real, res_imag);
-}
-#endif
-}  // namespace numext
-
 namespace internal {
 
 template <typename T>

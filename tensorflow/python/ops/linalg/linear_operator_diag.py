@@ -67,7 +67,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   operator = LinearOperatorDiag(diag)
 
   # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
-  # since the batch dimensions, [2, 1], are brodcast to
+  # since the batch dimensions, [2, 1], are broadcast to
   # operator.batch_shape = [2, 3].
   y = tf.random_normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)
@@ -132,8 +132,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 

@@ -37,9 +37,12 @@ bool IsBiasAdd(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
 bool IsCast(const NodeDef& node);
+bool IsCheckNumerics(const NodeDef& node);
 bool IsComplex(const NodeDef& node);
 bool IsComplexAbs(const NodeDef& node);
 bool IsConj(const NodeDef& node);
+bool IsConjugateTranspose(const NodeDef& node);
+bool IsConcat(const NodeDef& node);
 bool IsConcatOffset(const NodeDef& node);
 bool IsConstant(const NodeDef& node);
 bool IsConv2D(const NodeDef& node);
@@ -84,11 +87,15 @@ bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsNextIteration(const NodeDef& node);
+bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
+bool IsPack(const NodeDef& node);
+bool IsNeg(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
 bool IsPolygamma(const NodeDef& node);
+bool IsPrint(const NodeDef& node);
 bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
 bool IsReal(const NodeDef& node);
@@ -100,6 +107,7 @@ bool IsRecv(const NodeDef& node);
 bool IsReduction(const NodeDef& node);
 bool IsReshape(const NodeDef& node);
 bool IsRestore(const NodeDef& node);
+bool IsReverse(const NodeDef& node);
 bool IsReverseV2(const NodeDef& node);
 bool IsRsqrtGrad(const NodeDef& node);
 bool IsSelect(const NodeDef& node);
@@ -108,14 +116,20 @@ bool IsSend(const NodeDef& node);
 bool IsSlice(const NodeDef& node);
 bool IsShape(const NodeDef& node);
 bool IsShapeN(const NodeDef& node);
+bool IsShuffle(const NodeDef& node);
 bool IsSigmoidGrad(const NodeDef& node);
 bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
 bool IsSplitV(const NodeDef& node);
 bool IsSqrtGrad(const NodeDef& node);
+bool IsSquare(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);
+bool IsStackOp(const NodeDef& node);
+bool IsStackCloseOp(const NodeDef& node);
+bool IsStackPushOp(const NodeDef& node);
+bool IsStackPopOp(const NodeDef& node);
 bool IsStopGradient(const NodeDef& node);
 bool IsStridedSlice(const NodeDef& node);
 bool IsStridedSliceGrad(const NodeDef& node);
@@ -127,6 +141,7 @@ bool IsTile(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsTruncateDiv(const NodeDef& node);
 bool IsTruncateMod(const NodeDef& node);
+bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
@@ -143,11 +158,19 @@ bool IsCommutative(const NodeDef& node);
 bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
+
 bool ModifiesFrameInfo(const NodeDef& node);
+
+// Returns true if the op is known to write to one or more of its inputs.
+bool ModifiesInputsInPlace(const NodeDef& node);
 
 // Returns true if the op is an element-wise involution, i.e. if it is its
 // own inverse such that f(f(x)) == x.
 bool IsInvolution(const NodeDef& node);
+
+// Returns true if the op preserves the order and value of elements in its
+// first input tensor and possible changes its shape.
+bool IsValueAndOrderPreserving(const NodeDef& node);
 
 // Returns true if the op in node only rearranges the order of elements in its
 // first input tensor and possible changes its shape. More precisely, this

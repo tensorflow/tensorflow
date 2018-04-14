@@ -18,11 +18,11 @@ limitations under the License.
 %{
 
 #include "tensorflow/c/python_api.h"
-#include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/python/client/tf_session_helper.h"
 
 // Helper function to convert a Python list of Tensors to a C++ vector of
 // TF_Outputs.
@@ -72,7 +72,7 @@ void PyInt64ListToVector(PyObject* py_int_seq, std::vector<int64_t>* vec) {
   int size = PySequence_Fast_GET_SIZE(py_int_seq);
   for (int i = 0; i < size; ++i) {
     PyObject* item = PySequence_Fast_GET_ITEM(py_int_seq, i);
-    vec->push_back(PyInt_AsLong(item));
+    vec->push_back(PyLong_AsLongLong(item));
   }
 }
 
@@ -147,6 +147,25 @@ tensorflow::ImportNumpy();
 
 // Build a Python list of TF_Operation* and return it.
 %typemap(out) std::vector<TF_Operation*> tensorflow::TF_OperationGetControlInputs_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOperation($1[i]));
+  }
+}
+
+// We use TF_OperationGetControlOutputs_wrapper instead of
+// TF_OperationGetControlOutputs
+%ignore TF_OperationGetControlOutputs;
+%unignore TF_OperationGetControlOutputs_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_OperationGetControlOutputs_wrapper;
+
+// Build a Python list of TF_Operation* and return it.
+%typemap(out) std::vector<TF_Operation*> tensorflow::TF_OperationGetControlOutputs_wrapper {
   $result = PyList_New($1.size());
   if (!$result) {
     SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
@@ -419,6 +438,30 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
   $result = new_result;
 }
 
+%typemap(in, numinputs=0) int64_t* out_handle (int64_t out_handle) {
+  $1 = &out_handle;
+}
+
+%typemap(argout) int64_t* out_handle {
+  $result = PyLong_FromLongLong(*$1);
+}
+
+%typemap(in) int64_t handle {
+  if (!PyLong_Check($input)) {
+    SWIG_exception_fail(
+        SWIG_TypeError,
+        tensorflow::strings::Printf(
+            "Expected a python long for conversion to callable handle but got %s",
+            Py_TYPE($input)->tp_name).c_str());
+  }
+  $1 = PyLong_AsLongLong($input);
+}
+
+// Override default py3 behavior of attempting to encode into Unicode.
+%typemap(out) std::string tensorflow::ResourceHandleShapeAndType {
+  $result = PyBytes_FromStringAndSize($1.data(), $1.size());
+}
+
 // TODO(skyewm): SWIG emits a warning for the const char* in TF_WhileParams,
 // skip for now
 %ignore TF_WhileParams;
@@ -452,6 +495,17 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 // See comment for "%noexception TF_SessionRun_wrapper;"
 %noexception TF_SessionPRun_wrapper;
 
+%unignore TF_DeprecatedSessionMakeCallable;
+%unignore TF_SessionMakeCallable;
+%unignore TF_DeprecatedSessionRunCallable;
+%unignore TF_SessionRunCallable;
+%unignore TF_DeprecatedSessionReleaseCallable;
+%unignore TF_SessionReleaseCallable;
+
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_DeprecatedSessionRunCallable;
+%noexception TF_SessionRunCallable;
+
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
@@ -469,9 +523,8 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
       _TF_SetTarget(opts, target)
     if config is not None:
       from tensorflow.python.framework import errors
-      with errors.raise_exception_on_not_ok_status() as status:
-        config_str = config.SerializeToString()
-        _TF_SetConfig(opts, config_str, status)
+      config_str = config.SerializeToString()
+      _TF_SetConfig(opts, config_str)
     return opts
 %}
 
@@ -718,6 +771,12 @@ def TF_Reset(target, containers=None, config=None):
   Py_DECREF(seq);
   $1 = &types_local;
 }
+
+%unignore SetRequireShapeInferenceFns;
+%unignore TF_TryEvaluateConstant_wrapper;
+%noexception TF_TryEvaluateConstant_wrapper;
+%unignore ExtendSession;
+%unignore ResourceHandleShapeAndType;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

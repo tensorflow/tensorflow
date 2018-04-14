@@ -43,6 +43,7 @@ class QueueOp : public ResourceOpKernel<QueueInterface> {
 
   void Compute(OpKernelContext* context) override {
     ResourceOpKernel<QueueInterface>::Compute(context);
+    mutex_lock l(mu_);
     if (resource_ && context->track_allocations()) {
       context->record_persistent_memory_allocation(resource_->MemoryUsed());
     }

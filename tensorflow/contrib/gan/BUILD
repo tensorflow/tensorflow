@@ -354,6 +354,7 @@ py_test(
     name = "classifier_metrics_test",
     srcs = ["python/eval/python/classifier_metrics_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":classifier_metrics",
         "//tensorflow/core:protos_all_py",
@@ -363,6 +364,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -543,16 +545,4 @@ py_test(
         "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -53,7 +53,7 @@ class MklCPUAllocator : public VisitableAllocator {
   static constexpr const char* kMaxLimitStr = "TF_MKL_ALLOC_MAX_BYTES";
 
   /// Default upper limit on allocator size - 64GB
-  static const size_t kDefaultMaxLimit = 64LL << 30;
+  static constexpr size_t kDefaultMaxLimit = 64LL << 30;
 
   MklCPUAllocator() { TF_CHECK_OK(Initialize()); }
 
@@ -158,7 +158,7 @@ class MklCPUAllocator : public VisitableAllocator {
   static constexpr const char* kName = "mklcpu";
 
   /// The alignment that we need for the allocations
-  static const size_t kAlignment = 64;
+  static constexpr const size_t kAlignment = 64;
 
   VisitableAllocator* allocator_;  // owned by this class
 };

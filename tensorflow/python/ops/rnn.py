@@ -45,29 +45,25 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _concat = rnn_cell_impl._concat
-_like_rnncell = rnn_cell_impl._like_rnncell
 # pylint: enable=protected-access
 
 
 def _transpose_batch_time(x):
-  """Transpose the batch and time dimensions of a Tensor.
+  """Transposes the batch and time dimensions of a Tensor.
 
-  Retains as much of the static shape information as possible.
+  If the input tensor has rank < 2 it returns the original tensor. Retains as
+  much of the static shape information as possible.
 
   Args:
-    x: A tensor of rank 2 or higher.
+    x: A Tensor.
 
   Returns:
     x transposed along the first two dimensions.
-
-  Raises:
-    ValueError: if `x` is rank 1 or lower.
   """
   x_static_shape = x.get_shape()
   if x_static_shape.ndims is not None and x_static_shape.ndims < 2:
-    raise ValueError(
-        "Expected input tensor %s to have rank at least 2, but saw shape: %s" %
-        (x, x_static_shape))
+    return x
+
   x_rank = array_ops.rank(x)
   x_t = array_ops.transpose(
       x, array_ops.concat(
@@ -403,11 +399,8 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   Raises:
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
   """
-
-  if not _like_rnncell(cell_fw):
-    raise TypeError("cell_fw must be an instance of RNNCell")
-  if not _like_rnncell(cell_bw):
-    raise TypeError("cell_bw must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell_fw", cell_fw)
+  rnn_cell_impl.assert_like_rnncell("cell_bw", cell_bw)
 
   with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
@@ -568,14 +561,13 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     TypeError: If `cell` is not an instance of RNNCell.
     ValueError: If inputs is None or an empty list.
   """
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
 
   with vs.variable_scope(scope or "rnn") as varscope:
     # Create a new scope in which the caching device is either
     # determined by the parent scope, or is set to place the cached
     # Variable using the same placement as for the rest of the RNN.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -616,7 +608,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
           ["Expected shape for Tensor %s is " % x.name,
            packed_shape, " but saw shape: ", x_shape])
 
-    if context.in_graph_mode() and sequence_length is not None:
+    if not context.executing_eagerly() and sequence_length is not None:
       # Perform some shape validation
       with ops.control_dependencies(
           [_assert_has_shape(sequence_length, [batch_size])]):
@@ -742,7 +734,7 @@ def _dynamic_rnn_loop(cell,
                                         element_shape=element_shape,
                                         tensor_array_name=base_name + name)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   if in_graph_mode:
     output_ta = tuple(
         _create_ta(
@@ -872,7 +864,7 @@ def raw_rnn(cell, loop_fn,
 
   ```python
   time = tf.constant(0, dtype=tf.int32)
-  (finished, next_input, initial_state, _, loop_state) = loop_fn(
+  (finished, next_input, initial_state, emit_structure, loop_state) = loop_fn(
       time=time, cell_output=None, cell_state=None, loop_state=None)
   emit_ta = TensorArray(dynamic_size=True, dtype=initial_state.dtype)
   state = initial_state
@@ -883,7 +875,7 @@ def raw_rnn(cell, loop_fn,
         loop_state=loop_state)
     # Emit zeros and copy forward state for minibatch entries that are finished.
     state = tf.where(finished, state, next_state)
-    emit = tf.where(finished, tf.zeros_like(emit), emit)
+    emit = tf.where(finished, tf.zeros_like(emit_structure), emit)
     emit_ta = emit_ta.write(time, emit)
     # If any new minibatch entries are marked as finished, mark these.
     finished = tf.logical_or(finished, next_finished)
@@ -943,10 +935,15 @@ def raw_rnn(cell, loop_fn,
       and `emit_output`: the output to store for this iteration.
 
       Note that `emit_output` should be a `Tensor` or (possibly nested)
-      tuple of tensors with shapes and structure matching `cell.output_size`
-      and `cell_output` above.  The parameter `cell_state` and output
-      `next_cell_state` may be either a single or (possibly nested) tuple
-      of tensors.  The parameter `loop_state` and
+      tuple of tensors which is aggregated in the `emit_ta` inside the
+      `while_loop`. For the first call to `loop_fn`, the `emit_output`
+      corresponds to the `emit_structure` which is then used to determine the
+      size of the `zero_tensor` for the `emit_ta` (defaults to
+      `cell.output_size`). For the subsequent calls to the `loop_fn`, the
+      `emit_output` corresponds to the actual output tensor
+      that is to be aggregated in the `emit_ta`. The parameter `cell_state`
+      and output `next_cell_state` may be either a single or (possibly nested)
+      tuple of tensors.  The parameter `loop_state` and
       output `next_loop_state` may be either a single or (possibly nested) tuple
       of `Tensor` and `TensorArray` objects.  This last parameter
       may be ignored by `loop_fn` and the return value may be `None`.  If it
@@ -1015,9 +1012,8 @@ def raw_rnn(cell, loop_fn,
     TypeError: If `cell` is not an instance of RNNCell, or `loop_fn` is not
       a `callable`.
   """
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
 
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 
@@ -1027,7 +1023,7 @@ def raw_rnn(cell, loop_fn,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -1229,9 +1225,7 @@ def static_rnn(cell,
     ValueError: If `inputs` is `None` or an empty list, or if the input depth
       (column size) cannot be inferred from inputs via shape inference.
   """
-
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
   if not nest.is_sequence(inputs):
     raise TypeError("inputs must be a sequence")
   if not inputs:
@@ -1242,7 +1236,7 @@ def static_rnn(cell,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -1469,11 +1463,8 @@ def static_bidirectional_rnn(cell_fw,
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
     ValueError: If inputs is None or an empty list.
   """
-
-  if not _like_rnncell(cell_fw):
-    raise TypeError("cell_fw must be an instance of RNNCell")
-  if not _like_rnncell(cell_bw):
-    raise TypeError("cell_bw must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell_fw", cell_fw)
+  rnn_cell_impl.assert_like_rnncell("cell_bw", cell_bw)
   if not nest.is_sequence(inputs):
     raise TypeError("inputs must be a sequence")
   if not inputs:

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace {
@@ -28,7 +29,7 @@ namespace {
 class SoftmaxOp : public XlaOpKernel {
  public:
   explicit SoftmaxOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    log_ = StringPiece(type_string()).starts_with("Log");
+    log_ = str_util::StartsWith(type_string(), "Log");
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -42,9 +43,8 @@ class SoftmaxOp : public XlaOpKernel {
     const DataType type = input_type(0);
     auto logits = ctx->Input(0);
 
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::ComputationBuilder* const b = ctx->builder();
     const xla::Computation& max_func = *ctx->GetOrCreateMax(type);
-    const xla::Computation& add_func = *ctx->GetOrCreateAdd(type);
 
     // Find the max in each batch, resulting in a tensor of shape [batch]
     auto logits_max =
@@ -52,21 +52,20 @@ class SoftmaxOp : public XlaOpKernel {
     // Subtract the max in batch b from every element in batch b. Broadcasts
     // along the batch dimension.
     auto shifted_logits = b->Sub(logits, logits_max, {kBatchDim});
-    xla::ComputationDataHandle softmax;
-    if (log_) {
-      // softmax = shifted_logits - log(sum(exp(shifted_logits)))
-      auto log_sum_exp =
-          b->Log(b->Reduce(b->Exp(shifted_logits), XlaHelpers::Zero(b, type),
-                           add_func, {kClassDim}));
-      softmax = b->Sub(shifted_logits, log_sum_exp, {kBatchDim});
-    } else {
-      // softmax = exp(shifted_logits) / sum(exp(shifted_logits))
-      auto exp_shifted = b->Exp(shifted_logits);
-      auto sum_exp = b->Reduce(exp_shifted, XlaHelpers::Zero(b, type), add_func,
-                               {kClassDim});
-      softmax = b->Div(exp_shifted, sum_exp, {kBatchDim});
-    }
-
+    auto exp_shifted = b->Exp(shifted_logits);
+    const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
+    auto converted =
+        XlaHelpers::ConvertElementType(b, exp_shifted, accumulation_type);
+    auto reduce =
+        b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                  *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
+    auto sum = XlaHelpers::ConvertElementType(b, reduce, type);
+    auto softmax =
+        log_
+            // softmax = shifted_logits - log(sum(exp(shifted_logits)))
+            ? b->Sub(shifted_logits, b->Log(sum), {kBatchDim})
+            // softmax = exp(shifted_logits) / sum(exp(shifted_logits))
+            : b->Div(exp_shifted, sum, {kBatchDim});
     ctx->SetOutput(0, softmax);
   }
 
@@ -82,7 +81,6 @@ CrossEntropyWithLogits(XlaOpKernelContext* ctx, DataType type,
                        const xla::ComputationDataHandle& logits,
                        const xla::ComputationDataHandle& labels) {
   const xla::Computation& max_func = *ctx->GetOrCreateMax(type);
-  const xla::Computation& add_func = *ctx->GetOrCreateAdd(type);
 
   const int kBatchDim = 0;
   const int kClassDim = 1;
@@ -100,8 +98,12 @@ CrossEntropyWithLogits(XlaOpKernelContext* ctx, DataType type,
   auto exp_shifted_logits = b->Exp(shifted_logits);
 
   // sum_{class} (exp(logits - max_logits))
-  auto sum_exp = b->Reduce(exp_shifted_logits, XlaHelpers::Zero(b, type),
-                           add_func, {kClassDim});
+  const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
+  auto converted =
+      XlaHelpers::ConvertElementType(b, exp_shifted_logits, accumulation_type);
+  auto reduce = b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                          *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
+  auto sum_exp = XlaHelpers::ConvertElementType(b, reduce, type);
 
   // log(sum(exp(logits - max_logits)))
   auto log_sum_exp = b->Log(sum_exp);
@@ -110,9 +112,13 @@ CrossEntropyWithLogits(XlaOpKernelContext* ctx, DataType type,
   //    ((logits - max_logits) - log(sum(exp(logits - max_logits)))))
   // along classes
   // (The subtraction broadcasts along the batch dimension.)
-  xla::ComputationDataHandle loss = b->Reduce(
-      b->Mul(b->Neg(labels), b->Sub(shifted_logits, log_sum_exp, {kBatchDim})),
-      XlaHelpers::Zero(b, type), add_func, {kClassDim});
+  auto sub = b->Sub(shifted_logits, log_sum_exp, {kBatchDim});
+  auto mul = b->Mul(b->Neg(labels), sub);
+  auto sum =
+      b->Reduce(XlaHelpers::ConvertElementType(b, mul, accumulation_type),
+                XlaHelpers::Zero(b, accumulation_type),
+                *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
+  auto loss = XlaHelpers::ConvertElementType(b, sum, type);
 
   // backprop: prob - labels, where
   //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))

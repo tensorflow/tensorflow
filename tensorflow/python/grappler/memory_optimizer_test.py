@@ -162,7 +162,8 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             memory_optimization=rewriter_config_pb2.RewriterConfig.
             RECOMPUTATION_HEURISTICS,
-            memory_optimizer_target_node_name_prefix='optimizer/gradients/'),
+            # Checks that name scope "gradients/" also match sub-scope.
+            memory_optimizer_target_node_name_scope='gradients/'),
         original_metagraph)
     self.assertGreater(
         len(rewritten_graph_def.node),
@@ -175,6 +176,35 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         20,  # Two per layer
         len([node for node in rewritten_graph_def.node
              if 'Recomputed/' in node.name]))
+
+  def testRewritingNameScopedGradientNamesScope(self):
+    """Tests that rewriting occurs with non-standard gradient names."""
+    (original_metagraph, _, _,
+     _) = self._GetMetaGraph(optimizer_scope_name='foo/bar')
+    rewritten_graph_def = tf_optimizer.OptimizeGraph(
+        rewriter_config_pb2.RewriterConfig(
+            disable_model_pruning=True,
+            constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+            dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+            layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
+            arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+            memory_optimization=rewriter_config_pb2.RewriterConfig.
+            RECOMPUTATION_HEURISTICS,
+            # This should not match anything.
+            memory_optimizer_target_node_name_scope='r/gradients/'),
+        original_metagraph)
+    self.assertEqual(
+        len(rewritten_graph_def.node), len(original_metagraph.graph_def.node))
+    self.assertEqual(0,
+                     len([
+                         node for node in original_metagraph.graph_def.node
+                         if 'Recomputed/' in node.name
+                     ]))
+    self.assertEqual(0,
+                     len([
+                         node for node in rewritten_graph_def.node
+                         if 'Recomputed/' in node.name
+                     ]))
 
   def _GetMemoryOptimizerSessionConfig(self):
     rewrite_options = rewriter_config_pb2.RewriterConfig(

@@ -50,6 +50,7 @@ class TocoFromProtosTest(googletest.TestCase):
     toco_flags.output_format = toco_flags_pb2.TFLITE
     toco_flags.inference_input_type = types_pb2.FLOAT
     toco_flags.inference_type = types_pb2.FLOAT
+    toco_flags.allow_custom_ops = True;
     model_flags = model_flags_pb2.ModelFlags()
     input_array = model_flags.input_arrays.add()
     input_array.name = TensorName(in_tensor)

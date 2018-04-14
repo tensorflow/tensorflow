@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/event.pb.h"
@@ -58,7 +59,7 @@ class SummaryFileWriterTest : public ::testing::Test {
     TF_CHECK_OK(env_.GetChildren(testing::TmpDir(), &files));
     bool found = false;
     for (const string& f : files) {
-      if (StringPiece(f).contains(test_name)) {
+      if (str_util::StrContains(f, test_name)) {
         if (found) {
           return errors::Unknown("Found more than one file for ", test_name);
         }

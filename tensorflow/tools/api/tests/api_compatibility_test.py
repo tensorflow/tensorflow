@@ -46,6 +46,7 @@ from tensorflow.tools.api.lib import python_object_to_proto_visitor
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
 
+
 # FLAGS defined at the bottom:
 FLAGS = None
 # DEFINE_boolean, update_goldens, default False:
@@ -54,7 +55,7 @@ _UPDATE_GOLDENS_HELP = """
      have to be authorized by TensorFlow leads.
 """
 
-# DEFINE_boolean, verbose_diffs, default False:
+# DEFINE_boolean, verbose_diffs, default True:
 _VERBOSE_DIFFS_HELP = """
      If set to true, print line by line diffs on all libraries. If set to
      false, only print which libraries have differences.
@@ -109,7 +110,8 @@ class ApiCompatibilityTest(test.TestCase):
                              expected_dict,
                              actual_dict,
                              verbose=False,
-                             update_goldens=False):
+                             update_goldens=False,
+                             additional_missing_object_message=''):
     """Diff given dicts of protobufs and report differences a readable way.
 
     Args:
@@ -120,6 +122,8 @@ class ApiCompatibilityTest(test.TestCase):
       verbose: Whether to log the full diffs, or simply report which files were
           different.
       update_goldens: Whether to update goldens when there are diffs found.
+      additional_missing_object_message: Message to print when a symbol is
+          missing.
     """
     diffs = []
     verbose_diffs = []
@@ -138,7 +142,8 @@ class ApiCompatibilityTest(test.TestCase):
       verbose_diff_message = ''
       # First check if the key is not found in one or the other.
       if key in only_in_expected:
-        diff_message = 'Object %s expected but not found (removed).' % key
+        diff_message = 'Object %s expected but not found (removed). %s' % (
+            key, additional_missing_object_message)
         verbose_diff_message = diff_message
       elif key in only_in_actual:
         diff_message = 'New object %s found (added).' % key
@@ -165,7 +170,7 @@ class ApiCompatibilityTest(test.TestCase):
       logging.error('%d differences found between API and golden.', diff_count)
       messages = verbose_diffs if verbose else diffs
       for i in range(diff_count):
-        logging.error('Issue %d\t: %s', i + 1, messages[i])
+        print('Issue %d\t: %s' % (i + 1, messages[i]), file=sys.stderr)
 
       if update_goldens:
         # Write files if requested.
@@ -235,7 +240,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
   parser.add_argument(
-      '--verbose_diffs', type=bool, default=False, help=_VERBOSE_DIFFS_HELP)
+      '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)
   FLAGS, unparsed = parser.parse_known_args()
 
   # Now update argv, so that unittest library does not get confused.

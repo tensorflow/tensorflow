@@ -19,8 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -41,7 +41,7 @@ TEST_F(SliceTest, Slice3x3x3_To_3x3x1_F32) {
   Array3D<float> values(3, 3, 3);
   values.FillIota(0);
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR3FromArray3D<float>(values);
   builder.Slice(original, {0, 0, 0}, {3, 3, 1}, {1, 1, 1});
 
@@ -54,7 +54,7 @@ TEST_F(SliceTest, Slice3x3x3_To_3x1x3_F32) {
   Array3D<float> values(3, 3, 3);
   values.FillIota(0);
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR3FromArray3D<float>(values);
   builder.Slice(original, {0, 0, 0}, {3, 1, 3}, {1, 1, 1});
 
@@ -67,7 +67,7 @@ TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
   Array3D<float> values(3, 3, 3);
   values.FillIota(0);
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR3FromArray3D<float>(values);
   builder.Slice(original, {0, 0, 0}, {1, 3, 3}, {1, 1, 1});
 
@@ -77,7 +77,7 @@ TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
 }
 
 XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 0));
   builder.Slice(original, {0, 0}, {0, 0}, {1, 1});
 
@@ -85,7 +85,7 @@ XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
 }
 
 XLA_TEST_F(SliceTest, Slice0x20to0x5F32) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 20));
   builder.Slice(original, {0, 15}, {0, 20}, {1, 1});
 
@@ -93,7 +93,7 @@ XLA_TEST_F(SliceTest, Slice0x20to0x5F32) {
 }
 
 XLA_TEST_F(SliceTest, Slice3x0to2x0F32) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR2FromArray2D<float>(Array2D<float>(3, 0));
   builder.Slice(original, {1, 0}, {3, 0}, {1, 1});
 
@@ -108,7 +108,7 @@ XLA_TEST_F(SliceTest, SliceQuadrantOf256x256) {
     }
   }
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR2FromArray2D<float>(values);
   builder.Slice(original, {128, 128}, {256, 256}, {1, 1});
 
@@ -126,7 +126,7 @@ TEST_F(SliceTest, Slice_1x4096_To_1x1024) {
   Array2D<float> values(1, 4096);
   std::iota(values.data(), values.data() + 4096, 0.0);
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR2FromArray2D<float>(values);
   builder.Slice(original, {0, 3072}, {1, 4096}, {1, 1});
 
@@ -147,7 +147,7 @@ TEST_F(SliceTest, Slice_16x4_To_16x2) {
       }
     }
   }
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR2FromArray2D<float>(values);
   builder.Slice(original, {0, 0}, {16, 2}, {1, 1});
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.000001));
@@ -159,7 +159,7 @@ TEST_F(SliceTest, SliceR4ThreeDimsMiddleMinor) {
   values.FillRandom(3.14f);
   auto expected = ReferenceUtil::Slice4D(
       values, {{1, 0, 8, 0}}, {{2, 2, 16, 128}}, /*strides=*/{{1, 1, 1, 1}});
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR4FromArray4D(values);
   builder.Slice(original, {1, 0, 8, 0}, {2, 2, 16, 128}, {1, 1, 1, 1});
   ComputeAndCompareR4(&builder, *expected, {}, ErrorSpec(0.000001));
@@ -172,7 +172,7 @@ XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
                                          /*strides=*/{{1, 1, 2, 1}});
   auto expected_literal = Literal::CreateR4FromArray4DWithLayout(
       *expected, LayoutUtil::MakeLayout({0, 1, 2, 3}));
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto original = builder.ConstantR4FromArray4D(values);
   builder.Slice(original, {0, 0, 0, 0}, {2, 4, 6, 8}, {1, 1, 2, 1});
   ComputeAndCompareLiteral(&builder, *expected_literal, {}, ErrorSpec(0.000001),
@@ -193,15 +193,18 @@ class SliceR1Test : public ClientLibraryTestBase,
  protected:
   template <typename NativeT>
   void Run(const R1Spec& spec) {
-    std::vector<NativeT> input(spec.input_dim0);
+    // This can't be an std::vector, since you can't grab an ArraySlice of a
+    // vector<bool>.
+    tensorflow::gtl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto original = builder.ConstantR1<NativeT>(input);
     builder.Slice(original, {spec.slice_start}, {spec.slice_limit},
                   {spec.slice_stride});
 
-    std::vector<NativeT> expected;
+    // Ditto.
+    tensorflow::gtl::InlinedVector<NativeT, 1> expected;
     for (int i = spec.slice_start; i < spec.slice_limit;
          i += spec.slice_stride) {
       expected.push_back(i);
@@ -210,6 +213,9 @@ class SliceR1Test : public ClientLibraryTestBase,
     ComputeAndCompareR1<NativeT>(&builder, expected, {});
   }
 };
+
+// A version of SliceR1Test used to label and disable 'large' tests
+class SliceR1LargeTest : public SliceR1Test {};
 
 string SliceR1TestDataToString(const ::testing::TestParamInfo<R1Spec>& data) {
   const R1Spec& spec = data.param;
@@ -229,6 +235,21 @@ XLA_TEST_P(SliceR1Test, DoIt_S32) { Run<int32>(GetParam()); }
 XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_F32) { Run<float>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_F64) { Run<double>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_U32) { Run<uint32>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_S32) { Run<int32>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_U64) { Run<uint64>(GetParam()); }
+
+XLA_TEST_P(SliceR1LargeTest, DoIt_S64) { Run<int64>(GetParam()); }
+
+XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
+
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
@@ -267,13 +288,32 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{64 * 1024, 1024 + 1, 63 * 1024 - 1, 1},
         R1Spec{64 * 1024, 32 * 1024, 33 * 1024, 1},
         R1Spec{64 * 1024, 32 * 1024 + 1, 33 * 1024 - 1, 1},
-        R1Spec{64 * 1024, 32 * 1024 - 17, 36 * 1024 - 18, 1},
+        R1Spec{64 * 1024, 32 * 1024 - 17, 36 * 1024 - 18, 1}
+    ),
+    SliceR1TestDataToString
+);
+
 // TODO(b/69425338): This uses too much memory on GPU.
 #ifndef XLA_TEST_BACKEND_GPU
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1},
+INSTANTIATE_TEST_CASE_P(
+    SliceR1TestBigSlicesInstantiation,
+    SliceR1LargeTest,
+    ::testing::Values(
+          R1Spec{
+              16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
+          R1Spec{
+              16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
+          R1Spec{
+              16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1}
+    ),
+    SliceR1TestDataToString
+);
 #endif
+
+INSTANTIATE_TEST_CASE_P(
+    SliceStridedR1TestInstantiation,
+    SliceR1Test,
+    ::testing::Values(
         R1Spec{10, 2, 4, 2},
         R1Spec{10, 0, 10, 2},
         R1Spec{10, 0, 10, 3},
@@ -285,8 +325,24 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{2047, 1024 - 24, 1024 + 160, 31},
         R1Spec{2047, 1, 2046, 3 * 128},
         R1Spec{4096, 1024 + 3, 4095, 500},
-        R1Spec{8192, 0, 8192, 1024 * 3 + 400}
-        ),
+        R1Spec{8192, 0, 8192, 1024 * 3 + 400},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 2},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 8},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 7},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 125},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 2},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 8},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 7},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 125},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 2},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 8},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 7},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 125},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 2},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 8},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 7},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 125}
+    ),
     SliceR1TestDataToString
 );
 // clang-format on
@@ -310,7 +366,7 @@ XLA_TEST_P(SliceR2Test, DoIt) {
   Array2D<int32> input(spec.input_dim0, spec.input_dim1);
   input.FillUnique();
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a = builder.ConstantR2FromArray2DWithLayout<int32>(
       input, LayoutUtil::MakeLayout(spec.layout));
   builder.Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
@@ -400,7 +456,7 @@ class SliceR4Test : public ClientLibraryTestBase,
     values.FillRandom(3.14f);
     auto expected = ReferenceUtil::Slice4D(
         values, spec.slice_starts, spec.slice_limits, spec.slice_strides);
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto literal = Literal::CreateR4FromArray4DWithLayout(
         values, LayoutUtil::MakeLayout(spec.input_layout));
     auto parameter = builder.Parameter(0, literal->shape(), "p0");

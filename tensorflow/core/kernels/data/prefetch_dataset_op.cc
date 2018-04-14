@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 
 namespace tensorflow {
@@ -37,7 +38,8 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
     int64 buffer_size;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
-    OP_REQUIRES(ctx, buffer_size > 0,
+    OP_REQUIRES(ctx,
+                buffer_size > 0 || buffer_size == PrefetchAutotuner::kAutoTune,
                 errors::InvalidArgument("buffer_size must be > 0"));
 
     *output = new Dataset(ctx, input, buffer_size);
@@ -85,7 +87,8 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
+            auto_tuner_(params.dataset->buffer_size_) {}
 
       ~Iterator() override {
         // Signal the prefetch thread to terminate it. We will then
@@ -113,6 +116,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
           // Wait until the next element in the buffer has been
           // produced, or we are shutting down.
           while (!cancelled_ && !prefetch_thread_finished_ && buffer_.empty()) {
+            auto_tuner_.RecordEmpty();
             cond_var_.wait(l);
           }
 
@@ -129,6 +133,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
             if (s.ok()) {
               *out_tensors = std::move(buffer_.front().value);
             }
+            auto_tuner_.RecordConsumption(buffer_.size());
             buffer_.pop_front();
             *end_of_sequence = false;
 
@@ -242,7 +247,8 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
           // 1. Wait for a slot in the buffer.
           {
             mutex_lock l(mu_);
-            while (!cancelled_ && buffer_.size() == dataset()->buffer_size_) {
+            while (!cancelled_ &&
+                   buffer_.size() == auto_tuner_.buffer_limit()) {
               cond_var_.wait(l);
             }
 
@@ -323,6 +329,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
       mutex parent_mu_ ACQUIRED_BEFORE(mu_);
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(parent_mu_);
       condition_variable cond_var_;
+      PrefetchAutotuner auto_tuner_ GUARDED_BY(mu_);
       std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
       std::unique_ptr<Thread> prefetch_thread_ GUARDED_BY(mu_);
       bool cancelled_ GUARDED_BY(mu_) = false;

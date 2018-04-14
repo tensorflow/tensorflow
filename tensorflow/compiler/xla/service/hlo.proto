@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// DO NOT USE THESE PROTO MESSAGES FOR ANYTHING OTHER THAN DEBUGGING.
-//
-// Don't use these protos in the real compilation or execution codepaths. The
-// data format is meant for debugging only, and may change without notice.
+// This proto file defines messages which represent the HLO module. This is a
+// full fidelity serialization of the c++ HLO constructs.
 //
 // Many of the protos below are simple 1-to-1 serializations of the
-// corresponding C++ classes.
+// corresponding C++ classes, e.g., HloModule, HloComputation, and
+// HloInstruction.
 //
 // FIELD NAMES ARE IMPORTANT
 //
@@ -38,15 +37,18 @@ option cc_enable_arenas = true;
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
+  reserved 12;
+  reserved "fused_instructions_computation";
+  reserved 4;
+  reserved "operand_names";
+  reserved 5;
+  reserved "control_predecessor_names";
+  reserved 6;
+  reserved "called_computation_names";
 
   string name = 1;
   string opcode = 2;
   xla.Shape shape = 3;
-
-  // TODO(b/67782397): Replace instruction names with HloInstruction ids.
-  repeated string operand_names = 4;
-  repeated string control_predecessor_names = 5;
-  repeated string called_computation_names = 6;
 
   xla.OpMetadata metadata = 7;
 
@@ -58,7 +60,6 @@ message HloInstructionProto {
 
   // Fusion state, only present for kFusion.
   string fusion_kind = 11;
-  HloComputationProto fused_instructions_computation = 12;
 
   // Index for kGetTupleElement.
   int64 tuple_index = 13;
@@ -133,28 +134,57 @@ message HloInstructionProto {
   // Gather dimension numbers.
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
   repeated int64 gather_window_bounds = 34;
+
+  // Compute Host.
+  string channel_name = 41;
+  int64 cost_estimate_ns = 42;
+
+  // The id of this instruction.
+  int64 id = 35;
+
+  repeated int64 operand_ids = 36;
+  repeated int64 control_predecessor_ids = 37;
+  repeated int64 called_computation_ids = 38;
+
+  xla.OpSharding sharding = 40;
 }
 
 // Serialization of HloComputation.
 message HloComputationProto {
+  reserved 3;
+  reserved "root_name";
+
   string name = 1;
 
   // The array of instructions is always in a valid dependency order, where
   // operands appear before their users.
   repeated HloInstructionProto instructions = 2;
 
-  // The name of the root of the computation.
-  string root_name = 3;
+  // The program shape (with layout) of this computation.
+  xla.ProgramShape program_shape = 4;
+
+  // The id of this computation.
+  int64 id = 5;
+
+  // The id of the root of the computation.
+  int64 root_id = 6;
 }
 
 // Serialization of HloModule.
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
+  int64 entry_computation_id = 6;
 
   // The array of computations is always in a valid dependency order, where
   // callees appear before their callers.
   repeated HloComputationProto computations = 3;
+
+  // The program shape (with layout) of the entry computation.
+  xla.ProgramShape program_shape = 4;
+
+  // The id of this module.
+  int64 id = 5;
 }
 
 // Serialization of HloOrdering.
