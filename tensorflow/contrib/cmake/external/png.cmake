@@ -41,6 +41,7 @@ endif()
 set(png_HEADERS
     "${png_INSTALL}/include/libpng16/png.h"
     "${png_INSTALL}/include/libpng16/pngconf.h"
+    "${png_INSTALL}/include/libpng16/pnglibconf.h"
 )
 
 ExternalProject_Add(png
