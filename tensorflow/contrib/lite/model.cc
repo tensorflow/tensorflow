@@ -57,6 +57,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_STRING:
       *type = kTfLiteString;
       break;
+    case TensorType_BOOL:
+      *type = kTfLiteBool;
+      break;
     default:
       error_reporter->Report("Unimplemented data type %s (%d) in tensor\n",
                              EnumNameTensorType(tensor_type), tensor_type);
@@ -330,6 +333,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->stride_height = conv_params->stride_h();
         params->activation =
             parse_activation(conv_params->fused_activation_function());
+        params->dilation_width_factor = conv_params->dilation_w_factor();
+        params->dilation_height_factor = conv_params->dilation_h_factor();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -660,6 +665,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                           error_reporter);
       }
       *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_LESS: {
       break;
     }
     case BuiltinOperator_DELEGATE: {

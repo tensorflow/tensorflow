@@ -96,7 +96,7 @@ InterpreterCompiler::CompileAheadOfTime(
 }
 
 se::Platform::Id InterpreterCompiler::PlatformId() const {
-  return sep::kInterpreterPlatformId;
+  return sep::kXlaInterpreterPlatformId;
 }
 
 HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
@@ -109,11 +109,11 @@ static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
 }
 
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(sep::kInterpreterPlatformId, []() {
+  xla::Compiler::RegisterCompilerFactory(sep::kXlaInterpreterPlatformId, []() {
     return xla::MakeUnique<xla::interpreter::InterpreterCompiler>();
   });
-  xla::ComputationPlacer::RegisterComputationPlacer(sep::kInterpreterPlatformId,
-                                                    &CreateComputationPlacer);
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      sep::kXlaInterpreterPlatformId, &CreateComputationPlacer);
   return true;
 }
 

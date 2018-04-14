@@ -65,6 +65,11 @@ class ConstantTest(test.TestCase):
     self._testCpu(x)
     self._testGpu(x)
 
+  def testInvalidDType(self):
+    # Test case for GitHub issue 18474
+    with self.assertRaises(TypeError):
+      constant_op.constant(dtypes_lib.string, "[,]")
+
   def testBFloat16(self):
     bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(bfloat16))

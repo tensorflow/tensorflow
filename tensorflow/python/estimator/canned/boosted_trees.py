@@ -317,27 +317,28 @@ def _bt_model_fn(
                                                    head.logits_dimension)
 
     # Create Ensemble resources.
-    if is_single_machine:
-      tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
-      local_tree_ensemble = tree_ensemble
-      ensemble_reload = control_flow_ops.no_op()
-    else:
-      tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
-      with ops.device(worker_device):
-        local_tree_ensemble = boosted_trees_ops.TreeEnsemble(
-            name=name + '_local', is_local=True)
-      # TODO(soroush): Do partial updates if this becomes a bottleneck.
-      ensemble_reload = local_tree_ensemble.deserialize(
-          *tree_ensemble.serialize())
-
+    tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
     # Create logits.
     if mode != model_fn.ModeKeys.TRAIN:
       logits = boosted_trees_ops.predict(
-          tree_ensemble_handle=local_tree_ensemble.resource_handle,
+          # For non-TRAIN mode, ensemble doesn't change after initialization,
+          # so no local copy is needed; using tree_ensemble directly.
+          tree_ensemble_handle=tree_ensemble.resource_handle,
           bucketized_features=input_feature_list,
           logits_dimension=head.logits_dimension,
           max_depth=tree_hparams.max_depth)
     else:
+      if is_single_machine:
+        local_tree_ensemble = tree_ensemble
+        ensemble_reload = control_flow_ops.no_op()
+      else:
+        # Have a local copy of ensemble for the distributed setting.
+        with ops.device(worker_device):
+          local_tree_ensemble = boosted_trees_ops.TreeEnsemble(
+              name=name + '_local', is_local=True)
+        # TODO(soroush): Do partial updates if this becomes a bottleneck.
+        ensemble_reload = local_tree_ensemble.deserialize(
+            *tree_ensemble.serialize())
       if cache:
         cached_tree_ids, cached_node_ids, cached_logits = cache.lookup()
       else:
@@ -349,8 +350,8 @@ def _bt_model_fn(
             array_ops.zeros(
                 [batch_size, head.logits_dimension], dtype=dtypes.float32))
       with ops.control_dependencies([ensemble_reload]):
-        (stamp_token, num_trees, num_finalized_trees,
-         num_attempted_layers) = local_tree_ensemble.get_states()
+        (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
+         last_layer_nodes_range) = local_tree_ensemble.get_states()
         summary.scalar('ensemble/num_trees', num_trees)
         summary.scalar('ensemble/num_finalized_trees', num_finalized_trees)
         summary.scalar('ensemble/num_attempted_layers', num_attempted_layers)
@@ -393,10 +394,7 @@ def _bt_model_fn(
         (node_ids_per_feature, gains_list, thresholds_list,
          left_node_contribs_list, right_node_contribs_list) = (
              boosted_trees_ops.calculate_best_gains_per_feature(
-                 node_id_range=array_ops.stack([
-                     math_ops.reduce_min(node_ids),
-                     math_ops.reduce_max(node_ids)
-                 ]),
+                 node_id_range=last_layer_nodes_range,
                  stats_summary_list=stats_summary_list,
                  l1=tree_hparams.l1,
                  l2=tree_hparams.l2,

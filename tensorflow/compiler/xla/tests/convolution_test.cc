@@ -745,5 +745,28 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
                     error_spec_);
 }
 
+// Check that GPU convs still work if the CudnnAlgorithmPicker pass is disabled.
+// (We run this test on all platforms, because, what the heck.)
+XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
+  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+      "cudnn-convolution-algorithm-picker");
+
+  XlaBuilder builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto filter = builder.Parameter(1, filter_shape, "filter");
+  builder.Conv(input, filter, {1, 1}, Padding::kValid);
+
+  Array4D<float> input_data(1, 1, 1, 2);
+  input_data.FillIota(0);
+  Array4D<float> filter_data(1, 1, 1, 2);
+  filter_data.FillIota(10);
+
+  ComputeAndCompare(&builder,
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))});
+}
+
 }  // namespace
 }  // namespace xla
