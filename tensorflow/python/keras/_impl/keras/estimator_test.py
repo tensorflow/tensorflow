@@ -141,22 +141,15 @@ def randomize_io_type(array, name):
     return {name: array}
 
 
-def lambda_string_to(k):
-  """Dummy function which reads a number.
-  This will fail if k.dtype != string.
-  Locally importing gen_parsing_ops for it to be available in the scope.
-  Otherwise, _context is None in `gen_parsing_ops`"""
-  from tensorflow.python.ops.parsing_ops import gen_parsing_ops
-  return gen_parsing_ops.string_to_number(k)
-
-
 def multi_inputs_multi_outputs_model():
   # test multi-input layer
+  # Local import for closure
+  from tensorflow.python.ops.parsing_ops import gen_parsing_ops
   a = keras.layers.Input(shape=(16,), name='input_a')
   b = keras.layers.Input(shape=(16,), name='input_b')
   inp_s = keras.layers.Input(shape=(8,), dtype='string', name='input_s')
   # Convert string to number
-  s = keras.layers.Lambda(lambda_string_to)(inp_s)
+  s = keras.layers.Lambda(lambda x: gen_parsing_ops.string_to_number(x))(inp_s)
   dense = keras.layers.Dense(8, name='dense_1')
 
   a_2 = dense(a)
