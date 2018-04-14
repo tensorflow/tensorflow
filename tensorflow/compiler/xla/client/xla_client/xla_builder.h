@@ -53,6 +53,7 @@ class XlaBuilder;
 class XlaOp {
  public:
   XlaOp() : handle_(0), builder_(nullptr) {}
+  ~XlaOp() {}
 
   StatusOr<Shape> GetShape() const;
 

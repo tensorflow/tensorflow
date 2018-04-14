@@ -1782,13 +1782,22 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
 
   if (node->op() == "Mul" && node->input(0) == node->input(1) &&
       !OptimizedNodeExists(*node, "square")) {
-    NodeDef* new_square_node = AddNode(*node, "square", /*copy_node=*/true);
-    new_square_node->set_op("Square");
-    for (int i = 1; i < new_square_node->input_size(); ++i) {
-      new_square_node->set_input(i - 1, new_square_node->input(i));
+    const DataType type = GetDataTypeFromAttr(*node, "T");
+    bool is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
+    string dontcare;
+    string device;
+    bool is_on_cpu =
+        DeviceNameUtils::SplitDeviceName(node->device(), &dontcare, &device) &&
+        str_util::StrContains(device, DEVICE_CPU);
+    if (!is_complex || is_on_cpu) {
+      NodeDef* new_square_node = AddNode(*node, "square", /*copy_node=*/true);
+      new_square_node->set_op("Square");
+      for (int i = 1; i < new_square_node->input_size(); ++i) {
+        new_square_node->set_input(i - 1, new_square_node->input(i));
+      }
+      new_square_node->mutable_input()->RemoveLast();
+      return new_square_node->name();
     }
-    new_square_node->mutable_input()->RemoveLast();
-    return new_square_node->name();
   }
 
   if (IsAggregate(*node) && NumNonControlInputs(*node) > 0) {

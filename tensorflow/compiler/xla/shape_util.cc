@@ -824,6 +824,18 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return new_shape;
 }
 
+/* static */ bool ShapeUtil::IndexIsValid(const Shape& shape,
+                                          ShapeIndexView index) {
+  const Shape* subshape = &shape;
+  for (auto i : index) {
+    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size()) {
+      return false;
+    }
+    subshape = &subshape->tuple_shapes(i);
+  }
+  return true;
+}
+
 /* static */ const Shape& ShapeUtil::GetSubshape(const Shape& shape,
                                                  ShapeIndexView index) {
   const Shape* return_shape = &shape;
