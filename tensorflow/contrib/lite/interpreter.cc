@@ -570,6 +570,12 @@ TfLiteStatus Interpreter::Invoke() {
     }
   }
 
+  if (!allow_buffer_handle_output_) {
+    for (int tensor_index : outputs_) {
+      EnsureTensorDataIsReadable(tensor_index);
+    }
+  }
+
   return status;
 }
 
