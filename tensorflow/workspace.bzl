@@ -172,6 +172,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "b852cc90259a7357c8a323f108f2cec6e85979fc3b18b5590b99e0130044b2cf",
       strip_prefix = "gemmlowp-7c7c744640ddc3d0af18fb245b4d23228813a71b",
+      build_file = clean_dep("//third_party:gemmlowp.BUILD"),
   )
 
   tf_http_archive(
@@ -335,6 +336,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "846d907acf472ae233ec0882ef3a2d24edbbe834b80c305e867ac65a1f2c59e3",
       strip_prefix = "protobuf-396336eb961b75f03b25824fe86cf6490fb75e3a",
+      build_file = clean_dep("//third_party:protobuf_archive.BUILD"),
   )
 
   # We need to import the protobuf library under the names com_google_protobuf
@@ -489,6 +491,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "524ba98a56300149696481b4cb9ddebd0c7b7ac9b9f6edee81da2d2d7e5d2bb3",
       strip_prefix = "boringssl-a0fb951d2a26a8ee746b52f3ba81ab011a0af778",
+      build_file = clean_dep("//third_party:boringssl.BUILD"),
   )
 
   tf_http_archive(

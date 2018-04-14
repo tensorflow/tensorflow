@@ -8,5 +8,6 @@ def runtime_copts():
       "//conditions:default": []
   }) + select({
       "//tensorflow:android": ["-O2"],
+      "//tensorflow:android_cc": ["-O2"],
       "//conditions:default": []
   }))

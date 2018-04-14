@@ -17,7 +17,7 @@ tf_library(
 """
 
 load("//tensorflow:tensorflow.bzl",
-     "if_android", "tf_cc_test", "tf_copts")
+     "if_android", "if_android_cc", "tf_cc_test", "tf_copts")
 
 def tf_library(name, graph, config,
                freeze_checkpoint=None, freeze_saver=None,
@@ -317,7 +317,7 @@ def tf_library(name, graph, config,
         srcs=[benchmark_file],
         testonly = testonly,
         copts = tf_copts(),
-        linkopts = if_android(["-pie", "-s"]),
+        linkopts = if_android(["-pie", "-s"]) + if_android_cc(["-pie", "-s"]),
         deps=[
             ":" + name,
             "//tensorflow/compiler/aot:benchmark",

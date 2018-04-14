@@ -1681,6 +1681,7 @@ cc_library(
     defines = LIB_INTERNAL_DEFINES,
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:android_cc": [],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
