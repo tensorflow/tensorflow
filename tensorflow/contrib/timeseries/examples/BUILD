@@ -25,7 +25,10 @@ py_test(
     srcs = ["predict_test.py"],
     data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # b/67513579
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "notsan",  # b/67513579
+    ],
     deps = [
         ":predict",
         "//tensorflow/python:client_testlib",
@@ -105,16 +108,4 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/estimator:estimator_py",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

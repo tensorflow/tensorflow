@@ -179,20 +179,15 @@ class HloInstruction {
   //   module: the module which will contain the instruction. The newly created
   //     instruction is *not* added to the module or any computation, however.
   //   proto: the proto to convert from.
-  //   instruction_map: a map from instruction name to HloInstruction*. This map
+  //   instruction_map: a map from instruction id to HloInstruction*. This map
   //     must contain all operands of the newly constructed instruction.
-  //   computation_map: a map from computation name to HloComputation*. This map
+  //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
   //     calls.
-  //   add_fused_computation: A function to call to add a fused
-  //     computation. Used (clearly) when the instruction is a fusion
-  //     instruction.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       HloModule* module, const HloInstructionProto& proto,
-      const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
-      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
-      const std::function<void(std::unique_ptr<HloComputation>)>&
-          add_fused_computation);
+      const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
+      const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
@@ -406,6 +401,10 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
+  // Creates a broadcast-size-one-dimensions instruction.
+  static std::unique_ptr<HloInstruction> CreateBroadcastDimOne(
+      const Shape& shape, HloInstruction* operand);
+
   // Creates a sequence of instructions that performs an explicit broadcast of
   // the operand to the target shape.
   //
@@ -502,7 +501,8 @@ class HloInstruction {
   static GatherDimensionNumbers MakeGatherDimNumbers(
       tensorflow::gtl::ArraySlice<int64> output_window_dims,
       tensorflow::gtl::ArraySlice<int64> elided_window_dims,
-      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims);
+      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims,
+      int64 index_vector_dim);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -824,6 +824,12 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
   int64 channel_id() const { return channel_id_; }
 
+  // Returns the channel name associated with the instruction. The name is
+  // used to identify host Send/Recv operations.
+  //
+  // Precondition: opcode() == HloOpcode::kHostCompute
+  string channel_name() const { return channel_name_; }
+
   // Returns feature_index field associated with the instruction. The index
   // represents the index of the feature dimension.
   //
@@ -926,6 +932,13 @@ class HloInstruction {
   const HloSharding& sharding_or_default(const HloSharding& default_) const {
     return sharding_ ? *sharding_ : default_;
   }
+  // Returns the sharding unique device, if any.
+  tensorflow::gtl::optional<int64> sharding_unique_device() const {
+    if (sharding_ == nullptr || !sharding_->HasUniqueDevice()) {
+      return tensorflow::gtl::optional<int64>();
+    }
+    return sharding_->UniqueDevice().ValueOrDie();
+  }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
@@ -935,6 +948,13 @@ class HloInstruction {
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
   bool has_sharding() const { return sharding_ != nullptr; }
+
+  // When creating a new instruction which either replaces, or shifts up (kCopy
+  // insertion case), another instruction, we need to make sure the certain
+  // properties of the new instruction are copied into the derived one. As of
+  // today, the metadata and sharding will be propagated to the derived
+  // instruction.
+  void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
 
   // Adds a new operand the fusion instruction.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
@@ -1433,7 +1453,7 @@ class HloInstruction {
   string channel_name_;
 
   // Estimate of the duration of a host computation in nanoseconds.
-  int64 cost_estimate_ns_;
+  int64 cost_estimate_ns_ = 0;
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;

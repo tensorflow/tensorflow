@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
 #include "tensorflow/core/lib/core/errors.h"
@@ -185,7 +185,7 @@ class LaunchDeepConvOp<CPUDevice, float> {
   }
 };
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 template <typename Device, typename T>
 class LaunchXsmmConvOp {
  public:
@@ -401,7 +401,7 @@ class Conv2DOp : public BinaryOp<T> {
       return;
     }
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
     if (LaunchXsmmConvOp<Device, T>::Run(
             context, input, filter, batch, input_rows, input_cols, in_depth,
             filter_rows, filter_cols, pad_rows, pad_cols, out_rows, out_cols,
@@ -446,10 +446,11 @@ class Conv2DOp : public BinaryOp<T> {
 #if !defined(USE_GEMM_FOR_CONV)
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
-template class LaunchConv2DOp<CPUDevice, float>;
+template struct LaunchConv2DOp<CPUDevice, float>;
 
 #if GOOGLE_CUDA
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
@@ -810,6 +811,7 @@ namespace functor {
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);     \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
+DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
@@ -822,6 +824,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv2DOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    Conv2DOp<GPUDevice, double>);
 
 // To be used inside depthwise_conv_op.cc.
 template class LaunchConv2DOp<GPUDevice, float>;

@@ -57,76 +57,6 @@ namespace xla {
 // anonymous namespace, instead of three or four spread all over this file.
 namespace {
 
-// Creates and returns a copy of the given instruction with a different
-// layout. Tuple-shaped instructions will be deep-copied, and the last Tuple
-// instruction producing the copy is returned.
-StatusOr<HloInstruction*> CreateCopyWithNewLayout(
-    const Shape& shape_with_layout, HloInstruction* instruction) {
-  TF_RET_CHECK(LayoutUtil::HasLayout(shape_with_layout));
-  DCHECK(ShapeUtil::Compatible(shape_with_layout, instruction->shape()))
-      << ShapeUtil::HumanString(shape_with_layout) << " "
-      << ShapeUtil::HumanString(instruction->shape())
-      << " instruction: " << instruction->ToString();
-
-  if (ShapeUtil::IsTuple(instruction->shape())) {
-    // Deep-copy tuples.
-    std::vector<HloInstruction*> element_copies;
-    for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
-         ++i) {
-      HloInstruction* gte = instruction->parent()->AddInstruction(
-          HloInstruction::CreateGetTupleElement(
-              ShapeUtil::GetSubshape(instruction->shape(), {i}), instruction,
-              i));
-
-      // Recurse to copy each elements.
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * element_copy,
-          CreateCopyWithNewLayout(
-              ShapeUtil::GetSubshape(shape_with_layout, {i}), gte));
-      element_copies.push_back(element_copy);
-    }
-    // Gather element copies into a tuple with a new Tuple instruction.
-    HloInstruction* tuple_copy = instruction->parent()->AddInstruction(
-        HloInstruction::CreateTuple(element_copies));
-    LayoutUtil::ClearLayout(tuple_copy->mutable_shape());
-    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-        shape_with_layout, tuple_copy->mutable_shape()));
-    return tuple_copy;
-  } else if (ShapeUtil::IsArray(instruction->shape())) {
-    HloInstruction* copy =
-        instruction->parent()->AddInstruction(HloInstruction::CreateUnary(
-            instruction->shape(), HloOpcode::kCopy, instruction));
-    LayoutUtil::ClearLayout(copy->mutable_shape());
-    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-        shape_with_layout, copy->mutable_shape()));
-
-    return copy;
-  } else {
-    return FailedPrecondition(
-        "Can only copy array and tuple shaped instructions");
-  }
-}
-
-// Creates a copy of the given operand if the operand's layout does not match
-// the given layout. This copy replaces the use in the given instruction. Tuple
-// operands will be deep-copied.
-Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
-                                  HloInstruction* instruction,
-                                  int64 operand_no) {
-  HloInstruction* operand = instruction->mutable_operand(operand_no);
-  TF_RET_CHECK(operand_layout.LayoutIsSet());
-  TF_RET_CHECK(LayoutUtil::HasLayout(operand->shape()));
-
-  if (ShapeUtil::Equal(operand_layout.shape(), operand->shape())) {
-    // Operand layout already matches our constraint. Nothing to do.
-    return Status::OK();
-  }
-
-  TF_ASSIGN_OR_RETURN(HloInstruction * operand_copy,
-                      CreateCopyWithNewLayout(operand_layout.shape(), operand));
-
-  return instruction->ReplaceOperandWith(operand_no, operand_copy);
-}
 
 }  // namespace
 
@@ -192,17 +122,34 @@ LayoutConstraints::LayoutConstraints(
   }
 }
 
+PointsToSet::BufferSet* LayoutConstraints::GetBufferSet(
+    const HloInstruction* instruction) const {
+  auto it = buffer_sets_cache_.find(instruction);
+  if (it != buffer_sets_cache_.end()) {
+    return it->second.get();
+  }
+  auto& buffer_set =
+      buffer_sets_cache_
+          .emplace(instruction, MakeUnique<PointsToSet::BufferSet>())
+          .first->second;
+  const auto& points_to_set = points_to_analysis_.GetPointsToSet(instruction);
+  points_to_set.ForEachElement(
+      [&buffer_set](const ShapeIndex& /*index*/,
+                    const PointsToSet::BufferList& buffers) {
+        buffer_set->insert(buffers.begin(), buffers.end());
+      });
+  return buffer_set.get();
+}
+
 bool LayoutConstraints::OperandBufferForwarded(
     const HloInstruction* instruction, int64 operand_no) const {
   // The operand is potentially forwarded if the intersection of points-to sets
   // of the operand and the instruction is non-empty.
-  auto output_buffers =
-      points_to_analysis_.GetPointsToSet(instruction).CreateFlattenedSet();
-  auto operand_buffers =
-      points_to_analysis_.GetPointsToSet(instruction->operand(operand_no))
-          .CreateFlattenedSet();
-  for (const LogicalBuffer* output_buffer : output_buffers) {
-    if (operand_buffers.count(output_buffer) > 0) {
+  PointsToSet::BufferSet* output_buffers = GetBufferSet(instruction);
+  PointsToSet::BufferSet* operand_buffers =
+      GetBufferSet(instruction->operand(operand_no));
+  for (const LogicalBuffer* output_buffer : *output_buffers) {
+    if (operand_buffers->count(output_buffer) > 0) {
       return true;
     }
   }
@@ -775,6 +722,99 @@ Status CheckConstantLayout(HloInstruction* constant) {
 }
 
 }  // namespace
+
+StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
+    const Shape& shape_with_layout, HloInstruction* instruction) {
+  TF_RET_CHECK(LayoutUtil::HasLayout(shape_with_layout));
+  DCHECK(ShapeUtil::Compatible(shape_with_layout, instruction->shape()))
+      << ShapeUtil::HumanString(shape_with_layout) << " "
+      << ShapeUtil::HumanString(instruction->shape())
+      << " instruction: " << instruction->ToString();
+
+  if (ShapeUtil::IsTuple(instruction->shape())) {
+    // Deep-copy tuples.
+    std::vector<HloInstruction*> element_copies;
+    for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
+         ++i) {
+      HloInstruction* gte = instruction->parent()->AddInstruction(
+          HloInstruction::CreateGetTupleElement(
+              ShapeUtil::GetSubshape(instruction->shape(), {i}), instruction,
+              i));
+      SetupCopiedInstruction(*instruction, gte, {i});
+      // Recurse to copy each elements.
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * element_copy,
+          CreateCopyWithNewLayout(
+              ShapeUtil::GetSubshape(shape_with_layout, {i}), gte));
+      element_copies.push_back(element_copy);
+    }
+    // Gather element copies into a tuple with a new Tuple instruction.
+    HloInstruction* tuple_copy = instruction->parent()->AddInstruction(
+        HloInstruction::CreateTuple(element_copies));
+    SetupCopiedInstruction(*instruction, tuple_copy, {});
+    LayoutUtil::ClearLayout(tuple_copy->mutable_shape());
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        shape_with_layout, tuple_copy->mutable_shape()));
+    return tuple_copy;
+  } else if (ShapeUtil::IsArray(instruction->shape())) {
+    HloInstruction* copy =
+        instruction->parent()->AddInstruction(HloInstruction::CreateUnary(
+            instruction->shape(), HloOpcode::kCopy, instruction));
+    SetupCopiedInstruction(*instruction, copy, {});
+    LayoutUtil::ClearLayout(copy->mutable_shape());
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        shape_with_layout, copy->mutable_shape()));
+
+    return copy;
+  } else {
+    return FailedPrecondition(
+        "Can only copy array and tuple shaped instructions");
+  }
+}
+
+// Creates a copy of the given operand if the operand's layout does not match
+// the given layout. This copy replaces the use in the given instruction. Tuple
+// operands will be deep-copied.
+Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
+    const ShapeLayout& operand_layout, HloInstruction* instruction,
+    int64 operand_no) {
+  HloInstruction* operand = instruction->mutable_operand(operand_no);
+  TF_RET_CHECK(operand_layout.LayoutIsSet());
+  TF_RET_CHECK(LayoutUtil::HasLayout(operand->shape()));
+
+  if (ShapeUtil::Equal(operand_layout.shape(), operand->shape())) {
+    // Operand layout already matches our constraint. Nothing to do.
+    return Status::OK();
+  }
+
+  TF_ASSIGN_OR_RETURN(HloInstruction * operand_copy,
+                      CreateCopyWithNewLayout(operand_layout.shape(), operand));
+
+  return instruction->ReplaceOperandWith(operand_no, operand_copy);
+}
+
+void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
+                                              HloInstruction* copy,
+                                              const ShapeIndex& index) {
+  if (instruction.has_sharding()) {
+    // If the index is empty, we want to copy the whole sharding, in case the
+    // sharding is a tuple sharding.
+    HloSharding sharding =
+        !index.empty() && instruction.sharding().IsTuple()
+            ? instruction.sharding().GetSubSharding(instruction.shape(), index)
+            : instruction.sharding();
+    // We propagate the sharding to the copied instruction only if it is a
+    // special sharding, like tiled ones, or special devices like the
+    // HostCompute module.
+    // Otherwise it is preferable to leave the new instruction without device,
+    // and let the automatic device placer to choose the best location.
+    if (!sharding.HasUniqueDevice() ||
+        HloSharding::IsReservedDevice(sharding.UniqueDevice().ValueOrDie())) {
+      copy->set_sharding(sharding);
+    }
+  }
+  copy->set_metadata(instruction.metadata());
+}
 
 Status LayoutAssignment::CheckLayouts(HloModule* module) {
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
@@ -1544,6 +1584,13 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
     // infeeds.  Clearing the layouts here avoids hiding potential bugs in the
     // layout assignment pass that may accidently use the existing layout.
     for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kBitcast) {
+        // bitcasts are inherently layout sensitive and so a bitcast instruction
+        // present in the IR before layout assignment is a bug.
+        return InternalError(
+            "Unexpected bitcast operation seen during layout assignment: %s.",
+            instruction->ToString().c_str());
+      }
       if (instruction->opcode() != HloOpcode::kInfeed) {
         LayoutUtil::ClearLayout(instruction->mutable_shape());
       }

@@ -315,7 +315,7 @@ class HParams(object):
 
   Hyperparameters have type, which is inferred from the type of their value
   passed at construction type.   The currently supported types are: integer,
-  float, string, and list of integer, float, or string.
+  float, boolean, string, and list of integer, float, boolean, or string.
 
   You can override hyperparameter values by calling the
   [`parse()`](#HParams.parse) method, passing a string of comma separated
@@ -357,6 +357,8 @@ class HParams(object):
     hparams.parse_json('{"learning_rate": 0.3, "activations": "relu"}')
   ```
   """
+
+  _HAS_DYNAMIC_ATTRIBUTES = True  # Required for pytype checks.
 
   def __init__(self, hparam_def=None, model_structure=None, **kwargs):
     """Create an instance of `HParams` from keyword arguments.
@@ -627,6 +629,9 @@ class HParams(object):
 
   def __str__(self):
     return str(sorted(self.values().items()))
+
+  def __repr__(self):
+    return '%s(%s)' % (type(self).__name__, self.__str__())
 
   @staticmethod
   def _get_kind_name(param_type, is_list):

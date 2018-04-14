@@ -31,13 +31,14 @@ limitations under the License.
   __attribute__((__format__(__printf__, string_index, first_to_check)))
 #define TF_SCANF_ATTRIBUTE(string_index, first_to_check) \
   __attribute__((__format__(__scanf__, string_index, first_to_check)))
-#elif defined(COMPILER_MSVC)
+#elif defined(_MSC_VER)
 // Non-GCC equivalents
 #define TF_ATTRIBUTE_NORETURN __declspec(noreturn)
-#define TF_ATTRIBUTE_ALWAYS_INLINE
+#define TF_ATTRIBUTE_ALWAYS_INLINE __forceinline
 #define TF_ATTRIBUTE_NOINLINE
 #define TF_ATTRIBUTE_UNUSED
 #define TF_ATTRIBUTE_COLD
+#define TF_ATTRIBUTE_WEAK
 #define TF_MUST_USE_RESULT
 #define TF_PACKED
 #define TF_PRINTF_ATTRIBUTE(string_index, first_to_check)
@@ -57,7 +58,7 @@ limitations under the License.
 #endif
 
 // Control visiblity outside .so
-#if defined(COMPILER_MSVC)
+#if defined(_WIN32)
 #ifdef TF_COMPILE_LIBRARY
 #define TF_EXPORT __declspec(dllexport)
 #else
@@ -65,13 +66,20 @@ limitations under the License.
 #endif  // TF_COMPILE_LIBRARY
 #else
 #define TF_EXPORT __attribute__((visibility("default")))
-#endif  // COMPILER_MSVC
+#endif  // _WIN32
 
-// GCC can be told that a certain branch is not likely to be taken (for
-// instance, a CHECK failure), and use that information in static analysis.
-// Giving it this information can help it optimize for the common case in
-// the absence of better information (ie. -fprofile-arcs).
-#if defined(COMPILER_GCC3)
+#ifdef __has_builtin
+#define TF_HAS_BUILTIN(x) __has_builtin(x)
+#else
+#define TF_HAS_BUILTIN(x) 0
+#endif
+
+// Compilers can be told that a certain branch is not likely to be taken
+// (for instance, a CHECK failure), and use that information in static
+// analysis. Giving it this information can help it optimize for the
+// common case in the absence of better information (ie.
+// -fprofile-arcs).
+#if TF_HAS_BUILTIN(__builtin_expect) || (defined(__GNUC__) && __GNUC__ >= 3)
 #define TF_PREDICT_FALSE(x) (__builtin_expect(x, 0))
 #define TF_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
 #else

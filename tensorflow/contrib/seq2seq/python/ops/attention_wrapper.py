@@ -339,7 +339,8 @@ def _luong_score(query, keys, scale):
   if scale:
     # Scalar used in weight scaling
     g = variable_scope.get_variable(
-        "attention_g", dtype=dtype, initializer=1.)
+        "attention_g", dtype=dtype,
+        initializer=init_ops.ones_initializer, shape=())
     score = g * score
   return score
 
@@ -609,8 +610,8 @@ def monotonic_attention(p_choose_i, previous_attention, mode):
   addition, once an input sequence element is attended to at a given output
   timestep, elements occurring before it cannot be attended to at subsequent
   output timesteps.  This function generates attention distributions according
-  to these assumptions.  For more information, see ``Online and Linear-Time
-  Attention by Enforcing Monotonic Alignments''.
+  to these assumptions.  For more information, see `Online and Linear-Time
+  Attention by Enforcing Monotonic Alignments`.
 
   Args:
     p_choose_i: Probability of choosing input sequence/memory element i.  Should
@@ -736,7 +737,7 @@ class _BaseMonotonicAttentionMechanism(_BaseAttentionMechanism):
   """Base attention mechanism for monotonic attention.
 
   Simply overrides the initial_alignments function to provide a dirac
-  distribution,which is needed in order for the monotonic attention
+  distribution, which is needed in order for the monotonic attention
   distributions to have the correct behavior.
   """
 
@@ -763,7 +764,7 @@ class _BaseMonotonicAttentionMechanism(_BaseAttentionMechanism):
 class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
   """Monotonic attention mechanism with Bahadanau-style energy function.
 
-  This type of attention encorces a monotonic constraint on the attention
+  This type of attention enforces a monotonic constraint on the attention
   distributions; that is once the model attends to a given point in the memory
   it can't attend to any prior points at subsequence output timesteps.  It
   achieves this by using the _monotonic_probability_fn instead of softmax to
@@ -867,7 +868,7 @@ class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
 class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
   """Monotonic attention mechanism with Luong-style energy function.
 
-  This type of attention encorces a monotonic constraint on the attention
+  This type of attention enforces a monotonic constraint on the attention
   distributions; that is once the model attends to a given point in the memory
   it can't attend to any prior points at subsequence output timesteps.  It
   achieves this by using the _monotonic_probability_fn instead of softmax to
@@ -1133,7 +1134,7 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
       output_attention: Python bool.  If `True` (default), the output at each
         time step is the attention value.  This is the behavior of Luong-style
         attention mechanisms.  If `False`, the output at each time step is
-        the output of `cell`.  This is the beahvior of Bhadanau-style
+        the output of `cell`.  This is the behavior of Bhadanau-style
         attention mechanisms.  In both cases, the `attention` tensor is
         propagated to the next time step via the state and is used there.
         This flag only controls whether the attention mechanism is propagated
@@ -1152,9 +1153,7 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         is a list, and its length does not match that of `attention_layer_size`.
     """
     super(AttentionWrapper, self).__init__(name=name)
-    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
-      raise TypeError(
-          "cell must be an RNNCell, saw type: %s" % type(cell).__name__)
+    rnn_cell_impl.assert_like_rnncell("cell", cell)
     if isinstance(attention_mechanism, (list, tuple)):
       self._is_multi = True
       attention_mechanisms = attention_mechanism
@@ -1280,7 +1279,8 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         attention_state=self._item_or_tuple(
             a.state_size for a in self._attention_mechanisms),
         alignment_history=self._item_or_tuple(
-            () for _ in self._attention_mechanisms))  # sometimes a TensorArray
+            a.alignments_size if self._alignment_history else ()
+            for a in self._attention_mechanisms))  # sometimes a TensorArray
 
   def zero_state(self, batch_size, dtype):
     """Return an initial (zero) state tuple for this `AttentionWrapper`.
@@ -1320,22 +1320,26 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         cell_state = nest.map_structure(
             lambda s: array_ops.identity(s, name="checked_cell_state"),
             cell_state)
+      initial_alignments = [
+          attention_mechanism.initial_alignments(batch_size, dtype)
+          for attention_mechanism in self._attention_mechanisms]
       return AttentionWrapperState(
           cell_state=cell_state,
           time=array_ops.zeros([], dtype=dtypes.int32),
           attention=_zero_state_tensors(self._attention_layer_size, batch_size,
                                         dtype),
-          alignments=self._item_or_tuple(
-              attention_mechanism.initial_alignments(batch_size, dtype)
-              for attention_mechanism in self._attention_mechanisms),
+          alignments=self._item_or_tuple(initial_alignments),
           attention_state=self._item_or_tuple(
               attention_mechanism.initial_state(batch_size, dtype)
               for attention_mechanism in self._attention_mechanisms),
           alignment_history=self._item_or_tuple(
-              tensor_array_ops.TensorArray(dtype=dtype, size=0,
-                                           dynamic_size=True)
+              tensor_array_ops.TensorArray(
+                  dtype,
+                  size=0,
+                  dynamic_size=True,
+                  element_shape=alignment.shape)
               if self._alignment_history else ()
-              for _ in self._attention_mechanisms))
+              for alignment in initial_alignments))
 
   def call(self, inputs, state):
     """Perform a step of attention-wrapped RNN.

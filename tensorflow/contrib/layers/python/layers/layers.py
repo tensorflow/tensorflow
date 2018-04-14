@@ -51,7 +51,6 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
-from tensorflow.python.layers.maxout import maxout
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
@@ -933,7 +932,8 @@ def convolution(inputs,
                 variables_collections=None,
                 outputs_collections=None,
                 trainable=True,
-                scope=None):
+                scope=None,
+                conv_dims=None):
   """Adds an N-D convolution followed by an optional batch_norm layer.
 
   It is required that 1 <= N <= 3.
@@ -994,6 +994,10 @@ def convolution(inputs,
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for `variable_scope`.
+    conv_dims: Optional convolution dimensionality, when set it would use the
+      corresponding convolution (e.g. 2 for Conv 2D, 3 for Conv 3D, ..). When
+      leaved to None it would select the convolution dimensionality based on
+      the input rank (i.e. Conv ND, with N = input_rank - 2).
 
   Returns:
     A tensor representing the output of the operation.
@@ -1016,6 +1020,9 @@ def convolution(inputs,
     inputs = ops.convert_to_tensor(inputs)
     input_rank = inputs.get_shape().ndims
 
+    if conv_dims is not None and conv_dims + 2 != input_rank:
+      raise ValueError('Convolution expects input with rank %d, got %d' %
+                       (conv_dims + 2, input_rank))
     if input_rank == 3:
       layer_class = convolutional_layers.Convolution1D
     elif input_rank == 4:
@@ -1062,10 +1069,134 @@ def convolution(inputs,
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
+@add_arg_scope
+def convolution1d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=1)
 
-convolution2d = convolution
-convolution3d = convolution
+convolution1d.__doc__ = convolution.__doc__
 
+@add_arg_scope
+def convolution2d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=2)
+
+convolution2d.__doc__ = convolution.__doc__
+
+@add_arg_scope
+def convolution3d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=3)
+
+convolution3d.__doc__ = convolution.__doc__
 
 @add_arg_scope
 def convolution2d_in_plane(
@@ -1411,7 +1542,7 @@ def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
   Args:
      tensor: An `int` `Tensor` to be converted to a `Sparse`.
      eos_token: An integer.
-       It is part of the target label that signfies the end of a sentence.
+       It is part of the target label that signifies the end of a sentence.
      outputs_collections: Collection to add the outputs.
      scope: Optional scope for name_scope.
   """
@@ -1555,7 +1686,7 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
     output_collections: Collection to which the outputs will be added.
     scope: Optional scope for `name_scope`.
   Returns:
-    A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
+    A `Tensor` or `SparseTensor` containing the same values as `inputs`, but
     with innermost dimensions flattened to obtain rank `new_rank`.
 
   Raises:
@@ -2748,7 +2879,7 @@ def softmax(logits, scope=None):
     logits_2d = array_ops.reshape(logits, [-1, num_logits])
     predictions = nn.softmax(logits_2d)
     predictions = array_ops.reshape(predictions, array_ops.shape(logits))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       predictions.set_shape(logits.get_shape())
     return predictions
 
@@ -2941,6 +3072,53 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
 
 
+@add_arg_scope
+def maxout(inputs, num_units, axis=-1, scope=None):
+  """Adds a maxout op from https://arxiv.org/abs/1302.4389
+
+  "Maxout Networks" Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron
+  Courville,
+   Yoshua Bengio
+
+  Usually the operation is performed in the filter/channel dimension. This can
+  also be
+  used after fully-connected layers to reduce number of features.
+
+  Arguments:
+    inputs: Tensor input
+    num_units: Specifies how many features will remain after maxout
+      in the `axis` dimension (usually channel).
+      This must be multiple of number of `axis`.
+    axis: The dimension where max pooling will be performed. Default is the
+    last dimension.
+    scope: Optional scope for variable_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: if num_units is not multiple of number of features.
+  """
+  with variable_scope.variable_scope(scope, 'MaxOut', [inputs]):
+    inputs = ops.convert_to_tensor(inputs)
+    shape = inputs.get_shape().as_list()
+    num_channels = shape[axis]
+    if num_channels % num_units:
+      raise ValueError('number of features({}) is not '
+                       'a multiple of num_units({})'.format(
+                           num_channels, num_units))
+    shape[axis] = -1
+    shape += [num_channels // num_units]
+
+    # Dealing with batches with arbitrary sizes
+    for i in range(len(shape)):
+      if shape[i] is None:
+        shape[i] = array_ops.shape(inputs)[i]
+    outputs = math_ops.reduce_max(
+        array_ops.reshape(inputs, shape), -1, keepdims=False)
+    return outputs
+
+
 def poincare_normalize(x, axis=1, epsilon=1e-5, name=None):
   """Project into the Poincare ball with norm <= 1.0 - epsilon.
 
@@ -2999,16 +3177,16 @@ def legacy_fully_connected(x,
   `activation_fn` is `None`, the result of `y = w * x + b` is
   returned.
 
-  If `x` has shape [\\\(\\text{dim}_0, \\text{dim}_1, ..., \\text{dim}_n\\\)]
-  with more than 2 dimensions (\\\(n > 1\\\)), then we repeat the matrix
+  If `x` has shape [\\(\text{dim}_0, \text{dim}_1, ..., \text{dim}_n\\)]
+  with more than 2 dimensions (\\(n > 1\\)), then we repeat the matrix
   multiply along the first dimensions. The result r is a tensor of shape
-  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`],
-  where \\\( r_{i_0, ..., i_{n-1}, k} =
-  \\sum_{0 \\leq j < \\text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\\).
+  [\\(\text{dim}_0, ..., \text{dim}_{n-1},\\) `num_output_units`],
+  where \\( r_{i_0, ..., i_{n-1}, k} =
+  \sum_{0 \leq j < \text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\).
   This is accomplished by reshaping `x` to 2-D
-  [\\\(\\text{dim}_0 \\cdot ... \\cdot \\text{dim}_{n-1}, \\text{dim}_n\\\)]
+  [\\(\text{dim}_0 \cdot ... \cdot \text{dim}_{n-1}, \text{dim}_n\\)]
   before the matrix multiply and afterwards reshaping it to
-  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`].
+  [\\(\text{dim}_0, ..., \text{dim}_{n-1},\\) `num_output_units`].
 
   This op creates `w` and optionally `b`. Bias (`b`) can be disabled by setting
   `bias_init` to `None`.

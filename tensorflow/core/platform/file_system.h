@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 #ifdef PLATFORM_WINDOWS
@@ -139,10 +138,8 @@ class FileSystem {
   ///  * OK - no errors
   ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   ///                    implemented
-  /// The default implementation uses a combination of GetChildren, MatchPath
-  /// and IsDirectory.
   virtual Status GetMatchingPaths(const string& pattern,
-                                  std::vector<string>* results);
+                                  std::vector<string>* results) = 0;
 
   /// \brief Obtains statistics for the given path.
   virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
@@ -305,74 +302,6 @@ class ReadOnlyMemoryRegion {
   /// \brief Returns the length of the memory region in bytes.
   virtual uint64 length() = 0;
 };
-
-// START_SKIP_DOXYGEN
-
-#ifndef SWIG
-// Degenerate file system that provides no implementations.
-class NullFileSystem : public FileSystem {
- public:
-  NullFileSystem() {}
-
-  ~NullFileSystem() override = default;
-
-  Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
-    return errors::Unimplemented("NewRandomAccessFile unimplemented");
-  }
-
-  Status NewWritableFile(const string& fname,
-                         std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewWritableFile unimplemented");
-  }
-
-  Status NewAppendableFile(const string& fname,
-                           std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewAppendableFile unimplemented");
-  }
-
-  Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
-    return errors::Unimplemented(
-        "NewReadOnlyMemoryRegionFromFile unimplemented");
-  }
-
-  Status FileExists(const string& fname) override {
-    return errors::Unimplemented("FileExists unimplemented");
-  }
-
-  Status GetChildren(const string& dir, std::vector<string>* result) override {
-    return errors::Unimplemented("GetChildren unimplemented");
-  }
-
-  Status DeleteFile(const string& fname) override {
-    return errors::Unimplemented("DeleteFile unimplemented");
-  }
-
-  Status CreateDir(const string& dirname) override {
-    return errors::Unimplemented("CreateDir unimplemented");
-  }
-
-  Status DeleteDir(const string& dirname) override {
-    return errors::Unimplemented("DeleteDir unimplemented");
-  }
-
-  Status GetFileSize(const string& fname, uint64* file_size) override {
-    return errors::Unimplemented("GetFileSize unimplemented");
-  }
-
-  Status RenameFile(const string& src, const string& target) override {
-    return errors::Unimplemented("RenameFile unimplemented");
-  }
-
-  Status Stat(const string& fname, FileStatistics* stat) override {
-    return errors::Unimplemented("Stat unimplemented");
-  }
-};
-#endif
-
-// END_SKIP_DOXYGEN
 
 /// \brief A registry for file system implementations.
 ///

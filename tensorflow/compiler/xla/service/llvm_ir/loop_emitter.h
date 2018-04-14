@@ -63,11 +63,12 @@ class LoopEmitter {
 
   // Emits a loop nest (with a yet-to-be-filled loop body) that iterates through
   // every element in the given shape. Returns the multi-dimensional index that
-  // specifies the element.
-  IrArray::Index EmitIndexAndSetExitBasicBlock() {
+  // specifies the element, will return multiple indices if the loop is
+  // unrolled.
+  std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock() {
     return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"");
   }
-  virtual IrArray::Index EmitIndexAndSetExitBasicBlock(
+  virtual std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock(
       tensorflow::StringPiece loop_name);
 
   // Emits a complete loop nest for every element in the given shape.

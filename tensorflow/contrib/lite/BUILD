@@ -89,6 +89,7 @@ cc_library(
     hdrs = [
         "builtin_op_data.h",
     ],
+    deps = [":context"],
 )
 
 cc_library(
@@ -132,10 +133,11 @@ cc_library(
         ":memory_planner",
         ":schema_fbs_version",
         ":simple_memory_arena",
+        ":util",
+        "//tensorflow/contrib/lite/kernels:eigen_support",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
         "//tensorflow/contrib/lite/schema:schema_fbs",
-        "//tensorflow/core:lib_platform",
     ],
 )
 
@@ -169,6 +171,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/kernels:kernel_util",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/testing:util",
@@ -232,6 +235,27 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        ":context",
+    ],
+)
+
+cc_test(
+    name = "util_test",
+    size = "small",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":context",
+        ":util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 # Test the serialization of a model with optional tensors.
 
 # Model tests
@@ -248,18 +272,3 @@ cc_test(
 #        ],
 #    }),
 #)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "downloads",
-            "examples",
-            "gen",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

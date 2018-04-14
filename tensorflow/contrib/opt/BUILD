@@ -69,6 +69,9 @@ py_test(
     name = "external_optimizer_test",
     srcs = ["python/training/external_optimizer_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",
@@ -87,7 +90,6 @@ py_test(
     srcs = ["python/training/moving_average_optimizer_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss",  # b/73507407
         "notsan",  # b/31055119
     ],
     deps = [
@@ -279,15 +281,4 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

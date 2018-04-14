@@ -279,9 +279,12 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # scope's view of which variables exist.
       variable_captures = _VariableCapturingScope()
       with variable_captures.initializing_scope(), function.capture_tensors(
-          captures):
+          captures), function.AutomaticControlDependencies() as a:
         func_outputs = func(*func_inputs)
-      outputs_list = nest.flatten(func_outputs)
+        outputs_list = nest.flatten(func_outputs)
+        for i, x in enumerate(outputs_list):
+          if x is not None:
+            outputs_list[i] = a.mark_as_return(x)
       if len(outputs_list) == 1 and outputs_list[0] is None:
         outputs_list = []
       output_shapes = [x.shape for x in outputs_list]
@@ -294,9 +297,12 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # knows about all variables.
       tmp_graph.clear_resource_control_flow_state()
       with variable_captures.capturing_scope(), function.capture_tensors(
-          captures):
+          captures), function.AutomaticControlDependencies() as a:
         captured_outputs = func(*func_inputs)
       captured_outlist = nest.flatten(captured_outputs)
+      for i, x in enumerate(captured_outlist):
+        if x is not None:
+          captured_outlist[i] = a.mark_as_return(x)
       capturing_operations = tmp_graph.get_operations()[
           len(initializing_operations):]
 
@@ -319,7 +325,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
   # Also, what about the gradient registry of these functions? Those need to be
   # addressed as well.
   for f in tmp_graph._functions.values():  # pylint: disable=protected-access
-    function._register(f._c_func)  # pylint: disable=protected-access
+    function._register(f._c_func.func)  # pylint: disable=protected-access
   initializer_function = function.GraphModeFunction(
       initialization_name,
       placeholder_inputs,
@@ -400,7 +406,7 @@ def graph_callable(shape_and_dtypes):
     A callable graph object.
   """
   # TODO(alive,apassos): support initialized_value and friends from tf.Variable.
-  assert context.in_eager_mode(), (
+  assert context.executing_eagerly(), (
       "graph_callable can only be used when Eager execution is enabled.")
   def decorator(func):
     return tf_decorator.make_decorator(func,

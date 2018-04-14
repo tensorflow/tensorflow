@@ -71,6 +71,8 @@ See the @{$python/contrib.framework} guide.
 @@model_variable
 @@variable
 @@VariableDeviceChooser
+@@convolutional_delta_orthogonal
+@@convolutional_orthogonal_2d
 @@zero_initializer
 
 @@load_checkpoint
@@ -82,10 +84,15 @@ See the @{$python/contrib.framework} guide.
 @@load_linear_multiclass_bias_initializer
 @@load_variable_slot_initializer
 
+@@argsort
 @@py_func
 @@sort
 
 @@get_placeholders
+
+@@smart_cond
+@@smart_constant_value
+@@smart_case
 
 @@CriticalSection
 
@@ -104,12 +111,13 @@ from tensorflow.contrib.framework.python.ops import *
 
 from tensorflow.python.framework.ops import prepend_name_scope
 from tensorflow.python.framework.ops import strip_name_scope
-from tensorflow.python.ops.control_flow_ops import smart_cond
-from tensorflow.python.ops.control_flow_ops import smart_constant_value
-
+from tensorflow.python.framework.smart_cond import smart_case
+from tensorflow.python.framework.smart_cond import smart_cond
+from tensorflow.python.framework.smart_cond import smart_constant_value
 from tensorflow.python.framework.tensor_spec import BoundedTensorSpec
 from tensorflow.python.framework.tensor_spec import TensorSpec
-
+from tensorflow.python.ops.init_ops import convolutional_delta_orthogonal
+from tensorflow.python.ops.init_ops import convolutional_orthogonal_2d
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['nest']

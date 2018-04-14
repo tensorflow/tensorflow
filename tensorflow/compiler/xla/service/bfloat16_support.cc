@@ -79,6 +79,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kBroadcast:
     case HloOpcode::kClamp:
     case HloOpcode::kConcatenate:
+    case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kMaximum:

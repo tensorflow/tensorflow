@@ -33,7 +33,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
@@ -86,7 +88,6 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      execution_session_(string_pool_),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
           [this](const std::string& name) -> llvm::JITSymbol {
             return this->ResolveRuntimeSymbol(name);
@@ -180,15 +181,24 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenFft);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
+
+  registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
+  registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 

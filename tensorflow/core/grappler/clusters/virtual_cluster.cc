@@ -66,6 +66,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
   }
 
   Costs node_costs;
+  int node_id = 0;
   do {
     OpContext op_context = scheduler.GetCurrNode();
     node_costs = node_estimator_->PredictCosts(op_context);
@@ -73,6 +74,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
       CostGraphDef::Node* cost_node =
           metadata->mutable_cost_graph()->add_node();
       const string& op_name = op_context.name;
+      cost_node->set_id(node_id++);
       cost_node->set_name(op_name);
       cost_node->set_device(op_context.device_name);
       cost_node->set_compute_cost(

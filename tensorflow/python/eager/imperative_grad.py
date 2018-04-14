@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import errors
 
 
 VSpace = collections.namedtuple(
@@ -60,6 +59,5 @@ def imperative_grad(
      or if only non-differentiable functions of the source were used in the
      computation of target.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    return pywrap_tensorflow.TFE_Py_TapeGradient(
-        tape._tape, vspace, target, sources, output_gradients, status)  # pylint: disable=protected-access
+  return pywrap_tensorflow.TFE_Py_TapeGradient(
+      tape._tape, vspace, target, sources, output_gradients)  # pylint: disable=protected-access

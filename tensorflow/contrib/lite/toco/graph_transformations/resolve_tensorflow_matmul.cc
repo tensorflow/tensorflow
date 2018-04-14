@@ -60,6 +60,13 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
   string input_lhs = matmul_op->inputs[0];
   string input_rhs = transpose_op->outputs[0];
 
+  // Construct the new FullyConnectedOperator.
+  auto* fc_op = new FullyConnectedOperator;
+  fc_op->outputs = matmul_op->outputs;
+
+  // Insert the newly constructed FullyConnectedOperator.
+  model->operators.emplace(matmul_it, fc_op) + 1;
+
   // Find the op producing the array passed to this MatMul
   auto previous_op_it = model->operators.begin();
   bool found = false;
@@ -75,13 +82,6 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
     }
   }
   Operator* previous_op = (found) ? previous_op_it->get() : nullptr;
-
-  // Construct the new FullyConnectedOperator.
-  auto* fc_op = new FullyConnectedOperator;
-  fc_op->outputs = matmul_op->outputs;
-
-  // Insert the newly constructed FullyConnectedOperator.
-  model->operators.emplace(matmul_it, fc_op) + 1;
 
   // Refresh iterator.
   matmul_it = model->operators.begin();

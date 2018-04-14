@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,6 +66,23 @@ REGISTER_OP("SparseTensorSliceDataset")
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("GeneratorDataset")
+    .Input("init_func_other_args: Tinit_func_args")
+    .Input("next_func_other_args: Tnext_func_args")
+    .Input("finalize_func_other_args: Tfinalize_func_args")
+    .Output("handle: variant")
+    .Attr("init_func: func")
+    .Attr("next_func: func")
+    .Attr("finalize_func: func")
+    .Attr("Tinit_func_args: list(type) >= 0")
+    .Attr("Tnext_func_args: list(type) >= 0")
+    .Attr("Tfinalize_func_args: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ZipDataset")
     .Input("input_datasets: N * variant")
     .Output("handle: variant")
@@ -88,8 +105,11 @@ REGISTER_OP("RepeatDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);  // TODO(mrry): Validate the
-                                                // shape of `count`.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle count_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &count_shape));
+      return shape_inference::ScalarShape(c);
+    });
 
 REGISTER_OP("TakeDataset")
     .Input("input_dataset: variant")
@@ -97,7 +117,11 @@ REGISTER_OP("TakeDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle count_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &count_shape));
+      return shape_inference::ScalarShape(c);
+    });
 
 REGISTER_OP("SkipDataset")
     .Input("input_dataset: variant")
@@ -105,7 +129,11 @@ REGISTER_OP("SkipDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle count_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &count_shape));
+      return shape_inference::ScalarShape(c);
+    });
 
 REGISTER_OP("BytesProducedStatsDataset")
     .Input("input_dataset: variant")
@@ -149,6 +177,7 @@ REGISTER_OP("MapAndBatchDataset")
     .Input("other_arguments: Targuments")
     .Input("batch_size: int64")
     .Input("num_parallel_batches: int64")
+    .Input("drop_remainder: bool")
     .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
@@ -248,6 +277,16 @@ REGISTER_OP("BatchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// TODO(mrry): move SlideDataset to contrib in the future.
+REGISTER_OP("SlideDataset")
+    .Input("input_dataset: variant")
+    .Input("window_size: int64")
+    .Input("stride: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("PaddedBatchDataset")
     .Input("input_dataset: variant")
     .Input("batch_size: int64")
@@ -324,13 +363,6 @@ REGISTER_OP("ShuffleAndRepeatDataset")
 REGISTER_OP("CacheDataset")
     .Input("input_dataset: variant")
     .Input("filename: string")
-    .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("UniqueDataset")
-    .Input("input_dataset: variant")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")

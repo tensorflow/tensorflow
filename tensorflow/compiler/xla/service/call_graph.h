@@ -53,7 +53,7 @@ enum class CallContext {
 string CallContextToString(CallContext context);
 std::ostream& operator<<(std::ostream& out, const CallContext& context);
 
-CallContext GetInstructionCallContext(const HloInstruction* instruction);
+CallContext GetInstructionCallContext(HloOpcode opcode);
 
 // Represents an HLO instruction which calls one or more computations.
 class CallSite {

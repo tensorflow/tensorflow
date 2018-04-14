@@ -29,9 +29,12 @@ namespace grappler {
 class SymbolicShapeRefiner;
 class TopoQueue;
 
-// A TensorFlow model to optimize.
-// Models are represented by the combination of a graph, one of more fetch
-// nodes, and potentially a set of nodes to feed.
+// Infer OpInfo::TensorProperties for graph nodes inputs/outputs.
+//
+// Typical use case, is to infer tensor properties from a graph, before doing
+// optimization pass. Nodes modified during optimization pass have to be
+// invalidated, to prevent further incorrect optimizations based on wrong shape
+// and data type properties.
 class GraphProperties {
  public:
   explicit GraphProperties(const GrapplerItem& item) : item_(item) {}
@@ -64,12 +67,11 @@ class GraphProperties {
       const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
       const string& node_name) const;
-
-  static void FillTensorPropertiesFromContext(
-      const shape_inference::ShapeHandle&, const DataType&,
-      shape_inference::InferenceContext*,
-      std::unordered_map<const shape_inference::Dimension*, int>* dim_ids,
-      OpInfo::TensorProperties*);
+  // Invalidate input/output properties for nodes modified during graph
+  // optimization pass, to prevent potential optimizations, based on incorrect
+  // shape information.
+  void ClearInputProperties(const string& node_name);
+  void ClearOutputProperties(const string& node_name);
 
  private:
   // Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into

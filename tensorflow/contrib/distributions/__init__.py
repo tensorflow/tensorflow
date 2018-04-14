@@ -24,6 +24,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops.autoregressive import *
+from tensorflow.contrib.distributions.python.ops.batch_reshape import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.cauchy import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
@@ -58,6 +59,7 @@ from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.seed_stream import *
 from tensorflow.contrib.distributions.python.ops.sinh_arcsinh import *
 from tensorflow.contrib.distributions.python.ops.test_util import *
 from tensorflow.contrib.distributions.python.ops.vector_diffeomixture import *
@@ -96,9 +98,10 @@ _allowed_symbols = [
     'ReparameterizationType',
     'Distribution',
     'Autoregressive',
-    'Binomial',
+    'BatchReshape',
     'Bernoulli',
     'Beta',
+    'Binomial',
     'BetaWithSoftplusConcentration',
     'Categorical',
     'Chi2',
@@ -124,6 +127,7 @@ _allowed_symbols = [
     'NormalWithSoftplusScale',
     'Poisson',
     'PoissonLogNormalQuadratureCompound',
+    'SeedStream',
     'SinhArcsinh',
     'StudentT',
     'StudentTWithAbsDfSoftplusScale',

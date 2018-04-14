@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 
@@ -151,7 +152,8 @@ class ColocationGraph {
       if (attr_value != nullptr && attr_value->has_list()) {
         for (const string& class_spec : attr_value->list().s()) {
           StringPiece spec(class_spec);
-          if (spec.Consume(kColocationGroupPrefixStringPiece)) {
+          if (str_util::ConsumePrefix(&spec,
+                                      kColocationGroupPrefixStringPiece)) {
             found_spec = true;
             TF_RETURN_IF_ERROR(
                 ColocateNodeToGroup(&colocation_group_root, node, spec));
@@ -464,6 +466,7 @@ class ColocationGraph {
     // the user can see why an unsatisfiable placement occurred.
 
     std::unordered_map<string, string> type_to_devices;
+    std::vector<const Node*> colocation_nodes;
     int num_nodes_found = 0;
 
     for (const Node* node : graph_->nodes()) {
@@ -475,6 +478,7 @@ class ColocationGraph {
         continue;
       }
       ++num_nodes_found;
+      colocation_nodes.push_back(node);
       const string& op_type = node->type_string();
       string devices_registered;
       for (const auto& device_type : members_[id].supported_device_types) {
@@ -488,6 +492,13 @@ class ColocationGraph {
     for (const auto& td : type_to_devices) {
       strings::StrAppend(&text, "\n", td.first, ": ", td.second);
     }
+    strings::StrAppend(&text,
+                       "\n\nColocation members and user-requested devices:");
+    for (const Node* node : colocation_nodes) {
+      strings::StrAppend(&text, "\n  ", node->name(), " (", node->type_string(),
+                         ") ", node->requested_device());
+    }
+    strings::StrAppend(&text, "\n");
 
     if (num_nodes_found <= 1) {
       text.clear();

@@ -85,8 +85,8 @@ GPUDebugAllocator::~GPUDebugAllocator() { delete base_allocator_; }
 
 void* GPUDebugAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   num_bytes += (2 * MASK_BYTES);
-
   void* allocated_ptr = base_allocator_->AllocateRaw(alignment, num_bytes);
+  if (allocated_ptr == nullptr) return allocated_ptr;
 
   // Return the pointer after the header
   void* rv = static_cast<char*>(allocated_ptr) + MASK_BYTES;
@@ -102,11 +102,13 @@ void* GPUDebugAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   return rv;
 }
 void GPUDebugAllocator::DeallocateRaw(void* ptr) {
-  CHECK(CheckHeader(ptr)) << "before_mask has been overwritten";
-  CHECK(CheckFooter(ptr)) << "after_mask has been overwritten";
+  if (ptr != nullptr) {
+    CHECK(CheckHeader(ptr)) << "before_mask has been overwritten";
+    CHECK(CheckFooter(ptr)) << "after_mask has been overwritten";
 
-  // Backtrack to the beginning of the header.
-  ptr = static_cast<void*>(static_cast<char*>(ptr) - MASK_BYTES);
+    // Backtrack to the beginning of the header.
+    ptr = static_cast<void*>(static_cast<char*>(ptr) - MASK_BYTES);
+  }
   // Deallocate the memory
   base_allocator_->DeallocateRaw(ptr);
 }
@@ -168,10 +170,12 @@ GPUNanResetAllocator::~GPUNanResetAllocator() { delete base_allocator_; }
 
 void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   void* allocated_ptr = base_allocator_->AllocateRaw(alignment, num_bytes);
+  if (allocated_ptr == nullptr) return allocated_ptr;
 
   // Initialize the buffer to Nans
   size_t req_size = base_allocator_->RequestedSize(allocated_ptr);
-  std::vector<float> nans(req_size / sizeof(float), std::nanf(""));
+  std::vector<float> nans((req_size + sizeof(float) - 1) / sizeof(float),
+                          std::nanf(""));
   gpu::DeviceMemory<float> nan_ptr{
       gpu::DeviceMemoryBase{static_cast<float*>(allocated_ptr), req_size}};
 
@@ -182,13 +186,16 @@ void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   return allocated_ptr;
 }
 void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
-  // Reset the buffer to Nans
-  size_t req_size = base_allocator_->RequestedSize(ptr);
-  std::vector<float> nans(req_size / sizeof(float), std::nanf(""));
-  gpu::DeviceMemory<float> nan_ptr{
-      gpu::DeviceMemoryBase{static_cast<float*>(ptr), req_size}};
-  if (!stream_exec_->SynchronousMemcpy(&nan_ptr, &nans[0], req_size)) {
-    LOG(ERROR) << "Could not initialize to NaNs";
+  if (ptr != nullptr) {
+    // Reset the buffer to Nans
+    size_t req_size = base_allocator_->RequestedSize(ptr);
+    std::vector<float> nans((req_size + sizeof(float) - 1) / sizeof(float),
+                            std::nanf(""));
+    gpu::DeviceMemory<float> nan_ptr{
+        gpu::DeviceMemoryBase{static_cast<float*>(ptr), req_size}};
+    if (!stream_exec_->SynchronousMemcpy(&nan_ptr, &nans[0], req_size)) {
+      LOG(ERROR) << "Could not initialize to NaNs";
+    }
   }
 
   // Deallocate the memory

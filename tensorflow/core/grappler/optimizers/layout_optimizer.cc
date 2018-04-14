@@ -17,9 +17,13 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -301,10 +305,6 @@ bool IsComparisonOp(const NodeDef& node) {
   return is_compare;
 }
 
-bool IsLogicalOp(const NodeDef& node) {
-  return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
-}
-
 bool IsReduceOp(const NodeDef& node) {
   return IsSum(node) || IsMean(node) || IsProd(node) || IsMax(node) ||
          IsMin(node) || IsAll(node) || IsAny(node);
@@ -355,7 +355,7 @@ std::vector<int> DataInputPos(const NodeDef& node) {
   if (IsBetainc(node) || IsSelect(node)) {
     return {0, 1, 2};
   }
-  if (IsShapeN(node) || IsIdentityN(node) || IsAddN(node)) {
+  if (IsShapeN(node) || IsIdentityN(node) || IsAddN(node) || IsMerge(node)) {
     return NonControlInputs(node);
   }
   if (IsConcat(node)) {
@@ -365,6 +365,28 @@ std::vector<int> DataInputPos(const NodeDef& node) {
     return {0};
   }
   return {};
+}
+
+bool IsHostMemory(const NodeDef& node, int output_port) {
+  DeviceNameUtils::ParsedName parsed_name;
+  if (DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+    DeviceType device_type(parsed_name.type);
+    Status s = FindKernelDef(device_type, node, nullptr, nullptr);
+    if (s.ok()) {
+      tensorflow::MemoryTypeVector in_mtypes;
+      tensorflow::MemoryTypeVector out_mtypes;
+      s = tensorflow::MemoryTypesForNode(OpRegistry::Global(), device_type,
+                                         node, &in_mtypes, &out_mtypes);
+      if (s.ok()) {
+        if (out_mtypes[output_port] == HOST_MEMORY) {
+          return true;
+        }
+      }
+    } else {
+      return true;
+    }
+  }
+  return false;
 }
 
 class GraphProcessor {
@@ -551,8 +573,8 @@ class NodeProcessor : public GraphProcessor {
     string device;
     string not_used;
     if (DeviceNameUtils::SplitDeviceName(device_name, &not_used, &device) &&
-        (StringPiece(str_util::Lowercase(device)))
-            .contains(str_util::Lowercase(DEVICE_GPU))) {
+        str_util::StrContains(str_util::Lowercase(device),
+                              str_util::Lowercase(DEVICE_GPU))) {
       return true;
     }
     return false;
@@ -887,6 +909,24 @@ class NodeProcessor : public GraphProcessor {
     list->set_i(3, w);
   }
 
+  string MaybeGetHostDevice(const string& input_name) const {
+    string device = node_->device();
+    DeviceNameUtils::ParsedName parsed_name;
+    if (DeviceNameUtils::ParseFullName(device, &parsed_name)) {
+      if (parsed_name.type != "CPU") {
+        NodeDef* input = node_map_->GetNode(input_name);
+        int port;
+        ParseNodeName(input_name, &port);
+        if (IsHostMemory(*input, port)) {
+          parsed_name.type = "CPU";
+          parsed_name.id = 0;
+          device = DeviceNameUtils::ParsedNameToString(parsed_name);
+        }
+      }
+    }
+    return device;
+  }
+
   NodeDef* AddNodeDataFormatOp(const string& name, const string& input_name,
                                const string& op, DataType dtype,
                                bool nhwc_to_nchw) {
@@ -894,7 +934,9 @@ class NodeProcessor : public GraphProcessor {
     added_node->set_name(name);
     added_node->set_op(op);
     node_map_->AddNode(added_node->name(), added_node);
-    added_node->set_device(node_->device());
+    // The inputs of a DataFormat op could be in host memory for ops such as
+    // Reshape.
+    added_node->set_device(MaybeGetHostDevice(input_name));
     AttrValue attr_data_type;
     attr_data_type.set_type(dtype);
     added_node->mutable_attr()->insert({"T", attr_data_type});
@@ -1160,9 +1202,11 @@ class AgnosticNodeProcessor : public NodeProcessor {
     std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
     std::deque<NodeDef*> queue;
     auto data_node_pos = DataInputPos(node);
+    std::unordered_set<string> visited;
     for (const auto& pos : data_node_pos) {
       auto input_node = node_map_->GetNode(node.input(pos));
       queue.push_back(input_node);
+      visited.insert(input_node->name());
     }
     // The code will exit this while loop in one iteration in most cases, as the
     // graph is already topologically sorted.
@@ -1181,7 +1225,10 @@ class AgnosticNodeProcessor : public NodeProcessor {
         auto current_node_pos = DataInputPos(*current_node);
         for (const auto& pos : current_node_pos) {
           auto input_node = node_map_->GetNode(current_node->input(pos));
-          queue.push_back(input_node);
+          if (visited.find(input_node->name()) == visited.end()) {
+            queue.push_back(input_node);
+            visited.insert(input_node->name());
+          }
         }
       }
     }
@@ -2118,6 +2165,10 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
+  if (cluster == nullptr) {
+    return errors::InvalidArgument("cluster == nullptr");
+  }
+
   if (GetNumGPUs(*cluster) < 1) {
     // LayoutOptimizer is currently only tuned for GPU.
     *output = item.graph;

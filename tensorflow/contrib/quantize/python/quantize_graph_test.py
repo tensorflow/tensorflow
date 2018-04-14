@@ -66,6 +66,20 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
     for fn in rewrite_fns:
       test_fn(fn)
 
+  def _RunTestOverExperimentalRewritesWithScope(self, test_fn, scope):
+    def with_absent_scope(fn):
+      def fn_with_absent_scope(*args):
+        fn(*args, scope=scope)
+      return fn_with_absent_scope
+    rewrite_fns = [
+        with_absent_scope(
+            quantize_graph.experimental_create_training_graph),
+        with_absent_scope(
+            quantize_graph.experimental_create_eval_graph),
+    ]
+    for fn in rewrite_fns:
+      test_fn(fn)
+
   def testRewrite(self):
     self._RunTestOverAllRewrites(self._TestRewrite)
 
@@ -98,6 +112,34 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       q_variables = g.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
       # Ensure that variables were added.
       self.assertTrue(len(orig_variable_names) < len(q_variables))
+
+  def testWithPreActivationBypass(self):
+    self._RunTestOverAllRewrites(self._TestWithPreActivationBypass)
+
+  def _TestWithPreActivationBypass(self, rewrite_fn):
+    # Tests that the default graph is correctly used when no args are provided
+    # to rewrite_fn.
+    with ops.Graph().as_default() as g:
+      self._ConvLayer(pre_activation_bypass=True, scope='scope1')
+      rewrite_fn()
+
+      op_names = [op.name for op in g.get_operations()]
+      self.assertTrue(
+          any('scope1/add_quant/' in name for name in op_names))
+
+  def testWithPostActivationBypass(self):
+    self._RunTestOverAllRewrites(self._TestWithPostActivationBypass)
+
+  def _TestWithPostActivationBypass(self, rewrite_fn):
+    # Tests that the default graph is correctly used when no args are provided
+    # to rewrite_fn.
+    with ops.Graph().as_default() as g:
+      self._ConvLayer(post_activation_bypass=True, scope='scope1')
+      rewrite_fn()
+
+      op_names = [op.name for op in g.get_operations()]
+      self.assertTrue(any(
+          'scope1/post_activation_bypass_quant/' in name for name in op_names))
 
   def testQuantDelay(self):
     self._RunTestOverTrainingRewrites(self._TestQuantDelay)
@@ -211,20 +253,79 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       self.assertFalse(any(s in op.name for s in update_names))
     self.assertTrue(quant_found)
 
-  def _ConvLayer(self):
+  def testIdempotent(self):
+    self._RunTestOverAllRewrites(self._TestIdempotent)
+
+  def _TestIdempotent(self, rewrite_fn):
+    with ops.Graph().as_default() as g:
+      self._ConvLayer()
+      rewrite_fn()
+      graph_def_before = str(g.as_graph_def())
+      # Ensuring that calling the rewrite again doesn't add more nodes.
+      rewrite_fn()
+      graph_def_after = str(g.as_graph_def())
+      self.assertEqual(graph_def_before, graph_def_after)
+
+  def testRewriteWithScope(self):
+    self._RunTestOverExperimentalRewritesWithScope(
+        self._TestRewriteWithScope, 'scope1')
+
+  def _TestRewriteWithScope(self, rewrite_fn):
+    graph = ops.Graph()
+    with graph.as_default():
+      scope1_output = self._ConvLayer(scope='scope1')
+      self._ConvLayer(input_tensor=scope1_output, scope='scope2')
+
+    rewrite_fn(graph)
+
+    op_names = [op.name for op in graph.get_operations()]
+    # The weights and activation of scope1 is quantized, but not scope2.
+    self.assertTrue(
+        any('scope1/Conv/act_quant' in name for name in op_names))
+    self.assertTrue(
+        any('scope1/Conv/weights_quant' in name for name in op_names))
+    self.assertFalse(
+        any('scope2/Conv/act_quant' in name for name in op_names))
+    self.assertFalse(
+        any('scope2/Conv/weights_quant' in name for name in op_names))
+
+  def testRewriteWithNonMatchingScope(self):
+    self._RunTestOverExperimentalRewritesWithScope(
+        self._TestRewriteWithNonMatchingScope, 'NonExistingScope')
+
+  def _TestRewriteWithNonMatchingScope(self, rewrite_fn):
+    graph = ops.Graph()
+    with graph.as_default():
+      self._ConvLayer()
+
+    op_names_before_rewrite = set([op.name for op in graph.get_operations()])
+    rewrite_fn(graph)
+    op_names_after_rewrite = set([op.name for op in graph.get_operations()])
+
+    # No ops should be inserted or removed.
+    self.assertEqual(op_names_before_rewrite, op_names_after_rewrite)
+
+  def _ConvLayer(
+      self, input_tensor=None, scope='test', pre_activation_bypass=False,
+      post_activation_bypass=False):
     """Add a basic convolution layer to the default graph."""
     batch_size, height, width, depth = 5, 128, 128, 3
-    inputs = array_ops.zeros((batch_size, height, width, depth))
+    if input_tensor is None:
+      input_tensor = array_ops.zeros((batch_size, height, width, depth))
     weight_init = init_ops.truncated_normal_initializer
-    conv = layers.conv2d(
-        inputs,
-        32, [5, 5],
-        stride=2,
-        padding='SAME',
-        weights_initializer=weight_init(0.09),
-        activation_fn=None,
-        scope='test')
-    _ = nn_ops.relu6(conv)
+    with ops.name_scope(scope):
+      output = layers.conv2d(
+          input_tensor,
+          depth, [5, 5],
+          padding='SAME',
+          weights_initializer=weight_init(0.09),
+          activation_fn=None)
+      if pre_activation_bypass:
+        output += input_tensor
+      output = nn_ops.relu6(output)
+      if post_activation_bypass:
+        output += input_tensor
+    return output
 
 
 if __name__ == '__main__':

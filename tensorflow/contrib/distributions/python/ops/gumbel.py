@@ -190,9 +190,6 @@ class _Gumbel(distribution.Distribution):
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
   def _log_cdf(self, x):
     return -math_ops.exp(-self._z(x))
 

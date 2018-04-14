@@ -4,16 +4,17 @@
 
 -----------------
 
-| **`Linux CPU`** | **`Linux GPU`** | **`Mac OS CPU`** | **`Windows CPU`** | **`Android`** |
-|-----------------|---------------------|------------------|-------------------|---------------|
-| [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-cpu)](https://ci.tensorflow.org/job/tensorflow-master-cpu) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-linux-gpu)](https://ci.tensorflow.org/job/tensorflow-master-linux-gpu) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-mac)](https://ci.tensorflow.org/job/tensorflow-master-mac) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-win-cmake-py)](https://ci.tensorflow.org/job/tensorflow-master-win-cmake-py) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-android)](https://ci.tensorflow.org/job/tensorflow-master-android) [ ![Download](https://api.bintray.com/packages/google/tensorflow/tensorflow/images/download.svg) ](https://bintray.com/google/tensorflow/tensorflow/_latestVersion) |
+
+| **`Documentation`** | **`Linux CPU`** | **`Linux GPU`** | **`Mac OS CPU`** | **`Windows CPU`** | **`Android`** |
+|-----------------|---------------------|------------------|-------------------|---------------|---------------|
+| [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) | ![Build Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-cc.png) | ![Build Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-gpu-cc.png) | ![Build Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/macos-py2-cc.png) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-win-cmake-py)](https://ci.tensorflow.org/job/tensorflow-master-win-cmake-py) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-android)](https://ci.tensorflow.org/job/tensorflow-master-android) [ ![Download](https://api.bintray.com/packages/google/tensorflow/tensorflow/images/download.svg) ](https://bintray.com/google/tensorflow/tensorflow/_latestVersion)
 
 **TensorFlow** is an open source software library for numerical computation using
 data flow graphs.  The graph nodes represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow
-between them.  This flexible architecture lets you deploy computation to one
+between them.  This flexible architecture enables you to deploy computation to one
 or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
-code.  TensorFlow also includes TensorBoard, a data visualization toolkit.
+code.  TensorFlow also includes [TensorBoard](https://www.tensorflow.org/programmers_guide/summaries_and_tensorboard), a data visualization toolkit.
 
 TensorFlow was originally developed by researchers and engineers
 working on the Google Brain team within Google's Machine Intelligence Research
@@ -21,19 +22,9 @@ organization for the purposes of conducting machine learning and deep neural
 networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
-**If you want to contribute to TensorFlow, be sure to review the [contribution
-guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
-[code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
-uphold this code.**
-
-**We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
-tracking requests and bugs. So please see
-[TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss) for general questions
-and discussion, and please direct specific questions to [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
-
-The TensorFlow project strives to abide by generally accepted best practices in open-source software development:
-
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
+Keep up to date with release announcements and security updates by
+subscribing to
+[announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 
 ## Installation
 *See [Installing TensorFlow](https://www.tensorflow.org/get_started/os_setup.html) for instructions on how to install our release binaries or how to build from source.*
@@ -75,10 +66,27 @@ $ python
 >>> sess.close()
 ```
 
+## Contribution guidelines
+
+**If you want to contribute to TensorFlow, be sure to review the [contribution
+guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
+[code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
+uphold this code.**
+
+**We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
+tracking requests and bugs. So please see
+[TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss) for general questions
+and discussion, and please direct specific questions to [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
+
+The TensorFlow project strives to abide by generally accepted best practices in open-source software development:
+
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
+
 ## For more information
 
 * [TensorFlow Website](https://www.tensorflow.org)
 * [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
+* [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
 * [TensorFlow Model Zoo](https://github.com/tensorflow/models)
 * [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
 * [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)

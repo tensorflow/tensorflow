@@ -33,6 +33,7 @@ enum TensorType : byte {
   UINT8 = 3,
   INT64 = 4,
   STRING = 5,
+  BOOL = 6,
 }
 
 // Parameters for converting a quantized tensor back to float. Given a
@@ -75,7 +76,7 @@ enum BuiltinOperator : byte {
   CONV_2D = 3,
   DEPTHWISE_CONV_2D = 4,
   // DEPTH_TO_SPACE = 5,
-  // DEQUANTIZE = 6,
+  DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
   // FLOOR = 8,
   FULLY_CONNECTED = 9,
@@ -123,6 +124,18 @@ enum BuiltinOperator : byte {
   EXP = 47,
   TOPK_V2 = 48,
   SPLIT = 49,
+  LOG_SOFTMAX = 50,
+  // DELEGATE is a special op type for the operations which are delegated to
+  // other backends.
+  // WARNING: Experimental interface, subject to change
+  DELEGATE = 51,
+  BIDIRECTIONAL_SEQUENCE_LSTM = 52,
+  CAST = 53,
+  PRELU = 54,
+  MAXIMUM = 55,
+  ARG_MAX = 56,
+  MINIMUM = 57,
+  LESS = 58,
 }
 
 // Options for the builtin operators.
@@ -162,6 +175,12 @@ union BuiltinOptions {
   ExpOptions,
   TopKV2Options,
   SplitOptions,
+  LogSoftmaxOptions,
+  CastOptions,
+  DequantizeOptions,
+  MaximumMinimumOptions,
+  ArgMaxOptions,
+  LessOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -180,6 +199,8 @@ table Conv2DOptions {
   stride_w:int;
   stride_h:int;
   fused_activation_function:ActivationFunctionType;
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table Pool2DOptions {
@@ -362,6 +383,27 @@ table StridedSliceOptions {
   ellipsis_mask: int;
   new_axis_mask: int;
   shrink_axis_mask: int;
+}
+
+table LogSoftmaxOptions {
+}
+
+table CastOptions {
+  in_data_type: TensorType;
+  out_data_type: TensorType;
+}
+
+table DequantizeOptions {
+}
+
+table MaximumMinimumOptions {
+}
+
+table ArgMaxOptions {
+  output_type : TensorType;
+}
+
+table LessOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
