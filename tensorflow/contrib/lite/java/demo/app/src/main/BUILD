@@ -6,7 +6,9 @@ android_binary(
     name = "TfLiteCameraDemo",
     srcs = glob(["java/**/*.java"]),
     assets = [
+        "//tensorflow/contrib/lite/java/demo/app/src/main/assets:labels_imagenet_slim.txt",
         "//tensorflow/contrib/lite/java/demo/app/src/main/assets:labels_mobilenet_quant_v1_224.txt",
+        "@tflite_inception_v3_slim//:inceptionv3_slim_2016.tflite",
         "@tflite_mobilenet//:mobilenet_quant_v1_224.tflite",
     ],
     assets_dir = "",

@@ -116,7 +116,7 @@ public abstract class ImageClassifier {
 
     // Print the results.
     String textToShow = printTopKLabels();
-    textToShow = Long.toString(endTime - startTime) + "ms" + textToShow;
+    textToShow = getClassifierName() + " " + Long.toString(endTime - startTime) + "ms" + textToShow;
     return textToShow;
   }
 
@@ -284,6 +284,9 @@ public abstract class ImageClassifier {
    * primitive data types.
    */
   protected abstract void runInference();
+
+  /** Returns classifier name which will be displayed in toast message. */
+  protected abstract String getClassifierName();
 
   /**
    * Get the total number of labels.

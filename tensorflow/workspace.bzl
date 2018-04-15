@@ -733,6 +733,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = clean_dep("//third_party:tflite_smartreply.BUILD"),
   )
 
+  tf_http_archive(
+      name = "tflite_inception_v3_slim",
+      sha256 = "c54bc7a4497b1df00b8fa69b7ea304df12176fc0cf276ba359681a5afa0ccf30",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_slim_2016_android_2017_11_10.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_slim_2016_android_2017_11_10.zip",
+      ],
+      build_file = clean_dep("//third_party:tflite_inception_v3.BUILD"),
+  )
+
   ##############################################################################
   # BIND DEFINITIONS
   #

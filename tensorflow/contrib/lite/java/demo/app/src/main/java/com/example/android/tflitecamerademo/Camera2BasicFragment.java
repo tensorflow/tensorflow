@@ -49,7 +49,9 @@ import android.support.v13.app.FragmentCompat;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.util.Size;
+import android.view.GestureDetector;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -78,17 +80,39 @@ public class Camera2BasicFragment extends Fragment
 
   private static final int PERMISSIONS_REQUEST_CODE = 1;
 
-  private final Object lock = new Object();
-  private boolean runClassifier = false;
-  private boolean checkedPermissions = false;
-  private TextView textView;
-  private ImageClassifier classifier;
-
   /** Max preview width that is guaranteed by Camera2 API */
   private static final int MAX_PREVIEW_WIDTH = 1920;
 
   /** Max preview height that is guaranteed by Camera2 API */
   private static final int MAX_PREVIEW_HEIGHT = 1080;
+
+  /** Values of direction of changing classifiers. */
+  private static final int CHANGE_CLASSIFIER_PREVIOUS = -1;
+  private static final int CHANGE_CLASSIFIER_NEXT = 1;
+
+  private final Object lock = new Object();
+
+  private boolean runClassifier = false;
+  private boolean checkedPermissions = false;
+  private TextView textView;
+  private ImageClassifier classifier;
+
+  /** Enum value of each classifier. */
+  private enum Classifier {
+    quant(0),
+    fp(1),
+    total(2);
+
+    private final int value;
+
+    Classifier(int value) {
+      this.value = value;
+    }
+
+    public int getValue() {
+      return value;
+    }
+  }
 
   /**
    * {@link TextureView.SurfaceTextureListener} handles several lifecycle events on a {@link
@@ -115,6 +139,42 @@ public class Camera2BasicFragment extends Fragment
         @Override
         public void onSurfaceTextureUpdated(SurfaceTexture texture) {}
       };
+
+  private final GestureDetector gesture = new GestureDetector(
+      getActivity(),
+      new GestureDetector.SimpleOnGestureListener() {
+        @Override
+        public boolean onDown(MotionEvent e) {
+          return true;
+        }
+
+        @Override
+        public boolean onFling(
+            MotionEvent e1,
+            MotionEvent e2,
+            float velocityX,
+            float velocityY) {
+          Log.i(TAG, "onFling has been called!");
+          final int SWIPE_MIN_DISTANCE = 120;
+          final int SWIPE_MAX_OFF_PATH = 250;
+          final int SWIPE_THRESHOLD_VELOCITY = 200;
+          try {
+            float x1To2 = e1.getX() - e2.getX();
+            float absVelocityX = Math.abs(velocityX);
+            if (x1To2 > SWIPE_MIN_DISTANCE && absVelocityX > SWIPE_THRESHOLD_VELOCITY) {
+              changeClassifier(CHANGE_CLASSIFIER_PREVIOUS);
+            } else if (-x1To2 > SWIPE_MIN_DISTANCE && absVelocityX > SWIPE_THRESHOLD_VELOCITY) {
+              changeClassifier(CHANGE_CLASSIFIER_NEXT);
+            }
+          } catch (Exception e) {
+            Log.e(TAG, "Exception " + e);
+          }
+          return super.onFling(e1, e2, velocityX, velocityY);
+        }
+      });
+
+  /** The current classifier. */
+  private Classifier curClassifier;
 
   /** ID of the current {@link CameraDevice}. */
   private String cameraId;
@@ -281,7 +341,15 @@ public class Camera2BasicFragment extends Fragment
   @Override
   public View onCreateView(
       LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-    return inflater.inflate(R.layout.fragment_camera2_basic, container, false);
+    View view = inflater.inflate(R.layout.fragment_camera2_basic, container, false);
+
+    view.setOnTouchListener(new View.OnTouchListener() {
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+          return gesture.onTouchEvent(event);
+        }
+      });
+    return view;
   }
 
   /** Connect the buttons to their event handler. */
@@ -296,8 +364,10 @@ public class Camera2BasicFragment extends Fragment
   public void onActivityCreated(Bundle savedInstanceState) {
     super.onActivityCreated(savedInstanceState);
     try {
-      // create either a new ImageClassifierQuantizedMobileNet or an ImageClassifierFloatInception
+      // The default classifier is quantized classifier,
+      // user can swipe to switch to different classifiers.
       classifier = new ImageClassifierQuantizedMobileNet(getActivity());
+      curClassifier = Classifier.quant;
     } catch (IOException e) {
       Log.e(TAG, "Failed to initialize an image classifier.", e);
     }
@@ -331,6 +401,28 @@ public class Camera2BasicFragment extends Fragment
   public void onDestroy() {
     classifier.close();
     super.onDestroy();
+  }
+
+  private void changeClassifier(int direction) {
+    if (classifier != null) {
+      stopBackgroundThread();
+      classifier.close();
+      showToast("");
+    }
+    
+    int cur = Math.abs((curClassifier.getValue() + direction)) % Classifier.total.getValue();
+    try {
+      if (cur == Classifier.quant.getValue()) {
+        classifier = new ImageClassifierQuantizedMobileNet(getActivity());
+        curClassifier = Classifier.quant;
+      } else if (cur == Classifier.fp.getValue()) {
+        classifier = new ImageClassifierFloatInception(getActivity());
+        curClassifier = Classifier.fp;
+      }
+      startBackgroundThread();
+    } catch (IOException e) {
+      Log.e(TAG, "Failed to start an image classifier.", e);
+    }
   }
 
   /**

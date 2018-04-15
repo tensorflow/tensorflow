@@ -102,4 +102,9 @@ public class ImageClassifierFloatInception extends ImageClassifier {
   protected void runInference() {
     tflite.run(imgData, labelProbArray);
   }
+
+  @Override
+  protected String getClassifierName() {
+    return "FP";
+  }
 }

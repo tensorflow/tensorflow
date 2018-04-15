@@ -93,4 +93,9 @@ public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
   protected void runInference() {
     tflite.run(imgData, labelProbArray);
   }
+
+  @Override
+  protected String getClassifierName() {
+    return "Quant";
+  }
 }
