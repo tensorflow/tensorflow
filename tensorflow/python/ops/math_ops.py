@@ -762,8 +762,11 @@ def cast(x, dtype, name=None):
   ```
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
-    dtype: The destination type.
+    x: A `Tensor` or `SparseTensor` of numeric type. It could be
+      `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`,
+      `float16`, `float32`, `float64`, `complex64`, `complex128`, `bfloat16`.
+    dtype: The destination type. The list of supported dtypes is the same
+      as `x`.
     name: A name for the operation (optional).
 
   Returns:
