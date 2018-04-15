@@ -38,6 +38,12 @@ def func3(args, a=None, b=1, c=2):
   """Some cool doc string."""
   return (args, a, b, c)
 
+@add_arg_scope
+def func4(x='x', y='y'):
+    if x:
+        pass
+    if y:
+        pass
 
 def _key_op(op):
   return getattr(op, '_key_op', str(op))
@@ -230,6 +236,15 @@ class ArgScopeTest(test.TestCase):
           args, kwargs = func2(1)
           self.assertTupleEqual(args, func2_args)
           self.assertDictEqual(kwargs, func2_kwargs)
+
+  def testAddArgScopeRaceCondition(self):
+    func4_kwargs = ('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h')
+    for i in range(4):
+        # redefine the function with different args
+        @add_arg_scope
+        def func4(a=1, b=2, c=3, d=4, e=5, f=6, g=7, h=8):
+            pass
+        self.assertTupleEqual(arg_scoped_arguments(func4), func4_kwargs)
 
   def testDocString(self):
     self.assertEqual(func3.__doc__, 'Some cool doc string.')
