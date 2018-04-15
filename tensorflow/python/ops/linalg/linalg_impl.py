@@ -22,7 +22,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -41,7 +40,7 @@ eigvalsh = linalg_ops.self_adjoint_eigvals
 einsum = special_math_ops.einsum
 expm = gen_linalg_ops.matrix_exponential
 tf_export('linalg.expm')(expm)
-eye = linalg_ops_impl.eye
+eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
 logm = gen_linalg_ops.matrix_logarithm
 tf_export('linalg.logm')(logm)
