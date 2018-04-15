@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
@@ -160,36 +161,11 @@ def eye(num_rows,
   Returns:
     A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
   """
-  with ops.name_scope(
-      name, default_name='eye', values=[num_rows, num_columns, batch_shape]):
-    is_square = num_columns is None
-    batch_shape = [] if batch_shape is None else batch_shape
-    num_columns = num_rows if num_columns is None else num_columns
-    if isinstance(num_rows, ops.Tensor) or isinstance(
-        num_columns, ops.Tensor) or isinstance(batch_shape, ops.Tensor):
-      batch_shape = ops.convert_to_tensor(
-          batch_shape, name='shape', dtype=dtypes.int32)
-      diag_size = math_ops.minimum(num_rows, num_columns)
-      diag_shape = array_ops.concat((batch_shape, [diag_size]), 0)
-      if not is_square:
-        shape = array_ops.concat((batch_shape, [num_rows, num_columns]), 0)
-    else:
-      if not isinstance(num_rows, compat.integral_types) or not isinstance(
-          num_columns, compat.integral_types):
-        raise TypeError(
-            'num_rows and num_columns must be positive integer values.')
-      batch_shape = [dim for dim in batch_shape]
-      is_square = num_rows == num_columns
-      diag_shape = batch_shape + [np.minimum(num_rows, num_columns)]
-      if not is_square:
-        shape = batch_shape + [num_rows, num_columns]
-
-    diag_ones = array_ops.ones(diag_shape, dtype=dtype)
-    if is_square:
-      return array_ops.matrix_diag(diag_ones)
-    else:
-      zero_matrix = array_ops.zeros(shape, dtype=dtype)
-      return array_ops.matrix_set_diag(zero_matrix, diag_ones)
+  return linalg_ops_impl.eye(num_rows,
+                             num_columns=num_columns,
+                             batch_shape=batch_shape,
+                             dtype=dtype,
+                             name=name)
 
 
 @tf_export('matrix_solve_ls', 'linalg.lstsq')

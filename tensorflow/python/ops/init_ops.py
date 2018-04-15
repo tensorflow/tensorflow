@@ -39,7 +39,8 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import linalg_ops_impl
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import random_ops
@@ -529,7 +530,7 @@ class Orthogonal(Initializer):
     # Generate a random matrix
     a = random_ops.random_normal(flat_shape, dtype=dtype, seed=self.seed)
     # Compute the qr factorization
-    q, r = linalg_ops.qr(a, full_matrices=False)
+    q, r = gen_linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
     d = array_ops.diag_part(r)
     q *= math_ops.sign(d)
@@ -578,7 +579,7 @@ class ConvolutionDeltaOrthogonal(Initializer):
     a = random_ops.random_normal([shape[-1], shape[-1]],
                                  dtype=dtype, seed=self.seed)
     # Compute the qr factorization
-    q, r = linalg_ops.qr(a, full_matrices=False)
+    q, r = gen_linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
     d = array_ops.diag_part(r)
     # ph = d / math_ops.abs(d)
@@ -623,7 +624,7 @@ class Identity(Initializer):
           "Identity matrix initializer can only be used for 2D matrices.")
     if dtype is None:
       dtype = self.dtype
-    initializer = linalg_ops.eye(*full_shape, dtype=dtype)
+    initializer = linalg_ops_impl.eye(*full_shape, dtype=dtype)
     if partition_info is not None:
       initializer = array_ops.slice(initializer, partition_info.var_offset,
                                     shape)
