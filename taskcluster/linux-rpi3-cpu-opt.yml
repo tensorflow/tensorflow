@@ -8,5 +8,5 @@ build:
     tcsetup: ""
     tcbuild: "--arm"
   metadata:
-    name: "TensorFlow Linux RPi3/ARMv6 CPU"
-    description: "Building TensorFlow for Linux RPi3 ARMv6, CPU only, optimized version"
+    name: "TensorFlow Linux RPi3/ARMv7 CPU"
+    description: "Building TensorFlow for Linux RPi3 ARMv7, CPU only, optimized version"

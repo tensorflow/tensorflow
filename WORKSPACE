@@ -51,6 +51,14 @@ new_http_archive(
 )
 
 new_http_archive(
+    name = "LinaroArmGcc49",
+    build_file = "compilers/linaro-gcc49-armeabi.BUILD",
+    strip_prefix = "gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf/",
+    url = "https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz",
+    sha256 = "22914118fd963f953824b58107015c6953b5bbdccbdcf25ad9fd9a2f9f11ac07",
+)
+
+new_http_archive(
     name = "LinaroArmGcc72",
     build_file = "compilers/linaro-gcc72-armeabi.BUILD",
     strip_prefix = "gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabihf/",
