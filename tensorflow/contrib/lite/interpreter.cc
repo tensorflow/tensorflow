@@ -245,11 +245,8 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : subgraph.output_tensors) {
           TfLiteTensor* tensor = &tensors_[tensor_index];
-          TF_LITE_ENSURE_EQ(&context_, tensor->delegate, nullptr);
-          TF_LITE_ENSURE_EQ(&context_, tensor->buffer_handle,
-                            kTfLiteNullBufferHandle);
-          // buffer_handle will be filled in delegate's `Prepare`
-          // function.
+          TF_LITE_ENSURE(&context_, tensor->delegate == nullptr ||
+                                        tensor->delegate == delegate);
           tensor->delegate = delegate;
         }
 
