@@ -36,10 +36,16 @@ namespace {
 
 class FunctionInliningContext {
  public:
-  explicit FunctionInliningContext(const GrapplerItem& item)
-      : library_(&item.graph.library()), functions_(InliningCandidates(item)) {}
+  explicit FunctionInliningContext(const GrapplerItem& item,
+                                   RewriterConfig::Toggle opt_level)
+      : opt_level_(opt_level),
+        functions_(InliningCandidates(item)),
+        function_library_(FunctionLibraryDefinition(OpRegistry::Global(),
+                                                    item.graph.library())) {}
 
-  const FunctionDefLibrary& Library() const { return *library_; }
+  const FunctionLibraryDefinition& FunctionLibrary() const {
+    return function_library_;
+  }
 
   bool HasInlinedFunctions() const { return !functions_.empty(); }
 
@@ -59,13 +65,9 @@ class FunctionInliningContext {
     std::unordered_map<string, const FunctionDef*> functions;
     for (const FunctionDef& func : item.graph.library().function()) {
       // Don't inline functions marked as noinline
-      if (func.attr().count("_noinline") != 0) {
-        continue;
-      }
-      // Don't touch anything marked XLA to prevent XLA failures further down
-      // the road.
-      if (func.attr().count("_XlaCompile") > 0 &&
-          func.attr().at("_XlaCompile").b()) {
+      if (func.attr().count("_noinline") != 0 &&
+          func.attr().at("_noinline").b() &&
+          opt_level_ != RewriterConfig::AGGRESSIVE) {
         continue;
       }
       // Can't create IdentityN nodes with no input or output: skip these
@@ -79,8 +81,9 @@ class FunctionInliningContext {
     return functions;
   }
 
-  const FunctionDefLibrary* library_;
+  RewriterConfig::Toggle opt_level_;
   std::unordered_map<string, const FunctionDef*> functions_;
+  FunctionLibraryDefinition function_library_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionInliningContext);
 };
@@ -150,11 +153,14 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
   const std::unordered_map<string, AttrValue> func_attr(
       func_node.attr().begin(), func_node.attr().end());
 
-  std::unique_ptr<GrapplerItem> item =
-      GrapplerItemFromFunctionDef(func, func_attr, ctx.Library());
-  if (!item) {
+  GrapplerFunctionItem item;
+  Status item_status =
+      MakeGrapplerFunctionItem(func, func_attr, ctx.FunctionLibrary(), &item);
+
+  if (!item_status.ok()) {
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
-                                   " instantiated by ", func_node.name());
+                                   " instantiated by ", func_node.name(),
+                                   ". Error: ", item_status.error_message());
   }
 
   std::unordered_map<string, int> input_nodes;
@@ -168,7 +174,7 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
   TF_RETURN_IF_ERROR(
       HookInlinedFunctionInputs(func_node, func, func_attr, func_inputs));
 
-  for (NodeDef& func_body_node : *item->graph.mutable_node()) {
+  for (NodeDef& func_body_node : *item.mutable_function_body().mutable_node()) {
     if (input_nodes.find(func_body_node.name()) != input_nodes.end()) {
       CHECK_EQ(0, func_body_node.input_size());
       // Turn input placeholders into identity nodes
@@ -206,6 +212,10 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       TF_RETURN_IF_ERROR(InlineFunction(func_body_node, *func_body_node_func,
                                         ctx, optimized_graph));
     } else {
+      // Annotate the node with the function attributes.
+      for (const auto& attr : func.attr()) {
+        func_body_node.mutable_attr()->insert(attr);
+      }
       // Move the node to the main graph
       optimized_graph->add_node()->Swap(&func_body_node);
     }
@@ -213,8 +223,9 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
 
   // Hook inlined function outputs to IdentityN node
   NodeDef* func_outputs = optimized_graph->add_node();
+  std::vector<string> fetch = OutputTensors(item);
   TF_RETURN_IF_ERROR(HookInlinedFunctionOutputs(func_node, func, func_attr,
-                                                item->fetch, func_outputs));
+                                                fetch, func_outputs));
 
   return Status::OK();
 }
@@ -367,7 +378,7 @@ Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
 
 Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
-  FunctionInliningContext function_inlining_ctx(item);
+  FunctionInliningContext function_inlining_ctx(item, opt_level_);
 
   // Nothing to do here.
   if (!function_inlining_ctx.HasInlinedFunctions()) {

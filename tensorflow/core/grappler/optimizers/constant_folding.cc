@@ -298,7 +298,8 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
   for (int node_idx = 0; node_idx < node_count; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
     const string op = node->op();
-    if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN") {
+    if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN" &&
+        op != "TensorArraySizeV3") {
       continue;
     }
 
@@ -346,6 +347,36 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       node_map_->AddOutput(NodeName(ctrl_dep), node->name());
 
       // Done with the Shape/Size/Rank node, move to the next node.
+      continue;
+    }
+
+    if (op == "TensorArraySizeV3") {
+      const NodeDef* array = node_map_->GetNode(node->input(0));
+      if (array->attr().count("dynamic_size") != 0 &&
+          array->attr().at("dynamic_size").b()) {
+        continue;
+      }
+      const NodeDef* array_size = node_map_->GetNode(array->input(0));
+      if (IsReallyConstant(*array_size)) {
+        // Don't materialize 0 sizes to avoid triggering incorrect static
+        // checks. A 0 sized array that can't grow isn't useful anyway.
+        const TensorProto& raw_val = array_size->attr().at("value").tensor();
+        if (raw_val.dtype() != DT_INT32) {
+          continue;
+        }
+        Tensor value(raw_val.dtype(), raw_val.tensor_shape());
+        if (!value.FromProto(raw_val)) {
+          continue;
+        }
+        if (value.flat<int32>()(0) == 0) {
+          continue;
+        }
+        node->set_op("Const");
+        *node->mutable_attr() = array_size->attr();
+        node->set_input(0, AsControlDependency(NodeName(node->input(0))));
+        node->set_input(1, AddControlDependency(NodeName(node->input(1)),
+                                                graph_, node_map_.get()));
+      }
       continue;
     }
 
@@ -552,7 +583,6 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
 
   const DataType type = node.attr().at("T").type();
   NodeDef* out[2];
-  bool created_const = false;
   for (int j = 0; j < 2; ++j) {
     int reduction_indices = reduce_dims[j].size();
     Tensor value(type, TensorShape({reduction_indices}));
@@ -576,20 +606,17 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
           AddControlDependency(node.name(), graph_, node_map_.get());
       *out[j]->add_input() = ctrl_dep;
       node_map_->AddOutput(NodeName(ctrl_dep), const_name);
-      created_const = true;
     }
   }
 
-  if (created_const) {
-    const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
-    for (NodeDef* output : outputs) {
-      for (int k = 0; k < output->input_size(); ++k) {
-        int port;
-        string node_name = ParseNodeName(output->input(k), &port);
-        if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
-          *output->mutable_input(k) = out[port]->name();
-          node_map_->UpdateInput(output->name(), node_name, out[port]->name());
-        }
+  const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
+  for (NodeDef* output : outputs) {
+    for (int k = 0; k < output->input_size(); ++k) {
+      int port;
+      string node_name = ParseNodeName(output->input(k), &port);
+      if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
+        *output->mutable_input(k) = out[port]->name();
+        node_map_->UpdateInput(output->name(), node_name, out[port]->name());
       }
     }
   }
@@ -977,7 +1004,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 
   for (const auto& input : node.input()) {
     int port = 0;
-    ParseNodeName(input, &port);
+    ParseNodeNameAsStringPiece(input, &port);
     if (port < 0) {
       // Control dependency
       break;
@@ -2057,9 +2084,9 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
           left_child_is_constant ? left_child : right_child;
       // Make sure that it is safe to change the value of the child node->
       if (op_child_node->input_size() < 2 ||
-          NumNonControlOutputs(*op_child_node, *node_map_) > 1 ||
           nodes_to_preserve_.find(op_child_node->name()) !=
-              nodes_to_preserve_.end()) {
+              nodes_to_preserve_.end() ||
+          NumNonControlOutputs(*op_child_node, *node_map_) > 1) {
         continue;
       }
 

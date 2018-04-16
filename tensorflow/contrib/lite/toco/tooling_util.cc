@@ -291,6 +291,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Dequantize)
     HANDLE_OPERATORTYPENAME_CASE(L2Normalization)
     HANDLE_OPERATORTYPENAME_CASE(LocalResponseNormalization)
+    HANDLE_OPERATORTYPENAME_CASE(Log)
     HANDLE_OPERATORTYPENAME_CASE(Logistic)
     HANDLE_OPERATORTYPENAME_CASE(LstmCell)
     HANDLE_OPERATORTYPENAME_CASE(MaxPool)
@@ -1083,22 +1084,29 @@ void InsertCopyOperator(Model* model, const string& source_array_name,
   model->operators.emplace_back(copy_op);
 }
 
-namespace {
-template <ArrayDataType A>
-void CopyArrayBuffer(const Array& source_array, Array* target_array) {
-  if (source_array.buffer) {
-    const auto& source_buffer = source_array.GetBuffer<A>();
-    auto& target_buffer = target_array->GetMutableBuffer<A>();
-    target_buffer.data = source_buffer.data;
-  }
-}
-}  // namespace
-
 void CloneArray(Model* model, const string& source_array_name,
                 const string& target_array_name) {
   CHECK(!model->HasArray(target_array_name));
   const Array& source_array = model->GetArray(source_array_name);
   Array& target_array = model->GetOrCreateArray(target_array_name);
+
+  if (source_array.minmax) {
+    const auto& smm = source_array.GetMinMax();
+    auto& tmm = target_array.GetOrCreateMinMax();
+    tmm.min = smm.min;
+    tmm.max = smm.max;
+  }
+
+  if (source_array.quantization_params) {
+    const auto& sqp = source_array.GetQuantizationParams();
+    auto& tqp = target_array.GetOrCreateQuantizationParams();
+    tqp.zero_point = sqp.zero_point;
+    tqp.scale = sqp.scale;
+  }
+
+  target_array.data_type = source_array.data_type;
+  target_array.final_data_type = source_array.final_data_type;
+  target_array.copy_shape(source_array.shape());
 
   switch (source_array.data_type) {
     case ArrayDataType::kBool:
@@ -1139,25 +1147,6 @@ void CloneArray(Model* model, const string& source_array_name,
                  << ArrayDataTypeName(source_array.data_type);
       return;
   }
-
-  if (source_array.minmax) {
-    const auto& smm = source_array.GetMinMax();
-    auto& tmm = target_array.GetOrCreateMinMax();
-    tmm.min = smm.min;
-    tmm.max = smm.max;
-  }
-
-  if (source_array.quantization_params) {
-    const auto& sqp = source_array.GetQuantizationParams();
-    auto& tqp = target_array.GetOrCreateQuantizationParams();
-    tqp.zero_point = sqp.zero_point;
-    tqp.scale = sqp.scale;
-  }
-
-  target_array.data_type = source_array.data_type;
-  target_array.final_data_type = source_array.final_data_type;
-
-  target_array.copy_shape(source_array.shape());
 }
 
 void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
@@ -1378,12 +1367,22 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     const float mean_value = input_array_proto.mean_value();
     const float std_value = input_array_proto.std_value();
     MinMax input_minmax;
-    input_minmax.min = (0.f - mean_value) / std_value;
-    input_minmax.max = (255.f - mean_value) / std_value;
+    float qmin = 0, qmax = 255;
+    if (input_array.data_type == ArrayDataType::kInt16) {
+      qmin = -32768;
+      qmax = 32767;
+    }
+    input_minmax.min = (qmin - mean_value) / std_value;
+    input_minmax.max = (qmax - mean_value) / std_value;
     if (input_array.minmax) {
       if (input_array_proto.has_mean_value() ||
           input_array_proto.has_std_value()) {
-        CHECK(input_minmax == *input_array.minmax)
+        const double width = input_minmax.max - input_minmax.min;
+        const double kMinMaxAllowedDiff = 1e-6 * width;
+        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
+                  kMinMaxAllowedDiff &&
+              std::abs(input_minmax.max - input_array.minmax->max) <
+                  kMinMaxAllowedDiff)
             << input_minmax.min << ", " << input_minmax.max
             << " != " << input_array.minmax->min << ", "
             << input_array.minmax->max;
@@ -1403,7 +1402,8 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       CHECK(input_array.shape().dims_size());
     }
   }
-
+  model->flags.set_change_concat_input_ranges(
+      model_flags.change_concat_input_ranges());
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
   model->flags.set_allow_nonexistent_arrays(
       model_flags.allow_nonexistent_arrays());
@@ -2000,7 +2000,7 @@ void FinishBuildingRNNStates(Model* model) {
   }
 }
 
-void UseArraysExtraInfo(Model* model) {
+void UseArraysExtraInfo(Model* model, bool quantize_output) {
   for (const auto& entry : model->flags.arrays_extra_info().entries()) {
     if (!model->HasArray(entry.name())) {
       continue;
@@ -2012,7 +2012,7 @@ void UseArraysExtraInfo(Model* model) {
       minmax.min = entry.min();
       minmax.max = entry.max();
     }
-    if (entry.has_data_type()) {
+    if (entry.has_data_type() && quantize_output) {
       array.final_data_type =
           ConvertIODataTypeToArrayDataType(entry.data_type());
     }

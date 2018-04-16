@@ -303,6 +303,29 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "pattern_matcher",
+    hdrs = ["pattern_matcher.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "pattern_matcher_test",
+    srcs = ["pattern_matcher_test.cc"],
+    deps = [
+        ":hlo",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
@@ -2535,6 +2558,7 @@ cc_library(
     srcs = ["hlo_runner.cc"],
     hdrs = ["hlo_runner.h"],
     deps = [
+        ":computation_placer",
         ":executable",
         ":hlo",
         ":transfer_manager",
@@ -2551,6 +2575,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2636,6 +2661,21 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "despecializer",
+    srcs = ["despecializer.cc"],
+    hdrs = ["despecializer.h"],
+    deps = [
+        ":bfloat16_normalization",
+        ":defuser",
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
+        ":implicit_broadcast_remover",
+        "//tensorflow/compiler/xla:statusor",
     ],
 )
 

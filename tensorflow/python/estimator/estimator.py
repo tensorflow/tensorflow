@@ -637,7 +637,7 @@ class Estimator(object):
         # pylint: disable=protected-access
         local_init_op = (
             estimator_spec.scaffold.local_init_op or
-            monitored_session.Scaffold._default_local_init_op())
+            monitored_session.Scaffold.default_local_init_op())
         # pylint: enable=protected-access
 
         # Perform the export
@@ -723,7 +723,7 @@ class Estimator(object):
       batch_length = batch_length or value.shape[0]
       if value.shape[0] != batch_length:
         raise ValueError('Batch length of predictions should be same. %s has '
-                         'different batch length then others.' % key)
+                         'different batch length than others.' % key)
     return batch_length
 
   def _extract_keys(self, predictions, predict_keys):

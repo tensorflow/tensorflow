@@ -31,6 +31,9 @@ namespace grappler {
 
 namespace {
 
+constexpr char kHoistFactorOptimizerDiv[] =
+    "ArithmeticOptimizer/HoistCommonFactor_Div_";
+
 constexpr char kHoistFactorOptimizerMul[] =
     "ArithmeticOptimizer/HoistCommonFactor_Mul_";
 
@@ -40,6 +43,11 @@ constexpr char kHoistFactorOptimizerAdd[] =
 // Optimized name of outer Mul node by HoistCommonFactorOutOfAggregation
 string HoistMulName(const string& name) {
   return AddPrefixToNodeName(name, kHoistFactorOptimizerMul, "");
+}
+
+// Optimized name of outer Div node by HoistCommonFactorOutOfAggregation
+string HoistDivName(const string& name) {
+  return AddPrefixToNodeName(name, kHoistFactorOptimizerDiv, "");
 }
 
 // Optimized name of inner Add node by HoistCommonFactorOutOfAggregation
@@ -93,6 +101,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.enable_try_simplify_and_replace = false;
     options.combine_add_to_addn = false;
     options.hoist_common_factor_out_of_aggregation = false;
+    options.minimize_broadcasts = false;
     options.remove_identity_transpose = false;
     options.remove_redundant_bitcast = false;
     options.remove_redundant_cast = false;
@@ -111,6 +120,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void EnableOnlyHoistCommonFactor(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.hoist_common_factor_out_of_aggregation = true;
+  }
+
+  void EnableOnlyMinimizeBroadcasts(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.minimize_broadcasts = true;
   }
 
   void EnableOnlyRemoveIdentityTranspose(ArithmeticOptimizer* optimizer) {
@@ -552,7 +566,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   EXPECT_EQ("^Placeholder", add_1_const_node->input(0));
 }
 
-TEST_F(ArithmeticOptimizerTest, HoistFactor) {
+TEST_F(ArithmeticOptimizerTest, HoistFactorMul) {
   for (bool matching_shapes : {true, false}) {
     for (bool use_addn : {true, false}) {
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -615,6 +629,81 @@ TEST_F(ArithmeticOptimizerTest, HoistFactor) {
       auto tensors = EvaluateNodes(output, item.fetch);
       EXPECT_EQ(1, tensors.size());
       test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, HoistFactorDiv) {
+  for (bool matching_shapes : {true, false}) {
+    for (bool use_addn : {true, false}) {
+      for (bool use_ints : {true, false}) {
+        tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+        Output x = use_ints
+                       ? ops::Const(s.WithOpName("x"), {1, 2}, {1, 2})
+                       : ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+        Output y1 = use_ints
+                        ? ops::Const(s.WithOpName("y1"), {3, 4}, {1, 2})
+                        : ops::Const(s.WithOpName("y1"), {3.0f, 4.0f}, {1, 2});
+        Output y2;
+        if (matching_shapes) {
+          y2 = use_ints ? ops::Const(s.WithOpName("y2"), {5, 6}, {1, 2})
+                        : ops::Const(s.WithOpName("y2"), {5.0f, 6.0f}, {1, 2});
+        } else {
+          y2 = use_ints ? ops::Const(s.WithOpName("y2"), {5}, {1, 1})
+                        : ops::Const(s.WithOpName("y2"), {5.0f}, {1, 1});
+        }
+        Output div1 = ops::Div(s.WithOpName("div1"), y1, x);
+        Output div2 = ops::Div(s.WithOpName("div2"), y2, x);
+        Output id =
+            use_addn
+                ? ops::Identity(s.WithOpName("id"),
+                                ops::AddN(s.WithOpName("add"), {div1, div2}))
+                : ops::Identity(s.WithOpName("id"),
+                                ops::Add(s.WithOpName("add"), div1, div2));
+
+        GrapplerItem item;
+        item.fetch = {"id"};
+        TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+        ArithmeticOptimizer optimizer;
+        EnableOnlyHoistCommonFactor(&optimizer);
+
+        GraphDef output;
+        OptimizeTwice(&optimizer, &item, &output);
+
+        // We expect the following rewrite(s) to occur:
+        //
+        //        Add                 Div
+        //      /    \               /   \
+        //    Div    Div       ->  Add    x
+        //    / \    / \           / \
+        //   y1  x  y2  x         y1  y2
+        //
+        // If "root" op is AddN and shapes does not match, this rewrite is not
+        // possible and graph should stay intact.
+        NodeMap node_map(&output);
+
+        if ((use_addn && !matching_shapes) || use_ints) {
+          VerifyGraphsMatch(item.graph, output, __LINE__);
+        } else {
+          EXPECT_EQ(9, output.node_size());
+
+          const NodeDef* new_add_node = node_map.GetNode(HoistAddName("add"));
+          ASSERT_TRUE(new_add_node != nullptr) << "Hoisted Add node not found";
+          EXPECT_EQ("y1", new_add_node->input(0));
+          EXPECT_EQ("y2", new_add_node->input(1));
+
+          const NodeDef* new_div_node = node_map.GetNode(HoistDivName("add"));
+          ASSERT_TRUE(new_div_node != nullptr) << "Hoisted Div node not found";
+          EXPECT_EQ(new_add_node->name(), new_div_node->input(0));
+          EXPECT_EQ("x", new_div_node->input(1));
+
+          const NodeDef* id_node = node_map.GetNode("id");
+          ASSERT_TRUE(id_node != nullptr) << "Id node not found";
+          EXPECT_EQ("id", id_node->name());
+          EXPECT_EQ(HoistDivName("add"), id_node->input(0));
+        }
+      }
     }
   }
 }
@@ -1839,6 +1928,161 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
     }
   }
   EXPECT_EQ(5, found);
+}
+
+TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_SimpleSwap) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto a = ops::Variable(s.WithOpName("a"), {32}, DT_FLOAT);
+  auto b = ops::Variable(s.WithOpName("b"), {32, 32}, DT_FLOAT);
+  auto c = ops::Variable(s.WithOpName("c"), {32}, DT_FLOAT);
+
+  auto mul1 = ops::Mul(s.WithOpName("mul1"), a, b);
+  auto mul2 = ops::Mul(s.WithOpName("mul2"), mul1, c);
+
+  auto outputs = ops::Identity(s.WithOpName("outputs"), mul2);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyMinimizeBroadcasts(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  //     *                  *
+  //    / \                / \
+  //   *   c      -->     *   b
+  //  / \                / \
+  // a   b              a   c
+  NodeMap node_map(&output);
+
+  const NodeDef* mul1_node = node_map.GetNode("mul1");
+  ASSERT_NE(mul1_node, nullptr);
+  EXPECT_EQ("a", mul1_node->input(0));
+  EXPECT_EQ("c", mul1_node->input(1));
+
+  const NodeDef* mul2_node = node_map.GetNode("mul2");
+  ASSERT_NE(mul2_node, nullptr);
+  EXPECT_EQ("mul1", mul2_node->input(0));
+  EXPECT_EQ("b", mul2_node->input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_FlattenTallGraph) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto a = ops::Variable(s.WithOpName("a"), {32}, DT_FLOAT);
+  auto b = ops::Variable(s.WithOpName("b"), {32, 32}, DT_FLOAT);
+  auto c = ops::Variable(s.WithOpName("c"), {32}, DT_FLOAT);
+  auto d = ops::Variable(s.WithOpName("d"), {32}, DT_FLOAT);
+  auto e = ops::Variable(s.WithOpName("e"), {32}, DT_FLOAT);
+
+  auto mul1 = ops::Mul(s.WithOpName("mul1"), a, b);
+  auto mul2 = ops::Mul(s.WithOpName("mul2"), mul1, c);
+  auto mul3 = ops::Mul(s.WithOpName("mul3"), mul2, d);
+  auto mul4 = ops::Mul(s.WithOpName("mul4"), mul3, e);
+
+  auto outputs = ops::Identity(s.WithOpName("outputs"), mul4);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyMinimizeBroadcasts(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur: Graph is "flattened" and
+  // largest shape pushed to the top.
+  //
+  //          *
+  //        /   \
+  //       *     e                *
+  //      /  \                  /   \
+  //     *    d               *      b
+  //    / \                 /  \
+  //   *   c      -->     *      *
+  //  / \                / \    / \
+  // a   b              a   c  d   e
+  NodeMap node_map(&output);
+
+  const NodeDef* mul1_node = node_map.GetNode("mul1");
+  ASSERT_NE(mul1_node, nullptr);
+  EXPECT_EQ("a", mul1_node->input(0));
+  EXPECT_EQ("c", mul1_node->input(1));
+
+  const NodeDef* mul2_node = node_map.GetNode("mul2");
+  ASSERT_NE(mul2_node, nullptr);
+  EXPECT_EQ("d", mul2_node->input(0));
+  EXPECT_EQ("e", mul2_node->input(1));
+
+  const NodeDef* mul3_node = node_map.GetNode("mul3");
+  ASSERT_NE(mul3_node, nullptr);
+  EXPECT_EQ("mul1", mul3_node->input(0));
+  EXPECT_EQ("mul2", mul3_node->input(1));
+
+  const NodeDef* mul4_node = node_map.GetNode("mul4");
+  ASSERT_NE(mul4_node, nullptr);
+  EXPECT_EQ("mul3", mul4_node->input(0));
+  EXPECT_EQ("b", mul4_node->input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_BuildTreeUp) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  // [a, b, c] - scalars, [d] - matrix
+  auto a = ops::Variable(s.WithOpName("a"), {32}, DT_FLOAT);
+  auto b = ops::Variable(s.WithOpName("b"), {32}, DT_FLOAT);
+  auto c = ops::Variable(s.WithOpName("c"), {32}, DT_FLOAT);
+  auto d = ops::Variable(s.WithOpName("D"), {32, 32}, DT_FLOAT);
+
+  auto mul1 = ops::Mul(s.WithOpName("mul1"), a, b);
+  auto mul2 = ops::Mul(s.WithOpName("mul2"), c, d);
+  auto mul3 = ops::Mul(s.WithOpName("mul3"), mul1, mul2);
+
+  auto outputs = ops::Identity(s.WithOpName("outputs"), mul3);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyMinimizeBroadcasts(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  //                              *
+  //                            /  \
+  //       *                   *    D
+  //     /   \                / \
+  //    *     *      ->      *   c
+  //   / \   / \            / \
+  //  a   b c   D          a   b
+  NodeMap node_map(&output);
+
+  const NodeDef* mul1_node = node_map.GetNode("mul1");
+  ASSERT_NE(mul1_node, nullptr);
+  EXPECT_EQ("a", mul1_node->input(0));
+  EXPECT_EQ("b", mul1_node->input(1));
+
+  const NodeDef* mul2_node = node_map.GetNode("mul2");
+  ASSERT_NE(mul2_node, nullptr);
+  EXPECT_EQ("mul1", mul2_node->input(0));
+  EXPECT_EQ("c", mul2_node->input(1));
+
+  const NodeDef* mul3_node = node_map.GetNode("mul3");
+  ASSERT_NE(mul3_node, nullptr);
+  EXPECT_EQ("D", mul3_node->input(0));
+  EXPECT_EQ("mul2", mul3_node->input(1));
 }
 
 }  // namespace grappler

@@ -225,6 +225,46 @@ class InspectUtilsTest(test.TestCase):
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
         LocalClass)
 
+  def test_getmethodclass_callables(self):
+    class TestCallable(object):
+
+      def __call__(self):
+        pass
+
+    c = TestCallable()
+    self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
+
+  def test_getdefiningclass(self):
+    class Superclass(object):
+
+      def foo(self):
+        pass
+
+      def bar(self):
+        pass
+
+    class Subclass(Superclass):
+
+      def foo(self):
+        pass
+
+      def baz(self):
+        pass
+
+    self.assertTrue(
+        inspect_utils.getdefiningclass(Subclass.foo, Subclass) is Subclass)
+    self.assertTrue(
+        inspect_utils.getdefiningclass(Subclass.bar, Subclass) is Superclass)
+    self.assertTrue(
+        inspect_utils.getdefiningclass(Subclass.baz, Subclass) is Subclass)
+
+  def test_isbuiltin(self):
+    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(float))
+    self.assertTrue(inspect_utils.isbuiltin(int))
+    self.assertTrue(inspect_utils.isbuiltin(len))
+    self.assertFalse(inspect_utils.isbuiltin(function_decorator))
+
 
 if __name__ == '__main__':
   test.main()

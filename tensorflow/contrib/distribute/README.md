@@ -117,7 +117,7 @@ in the input function gives a solid boost in performance. When using
 This feature is in early stages and there are a lot of improvements forthcoming:
 
 * Metrics are not yet supported during distributed training.
-* Summaries are currently computed in every tower.
+* Summaries are only computed in the first tower in `MirroredStrategy`.
 * Evaluation is not yet distributed.
 * Eager support is in the works; performance can be more challenging with eager
 execution.
@@ -129,10 +129,6 @@ effective batch size will be `num_gpus * batch_size`. Therefore, consider
 adjusting your learning rate or batch size according to the number of GPUs.
 We are working on addressing this limitation by splitting each batch across GPUs
 instead.
-* Dictionaries inside dataset in the input are not supported when prefetching
-on GPUs is turned on. (If you need to use dictionaries in the dataset, turn off
-prefetching on GPUs by passing param `prefetch_on_device=False` to
-`MirroredStrategy`)
 * PartitionedVariables are not supported yet.
 
 ## What's next?

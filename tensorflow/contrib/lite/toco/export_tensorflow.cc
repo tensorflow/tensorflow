@@ -37,6 +37,7 @@ limitations under the License.
 
 using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
+using tensorflow::DT_INT16;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
 using tensorflow::DT_UINT8;
@@ -703,6 +704,15 @@ void ConvertRelu6Operator(const Relu6Operator& src_op,
   (*relu_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertLogOperator(const LogOperator& src_op, GraphDef* tensorflow_graph) {
+  auto* op = tensorflow_graph->add_node();
+  op->set_op("Log");
+  op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *op->add_input() = src_op.inputs[0];
+  (*op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
 void ConvertLogisticOperator(const LogisticOperator& src_op,
                              GraphDef* tensorflow_graph) {
   auto* relu_op = tensorflow_graph->add_node();
@@ -873,6 +883,9 @@ void ConvertFakeQuantOperator(const FakeQuantOperator& src_op,
   CHECK(src_op.minmax);
   (*fakequant_op->mutable_attr())["min"].set_f(src_op.minmax->min);
   (*fakequant_op->mutable_attr())["max"].set_f(src_op.minmax->max);
+  if (src_op.num_bits) {
+    (*fakequant_op->mutable_attr())["num_bits"].set_i(src_op.num_bits);
+  }
 }
 
 void ConvertMaxPoolOperator(const MaxPoolOperator& src_op,
@@ -1702,6 +1715,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kRelu6) {
     ConvertRelu6Operator(static_cast<const Relu6Operator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kLog) {
+    ConvertLogOperator(static_cast<const LogOperator&>(src_op),
+                       tensorflow_graph);
   } else if (src_op.type == OperatorType::kLogistic) {
     ConvertLogisticOperator(static_cast<const LogisticOperator&>(src_op),
                             tensorflow_graph);
@@ -1867,6 +1883,9 @@ void AddPlaceholder(const string& name, ArrayDataType type,
       break;
     case ArrayDataType::kInt64:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT64);
+      break;
+    case ArrayDataType::kInt16:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_INT16);
       break;
     default:
       LOG(FATAL) << "Unexpected data type in array \"" << name << "\"";

@@ -1402,10 +1402,11 @@ def reduce_sum(input_tensor,
     keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
-    The reduced tensor.
+    The reduced tensor, of the same dtype as the input_tensor.
 
   @compatibility(numpy)
-  Equivalent to np.sum
+  Equivalent to np.sum appart the fact that numpy upcast uint8 and int32 to
+  int64 while tensorflow returns the same dtype as the input.
   @end_compatibility
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
@@ -1631,7 +1632,7 @@ def reduce_min(input_tensor,
   tensor with a single element is returned.
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real numeric type.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
@@ -1680,7 +1681,7 @@ def reduce_max(input_tensor,
   tensor with a single element is returned.
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real numeric type.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.

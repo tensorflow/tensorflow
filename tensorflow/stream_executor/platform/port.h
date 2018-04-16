@@ -39,12 +39,6 @@ using tensorflow::uint64;
 using std::string;
 #endif
 
-#if !defined(COMPILER_MSVC)
-#define ARRAYSIZE(a)              \
-    ((sizeof(a) / sizeof(*(a))) / \
-    static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
-#endif
-
 using tensorflow::LinkerInitialized;
 using tensorflow::LINKER_INITIALIZED;
 

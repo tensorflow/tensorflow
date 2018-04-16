@@ -33,8 +33,8 @@ import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 from tensorflow.contrib.eager.python.examples.spinn import data
 from third_party.examples.eager.spinn import spinn
-from tensorflow.contrib.eager.proto import checkpointable_object_graph_pb2
 from tensorflow.contrib.summary import summary_test_util
+from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.training import checkpoint_utils

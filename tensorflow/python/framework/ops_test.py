@@ -2305,6 +2305,13 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           self.assertEqual(ops.get_name_scope(), "inner")
       self.assertEqual(ops.get_name_scope(), "")
 
+  def testEagerGraphContextsExecuteEagerly(self):
+    with context.eager_mode():
+      with ops.Graph().as_default():
+        with context.graph_mode():
+          with ops.init_scope():
+            self.assertTrue(context.executing_eagerly())
+
   def testPreservesNameScopeInEagerExecution(self):
     with context.eager_mode():
       def foo():

@@ -210,33 +210,33 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "jpeg",
       urls = [
-          "https://mirror.bazel.build/github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
-          "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
+          "https://mirror.bazel.build/github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.3.tar.gz",
+          "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.3.tar.gz",
       ],
-      sha256 = "c15a9607892113946379ccea3ca8b85018301b200754f209453ab21674268e77",
-      strip_prefix = "libjpeg-turbo-1.5.1",
+      sha256 = "1a17020f859cb12711175a67eab5c71fc1904e04b587046218e36106e07eabde",
+      strip_prefix = "libjpeg-turbo-1.5.3",
       build_file = clean_dep("//third_party/jpeg:jpeg.BUILD"),
   )
 
   tf_http_archive(
       name = "png_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.2.53.tar.gz",
-          "https://github.com/glennrp/libpng/archive/v1.2.53.tar.gz",
+          "https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.6.34.tar.gz",
+          "https://github.com/glennrp/libpng/archive/v1.6.34.tar.gz",
       ],
-      sha256 = "716c59c7dfc808a4c368f8ada526932be72b2fcea11dd85dc9d88b1df1dfe9c2",
-      strip_prefix = "libpng-1.2.53",
+      sha256 = "e45ce5f68b1d80e2cb9a2b601605b374bdf51e1798ef1c2c2bd62131dfcf9eef",
+      strip_prefix = "libpng-1.6.34",
       build_file = clean_dep("//third_party:png.BUILD"),
   )
 
   tf_http_archive(
       name = "org_sqlite",
       urls = [
-          "https://mirror.bazel.build/www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
-          "http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
+          "https://mirror.bazel.build/www.sqlite.org/2018/sqlite-amalgamation-3230100.zip",
+          "https://www.sqlite.org/2018/sqlite-amalgamation-3230100.zip",
       ],
-      sha256 = "208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4",
-      strip_prefix = "sqlite-amalgamation-3200000",
+      sha256 = "4239a1f69e5721d07d9a374eb84d594225229e54be4ee628da2995f4315d8dfc",
+      strip_prefix = "sqlite-amalgamation-3230100",
       build_file = clean_dep("//third_party:sqlite.BUILD"),
   )
 
@@ -315,18 +315,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "backports.weakref-1.0rc1/src",
       build_file = clean_dep("//third_party:backports_weakref.BUILD"),
   )
-
-  tf_http_archive(
-      name = "com_github_andreif_codegen",
-      urls = [
-          "https://mirror.bazel.build/github.com/andreif/codegen/archive/1.0.tar.gz",
-          "https://github.com/andreif/codegen/archive/1.0.tar.gz",
-      ],
-      sha256 = "2dadd04a2802de27e0fe5a19b76538f6da9d39ff244036afa00c1bba754de5ee",
-      strip_prefix = "codegen-1.0",
-      build_file = clean_dep("//third_party:codegen.BUILD"),
-  )
-
+  
   filegroup_external(
       name = "org_python_license",
       licenses = ["notice"],  # Python 2.0
@@ -438,11 +427,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2.tar.gz",
-          "https://github.com/grpc/grpc/archive/bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/09386db3939cae1ac12e5f09b735adfa8958c68e.tar.gz",
+          "https://github.com/grpc/grpc/archive/09386db3939cae1ac12e5f09b735adfa8958c68e.tar.gz",
       ],
-      sha256 = "0a05bd355e4571b01d813dddffa38e57e689ac41b264dc9b1bd6ec66463ef5d6",
-      strip_prefix = "grpc-bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2",
+      sha256 = "b857969c667c14f37faa507afc07a3f39a47fbf73203be889d55925622e7b317",
+      strip_prefix = "grpc-09386db3939cae1ac12e5f09b735adfa8958c68e",
   )
 
 
@@ -462,11 +451,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/7e78daafdd22f3f17720a103d29d89590534004e.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/7e78daafdd22f3f17720a103d29d89590534004e.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/15535accd9e1e9d7772202ce51c8428c1994a04b.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/15535accd9e1e9d7772202ce51c8428c1994a04b.tar.gz",
       ],
-      sha256 = "a6d94bd9de23515a1e3792a830421e3885977ea43d03427cdbe68f98cb7e0045",
-      strip_prefix = "llvm-7e78daafdd22f3f17720a103d29d89590534004e",
+      sha256 = "3470c2dde055dc974e859e707aa6cd1d22eadd4f3a1f282e74c3cf1f7dc9510a",
+      strip_prefix = "llvm-15535accd9e1e9d7772202ce51c8428c1994a04b",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 

@@ -337,9 +337,13 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteInt64:
       *bytes = sizeof(int64_t) * count;
       break;
+    case kTfLiteBool:
+      *bytes = sizeof(bool) * count;
+      break;
     default:
-      ReportError(&context_,
-                  "Only float32, int32, int64, uint8 supported currently.");
+      ReportError(
+          &context_,
+          "Only float32, int32, int64, uint8, bool supported currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;

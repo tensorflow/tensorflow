@@ -92,13 +92,13 @@ TEST_F(FunctionOptimizerTest, SimpleFunction) {
       EXPECT_EQ(device, node.device());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("y/x", node.input(0));
-      EXPECT_EQ("y/scale:0", node.input(1));
+      EXPECT_EQ("y/scale", node.input(1));
     } else if (node.name() == "y") {
       count++;
       EXPECT_EQ("IdentityN", node.op());
       EXPECT_EQ(device, node.device());
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/y:0", node.input(0));
+      EXPECT_EQ("y/y", node.input(0));
     } else if (node.name() == "z") {
       count++;
       EXPECT_EQ("Identity", node.op());
@@ -180,13 +180,13 @@ TEST_F(FunctionOptimizerTest, FixedTypeFunction) {
       EXPECT_EQ(device, node.device());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("y/x", node.input(0));
-      EXPECT_EQ("y/two:0", node.input(1));
+      EXPECT_EQ("y/two", node.input(1));
     } else if (node.name() == "y") {
       count++;
       EXPECT_EQ("IdentityN", node.op());
       EXPECT_EQ(device, node.device());
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/y:0", node.input(0));
+      EXPECT_EQ("y/y", node.input(0));
     } else if (node.name() == "z") {
       count++;
       EXPECT_EQ("Identity", node.op());
@@ -264,13 +264,13 @@ TEST_F(FunctionOptimizerTest, FunctionWithOutputMapping) {
       EXPECT_EQ("Exp", node.op());
       EXPECT_EQ(device, node.device());
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/Linear_func:0", node.input(0));
+      EXPECT_EQ("y/Linear_func", node.input(0));
     } else if (node.name() == "y") {
       count++;
       EXPECT_EQ("IdentityN", node.op());
       EXPECT_EQ(device, node.device());
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/Exp:0", node.input(0));
+      EXPECT_EQ("y/Exp", node.input(0));
     } else if (node.name() == "z") {
       count++;
       EXPECT_EQ("Identity", node.op());
@@ -412,7 +412,7 @@ TEST_F(FunctionOptimizerTest, InlineFunctionWithNestedFunctionCall) {
       {mul_func, square_func});
 
   GraphDef output;
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   int count = 0;
@@ -453,12 +453,12 @@ TEST_F(FunctionOptimizerTest, InlineFunctionWithNestedFunctionCall) {
       EXPECT_EQ("IdentityN", node.op());
       EXPECT_EQ(kDevice, node.device());
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square/output/output:0", node.input(0));
+      EXPECT_EQ("square/output/output", node.input(0));
     } else if (node.name() == "square" && count++) {
       EXPECT_EQ("IdentityN", node.op());
       EXPECT_EQ(kDevice, node.device());
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square/output:0", node.input(0));
+      EXPECT_EQ("square/output", node.input(0));
     } else if (node.name() == "outputs" && count++) {
       EXPECT_EQ("Identity", node.op());
       EXPECT_EQ(kDevice, node.device());
@@ -508,7 +508,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradients) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -550,7 +550,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradientsIdentity) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -613,7 +613,7 @@ TEST_F(FunctionOptimizerTest, SymbolicGradientsNoInlineFunc) {
   TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
   *item.graph.mutable_library()->add_function() = func;
 
-  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  FunctionOptimizer optimizer(RewriterConfig::ON);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   // The optimizer should succeed but the graphs should be the same.

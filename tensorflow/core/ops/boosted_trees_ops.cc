@@ -128,6 +128,7 @@ REGISTER_OP("BoostedTreesGetEnsembleStates")
     .Output("num_trees: int32")
     .Output("num_finalized_trees: int32")
     .Output("num_attempted_layers: int32")
+    .Output("last_layer_nodes_range: int32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
@@ -135,6 +136,7 @@ REGISTER_OP("BoostedTreesGetEnsembleStates")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       c->set_output(3, c->Scalar());
+      c->set_output(4, c->Vector(2));
       return Status::OK();
     });
 

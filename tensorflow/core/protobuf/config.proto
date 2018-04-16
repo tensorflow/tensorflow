@@ -409,6 +409,17 @@ message RunMetadata {
   repeated GraphDef partition_graphs = 3;
 }
 
+// Defines a connection between two tensors in a `GraphDef`.
+message TensorConnection {
+  // A tensor name. The value of this tensor will be substituted for
+  // the tensor named in `to_tensor`.
+  string from_tensor = 1;
+
+  // A tensor name. The value of this tensor will be bound to the
+  // value of the tensor named in `from_tensor`.
+  string to_tensor = 2;
+}
+
 // Defines a subgraph in another `GraphDef` as a set of feed points and nodes
 // to be fetched or executed.
 //
@@ -429,5 +440,10 @@ message CallableOptions {
   // Options that will be applied to each run.
   RunOptions run_options = 4;
 
-  // Next: 5
+  // Tensors to be connected in the callable. Each TensorConnection denotes
+  // a pair of tensors in the graph, between which an edge will be created
+  // in the callable.
+  repeated TensorConnection tensor_connection = 5;
+
+  // Next: 6
 }

@@ -475,7 +475,7 @@ optimizations.
 ### TensorFlow with Intel® MKL DNN
 
 Intel® has added optimizations to TensorFlow for Intel® Xeon® and Intel® Xeon
-Phi™ though the use of Intel® Math Kernel Library for Deep Neural Networks
+Phi™ through the use of the Intel® Math Kernel Library for Deep Neural Networks
 (Intel® MKL-DNN) optimized primitives. The optimizations also provide speedups
 for the consumer line of processors, e.g. i5 and i7 Intel processors. The Intel
 published paper
@@ -581,9 +581,9 @@ Each variable that impacts performance is discussed below.
     for optimal settings.
 
 *   **intra_op_parallelism_threads**: Setting this equal to the number of
-    physical cores is recommended. Setting the value to 0, which is the default
-    and will result in the value being set to the number of logical cores, is an
-    option to try for some architectures.  This value and `OMP_NUM_THREADS`
+    physical cores is recommended. Setting the value to 0, which is the default,
+    results in the value being set to the number of logical cores - this is an
+    alternate option to try for some architectures.  This value and `OMP_NUM_THREADS`
     should be equal.
 
 *   **inter_op_parallelism_threads**: Setting this equal to the number of
