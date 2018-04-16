@@ -1,4 +1,7 @@
-package(default_visibility = ["//visibility:public"])
+package(
+    allow_proto_library_in_java_rules = 0,
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])  # Apache 2.0
 

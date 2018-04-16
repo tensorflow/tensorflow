@@ -5,6 +5,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 package(
+    allow_proto_library_in_java_rules = 0,
     default_visibility = [
         "//engedu/ml/tf_from_scratch:__pkg__",
         "//tensorflow:internal",

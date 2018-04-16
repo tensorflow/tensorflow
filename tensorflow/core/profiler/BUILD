@@ -1,4 +1,5 @@
 package(
+    allow_proto_library_in_java_rules = 0,
     default_visibility = ["//visibility:public"],
 )
 
