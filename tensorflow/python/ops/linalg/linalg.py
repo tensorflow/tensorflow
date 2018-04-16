@@ -39,7 +39,6 @@ del ops
 del array_ops
 del gen_linalg_ops
 del linalg_ops
-del linalg_ops_impl
 del math_ops
 del special_math_ops
 del tf_export
