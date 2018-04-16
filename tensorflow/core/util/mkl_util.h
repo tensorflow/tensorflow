@@ -1802,44 +1802,55 @@ class DnnOpFactory {
   }
 };
 
-// utility functions which convert int, double, bool or dims to string
-static inline std::string IntToString(int value) {
-  std::string strInt = "I";
-  strInt.append(std::to_string(value));
-  strInt.append("_");
-  return strInt;
-}
-
-static inline std::string DoubleToString(double value) {
-  std::string strDouble = "D";
-  strDouble.append(std::to_string(value));
-  strDouble.append("_");
-  return strDouble;
-}
-
-static inline std::string FloatToString(float value) {
-  std::string strFloat = "F";
-  strFloat.append(std::to_string(value));
-  strFloat.append("_");
-  return strFloat;
-}
-
-static inline std::string BoolToString(bool value) {
-  std::string strBool = "B";
-  strBool.append(std::to_string(value));
-  strBool.append("_");
-  return strBool;
-}
-
-static inline std::string DimsToString(mkldnn::memory::dims dims) {
-  std::string strDims = "DIMS:";
-  for (unsigned int i = 0; i < dims.size(); i++) {
-    strDims.append(std::to_string(dims[i]));
-    strDims.append(",");
+// utility class for creating keys of MKL primitive pool.
+class FactoryKeyCreator {
+ public:
+  FactoryKeyCreator() {
+    key_.reserve(kMaxKeyLength);
   }
-  strDims.append(";");
-  return strDims;
-}
+
+  ~FactoryKeyCreator() {}
+
+  void AddAsKey(const string &str) {
+    auto buffer = reinterpret_cast<const char *>(str.c_str());
+    Append(buffer, str.length());
+  }
+
+  void AddAsKey(const mkldnn::memory::dims &dims) {
+    for (unsigned int i = 0; i < dims.size(); i++) {
+      AddAsKey(dims[i]);
+    }
+  }
+
+  void AddAsKey(const float data) {
+    auto buffer = reinterpret_cast<const char *>(&data);
+    Append(buffer, sizeof(float));
+  }
+
+  void AddAsKey(const int data) {
+    auto buffer = reinterpret_cast<const char*>(&data);
+    auto len = sizeof(data) - (__builtin_clz(data)/8);
+    Append(buffer, len);
+  }
+
+  void AddAsKey(const bool data) {
+    auto buffer = reinterpret_cast<const char*>(&data);
+    Append(buffer, sizeof(bool));
+  }
+
+  std::string GetKey() {
+    return key_;
+  }
+
+ private:
+  string key_;
+  const char delimiter = 'x';
+  const int kMaxKeyLength = 256;
+  void Append(const char* data, int len) {
+    key_.append(data, len);
+    key_.append(1, delimiter);
+  }
+};
 
 #endif  // INTEL_MKL_DNN
 

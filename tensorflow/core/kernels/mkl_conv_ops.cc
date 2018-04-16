@@ -89,9 +89,6 @@ class Conv2DFwd : public DnnOp {
              memory::dims dilations,
              memory::dims padding_l,
              memory::dims padding_r) {
-    strides_ = strides;
-    padding_l_ = padding_l;
-    padding_r_ = padding_r;
 
     // create memory descriptors for convolution data w/ no specified format
     src_md_.reset(new memory::desc({src_dims}, MklDnnType<T>(),
@@ -109,13 +106,13 @@ class Conv2DFwd : public DnnOp {
     if (!bias_dims.empty()) {
       fwd_desc_.reset(new convolution_forward::desc(prop_kind::forward,
                       convolution_direct, *src_md_, *filter_md_,
-                      *bias_md_, *dst_md_, strides_, dilations,
-                      padding_l_, padding_r_, padding_kind::zero));
+                      *bias_md_, *dst_md_, strides, dilations,
+                      padding_l, padding_r, padding_kind::zero));
     } else {
       fwd_desc_.reset(new convolution_forward::desc(prop_kind::forward,
                       convolution_direct, *src_md_, *filter_md_,
-                      *dst_md_, strides_, dilations,
-                      padding_l_, padding_r_, padding_kind::zero));
+                      *dst_md_, strides, dilations,
+                      padding_l, padding_r, padding_kind::zero));
     }
 
     fwd_pd_.reset(new convolution_forward::primitive_desc(
@@ -127,8 +124,6 @@ class Conv2DFwd : public DnnOp {
 
     filter_fmt_ = static_cast<mkldnn::memory::format>(
                  fwd_pd_.get()->weights_primitive_desc().desc().data.format);
-    dst_fmt_ = static_cast<mkldnn::memory::format>(
-                 fwd_pd_.get()->dst_primitive_desc().desc().data.format);
 
     // create memory primitive based on dummy data
     src_mem_.reset(new memory(fwd_pd_.get()->src_primitive_desc(), DummyData));
@@ -187,7 +182,6 @@ class Conv2DFwd : public DnnOp {
   // expected memory format for this primitive instance
   memory::format src_fmt_;
   memory::format filter_fmt_;
-  memory::format dst_fmt_;
 
   // convolution primitive
   std::shared_ptr<mkldnn::convolution_forward::primitive_desc> fwd_pd_;
@@ -205,12 +199,6 @@ class Conv2DFwd : public DnnOp {
 
   // desc & prmitive desc
   std::shared_ptr<mkldnn::convolution_forward::desc> fwd_desc_;
-
-  // memory dims
-  mkldnn::memory::dims dilates_;
-  mkldnn::memory::dims strides_;
-  mkldnn::memory::dims padding_l_;
-  mkldnn::memory::dims padding_r_;
 
   // memory desc
   std::shared_ptr<mkldnn::memory::desc> src_md_;
@@ -273,21 +261,18 @@ class Conv2DFwdFactory : public DnnOpFactory<T> {
              memory::dims dilations,
              memory::dims padding_l,
              memory::dims padding_r) {
-    std::string key = "conv2d_fwd_";
-
-    key += DimsToString(src_dims);
-    key += DimsToString(filter_dims);
-    key += DimsToString(bias_dims);
-    key += DimsToString(dst_dims);
-    key += IntToString(dilations[kDilationH]);
-    key += IntToString(dilations[kDilationW]);
-    key += IntToString(strides[0]);
-    key += IntToString(strides[1]);
-    key += IntToString(padding_l[0]);
-    key += IntToString(padding_l[1]);
-    key += IntToString(padding_r[0]);
-    key += IntToString(padding_r[1]);
-    return key;
+    std::string prefix = "conv2d_fwd_";
+    FactoryKeyCreator key_creator;
+    key_creator.AddAsKey(prefix);
+    key_creator.AddAsKey(src_dims);
+    key_creator.AddAsKey(filter_dims);
+    key_creator.AddAsKey(bias_dims);
+    key_creator.AddAsKey(dst_dims);
+    key_creator.AddAsKey(strides);
+    key_creator.AddAsKey(dilations);
+    key_creator.AddAsKey(padding_l);
+    key_creator.AddAsKey(padding_r);
+    return key_creator.GetKey();
   }
 
   DnnOp* GetConv2DFwd(memory::dims src_dims,
