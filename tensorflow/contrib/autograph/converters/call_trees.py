@@ -198,7 +198,7 @@ class CallTreeTransformer(transformer.Base):
   def _wrap_to_py_func_no_return(self, node):
     # TODO(mdan): Properly handle varargs, etc.
     template = """
-      autograph_utils.wrap_py_func(func, None, (args,), kwargs, True)
+      ag__.utils.wrap_py_func(func, None, (args,), kwargs, True)
     """
     return templates.replace(
         template,
@@ -209,7 +209,7 @@ class CallTreeTransformer(transformer.Base):
   def _wrap_to_py_func_single_return(self, node, dtype):
     # TODO(mdan): Properly handle varargs, etc.
     template = """
-      autograph_utils.wrap_py_func(func, dtype, (args,), kwargs, False)
+      ag__.utils.wrap_py_func(func, dtype, (args,), kwargs, False)
     """
     return templates.replace_as_expression(
         template,
@@ -237,7 +237,7 @@ class CallTreeTransformer(transformer.Base):
     # Before we could convert all the time though, we'd need a reasonable
     # caching mechanism.
     template = """
-      autograph_api.converted_call(func, True, False, {}, args)
+      ag__.converted_call(func, True, False, {}, args)
     """
     call_expr = templates.replace(template, func=node.func, args=node.args)
     new_call = call_expr[0].value
