@@ -36,6 +36,7 @@ from tensorflow.contrib.saved_model.python.saved_model import reader
 from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import meta_graph as meta_graph_lib
@@ -201,7 +202,7 @@ def _show_all(saved_model_dir):
     signature_def_map = get_signature_def_map(saved_model_dir, tag_set)
     for signature_def_key in sorted(signature_def_map.keys()):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
-      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, 
+      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
 
 
@@ -543,7 +544,10 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(filename)
+    if filename.startswith("gs://"):
+      data = np.load(file_io.FileIO(filename, mode='r'))
+    else:
+      data = np.load(filename)
 
     # When a variable_name key is specified for the input file
     if variable_name:
