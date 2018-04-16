@@ -1268,9 +1268,6 @@ class CheckpointCompatibilityTests(test.TestCase):
       status.initialize_or_restore()
       self._check_sentinels(root)
 
-  # TODO(allenl): Test for the core name-based saver loading object-based
-  # checkpoints once object-based checkpointing is in core.
-
   def testSaveGraphLoadEager(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")

@@ -141,7 +141,11 @@ REGISTER_OP("BytesProducedStatsDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle tag_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &tag_shape));
+      return shape_inference::ScalarShape(c);
+    });
 
 REGISTER_OP("LatencyStatsDataset")
     .Input("input_dataset: variant")
@@ -149,7 +153,11 @@ REGISTER_OP("LatencyStatsDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle tag_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &tag_shape));
+      return shape_inference::ScalarShape(c);
+    });
 
 REGISTER_OP("MapDataset")
     .Input("input_dataset: variant")
