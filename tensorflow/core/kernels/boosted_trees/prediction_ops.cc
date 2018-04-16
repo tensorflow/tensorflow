@@ -50,7 +50,6 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
     OP_REQUIRES(context, logits_dimension_ == 1,
                 errors::InvalidArgument(
                     "Currently only one dimensional outputs are supported."));
-    OP_REQUIRES_OK(context, context->GetAttr("max_depth", &max_depth_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -155,9 +154,10 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
           output_partial_logits(i, 0) = partial_all_logit;
         }
       };
-      // Assume we will not go over more than one full tree. 4 is a magic
-      // number.
-      const int64 cost = 4 * max_depth_;
+      // 30 is the magic number. The actual value might be a function of (the
+      // number of layers) * (cpu cycles spent on each layer), but this value
+      // would work for many cases. May be tuned later.
+      const int64 cost = 30;
       thread::ThreadPool* const worker_threads =
           context->device()->tensorflow_cpu_worker_threads()->workers;
       Shard(worker_threads->NumThreads(), worker_threads, batch_size,
@@ -168,7 +168,6 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
  private:
   int32 logits_dimension_;         // the size of the output prediction vector.
   int32 num_bucketized_features_;  // Indicates the number of features.
-  int32 max_depth_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesTrainingPredict").Device(DEVICE_CPU),
@@ -186,7 +185,6 @@ class BoostedTreesPredictOp : public OpKernel {
     OP_REQUIRES(context, logits_dimension_ == 1,
                 errors::InvalidArgument(
                     "Currently only one dimensional outputs are supported."));
-    OP_REQUIRES_OK(context, context->GetAttr("max_depth", &max_depth_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -243,7 +241,10 @@ class BoostedTreesPredictOp : public OpKernel {
         output_logits(i, 0) = tree_logit;
       }
     };
-    const int64 cost = (latest_tree + 1) * max_depth_;
+    // 10 is the magic number. The actual number might depend on (the number of
+    // layers in the trees) and (cpu cycles spent on each layer), but this
+    // value would work for many cases. May be tuned later.
+    const int64 cost = (latest_tree + 1) * 10;
     thread::ThreadPool* const worker_threads =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     Shard(worker_threads->NumThreads(), worker_threads, batch_size,
@@ -254,7 +255,6 @@ class BoostedTreesPredictOp : public OpKernel {
   int32
       logits_dimension_;  // Indicates the size of the output prediction vector.
   int32 num_bucketized_features_;  // Indicates the number of features.
-  int32 max_depth_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesPredict").Device(DEVICE_CPU),
