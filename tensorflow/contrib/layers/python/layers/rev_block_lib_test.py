@@ -60,8 +60,8 @@ class RevBlockTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       x1, x2, x1_inv, x2_inv = sess.run([x1, x2, x1_inv, x2_inv])
 
-      self.assertAllClose(x1, x1_inv)
-      self.assertAllClose(x2, x2_inv)
+      self.assertAllClose(x1, x1_inv, atol=1e-5)
+      self.assertAllClose(x2, x2_inv, atol=1e-5)
 
   def testBackwardForward(self):
 
