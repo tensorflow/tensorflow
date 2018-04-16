@@ -1695,7 +1695,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
         HloInstruction::CreateReshape(reduce->shape(), arg));
     return ReplaceWithNewInstruction(
         reduce, HloInstruction::CreateMap(reduce->shape(),
-                                          {reshape, init_value}, function));
+                                          {init_value, reshape}, function));
   }
   return Status::OK();
 }
