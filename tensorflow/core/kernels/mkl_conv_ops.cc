@@ -92,6 +92,48 @@ class Conv2DFwd : public DnnOp {
 
   ~Conv2DFwd() {}
 
+  void Execute() {}
+
+  // Convolution forward execute with bias
+  void Execute(T* src, T* w, T* b, T* dst) {
+    src_mem_->set_data_handle(static_cast<void*>(src));
+    filter_mem_->set_data_handle(static_cast<void*>(w));
+    bias_mem_->set_data_handle(static_cast<void*>(b));
+    dst_mem_->set_data_handle(static_cast<void*>(dst));
+    fwd_stream_->submit(fwd_primitives_);
+
+    // after exec, set data handle back
+    src_mem_->set_data_handle(DummyData);
+    filter_mem_->set_data_handle(DummyData);
+    bias_mem_->set_data_handle(DummyData);
+    dst_mem_->set_data_handle(DummyData);
+
+    return;
+  }
+
+  // Convolution forward execute without bias
+  void Execute(T* src, T* w, T* dst) {
+    src_mem_->set_data_handle(static_cast<void*>(src));
+    filter_mem_->set_data_handle(static_cast<void*>(w));
+    dst_mem_->set_data_handle(static_cast<void*>(dst));
+    fwd_stream_->submit(fwd_primitives_);
+
+    // after exec, set data handle back
+    src_mem_->set_data_handle(DummyData);
+    filter_mem_->set_data_handle(DummyData);
+    dst_mem_->set_data_handle(DummyData);
+
+    return;
+  }
+
+  // expected memory format for this primitive instance
+  memory::format src_fmt_;
+  memory::format filter_fmt_;
+
+  // convolution primitive
+  std::shared_ptr<mkldnn::convolution_forward::primitive_desc> fwd_pd_;
+  std::shared_ptr<mkldnn::primitive> conv_fwd_;
+
  private:
   void Setup(const ConvFwdDimensions& convFwdDims) {
     // create memory descriptors for convolution data w/ no specified format
@@ -152,48 +194,6 @@ class Conv2DFwd : public DnnOp {
     return;
   }
 
- public:
-  // Convolution forward execute with bias
-  void Execute(T* src, T* w, T* b, T* dst) {
-    src_mem_->set_data_handle(static_cast<void*>(src));
-    filter_mem_->set_data_handle(static_cast<void*>(w));
-    bias_mem_->set_data_handle(static_cast<void*>(b));
-    dst_mem_->set_data_handle(static_cast<void*>(dst));
-    fwd_stream_->submit(fwd_primitives_);
-
-    // after exec, set data handle back
-    src_mem_->set_data_handle(DummyData);
-    filter_mem_->set_data_handle(DummyData);
-    bias_mem_->set_data_handle(DummyData);
-    dst_mem_->set_data_handle(DummyData);
-
-    return;
-  }
-
-  // Convolution forward execute without bias
-  void Execute(T* src, T* w, T* dst) {
-    src_mem_->set_data_handle(static_cast<void*>(src));
-    filter_mem_->set_data_handle(static_cast<void*>(w));
-    dst_mem_->set_data_handle(static_cast<void*>(dst));
-    fwd_stream_->submit(fwd_primitives_);
-
-    // after exec, set data handle back
-    src_mem_->set_data_handle(DummyData);
-    filter_mem_->set_data_handle(DummyData);
-    dst_mem_->set_data_handle(DummyData);
-
-    return;
-  }
-
-  // expected memory format for this primitive instance
-  memory::format src_fmt_;
-  memory::format filter_fmt_;
-
-  // convolution primitive
-  std::shared_ptr<mkldnn::convolution_forward::primitive_desc> fwd_pd_;
-  std::shared_ptr<mkldnn::primitive> conv_fwd_;
-
- private:
   // MKLDNN memory
   std::shared_ptr<mkldnn::memory> src_mem_;
   std::shared_ptr<mkldnn::memory> filter_mem_;

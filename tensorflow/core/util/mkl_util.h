@@ -1762,8 +1762,7 @@ class MklDnnData {
 class DnnOp {
  public:
   virtual ~DnnOp() {}
-  virtual void Setup() {return;}
-  virtual void Execute() {return;}
+  virtual void Execute() = 0;
 
   // Dummy data. Its size, hard-coded as 256 here, does
   // not matter since MKL should never operate on this buffer.
