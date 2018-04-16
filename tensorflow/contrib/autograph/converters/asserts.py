@@ -27,8 +27,6 @@ from tensorflow.contrib.autograph.pyct import transformer
 class AssertsTransformer(transformer.Base):
   """Transforms Print nodes to Call so they can be handled as functions."""
 
-  # pylint:disable=invalid-name
-
   def visit_Assert(self, node):
     self.generic_visit(node)
 
@@ -44,9 +42,7 @@ class AssertsTransformer(transformer.Base):
     elif isinstance(node.msg, gast.Str):
       return templates.replace(template, test=node.test, msg=node.msg)
     else:
-      raise NotImplementedError('Can only convert string messages for now.')
-
-  # pylint:enable=invalid-name
+      raise NotImplementedError('can only convert string messages for now.')
 
 
 def transform(node, context):
