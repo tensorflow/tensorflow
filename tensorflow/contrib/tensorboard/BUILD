@@ -1,10 +1,7 @@
 # Description:
 # TensorBoard module containing volatile or experimental code.
 
-package(
-    allow_proto_library_in_java_rules = 0,
-    default_visibility = ["//tensorflow:internal"],
-)
+package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
