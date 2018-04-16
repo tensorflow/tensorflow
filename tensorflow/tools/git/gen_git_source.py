@@ -168,8 +168,8 @@ def get_git_version(git_base_path, git_tag_override):
       split_val = val.split("-")
       if len(split_val) != 3:
         raise Exception(
-            "Expected git version in format 'tag-commits after tag-hash' "
-            "but got '%s'", val)
+            ("Expected git version in format 'TAG-COMMITS AFTER TAG-HASH' "
+             "but got '%s'") % val)
       split_val[0] = git_tag_override
       val = bytes("-".join(split_val))
     return val if val else unknown_label
