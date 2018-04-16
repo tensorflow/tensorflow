@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -26,7 +28,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class ModelPrunerTest : public ::testing::Test {};
+class ModelPrunerTest : public GrapplerTest {};
 
 TEST_F(ModelPrunerTest, NoPruning) {
   // This trivial graph is so basic there's nothing to prune.
@@ -86,6 +88,13 @@ TEST_F(ModelPrunerTest, StopGradientPruning) {
   EXPECT_EQ(NodeName(b.name()), new_e.input(0));
   EXPECT_EQ(1, new_d.input_size());
   EXPECT_EQ(NodeName(b.name()), new_d.input(0));
+
+  std::vector<string> fetch = {"e"};
+  auto expected_tensors = EvaluateNodes(item.graph, fetch);
+  auto actual_tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, expected_tensors.size());
+  EXPECT_EQ(1, actual_tensors.size());
+  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, IdentityPruning) {

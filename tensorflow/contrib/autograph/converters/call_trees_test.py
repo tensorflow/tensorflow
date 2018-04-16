@@ -34,7 +34,7 @@ class CallTreesTest(converter_test_base.TestCase):
   def test_basic(self):
 
     def test_fn_1(_):
-      raise ValueError('This should not be called in the compiled verison.')
+      raise ValueError('This should not be called in the compiled version.')
 
     def renamed_test_fn_1(a):
       return a + 1

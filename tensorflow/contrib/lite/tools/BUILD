@@ -78,6 +78,9 @@ cc_test(
         "//tensorflow/contrib/lite:testdata/test_model.bin",
         "//tensorflow/contrib/lite:testdata/test_model_broken.bin",
     ],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":gen_op_registration",
         "@com_google_googletest//:gtest",

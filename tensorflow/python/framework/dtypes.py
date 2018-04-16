@@ -297,6 +297,9 @@ class DType(object):
   def __hash__(self):
     return self._type_enum
 
+  def __reduce__(self):
+    return as_dtype, (self.name,)
+
   @property
   def size(self):
     if (self._type_enum == types_pb2.DT_VARIANT or
@@ -696,11 +699,13 @@ def as_dtype(type_value):
     if type_value.type == np.string_ or type_value.type == np.unicode_:
       return string
 
-  for key, val in _NP_TO_TF:
-    try:
-      if key == type_value:
-        return val
-    except TypeError as e:
-      raise TypeError("Cannot convert {} to a dtype. {}".format(type_value, e))
+  if isinstance(type_value, (type, np.dtype)):
+    for key, val in _NP_TO_TF:
+      try:
+        if key == type_value:
+          return val
+      except TypeError as e:
+        raise TypeError("Cannot convert {} to a dtype. {}".format(
+            type_value, e))
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." % type_value)

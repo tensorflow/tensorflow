@@ -581,24 +581,25 @@ class _LinearModel(training.Model):
         **kwargs)
 
   def call(self, features):
-    for column in self._feature_columns:
-      if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
-        raise ValueError(
-            'Items of feature_columns must be either a '
-            '_DenseColumn or _CategoricalColumn. Given: {}'.format(column))
-    weighted_sums = []
-    ordered_columns = []
-    builder = _LazyBuilder(features)
-    for layer in sorted(self._column_layers.values(), key=lambda x: x.name):
-      ordered_columns.append(layer._feature_column)  # pylint: disable=protected-access
-      weighted_sum = layer(builder)
-      weighted_sums.append(weighted_sum)
+    with variable_scope.variable_scope(self.name):
+      for column in self._feature_columns:
+        if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
+          raise ValueError(
+              'Items of feature_columns must be either a '
+              '_DenseColumn or _CategoricalColumn. Given: {}'.format(column))
+      weighted_sums = []
+      ordered_columns = []
+      builder = _LazyBuilder(features)
+      for layer in sorted(self._column_layers.values(), key=lambda x: x.name):
+        ordered_columns.append(layer._feature_column)  # pylint: disable=protected-access
+        weighted_sum = layer(builder)
+        weighted_sums.append(weighted_sum)
 
-    _verify_static_batch_size_equality(weighted_sums, ordered_columns)
-    predictions_no_bias = math_ops.add_n(
-        weighted_sums, name='weighted_sum_no_bias')
-    predictions = nn_ops.bias_add(
-        predictions_no_bias, self._bias_layer(builder), name='weighted_sum')  # pylint: disable=not-callable
+      _verify_static_batch_size_equality(weighted_sums, ordered_columns)
+      predictions_no_bias = math_ops.add_n(
+          weighted_sums, name='weighted_sum_no_bias')
+      predictions = nn_ops.bias_add(
+          predictions_no_bias, self._bias_layer(builder), name='weighted_sum')  # pylint: disable=not-callable
     return predictions
 
   def _add_layers(self, layers):
@@ -3147,6 +3148,9 @@ def _safe_embedding_lookup_sparse(embedding_weights,
 
     # Prune invalid ids and weights.
     sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
+    if combiner != 'sum':
+      sparse_ids, sparse_weights = _prune_invalid_weights(
+          sparse_ids, sparse_weights)
 
     # Fill in dummy values for empty features, if necessary.
     sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(sparse_ids,
@@ -3195,10 +3199,20 @@ def _prune_invalid_ids(sparse_ids, sparse_weights):
   is_id_valid = math_ops.greater_equal(sparse_ids.values, 0)
   if sparse_weights is not None:
     is_id_valid = math_ops.logical_and(
-        is_id_valid, math_ops.greater(sparse_weights.values, 0))
+        is_id_valid,
+        array_ops.ones_like(sparse_weights.values, dtype=dtypes.bool))
   sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_id_valid)
   if sparse_weights is not None:
     sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
+  return sparse_ids, sparse_weights
+
+
+def _prune_invalid_weights(sparse_ids, sparse_weights):
+  """Prune invalid weights (< 0) from the input ids and weights."""
+  if sparse_weights is not None:
+    is_weights_valid = math_ops.greater(sparse_weights.values, 0)
+    sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_weights_valid)
+    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_weights_valid)
   return sparse_ids, sparse_weights
 
 

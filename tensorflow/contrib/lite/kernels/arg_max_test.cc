@@ -100,8 +100,7 @@ TEST(ArgMaxOpTest, GetMaxArgOutput64) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
-  FLAGS_logtostderr = true;
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

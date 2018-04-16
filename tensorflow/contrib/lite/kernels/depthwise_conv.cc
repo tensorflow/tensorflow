@@ -140,10 +140,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int out_height =
       compute_out_size(height, filter_height, params->stride_height);
 
-  data->padding.height =
-      ComputePadding(params->stride_height, height, filter_height, out_height);
+  data->padding.height = ComputePadding(params->stride_height, 1, height,
+                                        filter_height, out_height);
   data->padding.width =
-      ComputePadding(params->stride_width, width, filter_width, out_width);
+      ComputePadding(params->stride_width, 1, width, filter_width, out_width);
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.

@@ -22,6 +22,7 @@ import os
 import tarfile
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 from scipy import linalg as scp_linalg
 
@@ -182,13 +183,20 @@ def _run_with_mock(function, *args, **kwargs):
     return function(*args, **kwargs)
 
 
-class ClassifierMetricsTest(test.TestCase):
+class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
 
-  def test_run_inception_graph(self):
+  @parameterized.named_parameters(
+      ('GraphDef', False),
+      ('DefaultGraphDefFn', True))
+  def test_run_inception_graph(self, use_default_graph_def):
     """Test `run_inception` graph construction."""
     batch_size = 7
     img = array_ops.ones([batch_size, 299, 299, 3])
-    logits = _run_with_mock(classifier_metrics.run_inception, img)
+
+    if use_default_graph_def:
+      logits = _run_with_mock(classifier_metrics.run_inception, img)
+    else:
+      logits = classifier_metrics.run_inception(img, _get_dummy_graphdef())
 
     self.assertTrue(isinstance(logits, ops.Tensor))
     logits.shape.assert_is_compatible_with([batch_size, 1001])
@@ -196,14 +204,23 @@ class ClassifierMetricsTest(test.TestCase):
     # Check that none of the model variables are trainable.
     self.assertListEqual([], variables.trainable_variables())
 
-  def test_run_inception_graph_pool_output(self):
+  @parameterized.named_parameters(
+      ('GraphDef', False),
+      ('DefaultGraphDefFn', True))
+  def test_run_inception_graph_pool_output(self, use_default_graph_def):
     """Test `run_inception` graph construction with pool output."""
     batch_size = 3
     img = array_ops.ones([batch_size, 299, 299, 3])
-    pool = _run_with_mock(
-        classifier_metrics.run_inception,
-        img,
-        output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
+
+    if use_default_graph_def:
+      pool = _run_with_mock(
+          classifier_metrics.run_inception,
+          img,
+          output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
+    else:
+      pool = classifier_metrics.run_inception(
+          img, _get_dummy_graphdef(),
+          output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
 
     self.assertTrue(isinstance(pool, ops.Tensor))
     pool.shape.assert_is_compatible_with([batch_size, 2048])

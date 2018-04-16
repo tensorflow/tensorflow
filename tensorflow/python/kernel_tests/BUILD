@@ -1029,12 +1029,14 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
     tags = ["no_windows"],
 )
@@ -1605,7 +1607,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "linalg_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["linalg_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2667,10 +2669,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
-    tags = [
-        "manual",
-        "notap",  # b/30226163
-    ],
 )
 
 cuda_py_test(
@@ -2820,7 +2818,7 @@ sycl_py_test(
 
 tf_py_test(
     name = "sets_test",
-    size = "small",
+    size = "medium",
     srcs = ["sets_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

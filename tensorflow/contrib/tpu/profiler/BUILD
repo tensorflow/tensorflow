@@ -46,6 +46,7 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":dump_tpu_profile",
+        ":tpu_profiler_analysis_proto_cc",
         ":tpu_profiler_proto_cc",
         ":version",
         "//tensorflow/core:framework_internal",
