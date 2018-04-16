@@ -694,7 +694,7 @@ def softmax_cross_entropy(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
-  """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
+  """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits_v2.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
   then the loss is simply scaled by the given value. If `weights` is a
