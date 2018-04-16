@@ -909,7 +909,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     elif unbroadcasted_shape.ndims == 2:
       # Unbroadcasted shape [num features x state dimension]
       broadcasted_model = array_ops.tile(
-          array_ops.expand_dims(unbroadcasted_model, dim=0),
+          array_ops.expand_dims(unbroadcasted_model, axis=0),
           [array_ops.shape(times)[0], 1, 1])
     elif unbroadcasted_shape.ndims == 3:
       broadcasted_model = unbroadcasted_model

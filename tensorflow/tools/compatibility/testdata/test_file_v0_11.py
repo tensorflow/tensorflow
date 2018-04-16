@@ -94,7 +94,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertAllClose(
           tf.reduce_logsumexp(a, [0, 1]).eval(), 6.45619344711)
       self.assertAllEqual(
-          tf.expand_dims([[1, 2], [3, 4]], dim=1).eval(),
+          tf.expand_dims([[1, 2], [3, 4]], axis=1).eval(),
           [[[1, 2]], [[3, 4]]])
 
   def testArgMinMax(self):
