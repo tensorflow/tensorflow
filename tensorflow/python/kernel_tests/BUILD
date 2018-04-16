@@ -1193,6 +1193,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "broadcast_to_ops_test",
+    size = "small",
+    srcs = ["broadcast_to_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "inplace_ops_test",
     size = "small",
     srcs = ["inplace_ops_test.py"],
