@@ -724,6 +724,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands[0], *broadcast_dimensions));
       break;
     }
+    case HloOpcode::kBroadcastDimOne: {
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateBroadcastDimOne(shape, operands[0]));
+      break;
+    }
     case HloOpcode::kConcatenate: {
       optional<std::vector<int64>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,

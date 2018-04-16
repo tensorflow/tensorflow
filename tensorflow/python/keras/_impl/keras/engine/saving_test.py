@@ -340,7 +340,7 @@ class TestWholeModelSaving(test.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
-      model.model._make_train_function()
+      model._make_train_function()
 
       fd, fname = tempfile.mkstemp('.h5')
       keras.models.save_model(model, fname)
@@ -369,6 +369,92 @@ class TestWholeModelSaving(test.TestCase):
 
     self.assertAllClose(mean, model.layers[1].arguments['mu'])
     self.assertAllClose(std, model.layers[1].arguments['std'])
+
+  def test_saving_model_with_long_layer_names(self):
+    if h5py is None:
+      return  # Skip test if models cannot be saved.
+
+    with self.test_session():
+      # This layer name will make the `layers_name` HDF5 attribute blow
+      # out of proportion. Note that it fits into the internal HDF5
+      # attribute memory limit on its own but because h5py converts
+      # the list of layer names into numpy array, which uses the same
+      # amout of memory for every item, it increases the memory
+      # requirements substantially.
+      x = keras.Input(shape=(2,), name='input_' + ('x' * (2**15)))
+      f = x
+      for i in range(4):
+        f = keras.layers.Dense(2, name='dense_%d' % (i,))(f)
+      model = keras.Model(inputs=[x], outputs=[f])
+      model.compile(loss='mse', optimizer='adam', metrics=['acc'])
+
+      x = np.random.random((1, 2))
+      y = np.random.random((1, 2))
+      model.train_on_batch(x, y)
+      out = model.predict(x)
+
+      fd, fname = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, fname)
+      model = keras.models.load_model(fname)
+
+      # Check that the HDF5 files contains chunked array
+      # of layer names.
+      with h5py.File(fname, 'r') as h5file:
+        num_names_arrays = len([attr for attr in h5file['model_weights'].attrs
+                                if attr.startswith('layer_names')])
+      # The chunking of layer names array should have happend.
+      self.assertGreater(num_names_arrays, 0)
+      out2 = model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
+      # Cleanup
+      os.close(fd)
+      os.remove(fname)
+
+  def test_saving_model_with_long_weights_names(self):
+    if h5py is None:
+      return  # Skip test if models cannot be saved.
+
+    with self.test_session():
+      x = keras.Input(shape=(2,), name='nested_model_input')
+      f = x
+      for i in range(4):
+        f = keras.layers.Dense(2, name='nested_model_dense_%d' % (i,))(f)
+      # This layer name will make the `weights_name`
+      # HDF5 attribute blow out of proportion.
+      f = keras.layers.Dense(2, name='nested_model_output' + ('x' * (2**14)))(f)
+      nested_model = keras.Model(inputs=[x], outputs=[f], name='nested_model')
+
+      x = keras.Input(shape=(2,), name='outer_model_input')
+      f = nested_model(x)
+      f = keras.layers.Dense(2, name='outer_model_output')(f)
+
+      model = keras.Model(inputs=[x], outputs=[f])
+      model.compile(loss='mse', optimizer='adam', metrics=['acc'])
+
+      x = np.random.random((1, 2))
+      y = np.random.random((1, 2))
+      model.train_on_batch(x, y)
+      out = model.predict(x)
+
+      fd, fname = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, fname)
+      model = keras.models.load_model(fname)
+
+      # Check that the HDF5 files contains chunked array
+      # of weight names.
+      with h5py.File(fname, 'r') as h5file:
+        num_weight_arrays = len(
+            [attr for attr in h5file['model_weights']['nested_model'].attrs
+             if attr.startswith('weight_names')])
+      # The chunking of layer names array should have happend.
+      self.assertGreater(num_weight_arrays, 0)
+      out2 = model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
+      # Cleanup
+      os.close(fd)
+      os.remove(fname)
 
 
 if __name__ == '__main__':

@@ -250,8 +250,9 @@ class AssignVariableOp : public OpKernel {
 
     // Copying is unnecessary if we are the last user of the value
     // tensor, we can just adopt the input tensor's buffer instead.
-    std::unique_ptr<Tensor> input_alias =
-        context->forward_input(1, dtype_, value.shape(), DEVICE_MEMORY, attr);
+    std::unique_ptr<Tensor> input_alias = context->forward_input(
+        1, OpKernelContext::Params::kNoReservation /*output_index*/, dtype_,
+        value.shape(), DEVICE_MEMORY, attr);
     mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
     if (input_alias) {
@@ -279,64 +280,6 @@ class AssignVariableOp : public OpKernel {
 };
 
 template <typename Device>
-Status VariantCopyFn(OpKernelContext* context, const Tensor& from, Tensor* to);
-
-#define CPU_DENSE_COPY(T)                                                \
-  case DataTypeToEnum<T>::value: {                                       \
-    functor::DenseUpdate<CPUDevice, T, ASSIGN> copy_functor_;            \
-    copy_functor_(context->eigen_device<CPUDevice>(), tensor->flat<T>(), \
-                  from.flat<T>());                                       \
-    break;                                                               \
-  }
-
-#define INSTANTIATE_GET_VARIANT_COPY_FN(Device, TYPE_CALLER, TYPE_DENSE_COPY) \
-  template <>                                                                 \
-  Status VariantCopyFn<Device>(OpKernelContext * context, const Tensor& from, \
-                               Tensor* to) {                                  \
-    PersistentTensor tmp;                                                     \
-    Tensor* tensor;                                                           \
-    AllocatorAttributes attr;                                                 \
-    attr.set_gpu_compatible(true);                                            \
-    attr.set_nic_compatible(true);                                            \
-    TF_RETURN_IF_ERROR(context->allocate_persistent(                          \
-        from.dtype(), from.shape(), &tmp, &tensor, attr));                    \
-    switch (from.dtype()) {                                                   \
-      TYPE_CALLER(TYPE_DENSE_COPY);                                           \
-      default:                                                                \
-        return errors::InvalidArgument(                                       \
-            "VariantCopyFn: Could not perform a deep copy of variant "        \
-            "element of type: ",                                              \
-            DataTypeString(from.dtype()),                                     \
-            " using device: ", context->device()->name());                    \
-    }                                                                         \
-    *to = *tensor;                                                            \
-    return Status::OK();                                                      \
-  }
-
-INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);
-
-#if GOOGLE_CUDA
-#define GPU_DENSE_COPY(T)                                                \
-  case DataTypeToEnum<T>::value: {                                       \
-    functor::DenseUpdate<GPUDevice, T, ASSIGN> copy_functor_;            \
-    copy_functor_(context->eigen_device<GPUDevice>(), tensor->flat<T>(), \
-                  from.flat<T>());                                       \
-    break;                                                               \
-  }
-#define TF_CALL_GPU_AND_ADDITIONAL_TYPES(T) \
-  TF_CALL_GPU_ALL_TYPES(T);                 \
-  TF_CALL_int32(T);                         \
-  TF_CALL_int64(T);
-INSTANTIATE_GET_VARIANT_COPY_FN(GPUDevice, TF_CALL_GPU_AND_ADDITIONAL_TYPES,
-                                GPU_DENSE_COPY);
-#undef TF_CALL_GPU_AND_ADDITIONAL_TYPES
-#undef GPU_DENSE_COPY
-#endif  // GOOGLE_CUDA
-
-#undef CPU_DENSE_COPY
-#undef INSTANTIATE_GET_VARIANT_COPY_FN
-
-template <typename Device>
 class AssignVariableOp<Device, Variant> : public OpKernel {
  public:
   explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
@@ -351,7 +294,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
     Var* variable = nullptr;
     OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
                                 context, HandleFromInput(context, 0), &variable,
-                                [this, context](Var** ptr) {
+                                [](Var** ptr) {
                                   // Created on host.
                                   *ptr = new Var(DT_VARIANT);
                                   return Status::OK();
@@ -363,18 +306,51 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(DT_VARIANT)));
 
+    // For purposes of forwarding DT_VARIANT, we want the least
+    // restrictive attr; we already know the input is on host.
+    AllocatorAttributes attr;
+
+    // Copying is unnecessary if we are the last user of the value
+    // tensor, we can just adopt the input tensor's buffer instead.
+    // Note that Variant objects themselves always reside on host.
+    //
+    // We nevertheless want to signal to the runtime that the tensor
+    // should reside in memory of the associated device, as Variant
+    // tensors may be marked as sitting on either CPU or GPU.  This
+    // helps to elide one or more copies.
+    std::unique_ptr<Tensor> input_alias = context->forward_input(
+        1, OpKernelContext::Params::kNoReservation /*output_index*/, DT_VARIANT,
+        value.shape(),
+        DEVICE_MEMORY /* HOST_MEMORY is only reserved for special cases */,
+        attr);
+
     mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
     *variable->tensor() = Tensor(DT_VARIANT, value.shape());
+
+    if (input_alias) {
+      *variable->tensor() = *input_alias;
+      return;
+    }
+
+    // Need to copy, but maybe we can re-use variable's buffer?
+    if (!variable->tensor()->RefCountIsOne() ||
+        !variable->tensor()->shape().IsSameSize(value.shape())) {
+      PersistentTensor unused;
+      Tensor* tmp;
+      // Allocation of DT_VARIANT is always on host.
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(context,
+                     context->allocate_persistent(DT_VARIANT, value.shape(),
+                                                  &unused, &tmp, attr));
+      *variable->tensor() = *tmp;
+    }
+
     const auto elements_in = value.flat<Variant>();
     auto elements_out = variable->tensor()->flat<Variant>();
-    auto copy_fn = std::bind(&VariantCopyFn<Device>, context,
-                             std::placeholders::_1, std::placeholders::_2);
     for (int64 i = 0; i < elements_in.size(); ++i) {
-      OP_REQUIRES_OK(context, VariantDeviceCopy(
-                                  VariantDeviceCopyDirection::DEVICE_TO_DEVICE,
-                                  elements_in(i), &elements_out(i), copy_fn));
-    };
+      elements_out(i) = elements_in(i);
+    }
   }
 
  private:
@@ -503,6 +479,7 @@ class ResourceGatherOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     Var* v = nullptr;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    core::ScopedUnref su(v);
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
     // situation where a write to the same variable will see a
@@ -531,7 +508,14 @@ class ResourceGatherOp : public OpKernel {
     }
 
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &out));
+    Tensor tmp;
+    if (params.dtype() == DT_VARIANT) {
+      tmp = Tensor(DT_VARIANT, result_shape);
+      c->set_output(0, tmp);
+      out = &tmp;
+    } else {
+      OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &out));
+    }
     if (N > 0) {
       const int64 gather_dim_size = params.dim_size(0);
       int64 inner_size = 1;
@@ -576,7 +560,24 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 #if GOOGLE_CUDA
 #define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GATHER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_GPU);
+
+// Variant objects themselves sit on CPU, even if they contain data
+// pointing to a device.
+REGISTER_KERNEL_BUILDER(Name("ResourceGather")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .HostMemory("indices")
+                            .TypeConstraint<Variant>("dtype")
+                            .TypeConstraint<int32>("Tindices"),
+                        ResourceGatherOp<GPUDevice, Variant, int32>)
+REGISTER_KERNEL_BUILDER(Name("ResourceGather")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .HostMemory("indices")
+                            .TypeConstraint<Variant>("dtype")
+                            .TypeConstraint<int64>("Tindices"),
+                        ResourceGatherOp<GPUDevice, Variant, int64>)
 
 #endif  // GOOGLE_CUDA
 
@@ -608,7 +609,7 @@ class ResourceScatterUpdateOp : public OpKernel {
                                 DataTypeString(DataTypeToEnum<Index>::v()),
                                 " indexing: ", N_big, " > ",
                                 std::numeric_limits<Index>::max()));
-    const Index N = static_cast<Index>(indices.NumElements());
+    const Index N = static_cast<Index>(N_big);
     OP_REQUIRES(
         c, params->dim_size(0) <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.shape[0] too large for ",
@@ -619,16 +620,35 @@ class ResourceScatterUpdateOp : public OpKernel {
     if (N > 0) {
       auto indices_flat = indices.flat<Index>();
       auto params_flat = params->flat_outer_dims<T>();
-      auto updates_flat = updates.shaped<T, 2>({N, updates.NumElements() / N});
+      if (TensorShapeUtils::IsScalar(updates.shape())) {
+        const auto update = updates.scalar<T>();
 
-      functor::ScatterFunctor<Device, T, Index, op> functor;
-      const Index bad_i = functor(c, c->template eigen_device<Device>(),
-                                  params_flat, updates_flat, indices_flat);
-      OP_REQUIRES(c, bad_i < 0,
-                  errors::InvalidArgument(
-                      "indices", SliceDebugString(indices.shape(), bad_i),
-                      " = ", indices_flat(bad_i), " is not in [0, ",
-                      params->dim_size(0), ")"));
+        functor::ScatterScalarFunctor<Device, T, Index, op> functor;
+        const Index bad_i = functor(c, c->template eigen_device<Device>(),
+                                    params_flat, update, indices_flat);
+        OP_REQUIRES(c, bad_i < 0,
+                    errors::InvalidArgument(
+                        "indices", SliceDebugString(indices.shape(), bad_i),
+                        " = ", indices_flat(bad_i), " is not in [0, ",
+                        params->dim_size(0), ")"));
+      } else {
+        int64 num_updates = updates.NumElements();
+        OP_REQUIRES(c, num_updates % N == 0,
+                    errors::InvalidArgument(
+                        "shape of indices (", indices.shape().DebugString(),
+                        ") is not compatible with the shape of updates (",
+                        updates.shape().DebugString(), ")"));
+        auto updates_flat = updates.shaped<T, 2>({N, num_updates / N});
+
+        functor::ScatterFunctor<Device, T, Index, op> functor;
+        const Index bad_i = functor(c, c->template eigen_device<Device>(),
+                                    params_flat, updates_flat, indices_flat);
+        OP_REQUIRES(c, bad_i < 0,
+                    errors::InvalidArgument(
+                        "indices", SliceDebugString(indices.shape(), bad_i),
+                        " = ", indices_flat(bad_i), " is not in [0, ",
+                        params->dim_size(0), ")"));
+      }
     }
   }
 };
@@ -646,35 +666,70 @@ class ResourceScatterUpdateOp : public OpKernel {
   REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
   REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
 
-// TODO(apassos) add the other types here.
-#define REGISTER_SCATTER_ARITHEMTIC(type, dev)                \
+#define REGISTER_SCATTER_ARITHMETIC(type, dev)                \
   REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd",    \
                           scatter_op::UpdateOp::ADD);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterSub",    \
+                          scatter_op::UpdateOp::SUB);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterMul",    \
+                          scatter_op::UpdateOp::MUL);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterDiv",    \
+                          scatter_op::UpdateOp::DIV);         \
   REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterUpdate", \
                           scatter_op::UpdateOp::ASSIGN);
+#define REGISTER_SCATTER_MINMAX(type, dev)                 \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterMin", \
+                          scatter_op::UpdateOp::MIN);      \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterMax", \
+                          scatter_op::UpdateOp::MAX);
 
 // Registers CPU kernels.
-#define REGISTER_SCATTER_ARITHEMTIC_CPU(type) \
-  REGISTER_SCATTER_ARITHEMTIC(type, CPU);
+#define REGISTER_SCATTER_ARITHMETIC_CPU(type) \
+  REGISTER_SCATTER_ARITHMETIC(type, CPU);
+#define REGISTER_SCATTER_MINMAX_CPU(type) REGISTER_SCATTER_MINMAX(type, CPU);
 
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHEMTIC_CPU);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_CPU);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_CPU);
 
 REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
+                        scatter_op::UpdateOp::ASSIGN);
+REGISTER_SCATTER_KERNEL(Variant, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);
 
 // Registers GPU kernels.
 #if GOOGLE_CUDA
-#define REGISTER_SCATTER_ARITHEMTIC_GPU(type) \
-  REGISTER_SCATTER_ARITHEMTIC(type, GPU);
+#define REGISTER_SCATTER_ARITHMETIC_GPU(type) \
+  REGISTER_SCATTER_ARITHMETIC(type, GPU);
+#define REGISTER_SCATTER_MINMAX_GPU(type) REGISTER_SCATTER_MINMAX(type, GPU);
 
 #define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHEMTIC_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHMETIC_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_MINMAX_GPU);
+
+REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .HostMemory("indices")
+                            .TypeConstraint<Variant>("dtype")
+                            .TypeConstraint<int32>("Tindices"),
+                        ResourceScatterUpdateOp<GPUDevice, Variant, int32,
+                                                scatter_op::UpdateOp::ASSIGN>)
+REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .HostMemory("indices")
+                            .TypeConstraint<Variant>("dtype")
+                            .TypeConstraint<int64>("Tindices"),
+                        ResourceScatterUpdateOp<GPUDevice, Variant, int64,
+                                                scatter_op::UpdateOp::ASSIGN>)
 
 #endif  // GOOGLE_CUDA
 
-#undef REGISTER_SCATTER_ARITHEMTIC
-#undef REGISTER_SCATTER_ARITHEMTIC_CPU
+#undef REGISTER_SCATTER_ARITHMETIC
+#undef REGISTER_SCATTER_ARITHMETIC_CPU
+#undef REGISTER_SCATTER_MINMAX
+#undef REGISTER_SCATTER_MINMAX_CPU
 #undef REGISTER_SCATTER_KERNEL
 #undef REGISTER_SCATTER_KERNEL_INDEX
 

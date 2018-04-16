@@ -50,6 +50,7 @@ DeviceDescription::DeviceDescription()
       shared_memory_alloc_granularity_(1),
       device_address_bits_(kUninitializedUint64),
       device_memory_size_(kUninitializedUint64),
+      memory_bandwidth_(kUninitializedUint64),
       shared_memory_per_core_(kUninitializedUint64),
       shared_memory_per_block_(kUninitializedUint64),
       clock_rate_ghz_(-1.0),
@@ -85,6 +86,8 @@ std::unique_ptr<std::map<string, string>> DeviceDescription::ToMap() const {
   result["Device Address Bits"] = port::StrCat(device_address_bits());
   result["Device Memory Size"] =
       port::HumanReadableNumBytes::ToString(device_memory_size());
+  result["Memory Bandwidth"] = port::StrCat(
+      port::HumanReadableNumBytes::ToString(memory_bandwidth_), "/s");
 
   result["Shared Memory Per Core"] =
       port::HumanReadableNumBytes::ToString(shared_memory_per_core_);

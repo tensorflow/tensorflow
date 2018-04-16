@@ -52,7 +52,7 @@ enum KernelType {
 struct OpData {
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
-  // be represented as a fixed point multipler plus a left shift.
+  // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
   int output_shift;
   // The range of the fused activation layer. For example for kNone and
@@ -140,10 +140,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int out_height =
       compute_out_size(height, filter_height, params->stride_height);
 
-  data->padding.height =
-      ComputePadding(params->stride_height, height, filter_height, out_height);
+  data->padding.height = ComputePadding(params->stride_height, 1, height,
+                                        filter_height, out_height);
   data->padding.width =
-      ComputePadding(params->stride_width, width, filter_width, out_width);
+      ComputePadding(params->stride_width, 1, width, filter_width, out_width);
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.

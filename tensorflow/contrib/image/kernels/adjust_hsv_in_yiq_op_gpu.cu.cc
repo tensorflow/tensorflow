@@ -53,7 +53,7 @@ void AdjustHsvInYiqGPU::operator()(OpKernelContext* ctx, int channel_count,
   OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                           DT_FLOAT, TensorShape({kChannelSize * kChannelSize}),
                           &tranformation_matrix));
-  // TODO(huangyp): It takes about 3.5 us to comute tranformation_matrix
+  // TODO(huangyp): It takes about 3.5 us to compute tranformation_matrix
   // with one thread. Improve its performance if necessary.
   internal::compute_tranformation_matrix_cuda<<<1, 1, 0, cu_stream>>>(
       delta_h, scale_s, scale_v, tranformation_matrix.flat<float>().data(),

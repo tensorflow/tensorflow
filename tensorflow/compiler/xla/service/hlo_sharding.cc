@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace xla {
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrCat;
 
 HloSharding HloSharding::AssignDevice(int64 device_id) {
@@ -57,8 +58,9 @@ string HloSharding::ToString() const {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
   } else {
-    return StrCat("{", ShapeUtil::HumanString(tile_shape_), " ",
-                  "devices=", VectorString(tile_assignment_), "}");
+    return StrCat("{", ShapeUtil::HumanString(tile_shape_), " ", "devices=[",
+                  Join(tile_assignment_.dimensions(), ","), "]",
+                  Join(tile_assignment_, ","), "}");
   }
 }
 
@@ -346,6 +348,47 @@ OpSharding HloSharding::ToProto() const {
     result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
   }
   return result;
+}
+
+HloSharding HloSharding::TransformShardedTileShape(
+    const Shape& new_shape,
+    const std::function<int64(int64, int64)>& transform) const {
+  CHECK(!IsTuple());
+  if (IsTileMaximal()) {
+    return *this;
+  }
+  CHECK_EQ(ShapeUtil::Rank(new_shape), ShapeUtil::Rank(tile_shape()));
+  Shape new_tile_shape;
+  new_tile_shape.set_element_type(tile_shape().element_type());
+  for (int64 i = 0; i < ShapeUtil::Rank(new_shape); ++i) {
+    int64 dim;
+    if (tile_assignment().dim(i) == 1) {
+      dim = new_shape.dimensions(i);
+    } else if (transform) {
+      dim = transform(i, tile_shape().dimensions(i));
+    } else {
+      dim = tile_shape().dimensions(i);
+    }
+    new_tile_shape.add_dimensions(dim);
+  }
+  TF_CHECK_OK(
+      LayoutUtil::CopyLayoutBetweenShapes(tile_shape_, &new_tile_shape));
+  return HloSharding::Tile(new_tile_shape, tile_assignment());
+}
+
+HloSharding HloSharding::GetSubSharding(const Shape& shape,
+                                        const ShapeIndex& index) const {
+  CHECK(IsTuple());
+
+  ShapeTree<HloSharding> sub_shape_tree(ShapeUtil::GetSubshape(shape, index),
+                                        Replicate());
+  sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
+  return Tuple(sub_shape_tree);
+}
+
+std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {
+  out << sharding.ToString();
+  return out;
 }
 
 }  // namespace xla

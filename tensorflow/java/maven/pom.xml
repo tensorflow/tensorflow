@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.tensorflow</groupId>
   <artifactId>parentpom</artifactId>
-  <version>1.6.0</version>
+  <version>1.7.0</version>
   <packaging>pom</packaging>
 
   <url>https://www.tensorflow.org</url>

@@ -54,8 +54,15 @@ class ServiceInterface {
   virtual tensorflow::Status Execute(const ExecuteRequest* arg,
                                      ExecuteResponse* result) = 0;
 
+  virtual tensorflow::Status ExecuteGraph(const ExecuteGraphRequest* arg,
+                                          ExecuteResponse* result) = 0;
+
   virtual tensorflow::Status ExecuteParallel(
       const ExecuteParallelRequest* arg, ExecuteParallelResponse* result) = 0;
+
+  virtual tensorflow::Status ExecuteGraphParallel(
+      const ExecuteGraphParallelRequest* arg,
+      ExecuteParallelResponse* result) = 0;
 
   virtual tensorflow::Status ExecuteAsync(const ExecuteAsyncRequest* arg,
                                           ExecuteAsyncResponse* result) = 0;
@@ -68,6 +75,10 @@ class ServiceInterface {
 
   virtual tensorflow::Status GetComputationStats(
       const ComputationStatsRequest* arg, ComputationStatsResponse* result) = 0;
+
+  virtual tensorflow::Status GetComputationGraphStats(
+      const ComputationGraphStatsRequest* arg,
+      ComputationStatsResponse* result) = 0;
 
   virtual tensorflow::Status GetComputationShape(
       const GetComputationShapeRequest* arg,
@@ -100,6 +111,10 @@ class ServiceInterface {
 
   virtual tensorflow::Status ComputeConstant(
       const ComputeConstantRequest* arg, ComputeConstantResponse* result) = 0;
+
+  virtual tensorflow::Status ComputeConstantGraph(
+      const ComputeConstantGraphRequest* arg,
+      ComputeConstantResponse* result) = 0;
 
   // Methods used by Computation.
   virtual tensorflow::Status SnapshotComputation(

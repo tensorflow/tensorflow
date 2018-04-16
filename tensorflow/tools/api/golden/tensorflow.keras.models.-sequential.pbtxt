@@ -4,7 +4,6 @@ tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.training.Model\'>"
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.network.Network\'>"
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -13,10 +12,6 @@ tf_class {
   }
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "graph"
     mtype: "<type \'property\'>"
   }
   member {
@@ -76,23 +71,11 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "regularizers"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "scope_name"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "state_updates"
     mtype: "<type \'property\'>"
   }
   member {
     name: "stateful"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "trainable"
     mtype: "<type \'property\'>"
   }
   member {
@@ -141,7 +124,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'getter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -153,11 +136,11 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'inputs\', \'training\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "compile"
-    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'sample_weight_mode\', \'weighted_metrics\', \'target_tensors\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\', \'target_tensors\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"
@@ -173,11 +156,11 @@ tf_class {
   }
   member_method {
     name: "evaluate"
-    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'32\', \'1\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'1\', \'None\', \'None\'], "
   }
   member_method {
     name: "evaluate_generator"
-    argspec: "args=[\'self\', \'generator\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'10\', \'1\', \'False\'], "
+    argspec: "args=[\'self\', \'generator\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'1\', \'False\'], "
   }
   member_method {
     name: "fit"
@@ -185,7 +168,7 @@ tf_class {
   }
   member_method {
     name: "fit_generator"
-    argspec: "args=[\'self\', \'generator\', \'steps_per_epoch\', \'epochs\', \'verbose\', \'callbacks\', \'validation_data\', \'validation_steps\', \'class_weight\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'shuffle\', \'initial_epoch\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'1\', \'1\', \'None\', \'None\', \'None\', \'None\', \'10\', \'1\', \'False\', \'True\', \'0\'], "
+    argspec: "args=[\'self\', \'generator\', \'steps_per_epoch\', \'epochs\', \'verbose\', \'callbacks\', \'validation_data\', \'validation_steps\', \'class_weight\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'shuffle\', \'initial_epoch\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'1\', \'None\', \'None\', \'None\', \'None\', \'10\', \'1\', \'False\', \'True\', \'0\'], "
   }
   member_method {
     name: "from_config"
@@ -245,7 +228,7 @@ tf_class {
   }
   member_method {
     name: "predict"
-    argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\'], varargs=None, keywords=None, defaults=[\'32\', \'0\'], "
+    argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\', \'steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\'], "
   }
   member_method {
     name: "predict_classes"
@@ -253,7 +236,7 @@ tf_class {
   }
   member_method {
     name: "predict_generator"
-    argspec: "args=[\'self\', \'generator\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'verbose\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'10\', \'1\', \'False\', \'0\'], "
+    argspec: "args=[\'self\', \'generator\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'verbose\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'1\', \'False\', \'0\'], "
   }
   member_method {
     name: "predict_on_batch"
@@ -297,6 +280,6 @@ tf_class {
   }
   member_method {
     name: "train_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'class_weight\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
 }

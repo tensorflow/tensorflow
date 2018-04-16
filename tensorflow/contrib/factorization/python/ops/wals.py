@@ -216,7 +216,7 @@ def _wals_factorization_model_function(features, labels, mode, params):
         name=WALSMatrixFactorization.LOSS,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
     # The root weighted squared error =
-    #   \sqrt( \sum_{i,j} w_ij * (a_ij - r_ij)^2 / \sum_{i,j} w_ij )
+    #   \\(\sqrt( \sum_{i,j} w_ij * (a_ij - r_ij)^2 / \sum_{i,j} w_ij )\\)
     rwse_var = variable_scope.variable(
         0.,
         trainable=False,
@@ -235,7 +235,7 @@ def _wals_factorization_model_function(features, labels, mode, params):
         num_items: An integer, the total number of items of this axis.
         update_fn: A function that takes one argument (`sp_input`), and that
         returns a tuple of
-          * new_factors: A flot Tensor of the factor values after update.
+          * new_factors: A float Tensor of the factor values after update.
           * update_op: a TensorFlow op which updates the factors.
           * loss: A float Tensor, the unregularized loss.
           * reg_loss: A float Tensor, the regularization loss.
@@ -490,11 +490,11 @@ class WALSMatrixFactorization(estimator.Estimator):
           and the problem simplifies to ALS. Note that, in this case,
           col_weights must also be set to "None".
         - List of lists of non-negative scalars, of the form
-          [[w_0, w_1, ...], [w_k, ... ], [...]],
+          \\([[w_0, w_1, ...], [w_k, ... ], [...]]\\),
           where the number of inner lists equal to the number of row factor
           shards and the elements in each inner list are the weights for the
           rows of that shard. In this case,
-          w_ij = unonbserved_weight + row_weights[i] * col_weights[j].
+          \\(w_ij = unonbserved_weight + row_weights[i] * col_weights[j]\\).
         - A non-negative scalar: This value is used for all row weights.
           Note that it is allowed to have row_weights as a list and col_weights
           as a scalar, or vice-versa.

@@ -47,6 +47,9 @@ public final class NativeInterpreterWrapperTest {
   private static final String MODEL_WITH_CUSTOM_OP_PATH =
       "tensorflow/contrib/lite/java/src/testdata/with_custom_op.lite";
 
+  private static final String NONEXISTING_MODEL_PATH =
+      "tensorflow/contrib/lite/java/src/testdata/nonexisting_model.bin";
+
   @Test
   public void testConstructor() {
     NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
@@ -60,7 +63,18 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("is not a valid flatbuffer model");
+      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer file");
+    }
+  }
+
+  @Test
+  public void testConstructorWithNonexistingModel() {
+    try {
+      NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(NONEXISTING_MODEL_PATH);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer file");
+      assertThat(e).hasMessageThat().contains("Could not open");
     }
   }
 
@@ -480,6 +494,48 @@ public final class NativeInterpreterWrapperTest {
           .contains("0-th input dimension should be [?,8,8,3], but found [?,8,7,3]");
     }
     assertThat(wrapper.getLastNativeInferenceDurationNanoseconds()).isNull();
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetInputDims() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    int[] expectedDims = {1, 8, 8, 3};
+    assertThat(wrapper.getInputDims(0)).isEqualTo(expectedDims);
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetInputDimsOutOfRange() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    try {
+      wrapper.getInputDims(-1);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Out of range");
+    }
+    try {
+      wrapper.getInputDims(1);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Out of range");
+    }
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetOutputDataType() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("float");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(LONG_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("long");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(INT_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("int");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(BYTE_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("byte");
     wrapper.close();
   }
 }

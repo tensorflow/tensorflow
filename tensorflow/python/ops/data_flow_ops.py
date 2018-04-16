@@ -1769,7 +1769,9 @@ class StagingArea(BaseStagingArea):
     its capacity.
 
     Args:
-      values: Tensor (or a tuple of Tensors) to place into the staging area.
+      values: A single tensor, a list or tuple of tensors, or a dictionary with
+        tensor values. The number of elements must match the length of the
+        list provided to the dtypes argument when creating the StagingArea.
       name: A name for the operation (optional).
 
     Returns:
@@ -1780,11 +1782,12 @@ class StagingArea(BaseStagingArea):
     """
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
+      
+      if not isinstance(values, (list, tuple, dict)):
+        values = [values]
 
       # Hard-code indices for this staging area
-      indices = (
-          list(six.moves.range(len(values)))
-          if isinstance(values, (list, tuple)) else None)
+      indices = list(six.moves.range(len(values)))
       vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):

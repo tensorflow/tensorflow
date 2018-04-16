@@ -44,7 +44,7 @@ class HloVerifiedTestBase : public HloTestBase {
   // Returns the default HloModule, lazily creating it if necessary via
   // HloTestBase::CreateNewModule().
   HloModule& module();
-  void ParseAndVerifyModule(const char* hlo_text);
+  void ParseAndVerifyModule(tensorflow::StringPiece hlo_text);
 
   // Sets the shape-size function used during hlo verification. If this isn't
   // called, a default ShapeVerifier is used instead.

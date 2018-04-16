@@ -42,7 +42,7 @@ def group_by_window(key_func,
   This transformation maps each consecutive element in a dataset to a key
   using `key_func` and groups the elements by key. It then applies
   `reduce_func` to at most `window_size_func(key)` elements matching the same
-  key. All execpt the final window for each key will contain
+  key. All except the final window for each key will contain
   `window_size_func(key)` elements; the final window may be smaller.
 
   You may provide either a constant `window_size` or a window size determined by
@@ -108,7 +108,7 @@ def bucket_by_sequence_length(element_length_func,
   fraction of padding in a batch which increases training step efficiency.
 
   Args:
-    element_length_func: function from element in `Dataset` to `tf.int64`,
+    element_length_func: function from element in `Dataset` to `tf.int32`,
       determines the length of the element, which will determine the bucket it
       goes into.
     bucket_boundaries: `list<int>`, upper length boundaries of the buckets.
@@ -140,9 +140,9 @@ def bucket_by_sequence_length(element_length_func,
 
     batch_sizes = constant_op.constant(bucket_batch_sizes, dtype=dtypes.int64)
 
-    def element_to_bucket_id(element):
+    def element_to_bucket_id(*args):
       """Return int64 id of the length bucket for this element."""
-      seq_length = element_length_func(element)
+      seq_length = element_length_func(*args)
 
       boundaries = list(bucket_boundaries)
       buckets_min = [np.iinfo(np.int32).min] + boundaries

@@ -8,6 +8,7 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 config_setting(
     name = "empty_condition",
@@ -19,7 +20,6 @@ py_library(
     srcs = [
         "__init__.py",
         "_impl/keras/__init__.py",
-        "_impl/keras/activations.py",
         "_impl/keras/applications/__init__.py",
         "_impl/keras/applications/densenet.py",
         "_impl/keras/applications/imagenet_utils.py",
@@ -31,9 +31,6 @@ py_library(
         "_impl/keras/applications/vgg16.py",
         "_impl/keras/applications/vgg19.py",
         "_impl/keras/applications/xception.py",
-        "_impl/keras/backend.py",
-        "_impl/keras/callbacks.py",
-        "_impl/keras/constraints.py",
         "_impl/keras/datasets/__init__.py",
         "_impl/keras/datasets/boston_housing.py",
         "_impl/keras/datasets/cifar.py",
@@ -43,49 +40,13 @@ py_library(
         "_impl/keras/datasets/imdb.py",
         "_impl/keras/datasets/mnist.py",
         "_impl/keras/datasets/reuters.py",
-        "_impl/keras/engine/__init__.py",
-        "_impl/keras/engine/base_layer.py",
-        "_impl/keras/engine/input_layer.py",
-        "_impl/keras/engine/network.py",
-        "_impl/keras/engine/saving.py",
-        "_impl/keras/engine/sequential.py",
-        "_impl/keras/engine/training.py",
-        "_impl/keras/engine/training_arrays.py",
-        "_impl/keras/engine/training_eager.py",
-        "_impl/keras/engine/training_generator.py",
-        "_impl/keras/engine/training_utils.py",
         "_impl/keras/estimator.py",
-        "_impl/keras/initializers.py",
-        "_impl/keras/layers/__init__.py",
-        "_impl/keras/layers/advanced_activations.py",
-        "_impl/keras/layers/convolutional.py",
-        "_impl/keras/layers/convolutional_recurrent.py",
-        "_impl/keras/layers/core.py",
-        "_impl/keras/layers/embeddings.py",
-        "_impl/keras/layers/local.py",
-        "_impl/keras/layers/merge.py",
-        "_impl/keras/layers/noise.py",
-        "_impl/keras/layers/normalization.py",
-        "_impl/keras/layers/pooling.py",
-        "_impl/keras/layers/recurrent.py",
-        "_impl/keras/layers/serialization.py",
-        "_impl/keras/layers/wrappers.py",
-        "_impl/keras/losses.py",
-        "_impl/keras/metrics.py",
-        "_impl/keras/models.py",
-        "_impl/keras/optimizers.py",
         "_impl/keras/preprocessing/__init__.py",
         "_impl/keras/preprocessing/image.py",
         "_impl/keras/preprocessing/sequence.py",
         "_impl/keras/preprocessing/text.py",
-        "_impl/keras/regularizers.py",
         "_impl/keras/testing_utils.py",
         "_impl/keras/utils/__init__.py",
-        "_impl/keras/utils/conv_utils.py",
-        "_impl/keras/utils/data_utils.py",
-        "_impl/keras/utils/generic_utils.py",
-        "_impl/keras/utils/io_utils.py",
-        "_impl/keras/utils/layer_utils.py",
         "_impl/keras/utils/multi_gpu_utils.py",
         "_impl/keras/utils/np_utils.py",
         "_impl/keras/utils/vis_utils.py",
@@ -135,7 +96,21 @@ py_library(
         ":empty_condition": [],
         "//conditions:default": [],
     }) + [
-        "@six_archive//:six",
+        ":backend",
+        ":engine",
+        ":layers",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "backend",
+    srcs = ["_impl/keras/backend.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -151,8 +126,6 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:layers_base",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
@@ -167,13 +140,84 @@ py_library(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:model_fn",
-        "//tensorflow/python/saved_model",
+    ],
+)
+
+py_library(
+    name = "engine",
+    srcs = [
+        "_impl/keras/activations.py",
+        "_impl/keras/callbacks.py",
+        "_impl/keras/constraints.py",
+        "_impl/keras/engine/__init__.py",
+        "_impl/keras/engine/base_layer.py",
+        "_impl/keras/engine/input_layer.py",
+        "_impl/keras/engine/network.py",
+        "_impl/keras/engine/saving.py",
+        "_impl/keras/engine/sequential.py",
+        "_impl/keras/engine/training.py",
+        "_impl/keras/engine/training_arrays.py",
+        "_impl/keras/engine/training_eager.py",
+        "_impl/keras/engine/training_generator.py",
+        "_impl/keras/engine/training_utils.py",
+        "_impl/keras/initializers.py",
+        "_impl/keras/losses.py",
+        "_impl/keras/metrics.py",
+        "_impl/keras/models.py",
+        "_impl/keras/optimizers.py",
+        "_impl/keras/regularizers.py",
+        "_impl/keras/utils/data_utils.py",
+        "_impl/keras/utils/io_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "layers",
+    srcs = [
+        "_impl/keras/layers/__init__.py",
+        "_impl/keras/layers/advanced_activations.py",
+        "_impl/keras/layers/convolutional.py",
+        "_impl/keras/layers/convolutional_recurrent.py",
+        "_impl/keras/layers/core.py",
+        "_impl/keras/layers/embeddings.py",
+        "_impl/keras/layers/local.py",
+        "_impl/keras/layers/merge.py",
+        "_impl/keras/layers/noise.py",
+        "_impl/keras/layers/normalization.py",
+        "_impl/keras/layers/pooling.py",
+        "_impl/keras/layers/recurrent.py",
+        "_impl/keras/layers/serialization.py",
+        "_impl/keras/layers/wrappers.py",
+        "_impl/keras/utils/conv_utils.py",
+        "_impl/keras/utils/generic_utils.py",
+        "_impl/keras/utils/layer_utils.py",
+        "_impl/keras/utils/tf_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":engine",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:distribute",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:standard_ops",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -401,11 +445,10 @@ py_test(
 
 py_test(
     name = "convolutional_recurrent_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/layers/convolutional_recurrent_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
-    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -605,13 +648,15 @@ py_test(
 
 py_test(
     name = "data_utils_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/utils/data_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
         "noasan",  # times out
         "notsan",
+        "optonly",  # times out
     ],
     deps = [
         ":keras",
@@ -659,16 +704,17 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "multi_gpu_utils_test",
-    size = "medium",
     srcs = ["_impl/keras/utils/multi_gpu_utils_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["multi_gpu"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "guitar",
+        "multi_gpu",
     ],
 )
 
@@ -777,6 +823,9 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/engine/topology_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -865,16 +914,4 @@ py_library(
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

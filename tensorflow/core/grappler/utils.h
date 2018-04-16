@@ -26,8 +26,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -107,8 +109,38 @@ string NodeName(const string& name);
 // Get the trailing position number ":{digits}" (if any) of a node name.
 int NodePosition(const string& name);
 
+inline StringPiece ParseNodeNameAsStringPiece(const string& name,
+                                              int* position) {
+  // Strip the prefix '^' (if any), and strip the trailing ":{digits} (if any)
+  // to get a node name.
+  strings::Scanner scan(name);
+  scan.ZeroOrOneLiteral("^")
+      .RestartCapture()
+      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
+      .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+  StringPiece capture;
+  StringPiece remaining;
+  if (scan.Peek(':') != ':' || !scan.GetResult(&remaining, &capture)) {
+    *position = 0;
+    static const string empty;
+    return StringPiece(empty);
+  } else {
+    if (name[0] == '^') {
+      *position = -1;
+    } else if (remaining.empty()) {
+      *position = 0;
+    } else {
+      // Skip the first ':' character.
+      CHECK(strings::safe_strto32(remaining.substr(1), position));
+    }
+    return capture;
+  }
+}
+
 // Returns the node name and position in a single call.
-string ParseNodeName(const string& name, int* position);
+inline string ParseNodeName(const string& name, int* position) {
+  return ParseNodeNameAsStringPiece(name, position).ToString();
+}
 
 // Add a prefix to a node name with a custom delimiter.
 string AddPrefixToNodeName(const string& name, const string& prefix,
@@ -138,11 +170,18 @@ string AsControlDependency(const string& node);
 // some of the outputs may be unconnected.
 int NumOutputs(const NodeDef& node, GraphDef* graph);
 
+// Returns true iff the node has at least one control input.
+bool HasControlInputs(const NodeDef& node);
+
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Number of connected non-control data outputs (Ops that consume output tensor
+// data, not just it's shape).
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
 
 // Removes redundant control inputs from node.
 void DedupControlInputs(NodeDef* node);

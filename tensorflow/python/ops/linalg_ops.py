@@ -341,7 +341,7 @@ def self_adjoint_eig(tensor, name=None):
     name: string, optional name of the operation.
 
   Returns:
-    e: Eigenvalues. Shape is `[..., N]`.
+    e: Eigenvalues. Shape is `[..., N]`. Sorted in non-decreasing order.
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
@@ -429,7 +429,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   u, s, v_adj = np.linalg.svd(a, full_matrices=False)
   np_a_approx = np.dot(u, np.dot(np.diag(s), v_adj))
   # tf_a_approx and np_a_approx should be numerically close.
-  ````
+  ```
   @end_compatibility
   """
   s, u, v = gen_linalg_ops.svd(

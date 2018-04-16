@@ -3,7 +3,7 @@
 The @{tf.train.Saver} class provides methods to save and restore models. The
 @{tf.saved_model.simple_save} function is an easy way to build a
 @{tf.saved_model$saved model} suitable for serving.
-[Estimators](/programmers_guide/estimators) automatically save and restore
+[Estimators](@{$programmers_guide/estimators}) automatically save and restore
 variables in the `model_dir`.
 
 ## Save and restore variables
@@ -256,18 +256,53 @@ with tf.Session(graph=tf.Graph()) as sess:
   builder.add_meta_graph_and_variables(sess,
                                        [tag_constants.TRAINING],
                                        signature_def_map=foo_signatures,
-                                       assets_collection=foo_assets)
+                                       assets_collection=foo_assets,
+                                       strip_default_attrs=True)
 ...
 # Add a second MetaGraphDef for inference.
 with tf.Session(graph=tf.Graph()) as sess:
   ...
-  builder.add_meta_graph([tag_constants.SERVING])
+  builder.add_meta_graph([tag_constants.SERVING], strip_default_attrs=True)
 ...
 builder.save()
 ```
 
+<a name="forward_compatibility"></a>
+#### Forward compatibility via `strip_default_attrs=True`
 
-### Load a SavedModel in Python
+Following the guidance below gives you forward compatibility only if the set of
+Ops has not changed.
+
+The @{tf.saved_model.builder.SavedModelBuilder$`SavedModelBuilder`} class allows
+users to control whether default-valued attributes must be stripped from the
+@{$extend/tool_developers#nodes$`NodeDefs`}
+while adding a meta graph to the SavedModel bundle. Both
+@{tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables$`SavedModelBuilder.add_meta_graph_and_variables`}
+and @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph$`SavedModelBuilder.add_meta_graph`}
+methods accept a Boolean flag `strip_default_attrs` that controls this behavior.
+
+If `strip_default_attrs` is `False`, the exported @{tf.MetaGraphDef} will have
+the default valued attributes in all its @{tf.NodeDef} instances.
+This can break forward compatibility with a sequence of events such as the
+following:
+
+*  An existing Op (`Foo`) is updated to include a new attribute (`T`) with a
+   default (`bool`) at version 101.
+*  A model producer such as a "trainer binary" picks up this change (version 101)
+   to the `OpDef` and re-exports an existing model that uses Op `Foo`.
+*  A model consumer (such as [Tensorflow Serving](/serving)) running an older
+   binary (version 100) doesn't have attribute `T` for Op `Foo`, but tries to
+   import this model. The model consumer doesn't recognize attribute `T` in a
+   `NodeDef` that uses Op `Foo` and therefore fails to load the model.
+*  By setting `strip_default_attrs` to True, the model producers can strip away
+   any default valued attributes in the `NodeDefs`. This helps ensure that newly
+   added attributes with defaults don't cause older model consumers to fail
+   loading models regenerated with newer training binaries.
+
+See [compatibility guidance](https://www.tensorflow.org/programmers_guide/version_compat)
+for more information.
+
+### Loading a SavedModel in Python
 
 The Python version of the SavedModel
 @{tf.saved_model.loader$loader}
@@ -365,7 +400,7 @@ defined in:
 
 After training an `Estimator` model, you may want to create a service
 from that model that takes requests and returns a result.  You can run such a
-service locally on your machine or deploy it scalably in the cloud.
+service locally on your machine or deploy it in the cloud.
 
 To prepare a trained Estimator for serving, you must export it in the standard
 SavedModel format. This section explains how to:
@@ -450,30 +485,7 @@ portion of the signature.  That is, when writing a
 to expect and how to map them to your model's expected inputs.
 By contrast, the *output* portion of the signature is determined by the model.
 
-
-### Perform the export
-
-To export your trained Estimator, call
-@{tf.estimator.Estimator.export_savedmodel} with the export base path and
-the `serving_input_receiver_fn`.
-
-```py
-estimator.export_savedmodel(export_dir_base, serving_input_receiver_fn)
-```
-
-This method builds a new graph by first calling the
-`serving_input_receiver_fn()` to obtain feature `Tensor`s, and then calling
-this `Estimator`'s `model_fn()` to generate the model graph based on those
-features. It starts a fresh `Session`, and, by default, restores the most recent
-checkpoint into it.  (A different checkpoint may be passed, if needed.)
-Finally it creates a time-stamped export directory below the given
-`export_dir_base` (i.e., `export_dir_base/<timestamp>`), and writes a
-SavedModel into it containing a single `MetaGraphDef` saved from this
-Session.
-
-> Note: It is your responsibility to garbage-collect old exports.
-> Otherwise, successive exports will accumulate under `export_dir_base`.
-
+<a name="specify_outputs"></a>
 ### Specify the outputs of a custom model
 
 When writing a custom `model_fn`, you must populate the `export_outputs` element
@@ -505,6 +517,30 @@ using [`signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`](https://www.tens
 indicating which `SignatureDef` will be served when an inference request
 does not specify one.
 
+<a name="perform_export"></a>
+### Perform the export
+
+To export your trained Estimator, call
+@{tf.estimator.Estimator.export_savedmodel} with the export base path and
+the `serving_input_receiver_fn`.
+
+```py
+estimator.export_savedmodel(export_dir_base, serving_input_receiver_fn,
+                            strip_default_attrs=True)
+```
+
+This method builds a new graph by first calling the
+`serving_input_receiver_fn()` to obtain feature `Tensor`s, and then calling
+this `Estimator`'s `model_fn()` to generate the model graph based on those
+features. It starts a fresh `Session`, and, by default, restores the most recent
+checkpoint into it.  (A different checkpoint may be passed, if needed.)
+Finally it creates a time-stamped export directory below the given
+`export_dir_base` (i.e., `export_dir_base/<timestamp>`), and writes a
+SavedModel into it containing a single `MetaGraphDef` saved from this
+Session.
+
+> Note: It is your responsibility to garbage-collect old exports.
+> Otherwise, successive exports will accumulate under `export_dir_base`.
 
 ### Serve the exported model locally
 

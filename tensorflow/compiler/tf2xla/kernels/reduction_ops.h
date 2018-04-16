@@ -33,12 +33,12 @@ namespace tensorflow {
 // xla::ComputationBuilder.
 class XlaReductionOp : public XlaOpKernel {
  public:
-  explicit XlaReductionOp(OpKernelConstruction* ctx);
+  XlaReductionOp(OpKernelConstruction* ctx, DataType reduction_type);
   ~XlaReductionOp() override {}
 
-  // Return the base case for the reduction. Defaults to zero.
+  // Return the base case for the reduction.
   virtual xla::ComputationDataHandle InitialValue(
-      xla::ComputationBuilder* builder);
+      xla::ComputationBuilder* builder) = 0;
 
   // Implement the (scalar,scalar)->scalar lambda that should be
   // applied to each pair of elements to be reduced. The desired
@@ -63,6 +63,9 @@ class XlaReductionOp : public XlaOpKernel {
  private:
   // True if the number of dimensions should be maintained.
   bool keep_dims_;
+
+ protected:
+  DataType reduction_type_;
 };
 
 }  // namespace tensorflow

@@ -57,6 +57,10 @@ def _find_trt_header_dir(repository_ctx, trt_install_path):
     path = "/usr/include/x86_64-linux-gnu"
     if _headers_exist(repository_ctx, path):
       return path
+  if trt_install_path == "/usr/lib/aarch64-linux-gnu":
+    path = "/usr/include/aarch64-linux-gnu"
+    if _headers_exist(repository_ctx, path):
+      return path
   path = str(repository_ctx.path("%s/../include" % trt_install_path).realpath)
   if _headers_exist(repository_ctx, path):
     return path

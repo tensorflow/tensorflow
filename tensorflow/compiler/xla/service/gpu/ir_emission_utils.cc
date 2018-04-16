@@ -89,6 +89,19 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
     return true;
   }
 
+  if (hlo.opcode() == HloOpcode::kFusion &&
+      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
+      hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {
+    // Try to find the dot inside the output fusion node.
+    const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
+    if (dot->opcode() != HloOpcode::kDot) {
+      dot = hlo.fused_expression_root()->operand(1);
+    }
+    if (dot->opcode() == HloOpcode::kDot) {
+      return ImplementedAsGemm(*dot);
+    }
+  }
+
   return false;
 }
 
@@ -147,14 +160,19 @@ static HloInstruction* CreateCudnnConv(
   Shape call_shape =
       ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
 
-  // Our CustomCall takes three arguments: The conv lhs and rhs, and the cudnn
-  // algorithm to use.  It's up to a later pass to choose the algorithm, so to
-  // indicate that we haven't yet made a choice, we speicfy -1 for that arg.
+  // Our CustomCall takes four arguments: The conv lhs and rhs, the cudnn
+  // algorithm to use, and a boolean indicating whether to use tensor cores.
+  //
+  // It's up to a later pass to choose the algorithm and decide whether to use
+  // tensor cores, so to indicate that we haven't yet made a choice, we speicfy
+  // -1 and false for those args.
   HloInstruction* negative_one = computation->AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<int64>(-1)));
+  HloInstruction* false_constant = computation->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
-          call_shape, {lhs, rhs, negative_one}, call_target));
+          call_shape, {lhs, rhs, negative_one, false_constant}, call_target));
   custom_call->set_window(window);
   custom_call->set_convolution_dimension_numbers(dnums);
   return custom_call;

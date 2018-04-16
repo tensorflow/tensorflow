@@ -448,6 +448,26 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
     LeakedTensorTest().test_has_no_leak()
 
+  def test_no_new_objects_decorator(self):
+
+    class LeakedObjectTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+        inner_self.accumulation = []
+
+      @test_util.assert_no_new_pyobjects_executing_eagerly
+      def test_has_leak(self):
+        self.accumulation.append([1.])
+
+      @test_util.assert_no_new_pyobjects_executing_eagerly
+      def test_has_no_leak(self):
+        self.not_accumulating = [1.]
+
+    with self.assertRaises(AssertionError):
+      LeakedObjectTest().test_has_leak()
+
+    LeakedObjectTest().test_has_no_leak()
 
 if __name__ == "__main__":
   googletest.main()

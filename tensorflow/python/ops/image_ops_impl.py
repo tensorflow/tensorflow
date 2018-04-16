@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -29,6 +31,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
@@ -265,17 +269,7 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'random_flip_up_down', [image]) as scope:
-    image = ops.convert_to_tensor(image, name='image')
-    image = _Assert3DImage(image)
-    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
-    mirror_cond = math_ops.less(uniform_random, .5)
-    result = control_flow_ops.cond(
-        mirror_cond,
-        lambda: array_ops.reverse(image, [0]),
-        lambda: image,
-        name=scope)
-    return fix_image_flip_shape(image, result)
+  return _random_flip(image, 0, seed, 'random_flip_up_down')
 
 
 @tf_export('image.random_flip_left_right')
@@ -297,14 +291,34 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'random_flip_left_right', [image]) as scope:
+  return _random_flip(image, 1, seed, 'random_flip_left_right')
+
+
+def _random_flip(image, flip_index, seed, scope_name):
+  """Randomly (50% chance) flip an image along axis `flip_index`.
+    Args:
+      image: A 3-D tensor of shape `[height, width, channels].`
+      flip_index: The dimension along which to flip the image.
+                  Vertical: 0, Horizontal: 1
+      seed: A Python integer. Used to create a random seed. See
+        @{tf.set_random_seed}
+        for behavior.
+      scope_name: Name of the scope in which the ops are added.
+
+    Returns:
+      A 3-D tensor of the same type and shape as `image`.
+
+    Raises:
+      ValueError: if the shape of `image` not supported.
+  """
+  with ops.name_scope(None, scope_name, [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = _Assert3DImage(image)
     uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
     mirror_cond = math_ops.less(uniform_random, .5)
     result = control_flow_ops.cond(
         mirror_cond,
-        lambda: array_ops.reverse(image, [1]),
+        lambda: array_ops.reverse(image, [flip_index]),
         lambda: image,
         name=scope)
     return fix_image_flip_shape(image, result)
@@ -328,16 +342,7 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'flip_left_right', [image]):
-    image = ops.convert_to_tensor(image, name='image')
-    image = _AssertAtLeast3DImage(image)
-    shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
-      return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
-    elif shape.ndims == 4:
-      return array_ops.reverse(image, [2])
-    else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+  return _flip(image, 1, 'flip_left_right')
 
 
 @tf_export('image.flip_up_down')
@@ -358,14 +363,35 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'flip_up_down', [image]):
+  return _flip(image, 0, 'flip_up_down')
+
+
+def _flip(image, flip_index, scope_name):
+  """Flip an image either horizontally or vertically.
+
+  Outputs the contents of `image` flipped along the dimension `flip_index`.
+
+  See also `reverse()`.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
+    flip_index: 0 For vertical, 1 for horizontal.
+
+  Returns:
+    A tensor of the same type and shape as `image`.
+
+  Raises:
+    ValueError: if the shape of `image` not supported.
+  """
+  with ops.name_scope(None, scope_name, [image]):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
     if shape.ndims == 3 or shape.ndims is None:
-      return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
+      return fix_image_flip_shape(image, array_ops.reverse(image, [flip_index]))
     elif shape.ndims == 4:
-      return array_ops.reverse(image, [1])
+      return array_ops.reverse(image, [flip_index+1])
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
@@ -1791,6 +1817,7 @@ _rgb_to_yiq_kernel = [[0.299, 0.59590059,
                       [0.114, -0.32134392, 0.31119955]]
 
 
+@tf_export('image.rgb_to_yiq')
 def rgb_to_yiq(images):
   """Converts one or more images from RGB to YIQ.
 
@@ -1816,6 +1843,7 @@ _yiq_to_rgb_kernel = [[1, 1, 1], [0.95598634, -0.27201283, -1.10674021],
                       [0.6208248, -0.64720424, 1.70423049]]
 
 
+@tf_export('image.yiq_to_rgb')
 def yiq_to_rgb(images):
   """Converts one or more images from YIQ to RGB.
 
@@ -1843,6 +1871,7 @@ _rgb_to_yuv_kernel = [[0.299, -0.14714119,
                       [0.114, 0.43601035, -0.10001026]]
 
 
+@tf_export('image.rgb_to_yuv')
 def rgb_to_yuv(images):
   """Converts one or more images from RGB to YUV.
 
@@ -1868,6 +1897,7 @@ _yuv_to_rgb_kernel = [[1, 1, 1], [0, -0.394642334, 2.03206185],
                       [1.13988303, -0.58062185, 0]]
 
 
+@tf_export('image.yuv_to_rgb')
 def yuv_to_rgb(images):
   """Converts one or more images from YUV to RGB.
 
@@ -1888,3 +1918,489 @@ def yuv_to_rgb(images):
       _yuv_to_rgb_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
   return math_ops.tensordot(images, kernel, axes=[[ndims - 1], [0]])
+
+
+def _verify_compatible_image_shapes(img1, img2):
+  """Checks if two image tensors are compatible for applying SSIM or PSNR.
+
+  This function checks if two sets of images have ranks at least 3, and if the
+  last three dimensions match.
+
+  Args:
+    img1: Tensor containing the first image batch.
+    img2: Tensor containing the second image batch.
+
+  Returns:
+    A tuple containing: the first tensor shape, the second tensor shape, and a
+    list of control_flow_ops.Assert() ops implementing the checks.
+
+  Raises:
+    ValueError: When static shape check fails.
+  """
+  shape1 = img1.get_shape().with_rank_at_least(3)
+  shape2 = img2.get_shape().with_rank_at_least(3)
+  shape1[-3:].assert_is_compatible_with(shape2[-3:])
+
+  if shape1.ndims is not None and shape2.ndims is not None:
+    for dim1, dim2 in zip(reversed(shape1[:-3]), reversed(shape2[:-3])):
+      if not (dim1 == 1 or dim2 == 1 or dim1.is_compatible_with(dim2)):
+        raise ValueError(
+            'Two images are not compatible: %s and %s' % (shape1, shape2))
+
+  # Now assign shape tensors.
+  shape1, shape2 = array_ops.shape_n([img1, img2])
+
+  # TODO(sjhwang): Check if shape1[:-3] and shape2[:-3] are broadcastable.
+  checks = []
+  checks.append(control_flow_ops.Assert(
+      math_ops.greater_equal(array_ops.size(shape1), 3),
+      [shape1, shape2], summarize=10))
+  checks.append(control_flow_ops.Assert(
+      math_ops.reduce_all(math_ops.equal(shape1[-3:], shape2[-3:])),
+      [shape1, shape2], summarize=10))
+  return shape1, shape2, checks
+
+
+@tf_export('image.psnr')
+def psnr(a, b, max_val, name=None):
+  """Returns the Peak Signal-to-Noise Ratio between a and b.
+
+  This is intended to be used on signals (or images). Produces a PSNR value for
+  each image in batch.
+
+  The last three dimensions of input are expected to be [height, width, depth].
+
+  Example:
+
+  ```python
+      # Read images from file.
+      im1 = tf.decode_png('path/to/im1.png')
+      im2 = tf.decode_png('path/to/im2.png')
+      # Compute PSNR over tf.uint8 Tensors.
+      psnr1 = tf.image.psnr(im1, im2, max_val=255)
+
+      # Compute PSNR over tf.float32 Tensors.
+      im1 = tf.image.convert_image_dtype(im1, tf.float32)
+      im2 = tf.image.convert_image_dtype(im2, tf.float32)
+      psnr2 = tf.image.psnr(im1, im2, max_val=1.0)
+      # psnr1 and psnr2 both have type tf.float32 and are almost equal.
+  ```
+
+  Arguments:
+    a: First set of images.
+    b: Second set of images.
+    max_val: The dynamic range of the images (i.e., the difference between the
+      maximum the and minimum allowed values).
+    name: Namespace to embed the computation in.
+
+  Returns:
+    The scalar PSNR between a and b. The returned tensor has type `tf.float32`
+    and shape [batch_size, 1].
+  """
+  with ops.name_scope(name, 'PSNR', [a, b]):
+    # Need to convert the images to float32.  Scale max_val accordingly so that
+    # PSNR is computed correctly.
+    max_val = math_ops.cast(max_val, a.dtype)
+    max_val = convert_image_dtype(max_val, dtypes.float32)
+    a = convert_image_dtype(a, dtypes.float32)
+    b = convert_image_dtype(b, dtypes.float32)
+    mse = math_ops.reduce_mean(math_ops.squared_difference(a, b), [-3, -2, -1])
+    psnr_val = math_ops.subtract(
+        20 * math_ops.log(max_val) / math_ops.log(10.0),
+        np.float32(10 / np.log(10)) * math_ops.log(mse),
+        name='psnr')
+
+    _, _, checks = _verify_compatible_image_shapes(a, b)
+    with ops.control_dependencies(checks):
+      return array_ops.identity(psnr_val)
+
+_SSIM_K1 = 0.01
+_SSIM_K2 = 0.03
+
+
+def _ssim_helper(x, y, reducer, max_val, compensation=1.0):
+  r"""Helper function for computing SSIM.
+
+  SSIM estimates covariances with weighted sums.  The default parameters
+  use a biased estimate of the covariance:
+  Suppose `reducer` is a weighted sum, then the mean estimators are
+    \mu_x = \sum_i w_i x_i,
+    \mu_y = \sum_i w_i y_i,
+  where w_i's are the weighted-sum weights, and covariance estimator is
+    cov_{xy} = \sum_i w_i (x_i - \mu_x) (y_i - \mu_y)
+  with assumption \sum_i w_i = 1. This covariance estimator is biased, since
+    E[cov_{xy}] = (1 - \sum_i w_i ^ 2) Cov(X, Y).
+  For SSIM measure with unbiased covariance estimators, pass as `compensation`
+  argument (1 - \sum_i w_i ^ 2).
+
+  Arguments:
+    x: First set of images.
+    y: Second set of images.
+    reducer: Function that computes 'local' averages from set of images.
+      For non-covolutional version, this is usually tf.reduce_mean(x, [1, 2]),
+      and for convolutional version, this is usually tf.nn.avg_pool or
+      tf.nn.conv2d with weighted-sum kernel.
+    max_val: The dynamic range (i.e., the difference between the maximum
+      possible allowed value and the minimum allowed value).
+    compensation: Compensation factor. See above.
+
+  Returns:
+    A pair containing the luminance measure, and the contrast-structure measure.
+  """
+  c1 = (_SSIM_K1 * max_val) ** 2
+  c2 = (_SSIM_K2 * max_val) ** 2
+
+  # SSIM luminance measure is
+  # (2 * mu_x * mu_y + c1) / (mu_x ** 2 + mu_y ** 2 + c1).
+  mean0 = reducer(x)
+  mean1 = reducer(y)
+  num0 = mean0 * mean1 * 2.0
+  den0 = math_ops.square(mean0) + math_ops.square(mean1)
+  luminance = (num0 + c1) / (den0 + c1)
+
+  # SSIM contrast-structure measure is
+  #   (2 * cov_{xy} + c2) / (cov_{xx} + cov_{yy} + c2).
+  # Note that `reducer` is a weighted sum with weight w_k, \sum_i w_i = 1, then
+  #   cov_{xy} = \sum_i w_i (x_i - \mu_x) (y_i - \mu_y)
+  #          = \sum_i w_i x_i y_i - (\sum_i w_i x_i) (\sum_j w_j y_j).
+  num1 = reducer(x * y) * 2.0
+  den1 = reducer(math_ops.square(x) + math_ops.square(y))
+  c2 *= compensation
+  cs = (num1 - num0 + c2) / (den1 - den0 + c2)
+
+  # SSIM score is the product of the luminance and contrast-structure measures.
+  return luminance, cs
+
+
+def _fspecial_gauss(size, sigma):
+  """Function to mimic the 'fspecial' gaussian MATLAB function."""
+  size = ops.convert_to_tensor(size, dtypes.int32)
+  sigma = ops.convert_to_tensor(sigma)
+
+  coords = math_ops.cast(math_ops.range(size), sigma.dtype)
+  coords -= math_ops.cast(size - 1, sigma.dtype) / 2.0
+
+  g = math_ops.square(coords)
+  g *= -0.5 / math_ops.square(sigma)
+
+  g = array_ops.reshape(g, shape=[1, -1]) + array_ops.reshape(g, shape=[-1, 1])
+  g = array_ops.reshape(g, shape=[1, -1])  # For tf.nn.softmax().
+  g = nn_ops.softmax(g)
+  return array_ops.reshape(g, shape=[size, size, 1, 1])
+
+
+def _ssim_per_channel(img1, img2, max_val=1.0):
+  """Computes SSIM index between img1 and img2 per color channel.
+
+  This function matches the standard SSIM implementation from:
+  Wang, Z., Bovik, A. C., Sheikh, H. R., & Simoncelli, E. P. (2004). Image
+  quality assessment: from error visibility to structural similarity. IEEE
+  transactions on image processing.
+
+  Details:
+    - 11x11 Gaussian filter of width 1.5 is used.
+    - k1 = 0.01, k2 = 0.03 as in the original paper.
+
+  Args:
+    img1: First image batch.
+    img2: Second image batch.
+    max_val: The dynamic range of the images (i.e., the difference between the
+      maximum the and minimum allowed values).
+
+  Returns:
+    A pair of tensors containing and channel-wise SSIM and contrast-structure
+    values. The shape is [..., channels].
+  """
+  filter_size = constant_op.constant(11, dtype=dtypes.int32)
+  filter_sigma = constant_op.constant(1.5, dtype=img1.dtype)
+
+  shape1, shape2 = array_ops.shape_n([img1, img2])
+  checks = [
+      control_flow_ops.Assert(math_ops.reduce_all(math_ops.greater_equal(
+          shape1[-3:-1], filter_size)), [shape1, filter_size], summarize=8),
+      control_flow_ops.Assert(math_ops.reduce_all(math_ops.greater_equal(
+          shape2[-3:-1], filter_size)), [shape2, filter_size], summarize=8)]
+
+  # Enforce the check to run before computation.
+  with ops.control_dependencies(checks):
+    img1 = array_ops.identity(img1)
+
+  # TODO(sjhwang): Try to cache kernels and compensation factor.
+  kernel = _fspecial_gauss(filter_size, filter_sigma)
+  kernel = array_ops.tile(kernel, multiples=[1, 1, shape1[-1], 1])
+
+  # The correct compensation factor is `1.0 - tf.reduce_sum(tf.square(kernel))`,
+  # but to match MATLAB implementation of MS-SSIM, we use 1.0 instead.
+  compensation = 1.0
+
+  # TODO(sjhwang): Try FFT.
+  # TODO(sjhwang): Gaussian kernel is separable in space. Consider applying
+  #   1-by-n and n-by-1 Gaussain filters instead of an n-by-n filter.
+  def reducer(x):
+    shape = array_ops.shape(x)
+    x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))
+    y = nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+    return array_ops.reshape(y, array_ops.concat([shape[:-3],
+                                                  array_ops.shape(y)[1:]], 0))
+
+  luminance, cs = _ssim_helper(img1, img2, reducer, max_val, compensation)
+
+  # Average over the second and the third from the last: height, width.
+  axes = constant_op.constant([-3, -2], dtype=dtypes.int32)
+  ssim_val = math_ops.reduce_mean(luminance * cs, axes)
+  cs = math_ops.reduce_mean(cs, axes)
+  return ssim_val, cs
+
+
+@tf_export('image.ssim')
+def ssim(img1, img2, max_val):
+  """Computes SSIM index between img1 and img2.
+
+  This function is based on the standard SSIM implementation from:
+  Wang, Z., Bovik, A. C., Sheikh, H. R., & Simoncelli, E. P. (2004). Image
+  quality assessment: from error visibility to structural similarity. IEEE
+  transactions on image processing.
+
+  Note: The true SSIM is only defined on grayscale.  This function does not
+  perform any colorspace transform.  (If input is already YUV, then it will
+  compute YUV SSIM average.)
+
+  Details:
+    - 11x11 Gaussian filter of width 1.5 is used.
+    - k1 = 0.01, k2 = 0.03 as in the original paper.
+
+  The image sizes must be at least 11x11 because of the filter size.
+
+  Example:
+
+  ```python
+      # Read images from file.
+      im1 = tf.decode_png('path/to/im1.png')
+      im2 = tf.decode_png('path/to/im2.png')
+      # Compute SSIM over tf.uint8 Tensors.
+      ssim1 = tf.image.ssim(im1, im2, max_val=255)
+
+      # Compute SSIM over tf.float32 Tensors.
+      im1 = tf.image.convert_image_dtype(im1, tf.float32)
+      im2 = tf.image.convert_image_dtype(im2, tf.float32)
+      ssim2 = tf.image.ssim(im1, im2, max_val=1.0)
+      # ssim1 and ssim2 both have type tf.float32 and are almost equal.
+  ```
+
+  Args:
+    img1: First image batch.
+    img2: Second image batch.
+    max_val: The dynamic range of the images (i.e., the difference between the
+      maximum the and minimum allowed values).
+
+  Returns:
+    A tensor containing an SSIM value for each image in batch.  Returned SSIM
+    values are in range (-1, 1], when pixel values are non-negative. Returns
+    a tensor with shape: broadcast(img1.shape[:-3], img2.shape[:-3]).
+  """
+  _, _, checks = _verify_compatible_image_shapes(img1, img2)
+  with ops.control_dependencies(checks):
+    img1 = array_ops.identity(img1)
+
+  # Need to convert the images to float32.  Scale max_val accordingly so that
+  # SSIM is computed correctly.
+  max_val = math_ops.cast(max_val, img1.dtype)
+  max_val = convert_image_dtype(max_val, dtypes.float32)
+  img1 = convert_image_dtype(img1, dtypes.float32)
+  img2 = convert_image_dtype(img2, dtypes.float32)
+  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val)
+  # Compute average over color channels.
+  return math_ops.reduce_mean(ssim_per_channel, [-1])
+
+
+# Default values obtained by Wang et al.
+_MSSSIM_WEIGHTS = (0.0448, 0.2856, 0.3001, 0.2363, 0.1333)
+
+
+@tf_export('image.ssim_multiscale')
+def ssim_multiscale(img1, img2, max_val, power_factors=_MSSSIM_WEIGHTS):
+  """Computes the MS-SSIM between img1 and img2.
+
+  This function assumes that `img1` and `img2` are image batches, i.e. the last
+  three dimensions are [height, width, channels].
+
+  Note: The true SSIM is only defined on grayscale.  This function does not
+  perform any colorspace transform.  (If input is already YUV, then it will
+  compute YUV SSIM average.)
+
+  Original paper: Wang, Zhou, Eero P. Simoncelli, and Alan C. Bovik. "Multiscale
+  structural similarity for image quality assessment." Signals, Systems and
+  Computers, 2004.
+
+  Arguments:
+    img1: First image batch.
+    img2: Second image batch. Must have the same rank as img1.
+    max_val: The dynamic range of the images (i.e., the difference between the
+      maximum the and minimum allowed values).
+    power_factors: Iterable of weights for each of the scales. The number of
+      scales used is the length of the list. Index 0 is the unscaled
+      resolution's weight and each increasing scale corresponds to the image
+      being downsampled by 2.  Defaults to (0.0448, 0.2856, 0.3001, 0.2363,
+      0.1333), which are the values obtained in the original paper.
+
+  Returns:
+    A tensor containing an MS-SSIM value for each image in batch.  The values
+    are in range [0, 1].  Returns a tensor with shape:
+    broadcast(img1.shape[:-3], img2.shape[:-3]).
+  """
+  # Shape checking.
+  shape1 = img1.get_shape().with_rank_at_least(3)
+  shape2 = img2.get_shape().with_rank_at_least(3)
+  shape1[-3:].merge_with(shape2[-3:])
+
+  with ops.name_scope(None, 'MS-SSIM', [img1, img2]):
+    shape1, shape2, checks = _verify_compatible_image_shapes(img1, img2)
+    with ops.control_dependencies(checks):
+      img1 = array_ops.identity(img1)
+
+    # Need to convert the images to float32.  Scale max_val accordingly so that
+    # SSIM is computed correctly.
+    max_val = math_ops.cast(max_val, img1.dtype)
+    max_val = convert_image_dtype(max_val, dtypes.float32)
+    img1 = convert_image_dtype(img1, dtypes.float32)
+    img2 = convert_image_dtype(img2, dtypes.float32)
+
+    imgs = [img1, img2]
+    shapes = [shape1, shape2]
+
+    # img1 and img2 are assumed to be a (multi-dimensional) batch of
+    # 3-dimensional images (height, width, channels). `heads` contain the batch
+    # dimensions, and `tails` contain the image dimensions.
+    heads = [s[:-3] for s in shapes]
+    tails = [s[-3:] for s in shapes]
+
+    divisor = [1, 2, 2, 1]
+    divisor_tensor = constant_op.constant(divisor[1:], dtype=dtypes.int32)
+
+    def do_pad(images, remainder):
+      padding = array_ops.expand_dims(remainder, -1)
+      padding = array_ops.pad(padding, [[1, 0], [1, 0]])
+      return [array_ops.pad(x, padding, mode='SYMMETRIC') for x in images]
+
+    mcs = []
+    for k in range(len(power_factors)):
+      with ops.name_scope(None, 'Scale%d' % k, imgs):
+        if k > 0:
+          # Avg pool takes rank 4 tensors. Flatten leading dimensions.
+          flat_imgs = [
+              array_ops.reshape(x, array_ops.concat([[-1], t], 0))
+              for x, t in zip(imgs, tails)
+          ]
+
+          remainder = tails[0] % divisor_tensor
+          need_padding = math_ops.reduce_any(math_ops.not_equal(remainder, 0))
+          # pylint: disable=cell-var-from-loop
+          padded = control_flow_ops.cond(need_padding,
+                                         lambda: do_pad(flat_imgs, remainder),
+                                         lambda: flat_imgs)
+          # pylint: enable=cell-var-from-loop
+
+          downscaled = [nn_ops.avg_pool(x, ksize=divisor, strides=divisor,
+                                        padding='VALID')
+                        for x in padded]
+          tails = [x[1:] for x in array_ops.shape_n(downscaled)]
+          imgs = [
+              array_ops.reshape(x, array_ops.concat([h, t], 0))
+              for x, h, t in zip(downscaled, heads, tails)
+          ]
+
+        # Overwrite previous ssim value since we only need the last one.
+        ssim_per_channel, cs = _ssim_per_channel(*imgs, max_val=max_val)
+        mcs.append(nn_ops.relu(cs))
+
+    # Remove the cs score for the last scale. In the MS-SSIM calculation,
+    # we use the l(p) at the highest scale. l(p) * cs(p) is ssim(p).
+    mcs.pop()  # Remove the cs score for the last scale.
+    mcs_and_ssim = array_ops.stack(mcs + [nn_ops.relu(ssim_per_channel)],
+                                   axis=-1)
+    # Take weighted geometric mean across the scale axis.
+    ms_ssim = math_ops.reduce_prod(math_ops.pow(mcs_and_ssim, power_factors),
+                                   [-1])
+
+    return math_ops.reduce_mean(ms_ssim, [-1])  # Avg over color channels.
+
+
+@tf_export('image.image_gradients')
+def image_gradients(image):
+  """Returns image gradients (dy, dx) for each color channel.
+
+  Both output tensors have the same shape as the input: [batch_size, h, w,
+  d]. The gradient values are organized so that [I(x+1, y) - I(x, y)] is in
+  location (x, y). That means that dy will always have zeros in the last row,
+  and dx will always have zeros in the last column.
+
+  Arguments:
+    image: Tensor with shape [batch_size, h, w, d].
+
+  Returns:
+    Pair of tensors (dy, dx) holding the vertical and horizontal image
+    gradients (1-step finite difference).
+
+  Raises:
+    ValueError: If `image` is not a 4D tensor.
+  """
+  if image.get_shape().ndims != 4:
+    raise ValueError('image_gradients expects a 4D tensor '
+                     '[batch_size, h, w, d], not %s.', image.get_shape())
+  image_shape = array_ops.shape(image)
+  batch_size, height, width, depth = array_ops.unstack(image_shape)
+  dy = image[:, 1:, :, :] - image[:, :-1, :, :]
+  dx = image[:, :, 1:, :] - image[:, :, :-1, :]
+
+  # Return tensors with same size as original image by concatenating
+  # zeros. Place the gradient [I(x+1,y) - I(x,y)] on the base pixel (x, y).
+  shape = array_ops.stack([batch_size, 1, width, depth])
+  dy = array_ops.concat([dy, array_ops.zeros(shape, image.dtype)], 1)
+  dy = array_ops.reshape(dy, image_shape)
+
+  shape = array_ops.stack([batch_size, height, 1, depth])
+  dx = array_ops.concat([dx, array_ops.zeros(shape, image.dtype)], 2)
+  dx = array_ops.reshape(dx, image_shape)
+
+  return dy, dx
+
+
+@tf_export('image.sobel_edges')
+def sobel_edges(image):
+  """Returns a tensor holding Sobel edge maps.
+
+  Arguments:
+    image: Image tensor with shape [batch_size, h, w, d] and type float32 or
+    float64.  The image(s) must be 2x2 or larger.
+
+  Returns:
+    Tensor holding edge maps for each channel. Returns a tensor with shape
+    [batch_size, h, w, d, 2] where the last two dimensions hold [[dy[0], dx[0]],
+    [dy[1], dx[1]], ..., [dy[d-1], dx[d-1]]] calculated using the Sobel filter.
+  """
+  # Define vertical and horizontal Sobel filters.
+  static_image_shape = image.get_shape()
+  image_shape = array_ops.shape(image)
+  kernels = [[[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
+             [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]]
+  num_kernels = len(kernels)
+  kernels = np.transpose(np.asarray(kernels), (1, 2, 0))
+  kernels = np.expand_dims(kernels, -2)
+  kernels_tf = constant_op.constant(kernels, dtype=image.dtype)
+
+  kernels_tf = array_ops.tile(kernels_tf, [1, 1, image_shape[-1], 1],
+                              name='sobel_filters')
+
+  # Use depth-wise convolution to calculate edge maps per channel.
+  pad_sizes = [[0, 0], [1, 1], [1, 1], [0, 0]]
+  padded = array_ops.pad(image, pad_sizes, mode='REFLECT')
+
+  # Output tensor has shape [batch_size, h, w, d * num_kernels].
+  strides = [1, 1, 1, 1]
+  output = nn.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
+
+  # Reshape to [batch_size, h, w, d, num_kernels].
+  shape = array_ops.concat([image_shape, [num_kernels]], 0)
+  output = array_ops.reshape(output, shape=shape)
+  output.set_shape(static_image_shape.concatenate([num_kernels]))
+  return output

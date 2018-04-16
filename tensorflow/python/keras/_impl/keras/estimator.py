@@ -37,6 +37,7 @@ from tensorflow.python.keras._impl.keras.engine.network import Network
 from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import saver as saver_lib
@@ -52,6 +53,19 @@ def _cast_tensor_to_floatx(x):
     return x
   else:
     return math_ops.cast(x, K.floatx())
+
+
+def _any_variable_initalized():
+  """Check if any variable has been initialized in the Keras model.
+
+  Returns:
+    boolean, True if at least one variable has been initalized, else False.
+  """
+  variables = variables_module.global_variables()
+  for v in variables:
+    if getattr(v, '_keras_initialized', False):
+      return True
+  return False
 
 
 def _create_ordered_io(keras_model, estimator_io, is_input=True):
@@ -296,9 +310,6 @@ def _clone_and_build_model(mode,
         sample_weight_mode=keras_model.sample_weight_mode,
         weighted_metrics=keras_model.weighted_metrics,
         target_tensors=target_tensors)
-
-  if isinstance(model, models.Sequential):
-    model = model.model
   return model
 
 
@@ -396,11 +407,10 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
       training_util.create_global_step()
       model = _clone_and_build_model(model_fn_lib.ModeKeys.TRAIN, keras_model,
                                      custom_objects)
-      if isinstance(model, models.Sequential):
-        model = model.model
       # save to checkpoint
       with session.Session(config=estimator._session_config) as sess:
-        model.set_weights(keras_weights)
+        if keras_weights:
+          model.set_weights(keras_weights)
         # Make update ops and initialize all variables.
         if not model.train_function:
           # pylint: disable=protected-access
@@ -470,11 +480,22 @@ def model_to_estimator(keras_model=None,
   estimator = estimator_lib.Estimator(
       keras_model_fn, model_dir=model_dir, config=config)
 
-  # Pass the config into keras backend's default session.
-  with session.Session(config=estimator._session_config) as sess:
+  # Check if we need to call get_weights:
+  if _any_variable_initalized():
+    keras_weights = keras_model.get_weights()
+    # Warn if config passed to estimator tries to update GPUOptions. If a
+    # session has already been created, the GPUOptions passed to the first
+    # session sticks.
+    if estimator._session_config.HasField('gpu_options'):
+      logging.warning(
+          'The Keras backend session has already been set. '
+          'The _session_config passed to model_to_estimator will not be used.')
+  else:
+    # Pass the config into keras backend's default session.
+    sess = session.Session(config=estimator._session_config)
     K.set_session(sess)
+    keras_weights = None
 
-  keras_weights = keras_model.get_weights()
   if keras_model._is_graph_network:
     # TODO(yifeif): move checkpoint initialization to scaffold.init_fn
     _save_first_checkpoint(keras_model,

@@ -1,9 +1,11 @@
 path: "tensorflow.layers.SeparableConv2D"
 tf_class {
   is_instance: "<class \'tensorflow.python.layers.convolutional.SeparableConv2D\'>"
-  is_instance: "<class \'tensorflow.python.layers.convolutional._SeparableConv\'>"
-  is_instance: "<class \'tensorflow.python.layers.convolutional._Conv\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.SeparableConv2D\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.SeparableConv\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.Conv\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -24,6 +26,10 @@ tf_class {
   }
   member {
     name: "input"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "input_mask"
     mtype: "<type \'property\'>"
   }
   member {
@@ -52,6 +58,10 @@ tf_class {
   }
   member {
     name: "output"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_mask"
     mtype: "<type \'property\'>"
   }
   member {
@@ -96,7 +106,11 @@ tf_class {
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "add_weight"
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'partitioner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -111,6 +125,10 @@ tf_class {
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "compute_mask"
+    argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "compute_output_shape"
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
@@ -119,7 +137,19 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_input_at"
+    argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_input_mask_at"
     argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -135,11 +165,23 @@ tf_class {
     argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_output_mask_at"
+    argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_output_shape_at"
     argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_updates_for"
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_weights"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
   }
 }

@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow as c_api
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -83,12 +82,40 @@ def smart_constant_value(pred):
     # wanted to limit the change hidden behind _USE_C_API).
     # pylint: disable=protected-access
     if pred_value is None and ops._USE_C_API:
-      with errors.raise_exception_on_not_ok_status() as status:
-        pred_value = c_api.TF_TryEvaluateConstant_wrapper(
-            pred.graph._c_graph, pred._as_tf_output(), status)
+      pred_value = c_api.TF_TryEvaluateConstant_wrapper(pred.graph._c_graph,
+                                                        pred._as_tf_output())
     # pylint: enable=protected-access
 
   else:
     raise TypeError("`pred` must be a Tensor, or a Python bool, or 1 or 0. "
                     "Found instead: %s" % pred)
   return pred_value
+
+
+def smart_case(pred_fn_pairs, default=None, exclusive=False, name="smart_case"):
+  """Like tf.case, except attempts to statically evaluate predicates.
+
+  If any predicate in `pred_fn_pairs` is a bool or has a constant value, the
+  associated callable will be called or omitted depending on its value.
+  Otherwise this functions like tf.case.
+
+  Args:
+    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor and a
+                   callable which returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
+    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
+    name: A name for this operation (optional).
+
+  Returns:
+    The tensors returned by the first pair whose predicate evaluated to True, or
+    those returned by `default` if none does.
+
+  Raises:
+    TypeError: If `pred_fn_pairs` is not a list/dictionary.
+    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+  """
+  return control_flow_ops._case_helper(  # pylint: disable=protected-access
+      smart_cond, pred_fn_pairs, default, exclusive, name,
+      allow_python_preds=True)

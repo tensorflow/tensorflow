@@ -320,6 +320,9 @@ class CompileOptions(object):
 
   def __init__(self):
     self.generate_hlo_graph = None
+    self.dump_optimized_hlo_proto_to = None
+    self.dump_per_pass_hlo_proto_to = None
+    self.hlo_profile = False
 
 
 def transfer_to_infeed(value, replica_number=None):
@@ -1024,6 +1027,20 @@ class ComputationBuilder(object):
             true_computation.c_local_computation,
             _unwrap_data_handle(false_operand),
             false_computation.c_local_computation))
+
+  def IsConstant(self, operand, num_parameters=0):
+    """Enqueues an IsConstant operation onto the computation.
+
+    Args:
+      operand: a ComputationDataHandle to test.
+      num_parameters: optional int, number of computation parameters to treat as
+        constant (default 0).
+
+    Returns: bool indicating whether `operand` is a compile-time constant,
+      meaning its value does not depend on parameters with index greater than or
+      equal to `num_parameters`.
+    """
+    return self._client.IsConstant(_unwrap_data_handle(operand), num_parameters)
 
   def Dot(self, lhs, rhs):
     """Enqueues a dot operation onto the computation.

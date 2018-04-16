@@ -403,14 +403,37 @@ class LayoutAssignment : public HloPassInterface {
   Status CheckLayouts(HloModule* module);
 
   ComputationLayout* entry_computation_layout_;
-  ChannelLayoutConstraints* channel_layout_constraints_;
 
  protected:
+  // Sets up the copy instruction according to the characteristic (sharding,
+  // metadata, ...) of the reference instruction. The index argument is used
+  // when the instruction is a tuple, and in such case the index represents
+  // the location from where the copy instruction was created from.
+  // If the index is empty, the whole sharding will be propagated, even in case
+  // the intruction has a tuple sharding.
+  static void SetupCopiedInstruction(const HloInstruction& instruction,
+                                     HloInstruction* copy,
+                                     const ShapeIndex& index);
+
+  // Creates and returns a copy of the given instruction with a different
+  // layout. Tuple-shaped instructions will be deep-copied, and the last Tuple
+  // instruction producing the copy is returned.
+  static StatusOr<HloInstruction*> CreateCopyWithNewLayout(
+      const Shape& shape_with_layout, HloInstruction* instruction);
+
+  // Creates a copy of the given operand if the operand's layout does not match
+  // the given layout. This copy replaces the use in the given instruction.
+  // Tuple operands will be deep-copied.
+  static Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
+                                           HloInstruction* instruction,
+                                           int64 operand_no);
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
+  ChannelLayoutConstraints* channel_layout_constraints_;
 };
 
 }  // namespace xla

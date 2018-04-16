@@ -19,7 +19,7 @@ import java.io.File;
 import java.nio.MappedByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import javax.validation.constraints.NotNull;
+import org.checkerframework.checker.nullness.qual.NonNull;
 
 /**
  * Driver class to drive model inference with TensorFlow Lite.
@@ -60,11 +60,24 @@ public final class Interpreter implements AutoCloseable {
    *
    * @param modelFile: a File of a pre-trained TF Lite model.
    */
-  public Interpreter(@NotNull File modelFile) {
+  public Interpreter(@NonNull File modelFile) {
     if (modelFile == null) {
       return;
     }
     wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath());
+  }
+
+  /**
+   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
+   *
+   * @param modelFile: a file of a pre-trained TF Lite model
+   * @param numThreads: number of threads to use for inference
+   */
+  public Interpreter(@NonNull File modelFile, int numThreads) {
+    if (modelFile == null) {
+      return;
+    }
+    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), numThreads);
   }
 
   /**
@@ -73,8 +86,19 @@ public final class Interpreter implements AutoCloseable {
    * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
    * Interpreter}.
    */
-  public Interpreter(@NotNull MappedByteBuffer mappedByteBuffer) {
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
     wrapper = new NativeInterpreterWrapper(mappedByteBuffer);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file and
+   * specifies the number of threads used for inference.
+   *
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
+   */
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(mappedByteBuffer, numThreads);
   }
 
   /**
@@ -89,7 +113,7 @@ public final class Interpreter implements AutoCloseable {
    *     model inference is done.
    * @param output a multidimensional array of output data.
    */
-  public void run(@NotNull Object input, @NotNull Object output) {
+  public void run(@NonNull Object input, @NonNull Object output) {
     Object[] inputs = {input};
     Map<Integer, Object> outputs = new HashMap<>();
     outputs.put(0, output);
@@ -111,7 +135,7 @@ public final class Interpreter implements AutoCloseable {
    *     needs to keep entries for the outputs to be used.
    */
   public void runForMultipleInputsOutputs(
-      @NotNull Object[] inputs, @NotNull Map<Integer, Object> outputs) {
+      @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
     if (wrapper == null) {
       throw new IllegalStateException("The Interpreter has already been closed.");
     }
@@ -134,7 +158,7 @@ public final class Interpreter implements AutoCloseable {
    *
    * <p>IllegalArgumentException will be thrown if it fails to resize.
    */
-  public void resizeInput(int idx, @NotNull int[] dims) {
+  public void resizeInput(int idx, @NonNull int[] dims) {
     if (wrapper == null) {
       throw new IllegalStateException("The Interpreter has already been closed.");
     }
@@ -186,6 +210,13 @@ public final class Interpreter implements AutoCloseable {
     } else {
       throw new IllegalStateException("NativeInterpreterWrapper has already been closed.");
     }
+  }
+
+  public void setNumThreads(int num_threads) {
+    if (wrapper == null) {
+      throw new IllegalStateException("The interpreter has already been closed.");
+    }
+    wrapper.setNumThreads(num_threads);
   }
 
   /** Release resources associated with the {@code Interpreter}. */

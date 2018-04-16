@@ -1,0 +1,225 @@
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// XLA service API.
+//
+// Users 1) build up computations and 2) create allocations via this API.
+// Computations are composed of data flowing between arbitrarily-sized
+// vector-oriented operations.
+//
+// Users build up computations using a ComputationHandle, and talk about
+// allocations using GlobalDataHandles.
+//
+// There are currently no checkpointing capabilities or distribution/replication
+// guarantees. The service runs on a single machine (e.g. one task) and that is
+// its failure domain.
+//
+// Canonical example of "alpha * X + Y":
+// * Make a computation.
+// * Add alpha and X and Y as parameters.
+// * Request the multiplication of alpha and X.
+// * Request the addition of that result and Y.
+//
+// Then, pass the computation and appropriately shaped inputs to the XLA
+// service's Execute method, which provides a result as a GlobalDataHandle.
+//
+// All data in XLA computations are conceptually immutable.
+//
+// Note: this API is subject to change / refinement over time -- use the
+// provided client libraries to insulate code from changes to this service API.
+
+syntax = "proto3";
+
+import "tensorflow/compiler/xla/xla.proto";
+import "tensorflow/compiler/xla/xla_data.proto";
+
+package xla;
+
+service XlaService {
+  /////////////////////////
+  // Global data requests
+
+  // Unregisters a global allocation.
+  //
+  // If the handle given is not currently allocated, a NOT_FOUND status is
+  // returned.
+  rpc Unregister(UnregisterRequest) returns (UnregisterResponse) {
+  }
+
+  // Deconstructs a tuple. Returns a newly created GlobalDataHandle for each
+  // element in the tuple.
+  rpc DeconstructTuple(DeconstructTupleRequest)
+      returns (DeconstructTupleResponse) {
+  }
+
+  // Unpack requests that a global data handle, with a tuple shape, has global
+  // data handles created for each of its constituent members. This is the
+  // equivalent of the "destructuring assignment" present in various programming
+  // languages.
+  rpc Unpack(UnpackRequest) returns (UnpackResponse) {
+  }
+
+  // Requests the shape of the referenced global data.
+  rpc GetShape(GetShapeRequest) returns (GetShapeResponse) {
+  }
+
+  // Requests the program shape of the referenced computation.
+  rpc GetComputationShape(GetComputationShapeRequest)
+      returns (GetComputationShapeResponse) {
+  }
+
+  // Requests the statistics of the given computation.
+  rpc GetComputationStats(ComputationStatsRequest)
+      returns (ComputationStatsResponse) {
+  }
+
+  // Requests the statistics of the given computation.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  rpc GetComputationGraphStats(ComputationGraphStatsRequest)
+      returns (ComputationStatsResponse) {
+  }
+
+  // Loads a variable number of values with a given element type from ColumnIO.
+  rpc LoadData(LoadDataRequest) returns (LoadDataResponse) {
+  }
+
+  // Transfers the given global data to the client in the form of a Literal.
+  rpc TransferToClient(TransferToClientRequest)
+      returns (TransferToClientResponse) {
+  }
+
+  // Transfers the given literal to the server to be stored in a global
+  // allocation, which is returned.
+  rpc TransferToServer(TransferToServerRequest)
+      returns (TransferToServerResponse) {
+  }
+
+  // Transfers the given literal to the Infeed buffer of the device.
+  rpc TransferToInfeed(TransferToInfeedRequest)
+      returns (TransferToInfeedResponse) {
+  }
+
+  // Transferred literal from the Outfeed buffer of the device.
+  rpc TransferFromOutfeed(TransferFromOutfeedRequest)
+      returns (TransferFromOutfeedResponse) {
+  }
+
+  // Resets the device, clearing all existing state on the device.
+  rpc ResetDevice(ResetDeviceRequest) returns (ResetDeviceResponse) {
+  }
+
+  // Tests if an expression is a compile-time constant.
+  rpc IsConstant(IsConstantRequest) returns (IsConstantResponse) {
+  }
+
+  // Computes the value of a constant expression.
+  rpc ComputeConstant(ComputeConstantRequest)
+      returns (ComputeConstantResponse) {
+  }
+
+  // Computes the value of a constant expression. The request contains the
+  // computation graph for the constant expression.
+  rpc ComputeConstantGraph(ComputeConstantGraphRequest)
+      returns (ComputeConstantResponse) {
+  }
+
+  // Retrieves the inferred shape for a value within a computation.
+  rpc GetLocalShape(GetLocalShapeRequest) returns (GetLocalShapeResponse) {
+  }
+
+  // Requests one or more device handles from the target. The returned device
+  // handles can be used to specify the device on which to execute computations
+  // or transfer data.
+  rpc GetDeviceHandles(GetDeviceHandlesRequest)
+      returns (GetDeviceHandlesResponse) {
+  }
+
+  // Creates a channel handle that can be used to transfer data between
+  // two computations via a pair of Send and Recv instructions.
+  rpc CreateChannelHandle(CreateChannelHandleRequest)
+      returns (CreateChannelHandleResponse) {
+  }
+
+  // Requests that the referenced computation be specialized for the provided
+  // arguments for subsequent execution. This permits things such as value
+  // specialization.
+  rpc Specialize(SpecializeRequest) returns (SpecializeResponse) {
+  }
+
+  // Modifies the provided computation so that subsequent executions
+  // will compute the provided ComputationDataHandle, rather than the
+  // last expression enqueued on that Computation.
+  rpc SetReturnValue(SetReturnValueRequest) returns (SetReturnValueResponse) {
+  }
+
+  // Computation creates a new computation with the given name.
+  // A unique ComputationHandle is returned.
+  rpc Computation(ComputationRequest) returns (ComputationResponse) {
+  }
+
+  // Adds a new op to a computation.
+  rpc CreateOp(OpRequest) returns (OpResponse) {
+  }
+
+  // Invokes the provided computation with the provided global data passed as
+  // immutable arguments. Returns global data output and execution timing.
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse) {
+  }
+
+  // Invokes the provided computation with the provided global data passed as
+  // immutable arguments. The request contains the whole computation graph.
+  // Returns global data output and execution timing.
+  rpc ExecuteGraph(ExecuteGraphRequest) returns (ExecuteResponse) {
+  }
+
+  // Invokes the provided list of computations in parallel with the provided
+  // global data for each computation. Returns a list of global data output and
+  // execution timing.
+  rpc ExecuteParallel(ExecuteParallelRequest)
+      returns (ExecuteParallelResponse) {
+  }
+
+  // Invokes the provided list of computations in parallel with the provided
+  // global data for each computation. Returns a list of global data output and
+  // execution timing.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  rpc ExecuteGraphParallel(ExecuteGraphParallelRequest)
+      returns (ExecuteParallelResponse) {
+  }
+
+  // Invokes the provided computation with the provided global data passed as
+  // immutable arguments. Returns a handle to the execution.
+  rpc ExecuteAsync(ExecuteAsyncRequest) returns (ExecuteAsyncResponse) {
+  }
+
+  // Waits until the given execution (aysnchronously launched) is complete, and
+  // returns the global data output.
+  rpc WaitForExecution(WaitForExecutionRequest)
+      returns (WaitForExecutionResponse) {
+  }
+
+  // Serializes a computation to proto form, so it can be loaded via
+  // LoadComputationSnapshot.
+  rpc SnapshotComputation(SnapshotComputationRequest)
+      returns (SnapshotComputationResponse) {
+  }
+
+  // Loads a computation from a captured snapshot.
+  rpc LoadComputationSnapshot(LoadComputationSnapshotRequest)
+      returns (LoadComputationSnapshotResponse) {
+  }
+}

@@ -61,7 +61,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JZ)
+ *  Signature: (JZ)V
  */
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
@@ -69,6 +69,16 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
                                                            jlong handle,
                                                            jboolean state);
 
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JI)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong handle,
+                                                           jint num_threads);
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
@@ -99,11 +109,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJ)J
+ *  Signature: (JJI)J
  */
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
-    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle);
+    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
+    jint num_threads);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
@@ -122,12 +133,24 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
  *  Method:
  *  Signature: (JII)[I
  *
- * It gets input dimensions if num_bytes matches number of bytes required by
- * the input, else returns null and throws IllegalArgumentException.
+ * Gets input dimensions. If num_bytes is non-negative, it will check whether
+ * num_bytes matches num of bytes required by the input, and return null and
+ * throw IllegalArgumentException if not.
  */
 JNIEXPORT jintArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
     JNIEnv* env, jclass clazz, jlong handle, jint input_idx, jint num_bytes);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JI)I
+ *
+ * Gets output dimensions.
+ */
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
