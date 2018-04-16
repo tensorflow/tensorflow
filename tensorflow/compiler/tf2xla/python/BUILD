@@ -22,3 +22,11 @@ tf_py_clif_cc(
         "//tensorflow/compiler/tf2xla:xla_compiler",
     ],
 )
+
+py_library(
+    name = "xla",
+    srcs = ["xla.py"],
+    deps = [
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+    ],
+)

@@ -6,7 +6,7 @@ report vulnerabilities in TensorFlow.
 
 ## TensorFlow models are programs
 
-TensorFlow's runtime system interprets and executes programs. What machine 
+TensorFlow's runtime system interprets and executes programs. What machine
 learning practitioners term
 [**models**](https://developers.google.com/machine-learning/glossary/#model) are
 expressed as programs that TensorFlow executes.  TensorFlow programs are encoded
@@ -28,12 +28,12 @@ data you supply to TensorFlow to train a model, or to use a model to run
 inference on the data.
 
 **TensorFlow models are programs, and need to be treated as such from a security
-perspective.** 
+perspective.**
 
 ## Running untrusted models
 
 As a general rule: **Always** execute untrusted models inside a sandbox (e.g.,
-[nsjail](https://github.com/google/nsjail)). 
+[nsjail](https://github.com/google/nsjail)).
 
 There are several ways in which a model could become untrusted. Obviously, if an
 untrusted party supplies TensorFlow kernels, arbitrary code may be executed.
@@ -109,11 +109,11 @@ graphs known to the `ModelServer`. This means that an attacker may run
 graphs using untrusted inputs as described above, but they would not be able to
 execute arbitrary graphs. It is possible to safely expose a `ModelServer`
 directly to an untrusted network, **but only if the graphs it is configured to
-use have been carefully audited to be safe**. 
+use have been carefully audited to be safe**.
 
 Similar to best practices for other servers, we recommend running any
 `ModelServer` with appropriate privileges (i.e., using a separate user with
-reduced permisisons). In the spirit of defense in depth, we recommend
+reduced permissions). In the spirit of defense in depth, we recommend
 authenticating requests to any TensorFlow server connected to an untrusted
 network, as well as sandboxing the server to minimize the adverse effects of
 any breach.
@@ -129,11 +129,11 @@ with specially crafted inputs.
 ### What is a vulnerability?
 
 Given TensorFlow's flexibility, it is possible to specify computation graphs
-which exhibit unexpected or unwanted behaviors. The fact that TensorFlow models
+which exhibit unexpected or unwanted behavior. The fact that TensorFlow models
 can perform arbitrary computations means that they may read and write files,
 communicate via the network, produce deadlocks and infinite loops, or run out
 of memory. It is only when these behaviors are outside the specifications of the
-operations involved that such behavior is a vulnerability. 
+operations involved that such behavior is a vulnerability.
 
 A `FileWriter` writing a file is not unexpected behavior and therefore is not a
 vulnerability in TensorFlow. A `MatMul` allowing arbitrary binary code execution
@@ -169,6 +169,17 @@ below).
 Please use a descriptive subject line for your report email. After the initial
 reply to your report, the security team will endeavor to keep you informed of
 the progress being made towards a fix and announcement. 
+
+In addition, please include the following information along with your report:
+
+* Your name and affiliation (if any).
+* A description the technical details of the vulnerabilities. It is very
+  important to let us know how we can reproduce your findings.
+* An explanation who can exploit this vulnerability, and what they gain when
+  doing so -- write an attack scenario. This will help us evaluate your report
+  quickly, especially if the issue is complex.
+* Whether this vulnerability public or known to third parties. If it is, please
+  provide details.
 
 If you believe that an existing (public) issue is security-related, please send
 an email to `security@tensorflow.org`. The email should include the issue ID and
@@ -233,7 +244,7 @@ v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
 
 ### Known vulnerabilities
 
-| Type              | Versions affected |        Reported by    | Additional Information      |
-|-------------------|:-----------------:|-----------------------|-----------------------------|
-| out of bounds read|             <=1.4 | Blade Team of Tencent | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
+| Type               | Versions affected | Reported by           | Additional Information      |
+|--------------------|:-----------------:|-----------------------|-----------------------------|
+| Out Of Bounds Read |             <=1.4 | Blade Team of Tencent | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
 

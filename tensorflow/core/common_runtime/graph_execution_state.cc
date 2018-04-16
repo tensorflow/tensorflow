@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -237,6 +239,122 @@ void GraphExecutionState::RestoreStatefulNodes(Graph* graph) {
   }
 }
 
+namespace {
+
+class TensorConnectionPruneRewrite : public subgraph::PruneRewrite {
+ public:
+  TensorConnectionPruneRewrite(const string* endpoint_name,
+                               NodeBuilder::NodeOut from_tensor)
+      : subgraph::PruneRewrite(endpoint_name, nullptr /* device_info */),
+        from_tensor_(std::move(from_tensor)) {}
+
+  Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
+                 Node** out_node) override {
+    Status s;
+    auto check_no_cycle_fn = [this, feed_tensor, &s](Node* n) {
+      if (n == feed_tensor.node) {
+        s.Update(errors::InvalidArgument(
+            "Requested Tensor connection between nodes \"",
+            feed_tensor.node->name(), "\" and \"", from_tensor_.node->name(),
+            "\" would create a cycle."));
+      }
+    };
+    ReverseDFSFrom(*g, {from_tensor_.node}, std::move(check_no_cycle_fn),
+                   nullptr);
+    TF_RETURN_IF_ERROR(s);
+
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(strings::StrCat("_identity_", feed_tensor.node->name(), "_",
+                                    feed_tensor.index),
+                    "Identity")
+            .Input(from_tensor_)
+            .Attr("T",
+                  BaseType(from_tensor_.node->output_type(from_tensor_.index)))
+            .Finalize(g, out_node));
+
+    (*out_node)->set_assigned_device_name(
+        feed_tensor.node->assigned_device_name());
+    return Status::OK();
+  }
+
+ private:
+  NodeBuilder::NodeOut from_tensor_;
+};
+
+}  // namespace
+
+Status GraphExecutionState::PruneGraph(
+    const BuildGraphOptions& options, Graph* graph,
+    subgraph::RewriteGraphMetadata* out_rewrite_metadata) {
+  std::vector<std::unique_ptr<subgraph::PruneRewrite>> feed_rewrites;
+  feed_rewrites.reserve(options.callable_options.feed_size());
+  std::vector<std::unique_ptr<subgraph::PruneRewrite>> fetch_rewrites;
+  fetch_rewrites.reserve(options.callable_options.fetch_size());
+  const DeviceAttributes* device_info =
+      &device_set_->client_device()->attributes();
+  if (options.use_function_convention) {
+    for (int i = 0; i < options.callable_options.feed_size(); ++i) {
+      feed_rewrites.emplace_back(new subgraph::ArgFeedRewrite(
+          &options.callable_options.feed(i), device_info, i));
+    }
+    for (int i = 0; i < options.callable_options.fetch_size(); ++i) {
+      fetch_rewrites.emplace_back(new subgraph::RetvalFetchRewrite(
+          &options.callable_options.fetch(i), device_info, i));
+    }
+  } else {
+    for (const string& feed : options.callable_options.feed()) {
+      feed_rewrites.emplace_back(
+          new subgraph::RecvFeedRewrite(&feed, device_info));
+    }
+    for (const string& fetch : options.callable_options.fetch()) {
+      fetch_rewrites.emplace_back(
+          new subgraph::SendFetchRewrite(&fetch, device_info));
+    }
+  }
+
+  for (const TensorConnection& tensor_connection :
+       options.callable_options.tensor_connection()) {
+    Node* from_node = nullptr;
+    TensorId from_id(ParseTensorName(tensor_connection.from_tensor()));
+
+    for (Node* n : graph->nodes()) {
+      if (n->name() == from_id.first) {
+        from_node = n;
+        break;
+      }
+    }
+    if (from_node == nullptr) {
+      return errors::InvalidArgument(
+          "Requested tensor connection from unknown node: \"",
+          tensor_connection.to_tensor(), "\".");
+    }
+    if (from_id.second >= from_node->num_outputs()) {
+      return errors::InvalidArgument(
+          "Requested tensor connection from unknown edge: \"",
+          tensor_connection.to_tensor(),
+          "\" (actual number of outputs = ", from_node->num_outputs(), ").");
+    }
+
+    feed_rewrites.emplace_back(new TensorConnectionPruneRewrite(
+        &tensor_connection.to_tensor(), {from_node, from_id.second}));
+  }
+
+  std::vector<string> target_node_names(
+      options.callable_options.target().begin(),
+      options.callable_options.target().end());
+  TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
+      graph, feed_rewrites, fetch_rewrites, target_node_names,
+      out_rewrite_metadata));
+
+  CHECK_EQ(out_rewrite_metadata->feed_types.size(),
+           options.callable_options.feed_size() +
+               options.callable_options.tensor_connection_size());
+  for (int i = 0; i < options.callable_options.tensor_connection_size(); ++i) {
+    out_rewrite_metadata->feed_types.pop_back();
+  }
+  return Status::OK();
+}
+
 Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   const GraphDef* graph_def = &original_graph_def_;
 
@@ -251,10 +369,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
     rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
-    TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-        new_graph.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes(),
-        options.use_function_convention, rewrite_metadata_.get()));
+    TF_RETURN_IF_ERROR(
+        PruneGraph(options, new_graph.get(), rewrite_metadata_.get()));
   }
 
   // Save stateful placements before placing.
@@ -299,16 +415,34 @@ Status GraphExecutionState::OptimizeGraph(
     item.id = "tf_graph";
     graph_->ToGraphDef(&item.graph);
 
-    item.fetch = options.fetch_endpoints;
-    item.fetch.insert(item.fetch.end(), options.target_nodes.begin(),
-                      options.target_nodes.end());
+    item.fetch.insert(item.fetch.end(),
+                      options.callable_options.fetch().begin(),
+                      options.callable_options.fetch().end());
+    item.fetch.insert(item.fetch.end(),
+                      options.callable_options.target().begin(),
+                      options.callable_options.target().end());
 
-    if (!options.feed_endpoints.empty()) {
+    for (const TensorConnection& tensor_connection :
+         options.callable_options.tensor_connection()) {
+      item.fetch.push_back(tensor_connection.from_tensor());
+    }
+
+    if (!(options.callable_options.feed().empty() &&
+          options.callable_options.tensor_connection().empty())) {
       std::unordered_set<string> feeds;
-      for (const string& feed : options.feed_endpoints) {
+      for (const string& feed : options.callable_options.feed()) {
         TensorId id = ParseTensorName(feed);
         if (id.second != 0) {
           return errors::InvalidArgument("Unsupported feed: ", feed);
+        }
+        feeds.insert(id.first.ToString());
+      }
+      for (const TensorConnection& tensor_connection :
+           options.callable_options.tensor_connection()) {
+        TensorId id = ParseTensorName(tensor_connection.to_tensor());
+        if (id.second != 0) {
+          return errors::InvalidArgument("Unsupported feed: ",
+                                         tensor_connection.to_tensor());
         }
         feeds.insert(id.first.ToString());
       }
@@ -401,12 +535,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||
       !session_options_->config.graph_options().place_pruned_graph()) {
-    // Extract the subset of the graph that needs to be run, adding feed/fetch
-    // ops as needed.
-    TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-        ng.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes(),
-        options.use_function_convention, &rewrite_metadata));
+    TF_RETURN_IF_ERROR(PruneGraph(options, ng.get(), &rewrite_metadata));
   } else {
     // This GraphExecutionState represents a graph that was
     // pruned when this was constructed, so we copy the metadata from
@@ -415,8 +544,10 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     rewrite_metadata = *rewrite_metadata_;
   }
 
-  CHECK_EQ(options.feed_endpoints.size(), rewrite_metadata.feed_types.size());
-  CHECK_EQ(options.fetch_endpoints.size(), rewrite_metadata.fetch_types.size());
+  CHECK_EQ(options.callable_options.feed_size(),
+           rewrite_metadata.feed_types.size());
+  CHECK_EQ(options.callable_options.fetch_size(),
+           rewrite_metadata.fetch_types.size());
 
   // Make a fresh copy of the function library for the client graph.
   std::unique_ptr<FunctionLibraryDefinition> flib(

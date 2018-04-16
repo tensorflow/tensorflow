@@ -125,8 +125,8 @@ class Variable(checkpointable.CheckpointableBase):
 
   @compatibility(eager)
   `tf.Variable` is not compatible with eager execution.  Use
-  `tfe.Variable` instead which is compatible with both eager execution
-  and graph construction.  See [the TensorFlow Eager Execution
+  `tf.contrib.eager.Variable` instead which is compatible with both eager
+  execution and graph construction.  See [the TensorFlow Eager Execution
   guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
   for details on how variables work in eager execution.
   @end_compatibility
@@ -293,6 +293,7 @@ class Variable(checkpointable.CheckpointableBase):
     Raises:
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
+      RuntimeError: If lifted into the eager context.
     """
     _ = expected_shape
     if initial_value is None:
@@ -319,6 +320,11 @@ class Variable(checkpointable.CheckpointableBase):
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
+      # Ensure that we weren't lifted into the eager context.
+      if context.executing_eagerly():
+        raise RuntimeError(
+            "tf.Variable not supported when eager execution is enabled. "
+            "Please use tf.contrib.eager.Variable instead")
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
 

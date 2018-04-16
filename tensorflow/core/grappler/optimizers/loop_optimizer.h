@@ -30,9 +30,13 @@ constexpr char kLoopOptimizer[] = "LoopOptimizer";
 
 class LoopOptimizer : public GraphOptimizer {
  public:
-  LoopOptimizer() : opt_level_(RewriterConfig::ON) {}
+  LoopOptimizer()
+      : opt_level_(RewriterConfig::ON),
+        options_(LoopOptimizerOptions::Default(RewriterConfig::ON)) {}
   explicit LoopOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+      : opt_level_(opt_level),
+        options_(LoopOptimizerOptions::Default(RewriterConfig::ON)) {}
+
   ~LoopOptimizer() override {}
 
   string name() const override { return "loop_optimizer"; };
@@ -44,29 +48,21 @@ class LoopOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
-  Status LoopInvariantNodeMotion();
-  Status FindInvariantNodes(NodeDef* node);
-  Status RevertInvariantNodes();
-  Status MoveInvariantNodes(const int fname);
-  Status LINMHandleInvariantNode(NodeDef* node, const int num_outputs,
-      const int frame_id);
-  Status LINMHandleConst(NodeDef* node, const int num_outputs,
-      const int frame_id);
-  Status LINMHandleInvariantEnter(NodeDef* node, const int num_outputs);
+  friend class LoopOptimizerTest;
 
-  std::map<NodeDef*, int> invariant_nodes_;
-  std::set<int> empty_set_;
-  std::map<int, std::set<int>> frame_children_;
-  std::map<int, int> frame_parent_;
-  std::map<int, const NodeDef*> loop_cond_;
-  std::map<int, std::vector<NodeDef*>> invariant_enters_;
-  int new_enter_id_;
+  // Granular control for loop optimizer stages.
+  struct LoopOptimizerOptions {
+    bool enable_loop_invariant_node_motion = true;
+    bool enable_stack_push_removal = true;
+
+    static LoopOptimizerOptions Default(RewriterConfig::Toggle opt_level) {
+      LoopOptimizerOptions options;
+      return options;
+    }
+  };
+
   RewriterConfig::Toggle opt_level_;
-
-  std::unique_ptr<NodeMap> node_map_;
-  FrameMap frame_map_;
-  std::unique_ptr<GraphProperties> graph_properties_;
-  GraphDef* optimized_graph_;  // Not owned.
+  LoopOptimizerOptions options_;
 };
 
 }  // end namespace grappler

@@ -52,8 +52,19 @@ TEST_F(TopologicalSortTest, NoLoop) {
   *graph.add_node() = CreateNode("5", {});
   *graph.add_node() = CreateNode("4", {});
 
+  std::unordered_map<const NodeDef*, int> topo_order;
+  TF_EXPECT_OK(ComputeTopologicalOrder(graph, &topo_order));
+
+  const std::vector<string> order = {"5", "4", "2", "0", "3", "1"};
+  for (const auto& topo : topo_order) {
+    const string& node_name = topo.first->name();
+    const int topo_order = topo.second;
+    std::cout << "Node " << node_name << " at order " << topo_order
+              << std::endl;
+    EXPECT_EQ(node_name, order[topo_order]);
+  }
+
   TF_EXPECT_OK(TopologicalSort(&graph));
-  std::vector<string> order = {"5", "4", "2", "0", "3", "1"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
   }
@@ -68,8 +79,17 @@ TEST_F(TopologicalSortTest, WithLoop) {
   *graph.add_node() = CreateNode("5", "NextIteration", {"4"});
   *graph.add_node() = CreateNode("1", {});
 
+  std::unordered_map<const NodeDef*, int> topo_order;
+  TF_EXPECT_OK(ComputeTopologicalOrder(graph, &topo_order));
+
+  const std::vector<string> order = {"1", "2", "3", "4", "5"};
+  for (const auto& topo : topo_order) {
+    const string& node_name = topo.first->name();
+    const int topo_order = topo.second;
+    EXPECT_EQ(node_name, order[topo_order]);
+  }
+
   TF_EXPECT_OK(TopologicalSort(&graph));
-  std::vector<string> order = {"1", "2", "3", "4", "5"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
   }

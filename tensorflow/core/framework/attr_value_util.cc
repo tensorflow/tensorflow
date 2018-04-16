@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -185,7 +186,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   // check if has_list is false and some other field in attr_value is
   // set to flag the error.  This test can be made more strict once
   // support for GraphDef versions <= 4 is dropped.
-  if (StringPiece(type).starts_with("list(") && !attr_value.has_list()) {
+  if (str_util::StartsWith(type, "list(") && !attr_value.has_list()) {
     if (num_set) {
       return errors::InvalidArgument(
           "AttrValue missing value with expected type '", type, "'");
@@ -196,7 +197,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   }
 
   // Okay to have an empty list, but not to be missing a non-list value.
-  if (num_set == 0 && !StringPiece(type).starts_with("list(")) {
+  if (num_set == 0 && !str_util::StartsWith(type, "list(")) {
     return errors::InvalidArgument(
         "AttrValue missing value with expected type '", type, "'");
   }
@@ -240,29 +241,29 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
 bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
   // Parse type.
   string field_name;
-  bool is_list = type.Consume("list(");
-  if (type.Consume("string")) {
+  bool is_list = str_util::ConsumePrefix(&type, "list(");
+  if (str_util::ConsumePrefix(&type, "string")) {
     field_name = "s";
-  } else if (type.Consume("int")) {
+  } else if (str_util::ConsumePrefix(&type, "int")) {
     field_name = "i";
-  } else if (type.Consume("float")) {
+  } else if (str_util::ConsumePrefix(&type, "float")) {
     field_name = "f";
-  } else if (type.Consume("bool")) {
+  } else if (str_util::ConsumePrefix(&type, "bool")) {
     field_name = "b";
-  } else if (type.Consume("type")) {
+  } else if (str_util::ConsumePrefix(&type, "type")) {
     field_name = "type";
-  } else if (type.Consume("shape")) {
+  } else if (str_util::ConsumePrefix(&type, "shape")) {
     field_name = "shape";
-  } else if (type.Consume("tensor")) {
+  } else if (str_util::ConsumePrefix(&type, "tensor")) {
     field_name = "tensor";
-  } else if (type.Consume("func")) {
+  } else if (str_util::ConsumePrefix(&type, "func")) {
     field_name = "func";
-  } else if (type.Consume("placeholder")) {
+  } else if (str_util::ConsumePrefix(&type, "placeholder")) {
     field_name = "placeholder";
   } else {
     return false;
   }
-  if (is_list && !type.Consume(")")) {
+  if (is_list && !str_util::ConsumePrefix(&type, ")")) {
     return false;
   }
 

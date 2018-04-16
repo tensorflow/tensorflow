@@ -26,24 +26,16 @@ limitations under the License.
 #include "grpc++/impl/codegen/sync_stream.h"
 #include "grpc++/support/byte_buffer.h"
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-
-// Contains potentially large GraphDef.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RegisterGraphRequest);
-// Contains potentially large TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunGraphRequest);
-// Contains potentially large StepStats, TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunGraphResponse);
 
 namespace tensorflow {
 class GrpcByteSource : public TensorResponse::Source {
  public:
-  explicit GrpcByteSource(grpc_byte_buffer* buffer) : buffer_(buffer) {}
+  explicit GrpcByteSource(::grpc::ByteBuffer* buffer) : buffer_(buffer) {}
   ~GrpcByteSource() override { DeleteStream(); }
 
-  typedef ::grpc::tensorflow_helper::GrpcBufferReader Reader;
+  typedef ::grpc::GrpcProtoBufferReader Reader;
 
   protobuf::io::ZeroCopyInputStream* contents() override {
     DeleteStream();
@@ -58,7 +50,7 @@ class GrpcByteSource : public TensorResponse::Source {
     }
   }
 
-  grpc_byte_buffer* buffer_;  // Not owned
+  ::grpc::ByteBuffer* buffer_;  // Not owned
   Reader* stream_ = nullptr;  // Points into space_ if non-nullptr
   char space_[sizeof(Reader)];
 };
@@ -74,21 +66,19 @@ class ServerContext;
 // Support parsing/unparsing of tensorflow::TensorResponse.
 // Wire-format is identical to RecvTensorResponse.
 template <>
-class SerializationTraits<tensorflow::TensorResponse>
-    : public UnlimitedSizeProtoSerializationTraits<tensorflow::TensorResponse> {
+class SerializationTraits<tensorflow::TensorResponse> {
  public:
-  static Status Serialize(const tensorflow::TensorResponse& msg,
-                          grpc_byte_buffer** bp, bool* own_buffer) {
+  static Status Serialize(const tensorflow::TensorResponse& msg, ByteBuffer* bp,
+                          bool* own_buffer) {
     LOG(FATAL) << "TODO(sanjay,jeff): Implement";
     return Status();
   }
-  static Status Deserialize(grpc_byte_buffer* buffer,
-                            tensorflow::TensorResponse* msg,
-                            int max_message_size = INT_MAX) {
+  static Status Deserialize(ByteBuffer* buffer,
+                            tensorflow::TensorResponse* msg) {
     if (buffer == nullptr) {
       return Status(StatusCode::INTERNAL, "No payload");
     }
-    Status result = g_core_codegen_interface->ok();
+    Status result = Status::OK;
     if (result.ok()) {
       ::tensorflow::GrpcByteSource source(buffer);
       auto s = msg->ParseFrom(&source);
@@ -98,7 +88,7 @@ class SerializationTraits<tensorflow::TensorResponse>
                             "TensorResponse parse error", s.ToString()));
       }
     }
-    g_core_codegen_interface->grpc_byte_buffer_destroy(buffer);
+    buffer->Clear();
     return result;
   }
 };

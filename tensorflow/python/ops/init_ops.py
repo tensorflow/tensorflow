@@ -499,10 +499,10 @@ class Orthogonal(Initializer):
 
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
-    dtype: The type of the output.
     seed: A Python integer. Used to create random seeds. See
       @{tf.set_random_seed}
       for behavior.
+    dtype: The data type.
   """
 
   def __init__(self, gain=1.0, seed=None, dtype=dtypes.float32):
@@ -532,8 +532,7 @@ class Orthogonal(Initializer):
     q, r = linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
     d = array_ops.diag_part(r)
-    ph = d / math_ops.abs(d)
-    q *= ph
+    q *= math_ops.sign(d)
     if num_rows < num_cols:
       q = array_ops.matrix_transpose(q)
     return self.gain * array_ops.reshape(q, shape)
@@ -553,10 +552,10 @@ class ConvolutionDeltaOrthogonal(Initializer):
     gain: multiplicative factor to apply to the orthogonal matrix. Default is 1.
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
-    dtype: The type of the output.
     seed: A Python integer. Used to create random seeds. See
       @{tf.set_random_seed}
       for behavior.
+    dtype: The data type.
   """
 
   def __init__(self, gain=1.0, seed=None, dtype=dtypes.float32):
@@ -579,7 +578,10 @@ class ConvolutionDeltaOrthogonal(Initializer):
     a = random_ops.random_normal([shape[-1], shape[-1]],
                                  dtype=dtype, seed=self.seed)
     # Compute the qr factorization
-    q, _ = linalg_ops.qr(a, full_matrices=False)
+    q, r = linalg_ops.qr(a, full_matrices=False)
+    # Make Q uniform
+    d = array_ops.diag_part(r)
+    q *= math_ops.sign(d)
     q = q[:shape[-2], :]
     q *= math_ops.sqrt(math_ops.cast(self.gain, dtype=dtype))
     if len(shape) == 3:
@@ -596,6 +598,186 @@ class ConvolutionDeltaOrthogonal(Initializer):
 
   def get_config(self):
     return {"gain": self.gain, "seed": self.seed, "dtype": self.dtype.name}
+
+
+class ConvolutionOrthogonal2D(Initializer):
+  """Initializer that generates a 2D orthogonal kernel for ConvNets.
+
+  The shape of the tensor must have length 2. The number of input
+  filters must not exceed the number of output filters.
+  The orthogonality(==isometry) is exact when the inputs are circular padded.
+  There are finite-width effects with non-circular padding (e.g. zero padding).
+
+  Args:
+    gain: multiplicative factor to apply to the orthogonal matrix. Default is 1.
+      The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
+      applying this convolution.
+    seed: A Python integer. Used to create random seeds. See
+      @{tf.set_random_seed}
+      for behavior.
+    dtype: The data type.
+  """
+
+  def __init__(self, gain=1.0, seed=None, dtype=dtypes.float32):
+    self.gain = gain
+    self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
+    self.seed = seed
+
+  def __call__(self, shape, dtype=None, partition_info=None):
+    if dtype is None:
+      dtype = self.dtype
+    # Check the shape
+    if len(shape) != 4:
+      raise ValueError("The tensor to initialize must be four-dimensional")
+
+    if shape[-2] > shape[-1]:
+      raise ValueError("In_filters cannot be greater than out_filters.")
+
+    if shape[0] != shape[1]:
+      raise ValueError("Kernel sizes must be equal.")
+
+    kernel = self._orthogonal_kernel(shape[0], shape[2], shape[3])
+    kernel *= math_ops.sqrt(math_ops.cast(self.gain, dtype=dtype))
+    return kernel
+
+  def get_config(self):
+    return {"gain": self.gain, "seed": self.seed, "dtype": self.dtype.name}
+
+  # Helper functions.
+  def _orthogonal_matrix(self, n):
+    """Construct an n x n orthogonal matrix.
+
+    Args:
+      n: dimension.
+    Returns:
+      a n x n orthogonal matrix.
+    """
+    a = random_ops.random_normal([n, n], dtype=self.dtype, seed=self.seed)
+    if self.seed:
+      self.seed += 1
+    q, r = linalg_ops.qr(a)
+    d = array_ops.diag_part(r)
+    # make q uniform
+    q *= math_ops.sign(d)
+    return q
+
+  def _symmetric_projection(self, n):
+    """Compute a n x n symmetric projection matrix.
+
+    Args:
+      n: dimension.
+    Returns:
+      a n x n symmetric projection matrix, i.e. a matrix P s.t. P=P*P, P=P^T.
+    """
+    q = self._orthogonal_matrix(n)
+    # randomly zeroing out some columns
+    mask = math_ops.cast(random_ops.random_normal([n], seed=self.seed) > 0,
+                         self.dtype)
+    if self.seed:
+      self.seed += 1
+    c = math_ops.multiply(q, mask)
+    return math_ops.matmul(c, array_ops.matrix_transpose(c))
+
+  def _dict_to_tensor(self, x, k1, k2):
+    """Convert a dictionary to a tensor.
+
+    Args:
+      x: a k1 * k2 dictionary.
+      k1: first dimension of x.
+      k2: second dimension of x.
+    Returns:
+      a k1 * k2 tensor.
+    """
+
+    return array_ops.stack([array_ops.stack([x[i, j] for j in range(k2)])
+                            for i in range(k1)])
+
+  def _block_orth(self, p1, p2):
+    """Construct a 2 x 2 kernel. Used to construct orthgonal kernel.
+
+    Args:
+      p1: a symmetric projection matrix
+      p2: a symmetric projection matrix
+    Returns:
+      a 2 x 2 kernel [[p1p2,         p1(1-p2)],
+                      [(1-p1)p2, (1-p1)(1-p2)]].
+    Raises:
+      ValueError: if the dimensions of p1 and p2 are different.
+    """
+    if p1.shape.as_list() != p2.shape.as_list():
+      raise ValueError("The dimension of the matrices must be the same.")
+    n = p1.shape.as_list()[0]
+    kernel2x2 = {}
+    eye = linalg_ops.eye(n, dtype=self.dtype)
+    kernel2x2[0, 0] = math_ops.matmul(p1, p2)
+    kernel2x2[0, 1] = math_ops.matmul(p1, (eye - p2))
+    kernel2x2[1, 0] = math_ops.matmul((eye - p1), p2)
+    kernel2x2[1, 1] = math_ops.matmul((eye - p1), (eye - p2))
+
+    return kernel2x2
+
+  def _matrix_conv(self, m1, m2):
+    """Matrix convolution.
+
+    Args:
+      m1: is a k x k dictionary, each element is a n x n matrix.
+      m2: is a l x l dictionary, each element is a n x n matrix.
+
+    Returns:
+      (k + l - 1) * (k + l - 1) dictionary each element is a n x n matrix.
+    Raises:
+      ValueError: if the entries of m1 and m2 are of different dimensions.
+    """
+
+    n = (m1[0, 0]).shape.as_list()[0]
+    if n != (m2[0, 0]).shape.as_list()[0]:
+      raise ValueError("The entries in matrices m1 and m2 "
+                       "must have the same dimensions!")
+    k = int(np.sqrt(len(m1)))
+    l = int(np.sqrt(len(m2)))
+    result = {}
+    size = k + l - 1
+    # Compute matrix convolution between m1 and m2.
+    for i in range(size):
+      for j in range(size):
+        result[i, j] = array_ops.zeros([n, n], self.dtype)
+        for index1 in range(min(k, i + 1)):
+          for index2 in range(min(k, j + 1)):
+            if (i - index1) < l and (j - index2) < l:
+              result[i, j] += math_ops.matmul(m1[index1, index2],
+                                              m2[i - index1, j - index2])
+    return result
+
+  def _orthogonal_kernel(self, ksize, cin, cout):
+    """Construct orthogonal kernel for convolution.
+
+    Args:
+      ksize: kernel size
+      cin: number of input channels
+      cout: number of output channels
+    Returns:
+      an [ksize, ksize, cin, cout] orthogonal kernel.
+    Raises:
+      ValueError: if cin > cout.
+    """
+    if cin > cout:
+      raise ValueError("The number of input channels cannot exceed "
+                       "the number of output channels.")
+    orth = self._orthogonal_matrix(cout)[0:cin, :]
+    if ksize == 1:
+      return array_ops.expand_dims(array_ops.expand_dims(orth, 0), 0)
+
+    p = self._block_orth(self._symmetric_projection(cout),
+                         self._symmetric_projection(cout))
+    for _ in range(ksize - 2):
+      temp = self._block_orth(self._symmetric_projection(cout),
+                              self._symmetric_projection(cout))
+      p = self._matrix_conv(p, temp)
+    for i in range(ksize):
+      for j in range(ksize):
+        p[i, j] = math_ops.matmul(orth, p[i, j])
+
+    return self._dict_to_tensor(p, ksize, ksize)
 
 
 @tf_export("keras.initializers.Identity", "initializers.identity")
@@ -643,6 +825,7 @@ variance_scaling_initializer = VarianceScaling
 orthogonal_initializer = Orthogonal
 identity_initializer = Identity
 convolutional_delta_orthogonal = ConvolutionDeltaOrthogonal
+convolutional_orthogonal_2d = ConvolutionOrthogonal2D
 # pylint: enable=invalid-name
 
 

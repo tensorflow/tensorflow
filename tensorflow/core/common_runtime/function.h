@@ -55,7 +55,7 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
+    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent);
 
@@ -65,7 +65,7 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
+    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
     ProcessFunctionLibraryRuntime* parent);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an

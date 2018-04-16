@@ -289,6 +289,14 @@ class XlaCompiler {
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 
+  // Compiles a single Op, given by an OpKernelContext, into an
+  // xla::Computation. Similar to CompileFunction but takes a single Op as
+  // input.
+  Status CompileSingleOp(const CompileOptions& options, string const& name,
+                         OpKernelContext* ctx,
+                         const std::vector<Argument>& args,
+                         CompilationResult* result);
+
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
@@ -304,8 +312,8 @@ class XlaCompiler {
   // Sets the shapes and types for the device to host transfer associated with
   // 'key'.
   Status SetDeviceToHostMetadata(const string& key,
-                                 const std::vector<DataType>& types,
-                                 const std::vector<TensorShape>& shapes);
+                                 gtl::ArraySlice<DataType> types,
+                                 gtl::ArraySlice<TensorShape> shapes);
 
   // Gets the shapes the device to host transfer associated with 'key'.
   Status GetDeviceToHostShapes(const string& key,
@@ -314,8 +322,8 @@ class XlaCompiler {
   // Sets the shapes and types for the host to device transfer associated with
   // 'key'.
   Status SetHostToDeviceMetadata(const string& key,
-                                 const std::vector<DataType>& types,
-                                 const std::vector<TensorShape>& shapes);
+                                 gtl::ArraySlice<DataType> types,
+                                 gtl::ArraySlice<TensorShape> shapes);
 
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }

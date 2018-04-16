@@ -218,6 +218,14 @@ class StatsDatasetSerializationTest(
         lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
             stats_ops.bytes_produced_stats("bytes_produced"))
 
+  def test_bytes_produced_stats_invalid_tag_shape(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      self.run_core_tests(
+          lambda: dataset_ops.Dataset.range(100).apply(
+              stats_ops.bytes_produced_stats(["bytes_produced"])),
+          None, 100)
+
   def testBytesStatsDatasetSaveableCore(self):
     num_outputs = 100
     self.run_core_tests(
@@ -234,6 +242,14 @@ class StatsDatasetSerializationTest(
                                    tag2="record_latency_2"):
     return dataset_ops.Dataset.range(num_elements).apply(
         stats_ops.latency_stats(tag1)).apply(stats_ops.latency_stats(tag2))
+
+  def test_latency_stats_invalid_tag_shape(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      self.run_core_tests(
+          lambda: dataset_ops.Dataset.range(100).apply(
+              stats_ops.latency_stats(["record_latency", "record_latency_2"])),
+          None, 100)
 
   def testLatencyStatsDatasetSaveableCore(self):
     num_outputs = 100

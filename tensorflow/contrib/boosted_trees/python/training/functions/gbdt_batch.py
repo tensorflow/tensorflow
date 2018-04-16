@@ -23,7 +23,6 @@ import copy
 
 from tensorflow.contrib import learn
 from tensorflow.contrib import stateless
-
 from tensorflow.contrib.boosted_trees.lib.learner.batch import categorical_split_handler
 from tensorflow.contrib.boosted_trees.lib.learner.batch import ordinal_split_handler
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
@@ -141,7 +140,7 @@ class _OpRoundRobinStrategy(object):
     return task
 
 
-def extract_features(features, feature_columns):
+def extract_features(features, feature_columns, use_core_columns):
   """Extracts columns from a dictionary of features.
 
   Args:
@@ -174,7 +173,11 @@ def extract_features(features, feature_columns):
       transformed_features = collections.OrderedDict()
       for fc in feature_columns:
         # pylint: disable=protected-access
-        if isinstance(fc, feature_column_lib._EmbeddingColumn):
+        if use_core_columns:
+          # pylint: disable=protected-access
+          tensor = fc_core._transform_features(features, [fc])[fc]
+          transformed_features[fc.name] = tensor
+        elif isinstance(fc, feature_column_lib._EmbeddingColumn):
           # pylint: enable=protected-access
           transformed_features[fc.name] = fc_core.input_layer(
               features, [fc],
@@ -265,7 +268,8 @@ class GradientBoostedDecisionTreeModel(object):
                learner_config,
                features,
                logits_dimension,
-               feature_columns=None):
+               feature_columns=None,
+               use_core_columns=False):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
     Args:
@@ -338,8 +342,9 @@ class GradientBoostedDecisionTreeModel(object):
     if not features:
       raise ValueError("Features dictionary must be specified.")
     (fc_names, dense_floats, sparse_float_indices, sparse_float_values,
-     sparse_float_shapes, sparse_int_indices, sparse_int_values,
-     sparse_int_shapes) = extract_features(features, self._feature_columns)
+     sparse_float_shapes, sparse_int_indices,
+     sparse_int_values, sparse_int_shapes) = extract_features(
+         features, self._feature_columns, use_core_columns)
     logging.info("Active Feature Columns: " + str(fc_names))
     self._fc_names = fc_names
     self._dense_floats = dense_floats
@@ -724,9 +729,9 @@ class GradientBoostedDecisionTreeModel(object):
       active_handlers_current_layer = (
           active_handlers_current_layer <
           self._learner_config.feature_fraction_per_tree)
-      active_handlers = array_ops.stack(active_handlers_current_layer,
-                                        array_ops.ones(
-                                            [len(handlers)], dtype=dtypes.bool))
+      active_handlers = array_ops.stack([
+          active_handlers_current_layer,
+          array_ops.ones([len(handlers)], dtype=dtypes.bool)], axis=1)
     else:
       active_handlers = array_ops.ones([len(handlers), 2], dtype=dtypes.bool)
 

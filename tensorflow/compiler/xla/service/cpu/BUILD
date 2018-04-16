@@ -18,6 +18,10 @@ load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -109,6 +113,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
+        "//tensorflow/compiler/xla/service:gather_expander",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
@@ -169,6 +174,7 @@ cc_library(
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_matmul",
+        ":runtime_matmul_mkl",
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_matmul",
         "@llvm//:execution_engine",
@@ -538,6 +544,22 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_matmul_mkl",
+    srcs = ["runtime_matmul_mkl.cc"],
+    hdrs = ["runtime_matmul_mkl.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
+    ] + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
+    ]),
+)
+
+cc_library(
     name = "runtime_single_threaded_conv2d",
     srcs = [
         "runtime_conv2d_impl.h",
@@ -583,10 +605,12 @@ cc_library(
 tf_cc_test(
     name = "cpu_runtime_test",
     srcs = ["cpu_runtime_test.cc"],
+    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":cpu_runtime",
         ":runtime_matmul",
+        ":runtime_matmul_mkl",
         ":runtime_single_threaded_matmul",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:types",
@@ -666,6 +690,22 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo",
         "@llvm//:core",
+    ],
+)
+
+tf_cc_test(
+    name = "ir_emission_utils_test",
+    srcs = ["ir_emission_utils_test.cc"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
     ],
 )
 
@@ -771,6 +811,31 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "parallel_task_assignment_test",
+    srcs = ["parallel_task_assignment_test.cc"],
+    deps = [
+        ":cpu_executable",
+        ":parallel_task_assignment",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_layout",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:computation_layout",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "cpu_options",
     srcs = ["cpu_options.cc"],
@@ -873,18 +938,4 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -119,7 +119,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      TensorFlow in the active Virtualenv is as follows:
 
      <pre> $ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py3-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.8.0rc0-py3-none-any.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common-installation-problems).
@@ -238,11 +238,11 @@ take the following steps:
      operating system and Python version. Find the appropriate
      value for <i>tfBinaryURL</i>
      [here](#the_url_of_the_tensorflow_python_package).  For example, if
-     you are installing TensorFlow for Mac OS and Python 2.7
+     you are installing TensorFlow for macOS and Python 2.7
      issue the following command:
 
      <pre> $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py3-none-any.whl</b> </pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.8.0rc0-py3-none-any.whl</b> </pre>
 
      If the preceding command fails, see
      [installation problems](#common-installation-problems).
@@ -350,7 +350,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 2.7:
 
      <pre> (<i>targetDirectory</i>)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py2-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.8.0rc0-py2-none-any.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -400,11 +400,17 @@ writing TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see
-@{$get_started/premade_estimators$Getting Started with TensorFlow}.
-
 If the system outputs an error message instead of a greeting, see
 [Common installation problems](#common_installation_problems).
+
+If you are new to machine learning, we recommend the following:
+
+*  [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course)
+*  @{$get_started/get_started_for_beginners$Getting Started for ML Beginners}
+
+If you are experienced with machine learning but new to TensorFlow, see
+@{$get_started/premade_estimators$Getting Started with TensorFlow}.
+
 
 ## Common installation problems
 
@@ -512,18 +518,13 @@ RuntimeError: Broken toolchain: cannot link a simple C program</pre>
 ## The URL of the TensorFlow Python package
 
 A few installation mechanisms require the URL of the TensorFlow Python package.
-The value you specify depends on three factors:
-
-  * operating system
-  * Python version
-
-This section documents the relevant values for Mac OS installations.
+The value you specify depends on your Python version.
 
 ### Python 2.7
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py2-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.8.0rc0-py2-none-any.whl
 </pre>
 
 
@@ -531,5 +532,5 @@ https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py2-none-any.
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py3-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.8.0rc0-py3-none-any.whl
 </pre>

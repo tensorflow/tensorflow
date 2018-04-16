@@ -76,22 +76,22 @@ def _undo_batch_normalization(x,
 class BatchNormalization(bijector.Bijector):
   """Compute `Y = g(X) s.t. X = g^-1(Y) = (Y - mean(Y)) / std(Y)`.
 
-  Applies Batch Normalization [1] to samples from a data distribution. This can
-  be used to stabilize training of normalizing flows [2, 3].
+  Applies Batch Normalization [(Ioffe and Szegedy, 2015)][1] to samples from a
+  data distribution. This can be used to stabilize training of normalizing
+  flows ([Papamakarios et al., 2016][3]; [Dinh et al., 2017][2])
 
   When training Deep Neural Networks (DNNs), it is common practice to
   normalize or whiten features by shifting them to have zero mean and
   scaling them to have unit variance.
 
-  The `inverse()` method of the BatchNorm bijector, which is used in the
-  log-likelihood computation of data samples, implements the normalization
+  The `inverse()` method of the `BatchNormalization` bijector, which is used in
+  the log-likelihood computation of data samples, implements the normalization
   procedure (shift-and-scale) using the mean and standard deviation of the
   current minibatch.
 
   Conversely, the `forward()` method of the bijector de-normalizes samples (e.g.
   `X*std(Y) + mean(Y)` with the running-average mean and standard deviation
   computed at training-time. De-normalization is useful for sampling.
-
 
   ```python
 
@@ -112,19 +112,20 @@ class BatchNormalization(bijector.Bijector):
   `BatchNorm.forward(BatchNorm.inverse(...))` will be identical when
   `training=False` but may be different when `training=True`.
 
-  [1]: "Batch Normalization: Accelerating Deep Network Training by Reducing
-       Internal Covariate Shift."
-       Sergey Ioffe, Christian Szegedy. Arxiv. 2015.
+  #### References
+
+  [1]: Sergey Ioffe and Christian Szegedy. Batch Normalization: Accelerating
+       Deep Network Training by Reducing Internal Covariate Shift. In
+       _International Conference on Machine Learning_, 2015.
        https://arxiv.org/abs/1502.03167
 
-  [2]: "Density Estimation using Real NVP."
-     Laurent Dinh, Jascha Sohl-Dickstein, Samy Bengio. ICLR. 2017.
-     https://arxiv.org/abs/1605.08803
+  [2]: Laurent Dinh, Jascha Sohl-Dickstein, and Samy Bengio. Density Estimation
+       using Real NVP. In _International Conference on Learning
+       Representations_, 2017. https://arxiv.org/abs/1605.08803
 
-  [3]: "Masked Autoregressive Flow for Density Estimation."
-       George Papamakarios, Theo Pavlakou, Iain Murray. Arxiv. 2017.
-       https://arxiv.org/abs/1705.07057
-
+  [3]: George Papamakarios, Theo Pavlakou, and Iain Murray. Masked
+       Autoregressive Flow for Density Estimation. In _Neural Information
+       Processing Systems_, 2017. https://arxiv.org/abs/1705.07057
   """
 
   def __init__(self,
@@ -156,7 +157,12 @@ class BatchNormalization(bijector.Bijector):
         gamma_constraint=g_constraint)
     self._validate_bn_layer(self.batchnorm)
     self._training = training
+    if isinstance(self.batchnorm.axis, int):
+      forward_min_event_ndims = 1
+    else:
+      forward_min_event_ndims = len(self.batchnorm.axis)
     super(BatchNormalization, self).__init__(
+        forward_min_event_ndims=forward_min_event_ndims,
         validate_args=validate_args, name=name)
 
   def _validate_bn_layer(self, layer):
@@ -185,7 +191,6 @@ class BatchNormalization(bijector.Bijector):
     input_shape = np.int32(x.shape.as_list())
 
     ndims = len(input_shape)
-    # event_dims = self._compute_event_dims(x)
     reduction_axes = [i for i in range(ndims) if i not in self.batchnorm.axis]
     # Broadcasting only necessary for single-axis batch norm where the axis is
     # not the last dimension

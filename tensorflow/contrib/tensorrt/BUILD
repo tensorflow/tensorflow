@@ -52,7 +52,6 @@ tf_custom_op_library(
         "ops/trt_engine_op.cc",
     ],
     deps = [
-        ":trt_engine_op_kernel",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
@@ -155,6 +154,7 @@ py_library(
     deps = [
         ":trt_convert_py",
         ":trt_ops_py",
+        "//tensorflow/python:errors",
     ],
 )
 
@@ -182,6 +182,7 @@ tf_py_wrap_cc(
     copts = tf_copts(),
     deps = [
         ":trt_conversion",
+        ":trt_engine_op_kernel",
         "//tensorflow/core:framework_lite",
         "//util/python:python_headers",
     ],
@@ -270,16 +271,4 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

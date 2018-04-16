@@ -18,91 +18,91 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-import itertools
-
+import abc
 import numpy as np
+import six
 
+from tensorflow.contrib.kfac.python.ops import placement
 from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
 
-class _DeviceContextGenerator(object):
-  """Class for generating device contexts in a round-robin fashion."""
+# The linter is confused.
+# pylint: disable=abstract-class-instantiated
+def make_fisher_estimator(placement_strategy=None, **kwargs):
+  """Creates Fisher estimator instances based on the placement strategy.
 
-  def __init__(self, devices):
-    """Creates a _DeviceContextGenerator object.
+  For example if the `placement_strategy` is 'round_robin' then
+  `FisherEstimatorRoundRobin` instance is returned.
 
-    Example usage:
+  Args:
+    placement_strategy: `string`, Strategy to be used for placing covariance
+      variables, covariance ops and inverse ops. Check
+      `placement.FisherEstimatorRoundRobin` for a concrete example.
+   **kwargs: Arguments to be passed into `FisherEstimator` class initializer.
 
-    ```python
-    dcg = _DeviceContextGenerator(['/gpu:0', 'gpu:1'])
-    with dcg():
-      # All operations in this context will be placed on GPU 0
-      ...
-    with dcg():
-      # All operations in this context will be placed on GPU 1
-      ...
-    ```
+  Returns:
+    An instance of class which inherits from `FisherEstimator` and the mixin
+    which implements specific placement strategy. See,
+    `FisherEstimatorRoundRobin` which inherits from `FisherEstimator` and
+    `RoundRobinPlacementMixin`.
 
-    Args:
-      devices: An iterable of device strings (or None). Successive calls to
-          __call__ will give contexts which place devices on these devices in
-          a round-robin fashion.
-    """
-    self._cycle = None if devices is None else itertools.cycle(devices)
-
-  @contextlib.contextmanager
-  def __call__(self):
-    """Returns a context manager specifying the default device."""
-    if self._cycle is None:
-      yield
-    else:
-      with tf_ops.device(next(self._cycle)):
-        yield
+  Raises:
+    ValueError: If the `placement_strategy` is not equal to 'round_robin'.
+  """
+  if placement_strategy in [None, "round_robin"]:
+    return FisherEstimatorRoundRobin(**kwargs)
+  else:
+    raise ValueError("Unimplemented vars and ops placement strategy : %s",
+                     placement_strategy)
+# pylint: enable=abstract-class-instantiated
 
 
+@six.add_metaclass(abc.ABCMeta)
 class FisherEstimator(object):
   """Fisher estimator class supporting various approximations of the Fisher.
 
-  Attributes:
-    cov_update_thunks: list of no-arg functions. Executing a function adds
-      covariance update ops for a single FisherFactor to the graph.
-    cov_update_ops: List of Ops. Running an op updates covariance matrices for a
-      single FisherFactor.
-    cov_update_op: Op. Running updates covariance matrices for all
-      FisherFactors.
-    inv_update_thunks: list of no-arg functions.  Executing a function adds
-      inverse update ops for a single FisherFactor to the graph.
-    inv_update_ops: List of Ops. Running an op updates inverse matrices for a
-      single FisherFactor.
-    inv_update_op: Op. Running updates inverse matrices for all FisherFactors.
+  This is an abstract base class which does not implement a strategy for
+  placing covariance variables, covariance update ops and inverse update ops.
+  The placement strategies are implemented in `placement.py`. See
+  `FisherEstimatorRoundRobin` for example of a concrete subclass with
+  a round-robin placement strategy.
   """
 
   def __init__(self,
-               damping_fn,
                variables,
                cov_ema_decay,
+               damping,
                layer_collection,
+               exps=(-1,),
                estimation_mode="gradients",
                colocate_gradients_with_ops=True,
-               cov_devices=None,
-               inv_devices=None):
+               name="FisherEstimator"):
     """Create a FisherEstimator object.
 
     Args:
-      damping_fn: Function, accepts no arguments and returns damping value.
-      variables: A list of the variables for which to estimate the Fisher. This
-          must match the variables registered in layer_collection (if it is not
-          None).
+      variables: A `list` of variables or `callable` which returns the variables
+          for which to estimate the Fisher. This must match the variables
+          registered in layer_collection (if it is not None).
       cov_ema_decay: The decay factor used when calculating the covariance
           estimate moving averages.
+      damping: float. The damping factor used to stabilize training due to
+          errors in the local approximation with the Fisher information matrix,
+          and to regularize the update direction by making it closer to the
+          gradient. (Higher damping means the update looks more like a standard
+          gradient update - see Tikhonov regularization.)
       layer_collection: The layer collection object, which holds the fisher
           blocks, kronecker factors, and losses associated with the
           graph.
+      exps: List of floats or ints. These represent the different matrix
+          powers of the approximate Fisher that the FisherEstimator will be able
+          to multiply vectors by. If the user asks for a matrix power other
+          one of these (or 1, which is always supported), there will be a
+          failure. (Default: (-1,))
       estimation_mode: The type of estimator to use for the Fishers.  Can be
           'gradients', 'empirical', 'curvature_prop', or 'exact'.
           (Default: 'gradients').  'gradients' is the basic estimation approach
@@ -121,23 +121,17 @@ class FisherEstimator(object):
           equal to the output dimension, roughly speaking.
       colocate_gradients_with_ops: Whether we should request gradients be
           colocated with their respective ops. (Default: True)
-      cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
-          computations will be placed on these devices in a round-robin fashion.
-          Can be None, which means that no devices are specified.
-      inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
-          computations will be placed on these devices in a round-robin fashion.
-          Can be None, which means that no devices are specified.
-
+      name: A string. A name given to this estimator, which is added to the
+          variable scope when constructing variables and ops.
+          (Default: "FisherEstimator")
     Raises:
       ValueError: If no losses have been registered with layer_collection.
     """
-    self._damping_fn = damping_fn
-    self._cov_ema_decay = cov_ema_decay
     self._variables = variables
+    self._cov_ema_decay = cov_ema_decay
+    self._damping = damping
     self._estimation_mode = estimation_mode
     self._layers = layer_collection
-    self._layers.create_subgraph()
-    self._layers.check_registration(variables)
     self._gradient_fns = {
         "gradients": self._get_grads_lists_gradients,
         "empirical": self._get_grads_lists_empirical,
@@ -146,38 +140,106 @@ class FisherEstimator(object):
     }
     self._colocate_gradients_with_ops = colocate_gradients_with_ops
 
-    # TODO(b/70674513): Factor device placement outside of this class.
-    self._cov_device_context_generator = _DeviceContextGenerator(cov_devices)
-    if inv_devices == cov_devices:
-      self._inv_device_context_generator = self._cov_device_context_generator
-    else:
-      self._inv_device_context_generator = _DeviceContextGenerator(inv_devices)
+    self._made_vars = False
+    self._exps = exps
 
-    self._instantiate_factors()
-
-    self.cov_update_thunks = [
-        self._create_cov_update_thunk(factor)
-        for factor in self._layers.get_factors()
-    ]
-    self.cov_update_ops = [thunk() for thunk in self.cov_update_thunks]
-    self.cov_update_op = control_flow_ops.group(
-        self.cov_update_ops, name="cov_update_op")
-
-    self.inv_update_thunks = [
-        self._create_inv_update_thunk(factor)
-        for factor in self._layers.get_factors()
-    ]
-    self.inv_update_ops = [thunk() for thunk in self.inv_update_thunks]
-    self.inv_update_op = control_flow_ops.group(
-        self.inv_update_ops, name="inv_update_op")
+    self._name = name
 
   @property
   def variables(self):
-    return self._variables
+    if callable(self._variables):
+      return self._variables()
+    else:
+      return self._variables
 
   @property
   def damping(self):
-    return self._damping_fn()
+    return self._damping
+
+  @property
+  def blocks(self):
+    """All registered FisherBlocks."""
+    return self._layers.get_blocks()
+
+  @property
+  def factors(self):
+    """All registered FisherFactors."""
+    return self._layers.get_factors()
+
+  @property
+  def name(self):
+    return self._name
+
+  @abc.abstractmethod
+  def make_ops_and_vars(self, scope=None):
+    """Make ops and vars with a specific placement strategy.
+
+    For each factor, all of that factor's cov variables and their associated
+    update ops will be placed on a particular device.  For example in case of
+    round robin placement a new device is chosen for each factor by cycling
+    through list of devices in the cov_devices argument. If cov_devices is None
+    then no explicit device placement occurs.
+
+    An analogous strategy is followed for inverse update ops, with the list of
+    devices being given by the inv_devices argument.
+
+    Inverse variables on the other hand are not placed on any specific device
+    (they will just use the current the device placement context, whatever
+    that happens to be).  The idea is that the inverse variable belong where
+    they will be accessed most often, which is the device that actually applies
+    the preconditioner to the gradient. The user will be responsible for setting
+    the device context for this.
+
+    Args:
+      scope: A string or None.  If None it will be set to the name of this
+        estimator (given by the name property). All variables will be created,
+        and all ops will execute, inside of a variable scope of the given
+        name. (Default: None)
+
+    Returns:
+      cov_update_ops: List of ops that compute the cov updates. Corresponds
+        one-to-one with the list of factors given by the "factors" property.
+      cov_update_op: cov_update_ops grouped into a single op.
+      inv_update_ops: List of ops that compute the inv updates. Corresponds
+        one-to-one with the list of factors given by the "factors" property.
+      inv_update_op: inv_update_ops grouped into a single op.
+      cov_update_thunks: Thunks that make the ops in cov_update_ops.
+      inv_update_thunks: Thunks that make the ops in inv_update_ops.
+    """
+    pass
+
+  @abc.abstractmethod
+  def make_vars_and_create_op_thunks(self, scope=None):
+    """Make vars and create op thunks with a specific placement strategy.
+
+    For each factor, all of that factor's cov variables and their associated
+    update ops will be placed on a particular device.  A new device is chosen
+    for each factor by cycling through list of devices in the cov_devices
+    argument. If cov_devices is None then no explicit device placement occurs.
+
+    An analogous strategy is followed for inverse update ops, with the list of
+    devices being given by the inv_devices argument.
+
+    Inverse variables on the other hand are not placed on any specific device
+    (they will just use the current the device placement context, whatever
+    that happens to be).  The idea is that the inverse variable belong where
+    they will be accessed most often, which is the device that actually applies
+    the preconditioner to the gradient. The user will be responsible for setting
+    the device context for this.
+
+    Args:
+      scope: A string or None.  If None it will be set to the name of this
+        estimator (given by the name property). All variables will be created,
+        and all thunks will execute, inside of a variable scope of the given
+        name. (Default: None)
+
+    Returns:
+      cov_update_thunks: List of cov update thunks. Corresponds one-to-one with
+        the list of factors given by the "factors" property.
+      inv_update_thunks: List of inv update thunks. Corresponds one-to-one with
+        the list of factors given by the "factors" property.
+    """
+    pass
 
   def _apply_transformation(self, vecs_and_vars, transform):
     """Applies an block-wise transformation to the corresponding vectors.
@@ -212,9 +274,7 @@ class FisherEstimator(object):
       A list of (transformed vector, var) pairs in the same order as
       vecs_and_vars.
     """
-
-    return self._apply_transformation(vecs_and_vars,
-                                      lambda fb, vec: fb.multiply_inverse(vec))
+    return self.multiply_matpower(-1, vecs_and_vars)
 
   def multiply(self, vecs_and_vars):
     """Multiplies the vectors by the corresponding (damped) blocks.
@@ -226,9 +286,22 @@ class FisherEstimator(object):
       A list of (transformed vector, var) pairs in the same order as
       vecs_and_vars.
     """
+    return self.multiply_matpower(1, vecs_and_vars)
 
-    return self._apply_transformation(vecs_and_vars,
-                                      lambda fb, vec: fb.multiply(vec))
+  def multiply_matpower(self, exp, vecs_and_vars):
+    """Multiplies the vecs by the corresponding matrix powers of the blocks.
+
+    Args:
+      exp: A float representing the power to raise the blocks by before
+        multiplying it by the vector.
+      vecs_and_vars: List of (vector, variable) pairs.
+
+    Returns:
+      A list of (transformed vector, var) pairs in the same order as
+      vecs_and_vars.
+    """
+    fcn = lambda fb, vec: fb.multiply_matpower(vec, exp)
+    return self._apply_transformation(vecs_and_vars, fcn)
 
   def _instantiate_factors(self):
     """Instantiates FisherFactors' variables.
@@ -236,9 +309,9 @@ class FisherEstimator(object):
     Raises:
       ValueError: If estimation_mode was improperly specified at construction.
     """
-    fisher_blocks_list = self._layers.get_blocks()
+    blocks = self.blocks
     tensors_to_compute_grads = [
-        fb.tensors_to_compute_grads() for fb in fisher_blocks_list
+        block.tensors_to_compute_grads() for block in blocks
     ]
 
     try:
@@ -248,45 +321,131 @@ class FisherEstimator(object):
       raise ValueError("Unrecognized value {} for estimation_mode.".format(
           self._estimation_mode))
 
-    # TODO(b/68033310): This loop round-robins the "concat" operations which
-    # gather the inputs for the cov_updates. In future, we might do these
-    # computations locally then communicate the results, which would require a
-    # modification to this code.
-    for grads_list, fb in zip(grads_lists, fisher_blocks_list):
-      with self._cov_device_context_generator():
-        fb.instantiate_factors(grads_list, self.damping)
+    for grads_list, block in zip(grads_lists, blocks):
+      block.instantiate_factors(grads_list, self.damping)
 
-  def _create_cov_update_thunk(self, factor):
+  def _check_vars_unmade_and_set_made_flag(self):
+    if self._made_vars:
+      raise Exception("Already made variables.")
+    self._made_vars = True
+
+  def made_vars(self):
+    return self._made_vars
+
+  def _register_matrix_functions(self):
+    for exp in self._exps:
+      for block in self.blocks:
+        block.register_matpower(exp)
+
+  def _finalize_layer_collection(self):
+    self._layers.create_subgraph()
+    self._layers.check_registration(self.variables)
+    self._instantiate_factors()
+    self._register_matrix_functions()
+
+  def create_ops_and_vars_thunks(self, scope=None):
+    """Create thunks that make the ops and vars on demand.
+
+    This function returns 4 lists of thunks: cov_variable_thunks,
+    cov_update_thunks, inv_variable_thunks, and inv_update_thunks.
+
+    The length of each list is the number of factors and the i-th element of
+    each list corresponds to the i-th factor (given by the "factors" property).
+
+    Note that the execution of these thunks must happen in a certain
+    partial order.  The i-th element of cov_variable_thunks must execute
+    before the i-th element of cov_update_thunks (and also the i-th element
+    of inv_update_thunks).  Similarly, the i-th element of inv_variable_thunks
+    must execute before the i-th element of inv_update_thunks.
+
+    TL;DR (oversimplified): Execute the thunks according to the order that
+    they are returned.
+
+    Args:
+      scope: A string or None.  If None it will be set to the name of this
+        estimator (given by the name property). All thunks will execute inside
+        of a variable scope of the given name. (Default: None)
+    Returns:
+      cov_variable_thunks: A list of thunks that make the cov variables.
+      cov_update_thunks: A list of thunks that make the cov update ops.
+      inv_variable_thunks: A list of thunks that make the inv variables.
+      inv_update_thunks: A list of thunks that make the inv update ops.
+    """
+    self._check_vars_unmade_and_set_made_flag()
+
+    self._finalize_layer_collection()
+
+    scope = self.name if scope is None else scope
+
+    cov_variable_thunks = [
+        self._create_cov_variable_thunk(factor, scope)
+        for factor in self.factors
+    ]
+    cov_update_thunks = [
+        self._create_cov_update_thunk(factor, scope) for factor in self.factors
+    ]
+    inv_variable_thunks = [
+        self._create_inv_variable_thunk(factor, scope)
+        for factor in self.factors
+    ]
+    inv_update_thunks = [
+        self._create_inv_update_thunk(factor, scope) for factor in self.factors
+    ]
+
+    return (cov_variable_thunks, cov_update_thunks,
+            inv_variable_thunks, inv_update_thunks)
+
+  def _create_cov_variable_thunk(self, factor, scope):
+    """Constructs a covariance variable thunk for a single FisherFactor."""
+
+    def thunk():
+      with variable_scope.variable_scope(scope):
+        return factor.instantiate_cov_variables()
+
+    return thunk
+
+  def _create_cov_update_thunk(self, factor, scope):
     """Constructs a covariance update thunk for a single FisherFactor."""
 
     def thunk():
-      with tf_ops.name_scope(
-          "create_cov_update_thunk", values=[self._cov_ema_decay]):
+      with variable_scope.variable_scope(scope):
         return factor.make_covariance_update_op(self._cov_ema_decay)
 
     return thunk
 
-  def _create_inv_update_thunk(self, factor):
+  def _create_inv_variable_thunk(self, factor, scope):
+    """Constructs a inverse variable thunk for a single FisherFactor."""
+
+    def thunk():
+      with variable_scope.variable_scope(scope):
+        return factor.instantiate_inv_variables()
+
+    return thunk
+
+  def _create_inv_update_thunk(self, factor, scope):
     """Constructs an inverse update thunk for a single FisherFactor."""
 
     def thunk():
-      with tf_ops.name_scope("create_inv_update_thunk"):
-        with self._inv_device_context_generator():
-          return control_flow_ops.group(factor.make_inverse_update_ops())
+      with variable_scope.variable_scope(scope):
+        return control_flow_ops.group(factor.make_inverse_update_ops())
 
     return thunk
 
   def _get_grads_lists_gradients(self, tensors):
+    # Passing in a list of loss values is better than passing in the sum as
+    # the latter creates unnessesary ops on the default device
     grads_flat = gradients_impl.gradients(
-        self._layers.total_sampled_loss(),
+        self._layers.eval_losses_on_samples(),
         nest.flatten(tensors),
         colocate_gradients_with_ops=self._colocate_gradients_with_ops)
     grads_all = nest.pack_sequence_as(tensors, grads_flat)
     return tuple((grad,) for grad in grads_all)
 
   def _get_grads_lists_empirical(self, tensors):
+    # Passing in a list of loss values is better than passing in the sum as
+    # the latter creates unnessesary ops on the default device
     grads_flat = gradients_impl.gradients(
-        self._layers.total_loss(),
+        self._layers.eval_losses(),
         nest.flatten(tensors),
         colocate_gradients_with_ops=self._colocate_gradients_with_ops)
     grads_all = nest.pack_sequence_as(tensors, grads_flat)
@@ -295,9 +454,10 @@ class FisherEstimator(object):
   def _get_transformed_random_signs(self):
     transformed_random_signs = []
     for loss in self._layers.losses:
-      transformed_random_signs.append(
-          loss.multiply_fisher_factor(
-              utils.generate_random_signs(loss.fisher_factor_inner_shape)))
+      with tf_ops.colocate_with(self._layers.loss_colocation_ops[loss]):
+        transformed_random_signs.append(
+            loss.multiply_fisher_factor(
+                utils.generate_random_signs(loss.fisher_factor_inner_shape)))
     return transformed_random_signs
 
   def _get_grads_lists_curvature_prop(self, tensors):
@@ -316,13 +476,20 @@ class FisherEstimator(object):
     # Loop over all coordinates of all losses.
     grads_all = []
     for loss in self._layers.losses:
-      for index in np.ndindex(*loss.fisher_factor_inner_static_shape[1:]):
-        transformed_one_hot = loss.multiply_fisher_factor_replicated_one_hot(
-            index)
-        grads_flat = gradients_impl.gradients(
-            loss.inputs,
-            nest.flatten(tensors),
-            grad_ys=transformed_one_hot,
-            colocate_gradients_with_ops=self._colocate_gradients_with_ops)
-        grads_all.append(nest.pack_sequence_as(tensors, grads_flat))
+      with tf_ops.colocate_with(self._layers.loss_colocation_ops[loss]):
+        for index in np.ndindex(*loss.fisher_factor_inner_static_shape[1:]):
+          transformed_one_hot = loss.multiply_fisher_factor_replicated_one_hot(
+              index)
+          grads_flat = gradients_impl.gradients(
+              loss.inputs,
+              nest.flatten(tensors),
+              grad_ys=transformed_one_hot,
+              colocate_gradients_with_ops=self._colocate_gradients_with_ops)
+          grads_all.append(nest.pack_sequence_as(tensors, grads_flat))
     return zip(*grads_all)
+
+
+class FisherEstimatorRoundRobin(placement.RoundRobinPlacementMixin,
+                                FisherEstimator):
+  """Fisher estimator which provides round robin device placement strategy."""
+  pass

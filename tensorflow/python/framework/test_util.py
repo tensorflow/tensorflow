@@ -53,9 +53,11 @@ from tensorflow.python.eager import tape  # pylint: disable=unused-import
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -200,6 +202,7 @@ def _strip_checkpoint_v2_randomized(graph_def):
 def IsGoogleCudaEnabled():
   return pywrap_tensorflow.IsGoogleCudaEnabled()
 
+
 def CudaSupportsHalfMatMulAndConv():
   return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
 
@@ -334,6 +337,8 @@ def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
     # Make sure default graph reflects prev_value in case next test doesn't call
     # reset_default_graph().
     ops.reset_default_graph()
+
+
 # pylint: disable=protected-access
 
 
@@ -406,6 +411,31 @@ def enable_c_api(fn):
   return wrapper
 
 
+def enable_c_shapes(fn):
+  """Decorator for enabling C shapes on a test.
+
+  Note this enables the C shapes after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  def wrapper(*args, **kwargs):
+    prev_value = ops._USE_C_SHAPES
+    # Only use C shapes if the C API is already enabled.
+    ops._USE_C_SHAPES = ops._USE_C_API
+    try:
+      fn(*args, **kwargs)
+    finally:
+      ops._USE_C_SHAPES = prev_value
+
+  return wrapper
+
+
 # This decorator is a hacky way to run all the test methods in a decorated
 # class with and without C API enabled.
 # TODO(iga): Remove this and its uses once we switch to using C API by default.
@@ -425,12 +455,48 @@ def with_c_api(cls):
   # If the C API is already enabled, don't do anything. Some tests break if the
   # same test is run twice, so this allows us to turn on the C API by default
   # without breaking these tests.
-  if ops._USE_C_API: return cls
+  if ops._USE_C_API:
+    return cls
 
   for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith("test"):
       setattr(cls, name + "WithCApi", enable_c_api(value))
   return cls
+
+
+def assert_no_new_pyobjects_executing_eagerly(f):
+  """Decorator for asserting that no new Python objects persist after a test.
+
+  Runs the test multiple times executing eagerly, first as a warmup and then
+  several times to let objects accumulate. The warmup helps ignore caches which
+  do not grow as the test is run repeatedly.
+
+  Useful for checking that there are no missing Py_DECREFs in the C exercised by
+  a bit of Python.
+  """
+
+  def decorator(self, **kwargs):
+    """Warms up, gets an object count, runs the test, checks for new objects."""
+    with context.eager_mode():
+      gc.disable()
+      f(self, **kwargs)
+      gc.collect()
+      previous_count = len(gc.get_objects())
+      for _ in range(3):
+        f(self, **kwargs)
+      gc.collect()
+      # There should be no new Python objects hanging around.
+      new_count = len(gc.get_objects())
+      # In some cases (specifacally on MacOS), new_count is somehow
+      # smaller than previous_count.
+      # Using plain assert because not all classes using this decorator
+      # have assertLessEqual
+      assert new_count <= previous_count, (
+          "new_count(%d) is not less than or equal to previous_count(%d)" % (
+              new_count, previous_count))
+      gc.enable()
+
+  return decorator
 
 
 def assert_no_new_tensors(f):
@@ -454,15 +520,17 @@ def assert_no_new_tensors(f):
   def decorator(self, **kwargs):
     """Finds existing Tensors, runs the test, checks for new Tensors."""
 
-    def _is_tensor(obj):
+    def _is_tensorflow_object(obj):
       try:
-        return (isinstance(obj, ops.Tensor) or
-                isinstance(obj, variables.Variable))
+        return isinstance(obj,
+                          (ops.Tensor, variables.Variable,
+                           tensor_shape.Dimension, tensor_shape.TensorShape))
       except ReferenceError:
         # If the object no longer exists, we don't care about it.
         return False
 
-    tensors_before = set(id(obj) for obj in gc.get_objects() if _is_tensor(obj))
+    tensors_before = set(
+        id(obj) for obj in gc.get_objects() if _is_tensorflow_object(obj))
     outside_graph_key = ops.get_default_graph()._graph_key
     with ops.Graph().as_default():
       # Run the test in a new graph so that collections get cleared when it's
@@ -477,7 +545,7 @@ def assert_no_new_tensors(f):
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()
-        if _is_tensor(obj) and id(obj) not in tensors_before
+        if _is_tensorflow_object(obj) and id(obj) not in tensors_before
     ]
     if tensors_after:
       raise AssertionError(("%d Tensors not deallocated after test: %s" % (
@@ -516,18 +584,18 @@ def assert_no_garbage_created(f):
           "likely due to a reference cycle. New objects in cycle(s):")
       for i, obj in enumerate(gc.garbage[previous_garbage:]):
         try:
-          logging.error(
-              "Object %d of %d" % (i, len(gc.garbage) - previous_garbage))
+          logging.error("Object %d of %d", i,
+                        len(gc.garbage) - previous_garbage)
+
           def _safe_object_str(obj):
             return "<%s %d>" % (obj.__class__.__name__, id(obj))
-          logging.error("  Object type: %s" % (_safe_object_str(obj),))
-          logging.error("  Referrer types: %s" % (
-              ', '.join([_safe_object_str(ref)
-                         for ref in gc.get_referrers(obj)]),))
-          logging.error("  Referent types: %s" % (
-              ', '.join([_safe_object_str(ref)
-                         for ref in gc.get_referents(obj)]),))
-          logging.error("  Object attribute names: %s" % (dir(obj),))
+
+          logging.error("  Object type: %s", _safe_object_str(obj))
+          logging.error("  Referrer types: %s", ", ".join(
+              [_safe_object_str(ref) for ref in gc.get_referrers(obj)]))
+          logging.error("  Referent types: %s", ", ".join(
+              [_safe_object_str(ref) for ref in gc.get_referents(obj)]))
+          logging.error("  Object attribute names: %s", dir(obj))
           logging.error("  Object __str__:")
           logging.error(obj)
           logging.error("  Object __repr__:")
@@ -547,45 +615,68 @@ def assert_no_garbage_created(f):
 
 
 def run_in_graph_and_eager_modes(__unused__=None,
-                                 graph=None,
                                  config=None,
-                                 use_gpu=False,
-                                 force_gpu=False,
+                                 use_gpu=True,
                                  reset_test=True,
                                  assert_no_eager_garbage=False):
-  """Runs the test in both graph and eager modes.
+  """Execute the decorated test with and without enabling eager execution.
+
+  This function returns a decorator intended to be applied to test methods in
+  a @{tf.test.TestCase} class. Doing so will cause the contents of the test
+  method to be executed twice - once normally, and once with eager execution
+  enabled. This allows unittests to confirm the equivalence between eager
+  and graph execution (see @{tf.enable_eager_execution}).
+
+  For example, consider the following unittest:
+
+  ```python
+  class MyTests(tf.test.TestCase):
+
+    @run_in_graph_and_eager_modes()
+    def test_foo(self):
+      x = tf.constant([1, 2])
+      y = tf.constant([3, 4])
+      z = tf.add(x, y)
+      self.assertAllEqual([4, 6], self.evaluate(z))
+
+  if __name__ == "__main__":
+    tf.test.main()
+  ```
+
+  This test validates that `tf.add()` has the same behavior when computed with
+  eager execution enabled as it does when constructing a TensorFlow graph and
+  executing the `z` tensor in a session.
+
 
   Args:
     __unused__: Prevents sliently skipping tests.
-    graph: Optional graph to use during the returned session.
     config: An optional config_pb2.ConfigProto to use to configure the
-      session.
-    use_gpu: If True, attempt to run as many ops as possible on GPU.
-    force_gpu: If True, pin all ops to `/device:GPU:0`.
-    reset_test: If True, tearDown and SetUp the test case again.
+      session when executing graphs.
+    use_gpu: If True, attempt to run as many operations as possible on GPU.
+    reset_test: If True, tearDown and SetUp the test case between the two
+      executions of the test (once with and once without eager execution).
     assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
       collector and asserts that no extra garbage has been created when running
-      the test in eager mode. This will fail if there are reference cycles
-      (e.g. a = []; a.append(a)). Off by default because some tests may create
-      garbage for legitimate reasons (e.g. they define a class which inherits
-      from `object`), and because DEBUG_SAVEALL is sticky in some Python
-      interpreters (meaning that tests which rely on objects being collected
-      elsewhere in the unit test file will not work). Additionally, checks that
-      nothing still has a reference to Tensors that the test allocated.
+      the test with eager execution enabled. This will fail if there are
+      reference cycles (e.g. a = []; a.append(a)). Off by default because some
+      tests may create garbage for legitimate reasons (e.g. they define a class
+      which inherits from `object`), and because DEBUG_SAVEALL is sticky in some
+      Python interpreters (meaning that tests which rely on objects being
+      collected elsewhere in the unit test file will not work). Additionally,
+      checks that nothing still has a reference to Tensors that the test
+      allocated.
   Returns:
-    Returns a decorator that will run the decorated test function
-        using both a graph and using eager execution.
+    Returns a decorator that will run the decorated test method twice:
+    once by constructing and executing a graph in a session and once with
+    eager execution enabled.
   """
 
   assert not __unused__, "Add () after run_in_graph_and_eager_modes."
 
   def decorator(f):
-    """Test method decorator."""
-
     def decorated(self, **kwargs):
-      """Decorated the test method."""
       with context.graph_mode():
-        with self.test_session(graph, config, use_gpu, force_gpu):
+        with self.test_session(use_gpu=use_gpu):
           f(self, **kwargs)
 
       if reset_test:
@@ -595,27 +686,20 @@ def run_in_graph_and_eager_modes(__unused__=None,
         self._tempdir = None
         self.setUp()
 
-      def run_eager_mode(self, **kwargs):
-        if force_gpu:
-          gpu_name = gpu_device_name()
-          if not gpu_name:
-            gpu_name = "/device:GPU:0"
-          with context.device(gpu_name):
-            f(self)
-        elif use_gpu:
-          # TODO(xpan): Support softplacement and gpu by default when available.
-          f(self, **kwargs)
-        else:
-          with context.device("/device:CPU:0"):
+      def run_eagerly(self, **kwargs):
+        if not use_gpu:
+          with ops.device("/cpu:0"):
             f(self, **kwargs)
+        else:
+          f(self, **kwargs)
 
       if assert_no_eager_garbage:
-        run_eager_mode = assert_no_new_tensors(
-            assert_no_garbage_created(run_eager_mode))
+        run_eagerly = assert_no_new_tensors(
+            assert_no_garbage_created(run_eagerly))
 
       with context.eager_mode():
         with ops.Graph().as_default():
-          run_eager_mode(self, **kwargs)
+          run_eagerly(self, **kwargs)
 
     return decorated
 
@@ -649,15 +733,23 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
       return 0, 0
     return int(match.group(1)), int(match.group(2))
 
-  for local_device in device_lib.list_local_devices():
-    if local_device.device_type == "GPU":
-      if (min_cuda_compute_capability is None or
-          compute_capability_from_device_desc(local_device.physical_device_desc)
-          >= min_cuda_compute_capability):
+  try:
+    for local_device in device_lib.list_local_devices():
+      if local_device.device_type == "GPU":
+        if (min_cuda_compute_capability is None or
+            compute_capability_from_device_desc(
+                local_device.physical_device_desc) >=
+            min_cuda_compute_capability):
+          return True
+      if local_device.device_type == "SYCL" and not cuda_only:
         return True
-    if local_device.device_type == "SYCL" and not cuda_only:
-      return True
-  return False
+    return False
+  except errors_impl.NotFoundError as e:
+    if not all([x in str(e) for x in ["CUDA", "not find"]]):
+      raise e
+    else:
+      logging.error(str(e))
+      return False
 
 
 @contextlib.contextmanager
@@ -846,9 +938,9 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
     `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if
-    `use_gpu`
-    is True, TensorFlow tries to run as many ops on the GPU as possible. If both
-    `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
+    `use_gpu` is True, TensorFlow tries to run as many ops on the GPU as
+    possible. If both `force_gpu and `use_gpu` are False, all ops are pinned to
+    the CPU.
 
     Example:
     ```python
@@ -1200,9 +1292,9 @@ class TensorFlowTestCase(googletest.TestCase):
             msg="Mismatched value: a%s is different from b%s." % (path_str,
                                                                   path_str))
       except TypeError as e:
-        msg = "Error: a%s has %s, but b%s has %s" % (
-            path_str, type(a), path_str, type(b))
-        e.args = ((e.args[0] + ' : ' + msg,) + e.args[1:])
+        msg = "Error: a%s has %s, but b%s has %s" % (path_str, type(a),
+                                                     path_str, type(b))
+        e.args = ((e.args[0] + " : " + msg,) + e.args[1:])
         raise
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
@@ -1290,7 +1382,9 @@ class TensorFlowTestCase(googletest.TestCase):
                      " %s" % (a.shape, b.shape, msg))
     same = (a == b)
 
-    if a.dtype == np.float32 or a.dtype == np.float64:
+    if (a.dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
     if not np.all(same):
       # Prints more details than np.testing.assert_array_equal.
@@ -1382,8 +1476,7 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     device1 = pydev.canonical_name(device1)
     device2 = pydev.canonical_name(device2)
-    self.assertEqual(device1, device2,
-                     "Devices %s and %s are not equal. %s" % 
+    self.assertEqual(device1, device2, "Devices %s and %s are not equal. %s" %
                      (device1, device2, msg))
 
   # Fix Python 3 compatibility issues

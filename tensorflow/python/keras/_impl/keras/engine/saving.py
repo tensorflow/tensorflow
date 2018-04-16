@@ -35,6 +35,7 @@ from tensorflow.python.util.tf_export import tf_export
 # pylint: disable=g-import-not-at-top
 try:
   import h5py
+  HDF5_OBJECT_HEADER_LIMIT = 64512
 except ImportError:
   h5py = None
 
@@ -47,7 +48,7 @@ except ImportError:
 
 @tf_export('keras.models.save_model')
 def save_model(model, filepath, overwrite=True, include_optimizer=True):
-  """Save a model to a HDF5 file.
+  """Saves a model to a HDF5 file.
 
   The saved model contains:
       - the model's configuration (topology)
@@ -74,7 +75,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
     raise ImportError('`save_model` requires h5py.')
 
   def get_json_type(obj):
-    """Serialize any object to a JSON-serializable structure.
+    """Serializes any object to a JSON-serializable structure.
 
     Arguments:
         obj: the object to serialize
@@ -358,34 +359,6 @@ def model_from_json(json_string, custom_objects=None):
   return deserialize(config, custom_objects=custom_objects)
 
 
-def save_weights_to_hdf5_group(f, layers):
-  from tensorflow.python.keras._impl.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
-
-  f.attrs['layer_names'] = [layer.name.encode('utf8') for layer in layers]
-  f.attrs['backend'] = K.backend().encode('utf8')
-  f.attrs['keras_version'] = str(keras_version).encode('utf8')
-
-  for layer in layers:
-    g = f.create_group(layer.name)
-    symbolic_weights = layer.weights
-    weight_values = K.batch_get_value(symbolic_weights)
-    weight_names = []
-    for i, (w, val) in enumerate(zip(symbolic_weights, weight_values)):
-      if hasattr(w, 'name') and w.name:
-        name = str(w.name)
-      else:
-        name = 'param_' + str(i)
-      weight_names.append(name.encode('utf8'))
-    g.attrs['weight_names'] = weight_names
-    for name, val in zip(weight_names, weight_values):
-      param_dset = g.create_dataset(name, val.shape, dtype=val.dtype)
-      if not val.shape:
-        # scalar
-        param_dset[()] = val
-      else:
-        param_dset[:] = val
-
-
 def preprocess_weights_for_loading(layer,
                                    weights,
                                    original_keras_version=None,
@@ -549,7 +522,138 @@ def preprocess_weights_for_loading(layer,
       # split the bias into half and merge
       weights[2] = bias[:units * 4] + bias[units * 4:]
 
+  return convert_rnn_weights(layer, weights)
+
+
+def convert_rnn_weights(layer, weights):
+  """Converts weights for RNN layers between native and CuDNN format.
+
+  Input kernels for each gate are transposed and converted between Fortran
+  and C layout, recurrent kernels are transposed. For LSTM biases are summed/
+  split in half, for GRU biases are reshaped.
+
+  Weights can be converted in both directions between `LSTM` and`CuDNNSLTM`
+  and between `CuDNNGRU` and `GRU(reset_after=True)`. Default `GRU` is not
+  compatible with `CuDNNGRU`.
+
+  For missing biases in `LSTM`/`GRU` (`use_bias=False`) no conversion is made.
+
+  Arguments:
+      layer: Target layer instance.
+      weights: List of source weights values (input kernels, recurrent
+          kernels, [biases]) (Numpy arrays).
+
+  Returns:
+      A list of converted weights values (Numpy arrays).
+
+  Raises:
+      ValueError: for incompatible GRU layer/weights or incompatible biases
+  """
+
+  def transform_kernels(kernels, func, n_gates):
+    """Transforms kernel for each gate separately using given function.
+
+    Arguments:
+        kernels: Stacked array of kernels for individual gates.
+        func: Function applied to kernel of each gate.
+        n_gates: Number of gates (4 for LSTM, 3 for GRU).
+    Returns:
+        Stacked array of transformed kernels.
+    """
+    return np.hstack([func(k) for k in np.hsplit(kernels, n_gates)])
+
+  def transpose_input(from_cudnn):
+    """Makes a function that transforms input kernels from/to CuDNN format.
+
+    It keeps the shape, but changes between the layout (Fortran/C). Eg.:
+
+    ```
+    Keras                 CuDNN
+    [[0, 1, 2],  <--->  [[0, 2, 4],
+     [3, 4, 5]]          [1, 3, 5]]
+    ```
+
+    It can be passed to `transform_kernels()`.
+
+    Arguments:
+        from_cudnn: `True` if source weights are in CuDNN format, `False`
+            if they're in plain Keras format.
+    Returns:
+        Function that converts input kernel to the other format.
+    """
+    order = 'F' if from_cudnn else 'C'
+
+    def transform(kernel):
+      return kernel.T.reshape(kernel.shape, order=order)
+
+    return transform
+
+  target_class = layer.__class__.__name__
+
+  # convert the weights between CuDNNLSTM and LSTM
+  if target_class in ['LSTM', 'CuDNNLSTM'] and len(weights) == 3:
+    # determine if we're loading a CuDNNLSTM layer
+    # from the number of bias weights:
+    # CuDNNLSTM has (units * 8) weights; while LSTM has (units * 4)
+    # if there's no bias weight in the file, skip this conversion
+    units = weights[1].shape[0]
+    bias_shape = weights[2].shape
+    n_gates = 4
+
+    if bias_shape == (2 * units * n_gates,):
+      source = 'CuDNNLSTM'
+    elif bias_shape == (units * n_gates,):
+      source = 'LSTM'
+    else:
+      raise ValueError('Invalid bias shape: ' + str(bias_shape))
+
+    def convert_lstm_weights(weights, from_cudnn=True):
+      # Transpose (and reshape) input and recurrent kernels.
+      kernels = transform_kernels(weights[0], transpose_input(from_cudnn),
+                                  n_gates)
+      recurrent_kernels = transform_kernels(weights[1], lambda k: k.T, n_gates)
+      if from_cudnn:  # Merge input and recurrent biases into a single set.
+        biases = np.sum(np.split(weights[2], 2, axis=0), axis=0)
+      else:
+        # Split single set of biases evenly to two sets.
+        biases = np.tile(0.5 * weights[2], 2)
+      return [kernels, recurrent_kernels, biases]
+
+    if source != target_class:
+      weights = convert_lstm_weights(weights, from_cudnn=source == 'CuDNNLSTM')
+
+  # TODO(fchollet): add feature after GRU is refactored:
+  # convert the weights between `CuDNNGRU` and `GRU(reset_after=True)`
   return weights
+
+
+def save_weights_to_hdf5_group(f, layers):
+  from tensorflow.python.keras._impl.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
+
+  save_attributes_to_hdf5_group(
+      f, 'layer_names', [layer.name.encode('utf8') for layer in layers])
+  f.attrs['backend'] = K.backend().encode('utf8')
+  f.attrs['keras_version'] = str(keras_version).encode('utf8')
+
+  for layer in layers:
+    g = f.create_group(layer.name)
+    symbolic_weights = layer.weights
+    weight_values = K.batch_get_value(symbolic_weights)
+    weight_names = []
+    for i, (w, val) in enumerate(zip(symbolic_weights, weight_values)):
+      if hasattr(w, 'name') and w.name:
+        name = str(w.name)
+      else:
+        name = 'param_' + str(i)
+      weight_names.append(name.encode('utf8'))
+    save_attributes_to_hdf5_group(g, 'weight_names', weight_names)
+    for name, val in zip(weight_names, weight_values):
+      param_dset = g.create_dataset(name, val.shape, dtype=val.dtype)
+      if not val.shape:
+        # scalar
+        param_dset[()] = val
+      else:
+        param_dset[:] = val
 
 
 def load_weights_from_hdf5_group(f, layers):
@@ -578,11 +682,11 @@ def load_weights_from_hdf5_group(f, layers):
     if weights:
       filtered_layers.append(layer)
 
-  layer_names = [n.decode('utf8') for n in f.attrs['layer_names']]
+  layer_names = load_attributes_from_hdf5_group(f, 'layer_names')
   filtered_layer_names = []
   for name in layer_names:
     g = f[name]
-    weight_names = [n.decode('utf8') for n in g.attrs['weight_names']]
+    weight_names = load_attributes_from_hdf5_group(g, 'weight_names')
     if weight_names:
       filtered_layer_names.append(name)
   layer_names = filtered_layer_names
@@ -597,7 +701,7 @@ def load_weights_from_hdf5_group(f, layers):
   weight_value_tuples = []
   for k, name in enumerate(layer_names):
     g = f[name]
-    weight_names = [n.decode('utf8') for n in g.attrs['weight_names']]
+    weight_names = load_attributes_from_hdf5_group(g, 'weight_names')
     weight_values = [g[weight_name] for weight_name in weight_names]
     layer = filtered_layers[k]
     symbolic_weights = layer.weights
@@ -640,7 +744,7 @@ def load_weights_from_hdf5_group_by_name(f, layers):
     original_backend = None
 
   # New file format.
-  layer_names = [n.decode('utf8') for n in f.attrs['layer_names']]
+  layer_names = load_attributes_from_hdf5_group(f, 'layer_names')
 
   # Reverse index of layer name to list of layers with name.
   index = {}
@@ -653,7 +757,7 @@ def load_weights_from_hdf5_group_by_name(f, layers):
   weight_value_tuples = []
   for k, name in enumerate(layer_names):
     g = f[name]
-    weight_names = [n.decode('utf8') for n in g.attrs['weight_names']]
+    weight_names = load_attributes_from_hdf5_group(g, 'weight_names')
     weight_values = [g[weight_name] for weight_name in weight_names]
 
     for layer in index.get(name, []):
@@ -669,3 +773,72 @@ def load_weights_from_hdf5_group_by_name(f, layers):
       for i in range(len(weight_values)):
         weight_value_tuples.append((symbolic_weights[i], weight_values[i]))
   K.batch_set_value(weight_value_tuples)
+
+
+def save_attributes_to_hdf5_group(group, name, data):
+  """Saves attributes (data) of the specified name into the HDF5 group.
+
+  This method deals with an inherent problem of HDF5 file which is not
+  able to store data larger than HDF5_OBJECT_HEADER_LIMIT bytes.
+
+  Arguments:
+      group: A pointer to a HDF5 group.
+      name: A name of the attributes to save.
+      data: Attributes data to store.
+
+  Raises:
+    RuntimeError: If any single attribute is too large to be saved.
+  """
+  # Check that no item in `data` is larger than `HDF5_OBJECT_HEADER_LIMIT`
+  # because in that case even chunking the array would not make the saving
+  # possible.
+  bad_attributes = [x for x in data if len(x) > HDF5_OBJECT_HEADER_LIMIT]
+
+  # Expecting this to never be true.
+  if bad_attributes:
+    raise RuntimeError('The following attributes cannot be saved to HDF5 '
+                       'file because they are larger than %d bytes: %s' %
+                       (HDF5_OBJECT_HEADER_LIMIT,
+                        ', '.join([x for x in bad_attributes])))
+
+  data_npy = np.asarray(data)
+
+  num_chunks = 1
+  chunked_data = np.array_split(data_npy, num_chunks)
+
+  # This will never loop forever thanks to the test above.
+  while any([x.nbytes > HDF5_OBJECT_HEADER_LIMIT for x in chunked_data]):
+    num_chunks += 1
+    chunked_data = np.array_split(data_npy, num_chunks)
+
+  if num_chunks > 1:
+    for chunk_id, chunk_data in enumerate(chunked_data):
+      group.attrs['%s%d' % (name, chunk_id)] = chunk_data
+  else:
+    group.attrs[name] = data
+
+
+def load_attributes_from_hdf5_group(group, name):
+  """Loads attributes of the specified name from the HDF5 group.
+
+  This method deals with an inherent problem
+  of HDF5 file which is not able to store
+  data larger than HDF5_OBJECT_HEADER_LIMIT bytes.
+
+  Arguments:
+      group: A pointer to a HDF5 group.
+      name: A name of the attributes to load.
+
+  Returns:
+      data: Attributes data.
+  """
+  if name in group.attrs:
+    data = [n.decode('utf8') for n in group.attrs[name]]
+  else:
+    data = []
+    chunk_id = 0
+    while '%s%d' % (name, chunk_id) in group.attrs:
+      data.extend(
+          [n.decode('utf8') for n in group.attrs['%s%d' % (name, chunk_id)]])
+      chunk_id += 1
+  return data

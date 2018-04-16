@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -302,7 +302,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Disable dot strength reduction on platforms where it causes a slowdown.
   bool enable_dot_strength_reduction_;
 
-  // Disable convolution simplication on platforms where it causes a slowdown.
+  // Disable convolution simplification on platforms where it causes a slowdown.
   bool enable_conv_simplification_;
 };
 
@@ -383,13 +383,9 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
       !lhs->operand(0)->IsConstant() && lhs->operand(1)->IsConstant()) {
     auto* c1 = lhs->mutable_operand(1);
     auto* c2 = rhs;
-    TF_ASSIGN_OR_RETURN(
-        Shape sum_of_constants_shape,
-        ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, c1, c2));
 
-    auto* sum_of_constants =
-        computation_->AddInstruction(HloInstruction::CreateBinary(
-            sum_of_constants_shape, HloOpcode::kAdd, c1, c2));
+    TF_ASSIGN_OR_RETURN(auto* sum_of_constants,
+                        MakeBinaryHlo(HloOpcode::kAdd, c1, c2));
     return ReplaceWithNewInstruction(
         add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd,
                                           lhs->mutable_operand(0),
@@ -640,32 +636,23 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
   if (lhs->opcode() == HloOpcode::kDivide &&
       rhs->opcode() == HloOpcode::kDivide) {
-    TF_ASSIGN_OR_RETURN(
-        const Shape a_times_d_shape,
-        ShapeInference::InferBinaryOpShape(HloOpcode::kMultiply,
-                                           lhs->operand(0), rhs->operand(1)));
-    auto a_times_d = computation_->AddInstruction(HloInstruction::CreateBinary(
-        a_times_d_shape, HloOpcode::kMultiply, lhs->mutable_operand(0),
-        rhs->mutable_operand(1)));
-    TF_ASSIGN_OR_RETURN(
-        const Shape b_times_c_shape,
-        ShapeInference::InferBinaryOpShape(HloOpcode::kMultiply,
-                                           lhs->operand(1), rhs->operand(0)));
-    auto b_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        b_times_c_shape, HloOpcode::kMultiply, lhs->mutable_operand(1),
-        rhs->mutable_operand(0)));
-    return ReplaceWithNewInstruction(
-        divide, HloInstruction::CreateBinary(
-                    divide->shape(), HloOpcode::kDivide, a_times_d, b_times_c));
+    TF_ASSIGN_OR_RETURN(auto a_times_d, MakeBinaryHlo(HloOpcode::kMultiply,
+                                                      lhs->mutable_operand(0),
+                                                      rhs->mutable_operand(1)));
+    TF_ASSIGN_OR_RETURN(auto b_times_c, MakeBinaryHlo(HloOpcode::kMultiply,
+                                                      lhs->mutable_operand(1),
+                                                      rhs->mutable_operand(0)));
+    TF_ASSIGN_OR_RETURN(auto new_divide, MakeBinaryHlo(HloOpcode::kDivide,
+                                                       a_times_d, b_times_c));
+
+    return ReplaceInstruction(divide, new_divide);
   }
 
   // (A / B) / C => A / (B * C)
   if (lhs->opcode() == HloOpcode::kDivide) {
-    TF_ASSIGN_OR_RETURN(const Shape b_times_c_shape,
-                        ShapeInference::InferBinaryOpShape(
-                            HloOpcode::kMultiply, lhs->operand(1), rhs));
-    auto b_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        b_times_c_shape, HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
+    TF_ASSIGN_OR_RETURN(
+        auto b_times_c,
+        MakeBinaryHlo(HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
     return ReplaceWithNewInstruction(
         divide,
         HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
@@ -674,11 +661,8 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
 
   // A / (B / C) => (A*C) / B
   if (rhs->opcode() == HloOpcode::kDivide) {
-    TF_ASSIGN_OR_RETURN(const Shape a_times_c_shape,
-                        ShapeInference::InferBinaryOpShape(
-                            HloOpcode::kMultiply, lhs, rhs->operand(1)));
-    auto a_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        a_times_c_shape, HloOpcode::kMultiply, lhs, rhs->mutable_operand(1)));
+    TF_ASSIGN_OR_RETURN(auto a_times_c, MakeBinaryHlo(HloOpcode::kMultiply, lhs,
+                                                      rhs->mutable_operand(1)));
     return ReplaceWithNewInstruction(
         divide,
         HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
@@ -1137,10 +1121,10 @@ bool OutputIsSubsetOfOperandElements(HloInstruction* instruction,
 
 Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   auto operand = broadcast->mutable_operand(0);
+  auto dims = broadcast->dimensions();
   // A degenerate broadcast of a reshape that does not change the number of
   // elements can be replaced by a reshape.
-  if (std::is_sorted(broadcast->dimensions().begin(),
-                     broadcast->dimensions().end()) &&
+  if (std::is_sorted(dims.begin(), dims.end()) &&
       ShapeUtil::ElementsIn(broadcast->shape()) ==
           ShapeUtil::ElementsIn(operand->shape())) {
     VLOG(10) << "transform broadcast(X) -> reshape(X) where "
@@ -1158,8 +1142,8 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     VLOG(10) << "transform broadcast(X) -> transpose(X) where "
                 "n(broadcast(X)) == n(X)";
     return ReplaceWithNewInstruction(
-        broadcast, HloInstruction::CreateTranspose(broadcast->shape(), operand,
-                                                   broadcast->dimensions()));
+        broadcast,
+        HloInstruction::CreateTranspose(broadcast->shape(), operand, dims));
   }
 
   // A broadcast of a reshape which merely inserts 1-sized dimensions can
@@ -1173,7 +1157,6 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     if (merely_inserts_or_deletes_1_sized_dimensions &&
         deleted_indices.empty()) {
       std::reverse(inserted_indices.begin(), inserted_indices.end());
-      auto dims = broadcast->dimensions();
       for (auto inserted_index : inserted_indices) {
         dims.erase(dims.begin() + inserted_index);
       }
@@ -1217,6 +1200,19 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
         return user->ReplaceAllUsesWith(new_broadcast);
       }
     }
+    return Status::OK();
+  }
+
+  // Merge two consecutive broadcasts into a single one.
+  if (operand->opcode() == HloOpcode::kBroadcast) {
+    std::vector<int64> new_dimensions;
+    for (auto dim : operand->dimensions()) {
+      new_dimensions.push_back(dims[dim]);
+    }
+    return ReplaceWithNewInstruction(
+        broadcast,
+        HloInstruction::CreateBroadcast(
+            broadcast->shape(), operand->mutable_operand(0), new_dimensions));
   }
   return Status::OK();
 }
@@ -1311,17 +1307,14 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
         padding_dimension->set_edge_padding_high(0);
       }
     }
-    TF_ASSIGN_OR_RETURN(Shape nonzero_pad_shape,
-                        ShapeInference::InferPadShape(pad->operand(0)->shape(),
-                                                      pad->operand(1)->shape(),
-                                                      nonzero_padding));
+
+    TF_ASSIGN_OR_RETURN(HloInstruction * nonzero_pad,
+                        MakePadHlo(pad->mutable_operand(0),
+                                   pad->mutable_operand(1), nonzero_padding));
     // Copy the layout from the original pad instructions. The new pad and the
     // slice instruction should all have the same layout.
-    TF_RETURN_IF_ERROR(
-        LayoutUtil::CopyLayoutBetweenShapes(pad->shape(), &nonzero_pad_shape));
-    HloInstruction* nonzero_pad = computation_->AddInstruction(
-        HloInstruction::CreatePad(nonzero_pad_shape, pad->mutable_operand(0),
-                                  pad->mutable_operand(1), nonzero_padding));
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        pad->shape(), nonzero_pad->mutable_shape()));
 
     // Second, construct the slice instruction to perform the negative padding.
     std::vector<int64> start_indices;
@@ -1334,7 +1327,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
       if (padding_dimension.edge_padding_low() < 0) {
         start = -1 * padding_dimension.edge_padding_low();
       }
-      int64 end = nonzero_pad_shape.dimensions(i);
+      int64 end = nonzero_pad->shape().dimensions(i);
       if (padding_dimension.edge_padding_high() < 0) {
         end += padding_dimension.edge_padding_high();
       }
@@ -1343,16 +1336,14 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
       strides.push_back(1);
     }
 
-    // Verify that the slice shape matches the pad shape.
     TF_ASSIGN_OR_RETURN(
-        Shape inferred_slice_shape,
-        ShapeInference::InferSliceShape(nonzero_pad_shape, start_indices,
-                                        end_indices, strides));
-    TF_RET_CHECK(ShapeUtil::Compatible(inferred_slice_shape, pad->shape()));
+        HloInstruction * slice,
+        MakeSliceHlo(nonzero_pad, start_indices, end_indices, strides));
 
-    std::unique_ptr<HloInstruction> slice = HloInstruction::CreateSlice(
-        pad->shape(), nonzero_pad, start_indices, end_indices, strides);
-    return ReplaceWithNewInstruction(pad, std::move(slice));
+    // Verify that the slice shape matches the pad shape.
+    TF_RET_CHECK(ShapeUtil::Compatible(slice->shape(), pad->shape()));
+
+    return ReplaceInstruction(pad, slice);
   }
 
   return Status::OK();
@@ -1433,6 +1424,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   return Status::OK();
 }
 
+// TODO(b/74536353): do this simplification for BroadcastDimOne as well.
 StatusOr<bool> AlgebraicSimplifierVisitor::
     TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
         HloInstruction* reshape_or_broadcast) {
@@ -1740,18 +1732,29 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
                                   function));
   }
 
-  VLOG(10) << "Considering folding Pad: " << operand->ToString()
-           << "\ninto reduce-window: " << reduce_window->ToString();
-
   // This optimization folds a pad op into reduce_window.
-  if (operand->opcode() != HloOpcode::kPad) {
+  HloInstruction* pad;
+  const HloInstruction* convert = nullptr;
+  if (operand->opcode() == HloOpcode::kPad) {
+    pad = operand;
+  } else if (operand->opcode() == HloOpcode::kConvert &&
+             operand->operand(0)->opcode() == HloOpcode::kPad) {
+    convert = operand;
+    pad = operand->mutable_operand(0);
+  } else {
     VLOG(10) << "Not folding pad into reduce-window as there is no pad.";
     return Status::OK();
   }
 
+  VLOG(10) << "Considering folding Pad: " << pad->ToString()
+           << "\ninto reduce-window: " << reduce_window->ToString()
+           << (convert != nullptr ? tensorflow::strings::StrCat(
+                                        "\nvia convert: ", convert->ToString())
+                                  : "");
+
   // Do not fold interior padding into ReduceWindow since the backends do not
   // support it.
-  const PaddingConfig& pad_config = operand->padding_config();
+  const PaddingConfig& pad_config = pad->padding_config();
   if (HasInteriorPadding(pad_config)) {
     VLOG(10) << "Not folding pad into reduce-window due to interior padding.";
     return Status::OK();
@@ -1759,14 +1762,27 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
 
   // If reduce_window already has padding, the pad value of the pad op and the
   // init value of reduce_window must match to allow folding the pad.
-  const HloInstruction* pad_value = operand->operand(1);
+  const HloInstruction* pad_value = pad->operand(1);
   const HloInstruction* reduce_init_value = reduce_window->operand(1);
   if (pad_value != reduce_init_value) {
+    auto literals_are_equivalent = [&] {
+      auto& pad_literal = pad_value->literal();
+      auto& reduce_init_literal = reduce_init_value->literal();
+      if (pad_literal == reduce_init_literal) {
+        return true;
+      }
+      auto converted_pad_literal = pad_literal.ConvertToShape(
+          reduce_init_value->shape(), /*round_f32_to_bf16=*/true);
+      if (!converted_pad_literal.ok()) {
+        return false;
+      }
+      return *converted_pad_literal.ValueOrDie() == reduce_init_literal;
+    };
     // The pad value is usually a constant, so we handle that case and do not
     // try to get more fancy about proving equivalence in cases beyond that.
     if (pad_value->opcode() != HloOpcode::kConstant ||
         reduce_init_value->opcode() != HloOpcode::kConstant ||
-        pad_value->literal() != reduce_init_value->literal()) {
+        !literals_are_equivalent()) {
       VLOG(10) << "Not folding pad into reduce-window due to different pad "
                   "values.";
       return Status::OK();
@@ -1775,7 +1791,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
 
   // If the pad puts a single non-identity value in each window that we're
   // reducing, then this is a broadcast.
-  HloInstruction* pad_operand = operand->mutable_operand(0);
+  HloInstruction* pad_operand = pad->mutable_operand(0);
   auto is_effective_broadcast = [&] {
     if (window_util::HasStride(window)) {
       VLOG(10) << "Window has stride.";
@@ -1819,6 +1835,18 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     VLOG(10) << "Found window covers a single unpadded element.";
     return true;
   };
+
+  HloInstruction* new_reduce_window_operand;
+  if (convert != nullptr) {
+    new_reduce_window_operand =
+        computation_->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(pad_operand->shape(),
+                                         convert->shape().element_type()),
+            pad_operand));
+  } else {
+    new_reduce_window_operand = pad_operand;
+  }
+
   if (is_effective_broadcast()) {
     VLOG(10) << "Replacing pad/reduce-window with (implicit) broadcast.";
     auto fadd = [this](std::unique_ptr<HloInstruction> x) {
@@ -1827,7 +1855,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return ReplaceWithNewInstruction(
         reduce_window, HloInstruction::CreateBroadcastSequence(
                            /*output_shape=*/reduce_window->shape(),
-                           /*operand=*/pad_operand, fadd));
+                           /*operand=*/new_reduce_window_operand, fadd));
   }
 
   // Carry out the folding of the pad into reduce_window.
@@ -1844,10 +1872,11 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     window_dim.set_padding_high(window_dim.padding_high() +
                                 pad_dim.edge_padding_high());
   }
+
   return ReplaceWithNewInstruction(
       reduce_window, HloInstruction::CreateReduceWindow(
                          /*shape=*/reduce_window->shape(),
-                         /*operand=*/pad_operand,
+                         /*operand=*/new_reduce_window_operand,
                          /*init_value=*/reduce_window->mutable_operand(1),
                          /*window=*/new_window,
                          /*reduce_computation=*/function));

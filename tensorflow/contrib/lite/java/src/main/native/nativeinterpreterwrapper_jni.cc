@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/java/src/main/native/nativeinterpreterwrapper_jni.h"
-
 namespace {
 
 const int kByteBufferValue = 999;
@@ -76,6 +75,21 @@ TfLiteType resolveDataType(jint data_type) {
       return kTfLiteInt64;
     default:
       return kTfLiteNoType;
+  }
+}
+
+int getDataType(TfLiteType data_type) {
+  switch (data_type) {
+    case kTfLiteFloat32:
+      return 1;
+    case kTfLiteInt32:
+      return 2;
+    case kTfLiteUInt8:
+      return 3;
+    case kTfLiteInt64:
+      return 4;
+    default:
+      return -1;
   }
 }
 
@@ -301,6 +315,16 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
   interpreter->UseNNAPI(static_cast<bool>(state));
 }
 
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong handle,
+                                                           jint num_threads) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return;
+  interpreter->SetNumThreads(static_cast<int>(num_threads));
+}
+
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
     JNIEnv* env, jclass clazz, jint size) {
@@ -308,6 +332,19 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
       new BufferErrorReporter(env, static_cast<int>(size));
   return reinterpret_cast<jlong>(error_reporter);
 }
+
+// Verifies whether the model is a flatbuffer file.
+class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
+ public:
+  bool Verify(const char* data, int length,
+              tflite::ErrorReporter* reporter) override {
+    if (!VerifyModel(data, length)) {
+      reporter->Report("The model is not a valid Flatbuffer file");
+      return false;
+    }
+    return true;
+  }
+};
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
@@ -317,17 +354,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
   if (error_reporter == nullptr) return 0;
   const char* path = env->GetStringUTFChars(model_file, nullptr);
 
-  {
-    tflite::FileCopyAllocation allocation(path, nullptr);
-    if (!VerifyModel(allocation.base(), allocation.bytes())) {
-      throwException(env, kIllegalArgumentException,
-                     "Contents of %s is not a valid flatbuffer model", path);
-      env->ReleaseStringUTFChars(model_file, path);
-      return 0;
-    }
-  }
+  std::unique_ptr<tflite::TfLiteVerifier> verifier;
+  verifier.reset(new JNIFlatBufferVerifier());
 
-  auto model = tflite::FlatBufferModel::BuildFromFile(path, error_reporter);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(
+      path, verifier.get(), error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
                    "Contents of %s does not encode a valid TensorFlowLite "
@@ -369,7 +400,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
-    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle) {
+    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
+    jint num_threads) {
   tflite::FlatBufferModel* model = convertLongToModel(env, model_handle);
   if (model == nullptr) return 0;
   BufferErrorReporter* error_reporter =
@@ -377,8 +409,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   if (error_reporter == nullptr) return 0;
   auto resolver = ::tflite::CreateOpResolver();
   std::unique_ptr<tflite::Interpreter> interpreter;
-  TfLiteStatus status =
-      tflite::InterpreterBuilder(*model, *(resolver.get()))(&interpreter);
+  TfLiteStatus status = tflite::InterpreterBuilder(*model, *(resolver.get()))(
+      &interpreter, static_cast<int>(num_threads));
   if (status != kTfLiteOk) {
     throwException(env, kIllegalArgumentException,
                    "Cannot create interpreter: %s",
@@ -477,7 +509,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
   const int idx = static_cast<int>(input_idx);
-  if (input_idx >= interpreter->inputs().size()) {
+  if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
     throwException(env, kIllegalArgumentException,
                    "Out of range: Failed to get %d-th input out of %d inputs",
                    input_idx, interpreter->inputs().size());
@@ -485,20 +517,39 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
   }
   TfLiteTensor* target = interpreter->tensor(interpreter->inputs()[idx]);
   int size = target->dims->size;
-  int expected_num_bytes = elementByteSize(target->type);
-  for (int i = 0; i < size; ++i) {
-    expected_num_bytes *= target->dims->data[i];
-  }
-  if (num_bytes != expected_num_bytes) {
-    throwException(env, kIllegalArgumentException,
-                   "Failed to get input dimensions. %d-th input should have"
-                   " %d bytes, but found %d bytes.",
-                   idx, expected_num_bytes, num_bytes);
-    return nullptr;
+  if (num_bytes >= 0) {  // verifies num of bytes matches if num_bytes if valid.
+    int expected_num_bytes = elementByteSize(target->type);
+    for (int i = 0; i < size; ++i) {
+      expected_num_bytes *= target->dims->data[i];
+    }
+    if (num_bytes != expected_num_bytes) {
+      throwException(env, kIllegalArgumentException,
+                     "Failed to get input dimensions. %d-th input should have"
+                     " %d bytes, but found %d bytes.",
+                     idx, expected_num_bytes, num_bytes);
+      return nullptr;
+    }
   }
   jintArray outputs = env->NewIntArray(size);
   env->SetIntArrayRegion(outputs, 0, size, &(target->dims->data[0]));
   return outputs;
+}
+
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return -1;
+  const int idx = static_cast<int>(output_idx);
+  if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
+    throwException(env, kIllegalArgumentException,
+                   "Out of range: Failed to get %d-th output out of %d outputs",
+                   output_idx, interpreter->outputs().size());
+    return -1;
+  }
+  TfLiteTensor* target = interpreter->tensor(interpreter->outputs()[idx]);
+  int type = getDataType(target->type);
+  return static_cast<jint>(type);
 }
 
 JNIEXPORT jboolean JNICALL

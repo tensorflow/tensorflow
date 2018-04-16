@@ -19,7 +19,6 @@ from __future__ import print_function
 
 
 # pylint: disable=wildcard-import,unused-import
-from tensorflow.python.ops.distributions import bijectors
 from tensorflow.python.ops.distributions.bernoulli import Bernoulli
 from tensorflow.python.ops.distributions.beta import Beta
 from tensorflow.python.ops.distributions.categorical import Categorical
@@ -40,7 +39,6 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = [
-    "bijectors",
     "Bernoulli",
     "Beta",
     "Categorical",

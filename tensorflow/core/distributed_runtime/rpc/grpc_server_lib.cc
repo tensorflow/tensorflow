@@ -183,8 +183,7 @@ Status GrpcServer::Init(
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
   master_impl_ = CreateMaster(&master_env_);
-  master_service_ = NewGrpcMasterService(
-      master_impl_.get(), config.operation_timeout_in_ms(), &builder);
+  master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
   worker_impl_ =
       worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
   worker_service_ =

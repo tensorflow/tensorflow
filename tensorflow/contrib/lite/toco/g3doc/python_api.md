@@ -1,5 +1,12 @@
 # TensorFlow Lite Optimizing Converter (TOCO) Python API reference
 
+This page provides examples on how to use TOCO via the Python API. It is
+complemented by the following documents:
+
+*   [README](../README.md)
+*   [Command-line examples](cmdline_examples.md)
+*   [Command-line glossary](cmdline_reference.md)
+
 ## High-level overview
 
 While the TensorFlow Lite Optimizing Converter can be used from the command
@@ -28,7 +35,7 @@ val = img + tf.constant([1., 2., 3.]) + tf.constant([1., 4., 4.])
 out = tf.identity(val, name="out")
 with tf.Session() as sess:
   tflite_model = tf.contrib.lite.toco_convert(sess.graph_def, [img], [out])
-  open("test.tflite", "wb").write(tflite_modeL)
+  open("test.tflite", "wb").write(tflite_model)
 ```
 
 **NOTE** Currently, the TOCO command will cause a fatal error to the Python

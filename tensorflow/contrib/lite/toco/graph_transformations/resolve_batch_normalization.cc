@@ -33,7 +33,7 @@ bool ResolveBatchNormalization::Run(Model* model, std::size_t op_index) {
   const auto* bn_op =
       static_cast<const BatchNormalizationOperator*>(bn_it->get());
 
-  const auto& mean_array = model->GetArray(bn_op->inputs[1]);
+  auto& mean_array = model->GetArray(bn_op->inputs[1]);
   const auto& multiplier_array = model->GetArray(bn_op->inputs[2]);
   const auto& offset_array = model->GetArray(bn_op->inputs[3]);
 
@@ -48,6 +48,13 @@ bool ResolveBatchNormalization::Run(Model* model, std::size_t op_index) {
   CHECK(mean_array.data_type == ArrayDataType::kFloat);
   CHECK(multiplier_array.data_type == ArrayDataType::kFloat);
   CHECK(offset_array.data_type == ArrayDataType::kFloat);
+
+  // This graph transformations will need to address constant buffers below,
+  // so we need to exit early if these buffers don't exist (i.e. if the params
+  // haven't yet been resolved as constants).
+  if (!mean_array.buffer || !multiplier_array.buffer || !offset_array.buffer) {
+    return false;
+  }
 
   // Create the new Mul, Add operators
   auto* mul_op = new MulOperator;
@@ -80,9 +87,15 @@ bool ResolveBatchNormalization::Run(Model* model, std::size_t op_index) {
   DCHECK_EQ(bn_it->get(), bn_op);
 
   // Create the new param arrays
-  const auto& mean_shape = mean_array.shape();
+  auto& mean_shape = *mean_array.mutable_shape();
   const auto& multiplier_shape = multiplier_array.shape();
   const auto& offset_shape = offset_array.shape();
+  if (mean_shape.dims().empty()) {
+    *mean_shape.mutable_dims() = multiplier_shape.dims();
+    auto& data = mean_array.GetMutableBuffer<ArrayDataType::kFloat>().data;
+    CHECK_EQ(data.size(), 1);
+    data.resize(RequiredBufferSizeForShape(mean_shape), data[0]);
+  }
   CHECK(mean_shape.dims() == multiplier_shape.dims());
   CHECK(mean_shape.dims() == offset_shape.dims());
   const auto& param_shape = mean_shape;
