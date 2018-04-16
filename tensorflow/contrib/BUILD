@@ -77,6 +77,7 @@ py_library(
         "//tensorflow/contrib/optimizer_v2:optimizer_v2_py",
         "//tensorflow/contrib/periodic_resample:init_py",
         "//tensorflow/contrib/predictor",
+        "//tensorflow/contrib/proto",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",
         "//tensorflow/contrib/autograph",
