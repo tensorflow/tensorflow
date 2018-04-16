@@ -1603,6 +1603,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["noasan"],
 )
 
 cuda_py_test(
@@ -2870,7 +2871,10 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 10,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "noasan",
+    ],
 )
 
 tf_py_test(
