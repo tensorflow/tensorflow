@@ -396,7 +396,7 @@ class _BinarySvmTargetColumn(_MultiClassTargetColumn):
 def _mean_squared_loss(logits, target):
   # To prevent broadcasting inside "-".
   if len(target.get_shape()) == 1:
-    target = array_ops.expand_dims(target, dim=[1])
+    target = array_ops.expand_dims(target, axis=1)
 
   logits.get_shape().assert_is_compatible_with(target.get_shape())
   return math_ops.square(logits - math_ops.to_float(target))
@@ -405,7 +405,7 @@ def _mean_squared_loss(logits, target):
 def _log_loss_with_two_classes(logits, target):
   # sigmoid_cross_entropy_with_logits requires [batch_size, 1] target.
   if len(target.get_shape()) == 1:
-    target = array_ops.expand_dims(target, dim=[1])
+    target = array_ops.expand_dims(target, axis=1)
   loss_vec = nn.sigmoid_cross_entropy_with_logits(
       labels=math_ops.to_float(target), logits=logits)
   return loss_vec
