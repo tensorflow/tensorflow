@@ -10,7 +10,6 @@ go_library(
 
 go_binary(
     name = "genop",
-    importpath = "github.com/tensorflow/tensorflow/go/genop",
     embed = [":go_default_library"],
     visibility = ["//visibility:public"],
 )

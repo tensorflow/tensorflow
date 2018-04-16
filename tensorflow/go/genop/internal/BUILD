@@ -21,7 +21,6 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["genop_test.go"],
-    importpath = "github.com/tensorflow/tensorflow/go/genop/internal",
     embed = [":go_default_library"],
     deps = [
         "//tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework_go_proto:go_default_library",
