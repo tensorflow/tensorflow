@@ -59,71 +59,77 @@ namespace tensorflow {
 
 #ifndef INTEL_MKL_ML
 
+struct ConvFwdDimensions {
+  memory::dims src_dims;
+  memory::dims filter_dims;
+  memory::dims bias_dims;
+  memory::dims dst_dims;
+  memory::dims strides;
+  memory::dims dilations;
+  memory::dims padding_l;
+  memory::dims padding_r;
+
+  ConvFwdDimensions(memory::dims src_d,
+      memory::dims filter_d, memory::dims bias_d,
+      memory::dims dst_d, memory::dims strides,
+      memory::dims dilations, memory::dims pl,
+      memory::dims pr) : src_dims(src_d), filter_dims(filter_d),
+          bias_dims(bias_d), dst_dims(dst_d), strides(strides),
+          dilations(dilations), padding_l(pl), padding_r(pr) {
+  }
+};
+
 template <typename T>
 class Conv2DFwd : public DnnOp {
  public:
-  Conv2DFwd(memory::dims src_dims,
-            memory::dims filter_dims,
-            memory::dims bias_dims,
-            memory::dims dst_dims,
-            memory::dims strides,
-            memory::dims dilations,
-            memory::dims padding_l,
-            memory::dims padding_r) {
+  explicit Conv2DFwd(const ConvFwdDimensions& convFwdDims) {
     fwd_stream_.reset(new stream(stream::kind::eager));
     // create conv primitive
     if (conv_fwd_ == nullptr) {
-      Setup(src_dims, filter_dims, bias_dims, dst_dims,
-          strides, dilations, padding_l, padding_r);
+      Setup(convFwdDims);
     }
   }
 
   ~Conv2DFwd() {}
 
  private:
-  void Setup(memory::dims src_dims,
-             memory::dims filter_dims,
-             memory::dims bias_dims,
-             memory::dims dst_dims,
-             memory::dims strides,
-             memory::dims dilations,
-             memory::dims padding_l,
-             memory::dims padding_r) {
-
+  void Setup(const ConvFwdDimensions& convFwdDims) {
     // create memory descriptors for convolution data w/ no specified format
-    src_md_.reset(new memory::desc({src_dims}, MklDnnType<T>(),
-                                   memory::format::any));
+    src_md_.reset(new memory::desc({convFwdDims.src_dims},
+        MklDnnType<T>(), memory::format::any));
 
-    filter_md_.reset(new memory::desc({filter_dims},
-                  MklDnnType<T>(), memory::format::any));
+    filter_md_.reset(new memory::desc({convFwdDims.filter_dims},
+        MklDnnType<T>(), memory::format::any));
 
-    dst_md_.reset(new memory::desc({dst_dims}, MklDnnType<T>(),
-                                   memory::format::any));
-    if (!bias_dims.empty())
-        bias_md_.reset(new memory::desc({bias_dims}, MklDnnType<T>(),
-                                   memory::format::any));
+    dst_md_.reset(new memory::desc({convFwdDims.dst_dims},
+        MklDnnType<T>(), memory::format::any));
+
+    if (!convFwdDims.bias_dims.empty())
+        bias_md_.reset(new memory::desc({convFwdDims.bias_dims},
+            MklDnnType<T>(), memory::format::any));
+
     // create a convolution
-    if (!bias_dims.empty()) {
+    if (!convFwdDims.bias_dims.empty()) {
       fwd_desc_.reset(new convolution_forward::desc(prop_kind::forward,
-                      convolution_direct, *src_md_, *filter_md_,
-                      *bias_md_, *dst_md_, strides, dilations,
-                      padding_l, padding_r, padding_kind::zero));
+          convolution_direct, *src_md_, *filter_md_, *bias_md_, *dst_md_,
+          convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_l,
+          convFwdDims.padding_r, padding_kind::zero));
     } else {
       fwd_desc_.reset(new convolution_forward::desc(prop_kind::forward,
-                      convolution_direct, *src_md_, *filter_md_,
-                      *dst_md_, strides, dilations,
-                      padding_l, padding_r, padding_kind::zero));
+          convolution_direct, *src_md_, *filter_md_, *dst_md_,
+          convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_l,
+          convFwdDims.padding_r, padding_kind::zero));
     }
 
     fwd_pd_.reset(new convolution_forward::primitive_desc(
-                  *fwd_desc_, cpu_engine_));
+        *fwd_desc_, cpu_engine_));
 
     // store the expected memory format
     src_fmt_ = static_cast<mkldnn::memory::format>(
-                 fwd_pd_.get()->src_primitive_desc().desc().data.format);
+        fwd_pd_.get()->src_primitive_desc().desc().data.format);
 
     filter_fmt_ = static_cast<mkldnn::memory::format>(
-                 fwd_pd_.get()->weights_primitive_desc().desc().data.format);
+        fwd_pd_.get()->weights_primitive_desc().desc().data.format);
 
     // create memory primitive based on dummy data
     src_mem_.reset(new memory(fwd_pd_.get()->src_primitive_desc(), DummyData));
@@ -132,9 +138,9 @@ class Conv2DFwd : public DnnOp {
     dst_mem_.reset(new memory(fwd_pd_.get()->dst_primitive_desc(), DummyData));
 
     // create convolution primitive and add it to net
-    if (!bias_dims.empty()) {
-        bias_mem_.reset(new memory({{{bias_dims}, MklDnnType<T>(),
-                             memory::format::x}, cpu_engine_}, DummyData));
+    if (!convFwdDims.bias_dims.empty()) {
+        bias_mem_.reset(new memory({{{convFwdDims.bias_dims}, MklDnnType<T>(),
+                        memory::format::x}, cpu_engine_}, DummyData));
         conv_fwd_.reset(new convolution_forward(*fwd_pd_, *src_mem_,
                         *filter_mem_, *bias_mem_, *dst_mem_));
     } else {
@@ -212,32 +218,17 @@ class Conv2DFwd : public DnnOp {
 template <typename T>
 class Conv2DFwdFactory : public DnnOpFactory<T> {
  public:
-  static Conv2DFwd<T>* Get(
-                         memory::dims src_dims,
-                         memory::dims filter_dims,
-                         memory::dims bias_dims,
-                         memory::dims dst_dims,
-                         memory::dims strides,
-                         memory::dims dilations,
-                         memory::dims padding_l,
-                         memory::dims padding_r) {
+  static Conv2DFwd<T>* Get(const ConvFwdDimensions& convFwdDims) {
      Conv2DFwd<T>* conv2d_fwd = nullptr;
 
      // try to find a suitable one in pool
      conv2d_fwd = dynamic_cast<Conv2DFwd<T>*> (
-       Conv2DFwdFactory<T>::GetInstance().GetConv2DFwd(
-           src_dims, filter_dims, bias_dims, dst_dims,
-           strides, dilations, padding_l, padding_r));
+       Conv2DFwdFactory<T>::GetInstance().GetConv2DFwd(convFwdDims));
 
      if (conv2d_fwd == nullptr) {
-       conv2d_fwd = new Conv2DFwd<T>(
-           src_dims, filter_dims, bias_dims, dst_dims,
-           strides, dilations, padding_l, padding_r);
+       conv2d_fwd = new Conv2DFwd<T>(convFwdDims);
        Conv2DFwdFactory<T>::GetInstance().SetConv2DFwd(
-           src_dims, filter_dims, bias_dims, dst_dims,
-           strides, dilations, padding_l, padding_r, conv2d_fwd);
-     } else {
-       // reuse
+           convFwdDims, conv2d_fwd);
      }
      return conv2d_fwd;
   }
@@ -253,52 +244,28 @@ class Conv2DFwdFactory : public DnnOpFactory<T> {
     return instance_;
   }
 
-  static std::string CreateKey(memory::dims src_dims,
-             memory::dims filter_dims,
-             memory::dims bias_dims,
-             memory::dims dst_dims,
-             memory::dims strides,
-             memory::dims dilations,
-             memory::dims padding_l,
-             memory::dims padding_r) {
+  static std::string CreateKey(const ConvFwdDimensions& convFwdDims) {
     std::string prefix = "conv2d_fwd_";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
-    key_creator.AddAsKey(src_dims);
-    key_creator.AddAsKey(filter_dims);
-    key_creator.AddAsKey(bias_dims);
-    key_creator.AddAsKey(dst_dims);
-    key_creator.AddAsKey(strides);
-    key_creator.AddAsKey(dilations);
-    key_creator.AddAsKey(padding_l);
-    key_creator.AddAsKey(padding_r);
+    key_creator.AddAsKey(convFwdDims.src_dims);
+    key_creator.AddAsKey(convFwdDims.filter_dims);
+    key_creator.AddAsKey(convFwdDims.bias_dims);
+    key_creator.AddAsKey(convFwdDims.dst_dims);
+    key_creator.AddAsKey(convFwdDims.strides);
+    key_creator.AddAsKey(convFwdDims.dilations);
+    key_creator.AddAsKey(convFwdDims.padding_l);
+    key_creator.AddAsKey(convFwdDims.padding_r);
     return key_creator.GetKey();
   }
 
-  DnnOp* GetConv2DFwd(memory::dims src_dims,
-             memory::dims filter_dims,
-             memory::dims bias_dims,
-             memory::dims dst_dims,
-             memory::dims strides,
-             memory::dims dilations,
-             memory::dims padding_l,
-             memory::dims padding_r) {
-    std::string key = CreateKey(src_dims, filter_dims, bias_dims,
-             dst_dims, strides, dilations, padding_l, padding_r);
+  DnnOp* GetConv2DFwd(const ConvFwdDimensions& convFwdDims) {
+    std::string key = CreateKey(convFwdDims);
     return this->GetOp(key);
   }
 
-  void SetConv2DFwd(memory::dims src_dims,
-             memory::dims filter_dims,
-             memory::dims bias_dims,
-             memory::dims dst_dims,
-             memory::dims strides,
-             memory::dims dilations,
-             memory::dims padding_l,
-             memory::dims padding_r,
-             DnnOp *op) {
-    std::string key = CreateKey(src_dims, filter_dims, bias_dims,
-             dst_dims, strides, dilations, padding_l, padding_r);
+  void SetConv2DFwd(const ConvFwdDimensions& convFwdDims, DnnOp *op) {
+    std::string key = CreateKey(convFwdDims);
     this->SetOp(key, op);
   }
 };
@@ -857,13 +824,13 @@ class MklConv2DOp : public OpKernel {
       if (biasEnabled) {
         memory::dims bias_dims = {};
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
-        conv2d_fwd = Conv2DFwdFactory<T>::Get(src_dims, filter_dims,
-                        bias_dims, dst_dims_mkl_order,
-                        strides, dilations, padding_l, padding_r);
+        ConvFwdDimensions convFwdDims(src_dims, filter_dims, bias_dims,
+            dst_dims_mkl_order, strides, dilations, padding_l, padding_r);
+        conv2d_fwd = Conv2DFwdFactory<T>::Get(convFwdDims);
       } else {
-        conv2d_fwd = Conv2DFwdFactory<T>::Get(src_dims, filter_dims,
-                        NONE_DIMS, dst_dims_mkl_order,
-                        strides, dilations, padding_l, padding_r);
+        ConvFwdDimensions convFwdDims(src_dims, filter_dims, NONE_DIMS,
+            dst_dims_mkl_order, strides, dilations, padding_l, padding_r);
+        conv2d_fwd = Conv2DFwdFactory<T>::Get(convFwdDims);
       }
 
       // allocate output tensors output_tensor and filter_out_tensor
