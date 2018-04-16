@@ -28,6 +28,16 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+cc_import(
+  name = "libtensorflow.so",
+  shared_library = "//tensorflow:libtensorflow.so",
+)
+
+cc_import(
+  name = "libtensorflow_framework.so",
+  shared_library = "//tensorflow:libtensorflow_framework.so",
+)
+
 go_library(
     name = "go_default_library",
     srcs = [
@@ -43,8 +53,11 @@ go_library(
         "version.go",
         "//tensorflow/c:headers",  # C library header
     ],
+    cdeps = [
+      ":libtensorflow_framework.so",
+      ":libtensorflow.so",  # C library
+    ],
     cgo = True,
-    clinkopts = ["-ltensorflow"],
     copts = ["-Itensorflow/go"],
     importpath = "github.com/tensorflow/tensorflow/tensorflow/go",
     visibility = ["//visibility:public"],
