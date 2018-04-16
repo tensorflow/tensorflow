@@ -705,11 +705,16 @@ def softmax_cross_entropy(
       new_onehot_labels = onehot_labels * (1 - label_smoothing)
                           + label_smoothing / num_classes
 
+  Note that `onehot_labels` and `logits` must have the same shape,
+  e.g. `[batch_size, num_classes]`. The shape of `weights` must be
+  broadcastable to loss, whose shape is decided by the shape of `logits`.
+  In case the shape of `logits` is `[batch_size, num_classes]`, loss is
+  a `Tensor` of shape `[batch_size]`.
+
   Args:
-    onehot_labels: `[batch_size, num_classes]` target one-hot-encoded labels.
-    logits: `[batch_size, num_classes]` logits outputs of the network .
-    weights: Optional `Tensor` whose rank is either 0, or rank 1 and is
-      broadcastable to the loss which is a `Tensor` of shape `[batch_size]`.
+    onehot_labels: One-hot-encoded labels.
+    logits: Logits outputs of the network.
+    weights: Optional `Tensor` that is broadcastable to loss.
     label_smoothing: If greater than 0 then smooth the labels.
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
