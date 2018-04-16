@@ -770,7 +770,8 @@ def cast(x, dtype, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x`.
+    A `Tensor` or `SparseTensor` with same shape as `x` and
+      same type as `dtype`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `dtype`.
