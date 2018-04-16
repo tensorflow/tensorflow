@@ -29,13 +29,13 @@ filegroup(
 )
 
 cc_import(
-  name = "libtensorflow.so",
-  shared_library = "//tensorflow:libtensorflow.so",
+    name = "libtensorflow.so",
+    shared_library = "//tensorflow:libtensorflow.so",
 )
 
 cc_import(
-  name = "libtensorflow_framework.so",
-  shared_library = "//tensorflow:libtensorflow_framework.so",
+    name = "libtensorflow_framework.so",
+    shared_library = "//tensorflow:libtensorflow_framework.so",
 )
 
 go_library(
@@ -54,8 +54,8 @@ go_library(
         "//tensorflow/c:headers",  # C library header
     ],
     cdeps = [
-      ":libtensorflow_framework.so",
-      ":libtensorflow.so",  # C library
+        ":libtensorflow_framework.so",
+        ":libtensorflow.so",  # C library
     ],
     cgo = True,
     copts = ["-Itensorflow/go"],
