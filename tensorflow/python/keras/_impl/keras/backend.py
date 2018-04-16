@@ -3448,7 +3448,7 @@ def categorical_crossentropy(target, output, from_logits=False):
   Returns:
       Output tensor.
   """
-  # Note: nn.softmax_cross_entropy_with_logits
+  # Note: nn.softmax_cross_entropy_with_logits_v2
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
@@ -3512,7 +3512,7 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
-  # Note: nn.softmax_cross_entropy_with_logits
+  # Note: nn.sigmoid_cross_entropy_with_logits
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # transform back to logits
