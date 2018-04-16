@@ -17,6 +17,7 @@
 _SINGLE_URL_WHITELIST = depset([
     "arm_compiler",
     "ortools_archive",
+    "gemmlowp",
 ])
 
 def _is_windows(ctx):
