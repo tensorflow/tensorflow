@@ -39,6 +39,7 @@ cc_library(
         ":batch_dot",
         ":triangular_solve",
         ":util",
+        ":while_loop",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
