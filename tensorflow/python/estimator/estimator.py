@@ -637,7 +637,7 @@ class Estimator(object):
         # pylint: disable=protected-access
         local_init_op = (
             estimator_spec.scaffold.local_init_op or
-            monitored_session.Scaffold._default_local_init_op())
+            monitored_session.Scaffold.default_local_init_op())
         # pylint: enable=protected-access
 
         # Perform the export
