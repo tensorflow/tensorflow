@@ -617,6 +617,7 @@ cc_library(
         ":batch_space_ops",
         ":bcast_ops",
         ":bitcast_op",
+        ":broadcast_to_op",
         ":concat_op",
         ":constant_op",
         ":depth_space_ops",
@@ -665,6 +666,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bitcast_op",
     prefix = "bitcast_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "broadcast_to_op",
+    prefix = "broadcast_to_op",
     deps = ARRAY_DEPS,
 )
 

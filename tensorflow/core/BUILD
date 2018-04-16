@@ -71,10 +71,6 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load(
-    "@io_bazel_rules_closure//closure:defs.bzl",
-    "closure_js_proto_library",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "full_path",
     "if_android",

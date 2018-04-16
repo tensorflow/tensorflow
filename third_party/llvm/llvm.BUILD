@@ -2053,6 +2053,7 @@ cc_library(
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
         "include/llvm/CodeGen/*.def",
+        "include/llvm/CodeGen/*.inc",
     ]),
     deps = [
         ":analysis",
