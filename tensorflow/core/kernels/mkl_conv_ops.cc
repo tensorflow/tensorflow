@@ -154,11 +154,11 @@ class Conv2DFwd : public DnnOp {
 
  public:
   // Convolution forward execute with bias
-  void Execute(void* src, void* w, void* b, void* dst) {
-    src_mem_->set_data_handle(src);
-    filter_mem_->set_data_handle(w);
-    bias_mem_->set_data_handle(b);
-    dst_mem_->set_data_handle(dst);
+  void Execute(T* src, T* w, T* b, T* dst) {
+    src_mem_->set_data_handle(static_cast<void*>(src));
+    filter_mem_->set_data_handle(static_cast<void*>(w));
+    bias_mem_->set_data_handle(static_cast<void*>(b));
+    dst_mem_->set_data_handle(static_cast<void*>(dst));
     fwd_stream_->submit(fwd_primitives_);
 
     // after exec, set data handle back
@@ -171,10 +171,10 @@ class Conv2DFwd : public DnnOp {
   }
 
   // Convolution forward execute without bias
-  void Execute(void* src, void* w, void* dst) {
-    src_mem_->set_data_handle(src);
-    filter_mem_->set_data_handle(w);
-    dst_mem_->set_data_handle(dst);
+  void Execute(T* src, T* w, T* dst) {
+    src_mem_->set_data_handle(static_cast<void*>(src));
+    filter_mem_->set_data_handle(static_cast<void*>(w));
+    dst_mem_->set_data_handle(static_cast<void*>(dst));
     fwd_stream_->submit(fwd_primitives_);
 
     // after exec, set data handle back
@@ -843,8 +843,7 @@ class MklConv2DOp : public OpKernel {
                                  TFShapeToMklDnnDims(filter_tf_shape),
                                  &filter_out_tensor);
 
-      void* dst_data = static_cast<void*>(const_cast<T*>(
-                         dst_tensor->flat<T>().data()));
+      T* dst_data = static_cast<T*>(dst_tensor->flat<T>().data());
 
       // check whether src/filter need reorder
       std::vector<primitive> net;
@@ -858,16 +857,16 @@ class MklConv2DOp : public OpKernel {
               filter.GetTensorBuffer(filter_out_tensor), &net);
       stream(stream::kind::eager).submit(net).wait();
 
-      void* src_data = static_cast<void*>(
+      T* src_data = static_cast<T*>(
                 src.GetOpMem().get_data_handle());
-      void* filter_data = static_cast<void*>(
+      T* filter_data = static_cast<T*>(
                 filter.GetOpMem().get_data_handle());
 
       // execute convolution
       if (biasEnabled) {
         const Tensor& bias_tensor = MklGetInput(context, kInputIndex_Bias);
-        void* bias_data =  static_cast<void*>(const_cast<T*>(
-                             bias_tensor.flat<T>().data()));
+        T* bias_data = static_cast<T*>(const_cast<T*>(
+            bias_tensor.flat<T>().data()));
 
         conv2d_fwd->Execute(src_data, filter_data, bias_data, dst_data);
       } else {
