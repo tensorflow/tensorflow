@@ -17,8 +17,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import boosted_trees as canned_boosted_trees
+
+
+def _validate_input_fn_and_repeat_dataset(train_input_fn):
+  """Validates whether the input_fn is valid, and repeat() if tf.Dataset."""
+  def _input_fn():
+    result_input_fn = train_input_fn()
+    if isinstance(result_input_fn, dataset_ops.Dataset):
+      return result_input_fn.repeat()
+    return result_input_fn
+
+  return _input_fn
 
 
 class _BoostedTreesEstimator(estimator.Estimator):
@@ -113,10 +125,13 @@ def boosted_trees_classifier_train_in_memory(
   bucketized_feature_2 = bucketized_column(
     numeric_column('feature_2'), BUCKET_BOUNDARIES_2)
 
-  def input_fn_train():
+  def train_input_fn():
     dataset = create-dataset-from-training-data
-    # Don't use repeat or cache, since it is assumed to be one epoch
-    # This is either tf.data.Dataset, or a tuple of feature dict and label.
+    # This is tf.data.Dataset of a tuple of feature dict and label.
+    #   e.g. Dataset.zip((Dataset.from_tensors({'f1': f1_array, ...}),
+    #                     Dataset.from_tensors(label_array)))
+    # The returned Dataset shouldn't be batched.
+    # If Dataset repeats, only the first repetition would be used for training.
     return dataset
 
   classifier = boosted_trees_classifier_train_in_memory(
@@ -210,7 +225,9 @@ def boosted_trees_classifier_train_in_memory(
   in_memory_classifier = estimator.Estimator(
       model_fn=_model_fn, model_dir=model_dir, config=config)
 
-  in_memory_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
+  in_memory_classifier.train(
+      input_fn=_validate_input_fn_and_repeat_dataset(train_input_fn),
+      hooks=train_hooks)
 
   return in_memory_classifier
   # pylint: enable=protected-access
@@ -241,10 +258,13 @@ def boosted_trees_regressor_train_in_memory(
   bucketized_feature_2 = bucketized_column(
     numeric_column('feature_2'), BUCKET_BOUNDARIES_2)
 
-  def input_fn_train():
+  def train_input_fn():
     dataset = create-dataset-from-training-data
-    # Don't use repeat or cache, since it is assumed to be one epoch
-    # This is either tf.data.Dataset, or a tuple of feature dict and label.
+    # This is tf.data.Dataset of a tuple of feature dict and label.
+    #   e.g. Dataset.zip((Dataset.from_tensors({'f1': f1_array, ...}),
+    #                     Dataset.from_tensors(label_array)))
+    # The returned Dataset shouldn't be batched.
+    # If Dataset repeats, only the first repetition would be used for training.
     return dataset
 
   regressor = boosted_trees_regressor_train_in_memory(
@@ -329,7 +349,9 @@ def boosted_trees_regressor_train_in_memory(
   in_memory_regressor = estimator.Estimator(
       model_fn=_model_fn, model_dir=model_dir, config=config)
 
-  in_memory_regressor.train(input_fn=train_input_fn, hooks=train_hooks)
+  in_memory_regressor.train(
+      input_fn=_validate_input_fn_and_repeat_dataset(train_input_fn),
+      hooks=train_hooks)
 
   return in_memory_regressor
   # pylint: enable=protected-access
