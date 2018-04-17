@@ -56,7 +56,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // Used to complete/verify CollGroup.
   struct GroupRec {
     CollGroupParams group;
-    mutex mu;
+    mutable mutex mu;
     Status status GUARDED_BY(mu);
     std::set<string> device_set GUARDED_BY(mu);
     std::vector<string> device_list GUARDED_BY(mu);
@@ -71,7 +71,8 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // calling done.  Callback GroupRec* arg is only valid if status is ok.
   // Ownership of GroupRec stays with this object and does not pass to the
   // callback.
-  typedef std::function<void(const Status& s, GroupRec* gr)> GroupRecCallback;
+  typedef std::function<void(const Status& s, const GroupRec* gr)>
+      GroupRecCallback;
   void CompleteGroupLocal(const string& device, CollectiveParams* cp,
                           const GroupRecCallback& done)
       LOCKS_EXCLUDED(group_mu_);
@@ -135,7 +136,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // with this object and does not pass to the callback.
   typedef std::function<void(const Status& s, InstanceRec* ir)>
       InstanceRecCallback;
-  void FindInstanceRec(GroupRec* gr, CollectiveParams* cp,
+  void FindInstanceRec(const GroupRec* gr, CollectiveParams* cp,
                        const InstanceRecCallback& done)
       LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
@@ -144,27 +145,28 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   //
   // Preconditions:
   //  cp is populated with all DeviceLocalities
-  Status InitInstanceSharedParams(GroupRec* gr, const CollectiveParams* cp,
-                                  InstanceRec* ir)
+  Status InitInstanceSharedParams(const GroupRec* gr,
+                                  const CollectiveParams* cp, InstanceRec* ir)
       EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu) LOCKS_EXCLUDED(gr->mu);
 
   // Establishes the final order of ir->shared.instance.device_names and
   // ir->shared.instance.task_names by considering localities of all devices.
-  void CompleteDefaultRanking(GroupRec* gr, const CollectiveParams* cp,
+  void CompleteDefaultRanking(const GroupRec* gr, const CollectiveParams* cp,
                               InstanceRec* ir,
                               const std::vector<DeviceLocality>& localities)
       EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu);
 
   // Finish populating *cp.
   // Precondition: *gr has been fully populated by CompleteGroupLocal.
-  void CompleteInstanceLocal(const string& device, GroupRec* gr,
+  void CompleteInstanceLocal(const string& device, const GroupRec* gr,
                              CollectiveParams* cp, bool is_source,
                              const StatusCallback& done)
       LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
   // Finish populating *cp from fully initialized *ir.
   // Precondition: *gr and *ir are fully populated.
-  void CompleteInstanceFromInitializedIRec(const string& device, GroupRec* gr,
+  void CompleteInstanceFromInitializedIRec(const string& device,
+                                           const GroupRec* gr,
                                            CollectiveParams* cp,
                                            InstanceRec* ir, bool is_source,
                                            const StatusCallback& done)
