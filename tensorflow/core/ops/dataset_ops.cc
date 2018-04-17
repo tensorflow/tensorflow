@@ -421,6 +421,8 @@ REGISTER_OP("TFRecordDataset")
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      // `compression_type` could only be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused) );
       return shape_inference::ScalarShape(c);
     });
 
