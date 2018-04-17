@@ -28,24 +28,17 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util import tf_inspect
 
 
 def dynamic_builtin(f, *args, **kwargs):
   """Converts a builtin function call inline."""
-  # Some built-ins may be objects.
-  if not tf_inspect.isbuiltin(f) and f not in (range,):
-    return f(*args, **kwargs)
-
   if f is len:
     return dynamic_len(*args, **kwargs)
   if six.PY2 and f is xrange:
     return dynamic_range(*args, **kwargs)
   if f is range:
     return dynamic_range(*args, **kwargs)
-
-  raise NotImplementedError(
-      'The "%s" builtin is not yet supported.' % f.__name__)
+  raise ValueError('%s is not supported' % f)
 
 
 def dynamic_len(list_or_tensor):
