@@ -656,7 +656,7 @@ class ConvolutionOrthogonal2D(Initializer):
     a = random_ops.random_normal([n, n], dtype=self.dtype, seed=self.seed)
     if self.seed:
       self.seed += 1
-    q, r = linalg_ops.qr(a)
+    q, r = gen_linalg_ops.qr(a)
     d = array_ops.diag_part(r)
     # make q uniform
     q *= math_ops.sign(d)
@@ -709,7 +709,7 @@ class ConvolutionOrthogonal2D(Initializer):
       raise ValueError("The dimension of the matrices must be the same.")
     n = p1.shape.as_list()[0]
     kernel2x2 = {}
-    eye = linalg_ops.eye(n, dtype=self.dtype)
+    eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel2x2[0, 0] = math_ops.matmul(p1, p2)
     kernel2x2[0, 1] = math_ops.matmul(p1, (eye - p2))
     kernel2x2[1, 0] = math_ops.matmul((eye - p1), p2)
