@@ -2690,6 +2690,8 @@ reverse.__doc__ = gen_array_ops.reverse_v2.__doc__
 
 # pylint: disable=redefined-builtin
 @tf_export("reverse_sequence")
+@deprecation.deprecated_args(None, "Use the `seq_axis` argument instead", "seq_dim")
+@deprecation.deprecated_args(None, "Use the `batch_axis` argument instead", "batch_dim")
 def reverse_sequence(input,
                      seq_lengths,
                      seq_axis=None,
