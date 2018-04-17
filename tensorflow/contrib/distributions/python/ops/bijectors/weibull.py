@@ -128,7 +128,7 @@ class Weibull(bijector.Bijector):
       return x
     is_valid = check_ops.assert_non_negative(
         x,
-        message="Forward transformation input must be at least {}.".format(0))
+        message="Forward transformation input must be at least 0.")
     return control_flow_ops.with_dependencies([is_valid], x)
 
   def _maybe_assert_valid_y(self, y):
