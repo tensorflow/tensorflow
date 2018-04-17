@@ -571,8 +571,12 @@ class Dataset(object):
     return PrefetchDataset(self, buffer_size)
 
   @staticmethod
-  def list_files(file_pattern, shuffle=None):
+  def list_files(file_pattern, shuffle=None, seed=None):
     """A dataset of all files matching a pattern.
+
+    NOTE: The default behavior of this method is to return filenames in
+    a non-deterministic random shuffled order. Pass a `seed` or `shuffle=False`
+    to get results in a deterministic order.
 
     Example:
       If we had the following files on our filesystem:
@@ -584,20 +588,18 @@ class Dataset(object):
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
-    NOTE: The order of the file names returned can be non-deterministic even
-    when `shuffle` is `False`.
-
     Args:
       file_pattern: A string or scalar string `tf.Tensor`, representing
         the filename pattern that will be matched.
       shuffle: (Optional.) If `True`, the file names will be shuffled randomly.
         Defaults to `True`.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+        random seed that will be used to create the distribution. See
+        @{tf.set_random_seed} for behavior.
 
     Returns:
      Dataset: A `Dataset` of strings corresponding to file names.
     """
-    # TODO(b/73959787): Add a `seed` argument and make the `shuffle=False`
-    # behavior deterministic (e.g. by sorting the filenames).
     if shuffle is None:
       shuffle = True
     matching_files = gen_io_ops.matching_files(file_pattern)
@@ -607,7 +609,7 @@ class Dataset(object):
       # list of files might be empty.
       buffer_size = math_ops.maximum(
           array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
-      dataset = dataset.shuffle(buffer_size)
+      dataset = dataset.shuffle(buffer_size, seed=seed)
     return dataset
 
   def repeat(self, count=None):

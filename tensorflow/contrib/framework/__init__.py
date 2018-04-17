@@ -72,7 +72,9 @@ See the @{$python/contrib.framework} guide.
 @@variable
 @@VariableDeviceChooser
 @@convolutional_delta_orthogonal
+@@convolutional_orthogonal_1d
 @@convolutional_orthogonal_2d
+@@convolutional_orthogonal_3d
 @@zero_initializer
 
 @@load_checkpoint
@@ -118,7 +120,9 @@ from tensorflow.python.framework.tensor_spec import BoundedTensorSpec
 from tensorflow.python.framework.tensor_spec import TensorSpec
 from tensorflow.python.ops.array_ops import broadcast_to
 from tensorflow.python.ops.init_ops import convolutional_delta_orthogonal
+from tensorflow.python.ops.init_ops import convolutional_orthogonal_1d
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_2d
+from tensorflow.python.ops.init_ops import convolutional_orthogonal_3d
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['nest', 'broadcast_to']

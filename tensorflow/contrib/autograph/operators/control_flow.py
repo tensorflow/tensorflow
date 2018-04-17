@@ -25,6 +25,9 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 
+# TODO(mdan): Rename _loop to _stmt to follow Python nomenclature.
+# TODO(mdan): Rename arguments to match the AST names.
+
 
 def for_loop(iterated, extra_cond, loop_body, init_state):
   """Functional form of a for statement.
@@ -182,3 +185,32 @@ def _py_while_loop(loop_cond, loop_body, init_state, opts):
   while loop_cond(*state):
     state = loop_body(*state)
   return state
+
+
+def if_stmt(cond, body, orelse):
+  """Functional form of an if statement.
+
+  Args:
+    cond: Boolean.
+    body: Callable with no arguments, and outputs of the positive (if) branch
+        as return type.
+    orelse: Callable with no arguments, and outputs of the negative (else)
+        branch as return type.
+
+  Returns:
+    Tuple containing the statement outputs.
+  """
+  if tensor_util.is_tensor(cond):
+    return _tf_if_stmt(cond, body, orelse)
+  else:
+    return _py_if_stmt(cond, body, orelse)
+
+
+def _tf_if_stmt(cond, body, orelse):
+  """Overload of if_stmt that stages a TF cond."""
+  return control_flow_ops.cond(cond, body, orelse)
+
+
+def _py_if_stmt(cond, body, orelse):
+  """Overload of if_stmt that executes a Python if statement."""
+  return body() if cond else orelse()

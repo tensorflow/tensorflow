@@ -116,9 +116,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
                          opts->async, std::move(device_mgr), r);
 }
 
-void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
-  delete ctx;
-}
+void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) { delete ctx; }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   TF_DeviceList* list = new TF_DeviceList;
@@ -581,7 +579,6 @@ tensorflow::Device* SelectDevice(const tensorflow::NodeDef& ndef,
   return nullptr;
 }
 
-
 #ifdef TENSORFLOW_EAGER_USE_XLA
 // Synthesizes and returns a wrapper function over `op`, which must be a
 // primitive op (e.g. matmul).
@@ -725,9 +722,7 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
   }
 
   const tensorflow::FunctionDef* fdef;
-  {
-    fdef = op->ctx->context.FindFunctionDef(op->name);
-  }
+  { fdef = op->ctx->context.FindFunctionDef(op->name); }
   std::vector<TF_DataType> const_input_types;
   std::vector<TF_DataType> arg_input_types;
   tensorflow::gtl::FlatMap<int, int> op_input_to_func_input;
@@ -940,8 +935,8 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
     // allocate it.
-    std::vector<tensorflow::TensorHandle*> handle_retvals(*num_retvals,
-                                                          nullptr);
+    tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> handle_retvals(
+        *num_retvals);
     status->status = tensorflow::EagerExecute(
         &op->ctx->context, op->device, op->inputs, kernel, maybe_stats.get(),
         handle_retvals.data(), *num_retvals);
@@ -1090,7 +1085,6 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
   }
 }
 }  // namespace tensorflow
-
 
 TFE_Op::~TFE_Op() {
   for (tensorflow::TensorHandle* h : inputs) {
