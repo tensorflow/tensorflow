@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <tuple>
+
 #include "tensorflow/core/platform/denormal.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
@@ -40,36 +41,51 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 
-ScopedFlushDenormal::ScopedFlushDenormal() {
-// For now, we flush denormals only on SSE 3.  Other architectures such as ARM
-// can be added as needed.
+static void SetDenormalState(bool flush_zero_mode, bool denormals_zero_mode) {
+  // For now, we flush denormals only on SSE 3.  Other architectures such as ARM
+  // can be added as needed.
 
 #ifdef DENORM_USE_INTRINSICS
   if (TestCPUFeature(SSE3)) {
-    // Save existing flags
-    flush_zero_mode_ = _MM_GET_FLUSH_ZERO_MODE() == _MM_FLUSH_ZERO_ON;
-    denormals_zero_mode_ =
-        _MM_GET_DENORMALS_ZERO_MODE() == _MM_DENORMALS_ZERO_ON;
-
-    // Flush denormals to zero (the FTZ flag).
-    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
-
-    // Interpret denormal inputs as zero (the DAZ flag).
-    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+    // Restore flags
+    _MM_SET_FLUSH_ZERO_MODE(flush_zero_mode ? _MM_FLUSH_ZERO_ON
+                                            : _MM_FLUSH_ZERO_OFF);
+    _MM_SET_DENORMALS_ZERO_MODE(denormals_zero_mode ? _MM_DENORMALS_ZERO_ON
+                                                    : _MM_DENORMALS_ZERO_OFF);
   }
 #endif
 }
 
-ScopedFlushDenormal::~ScopedFlushDenormal() {
+static std::pair<bool, bool> GetDernormalState() {
+  // For now, we flush denormals only on SSE 3.  Other architectures such as ARM
+  // can be added as needed.
+
 #ifdef DENORM_USE_INTRINSICS
   if (TestCPUFeature(SSE3)) {
-    // Restore flags
-    _MM_SET_FLUSH_ZERO_MODE(flush_zero_mode_ ? _MM_FLUSH_ZERO_ON
-                                             : _MM_FLUSH_ZERO_OFF);
-    _MM_SET_DENORMALS_ZERO_MODE(denormals_zero_mode_ ? _MM_DENORMALS_ZERO_ON
-                                                     : _MM_DENORMALS_ZERO_OFF);
+    // Save existing flags
+    bool flush_zero_mode = _MM_GET_FLUSH_ZERO_MODE() == _MM_FLUSH_ZERO_ON;
+    bool denormals_zero_mode =
+        _MM_GET_DENORMALS_ZERO_MODE() == _MM_DENORMALS_ZERO_ON;
+    return {flush_zero_mode, denormals_zero_mode};
   }
 #endif
+  return {false, false};
+}
+
+ScopedRestoreFlushDenormalState::ScopedRestoreFlushDenormalState() {
+  std::tie(flush_zero_mode_, denormals_zero_mode_) = GetDernormalState();
+}
+
+ScopedRestoreFlushDenormalState::~ScopedRestoreFlushDenormalState() {
+  SetDenormalState(flush_zero_mode_, denormals_zero_mode_);
+}
+
+ScopedFlushDenormal::ScopedFlushDenormal() {
+  SetDenormalState(/*flush_zero_mode=*/true, /*denormals_zero_mode=*/true);
+}
+
+ScopedDontFlushDenormal::ScopedDontFlushDenormal() {
+  SetDenormalState(/*flush_zero_mode=*/false, /*denormals_zero_mode=*/false);
 }
 
 }  // namespace port

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
@@ -168,7 +169,7 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op("_Arg");
+      gnode->set_op(FunctionLibraryDefinition::kArgOp);
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
@@ -278,7 +279,7 @@ class FunctionInstantiationHelper {
       auto it = index_.lower_bound(node_name);
       while (it != index_.end() && it->first <= node_colon_bound) {
         if (it->first == node_name ||
-            tensorflow::StringPiece(it->first).starts_with(node_colon)) {
+            tensorflow::str_util::StartsWith(it->first, node_colon)) {
           nid = it->second.nid;
           break;
         }
@@ -328,7 +329,7 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op("_Retval");
+      gnode->set_op(FunctionLibraryDefinition::kRetOp);
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", (*ret_index)++, gnode);
@@ -502,7 +503,7 @@ string Print(const NodeDef& n) {
   std::vector<StringPiece> dat;
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
-    if (s.Consume("^")) {
+    if (str_util::ConsumePrefix(&s, "^")) {
       dep.push_back(s.ToString());
     } else {
       dat.push_back(s);
@@ -558,9 +559,9 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
   for (const NodeDef* n : nodes) {
-    if (n->op() == "_Arg") {
+    if (n->op() == FunctionLibraryDefinition::kArgOp) {
       arg.push_back(n);
-    } else if (n->op() == "_Retval") {
+    } else if (n->op() == FunctionLibraryDefinition::kRetOp) {
       ret.push_back(n);
     } else {
       body.push_back(n);
@@ -795,11 +796,24 @@ uint64 FunctionDefHash(const FunctionDef& fdef) {
   return h;
 }
 
-string Canonicalize(const string& funcname, AttrSlice attrs) {
+string Canonicalize(const string& funcname, AttrSlice attrs,
+                    const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
-  entries.reserve(attrs.size());
+  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
   for (auto p : attrs) {
     entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+  }
+  if (!options.target.empty()) {
+    entries.push_back(
+        strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+  }
+  if (options.overlay_lib) {
+    entries.push_back(strings::StrCat(
+        "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
+  }
+  if (!options.state_handle.empty()) {
+    entries.push_back(
+        strings::StrCat("_state_handle", "=", options.state_handle));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
@@ -1051,26 +1065,36 @@ Status FunctionLibraryDefinition::AddLibrary(
   return Status::OK();
 }
 
-void FunctionLibraryDefinition::RemoveFunction(const string& func) {
+Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
   const auto& i = function_defs_.find(func);
-  DCHECK(i != function_defs_.end());
+  if (i == function_defs_.end()) {
+    return errors::InvalidArgument("Tried to remove non-existent function ",
+                                   func);
+  }
   function_defs_.erase(i);
+  return Status::OK();
 }
 
-void FunctionLibraryDefinition::RemoveGradient(const string& func) {
+Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
-  DCHECK(i != func_grad_.end());
+  if (i == func_grad_.end()) {
+    return errors::InvalidArgument("Tried to remove non-existent gradient ",
+                                   func);
+  }
   func_grad_.erase(i);
+  return Status::OK();
 }
 
 void FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
   for (const string& f : funcs) {
-    RemoveFunction(f);
+    Status s = RemoveFunction(f);
+    DCHECK(s.ok());
   }
   for (const string& f : funcs_with_grads) {
-    RemoveGradient(f);
+    Status s = RemoveGradient(f);
+    DCHECK(s.ok());
   }
 }
 
@@ -1251,8 +1275,8 @@ FunctionDef FunctionDefHelper::Define(const string& name,
     }
     for (const string& a : src.arg) {
       const auto iter = ret_index.find(a);
-      CHECK(iter != ret_index.end()) << "Node input '" << a << "' in '"
-                                     << src.ret[0] << "' of " << name;
+      CHECK(iter != ret_index.end())
+          << "Node input '" << a << "' in '" << src.ret[0] << "' of " << name;
       n->add_input(iter->second);
     }
     for (const string& d : src.dep) {

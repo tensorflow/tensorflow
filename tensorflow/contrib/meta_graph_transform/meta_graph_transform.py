@@ -171,7 +171,14 @@ def _clean_save_and_restore(graph_def, op, removed_op_names):
   shape_op_value_tensor.tensor_shape.dim[0].size = len(shapes)
   op.attr['dtypes'].list.type[:] = dtypes
 
+  if not name_op.attr['_output_shapes'].list.shape:
+    name_op.attr['_output_shapes'].list.shape.add()
+    name_op.attr['_output_shapes'].list.shape[0].dim.add()
   name_op.attr['_output_shapes'].list.shape[0].dim[0].size = len(names)
+
+  if not shape_op.attr['_output_shapes'].list.shape:
+    shape_op.attr['_output_shapes'].list.shape.add()
+    shape_op.attr['_output_shapes'].list.shape[0].dim.add()
   shape_op.attr['_output_shapes'].list.shape[0].dim[0].size = len(shapes)
 
 
@@ -341,7 +348,7 @@ def _freeze_graph_with_def_protos(input_graph_def, output_node_names,
                                   input_saver_def, input_checkpoint):
   """Converts all variables in a graph and checkpoint into constants.
 
-  During this process, we need to retain certain initialzer nodes (e.g. table
+  During this process, we need to retain certain initializer nodes (e.g. table
   initializer nodes). Instead of determining which dependencies
   of the shared initializer node (e.g. group_deps) to keep, we
   reconstruct the connections between the individual initializer nodes and

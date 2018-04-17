@@ -34,14 +34,21 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
                                           const string& name_prefix,
                                           std::vector<Device*>* devices) {
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
+  registration.requires_compilation = true;
+  registration.enable_jit_by_default = false;
+  registration.compile_resource_ops = true;
+
   static XlaDeviceOpRegistrations* registrations =
       RegisterXlaDeviceKernels(DEVICE_XLA_GPU, DEVICE_GPU_XLA_JIT);
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  Status status = XlaDevice::Create(
-      "CUDA", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options, name_prefix,
-      /*register_device_for_compilation=*/true, &device);
+  Status status =
+      XlaDevice::Create("CUDA", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options,
+                        name_prefix, registration,
+                        /*transfer_as_literal=*/false, &device);
   if (!status.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << status;
@@ -55,8 +62,9 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 6> kAllXlaGpuTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+constexpr std::array<DataType, 8> kAllXlaGpuTypes = {
+    {DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL,
+     DT_BFLOAT16}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_GPU, XlaLocalLaunchOp, kAllXlaGpuTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_GPU, kAllXlaGpuTypes);

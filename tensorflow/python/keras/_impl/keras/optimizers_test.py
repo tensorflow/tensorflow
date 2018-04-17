@@ -102,6 +102,7 @@ class KerasOptimizersTest(test.TestCase):
     with self.test_session():
       _test_optimizer(keras.optimizers.Adam())
       _test_optimizer(keras.optimizers.Adam(decay=1e-3))
+      _test_optimizer(keras.optimizers.Adam(amsgrad=True))
 
   def test_adamax(self):
     with self.test_session():

@@ -244,6 +244,33 @@ __global__ void RowReduceKernel(
   if (row < num_rows && lane == 0) out[row] = sum;
 }
 
+template <typename T1>
+struct storage_type {
+  T1 val;
+  __host__ __device__ storage_type() {}
+  __host__ __device__ operator T1() { return val; }
+  __host__ __device__ storage_type<T1>& operator=(const T1& in) {
+    val = in;
+    return *this;
+  }
+};
+
+template <typename T2>
+struct storage_type<std::complex<T2>> {
+  T2 real;
+  T2 imag;
+  __host__ __device__ storage_type() {}
+  __host__ __device__ operator std::complex<T2>() {
+    return std::complex<T2>(real, imag);
+  }
+  __host__ __device__ storage_type<std::complex<T2>>& operator=(
+      const std::complex<T2>& in) {
+    real = in.real();
+    imag = in.imag();
+    return *this;
+  }
+};
+
 // Works only if there are <= 16 columns
 // each warps sums over multiple rows at once
 template <typename T, typename outT, typename Op>
@@ -268,7 +295,7 @@ __global__ void ColumnReduceMax16ColumnsKernel(
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
-  __shared__ value_type partial_sums[32 * 33];
+  __shared__ storage_type<value_type> partial_sums[32 * 33];
 
   row += rows_per_warp * gridDim.y * blockDim.y;
   for (; row < num_rows; row += rows_per_warp * gridDim.y * blockDim.y) {
@@ -280,8 +307,8 @@ __global__ void ColumnReduceMax16ColumnsKernel(
   const int rows_in_this_warp = min(rows_per_warp, num_rows - start_row_warp);
   // not the most efficient way to do this sum
   for (int i = 1; i < rows_in_this_warp; ++i) {
-    value_type tmp =
-        cub::ShuffleIndex(sum, threadIdx.x + i * num_cols, 32, 0xffffffff);
+    value_type tmp = cub::ShuffleIndex<32, value_type>(
+        sum, static_cast<int>(threadIdx.x + i * num_cols), 0xffffffff);
     if (lane < num_cols) sum = op(sum, tmp);
   }
 
@@ -294,7 +321,8 @@ __global__ void ColumnReduceMax16ColumnsKernel(
 
     if (blockDim.y > 1) {
       for (int row = 1; row < blockDim.y; ++row) {
-        s = op(s, partial_sums[threadIdx.x * 33 + row]);
+        value_type t = partial_sums[threadIdx.x * 33 + row];
+        s = op(s, t);
       }
     }
 
@@ -312,12 +340,11 @@ __global__ void ColumnReduceKernel(
   int col = blockIdx.x * 32 + threadIdx.x;
 
   value_type sum = initVal;
-  if (row < num_rows && col < num_cols)
-    sum = in[row * num_cols + col];
+  if (row < num_rows && col < num_cols) sum = in[row * num_cols + col];
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
-  __shared__ value_type partial_sums[32 * 33];
+  __shared__ storage_type<value_type> partial_sums[32 * 33];
 
   row += gridDim.y * blockDim.y;
 
@@ -348,7 +375,8 @@ __global__ void ColumnReduceKernel(
         min(blockDim.y, num_rows - blockIdx.y * blockDim.y);
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
-      s = op(s, partial_sums[threadIdx.x * 33 + row]);
+      value_type t = partial_sums[threadIdx.x * 33 + row];
+      s = op(s, t);
     }
 
     out[col * gridDim.y + blockIdx.y] = s;
@@ -366,8 +394,7 @@ __global__ void CleanupSegments(
   const int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
   value_type val = initVal;
-  if (tid < segment_size * num_cols)
-    val = partial_sums[tid];
+  if (tid < segment_size * num_cols) val = partial_sums[tid];
 
   typedef cub::WarpReduce<value_type> WarpReduce;
 

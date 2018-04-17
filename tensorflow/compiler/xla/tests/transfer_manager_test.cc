@@ -33,29 +33,27 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
-
 namespace {
 
 class TransferManagerTest : public LocalClientTestBase {
  protected:
-  TransferManagerTest() {
-    shape_size_fn_ = [this](const Shape& shape) {
-      return transfer_manager_->GetByteSizeRequirement(shape);
-    };
-  }
+  TransferManagerTest()
+      : shape_size_fn_([this](const Shape& shape) {
+          return transfer_manager_->GetByteSizeRequirement(shape);
+        }) {}
 
-  ~TransferManagerTest() override {}
+  ~TransferManagerTest() override = default;
 
   std::unique_ptr<ScopedShapedBuffer> AllocateDeviceBuffer(const Shape& shape) {
-    return ScopedShapedBuffer::Allocate(
-               shape, GetOrCreateAllocator(local_client_->platform()),
-               /*device_ordinal=*/0, shape_size_fn_)
-        .ConsumeValueOrDie();
+    return transfer_manager_
+        ->AllocateScopedShapedBuffer(
+            shape, GetOrCreateAllocator(local_client_->platform()),
+            /*device_ordinal=*/0)
+        .ValueOrDie();
   }
 
+ private:
   std::function<int64(const Shape&)> shape_size_fn_;
 };
 
@@ -121,7 +119,7 @@ XLA_TEST_F(TransferManagerTest, TransferR1U8) {
                           transfer_manager_->TransferLiteralFromDevice(
                               stream_executor_, *device_buffer));
 
-  EXPECT_EQ(result->u8s_string(), test_string);
+  EXPECT_EQ(result->GetR1U8AsString(), test_string);
 }
 
 XLA_TEST_F(TransferManagerTest, TransferR2F32) {
@@ -214,6 +212,39 @@ XLA_TEST_F(TransferManagerTest, TransferNestedTuple) {
   LiteralTestUtil::ExpectEqual(*literal, *result);
 }
 
-}  // namespace
+XLA_TEST_F(TransferManagerTest, TransferComplexValue) {
+  std::unique_ptr<Literal> literal = Literal::CreateR1<complex64>(
+      {complex64(1.0f, 2.0f), complex64(42.0f, -123.4f)});
+  auto device_buffer = AllocateDeviceBuffer(literal->shape());
 
+  // Round trip literal through device.
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
+      stream_executor_, *literal, *device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
+                          transfer_manager_->TransferLiteralFromDevice(
+                              stream_executor_, *device_buffer));
+
+  LiteralTestUtil::ExpectEqual(*literal, *result);
+}
+
+XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
+  std::unique_ptr<Literal> literal = Literal::MakeTuple(
+      {Literal::CreateR1<complex64>(
+           {complex64(1.0f, 2.0f), complex64(42.0f, -123.4f)})
+           .get(),
+       Literal::CreateR1<int32>({1, 2, 3, 4, 5, 6}).get(),
+       Literal::CreateR0<complex64>(complex64(0.3f, -0.4f)).get()});
+  auto device_buffer = AllocateDeviceBuffer(literal->shape());
+
+  // Round trip literal through device.
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
+      stream_executor_, *literal, *device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
+                          transfer_manager_->TransferLiteralFromDevice(
+                              stream_executor_, *device_buffer));
+
+  LiteralTestUtil::ExpectEqual(*literal, *result);
+}
+
+}  // namespace
 }  // namespace xla

@@ -59,6 +59,9 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes);
 // routine, this routine returns 0.
 std::size_t MallocExtension_GetAllocatedSize(const void* p);
 
+// Returns the amount of RAM available in bytes, or INT64_MAX if unknown.
+int64 AvailableRam();
+
 }  // namespace port
 }  // namespace tensorflow
 

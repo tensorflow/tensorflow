@@ -18,18 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
+import unittest
 import numpy as np
 
-from tensorflow.python.framework import constant_op
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
+@test_util.with_c_api
 class SoftmaxTest(test.TestCase):
 
   def _npSoftmax(self, features, dim=-1, log=False):
@@ -42,9 +44,10 @@ class SoftmaxTest(test.TestCase):
             features, axis=dim), one_only_on_dim))
     softmax = e / np.reshape(np.sum(e, axis=dim), one_only_on_dim)
     if log:
-      return np.log(softmax)
+      res = np.log(softmax)
     else:
-      return softmax
+      res = softmax
+    return res
 
   def _testSoftmax(self, np_features, dim=-1, log=False, use_gpu=False):
     # A previous version of the code checked the op name rather than the op type
@@ -54,9 +57,9 @@ class SoftmaxTest(test.TestCase):
     np_softmax = self._npSoftmax(np_features, dim=dim, log=log)
     with self.test_session(use_gpu=use_gpu):
       if log:
-        tf_softmax = nn_ops.log_softmax(np_features, dim=dim, name=name)
+        tf_softmax = nn_ops.log_softmax(np_features, axis=dim, name=name)
       else:
-        tf_softmax = nn_ops.softmax(np_features, dim=dim, name=name)
+        tf_softmax = nn_ops.softmax(np_features, axis=dim, name=name)
       out = tf_softmax.eval()
     self.assertAllCloseAccordingToType(np_softmax, out)
     self.assertShapeEqual(np_softmax, tf_softmax)
@@ -99,10 +102,10 @@ class SoftmaxTest(test.TestCase):
 
   def _testOverflow(self, use_gpu=False):
     if use_gpu:
-      type = np.float32
+      type = np.float32  # pylint: disable=redefined-builtin
     else:
-      type = np.float64
-    max = np.finfo(type).max
+      type = np.float64  # pylint: disable=redefined-builtin
+    max = np.finfo(type).max  # pylint: disable=redefined-builtin
     features = np.array([[1., 1., 1., 1.], [max, 1., 2., 3.]]).astype(type)
     with self.test_session(use_gpu=use_gpu):
       tf_log_softmax = nn_ops.log_softmax(features)
@@ -118,9 +121,31 @@ class SoftmaxTest(test.TestCase):
     self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32))
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testFloatGPU(self):
+    if test.is_gpu_available(cuda_only=True):
+      rows = [2**x + np.random.randint(0, 1024) for x in range(1, 10)]
+      cols = [2**x + np.random.randint(0, 1024) for x in range(1, 10)]
+      for row, col in zip(rows, cols):
+        logging.info("Testing softmax float dtype in shape [%d, %d]", row, col)
+        data = np.random.rand(row, col)
+        self._testAll(data.astype(np.float32))
+
   def testHalf(self):
     self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16))
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testHalfGPU(self):
+    if test.is_gpu_available(cuda_only=True):
+      rows = [2**x + np.random.randint(0, 1024) for x in range(1, 8)]
+      cols = [2**x + np.random.randint(0, 1024) for x in range(1, 8)]
+      for row, col in zip(rows, cols):
+        logging.info("Testing softmax half dtype in shape [%d, %d]", row, col)
+        data = np.random.rand(row, col)
+        self._testAll(data.astype(np.float16))
 
   def testDouble(self):
     self._testSoftmax(
@@ -166,16 +191,19 @@ class SoftmaxTest(test.TestCase):
 
   def testEmptyInput(self):
     with self.test_session():
-      x = constant_op.constant([[]], shape=[0, 3])
+      x = array_ops.placeholder(dtypes.float32, shape=[0, 3])
       self.assertEqual(0, array_ops.size(x).eval())
       # reshape would raise if logits is empty
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        nn_ops.softmax(x, dim=0).eval()
+        nn_ops.softmax(x, axis=0).eval()
 
   def testDimTooLarge(self):
     with self.test_session():
+      # Use placeholder to make sure we get runtime error instead of shape
+      # inference error.
+      dim = array_ops.placeholder_with_default(100, shape=[])
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        nn_ops.softmax([1., 2., 3., 4.], dim=100).eval()
+        nn_ops.softmax([1., 2., 3., 4.], axis=dim).eval()
 
   def testLargeDims(self):
     # Make sure that we properly handle large inputs. See

@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "CollectiveBcastRecv"
+  visibility: SKIP
+  summary: "Receives a tensor value broadcast from another device."
+}

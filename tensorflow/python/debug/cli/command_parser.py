@@ -540,4 +540,11 @@ def get_print_tensor_argparser(description):
       action="store_true",
       help="Include summary for non-empty tensors of numeric (int*, float*, "
       "complex*) and Boolean types.")
+  ap.add_argument(
+      "-w",
+      "--write_path",
+      type=str,
+      default="",
+      help="Path of the numpy file to write the tensor data to, using "
+      "numpy.save().")
   return ap

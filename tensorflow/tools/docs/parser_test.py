@@ -76,8 +76,9 @@ class ParserTest(googletest.TestCase):
         pass
 
     string = (
-        'A @{tf.reference}, another @{tf.reference}, a member '
-        '@{tf.reference.foo}, and a @{tf.third$link `text` with `code` in it}.')
+        'A @{tf.reference}, another @{tf.reference$with\nnewline}, a member '
+        '@{tf.reference.foo}, and a @{tf.third$link `text` with `code` in '
+        'it}.')
     duplicate_of = {'tf.third': 'tf.fourth'}
     index = {'tf.reference': HasOneMember,
              'tf.reference.foo': HasOneMember.foo,
@@ -93,7 +94,7 @@ class ParserTest(googletest.TestCase):
     self.assertEqual('A <a href="../../tf/reference.md">'
                      '<code>tf.reference</code></a>, '
                      'another <a href="../../tf/reference.md">'
-                     '<code>tf.reference</code></a>, '
+                     'with\nnewline</a>, '
                      'a member <a href="../../tf/reference.md#foo">'
                      '<code>tf.reference.foo</code></a>, '
                      'and a <a href="../../tf/fourth.md">link '
@@ -397,7 +398,6 @@ class ParserTest(googletest.TestCase):
     self.assertIn('<code>test_function', docs)
 
   def test_argspec_for_functools_partial(self):
-
     # pylint: disable=unused-argument
     def test_function_for_partial1(arg1, arg2, kwarg1=1, kwarg2=2):
       pass
@@ -408,45 +408,67 @@ class ParserTest(googletest.TestCase):
 
     # pylint: disable=protected-access
     # Make sure everything works for regular functions.
-    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None,
-                                  None, (1, 2))
+    expected = tf_inspect.FullArgSpec(args=['arg1', 'arg2', 'kwarg1', 'kwarg2'],
+                                      varargs=None, varkw=None, defaults=(1, 2),
+                                      kwonlyargs=[], kwonlydefaults=None,
+                                      annotations={})
     self.assertEqual(expected, parser._get_arg_spec(test_function_for_partial1))
 
     # Make sure doing nothing works.
-    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None,
-                                  None, (1, 2))
+    expected = tf_inspect.FullArgSpec(args=['arg1', 'arg2', 'kwarg1', 'kwarg2'],
+                                      varargs=None, varkw=None, defaults=(1, 2),
+                                      kwonlyargs=[], kwonlydefaults=None,
+                                      annotations={})
     partial = functools.partial(test_function_for_partial1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting args from the front works.
-    expected = tf_inspect.ArgSpec(['arg2', 'kwarg1', 'kwarg2'], None, None,
-                                  (1, 2))
+    expected = tf_inspect.FullArgSpec(args=['arg2', 'kwarg1', 'kwarg2'],
+                                      varargs=None, varkw=None, defaults=(1, 2),
+                                      kwonlyargs=[], kwonlydefaults=None,
+                                      annotations={})
     partial = functools.partial(test_function_for_partial1, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.ArgSpec(['kwarg2',], None, None, (2,))
+    expected = tf_inspect.FullArgSpec(args=['kwarg2'],
+                                      varargs=None, varkw=None, defaults=(2,),
+                                      kwonlyargs=[], kwonlydefaults=None,
+                                      annotations={})
     partial = functools.partial(test_function_for_partial1, 1, 2, 3)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting kwargs works.
-    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg2'], None, None, (2,))
+    expected = tf_inspect.FullArgSpec(args=['arg1', 'arg2', 'kwarg2'],
+                                      varargs=None, varkw=None, defaults=(2,),
+                                      kwonlyargs=[], kwonlydefaults=None,
+                                      annotations={})
     partial = functools.partial(test_function_for_partial1, kwarg1=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1'], None, None, (1,))
+    expected = tf_inspect.FullArgSpec(args=['arg1', 'arg2', 'kwarg1'],
+                                      varargs=None, varkw=None, defaults=(1,),
+                                      kwonlyargs=[], kwonlydefaults=None,
+                                      annotations={})
     partial = functools.partial(test_function_for_partial1, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.ArgSpec(['arg1'], None, None, ())
+    expected = tf_inspect.FullArgSpec(args=['arg1'],
+                                      varargs=None, varkw=None, defaults=(),
+                                      kwonlyargs=[], kwonlydefaults=None,
+                                      annotations={})
     partial = functools.partial(test_function_for_partial1,
                                 arg2=0, kwarg1=0, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure *args, *kwargs is accounted for.
-    expected = tf_inspect.ArgSpec([], 'my_args', 'my_kwargs', ())
+    expected = tf_inspect.FullArgSpec(args=[],
+                                      varargs='my_args', varkw='my_kwargs',
+                                      defaults=(),
+                                      kwonlyargs=[], kwonlydefaults=None,
+                                      annotations={})
     partial = functools.partial(test_function_for_partial2, 0, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
-
+    
     # pylint: enable=protected-access
 
   def testSaveReferenceResolver(self):
@@ -523,10 +545,6 @@ class TestParseFunctionDetails(googletest.TestCase):
 class TestGenerateSignature(googletest.TestCase):
 
   def test_known_object(self):
-    if sys.version_info >= (3, 0):
-      print('Warning: Doc generation is not supported from python3.')
-      return
-
     known_object = object()
     reverse_index = {id(known_object): 'location.of.object.in.api'}
 

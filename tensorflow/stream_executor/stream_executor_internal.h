@@ -219,7 +219,7 @@ class StreamExecutorInterface {
   virtual void DeallocateTimer(Timer *timer) = 0;
   virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
   virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
-  virtual bool BlockHostUntilDone(Stream *stream) = 0;
+  virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
   virtual int PlatformDeviceCount() = 0;
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;

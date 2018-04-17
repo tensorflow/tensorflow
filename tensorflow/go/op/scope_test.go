@@ -69,6 +69,49 @@ func TestScopeSubScopeErrors(t *testing.T) {
 	}
 }
 
+func TestControlDependencies(t *testing.T) {
+	var (
+		s        = NewScope()
+		zero     = Const(s.SubScope("zero"), int32(0))
+		one      = Const(s.SubScope("one"), int32(1))
+		variable = VarHandleOp(s, tf.Int32, tf.ScalarShape())
+		init     = AssignVariableOp(s, variable, zero)
+		update   = AssignAddVariableOp(s, variable, one)
+		readDeps = []*tf.Operation{update}
+	)
+	// We intend for `read` to have a control dependency on `update`.
+	s = s.WithControlDependencies(readDeps...)
+	// Ensure that Scope.WithControlDependencies makes a copy of the underlying
+	// array, rather than just holding a slice reference to the same user-supplied
+	// underlying array.  If the copy is correctly performed, overwriting
+	// readDeps[0] should have no effect on control dependencies for `read`.
+	readDeps[0] = init
+	read := ReadVariableOp(s, variable, tf.Int32)
+
+	graph, err := s.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := tf.NewSession(graph, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = sess.Run(nil, nil, []*tf.Operation{init}); err != nil {
+		t.Fatal(err)
+	}
+	// Without the control dependency, the read operation may not see the
+	// update.
+	for i := int32(0); i < 10; i++ {
+		out, err := sess.Run(nil, []tf.Output{read}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := out[0].Value().(int32), i+1; got != want {
+			t.Errorf("Got %d, want %d", got, want)
+		}
+	}
+}
+
 func TestScopeFinalize(t *testing.T) {
 	var (
 		root = NewScope()

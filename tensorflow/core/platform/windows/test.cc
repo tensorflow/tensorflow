@@ -13,19 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/net.h"
 
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace testing {
-
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
-  LOG(FATAL) << "CreateSubProcess NOT IMPLEMENTED for Windows yet ! ";
-  return nullptr;
-}
 
 int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
 

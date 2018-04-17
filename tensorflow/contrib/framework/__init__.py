@@ -53,6 +53,7 @@ See the @{$python/contrib.framework} guide.
 @@assign_from_values_fn
 @@create_global_step
 @@filter_variables
+@@fuse_op
 @@get_global_step
 @@get_or_create_global_step
 @@get_local_variables
@@ -65,10 +66,13 @@ See the @{$python/contrib.framework} guide.
 @@get_variable_full_name
 @@get_variables_to_restore
 @@get_variables
+@@global_variable
 @@local_variable
 @@model_variable
 @@variable
 @@VariableDeviceChooser
+@@convolutional_delta_orthogonal
+@@convolutional_orthogonal_2d
 @@zero_initializer
 
 @@load_checkpoint
@@ -80,7 +84,20 @@ See the @{$python/contrib.framework} guide.
 @@load_linear_multiclass_bias_initializer
 @@load_variable_slot_initializer
 
+@@argsort
+@@py_func
 @@sort
+
+@@get_placeholders
+
+@@smart_cond
+@@smart_constant_value
+@@smart_case
+
+@@CriticalSection
+
+@@BoundedTensorSpec
+@@TensorSpec
 """
 
 from __future__ import absolute_import
@@ -94,9 +111,16 @@ from tensorflow.contrib.framework.python.ops import *
 
 from tensorflow.python.framework.ops import prepend_name_scope
 from tensorflow.python.framework.ops import strip_name_scope
-
+from tensorflow.python.framework.smart_cond import smart_case
+from tensorflow.python.framework.smart_cond import smart_cond
+from tensorflow.python.framework.smart_cond import smart_constant_value
+from tensorflow.python.framework.tensor_spec import BoundedTensorSpec
+from tensorflow.python.framework.tensor_spec import TensorSpec
+from tensorflow.python.ops.array_ops import broadcast_to
+from tensorflow.python.ops.init_ops import convolutional_delta_orthogonal
+from tensorflow.python.ops.init_ops import convolutional_orthogonal_2d
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['nest']
+_allowed_symbols = ['nest', 'broadcast_to']
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

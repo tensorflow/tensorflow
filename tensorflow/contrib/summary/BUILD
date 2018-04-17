@@ -10,21 +10,11 @@ load(
     "tf_gen_op_wrapper_py",
 )
 
-tf_gen_op_wrapper_py(
-    name = "gen_summary_ops",
-    out = "gen_summary_ops.py",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:summary_ops_op_lib",
-    ],
-)
-
 py_test(
     name = "summary_ops_test",
     srcs = ["summary_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":summary_ops",
         ":summary_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
@@ -32,6 +22,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
@@ -44,34 +35,18 @@ py_test(
     srcs = ["summary_ops_graph_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":summary_ops",
         ":summary_test_util",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
-    ],
-)
-
-py_library(
-    name = "summary_ops",
-    srcs = ["summary_ops.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":gen_summary_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:layers_base",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:summary_op_util",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -81,20 +56,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":summary_ops",
+        "//tensorflow/python:summary_ops_v2",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 # NOTE: target cannot be testonly because it needs to be in the pip
@@ -106,7 +69,10 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary_ops_v2",
+        "@org_sqlite//:python",
     ],
 )

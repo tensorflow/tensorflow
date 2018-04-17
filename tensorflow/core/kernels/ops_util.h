@@ -98,6 +98,19 @@ gtl::InlinedVector<T, 8> ComputeStride(const TensorShape& shape) {
   return strides;
 }
 
+// Helper to compute 'strides' given an Eigen TensorDimensions
+template <typename T, typename EigenDimensions>
+gtl::InlinedVector<T, 8> ComputeEigenStrides(const EigenDimensions& shape) {
+  const int ndims = shape.rank();
+  gtl::InlinedVector<T, 8> strides(ndims);
+  T stride = 1;
+  for (int i = ndims - 1; i >= 0; --i) {
+    strides[i] = stride;
+    stride *= static_cast<T>(shape[i]);
+  }
+  return strides;
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_OPS_UTIL_H_

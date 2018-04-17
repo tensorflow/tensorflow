@@ -3,6 +3,7 @@
 load("@protobuf_archive//:protobuf.bzl", "proto_gen")
 load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
+load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -66,16 +67,14 @@ def pyx_library(
       pxd_srcs.append(src)
 
   # Invoke cython to produce the shared object libraries.
-  cpp_outs = [src.split(".")[0] + ".cpp" for src in pyx_srcs]
-  native.genrule(
-      name = name + "_cython_translation",
-      srcs = pyx_srcs,
-      outs = cpp_outs,
-      cmd = ("PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS)"
-             # Rename outputs to expected location.
-             + """ && python -c 'import shutil, sys; n = len(sys.argv); [shutil.copyfile(src.split(".")[0] + ".cpp", dst) for src, dst in zip(sys.argv[1:], sys.argv[1+n//2:])]' $(SRCS) $(OUTS)"""),
-      tools = ["@cython//:cython_binary"] + pxd_srcs,
-  )
+  for filename in pyx_srcs:
+    native.genrule(
+        name = filename + "_cython_translation",
+        srcs = [filename],
+        outs = [filename.split(".")[0] + ".cpp"],
+        cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+        tools = ["@cython//:cython_binary"] + pxd_srcs,
+    )
 
   shared_objects = []
   for src in pyx_srcs:
@@ -123,6 +122,7 @@ def cc_proto_library(
     protoc="@protobuf_archive//:protoc",
     internal_bootstrap_hack=False,
     use_grpc_plugin=False,
+    use_grpc_namespace=False,
     default_header=False,
     **kargs):
   """Bazel rule to create a C++ protobuf library from proto source files.
@@ -170,8 +170,11 @@ def cc_proto_library(
     return
 
   grpc_cpp_plugin = None
+  plugin_options = []
   if use_grpc_plugin:
     grpc_cpp_plugin = "//external:grpc_cpp_plugin"
+    if use_grpc_namespace:
+      plugin_options = ["services_namespace=grpc"]
 
   gen_srcs = _proto_cc_srcs(srcs, use_grpc_plugin)
   gen_hdrs = _proto_cc_hdrs(srcs, use_grpc_plugin)
@@ -185,6 +188,7 @@ def cc_proto_library(
       protoc=protoc,
       plugin=grpc_cpp_plugin,
       plugin_language="grpc",
+      plugin_options=plugin_options,
       gen_cc=1,
       outs=outs,
       visibility=["//visibility:public"],
@@ -220,7 +224,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                         cc_stubby_versions = None,
                         cc_grpc_version = None,
                         j2objc_api_version = 1,
-                        cc_api_version = 2, go_api_version = 2,
+                        cc_api_version = 2,
                         java_api_version = 2, py_api_version = 2,
                         js_api_version = 2, js_codegen = "jspb",
                         default_header = False):
@@ -281,7 +285,6 @@ def tf_proto_library(name, srcs = [], has_services = None,
                      visibility = [], testonly = 0,
                      cc_libs = [],
                      cc_api_version = 2, cc_grpc_version = None,
-                     go_api_version = 2,
                      j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
                      js_api_version = 2, js_codegen = "jspb",
@@ -358,7 +361,9 @@ def tf_additional_proto_hdrs():
       "platform/default/integral_types.h",
       "platform/default/logging.h",
       "platform/default/protobuf.h"
-  ]
+  ] + if_windows([
+      "platform/windows/integral_types.h",
+  ])
 
 def tf_additional_proto_srcs():
   return [
@@ -376,6 +381,14 @@ def tf_protos_all():
   return if_static(
       extra_deps=tf_protos_all_impl(),
       otherwise=["//tensorflow/core:protos_all_cc"])
+
+def tf_protos_grappler_impl():
+  return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
+
+def tf_protos_grappler():
+  return if_static(
+      extra_deps=tf_protos_grappler_impl(),
+      otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
 
 def tf_env_time_hdrs():
   return [
@@ -399,13 +412,13 @@ def tf_env_time_srcs():
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
-def tf_additional_gpu_tracer_srcs():
-  return ["platform/default/gpu_tracer.cc"]
+def tf_additional_device_tracer_srcs():
+  return ["platform/default/device_tracer.cc"]
 
-def tf_additional_gpu_tracer_cuda_deps():
+def tf_additional_device_tracer_cuda_deps():
   return []
 
-def tf_additional_gpu_tracer_deps():
+def tf_additional_device_tracer_deps():
   return []
 
 def tf_additional_libdevice_data():
@@ -458,7 +471,6 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
   return select({
-      "//tensorflow:with_gcp_support_windows_override": [],
       "//tensorflow:with_gcp_support_android_override": [],
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
@@ -510,6 +522,7 @@ def tf_additional_cloud_kernel_deps():
 def tf_lib_proto_parsing_deps():
   return [
       ":protos_all_cc",
+      "//third_party/eigen3",
       "//tensorflow/core/platform/default/build_config:proto_parsing",
   ]
 
@@ -530,6 +543,9 @@ def tf_additional_gdr_lib_defines():
       "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
       "//conditions:default": [],
   })
+
+def tf_py_clif_cc(name, visibility=None, **kwargs):
+  pass
 
 def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
                             **kwargs):

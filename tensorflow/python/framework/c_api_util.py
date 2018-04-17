@@ -33,7 +33,7 @@ class ScopedTFStatus(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteStatus is not None:
+    if c_api is not None and c_api.TF_DeleteStatus is not None:
       c_api.TF_DeleteStatus(self.status)
 
 
@@ -46,7 +46,7 @@ class ScopedTFGraph(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteGraph is not None:
+    if c_api is not None and c_api.TF_DeleteGraph is not None:
       c_api.TF_DeleteGraph(self.graph)
 
 
@@ -59,8 +59,34 @@ class ScopedTFImportGraphDefOptions(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteImportGraphDefOptions is not None:
+    if c_api is not None and c_api.TF_DeleteImportGraphDefOptions is not None:
       c_api.TF_DeleteImportGraphDefOptions(self.options)
+
+
+class ScopedTFImportGraphDefResults(object):
+  """Wrapper around TF_ImportGraphDefOptions that handles deletion."""
+
+  def __init__(self, results):
+    self.results = results
+
+  def __del__(self):
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api is not None and c_api.TF_DeleteImportGraphDefResults is not None:
+      c_api.TF_DeleteImportGraphDefResults(self.results)
+
+
+class ScopedTFFunction(object):
+  """Wrapper around TF_Function that handles deletion."""
+
+  def __init__(self, func):
+    self.func = func
+
+  def __del__(self):
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api is not None and c_api.TF_DeleteFunction is not None:
+      c_api.TF_DeleteFunction(self.func)
 
 
 @tf_contextlib.contextmanager
@@ -94,3 +120,57 @@ def tf_buffer(data=None):
     yield buf
   finally:
     c_api.TF_DeleteBuffer(buf)
+
+
+def tf_output(c_op, index):
+  """Returns a wrapped TF_Output with specified operation and index.
+
+  Args:
+    c_op: wrapped TF_Operation
+    index: integer
+
+  Returns:
+    Wrapped TF_Output
+  """
+  ret = c_api.TF_Output()
+  ret.oper = c_op
+  ret.index = index
+  return ret
+
+
+def tf_operations(graph):
+  """Generator that yields every TF_Operation in `graph`.
+
+  Args:
+    graph: Graph
+
+  Yields:
+    wrapped TF_Operation
+  """
+  # pylint: disable=protected-access
+  pos = 0
+  c_op, pos = c_api.TF_GraphNextOperation(graph._c_graph, pos)
+  while c_op is not None:
+    yield c_op
+    c_op, pos = c_api.TF_GraphNextOperation(graph._c_graph, pos)
+  # pylint: enable=protected-access
+
+
+def new_tf_operations(graph):
+  """Generator that yields newly-added TF_Operations in `graph`.
+
+  Specifically, yields TF_Operations that don't have associated Operations in
+  `graph`. This is useful for processing nodes added by the C API.
+
+  Args:
+    graph: Graph
+
+  Yields:
+    wrapped TF_Operation
+  """
+  # TODO(b/69679162): do this more efficiently
+  for c_op in tf_operations(graph):
+    try:
+      graph._get_operation_by_tf_operation(c_op)  # pylint: disable=protected-access
+    except KeyError:
+      yield c_op

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -46,7 +47,8 @@ namespace xla {
 // gathered together in LayoutConstraints object.
 class LayoutConstraint {
  public:
-  LayoutConstraint(bool mandatory) : mandatory_(mandatory) {}
+  LayoutConstraint(bool mandatory, bool dfs)
+      : mandatory_(mandatory), dfs_(dfs) {}
   virtual ~LayoutConstraint() = default;
 
   virtual string ToString() const = 0;
@@ -54,8 +56,12 @@ class LayoutConstraint {
   // True if this constraint cannot be overwritten by a different constraint.
   bool mandatory() const { return mandatory_; }
 
+  // When true, propagate in DFS. When false, constraint will propagate in BFS.
+  bool dfs() const { return dfs_; }
+
  private:
   bool mandatory_;
+  bool dfs_;
 };
 
 std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
@@ -65,7 +71,7 @@ std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
 class BufferLayoutConstraint : public LayoutConstraint {
  public:
   BufferLayoutConstraint(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory);
+                         bool mandatory, bool dfs);
 
   const LogicalBuffer& buffer() const { return *buffer_; }
   const Layout& layout() const { return layout_; }
@@ -86,7 +92,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
  public:
   OperandLayoutConstraint(const ShapeLayout& shape_layout,
                           const HloInstruction* instruction, int64 operand_no,
-                          bool mandatory);
+                          bool mandatory, bool dfs);
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   const HloInstruction* instruction() const { return instruction_; }
@@ -106,8 +112,10 @@ class OperandLayoutConstraint : public LayoutConstraint {
 // Constraint on the layout of the result of the entry computation.
 class ResultLayoutConstraint : public LayoutConstraint {
  public:
-  explicit ResultLayoutConstraint(const ShapeLayout& shape_layout)
-      : LayoutConstraint(/*mandatory=*/true), shape_layout_(shape_layout) {}
+  explicit ResultLayoutConstraint(const ShapeLayout& shape_layout,
+                                  bool dfs = false)
+      : LayoutConstraint(/*mandatory=*/true, dfs),
+        shape_layout_(shape_layout) {}
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   string ToString() const override;
@@ -157,23 +165,25 @@ class LayoutConstraints {
   // operand of the instruction, or the layout of the result of the computation,
   // respectively.
   Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory = true);
+                         bool mandatory = true, bool dfs = true);
   Status SetOperandLayout(const Shape& shape_with_layout,
                           const HloInstruction* instruction, int64 operand_no,
-                          bool mandatory = true);
-  Status SetResultLayout(const Shape& shape_with_layout);
+                          bool mandatory = true, bool dfs = true);
+  Status SetResultLayout(const Shape& shape_with_layout, bool dfs = true);
 
   // Convenience wrapper around SetOperandLayout for setting the layout of a
   // operand using a Layout object. The operand must be array-shaped.
   Status SetArrayOperandLayout(const Layout& layout,
                                const HloInstruction* instruction,
-                               int64 operand_no, bool mandatory = true);
+                               int64 operand_no, bool mandatory = true,
+                               bool dfs = true);
 
   // Convenience wrapper around SetBufferLayout. Sets the layouts of all buffers
   // created by the instruction to the layouts in the given shape. The
   // instruction must define every logical buffer in its output.
   Status SetInstructionLayout(const Shape& shape_with_layout,
-                              const HloInstruction* instruction);
+                              const HloInstruction* instruction,
+                              bool mandatory = true, bool dfs = true);
 
   // Returns true if any buffer in the given operand is forwarded to the output
   // of the given instruction. For example, the Tuple instruction forwards the
@@ -190,6 +200,11 @@ class LayoutConstraints {
   string ToString() const;
 
  private:
+  // Find a bufferset in the bufferset cache. This is useful since we can
+  // currently create the flattened buffer set for the same instruction many
+  // times, which is often slow.
+  PointsToSet::BufferSet* GetBufferSet(const HloInstruction* instruction) const;
+
   // The set of BufferLayoutConstraints applied to the computation.
   std::unordered_map<const LogicalBuffer*, BufferLayoutConstraint>
       buffer_constraints_;
@@ -212,7 +227,50 @@ class LayoutConstraints {
   // Array-shaped buffers which have not yet been constrained.
   std::set<LogicalBuffer::Id> unconstrained_buffer_ids_;
 
+  mutable tensorflow::gtl::FlatMap<const HloInstruction*,
+                                   std::unique_ptr<PointsToSet::BufferSet>>
+      buffer_sets_cache_;
+
   HloComputation* computation_;
+};
+
+// Contains constraints on the layout of channels; sends and recvs.
+class ChannelLayoutConstraints {
+ public:
+  // Construct an empty constraint set.
+  ChannelLayoutConstraints() {}
+
+  // Returns true if channel_id has a layout constraint.
+  bool IsChannelConstrained(int64 channel_id) const {
+    return constraints_.count(channel_id) > 0;
+  }
+
+  // Given `shape`, apply the layout for `channel_id`. `channel_id` must already
+  // be constrained.
+  Shape LayoutShapeForChannel(Shape shape, int64 channel_id) const {
+    CHECK(IsChannelConstrained(channel_id));
+    *shape.mutable_layout() = constraints_.at(channel_id);
+    return shape;
+  }
+
+  // Returns the layout constraint for `channel_id`, which must already be
+  // constrained.
+  Layout LayoutForChannel(int64 channel_id) const {
+    CHECK(IsChannelConstrained(channel_id));
+    return constraints_.at(channel_id);
+  }
+
+  // Adds a new layout constraint for `channel_id`. If a constraint for
+  // `channel_id` already exists, this operation requires that the new layout is
+  // the same as the previously constrained layout.
+  void ConstrainChannel(int64 channel_id, const Layout& layout) {
+    CHECK(!IsChannelConstrained(channel_id) ||
+          LayoutUtil::Equal(layout, constraints_[channel_id]));
+    constraints_[channel_id] = layout;
+  }
+
+ private:
+  std::unordered_map<int64, Layout> constraints_;
 };
 
 // HLO pass which assigns layouts to all instructions in the HLO module while
@@ -221,7 +279,17 @@ class LayoutAssignment : public HloPassInterface {
  public:
   // entry_computation_layout is modified to populate a layout for the result in
   // the case that no particular layout is requested.
-  explicit LayoutAssignment(ComputationLayout* entry_computation_layout);
+  //
+  // channel_constraints is both an input and output. Any sends or recvs that
+  // are present in channel_constraints will be layed out as constrained. Any
+  // unconstrained sends or recvs will be layed out as locally optimal and their
+  // layout will be added as a constraint to channel_constraints.
+  //
+  // If channel_constraints is nullptr, no kSend or kRecvs must be contained
+  // within any module passed to `Run`.
+  explicit LayoutAssignment(
+      ComputationLayout* entry_computation_layout,
+      ChannelLayoutConstraints* channel_constraints = nullptr);
   ~LayoutAssignment() override {}
   tensorflow::StringPiece name() const override { return "layout-assignment"; }
 
@@ -246,6 +314,19 @@ class LayoutAssignment : public HloPassInterface {
   virtual Status PropagateResultConstraint(
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
+
+  // By default LayoutAssignment ensures that inputs and outputs of CustomCalls
+  // have the "major-first" layout (i.e.  {n, n-1, ..., 0}).
+  //
+  // If this function returns true, LayoutAssignment does not set a layout for
+  // the given CustomCall.  It's up to the backend to set one in
+  // AddBackendConstraints, if necessary.
+  //
+  // Precondition: instruction->opcode() == HloOpcode::kCustomCall.
+  virtual bool CustomCallRequiresMajorFirstLayout(
+      const HloInstruction* /*instruction*/) {
+    return true;
+  }
 
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
@@ -283,9 +364,10 @@ class LayoutAssignment : public HloPassInterface {
  private:
   // Adds constraints which must be satisfied for correctness on all
   // backends. Called once prior to propagating constraints.
-  Status AddMandatoryConstraints(const ComputationLayout& computation_layout,
-                                 HloComputation* computation,
-                                 LayoutConstraints* constraints);
+  Status AddMandatoryConstraints(
+      const ComputationLayout& computation_layout,
+      const ChannelLayoutConstraints* channel_constraints,
+      HloComputation* computation, LayoutConstraints* constraints);
 
   // This method can be overridden to add backend-specific constraints to the
   // layout of the instructions of a computation. This method is called after
@@ -301,7 +383,8 @@ class LayoutAssignment : public HloPassInterface {
   // constrained.
   Status RunOnComputation(const ComputationLayout& computation_layout,
                           const TuplePointsToAnalysis& points_to_analysis,
-                          HloComputation* computation);
+                          HloComputation* computation,
+                          ChannelLayoutConstraints* channel_constraints);
 
   // Assign layouts to the instructions of a computation which satisfy the given
   // layout constraints. Copies may be added to satisfy the constraints. The
@@ -315,14 +398,42 @@ class LayoutAssignment : public HloPassInterface {
   // required for correctness.
   Status PropagateConstraints(LayoutConstraints* constraints);
 
+  // Check that all layouts in the module have been set and satisfy all
+  // necessary conditions.
+  Status CheckLayouts(HloModule* module);
+
   ComputationLayout* entry_computation_layout_;
 
  protected:
+  // Sets up the copy instruction according to the characteristic (sharding,
+  // metadata, ...) of the reference instruction. The index argument is used
+  // when the instruction is a tuple, and in such case the index represents
+  // the location from where the copy instruction was created from.
+  // If the index is empty, the whole sharding will be propagated, even in case
+  // the intruction has a tuple sharding.
+  static void SetupCopiedInstruction(const HloInstruction& instruction,
+                                     HloInstruction* copy,
+                                     const ShapeIndex& index);
+
+  // Creates and returns a copy of the given instruction with a different
+  // layout. Tuple-shaped instructions will be deep-copied, and the last Tuple
+  // instruction producing the copy is returned.
+  static StatusOr<HloInstruction*> CreateCopyWithNewLayout(
+      const Shape& shape_with_layout, HloInstruction* instruction);
+
+  // Creates a copy of the given operand if the operand's layout does not match
+  // the given layout. This copy replaces the use in the given instruction.
+  // Tuple operands will be deep-copied.
+  static Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
+                                           HloInstruction* instruction,
+                                           int64 operand_no);
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
+  ChannelLayoutConstraints* channel_layout_constraints_;
 };
 
 }  // namespace xla

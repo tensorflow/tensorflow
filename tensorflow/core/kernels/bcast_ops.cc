@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 
 // Given shapes of two tensors, computes the broadcast shape.
+template <typename T>
 class BCastArgsOp : public OpKernel {
  public:
-  explicit BCastArgsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->MatchSignature({DT_INT32, DT_INT32}, {DT_INT32}));
-  }
+  explicit BCastArgsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     OP_REQUIRES(
@@ -40,7 +39,7 @@ class BCastArgsOp : public OpKernel {
                                           in.shape().DebugString()));
       BCast::Vec vec;
       for (int64 i = 0; i < in.NumElements(); ++i) {
-        vec.push_back(in.vec<int32>()(i));
+        vec.push_back(in.vec<T>()(i));
       }
       shapes.push_back(vec);
     }
@@ -60,7 +59,7 @@ class BCastArgsOp : public OpKernel {
     Tensor* o = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(idx, TensorShape({len}), &o));
     for (int64 i = 0; i < len; ++i) {
-      o->flat<int32>()(i) = static_cast<int32>(v[i]);
+      o->flat<T>()(i) = static_cast<T>(v[i]);
     }
   }
 
@@ -72,12 +71,10 @@ class BCastArgsOp : public OpKernel {
 //
 // TODO(zhifengc):
 //   1. Adds support for n-ary (n >= 2).
+template <typename T>
 class BCastGradArgsOp : public OpKernel {
  public:
-  explicit BCastGradArgsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(
-        ctx, ctx->MatchSignature({DT_INT32, DT_INT32}, {DT_INT32, DT_INT32}));
-  }
+  explicit BCastGradArgsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     OP_REQUIRES(
@@ -91,7 +88,7 @@ class BCastGradArgsOp : public OpKernel {
                                           in.shape().DebugString()));
       BCast::Vec vec;
       for (int64 i = 0; i < in.NumElements(); ++i) {
-        vec.push_back(in.vec<int32>()(i));
+        vec.push_back(in.vec<T>()(i));
       }
       shapes.push_back(vec);
     }
@@ -112,7 +109,7 @@ class BCastGradArgsOp : public OpKernel {
     Tensor* o = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(idx, TensorShape({len}), &o));
     for (int64 i = 0; i < len; ++i) {
-      o->flat<int32>()(i) = static_cast<int32>(v[i]);
+      o->flat<T>()(i) = static_cast<T>(v[i]);
     }
   }
 
@@ -125,14 +122,28 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
-                        BCastArgsOp);
+                        BCastArgsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64>("T")
+                            .HostMemory("s0")
+                            .HostMemory("s1")
+                            .HostMemory("r0"),
+                        BCastArgsOp<int64>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
-                        BCastArgsOp);
+                        BCastArgsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int64>("T")
+                            .HostMemory("s0")
+                            .HostMemory("s1")
+                            .HostMemory("r0"),
+                        BCastArgsOp<int64>);
 
 #if TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
@@ -141,7 +152,14 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
-                        BCastArgsOp);
+                        BCastArgsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int64>("T")
+                            .HostMemory("s0")
+                            .HostMemory("s1")
+                            .HostMemory("r0"),
+                        BCastArgsOp<int32>);
 #endif
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
@@ -151,7 +169,15 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .HostMemory("s1")
                             .HostMemory("r0")
                             .HostMemory("r1"),
-                        BCastGradArgsOp);
+                        BCastGradArgsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64>("T")
+                            .HostMemory("s0")
+                            .HostMemory("s1")
+                            .HostMemory("r0")
+                            .HostMemory("r1"),
+                        BCastGradArgsOp<int64>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
@@ -159,7 +185,15 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .HostMemory("s1")
                             .HostMemory("r0")
                             .HostMemory("r1"),
-                        BCastGradArgsOp);
+                        BCastGradArgsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int64>("T")
+                            .HostMemory("s0")
+                            .HostMemory("s1")
+                            .HostMemory("r0")
+                            .HostMemory("r1"),
+                        BCastGradArgsOp<int64>);
 
 #if TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
@@ -169,6 +203,14 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .HostMemory("s1")
                             .HostMemory("r0")
                             .HostMemory("r1"),
-                        BCastGradArgsOp);
+                        BCastGradArgsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int64>("T")
+                            .HostMemory("s0")
+                            .HostMemory("s1")
+                            .HostMemory("r0")
+                            .HostMemory("r1"),
+                        BCastGradArgsOp<int64>);
 #endif
 }  // end namespace tensorflow

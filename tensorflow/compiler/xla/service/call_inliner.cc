@@ -82,6 +82,10 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     return outer_->ReplaceInstruction(call_, new_root);
   }
 
+  CallInliner::InlinedInstructionMap ConsumeInstructionMap() {
+    return std::move(subcomputation_hlo_to_new_hlo_);
+  }
+
  private:
   // Resolves the callee subcomputation_hlo to the new (inline) HLO in the
   // caller computation, or returns a NotFound error if that subcomputation HLO
@@ -112,13 +116,13 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 
   HloInstruction* call_;
   HloComputation* outer_;
-  std::unordered_map<HloInstruction*, HloInstruction*>
-      subcomputation_hlo_to_new_hlo_;
+  CallInliner::InlinedInstructionMap subcomputation_hlo_to_new_hlo_;
 };
 
 }  // namespace
 
-/* static */ Status CallInliner::Inline(HloInstruction* call) {
+/* static */ StatusOr<CallInliner::InlinedInstructionMap> CallInliner::Inline(
+    HloInstruction* call) {
   TF_RET_CHECK(call->opcode() == HloOpcode::kCall)
       << "Instruction was not a call op: " << call->opcode();
   const auto& callees = call->called_computations();
@@ -126,7 +130,8 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   HloComputation* callee = callees[0];
   // We visit the callee, cloning its body into its caller.
   SubcomputationInsertionVisitor visitor(call);
-  return callee->Accept(&visitor);
+  TF_RETURN_IF_ERROR(callee->Accept(&visitor));
+  return visitor.ConsumeInstructionMap();
 }
 
 StatusOr<bool> CallInliner::Run(HloModule* module) {
@@ -140,7 +145,7 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
           VLOG(1) << "Visiting callsite: " << callsite.ToString();
           if (callsite.instruction()->opcode() == HloOpcode::kCall) {
             HloInstruction* call = callsite.instruction();
-            TF_RETURN_IF_ERROR(Inline(call));
+            TF_RETURN_IF_ERROR(Inline(call).status());
             did_mutate = true;
           }
         }

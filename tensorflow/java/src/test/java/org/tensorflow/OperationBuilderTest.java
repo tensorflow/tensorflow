@@ -151,10 +151,10 @@ public class OperationBuilderTest {
   @Test
   public void setAttrShapeList() {
     // Those shapes match tensors ones, so no exception is thrown
-    testSetAttrShapeList(new Shape[] { Shape.make(2, 2), Shape.make(2, 2, 2) });
+    testSetAttrShapeList(new Shape[] {Shape.make(2, 2), Shape.make(2, 2, 2)});
     try {
       // Those shapes do not match tensors ones, exception is thrown
-      testSetAttrShapeList(new Shape[] { Shape.make(2, 2), Shape.make(2, 2, 2, 2) });
+      testSetAttrShapeList(new Shape[] {Shape.make(2, 2), Shape.make(2, 2, 2, 2)});
       fail("Shapes are incompatible and an exception was expected");
     } catch (IllegalArgumentException e) {
       // expected
@@ -189,20 +189,23 @@ public class OperationBuilderTest {
   }
 
   private static void testSetAttrShapeList(Shape[] shapes) {
-    try (Graph g = new Graph(); Session s = new Session(g)) {
-      int[][] matrix = new int[][] { { 0, 0 }, { 0, 0 } };
-      Output<?> queue = g.opBuilder("FIFOQueue", "queue")
-          .setAttr("component_types", new DataType[] { DataType.INT32, DataType.INT32 }) 
-          .setAttr("shapes", shapes)
-          .build()
-          .output(0);
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+      int[][] matrix = new int[][] {{0, 0}, {0, 0}};
+      Output<?> queue =
+          g.opBuilder("FIFOQueue", "queue")
+              .setAttr("component_types", new DataType[] {DataType.INT32, DataType.INT32})
+              .setAttr("shapes", shapes)
+              .build()
+              .output(0);
       assertTrue(hasNode(g, "queue"));
       Output<Integer> c1 = TestUtil.constant(g, "const1", matrix);
-      Output<Integer> c2 = TestUtil.constant(g, "const2", new int[][][] { matrix, matrix });
-      Operation enqueue = g.opBuilder("QueueEnqueue", "enqueue")
-          .addInput(queue)
-          .addInputList(new Output<?>[] { c1, c2 })
-          .build();
+      Output<Integer> c2 = TestUtil.constant(g, "const2", new int[][][] {matrix, matrix});
+      Operation enqueue =
+          g.opBuilder("QueueEnqueue", "enqueue")
+              .addInput(queue)
+              .addInputList(new Output<?>[] {c1, c2})
+              .build();
       assertTrue(hasNode(g, "enqueue"));
 
       s.runner().addTarget(enqueue).run();

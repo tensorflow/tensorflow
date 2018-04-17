@@ -35,6 +35,12 @@ class HloInstruction;
 // DfsHloVisitor with default action based on the HloInstruction being visited.
 // Users should not use this class directly, but use the type aliases
 // DfsHloVisitorWithDefault/ConstDfsHloVisitorWithDefault instead.
+//
+// Do *not* add an override to this class if the opcode is covered by
+// HandleElementwiseUnary/Binary. These opcode handlers dispatch to
+// HandleElementwiseUnary/Binary in DfsHloVisitorBase. Adding such a handler
+// here will break passes which rely on the HandleElementwiseUnary/Binary
+// handling these opcodes.
 template <typename HloInstructionPtr>
 class DfsHloVisitorWithDefaultBase
     : public DfsHloVisitorBase<HloInstructionPtr> {
@@ -70,12 +76,6 @@ class DfsHloVisitorWithDefaultBase
   Status HandleConcatenate(HloInstructionPtr concatenate) override {
     return DefaultAction(concatenate);
   }
-  Status HandleConvert(HloInstructionPtr convert) override {
-    return DefaultAction(convert);
-  }
-  Status HandleCopy(HloInstructionPtr copy) override {
-    return DefaultAction(copy);
-  }
   Status HandleSelect(HloInstructionPtr select) override {
     return DefaultAction(select);
   }
@@ -85,11 +85,11 @@ class DfsHloVisitorWithDefaultBase
   Status HandleConvolution(HloInstructionPtr convolution) override {
     return DefaultAction(convolution);
   }
+  Status HandleFft(HloInstructionPtr fft) override {
+    return DefaultAction(fft);
+  }
   Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
     return DefaultAction(crs);
-  }
-  Status HandleCompare(HloInstructionPtr compare) override {
-    return DefaultAction(compare);
   }
   Status HandleRng(HloInstructionPtr random) override {
     return DefaultAction(random);
@@ -99,6 +99,9 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleOutfeed(HloInstructionPtr outfeed) override {
     return DefaultAction(outfeed);
+  }
+  Status HandleHostCompute(HloInstructionPtr host_compute) override {
+    return DefaultAction(host_compute);
   }
   Status HandleReverse(HloInstructionPtr reverse) override {
     return DefaultAction(reverse);
@@ -155,6 +158,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleBroadcast(HloInstructionPtr broadcast) override {
     return DefaultAction(broadcast);
   }
+  Status HandleBroadcastDimOne(HloInstructionPtr broadcastDimOne) override {
+    return DefaultAction(broadcastDimOne);
+  }
   Status HandlePad(HloInstructionPtr pad) override {
     return DefaultAction(pad);
   }
@@ -167,6 +173,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleWhile(HloInstructionPtr xla_while) override {
     return DefaultAction(xla_while);
   }
+  Status HandleConditional(HloInstructionPtr conditional) override {
+    return DefaultAction(conditional);
+  }
   Status HandleRecv(HloInstructionPtr recv) override {
     return DefaultAction(recv);
   }
@@ -178,6 +187,9 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleSendDone(HloInstructionPtr send_done) override {
     return DefaultAction(send_done);
+  }
+  Status HandleGather(HloInstructionPtr gather) override {
+    return DefaultAction(gather);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that

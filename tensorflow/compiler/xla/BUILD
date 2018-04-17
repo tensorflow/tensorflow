@@ -20,6 +20,10 @@ package_group(
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library_py",
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -36,12 +40,19 @@ xla_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library_py(
+    name = "xla_data_proto",  # bzl adds a _py suffix
+    srcs = ["xla_data.proto"],
+    visibility = ["//visibility:public"],
+)
+
 xla_proto_library(
     name = "xla_proto",
     srcs = ["xla.proto"],
     visibility = ["//visibility:public"],
     deps = [
         ":xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:session_proto",
     ],
 )
@@ -78,7 +89,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -172,6 +182,7 @@ cc_library(
     deps = [
         ":status",
         ":status_macros",
+        ":statusor",
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
@@ -250,6 +261,7 @@ tf_cc_test(
     srcs = ["shape_util_test.cc"],
     deps = [
         ":shape_util",
+        ":status_macros",
         ":test",
         ":test_helpers",
         ":types",
@@ -290,7 +302,9 @@ cc_library(
         ":array2d",
         ":array3d",
         ":array4d",
+        ":shape_tree",
         ":shape_util",
+        ":sparse_index_array",
         ":status_macros",
         ":types",
         ":util",
@@ -359,7 +373,6 @@ tf_cc_test(
 
 cc_library(
     name = "array2d",
-    srcs = ["array2d.cc"],
     hdrs = ["array2d.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -617,19 +630,29 @@ tf_cc_test(
     ],
 )
 
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_library(
+    name = "sparse_index_array",
+    srcs = ["sparse_index_array.cc"],
+    hdrs = ["sparse_index_array.h"],
+    deps = [
+        ":array2d",
+        ":shape_util",
+        ":xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
 )
+
+tf_cc_test(
+    name = "sparse_index_array_test",
+    srcs = ["sparse_index_array_test.cc"],
+    deps = [
+        ":sparse_index_array",
+        ":test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+# -----------------------------------------------------------------------------
 
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
 cc_header_only_library(

@@ -8,18 +8,6 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "predictor",
     srcs = ["__init__.py"],
@@ -133,6 +121,18 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "predictor_factories_test",
+    srcs = ["predictor_factories_test.py"],
+    data = [":test_export_dir"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":predictor_factories",
+        ":testing_common",
     ],
 )
 

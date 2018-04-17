@@ -16,17 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_RUNNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_RUNNER_H_
 
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -35,62 +40,96 @@ namespace xla {
 
 // A base class for running an HloModule. This executes the given HloModule on a
 // certain backend directly without using the client interface. HloModule can be
-// explicitly built, or loaded from a serialization file (e.g., hlo proto file).
+// explicitly built, or loaded from a serialization file (e.g., hlo proto
+// file), or parsed from a hlo textual IR string.
 class HloRunner {
  public:
-  HloRunner();
+  // The options used to configure a ExecuteReplicated() call.
+  struct ReplicatedExecuteOptions {
+    // The number of devices the HLO module should be replicated onto.
+    int64 num_replicas = 1;
 
-  HloRunner(::perftools::gputools::Platform* platform);
+    // The arguments to be fed to each replica. Since this is used for a
+    // replicated execution, all the arguments are the same for all replicas.
+    std::vector<const Literal*> arguments;
+
+    // If the HLO module being run has an infeed instruction, this will be the
+    // data which will be fed to it, for as many as infeed_steps steps.
+    const Literal* infeed = nullptr;
+
+    // The number of times the infeed literal should be fed to the HLO module.
+    // For a clean exit, this should match the iterations-per-loop parameter
+    // used when generating the HLO module proto (that is usually the main
+    // while bounary counter). A value higher then iterations-per-loop would
+    // lead to infeed threads feeding to a gone computation, while a lower
+    // value would trigger a stuck ExecuteReplicated() call (the computation
+    // will be trying to infeed data which will never come).
+    int64 infeed_steps = -1;
+
+    // The shape of the outfeed operation. If empty, the HLO module does not
+    // generate any outfeed.
+    Shape outfeed_shape;
+
+    // A pointer to a vector where the outfeed values will be stored. If
+    // nullptr, the values will be read and discarded.
+    std::vector<std::unique_ptr<Literal>>* outfeed_values = nullptr;
+
+    // Whether the HLO passes should be run on the input module. Usually
+    // saved modules are coming from after the HLO pass pipeline, so triggering
+    // another run will likely cause errors.
+    bool run_hlo_passes = false;
+  };
+
+  explicit HloRunner(::perftools::gputools::Platform* platform);
 
   ~HloRunner();
 
+  // Converts an HloModule from the given hlo textual IR string (in
+  // HloModule::ToString format).
+  static StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
+      const tensorflow::StringPiece hlo_string,
+      const DebugOptions& debug_options);
+
   // Reads the proto file in xla.HloProto format, creates and returns the
-  // HloModule. Will try to parse the filename as binary proto, then try as
-  // text proto if that fails.
-  static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloProtoFile(
+  // HloModule.
+  static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromBinaryProtoFile(
+      const std::string& filename, const DebugOptions& debug_options);
+  static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
       const std::string& filename, const DebugOptions& debug_options);
 
   // Reads the hlo text dump file in HloModule::ToString format, creates and
   // returns the HloModule.
-  static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextDumpFile(
-      const std::string& filename, const DebugOptions& debug_options);
-
-  // Tries to parse the filename specified first as binary proto format, then
-  // as a textual proto format, then textual IR, then gives up if both fail.
-  // ReadModuleFromHloProtoFile or ReadModuleFromHloTextDumpFile should be used
-  // explicitly when you know the format, this if you don't.
-  static StatusOr<std::unique_ptr<HloModule>> ReadModule(
+  static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
       const std::string& filename, const DebugOptions& debug_options);
 
   // Executes the given module with given literals as input and returns the
-  // result as a Literal. The LiteralPtr type accepts Literal* or
-  // std::unique_ptr<Literal>.
-  template <typename LiteralPtr>
+  // result as a Literal.
+  //
+  // If run_hlo_passes is false, the module will be executed without Hlo
+  // optimization.
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> literals);
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
+      bool run_hlo_passes = true);
 
-  // Executes the given module and returns a global data handle.
-  StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
+  StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      Shape* result_shape);
+      const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
+      bool run_hlo_passes = true) {
+    // Construct a vector of plain pointers for the arguments.
+    std::vector<Literal*> argument_pointers;
+    c_transform(
+        arguments, std::back_inserter(argument_pointers),
+        [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+    return Execute(std::move(module), argument_pointers, run_hlo_passes);
+  }
 
-  // Transfers the given literal to the device and returns the data handle.
-  StatusOr<perftools::gputools::DeviceMemoryBase> TransferToDevice(
-      const Literal& literal);
-
-  // Transfers the array referred to by the given handle from the device and
-  // returns as a Literal.
-  StatusOr<std::unique_ptr<Literal>> TransferFromDevice(
-      const Shape& shape, perftools::gputools::DeviceMemoryBase device_base);
-
-  // Executes the given module and return the result as a Literal.
-  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+  // Executes a given HLO module into a set of replicas, and returns a map
+  // with the replica number as key, and the corresponding returned literal as
+  // value.
+  StatusOr<std::vector<std::unique_ptr<Literal>>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments);
+      const ReplicatedExecuteOptions& options);
 
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.
@@ -100,27 +139,21 @@ class HloRunner {
   Backend& backend();
 
  private:
-  struct EigenThreadPoolWrapper;
+  // Creates an executable object given an HLO module. If run_hlo_passes is
+  // true, the HLO passes will be run before.
+  StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes);
 
-  std::vector<perftools::gputools::DeviceMemoryBase> allocations_;
-
-  std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
+  // Creates a ServiceExecutableRunOptions object to configure a run on device,
+  // using the provided stream object. If device_assignment is not nullptr, it
+  // will be used to configure the replication parameters. Replicated executions
+  // should pass the device_assignment parameter.
+  ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
+      int64 device, ::perftools::gputools::Stream* stream,
+      DeviceAssignment* device_assignment);
 
   std::unique_ptr<Backend> backend_;
 };
-
-template <typename LiteralPtr>
-StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
-    std::unique_ptr<HloModule> module,
-    const tensorflow::gtl::ArraySlice<LiteralPtr> literals) {
-  std::vector<perftools::gputools::DeviceMemoryBase> arguments;
-  for (const auto& literal : literals) {
-    TF_ASSIGN_OR_RETURN(perftools::gputools::DeviceMemoryBase argument,
-                        TransferToDevice(*literal));
-    arguments.push_back(argument);
-  }
-  return ExecuteAndTransfer(std::move(module), arguments);
-}
 
 }  // namespace xla
 

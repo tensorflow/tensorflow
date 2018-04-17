@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
-#define TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_DEVICE_BASE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_DEVICE_BASE_H_
 
 #include <memory>
 #include <string>
@@ -48,6 +48,7 @@ class Env;
 class EventMgr;
 class OpKernelContext;
 class ResourceMgr;
+class ScopedAllocatorMgr;
 class TensorProto;
 
 namespace thread {
@@ -128,6 +129,8 @@ class DeviceBase {
   // using a single stream.)
   // "event_mgr" is used to delay deallocation of temporary GPU buffers.
   // TODO(pbar) Work out how to move this out of DeviceBase.
+  // GpuDeviceInfo name is an unfortunate legacy, it is used not only by GPUs
+  // but also by TPU devices (to provide default device context).
   struct GpuDeviceInfo {
     // Make sure all the defaults are NULL, so we can spot missing assignments.
     perftools::gputools::Stream* stream = nullptr;
@@ -143,6 +146,12 @@ class DeviceBase {
 
   virtual const GpuDeviceInfo* tensorflow_gpu_device_info() const {
     return gpu_device_info_;
+  }
+
+  // The preferred thread pool for this device. If it is nullptr, the system
+  // automatically assigns a thread pool for execution.
+  virtual thread::ThreadPool* tensorflow_device_thread_pool() {
+    return device_thread_pool_;
   }
 
   // Does not take ownership.
@@ -170,6 +179,16 @@ class DeviceBase {
                                       ResourceMgr* /*step_resource_manager*/) {
     return GetAllocator(attr);
   }
+
+  // Return an Allocator prepared for use in particular places by graph
+  // optimization
+  virtual Allocator* GetScopedAllocator(AllocatorAttributes attr,
+                                        int64 step_id) {
+    LOG(FATAL) << "Device does not implement GetScopedAllocator()";
+    return nullptr;
+  }
+
+  virtual ScopedAllocatorMgr* GetScopedAllocatorMgr() const { return nullptr; }
 
   virtual const Eigen::ThreadPoolDevice* eigen_cpu_device() {
     CHECK(eigen_cpu_device_ != nullptr);
@@ -215,10 +234,18 @@ class DeviceBase {
     return errors::Internal("Device does not implement MakeTensorFromProto()");
   }
 
+ protected:
+  // Does not take ownership.
+  void set_tensorflow_device_thread_pool(thread::ThreadPool* thread_pool) {
+    device_thread_pool_ = thread_pool;
+  }
+
  private:
   Env* const env_;
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
+  // Set by GPUs as well as by TPU devices.
   GpuDeviceInfo* gpu_device_info_ = nullptr;
+  thread::ThreadPool* device_thread_pool_ = nullptr;
   Eigen::ThreadPoolDevice* eigen_cpu_device_ = nullptr;
 #ifdef TENSORFLOW_USE_SYCL
   Eigen::SyclDevice* eigen_sycl_device_ = nullptr;
@@ -227,4 +254,4 @@ class DeviceBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_DEVICE_BASE_H_

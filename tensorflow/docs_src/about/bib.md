@@ -60,7 +60,7 @@ author={
     Lukasz~Kaiser and
     Manjunath~Kudlur and
     Josh~Levenberg and
-    Dan~Man\'{e} and
+    Dandelion~Man\'{e} and
     Rajat~Monga and
     Sherry~Moore and
     Derek~Murray and

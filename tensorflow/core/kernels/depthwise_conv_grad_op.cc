@@ -231,7 +231,8 @@ static void CopyOutputBackpropRegion(const DepthwiseArgs& args,
       }
       // Pad to vector-register width (if needed).
       for (int64 d = 0; d < pad_size; ++d) {
-        buffer[buf_base + vectorized_size + scalar_size + d] = static_cast<T>(0);
+        buffer[buf_base + vectorized_size + scalar_size + d] =
+            static_cast<T>(0);
       }
     }
   }
@@ -399,7 +400,7 @@ struct LaunchDepthwiseConvBackpropInputOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d backprop input.
     auto shard = [&ctx, &args, &out_backprop, &filter_data, &in_backprop](
-        int64 start, int64 limit) {
+                     int64 start, int64 limit) {
       static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
 
       const int64 input_image_size =
@@ -510,7 +511,8 @@ static void DepthwiseConvBackpropInputReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
-extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, Eigen::half>;
+extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice,
+                                                          Eigen::half>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
@@ -748,7 +750,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d backprop filter.
     auto shard = [&ctx, &args, &out_backprop, &input, &output_buffer_data](
-        int64 start, int64 limit) {
+                     int64 start, int64 limit) {
       static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
       const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
       const int64 padded_out_depth_size =
@@ -885,7 +887,8 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
-extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, Eigen::half>;
+extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice,
+                                                           Eigen::half>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 

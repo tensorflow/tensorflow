@@ -20,15 +20,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace xla {
 
 constexpr char HloCostAnalysis::kFlopsKey[];
 constexpr char HloCostAnalysis::kTranscendentalsKey[];
 constexpr char HloCostAnalysis::kBytesAccessedKey[];
-constexpr char HloCostAnalysis::kSecondsKey[];
+constexpr char HloCostAnalysis::kOptimalSecondsKey[];
 
 HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
     : HloCostAnalysis(shape_size, {}) {}
@@ -60,16 +62,16 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   if (current_should_compute_bottleneck_time_) {
     // Compute the time as the time of the bottleneck, i.e. the slowest property
     // given the per-second rate of each property.
-    float max_seconds = 0.0f;
+    float optimal_seconds = 0.0f;
     for (const auto& property : current_properties_) {
-      if (property.first != kSecondsKey) {
-        max_seconds = std::max(
-            max_seconds,
+      if (property.first != kOptimalSecondsKey) {
+        optimal_seconds = std::max(
+            optimal_seconds,
             property.second /
                 GetProperty(property.first, per_second_rates_, INFINITY));
       }
     }
-    current_properties_[kSecondsKey] = max_seconds;
+    current_properties_[kOptimalSecondsKey] = optimal_seconds;
   }
 
   TF_RET_CHECK(hlo_properties_.emplace(hlo, current_properties_).second);
@@ -200,10 +202,11 @@ Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& rhs_shape = dot->operand(1)->shape();
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width = lhs_shape.dimensions(ShapeUtil::Rank(lhs_shape) - 1);
-
+  int64 reduction_width =
+      lhs_shape.dimensions(dnums.lhs_contracting_dimensions(0));
   // First divide by reduction width before multiplying by rhs elements to avoid
   // overflow.
   int64 fma_count;
@@ -224,6 +227,10 @@ Status HloCostAnalysis::HandleInfeed(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleOutfeed(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleHostCompute(const HloInstruction*) {
   return Status::OK();
 }
 
@@ -329,6 +336,11 @@ Status HloCostAnalysis::HandleBroadcast(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleBroadcastDimOne(
+    const HloInstruction* broadcastDimOne) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandlePad(const HloInstruction*) {
   return Status::OK();
 }
@@ -373,20 +385,116 @@ Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
-  auto rhs_instruction = convolution->operand(1);
-  const auto& dnums = convolution->convolution_dimension_numbers();
-  const int64 output_features =
-      convolution->shape().dimensions(dnums.output_feature_dimension());
+  auto lhs = convolution->operand(0);
+  auto rhs = convolution->operand(1);
+  Window window = convolution->window();
+  const auto& result_shape = convolution->shape();
+  const Shape& lhs_shape = lhs->shape();
+  const Shape& rhs_shape = rhs->shape();
 
-  // For each output element, we do one fma per element in the kernel at some
-  // given output feature index.
-  const int64 fmas_per_output_element =
-      output_features > 0
-          ? ShapeUtil::ElementsIn(rhs_instruction->shape()) / output_features
-          : 0;
-  const int64 output_elements = ShapeUtil::ElementsIn(convolution->shape());
-  current_properties_[kFlopsKey] =
-      output_elements * fmas_per_output_element * kFmaFlops;
+  const auto& dnums = convolution->convolution_dimension_numbers();
+
+  const int64 input_batch_dim = dnums.input_batch_dimension();
+  const int64 input_feature_dim = dnums.input_feature_dimension();
+  const int64 output_feature_dim = dnums.output_feature_dimension();
+  const int64 input_feature =
+      ShapeUtil::GetDimension(lhs_shape, input_feature_dim);
+  const int64 output_feature =
+      ShapeUtil::GetDimension(result_shape, output_feature_dim);
+  const int64 batch = ShapeUtil::GetDimension(lhs_shape, input_batch_dim);
+
+  DimensionVector kernel_limits;
+  DimensionVector output_limits;
+  DimensionVector input_limits;
+  if (window.dimensions().empty()) {
+    window = window_util::MakeWindow({1});
+    kernel_limits.push_back(1);
+    output_limits.push_back(1);
+    input_limits.push_back(1);
+  } else {
+    for (int64 spatial_dimension = 0;
+         spatial_dimension < window.dimensions_size(); ++spatial_dimension) {
+      // Spatial dimension number for kernel (rhs).
+      const int64 kernel_spatial_dim =
+          dnums.kernel_spatial_dimensions(spatial_dimension);
+      const int64 kernel_limit = rhs_shape.dimensions(kernel_spatial_dim);
+      kernel_limits.push_back(kernel_limit);
+
+      // Spatial dimension number for output.
+      const int64 output_spatial_dim =
+          dnums.output_spatial_dimensions(spatial_dimension);
+      const int64 output_limit = result_shape.dimensions(output_spatial_dim);
+      output_limits.push_back(output_limit);
+
+      // Spatial dimension number for input (lhs).
+      const int64 input_spatial_dim =
+          dnums.input_spatial_dimensions(spatial_dimension);
+      const int64 input_limit = lhs_shape.dimensions(input_spatial_dim);
+      input_limits.push_back(input_limit);
+    }
+  }
+
+  DimensionVector valid_position_counts;
+
+  // Loop over each spatial dimension.
+  for (int64 spatial_dimension = 0;
+       spatial_dimension < window.dimensions_size(); ++spatial_dimension) {
+    int64 valid_position_count = 0;
+    // Loop over each point in the kernel.
+    for (int64 kernel_idx = 0; kernel_idx < kernel_limits[spatial_dimension];
+         ++kernel_idx) {
+      // Loop over each point in the output.
+      for (int64 output_idx = 0; output_idx < output_limits[spatial_dimension];
+           ++output_idx) {
+        // Calculate lhs (input) index without taking base dilation into
+        // account.
+        const auto& window_dim = window.dimensions(spatial_dimension);
+        const int64 undilated_index = output_idx * window_dim.stride() -
+                                      window_dim.padding_low() +
+                                      kernel_idx * window_dim.window_dilation();
+
+        // Calculate the actual lhs (input) index after dilation. Avoid the
+        // division as an optimization.
+        const int64 lhs_spatial_index =
+            window_dim.base_dilation() > 1
+                ? undilated_index / window_dim.base_dilation()
+                : undilated_index;
+
+        // Skip if the lhs (input) index is to be dilated.
+        if (undilated_index != lhs_spatial_index * window_dim.base_dilation()) {
+          continue;
+        }
+
+        // Skip if input index is not in bound.
+        if (lhs_spatial_index < 0 ||
+            lhs_spatial_index >= input_limits[spatial_dimension]) {
+          continue;
+        }
+
+        valid_position_count += 1;
+      }
+    }
+    valid_position_counts.push_back(valid_position_count);
+  }
+
+  const int64 fma_count =
+      input_feature * output_feature * batch * Product(valid_position_counts);
+  current_properties_[kFlopsKey] = fma_count * kFmaFlops;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
+  auto real_shape =
+      ShapeUtil::IsTuple(fft->operand(0)->shape())
+          ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
+          : fft->operand(0)->shape();
+  constexpr int kFmaPerComplexMul = 4;
+  int64 log_factors = 1;
+  for (int64 dim : fft->fft_length()) {
+    log_factors *= tensorflow::Log2Floor(dim);
+  }
+  current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
+                                   ShapeUtil::ElementsIn(real_shape);
   return Status::OK();
 }
 
@@ -396,7 +504,14 @@ Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   //
   // TODO(b/33004697): Compute correct cost here, taking the actual number of
   // replicas into account.
-  current_properties_[kFlopsKey] = ShapeUtil::ElementsIn(crs->shape());
+  double flops = 0.0;
+  ShapeUtil::ForEachSubshape(
+      crs->shape(), [&, this](const Shape& subshape, const ShapeIndex&) {
+        if (ShapeUtil::IsArray(subshape)) {
+          flops += ShapeUtil::ElementsIn(subshape);
+        }
+      });
+  current_properties_[kFlopsKey] = flops;
   return Status::OK();
 }
 
@@ -445,7 +560,13 @@ Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 }
 
 Status HloCostAnalysis::HandleCustomCall(const HloInstruction*) {
-  return Unimplemented("Custom-call is not implemented for HLO cost analysis.");
+  // We can't do anything sane with CustomCalls, since we don't know what they
+  // do, and returning an error status will stop iteration over this
+  // computation, which is probably also not what we want.  So just punt and
+  // return OK.  This will cause all of the properties to be reported as 0,
+  // which is fine.
+  current_should_compute_bottleneck_time_ = false;
+  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
@@ -480,6 +601,30 @@ Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
+  // Compute the cost of the true and false computations and take the maximum
+  // from those for each property.
+  TF_ASSIGN_OR_RETURN(const Properties true_computation_properties,
+                      ProcessSubcomputation(conditional->true_computation()));
+  TF_ASSIGN_OR_RETURN(const Properties false_computation_properties,
+                      ProcessSubcomputation(conditional->false_computation()));
+  current_properties_ = true_computation_properties;
+  for (const auto& property : false_computation_properties) {
+    if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_, property)) {
+      current_properties_[property.first] =
+          std::max(current_properties_[property.first], property.second);
+    }
+  }
+  current_should_compute_bottleneck_time_ = false;
+
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
+  // Gather does not issue any flops.
+  return Status::OK();
+}
+
 Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }
@@ -496,8 +641,8 @@ float HloCostAnalysis::bytes_accessed() const {
   return GetProperty(kBytesAccessedKey, properties_sum_);
 }
 
-float HloCostAnalysis::seconds() const {
-  return GetProperty(kSecondsKey, properties_sum_);
+float HloCostAnalysis::optimal_seconds() const {
+  return GetProperty(kOptimalSecondsKey, properties_sum_);
 }
 
 int64 HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
@@ -512,8 +657,8 @@ int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_);
 }
 
-float HloCostAnalysis::seconds(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kSecondsKey, hlo_properties_);
+float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(

@@ -25,6 +25,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
+
 class BincountTest(test_util.TensorFlowTestCase):
 
   def test_empty(self):
@@ -72,8 +73,7 @@ class BincountTest(test_util.TensorFlowTestCase):
         else:
           weights = np.random.random(num_samples)
         self.assertAllClose(
-            math_ops.bincount(arr, weights).eval(),
-            np.bincount(arr, weights))
+            math_ops.bincount(arr, weights).eval(), np.bincount(arr, weights))
 
   def test_random_without_weights(self):
     num_samples = 10000
@@ -83,8 +83,7 @@ class BincountTest(test_util.TensorFlowTestCase):
         arr = np.random.randint(0, 1000, num_samples)
         weights = np.ones(num_samples).astype(dtype)
         self.assertAllClose(
-            math_ops.bincount(arr, None).eval(),
-            np.bincount(arr, weights))
+            math_ops.bincount(arr, None).eval(), np.bincount(arr, weights))
 
   def test_zero_weights(self):
     with self.test_session(use_gpu=True):

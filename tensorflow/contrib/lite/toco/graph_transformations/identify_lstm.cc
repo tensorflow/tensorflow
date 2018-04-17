@@ -16,7 +16,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -202,23 +201,6 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
   return true;
 }
 
-absl::string_view FindLongestCommonPrefix(absl::string_view a,
-                                          absl::string_view b) {
-  if (a.empty() || b.empty()) return absl::string_view();
-
-  const char* pa = a.data();
-  const char* pb = b.data();
-  size_t count = 0;
-  const ssize_t limit = std::min(a.size(), b.size());
-  while (count < limit && *pa == *pb) {
-    ++pa;
-    ++pb;
-    ++count;
-  }
-
-  return absl::string_view(a.data(), count);
-}
-
 }  // namespace
 
 bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
@@ -321,6 +303,12 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
                            OperatorType::kConcatenation, &concat_inputs,
                            OperatorType::kNone, nullptr, OperatorType::kNone,
                            nullptr)) {
+    return false;
+  }
+
+  if (static_cast<FullyConnectedOperator*>(fully_connected)
+          ->experimental_shuffled_weights) {
+    // Not yet implemented: experimental shuffled weights in fused LSTM cell.
     return false;
   }
 

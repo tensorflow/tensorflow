@@ -28,13 +28,12 @@ namespace xla {
 // A base class for HLO tests that stores a default HloModule, and automatically
 // performs verification on that module on tear-down.
 class HloVerifiedTestBase : public HloTestBase {
- public:
-  // Returns the size in bytes of the given shape, using a default pointer size.
-  static int64 DefaultShapeSize(const Shape& shape);
-
  protected:
   HloVerifiedTestBase();
   ~HloVerifiedTestBase() override;
+
+  // Constructs a default shape verifier.
+  std::unique_ptr<ShapeVerifier> MakeShapeVerifier();
 
   // Performs verification on the default HloModule returned by module().
   // Automatically called by the testing framework for each test.
@@ -45,17 +44,19 @@ class HloVerifiedTestBase : public HloTestBase {
   // Returns the default HloModule, lazily creating it if necessary via
   // HloTestBase::CreateNewModule().
   HloModule& module();
+  void ParseAndVerifyModule(tensorflow::StringPiece hlo_text);
 
   // Sets the shape-size function used during hlo verification. If this isn't
-  // called, DefaultShapeSize is used instead.
-  void SetShapeSizeFn(std::function<int64(const Shape&)> shape_size_fn) {
-    shape_size_fn_ = std::move(shape_size_fn);
+  // called, a default ShapeVerifier is used instead.
+  void SetShapeVerifier(std::unique_ptr<ShapeVerifier> shape_verifier) {
+    shape_verifier_ = std::move(shape_verifier);
   }
 
  private:
   std::unique_ptr<HloModule> module_;  // Lazily populated. Access via module().
-  std::function<int64(const Shape&)> shape_size_fn_;
+  std::unique_ptr<ShapeVerifier> shape_verifier_;
   bool tear_down_called_ = false;
+  void VerifyModule();
 };
 
 }  // namespace xla

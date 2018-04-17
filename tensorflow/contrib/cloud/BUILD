@@ -14,18 +14,6 @@ load(
     "tf_py_test",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_gen_op_libs(
     op_lib_names = ["bigquery_reader_ops"],
     deps = [
@@ -60,9 +48,7 @@ tf_py_test(
     size = "small",
     srcs = ["python/ops/bigquery_reader_ops_test.py"],
     additional_deps = [
-        ":bigquery_reader_ops_op_lib",
         ":cloud_py",
-        "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

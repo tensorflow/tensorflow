@@ -40,6 +40,12 @@ static Costs::NanoSeconds PredictExecutionTime(
     op_context.op_info.add_inputs()->Swap(&input);
   }
 
+  std::vector<OpInfo::TensorProperties> outputs =
+      properties.GetOutputProperties(node.name());
+  for (auto& output : outputs) {
+    op_context.op_info.add_outputs()->Swap(&output);
+  }
+
   DeviceProperties device = placer.get_device(node);
   op_context.op_info.mutable_device()->Swap(&device);
 
@@ -86,7 +92,7 @@ Status EstimateEarliestExecutionTimes(
   name_map.clear();
 
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
+  TF_RETURN_IF_ERROR(properties.InferStatically(true));
   OpLevelCostEstimator estimator;
   VirtualPlacer placer(cluster);
 
@@ -154,7 +160,7 @@ Status EstimateRequiredTimes(
     }
   }
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
+  TF_RETURN_IF_ERROR(properties.InferStatically(true));
   OpLevelCostEstimator estimator;
   VirtualPlacer placer(cluster);
 

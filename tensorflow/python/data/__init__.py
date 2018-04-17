@@ -21,7 +21,6 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@FixedLengthRecordDataset
 @@TextLineDataset
 @@TFRecordDataset
-@@SparseType
 """
 
 from __future__ import absolute_import
@@ -34,7 +33,6 @@ from tensorflow.python.data.ops.iterator_ops import Iterator
 from tensorflow.python.data.ops.readers import FixedLengthRecordDataset
 from tensorflow.python.data.ops.readers import TextLineDataset
 from tensorflow.python.data.ops.readers import TFRecordDataset
-from tensorflow.python.data.util.sparse import SparseType
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

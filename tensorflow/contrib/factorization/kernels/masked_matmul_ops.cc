@@ -57,11 +57,11 @@ typedef Eigen::Map<
 
 class MaskedMatmulOp : public OpKernel {
  public:
-  explicit MaskedMatmulOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->MatchSignature(
-        {DT_FLOAT, DT_FLOAT, DT_INT64, DT_BOOL, DT_BOOL},
-        {DT_FLOAT}));
+  explicit MaskedMatmulOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(
+        context,
+        context->MatchSignature(
+            {DT_FLOAT, DT_FLOAT, DT_INT64, DT_BOOL, DT_BOOL}, {DT_FLOAT}));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -110,12 +110,11 @@ class MaskedMatmulOp : public OpKernel {
                                       num_nonzero_elements, 2);
 
     Tensor* prod_values_tensor;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0, TensorShape({num_nonzero_elements}),
-                       &prod_values_tensor));
-    EigenMatFloatMap prod_values(prod_values_tensor->vec<float>().data(),
-                                 1, num_nonzero_elements);
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, TensorShape({num_nonzero_elements}),
+                                &prod_values_tensor));
+    EigenMatFloatMap prod_values(prod_values_tensor->vec<float>().data(), 1,
+                                 num_nonzero_elements);
 
     auto get_a_index = [&indices_mat, &a_dim_0](int64 i) {
       int64 a_index = internal::SubtleMustCopy(indices_mat(i, 0));
@@ -182,8 +181,8 @@ class MaskedMatmulOp : public OpKernel {
       }
     };
     // Shard the work.
-    worker_threads.workers->ParallelFor(
-        num_nonzero_elements, cost_per_unit, work);
+    worker_threads.workers->ParallelFor(num_nonzero_elements, cost_per_unit,
+                                        work);
   }
 };
 REGISTER_KERNEL_BUILDER(Name("MaskedMatmul").Device(DEVICE_CPU),

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/posix/error.h"
@@ -164,8 +165,9 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
   }
-  // KERB_TICKET_CACHE_PATH will be deleted in the future, Because KRB5CCNAME is the build in
-  // environment variable of Kerberos, so KERB_TICKET_CACHE_PATH and related code are unnecessary.
+  // KERB_TICKET_CACHE_PATH will be deleted in the future, Because KRB5CCNAME is
+  // the build in environment variable of Kerberos, so KERB_TICKET_CACHE_PATH
+  // and related code are unnecessary.
   char* ticket_cache_path = getenv("KERB_TICKET_CACHE_PATH");
   if (ticket_cache_path != nullptr) {
     hdfs_->hdfsBuilderSetKerbTicketCachePath(builder, ticket_cache_path);
@@ -393,6 +395,11 @@ Status HadoopFileSystem::GetChildren(const string& dir,
   }
   hdfs_->hdfsFreeFileInfo(info, entries);
   return Status::OK();
+}
+
+Status HadoopFileSystem::GetMatchingPaths(const string& pattern,
+                                          std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status HadoopFileSystem::DeleteFile(const string& fname) {

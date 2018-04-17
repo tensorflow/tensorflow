@@ -26,6 +26,23 @@ template <typename Device>
 Status DoParallelConcat(const Device& device, const Tensor& value, int32 loc,
                         Tensor* output);
 
+// Inplace update/add/sub values in 'y'. It computes
+//   y[i, :] = v if op is I_UPDATE
+//   y[i, :] += v if op is I_ADD
+//   y[i, :] -= v if op is I_SUB
+// Returns an error if the operation fails.
+enum InplaceOpType {
+  I_UPDATE,  // x = y
+  I_ADD,     // x += y
+  I_SUB,     // x -= y
+};
+template <typename Device>
+Status DoInplace(const Device& device, InplaceOpType op, const Tensor& i,
+                 const Tensor& v, Tensor* y);
+// Copies x into y.
+template <typename Device>
+Status DoCopy(const Device& device, const Tensor& x, Tensor* y);
+
 }  // end namespace functor
 }  // end namespace tensorflow
 

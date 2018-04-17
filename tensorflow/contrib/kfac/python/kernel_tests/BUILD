@@ -16,12 +16,18 @@ py_test(
         "//tensorflow/contrib/kfac/python/ops:utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -30,9 +36,11 @@ py_test(
     srcs = ["fisher_factors_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/kfac/python/ops:fisher_blocks",
         "//tensorflow/contrib/kfac/python/ops:fisher_factors",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
@@ -106,14 +114,18 @@ py_test(
     name = "utils_test",
     srcs = ["utils_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         "//tensorflow/contrib/kfac/python/ops:utils",
+        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -143,16 +155,4 @@ py_test(
         "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

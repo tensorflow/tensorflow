@@ -95,9 +95,9 @@ class SubstrOp : public OpKernel {
       // Create BCast helper with shape of input and pos/len
       BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape));
       OP_REQUIRES(context, bcast.IsValid(),
-                  errors::InvalidArgument("Incompatible shapes: ",
-                                          input_shape.DebugString(), " vs. ",
-                                          pos_shape.DebugString()));
+                  errors::InvalidArgument(
+                      "Incompatible shapes: ", input_shape.DebugString(),
+                      " vs. ", pos_shape.DebugString()));
       TensorShape output_shape = BCast::ToShape(bcast.result_shape());
       int ndims = output_shape.dims();
       Tensor* output_tensor = nullptr;
@@ -115,7 +115,7 @@ class SubstrOp : public OpKernel {
           Tensor input_buffer;
           OP_REQUIRES_OK(context, context->allocate_temp(
                                       DT_STRING, output_shape, &input_buffer));
-          typename TTypes<string, 1>::Tensor input_bcast =
+          TTypes<string, 1>::Tensor input_bcast =
               input_buffer.shaped<string, 1>(bcast.result_shape());
           input_bcast =
               input.broadcast(BCast::ToIndexArray<1>(bcast.x_bcast()));
@@ -125,8 +125,8 @@ class SubstrOp : public OpKernel {
           OP_REQUIRES_OK(context,
                          context->allocate_temp(DataTypeToEnum<T>::v(),
                                                 output_shape, &pos_buffer));
-          typename TTypes<T, 1>::Tensor pos_bcast =
-              pos_buffer.shaped<T, 1>(bcast.result_shape());
+          typename TTypes<T, 1>::Tensor pos_bcast(
+              pos_buffer.shaped<T, 1>(bcast.result_shape()));
           pos_bcast =
               pos_shaped.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
 
@@ -135,8 +135,8 @@ class SubstrOp : public OpKernel {
           OP_REQUIRES_OK(context,
                          context->allocate_temp(DataTypeToEnum<T>::v(),
                                                 output_shape, &len_buffer));
-          typename TTypes<T, 1>::Tensor len_bcast =
-              len_buffer.shaped<T, 1>(bcast.result_shape());
+          typename TTypes<T, 1>::Tensor len_bcast(
+              len_buffer.shaped<T, 1>(bcast.result_shape()));
           len_bcast =
               len_shaped.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
 
@@ -164,7 +164,7 @@ class SubstrOp : public OpKernel {
           Tensor input_buffer;
           OP_REQUIRES_OK(context, context->allocate_temp(
                                       DT_STRING, output_shape, &input_buffer));
-          typename TTypes<string, 2>::Tensor input_bcast =
+          TTypes<string, 2>::Tensor input_bcast =
               input_buffer.shaped<string, 2>(bcast.result_shape());
           input_bcast =
               input.broadcast(BCast::ToIndexArray<2>(bcast.x_bcast()));
@@ -174,8 +174,8 @@ class SubstrOp : public OpKernel {
           OP_REQUIRES_OK(context,
                          context->allocate_temp(DataTypeToEnum<T>::v(),
                                                 output_shape, &pos_buffer));
-          typename TTypes<T, 2>::Tensor pos_bcast =
-              pos_buffer.shaped<T, 2>(bcast.result_shape());
+          typename TTypes<T, 2>::Tensor pos_bcast(
+              pos_buffer.shaped<T, 2>(bcast.result_shape()));
           pos_bcast =
               pos_shaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
 
@@ -184,8 +184,8 @@ class SubstrOp : public OpKernel {
           OP_REQUIRES_OK(context,
                          context->allocate_temp(DataTypeToEnum<T>::v(),
                                                 output_shape, &len_buffer));
-          typename TTypes<T, 2>::Tensor len_bcast =
-              len_buffer.shaped<T, 2>(bcast.result_shape());
+          typename TTypes<T, 2>::Tensor len_bcast(
+              len_buffer.shaped<T, 2>(bcast.result_shape()));
           len_bcast =
               len_shaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
 

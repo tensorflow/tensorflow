@@ -149,14 +149,14 @@ class StochasticHardRoutingGradient : public OpKernel {
     TensorShape output_bias_shape;
     output_bias_shape.AddDim(num_data);
 
-    OP_REQUIRES_OK(context, context->allocate_output(
-        0, output_routing_shape, &output_routing));
-    OP_REQUIRES_OK(context, context->allocate_output(
-        1, output_data_shape, &output_data));
-    OP_REQUIRES_OK(context, context->allocate_output(
-        2, output_parameters_shape, &output_parameters));
-    OP_REQUIRES_OK(context, context->allocate_output(
-        3, output_bias_shape, &output_bias));
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_routing_shape,
+                                                     &output_routing));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(1, output_data_shape, &output_data));
+    OP_REQUIRES_OK(context, context->allocate_output(2, output_parameters_shape,
+                                                     &output_parameters));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(3, output_bias_shape, &output_bias));
 
     tensorforest::Initialize(*output_routing, 0.0);
     tensorforest::Initialize(*output_data, 0.0);
@@ -178,7 +178,7 @@ class StochasticHardRoutingGradient : public OpKernel {
       const Tensor point = input_data.Slice(i, i + 1);
 
       // Traverses the tree from the bottom up.
-      for (int j = tree_depth_-1; j > -1; j--) {
+      for (int j = tree_depth_ - 1; j > -1; j--) {
         int32 node = path(i, j);
 
         CHECK_LT(node, num_nodes);

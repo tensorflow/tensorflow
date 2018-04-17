@@ -77,7 +77,8 @@ class AssignOp : public OpKernel {
 
       // 1. Try to reuse the rhs.
       std::unique_ptr<Tensor> input_alias = context->forward_input(
-          1, old_lhs.dtype(), old_lhs.shape(), DEVICE_MEMORY, attr);
+          1, OpKernelContext::Params::kNoReservation /*output_index*/,
+          old_lhs.dtype(), old_lhs.shape(), DEVICE_MEMORY, attr);
       if (input_alias != nullptr) {
         // Transfer ownership to the ref.
         context->replace_ref_input(0, *input_alias.release(),
@@ -109,6 +110,9 @@ class AssignOp : public OpKernel {
         OP_REQUIRES_OK(
             context, context->allocate_persistent(old_lhs.dtype(), rhs.shape(),
                                                   &copy, &copyTensor, attr));
+        // We track memory of variables in variable ops instead of in this
+        // assign op.
+        context->clear_recorded_memory();
         context->replace_ref_input(0, *copyTensor, /* lock_held */ true);
         if (use_exclusive_lock_) {
           Copy(context, copyTensor, rhs);

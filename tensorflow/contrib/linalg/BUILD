@@ -43,14 +43,21 @@ cuda_py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cuda_py_test(
+    name = "linear_operator_block_diag_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/linear_operator_block_diag_test.py"],
+    additional_deps = [
+        ":linalg_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+    shard_count = 5,
+    tags = ["noasan"],
 )

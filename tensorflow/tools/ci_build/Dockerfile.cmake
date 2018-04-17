@@ -23,8 +23,12 @@ RUN /install/install_deb_packages.sh
 
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends python-pip
+RUN pip install --upgrade wheel
+RUN pip install --upgrade astor
+RUN pip install --upgrade gast
 RUN pip install --upgrade numpy
+RUN pip install --upgrade termcolor
 
 # Install golang
-RUN add-apt-repository -y ppa:ubuntu-lxc/lxd-stable
-RUN apt-get install -y golang
+RUN apt-get install -t xenial-backports -y golang-1.9
+ENV PATH=${PATH}:/usr/lib/go-1.9/bin

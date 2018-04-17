@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
+#define TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
 
 #ifdef GOOGLE_CUDA
 
 #include <unordered_map>
 #include <vector>
 
-#include "src/nccl.h"
+#include "third_party/nccl/nccl.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -136,4 +136,4 @@ class NcclManager {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_

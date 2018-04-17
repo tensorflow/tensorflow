@@ -14,20 +14,23 @@
 # ==============================================================================
 """Layers that act as activation functions.
 """
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras._impl.keras import activations
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
+from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.LeakyReLU')
 class LeakyReLU(Layer):
   """Leaky version of a Rectified Linear Unit.
 
@@ -61,7 +64,12 @@ class LeakyReLU(Layer):
     base_config = super(LeakyReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
+
+@tf_export('keras.layers.PReLU')
 class PReLU(Layer):
   """Parametric Rectified Linear Unit.
 
@@ -111,9 +119,9 @@ class PReLU(Layer):
     else:
       self.shared_axes = list(shared_axes)
 
+  @shape_type_conversion
   def build(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    param_shape = input_shape[1:]
+    param_shape = list(input_shape[1:])
     self.param_broadcast = [False] * len(param_shape)
     if self.shared_axes is not None:
       for i in self.shared_axes:
@@ -137,8 +145,9 @@ class PReLU(Layer):
   def call(self, inputs, mask=None):
     pos = K.relu(inputs)
     if K.backend() == 'theano':
-      neg = (K.pattern_broadcast(self.alpha, self.param_broadcast) *
-             (inputs - K.abs(inputs)) * 0.5)
+      neg = (
+          K.pattern_broadcast(self.alpha, self.param_broadcast) *
+          (inputs - math_ops.abs(inputs)) * 0.5)
     else:
       neg = -self.alpha * K.relu(-inputs)
     return pos + neg
@@ -153,7 +162,12 @@ class PReLU(Layer):
     base_config = super(PReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
+
+@tf_export('keras.layers.ELU')
 class ELU(Layer):
   """Exponential Linear Unit.
 
@@ -187,7 +201,12 @@ class ELU(Layer):
     base_config = super(ELU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
+
+@tf_export('keras.layers.ThresholdedReLU')
 class ThresholdedReLU(Layer):
   """Thresholded Rectified Linear Unit.
 
@@ -214,9 +233,48 @@ class ThresholdedReLU(Layer):
     self.theta = K.cast_to_floatx(theta)
 
   def call(self, inputs, mask=None):
-    return inputs * K.cast(inputs > self.theta, K.floatx())
+    return inputs * math_ops.cast(
+        math_ops.greater(inputs, self.theta), K.floatx())
 
   def get_config(self):
     config = {'theta': float(self.theta)}
     base_config = super(ThresholdedReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+
+@tf_export('keras.layers.Softmax')
+class Softmax(Layer):
+  """Softmax activation function.
+
+  Input shape:
+      Arbitrary. Use the keyword argument `input_shape`
+      (tuple of integers, does not include the samples axis)
+      when using this layer as the first layer in a model.
+
+  Output shape:
+      Same shape as the input.
+
+  Arguments:
+      axis: Integer, axis along which the softmax normalization is applied.
+  """
+
+  def __init__(self, axis=-1, **kwargs):
+    super(Softmax, self).__init__(**kwargs)
+    self.supports_masking = True
+    self.axis = axis
+
+  def call(self, inputs):
+    return activations.softmax(inputs, axis=self.axis)
+
+  def get_config(self):
+    config = {'axis': self.axis}
+    base_config = super(Softmax, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape

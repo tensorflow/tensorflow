@@ -41,11 +41,20 @@ namespace runtime {
 //    the actual symbol.
 // 2. When using ahead-of-time compilation, the linker can resolve the name
 //    because it is a symbol in the cpu_runtime library.
+extern const char* const kEigenMatMulF16SymbolName;
 extern const char* const kEigenMatMulF32SymbolName;
 extern const char* const kEigenMatMulF64SymbolName;
+extern const char* const kMKLMatMulF32SymbolName;
+extern const char* const kMKLMatMulF64SymbolName;
+extern const char* const kMKLSingleThreadedMatMulF32SymbolName;
+extern const char* const kMKLSingleThreadedMatMulF64SymbolName;
+extern const char* const kEigenConvF16SymbolName;
 extern const char* const kEigenConvF32SymbolName;
+extern const char* const kEigenFftSymbolName;
+extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
+extern const char* const kEigenSingleThreadedConvF16SymbolName;
 extern const char* const kEigenSingleThreadedConvF32SymbolName;
 extern const char* const kAcquireInfeedBufferForDequeueSymbolName;
 extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName;

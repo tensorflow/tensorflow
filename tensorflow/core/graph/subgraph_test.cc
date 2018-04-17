@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -311,8 +312,8 @@ TEST_F(SubgraphTest, ChainOfFools) {
   EXPECT_TRUE(HasEdge("e", 0, "_send_e_0", 0));
 }
 
-static bool HasSubstr(const string& base, const string& substr) {
-  bool ok = StringPiece(base).contains(substr);
+static bool HasSubstr(StringPiece base, StringPiece substr) {
+  bool ok = str_util::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
 }
@@ -361,7 +362,7 @@ static void BM_SubgraphHelper(int iters, int num_nodes,
         last_node = ops::SourceOp("In", b.opts().WithName(name));
       }
     }
-    TF_CHECK_OK(b.ToGraph(&g));
+    TF_CHECK_OK(GraphDefBuilderToGraph(b, &g));
   }
 
   std::vector<string> fed;

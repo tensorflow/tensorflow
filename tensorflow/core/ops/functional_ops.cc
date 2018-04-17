@@ -38,33 +38,7 @@ REGISTER_OP("SymbolicGradient")
         c->set_output(i, c->input(i));
       }
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradient function for function f via backpropagation.
-
-input: a list of input tensors of size N + M;
-output: a list of output tensors of size N;
-Tin: the type list for the input list.
-Tout: the type list for the input list.
-f: The function we want to compute the gradient for.
-
-The function 'f' must be a numerical function which takes N inputs and
-produces M outputs. Its gradient function 'g', which is computed by
-this SymbolicGradient op is a function taking N + M inputs and
-produces N outputs.
-
-I.e. if we have
-   (y1, y2, ..., y_M) = f(x1, x2, ..., x_N),
-then, g is
-   (dL/dx1, dL/dx2, ..., dL/dx_N) = g(x1, x2, ..., x_N,
-                                     dL/dy1, dL/dy2, ..., dL/dy_M),
-
-where L is a scalar-value function of (x1, x2, ..., xN) (e.g., the
-loss function). dL/dx_i is the partial derivative of L with respect
-to x_i.
-
-(Needs some math expert to say the comment above better.)
-)doc");
+    });
 
 REGISTER_OP("RemoteCall")
     .Input("target: string")
@@ -73,15 +47,102 @@ REGISTER_OP("RemoteCall")
     .Attr("Tin: list(type)")
     .Attr("Tout: list(type)")
     .Attr("f: func")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
+// TODO(drpng): remove this.
+REGISTER_OP("_If")
+    .Input("cond: Tcond")
+    .Input("input: Tin")
+    .Output("output: Tout")
+    .Attr("Tcond: type")
+    .Attr("Tin: list(type)")
+    .Attr("Tout: list(type)")
+    .Attr("then_branch: func")
+    .Attr("else_branch: func")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
-Runs function `f` on a remote device indicated by `target`.
+output = cond ? then_branch(input) : else_branch(input)
 
-target: A fully specified device name where we want to run the function.
-args: A list of arguments for the function.
-output: A list of return values.
-Tin: The type list for the arguments.
-Tout: The type list for the return values.
-f: The function to run remotely.
+cond: A Tensor. If the tensor is a scalar of non-boolean type, the
+    scalar is converted to a boolean according to the
+    following rule: if the scalar is a numerical value, non-zero means
+    True and zero means False; if the scalar is a string, non-empty
+    means True and empty means False. If the tensor is not a scalar,
+    being empty means False and being non-empty means True.
+input: A list of input tensors.
+then_branch: A function that takes 'inputs' and returns a list of
+    tensors, whose types are the same as what else_branch returns.
+else_branch: A function that takes 'inputs' and returns a list of
+    tensors.  whose types are the same as what then_branch returns.
 )doc");
+
+REGISTER_OP("If")
+    .Input("cond: Tcond")
+    .Input("input: Tin")
+    .Output("output: Tout")
+    .Attr("Tcond: type")
+    .Attr("Tin: list(type)")
+    .Attr("Tout: list(type)")
+    .Attr("then_branch: func")
+    .Attr("else_branch: func")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+// TODO(drpng): remove this.
+REGISTER_OP("_While")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type) >= 0")
+    .Attr("cond: func")
+    .Attr("body: func")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        c->set_output(i, c->input(i));
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+output = input; While (Cond(output)) { output = Body(output) }
+
+input: A list of input tensors whose types are T.
+output: A list of output tensors whose types are T.
+cond: A function takes 'input' and returns a tensor.  If the tensor is
+    a scalar of non-boolean, the scalar is converted to a boolean
+    according to the following rule: if the scalar is a numerical
+    value, non-zero means True and zero means False; if the scalar is
+    a string, non-empty means True and empty means False. If the
+    tensor is not a scalar, non-emptiness means True and False
+    otherwise.
+body: A function that takes a list of tensors and returns another
+      list of tensors. Both lists have the same types as specified
+      by T.
+)doc");
+
+// TODO(b/37549631) setting the While Op to always be stateful is too
+// conservative.
+REGISTER_OP("While")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type) >= 0")
+    .Attr("cond: func")
+    .Attr("body: func")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        c->set_output(i, c->input(i));
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("For")
+    .Input("start: int32")
+    .Input("limit: int32")
+    .Input("delta: int32")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type) >= 0")
+    .Attr("body: func")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // end namespace tensorflow

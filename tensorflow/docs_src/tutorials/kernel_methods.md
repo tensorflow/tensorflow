@@ -1,5 +1,10 @@
 # Improving Linear Models Using Explicit Kernel Methods
 
+Note: This document uses a deprecated version of @{tf.estimator},
+which has a @{tf.contrib.learn.Estimator$different interface}.
+It also uses other `contrib` methods whose
+@{$version_compat#not_covered$API may not be stable}.
+
 In this tutorial, we demonstrate how combining (explicit) kernel methods with
 linear models can drastically increase the latters' quality of predictions
 without significantly increasing training and inference times. Unlike dual
@@ -44,18 +49,18 @@ respectively. Each split contains one numpy array for images (with shape
 tutorial, we only use the train and validation splits to train and evaluate our
 models respectively.
 
-In order to feed data to a tf.contrib.learn Estimator, it is helpful to convert
+In order to feed data to a `tf.contrib.learn Estimator`, it is helpful to convert
 it to Tensors. For this, we will use an `input function` which adds Ops to the
 TensorFlow graph that, when executed, create mini-batches of Tensors to be used
 downstream. For more background on input functions, check
-@{$get_started/input_fn$Building Input Functions with tf.contrib.learn}. In this
-example, we will use the `tf.train.shuffle_batch` Op which, besides converting
-numpy arrays to Tensors, allows us to specify the batch_size and whether to
-randomize the input every time the input_fn Ops are executed (randomization
-typically expedites convergence during training). The full code for loading and
-preparing the data is shown in the snippet below. In this example, we use
-mini-batches of size 256 for training and the entire sample (5K entries) for
-evaluation. Feel free to experiment with different batch sizes.
+@{$get_started/premade_estimators#create_input_functions$this section on input functions}.
+In this example, we will use the `tf.train.shuffle_batch` Op which, besides
+converting numpy arrays to Tensors, allows us to specify the batch_size and
+whether to randomize the input every time the input_fn Ops are executed
+(randomization typically expedites convergence during training). The full code
+for loading and preparing the data is shown in the snippet below. In this
+example, we use mini-batches of size 256 for training and the entire sample
+(5K entries) for evaluation. Feel free to experiment with different batch sizes.
 
 ```python
 import numpy as np

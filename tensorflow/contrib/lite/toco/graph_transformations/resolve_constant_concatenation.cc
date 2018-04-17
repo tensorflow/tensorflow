@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -73,7 +74,7 @@ void CopyTensorSegments(const std::vector<Array*>& input_arrays,
 
 // Receives a series of input arrays of type Array and an integer showing the
 // axis on which those arrays will be concatenated. It returns the concatenated
-// arrray.
+// array.
 template <ArrayDataType A>
 void ConcatenateTensorBuffers(const std::vector<Array*>& input_arrays,
                               int concatenation_axis,
@@ -105,7 +106,8 @@ void ConcatenateTensorBuffers(const std::vector<Array*>& input_arrays,
 // already set (e.g. because of previous pass in TOCO), it doesn't change it and
 // returns. Otherwise it uses the input arrays min and max values to compute the
 // concatenated array min and max.
-void SetMinMaxForConcatenedArray(const std::vector<Array*>& input_arrays,
+void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
+                                 const std::vector<Array*>& input_arrays,
                                  Array* concatenated_array) {
   CHECK(concatenated_array->data_type == ArrayDataType::kFloat);
   // If the minmax is already set, use it
@@ -125,6 +127,9 @@ void SetMinMaxForConcatenedArray(const std::vector<Array*>& input_arrays,
   MinMax& minmax = concatenated_array->GetOrCreateMinMax();
   minmax.min = concat_min;
   minmax.max = concat_max;
+
+  transformation->AddMessageF("Setting concatenated array min/max to %g,%g",
+                              concat_min, concat_max);
 }
 
 }  // namespace
@@ -151,7 +156,7 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
     if (!IsDiscardableArray(*model, input_name)) return false;
   }
 
-  const int concatenation_axis = concat_op->concat_dim;
+  const int concatenation_axis = concat_op->axis;
 
   CHECK_EQ(concat_op->outputs.size(), 1);
   string concatenated_array_name = concat_op->outputs[0];
@@ -161,11 +166,14 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
     input_arrays.push_back(&model->GetArray(input_name));
   }
 
+  AddMessageF("Performing constant concat of %s into %s",
+              absl::StrJoin(concat_op->inputs, ", "), concatenated_array_name);
+
   switch (concatenated_array.data_type) {
     case ArrayDataType::kFloat:
       ConcatenateTensorBuffers<ArrayDataType::kFloat>(
           input_arrays, concatenation_axis, &concatenated_array);
-      SetMinMaxForConcatenedArray(input_arrays, &concatenated_array);
+      SetMinMaxForConcatenedArray(this, input_arrays, &concatenated_array);
       break;
     case ArrayDataType::kUint8:
       ConcatenateTensorBuffers<ArrayDataType::kUint8>(
@@ -179,16 +187,23 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
       ConcatenateTensorBuffers<ArrayDataType::kInt64>(
           input_arrays, concatenation_axis, &concatenated_array);
       break;
+    case ArrayDataType::kString:
+      ConcatenateTensorBuffers<ArrayDataType::kString>(
+          input_arrays, concatenation_axis, &concatenated_array);
+      break;
     default:
       LOG(FATAL) << "ArrayDataType not supported";
   }
 
   // Remove all the resolved arrays.
   for (const string& input_name : concat_op->inputs) {
-    model->arrays.erase(input_name);
+    // Check to prevent removal of shared tensors.
+    if (CountOpsWithInput(*model, input_name) == 1) {
+      model->EraseArray(input_name);
+    }
   }
 
-  // Remove concatenate operator
+  // Remove concatenate operator.
   model->operators.erase(concat_it);
   return true;
 }

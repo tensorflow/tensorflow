@@ -38,18 +38,19 @@ class ShapeLayout {
   explicit ShapeLayout(const Shape& shape) : shape_(shape) {}
 
   // Assigns the layouts in this ShapeLayout to the Layout fields of the given
-  // shape. 'shape' and the shape of the ShapeLayout object must be compatible.
-  tensorflow::Status AssignLayoutToShape(Shape* shape) const;
+  // shape. 'to_shape' and the shape of the ShapeLayout object must be
+  // compatible.
+  tensorflow::Status AssignLayoutToShape(Shape* to_shape) const;
 
   // Returns true if the Layouts in this ShapeLayout match the layouts in the
   // given shape. Returns false otherwise. If the given shape is not compatible
   // with the ShapeLayout's shape, then false is returned.
   bool MatchesLayoutInShape(const Shape& shape) const;
 
-  // Copies the layout from the given shape into this ShapeLayout. 'shape' must
-  // be compatible with the ShapeLayout's shape, and 'shape' must have a layout
-  // (LayoutUtil::HasLayout).
-  tensorflow::Status CopyLayoutFromShape(const Shape& shape);
+  // Copies the layout from the given shape into this ShapeLayout. 'other_shape'
+  // must be compatible with the ShapeLayout's shape, and 'other_shape' must
+  // have a layout (LayoutUtil::HasLayout).
+  tensorflow::Status CopyLayoutFromShape(const Shape& other_shape);
 
   // Clears (Layout::Clear) all the Layouts stored in this object.
   void Clear();

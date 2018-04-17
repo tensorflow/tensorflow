@@ -25,6 +25,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
+from tensorflow.python.keras._impl.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import checkpoint_utils
@@ -54,16 +55,81 @@ def _network_name_scope_naming(current_variable_scope):
 class Network(base.Layer):
   """Represents the composition of a set of Layers.
 
-  TODO(josh11b,ashankar):
-  - Should "trainable" be changeable on the Network object?
-  - Do we allow add_variable in Network?
-  - Detect layers used in __call__ that weren't registered with track_layer.
-  - Convert inputs to __call__ to tensors.
-  - Prevent variables from being created after the first __call__?
-    (Think about restoring from a checkpoint).
+  `Network` implements the `Layer` interface and adds convenience methods for
+  managing sub-`Layer`s, such as listing variables.
+
+  `Layer`s (including other `Network`s) should be added via `track_layer`. They
+  can then be used when overriding the `Network.call` method:
+
+  ```python
+  class TwoLayerNetwork(tfe.Network):
+
+    def __init__(self, name):
+      super(TwoLayerNetwork, self).__init__(name=name)
+      self.layer_one = self.track_layer(tf.layers.Dense(16, input_shape=(8,)))
+      self.layer_two = self.track_layer(tf.layers.Dense(1, input_shape=(16,)))
+
+    def call(self, inputs):
+      return self.layer_two(self.layer_one(inputs))
+  ```
+
+  After constructing an object and calling the `Network`, a list of variables
+  created by tracked `Layer`s is available via `Network.variables`:
+
+  ```python
+  net = TwoLayerNetwork(name="net")
+  output = net(tf.ones([1, 8]))
+  print([v.name for v in net.variables])
+  ```
+
+  This example prints variable names, one kernel and one bias per
+  `tf.layers.Dense` layer:
+
+  ```
+  ['net/dense/kernel:0',
+   'net/dense/bias:0',
+   'net/dense_1/kernel:0',
+   'net/dense_1/bias:0']
+  ```
+
+  These variables can be passed to a `Saver` (`tf.train.Saver`, or
+  `tf.contrib.eager.Saver` when executing eagerly) to save or restore the
+  `Network`, typically alongside a global step and `tf.train.Optimizer`
+  variables when checkpointing during training.
+
+  Note that the semantics of calling a `Network` with graph execution (i.e. not
+  executing eagerly) may change slightly in the future. Currently stateful ops
+  are pruned from the graph unless they or something that depends on them is
+  executed in a session, but this behavior is not consistent with eager
+  execution (where stateful ops are executed eagerly). `Layer`s from `tf.layers`
+  do not depend on this pruning and so will not be affected, but `Network`s
+  which rely on stateful ops being added to the graph but not executed (e.g. via
+  custom `Layer`s which manage stateful ops) may break with this change.
   """
+  # TODO(josh11b,ashankar,allenl):
+  # - Should 'trainable' be changeable on the Network object?
+  # - Do we allow add_variable in Network?
+  # - Detect layers used in __call__ that weren't registered with track_layer.
+  # - Convert inputs to __call__ to tensors.
 
   def __init__(self, name=None):
+    """Configure the `Network`.
+
+    Args:
+      name: The name to use for this `Network`. If specified, it must be unique
+        in the context where this `Network` is first
+         (1) added to another `Network` (in which case it must not share a name
+           with other `Layers` added to that `Network`), or
+         (2) built/called (in which case no other 'top-level' `Network`s may
+          share this name).
+        If unspecified or None, the `Network` will be named using its class
+        name, with a number appended if necessary for uniqueness (e.g. MyNetwork
+        -> 'my_network_1').
+
+    Raises:
+      ValueError: If `name` is not valid. Note that some naming errors will
+        instead be raised when the `Network` is called.
+    """
     if isinstance(name, variable_scope.VariableScope):
       raise ValueError("VariableScopes are not valid Network names.")
     if name is not None and "/" in name:
@@ -84,7 +150,7 @@ class Network(base.Layer):
     # check we might have name collisions if the parent scope on init gets
     # closed before build is called.
     self._variable_scope_counts_on_init = (
-        variable_scope._get_default_variable_store().variable_scopes_count)
+        variable_scope.get_variable_scope_store().variable_scopes_count)
 
   def _name_scope_name(self, current_variable_scope):
     """Overrides Layer op naming to match variable naming."""
@@ -111,7 +177,7 @@ class Network(base.Layer):
         avoid_names = parent_network._owned_layers
         name_uid_map = parent_network._sub_layer_name_uids
       else:
-        name_uid_map = base._get_default_graph_uid_map()
+        name_uid_map = keras_base_layer.get_default_graph_uid_map()
         # Figure out which names we have to avoid based on which variable scope
         # we're nested in.
         strip_name = self._default_parent_variable_scope.name
@@ -261,6 +327,8 @@ class Network(base.Layer):
       raise TypeError(
           "Network.track_layer() passed type %s, not a tf.layers.Layer" %
           (type(layer),))
+    # Always use `ResourceVariable` with legacy layers.
+    layer._use_resource_variables = True
     if isinstance(layer, Network):
       layer._finalize_name(parent_network=self)
     else:
@@ -386,8 +454,30 @@ class Network(base.Layer):
         "at https://github.com/tensorflow/tensorflow/issues/new if this is "
         "important to you")
 
-  # TODO(josh11b): Support other Layer methods needed for graph mode, such as for
-  # losses and updates
+  def add_loss(self, losses, inputs=None):
+    raise RuntimeError(
+        "add_loss is not supported in Network class yet. Please file an issue "
+        "at https://github.com/tensorflow/tensorflow/issues/new if this is "
+        "important to you")
+
+  @property
+  def losses(self):
+    """Gather losses from `Layer`s in the `Network`.
+
+    Note that when executing eagerly, `Layer.losses` evaluates
+    regularizers. When using graph execution, variable regularization ops have
+    already been created and are simply returned here.
+
+    Returns:
+      A list of tensors.
+    """
+    layer_losses = []
+    for layer in self.layers:
+      layer_losses.extend(layer.losses)
+    return layer_losses
+
+  # TODO(allenl): Support other Layer methods needed for graph mode, such as for
+  # updates
 
 
 class Sequential(Network):
@@ -552,7 +642,7 @@ def _make_custom_getter_for_deferred_restorations():
       # Mark as already restored from this checkpoint.
       delayed_restoration.checkpointed_variables_to_restore[
           checkpoint_name] = None
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         delayed_restoration.session.run(variable.initializer)
     if found_value:
       # Error checking should run even if we've already restored a value.
@@ -685,7 +775,7 @@ def save_network_checkpoint(
                  variable_map[mapped_name]._shared_name,
                  variable._shared_name,
                  network.scope_name))
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     sess = None
   else:
     sess = ops.get_default_session()
@@ -766,7 +856,7 @@ def _restore_existing_variables(network, save_path, map_func, user_map_func):
             network_name=network.name,
             network_scope_name=network.scope_name))
   if existing_variables_by_checkpoint_name:
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       sess = None
     else:
       sess = ops.get_default_session()
@@ -793,7 +883,7 @@ def _set_restore_on_create(network, save_path, map_func, user_map_func,
   # _DeferredRestoration objects once a Network has been built (so that
   # restoring in a loop does not take increasing amounts of memory).
   if checkpointed_variables_to_restore:
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       sess = None
     else:
       sess = ops.get_default_session()

@@ -32,9 +32,14 @@ import java.util.Map;
 final class NativeInterpreterWrapper implements AutoCloseable {
 
   NativeInterpreterWrapper(String modelPath) {
+    this(modelPath, /* numThreads= */ -1);
+  }
+
+  NativeInterpreterWrapper(String modelPath, int numThreads) {
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModel(modelPath, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle, numThreads);
+    isMemoryAllocated = true;
   }
 
   /**
@@ -43,10 +48,20 @@ final class NativeInterpreterWrapper implements AutoCloseable {
    * NativeInterpreterWrapper}.
    */
   NativeInterpreterWrapper(MappedByteBuffer mappedByteBuffer) {
+    this(mappedByteBuffer, /* numThreads= */ -1);
+  }
+
+  /**
+   * Initializes a {@code NativeInterpreterWrapper} with a {@code MappedByteBuffer} and specifies
+   * the number of inference threads. The MappedByteBuffer should not be modified after the
+   * construction of a {@code NativeInterpreterWrapper}.
+   */
+  NativeInterpreterWrapper(MappedByteBuffer mappedByteBuffer, int numThreads) {
     modelByteBuffer = mappedByteBuffer;
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle, numThreads);
+    isMemoryAllocated = true;
   }
 
   /** Releases resources associated with this {@code NativeInterpreterWrapper}. */
@@ -59,6 +74,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     modelByteBuffer = null;
     inputsIndexes = null;
     outputsIndexes = null;
+    isMemoryAllocated = false;
   }
 
   /** Sets inputs, runs model inference and returns outputs. */
@@ -91,11 +107,21 @@ final class NativeInterpreterWrapper implements AutoCloseable {
                 i, inputs.length));
       }
     }
+    inferenceDurationNanoseconds = -1;
     long[] outputsHandles =
-        run(interpreterHandle, errorHandle, sizes, dataTypes, numsOfBytes, inputs);
+        run(
+            interpreterHandle,
+            errorHandle,
+            sizes,
+            dataTypes,
+            numsOfBytes,
+            inputs,
+            this,
+            isMemoryAllocated);
     if (outputsHandles == null || outputsHandles.length == 0) {
       throw new IllegalStateException("Interpreter has no outputs.");
     }
+    isMemoryAllocated = true;
     Tensor[] outputs = new Tensor[outputsHandles.length];
     for (int i = 0; i < outputsHandles.length; ++i) {
       outputs[i] = Tensor.fromHandle(outputsHandles[i]);
@@ -103,13 +129,32 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return outputs;
   }
 
+  private static native long[] run(
+      long interpreterHandle,
+      long errorHandle,
+      Object[] sizes,
+      int[] dtypes,
+      int[] numsOfBytes,
+      Object[] values,
+      NativeInterpreterWrapper wrapper,
+      boolean memoryAllocated);
+
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {
-    resizeInput(interpreterHandle, errorHandle, idx, dims);
+    if (resizeInput(interpreterHandle, errorHandle, idx, dims)) {
+      isMemoryAllocated = false;
+    }
   }
+
+  private static native boolean resizeInput(
+      long interpreterHandle, long errorHandle, int inputIdx, int[] dims);
 
   void setUseNNAPI(boolean useNNAPI) {
     useNNAPI(interpreterHandle, useNNAPI);
+  }
+
+  void setNumThreads(int num_threads) {
+    numThreads(interpreterHandle, num_threads);
   }
 
   /** Gets index of an input given its name. */
@@ -225,6 +270,35 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     }
   }
 
+  /**
+   * Gets the last inference duration in nanoseconds. It returns null if there is no previous
+   * inference run or the last inference run failed.
+   */
+  Long getLastNativeInferenceDurationNanoseconds() {
+    return (inferenceDurationNanoseconds < 0) ? null : inferenceDurationNanoseconds;
+  }
+
+  /**
+   * Gets the dimensions of an input. It throws IllegalArgumentException if input index is invalid.
+   */
+  int[] getInputDims(int index) {
+    return getInputDims(interpreterHandle, index, -1);
+  }
+
+  /**
+   * Gets the dimensions of an input. If numBytes >= 0, it will check whether num of bytes match the
+   * input.
+   */
+  private static native int[] getInputDims(long interpreterHandle, int inputIdx, int numBytes);
+
+  /** Gets the type of an output. It throws IllegalArgumentException if output index is invalid. */
+  String getOutputDataType(int index) {
+    int type = getOutputDataType(interpreterHandle, index);
+    return DataType.fromNumber(type).toStringName();
+  }
+
+  private static native int getOutputDataType(long interpreterHandle, int outputIdx);
+
   private static final int ERROR_BUFFER_SIZE = 512;
 
   private long errorHandle;
@@ -235,20 +309,23 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private int inputSize;
 
+  private long inferenceDurationNanoseconds = -1;
+
   private MappedByteBuffer modelByteBuffer;
 
   private Map<String, Integer> inputsIndexes;
 
   private Map<String, Integer> outputsIndexes;
 
+  private boolean isMemoryAllocated = false;
+
   private static native String[] getInputNames(long interpreterHandle);
 
   private static native String[] getOutputNames(long interpreterHandle);
 
-  private static native void resizeInput(
-      long interpreterHandle, long errorHandle, int inputIdx, int[] dims);
-
   private static native void useNNAPI(long interpreterHandle, boolean state);
+
+  private static native void numThreads(long interpreterHandle, int num_threads);
 
   private static native long createErrorReporter(int size);
 
@@ -256,19 +333,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native long createModelWithBuffer(MappedByteBuffer modelBuffer, long errorHandle);
 
-  private static native long createInterpreter(long modelHandle);
-
-  private static native long[] run(
-      long interpreterHandle,
-      long errorHandle,
-      Object[] sizes,
-      int[] dtypes,
-      int[] numsOfBytes,
-      Object[] values);
+  private static native long createInterpreter(long modelHandle, long errorHandle, int numThreads);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
-
-  private static native int[] getInputDims(long interpreterHandle, int inputIdx, int numBytes);
 
   static {
     TensorFlowLite.init();

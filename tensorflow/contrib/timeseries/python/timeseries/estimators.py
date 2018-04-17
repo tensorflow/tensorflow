@@ -29,18 +29,22 @@ from tensorflow.contrib.timeseries.python.timeseries.state_space_models.filterin
 
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.export import export_lib
+from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.training import training as train
+from tensorflow.python.util import nest
 
 
 class TimeSeriesRegressor(estimator_lib.Estimator):
   """An Estimator to fit and evaluate a time series model."""
 
   def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
-               config=None):
+               config=None, head_type=ts_head_lib.TimeSeriesRegressionHead):
     """Initialize the Estimator.
 
     Args:
@@ -51,6 +55,8 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
           from tf.train.Optimizer. Defaults to Adam with step size 0.02.
       model_dir: See `Estimator`.
       config: See `Estimator`.
+      head_type: The kind of head to use for the model (inheriting from
+          `TimeSeriesRegressionHead`).
     """
     input_statistics_generator = math_utils.InputStatisticsFromMiniBatch(
         dtype=model.dtype, num_features=model.num_features)
@@ -59,8 +65,8 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
     if optimizer is None:
       optimizer = train.AdamOptimizer(0.02)
     self._model = model
-    ts_regression_head = ts_head_lib.time_series_regression_head(
-        model, state_manager, optimizer,
+    ts_regression_head = head_type(
+        model=model, state_manager=state_manager, optimizer=optimizer,
         input_statistics_generator=input_statistics_generator)
     model_fn = ts_regression_head.create_estimator_spec
     super(TimeSeriesRegressor, self).__init__(
@@ -72,15 +78,14 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
   # tf.Example containing all features (times, values, any exogenous features)
   # and serialized model state (possibly also as a tf.Example).
   def build_raw_serving_input_receiver_fn(self,
-                                          exogenous_features=None,
                                           default_batch_size=None,
                                           default_series_length=None):
     """Build an input_receiver_fn for export_savedmodel which accepts arrays.
 
+    Automatically creates placeholders for exogenous `FeatureColumn`s passed to
+    the model.
+
     Args:
-      exogenous_features: A dictionary mapping feature keys to exogenous
-        features (either Numpy arrays or Tensors). Used to determine the shapes
-        of placeholders for these features.
       default_batch_size: If specified, must be a scalar integer. Sets the batch
         size in the static shape information of all feature Tensors, which means
         only this batch size will be accepted by the exported model. If None
@@ -94,17 +99,14 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
       An input_receiver_fn which may be passed to the Estimator's
       export_savedmodel.
     """
-    if exogenous_features is None:
-      exogenous_features = {}
-
     def _serving_input_receiver_fn():
       """A receiver function to be passed to export_savedmodel."""
       placeholders = {}
-      placeholders[feature_keys.TrainEvalFeatures.TIMES] = (
-          array_ops.placeholder(
-              name=feature_keys.TrainEvalFeatures.TIMES,
-              dtype=dtypes.int64,
-              shape=[default_batch_size, default_series_length]))
+      time_placeholder = array_ops.placeholder(
+          name=feature_keys.TrainEvalFeatures.TIMES,
+          dtype=dtypes.int64,
+          shape=[default_batch_size, default_series_length])
+      placeholders[feature_keys.TrainEvalFeatures.TIMES] = time_placeholder
       # Values are only necessary when filtering. For prediction the default
       # value will be ignored.
       placeholders[feature_keys.TrainEvalFeatures.VALUES] = (
@@ -119,28 +121,57 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
                   dtype=self._model.dtype),
               shape=(default_batch_size, default_series_length,
                      self._model.num_features)))
-      for feature_key, feature_value in exogenous_features.items():
-        value_tensor = ops.convert_to_tensor(feature_value)
-        value_tensor.get_shape().with_rank_at_least(2)
-        feature_shape = value_tensor.get_shape().as_list()
-        feature_shape[0] = default_batch_size
-        feature_shape[1] = default_series_length
-        placeholders[feature_key] = array_ops.placeholder(
-            dtype=value_tensor.dtype, name=feature_key, shape=feature_shape)
+      if self._model.exogenous_feature_columns:
+        with ops.Graph().as_default():
+          # Default placeholders have only an unknown batch dimension. Make them
+          # in a separate graph, then splice in the series length to the shapes
+          # and re-create them in the outer graph.
+          parsed_features = (
+              feature_column.make_parse_example_spec(
+                  self._model.exogenous_feature_columns))
+          placeholder_features = parsing_ops.parse_example(
+              serialized=array_ops.placeholder(
+                  shape=[None], dtype=dtypes.string),
+              features=parsed_features)
+          exogenous_feature_shapes = {
+              key: (value.get_shape(), value.dtype) for key, value
+              in placeholder_features.items()}
+        for feature_key, (batch_only_feature_shape, value_dtype) in (
+            exogenous_feature_shapes.items()):
+          batch_only_feature_shape = (
+              batch_only_feature_shape.with_rank_at_least(1).as_list())
+          feature_shape = ([default_batch_size, default_series_length]
+                           + batch_only_feature_shape[1:])
+          placeholders[feature_key] = array_ops.placeholder(
+              dtype=value_dtype, name=feature_key, shape=feature_shape)
       # Models may not know the shape of their state without creating some
       # variables/ops. Avoid polluting the default graph by making a new one. We
       # use only static metadata from the returned Tensors.
       with ops.Graph().as_default():
         self._model.initialize_graph()
-        model_start_state = self._model.get_start_state()
-      for prefixed_state_name, state_tensor in ts_head_lib.state_to_dictionary(
-          model_start_state).items():
+        # Evaluate the initial state as same-dtype "zero" values. These zero
+        # constants aren't used, but are necessary for feeding to
+        # placeholder_with_default for the "cold start" case where state is not
+        # fed to the model.
+        def _zeros_like_constant(tensor):
+          return tensor_util.constant_value(array_ops.zeros_like(tensor))
+        start_state = nest.map_structure(
+            _zeros_like_constant, self._model.get_start_state())
+      batch_size_tensor = array_ops.shape(time_placeholder)[0]
+      for prefixed_state_name, state in ts_head_lib.state_to_dictionary(
+          start_state).items():
         state_shape_with_batch = tensor_shape.TensorShape(
-            (default_batch_size,)).concatenate(state_tensor.get_shape())
-        placeholders[prefixed_state_name] = array_ops.placeholder(
+            (default_batch_size,)).concatenate(state.shape)
+        default_state_broadcast = array_ops.tile(
+            state[None, ...],
+            multiples=array_ops.concat(
+                [batch_size_tensor[None],
+                 array_ops.ones(len(state.shape), dtype=dtypes.int32)],
+                axis=0))
+        placeholders[prefixed_state_name] = array_ops.placeholder_with_default(
+            input=default_state_broadcast,
             name=prefixed_state_name,
-            shape=state_shape_with_batch,
-            dtype=state_tensor.dtype)
+            shape=state_shape_with_batch)
       return export_lib.ServingInputReceiver(placeholders, placeholders)
 
     return _serving_input_receiver_fn
@@ -327,11 +358,11 @@ class StructuralEnsembleRegressor(StateSpaceRegressor):
           determine the model size. Learning autoregressive coefficients
           typically requires more steps and a smaller step size than other
           components.
-      exogenous_feature_columns: A list of tf.contrib.layers.FeatureColumn
-          objects (for example tf.contrib.layers.embedding_column) corresponding
-          to exogenous features which provide extra information to the model but
-          are not part of the series to be predicted. Passed to
-          tf.contrib.layers.input_from_feature_columns.
+      exogenous_feature_columns: A list of `tf.feature_column`s (for example
+          `tf.feature_column.embedding_column`) corresponding to exogenous
+          features which provide extra information to the model but are not part
+          of the series to be predicted. Passed to
+          `tf.feature_column.input_layer`.
       exogenous_update_condition: A function taking two Tensor arguments,
           `times` (shape [batch size]) and `features` (a dictionary mapping
           exogenous feature keys to Tensors with shapes [batch size, ...]), and

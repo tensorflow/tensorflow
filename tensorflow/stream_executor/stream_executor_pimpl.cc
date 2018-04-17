@@ -305,6 +305,15 @@ bool StreamExecutor::GetConvolveAlgorithms(
                                             cc_minor, out_algorithms);
 }
 
+bool StreamExecutor::GetRnnAlgorithms(
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return false;
+  }
+  return dnn_support->GetRnnAlgorithms(out_algorithms);
+}
+
 bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
     bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmDesc> *out_algorithms) {
@@ -344,7 +353,8 @@ port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
     int num_layers, int hidden_size, int input_size,
     dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
-    dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout, uint64 seed,
+    dnn::RnnMode rnn_mode, dnn::DataType data_type,
+    const dnn::AlgorithmConfig &algorithm_config, float dropout, uint64 seed,
     ScratchAllocator *state_allocator) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
@@ -353,7 +363,7 @@ StreamExecutor::createRnnDescriptor(
   }
   return dnn_support->createRnnDescriptor(
       num_layers, hidden_size, input_size, input_mode, direction_mode, rnn_mode,
-      data_type, dropout, seed, state_allocator);
+      data_type, algorithm_config, dropout, seed, state_allocator);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
@@ -432,8 +442,8 @@ bool StreamExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
-bool StreamExecutor::BlockHostUntilDone(Stream *stream) {
-  bool result;
+port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
+  port::Status result;
   SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
 
   result = implementation_->BlockHostUntilDone(stream);
@@ -566,19 +576,18 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
           << device_src.opaque() << ", size=" << size
           << ", host_dst=" << host_dst << ")" << StackTraceIfVLOG10();
 
-  port::Status result{port::Status::OK()};
+  port::Status result;
   SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H, &result, device_src, size,
                host_dst);
 
-  port::Status status =
-      implementation_->SynchronousMemcpy(host_dst, device_src, size);
-  if (!status.ok()) {
-    return port::Status{port::error::INTERNAL,
-                        port::Printf("failed to synchronously memcpy "
-                                     "device-to-host: device %p to host %p "
-                                     "size %lld: %s",
-                                     device_src.opaque(), host_dst, size,
-                                     status.ToString().c_str())};
+  result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
+  if (!result.ok()) {
+    result = port::Status{port::error::INTERNAL,
+                          port::Printf("failed to synchronously memcpy "
+                                       "device-to-host: device %p to host %p "
+                                       "size %lld: %s",
+                                       device_src.opaque(), host_dst, size,
+                                       result.ToString().c_str())};
   }
 
   return result;
@@ -590,19 +599,18 @@ port::Status StreamExecutor::SynchronousMemcpyH2D(
           << ", size=" << size << ", device_dst" << device_dst->opaque() << ")"
           << StackTraceIfVLOG10();
 
-  port::Status result{port::Status::OK()};
+  port::Status result;
   SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D, &result, host_src, size,
                device_dst);
 
-  port::Status status =
-      implementation_->SynchronousMemcpy(device_dst, host_src, size);
-  if (!status.ok()) {
+  result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
+  if (!result.ok()) {
     result = port::Status{
         port::error::INTERNAL,
         port::Printf("failed to synchronously memcpy host-to-device: host "
                      "%p to device %p size %lld: %s",
                      host_src, device_dst->opaque(), size,
-                     status.ToString().c_str())};
+                     result.ToString().c_str())};
   }
 
   return result;

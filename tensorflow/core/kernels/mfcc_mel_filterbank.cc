@@ -38,13 +38,12 @@ namespace tensorflow {
 
 MfccMelFilterbank::MfccMelFilterbank() : initialized_(false) {}
 
-bool MfccMelFilterbank::Initialize(int input_length,
-                               double input_sample_rate,
-                               int output_channel_count,
-                               double lower_frequency_limit,
-                               double upper_frequency_limit) {
+bool MfccMelFilterbank::Initialize(int input_length, double input_sample_rate,
+                                   int output_channel_count,
+                                   double lower_frequency_limit,
+                                   double upper_frequency_limit) {
   num_channels_ = output_channel_count;
-  sample_rate_  = input_sample_rate;
+  sample_rate_ = input_sample_rate;
   input_length_ = input_length;
 
   if (num_channels_ < 1) {
@@ -85,10 +84,9 @@ bool MfccMelFilterbank::Initialize(int input_length,
   }
 
   // Always exclude DC; emulate HTK.
-  const double hz_per_sbin = 0.5 * sample_rate_ /
-      static_cast<double>(input_length_ - 1);
-  start_index_ = static_cast<int>(1.5 + (lower_frequency_limit /
-                                           hz_per_sbin));
+  const double hz_per_sbin =
+      0.5 * sample_rate_ / static_cast<double>(input_length_ - 1);
+  start_index_ = static_cast<int>(1.5 + (lower_frequency_limit / hz_per_sbin));
   end_index_ = static_cast<int>(upper_frequency_limit / hz_per_sbin);
 
   // Maps the input spectrum bin indices to filter bank channels/indices. For
@@ -121,12 +119,12 @@ bool MfccMelFilterbank::Initialize(int input_length,
       weights_[i] = 0.0;
     } else {
       if (channel >= 0) {
-        weights_[i] = (center_frequencies_[channel + 1] -
-                       FreqToMel(i * hz_per_sbin)) /
+        weights_[i] =
+            (center_frequencies_[channel + 1] - FreqToMel(i * hz_per_sbin)) /
             (center_frequencies_[channel + 1] - center_frequencies_[channel]);
       } else {
         weights_[i] = (center_frequencies_[0] - FreqToMel(i * hz_per_sbin)) /
-            (center_frequencies_[0] - mel_low);
+                      (center_frequencies_[0] - mel_low);
       }
     }
   }
@@ -152,16 +150,16 @@ bool MfccMelFilterbank::Initialize(int input_length,
     }
   }
   if (!bad_channels.empty()) {
-    LOG(ERROR) << "Missing " << bad_channels.size() << " bands " <<
-        " starting at " << bad_channels[0] <<
-        " in mel-frequency design. " <<
-        "Perhaps too many channels or " <<
-        "not enough frequency resolution in spectrum. (" <<
-        "input_length: " << input_length <<
-        " input_sample_rate: " << input_sample_rate <<
-        " output_channel_count: " << output_channel_count <<
-        " lower_frequency_limit: " << lower_frequency_limit <<
-        " upper_frequency_limit: " << upper_frequency_limit;
+    LOG(ERROR) << "Missing " << bad_channels.size() << " bands "
+               << " starting at " << bad_channels[0]
+               << " in mel-frequency design. "
+               << "Perhaps too many channels or "
+               << "not enough frequency resolution in spectrum. ("
+               << "input_length: " << input_length
+               << " input_sample_rate: " << input_sample_rate
+               << " output_channel_count: " << output_channel_count
+               << " lower_frequency_limit: " << lower_frequency_limit
+               << " upper_frequency_limit: " << upper_frequency_limit;
   }
   initialized_ = true;
   return true;
@@ -171,7 +169,7 @@ bool MfccMelFilterbank::Initialize(int input_length,
 // square root, then summing FFT magnitudes under triangular integration windows
 // whose widths increase with frequency.
 void MfccMelFilterbank::Compute(const std::vector<double> &input,
-                            std::vector<double> *output) const {
+                                std::vector<double> *output) const {
   if (!initialized_) {
     LOG(ERROR) << "Mel Filterbank not initialized.";
     return;

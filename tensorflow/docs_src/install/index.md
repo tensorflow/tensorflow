@@ -3,8 +3,8 @@
 We've built and tested TensorFlow on the following 64-bit laptop/desktop
 operating systems:
 
-  * MacOS X 10.11 (El Capitan) or later.
-  * Ubuntu 14.04 or later
+  * macOS 10.12.6 (Sierra) or later.
+  * Ubuntu 16.04 or later
   * Windows 7 or later.
 
 Although you might be able to install TensorFlow on other laptop or desktop

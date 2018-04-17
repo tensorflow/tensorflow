@@ -458,3 +458,36 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
         `debug_op` as a `str`.
     """
     return list(self._gated_grpc_debug_watches)
+
+  def SendTracebacks(self, request, context):
+    """Base implementation of the handling of SendTracebacks calls.
+
+    The base implementation does nothing with the incoming request.
+    Override in an implementation of the server if necessary.
+
+    Args:
+      request: A `CallTraceback` proto, containing information about the
+        type (e.g., graph vs. eager execution) and source-code traceback of the
+        call and (any) associated `tf.Graph`s.
+      context: Server context.
+
+    Returns:
+      A `EventReply` proto.
+    """
+    return debug_service_pb2.EventReply()
+
+  def SendSourceFiles(self, request, context):
+    """Base implementation of the handling of SendSourceFiles calls.
+
+    The base implementation does nothing with the incoming request.
+    Override in an implementation of the server if necessary.
+
+    Args:
+      request: A `DebuggedSourceFiles` proto, containing the path, content, size
+        and last-modified timestamp of source files.
+      context: Server context.
+
+    Returns:
+      A `EventReply` proto.
+    """
+    return debug_service_pb2.EventReply()

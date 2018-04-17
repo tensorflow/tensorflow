@@ -30,6 +30,13 @@ from tensorflow.python.platform import test
 
 class SDCALogisticClassifierTest(test.TestCase):
 
+  def _single_threaded_test_session(self):
+    # TODO(andreasst): figure out why SDCALinearRegressor needs a single
+    # threaded session to pass in tsan mode but SDCALogisticClassifier does not.
+    config = config_pb2.ConfigProto(
+        inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
+    return self.test_session(config=config)
+
   def testRealValuedFeatures(self):
     """Tests SDCALogisticClassifier works with real valued features."""
 
@@ -41,7 +48,7 @@ class SDCALogisticClassifierTest(test.TestCase):
           'weights': constant_op.constant([[1.0], [1.0]])
       }, constant_op.constant([[0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       maintenance_cost = feature_column_lib.real_valued_column(
           'maintenance_cost')
       sq_footage = feature_column_lib.real_valued_column('sq_footage')
@@ -66,7 +73,7 @@ class SDCALogisticClassifierTest(test.TestCase):
               constant_op.constant([[500.0, 800.0], [200.0, 600.0]])
       }, constant_op.constant([[0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       dense_feature = feature_column_lib.real_valued_column(
           'dense_feature', dimension=2)
       classifier = sdca_estimator.SDCALogisticClassifier(
@@ -86,7 +93,7 @@ class SDCALogisticClassifierTest(test.TestCase):
           'weights': constant_op.constant([[1.0], [1.0], [1.0]])
       }, constant_op.constant([[1], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       price_bucket = feature_column_lib.bucketized_column(
           feature_column_lib.real_valued_column('price'),
           boundaries=[500.0, 700.0])
@@ -120,7 +127,7 @@ class SDCALogisticClassifierTest(test.TestCase):
               constant_op.constant([[1.0], [1.0], [1.0]])
       }, constant_op.constant([[1], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       price = feature_column_lib.real_valued_column('price')
       country = feature_column_lib.sparse_column_with_hash_bucket(
           'country', hash_bucket_size=5)
@@ -151,7 +158,7 @@ class SDCALogisticClassifierTest(test.TestCase):
                   dense_shape=[3, 5])
       }, constant_op.constant([[1], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       country = feature_column_lib.sparse_column_with_hash_bucket(
           'country', hash_bucket_size=5)
       country_weighted_by_price = feature_column_lib.weighted_sparse_column(
@@ -162,6 +169,38 @@ class SDCALogisticClassifierTest(test.TestCase):
       classifier.fit(input_fn=input_fn, steps=50)
       metrics = classifier.evaluate(input_fn=input_fn, steps=1)
       self.assertGreater(metrics['accuracy'], 0.9)
+
+  def testSparseFeaturesWithDuplicates(self):
+    """Tests SDCALogisticClassifier with duplicated sparse features."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2']),
+          'age':
+              sparse_tensor.SparseTensor(
+                  values=['20-29'] * 5 + ['31-40'] * 5,
+                  indices=[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0],
+                           [1, 0], [1, 0], [1, 0], [1, 0]],
+                  dense_shape=[2, 1]),
+          'gender':
+              sparse_tensor.SparseTensor(
+                  values=['m'] * 5 + ['f'] * 5,
+                  indices=[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0],
+                           [1, 0], [1, 0], [1, 0], [1, 0]],
+                  dense_shape=[2, 1]),
+      }, constant_op.constant([[1], [0]])
+
+    with self._single_threaded_test_session():
+      age = feature_column_lib.sparse_column_with_hash_bucket(
+          'age', hash_bucket_size=10)
+      gender = feature_column_lib.sparse_column_with_hash_bucket(
+          'gender', hash_bucket_size=10)
+      classifier = sdca_estimator.SDCALogisticClassifier(
+          example_id_column='example_id', feature_columns=[age, gender])
+      classifier.fit(input_fn=input_fn, steps=50)
+      metrics = classifier.evaluate(input_fn=input_fn, steps=1)
+      self.assertLess(metrics['loss'], 0.060)
 
   def testCrossedFeatures(self):
     """Tests SDCALogisticClassifier with crossed features."""
@@ -182,7 +221,7 @@ class SDCALogisticClassifierTest(test.TestCase):
                   dense_shape=[3, 1])
       }, constant_op.constant([[0], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       language = feature_column_lib.sparse_column_with_hash_bucket(
           'language', hash_bucket_size=5)
       country = feature_column_lib.sparse_column_with_hash_bucket(
@@ -215,7 +254,7 @@ class SDCALogisticClassifierTest(test.TestCase):
               constant_op.constant([[3.0], [1.0], [1.0]])
       }, constant_op.constant([[1], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       price = feature_column_lib.real_valued_column('price')
       sq_footage_bucket = feature_column_lib.bucketized_column(
           feature_column_lib.real_valued_column('sq_footage'),

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_COMPATIBILITY_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_COMPATIBILITY_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_COMPATIBILITY_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_COMPATIBILITY_H_
 
 #include <cassert>
 #include <cstdint>
@@ -25,6 +25,10 @@ limitations under the License.
 
 #ifndef TFLITE_DCHECK_EQ
 #define TFLITE_DCHECK_EQ(x, y) ((x) == (y)) ? (void)0 : assert(false)
+#endif
+
+#ifndef TFLITE_DCHECK_NE
+#define TFLITE_DCHECK_NE(x, y) ((x) != (y)) ? (void)0 : assert(false)
 #endif
 
 #ifndef TFLITE_DCHECK_GE
@@ -52,6 +56,10 @@ limitations under the License.
 #define TFLITE_CHECK_EQ(x, y) ((x) == (y)) ? (void)0 : abort()
 #endif
 
+#ifndef TFLITE_CHECK_NE
+#define TFLITE_CHECK_NE(x, y) ((x) != (y)) ? (void)0 : abort()
+#endif
+
 #ifndef TFLITE_CHECK_GE
 #define TFLITE_CHECK_GE(x, y) ((x) >= (y)) ? (void)0 : abort()
 #endif
@@ -69,10 +77,11 @@ limitations under the License.
 #endif
 
 // TODO(ahentz): Clean up.
+using int8 = std::int8_t;
 using uint8 = std::uint8_t;
 using int16 = std::int16_t;
 using uint16 = std::uint16_t;
 using int32 = std::int32_t;
 using uint32 = std::uint32_t;
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_COMPATIBILITY_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_COMPATIBILITY_H_

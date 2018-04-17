@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -96,7 +97,7 @@ class OpCompatibilityTest : public OpsTestBase {
       ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
                     << SummarizeOpDef(new_op_def);
     } else {
-      EXPECT_TRUE(StringPiece(status.error_message()).contains(error))
+      EXPECT_TRUE(str_util::StrContains(status.error_message(), error))
           << status << " does not contain " << error;
     }
   }
@@ -118,7 +119,7 @@ class OpCompatibilityTest : public OpsTestBase {
       ADD_FAILURE() << SummarizeNodeDef(*node_def());
     } else {
       EXPECT_TRUE(
-          StringPiece(status.error_message()).contains(validation_error))
+          str_util::StrContains(status.error_message(), validation_error))
           << status << " does not contain " << validation_error;
     }
 
@@ -162,6 +163,26 @@ class OpCompatibilityTest : public OpsTestBase {
     TF_ASSERT_OK(ValidateNodeDef(*node_def(), *new_op_def));
 
     ExpectIncompatible(old_op_def, *new_op_def, compatibility_error);
+  }
+
+  void ExpectDefaultChangeFailure(const OpDef& old_op_def,
+                                  const string& compatibility_error) {
+    // This should be all that is needed to get compatibility.
+    const OpDef* new_op_def = RegisteredOpDef();
+    AddDefaultsToNodeDef(*new_op_def, node_def());
+
+    // Validate that the NodeDef is valid.
+    TF_ASSERT_OK(ValidateNodeDef(*node_def(), *new_op_def));
+
+    Status status = OpDefAttrDefaultsUnchanged(old_op_def, *new_op_def);
+    if (status.ok()) {
+      ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
+                    << SummarizeOpDef(*new_op_def);
+    } else {
+      EXPECT_TRUE(
+          str_util::StrContains(status.error_message(), compatibility_error))
+          << status << " does not contain " << compatibility_error;
+    }
   }
 };
 
@@ -258,40 +279,6 @@ TEST_F(OpCompatibilityTest, AttrOrder) {
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
   EXPECT_EQ("attr_order = AttrOrder[a=7, b=true]()", Result());
-}
-
-// Should be able to add a default to an attr.
-REGISTER_OP("AddDefault").Output("ndef: string").Attr("a: int = 1234");
-REGISTER_KERNEL_BUILDER(Name("AddDefault").Device(DEVICE_CPU), TestKernel);
-
-TEST_F(OpCompatibilityTest, AddDefault) {
-  OpRegistrationData old_op;
-  TF_ASSERT_OK(OpDefBuilder("AddDefault")
-                   .Output("ndef: string")
-                   .Attr("a: int")
-                   .Finalize(&old_op));
-  TF_ASSERT_OK(NodeDefBuilder("add_default", &old_op.op_def)
-                   .Attr("a", 765)
-                   .Finalize(node_def()));
-  ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("add_default = AddDefault[a=765]()", Result());
-}
-
-// Should be able to remove a default from an attr, *as long as that
-// attr has always existed*.
-REGISTER_OP("RemoveDefault").Output("ndef: string").Attr("a: int");
-REGISTER_KERNEL_BUILDER(Name("RemoveDefault").Device(DEVICE_CPU), TestKernel);
-
-TEST_F(OpCompatibilityTest, RemoveDefault) {
-  OpRegistrationData old_op;
-  TF_ASSERT_OK(OpDefBuilder("RemoveDefault")
-                   .Output("ndef: string")
-                   .Attr("a: int = 91")
-                   .Finalize(&old_op));
-  TF_ASSERT_OK(
-      NodeDefBuilder("remove_default", &old_op.op_def).Finalize(node_def()));
-  ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("remove_default = RemoveDefault[a=91]()", Result());
 }
 
 // Should be able to make an input/output polymorphic.
@@ -1054,9 +1041,56 @@ TEST_F(OpCompatibilityTest, RenameOutputListFails) {
                       "Output signature mismatch 'old:T' vs. 'new:T'");
 }
 
-// Changing an attr's default is not technically illegal, but should
-// be forbidden if it the attr ever didn't exist since it likely
-// affects semantics.
+// Should not be able to add a default to an attr.
+REGISTER_OP("AddDefault").Output("ndef: string").Attr("a: int = 1234");
+REGISTER_KERNEL_BUILDER(Name("AddDefault").Device(DEVICE_CPU), TestKernel);
+
+TEST_F(OpCompatibilityTest, AddDefault) {
+  OpRegistrationData old_op;
+  TF_ASSERT_OK(OpDefBuilder("AddDefault")
+                   .Output("ndef: string")
+                   .Attr("a: int")
+                   .Finalize(&old_op));
+  TF_ASSERT_OK(NodeDefBuilder("add_default", &old_op.op_def)
+                   .Attr("a", 765)
+                   .Finalize(node_def()));
+  ExpectDefaultChangeFailure(
+      old_op.op_def,
+      "Attr 'a' has added/removed it's default; from no default to 1234");
+}
+
+// Should not be able to remove a default from an attr.
+REGISTER_OP("RemoveDefault").Output("ndef: string").Attr("a: int");
+REGISTER_KERNEL_BUILDER(Name("RemoveDefault").Device(DEVICE_CPU), TestKernel);
+
+TEST_F(OpCompatibilityTest, RemoveDefault) {
+  OpRegistrationData old_op;
+  TF_ASSERT_OK(OpDefBuilder("RemoveDefault")
+                   .Output("ndef: string")
+                   .Attr("a: int = 91")
+                   .Finalize(&old_op));
+  TF_ASSERT_OK(
+      NodeDefBuilder("remove_default", &old_op.op_def).Finalize(node_def()));
+  ExpectDefaultChangeFailure(
+      old_op.op_def,
+      "Attr 'a' has added/removed it's default; from 91 to no default");
+}
+
+// Should not be able to change a default for an attr.
+REGISTER_OP("ChangeDefault").Output("ndef: string").Attr("a: int = 1");
+REGISTER_KERNEL_BUILDER(Name("ChangeDefault").Device(DEVICE_CPU), TestKernel);
+
+TEST_F(OpCompatibilityTest, ChangeDefault) {
+  OpRegistrationData old_op;
+  TF_ASSERT_OK(OpDefBuilder("ChangeDefault")
+                   .Output("ndef: string")
+                   .Attr("a: int = 2")
+                   .Finalize(&old_op));
+  TF_ASSERT_OK(
+      NodeDefBuilder("change_default", &old_op.op_def).Finalize(node_def()));
+  ExpectDefaultChangeFailure(
+      old_op.op_def, "Attr 'a' has changed it's default value; from 2 to 1");
+}
 
 }  // namespace
 }  // namespace tensorflow

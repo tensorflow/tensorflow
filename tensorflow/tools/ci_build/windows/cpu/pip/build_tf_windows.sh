@@ -42,11 +42,24 @@ source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
 source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
   || { echo "Failed to source bazel_test_lib.sh" >&2; exit 1; }
 
+skip_test=0
+
+for ARG in "$@"; do
+  if [[ "$ARG" == --skip_test ]]; then
+    skip_test=1
+  fi
+done
+
 run_configure_for_cpu_build
 
-clean_output_base
-
+# --define=override_eigen_strong_inline=true speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
+# by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
+BUILD_OPTS="--define=override_eigen_strong_inline=true"
 bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
+
+if [[ "$skip_test" == 1 ]]; then
+  exit 0
+fi
 
 # Create a python test directory to avoid package name conflict
 PY_TEST_DIR="py_test_dir"
@@ -60,11 +73,10 @@ reinstall_tensorflow_pip ${PIP_NAME}
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-# TODO(pcloudy): Remove TF_SAVER_LENIENT_NAMES after
-# https://github.com/tensorflow/tensorflow/issues/12844 is fixed.
 bazel test -c opt $BUILD_OPTS -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows \
-  --build_tag_filters=-no_pip,-no_windows --build_tests_only \
-  --test_env=TF_SAVER_LENIENT_NAMES=True \
-  //${PY_TEST_DIR}/tensorflow/python/...
+  --test_tag_filters=-no_pip,-no_windows,-no_oss \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \
+  --flaky_test_attempts=3 \
+  //${PY_TEST_DIR}/tensorflow/python/... \
+  //${PY_TEST_DIR}/tensorflow/contrib/...

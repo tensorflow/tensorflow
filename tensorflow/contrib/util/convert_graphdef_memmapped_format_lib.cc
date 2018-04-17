@@ -142,9 +142,9 @@ Status ConvertConstantsToImmutable(const string& in_graph_filename,
   const auto load_graph_status =
       ReadBinaryProto(default_env, in_graph_filename, &graph_def);
   if (!load_graph_status.ok()) {
-    return tensorflow::errors::NotFound("Failed to load graph at '",
-                                        in_graph_filename, "' : ",
-                                        load_graph_status.error_message());
+    return tensorflow::errors::NotFound(
+        "Failed to load graph at '", in_graph_filename,
+        "' : ", load_graph_status.error_message());
   }
 
   NodeConverter node_converter;

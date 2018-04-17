@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Basic class for applying a mel-scale filterbank to an input.
+// Basic class for applying a mel-scale mapping to a power spectrum.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
+#define TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
 
 #include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
@@ -27,13 +27,12 @@ class MfccMelFilterbank {
  public:
   MfccMelFilterbank();
   bool Initialize(int input_length,  // Number of unique FFT bins fftsize/2+1.
-                  double input_sample_rate,
-                  int output_channel_count,
-                  double lower_frequency_limit,
-                  double upper_frequency_limit);
+                  double input_sample_rate, int output_channel_count,
+                  double lower_frequency_limit, double upper_frequency_limit);
 
-  // Takes a magnitude spectrogram slice as input, computes a
-  // traingular mel filterbank and places the result in output.
+  // Takes a squared-magnitude spectrogram slice as input, computes a
+  // triangular-mel-weighted linear-magnitude filterbank, and places the result
+  // in output.
   void Compute(const std::vector<double>& input,
                std::vector<double>* output) const;
 
@@ -55,11 +54,11 @@ class MfccMelFilterbank {
   // FFT bin i contributes to the upper side of mel channel band_mapper_[i]
   std::vector<int> band_mapper_;
   int start_index_;  // Lowest FFT bin used to calculate mel spectrum.
-  int end_index_;  // Highest FFT bin used to calculate mel spectrum.
+  int end_index_;    // Highest FFT bin used to calculate mel spectrum.
 
   TF_DISALLOW_COPY_AND_ASSIGN(MfccMelFilterbank);
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_

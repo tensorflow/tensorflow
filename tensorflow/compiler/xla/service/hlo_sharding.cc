@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace xla {
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrCat;
 
 HloSharding HloSharding::AssignDevice(int64 device_id) {
@@ -57,8 +58,9 @@ string HloSharding::ToString() const {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
   } else {
-    return StrCat("{", ShapeUtil::HumanString(tile_shape_), " ",
-                  "devices=", VectorString(tile_assignment_), "}");
+    return StrCat("{", ShapeUtil::HumanString(tile_shape_), " ", "devices=[",
+                  Join(tile_assignment_.dimensions(), ","), "]",
+                  Join(tile_assignment_, ","), "}");
   }
 }
 
@@ -160,7 +162,63 @@ bool HloSharding::HasUniqueDevice() const {
   }
 }
 
+Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {
+  if (!ShapeUtil::IsTuple(shape)) {
+    return tensorflow::errors::InvalidArgument(
+        StrCat("Sharding is tuple-shaped but validation shape is not."));
+  }
+  // The easiest way to get the number of elements in a nested tuple is just to
+  // create a shape tree. We could call GetAsShapeTree, but that will try and
+  // apply our tuple_shardings_ to the shape tree, and that might cause a crash
+  // at this point as we haven't validated them.
+  ShapeTree<bool> bool_shape_tree(shape, false);
+  int64 num_leaves =
+      std::distance(bool_shape_tree.leaf_begin(), bool_shape_tree.leaf_end());
+  if (num_leaves != tuple_elements_.size()) {
+    return tensorflow::errors::InvalidArgument(
+        StrCat("Validation tuple shape has ", num_leaves,
+               " leaf elements, but this sharding contains ",
+               tuple_elements_.size(), " elements."));
+  }
+
+  // Now we've validated the number of tuple elements, it's safe to request a
+  // shape tree.
+  ShapeTree<HloSharding> shape_tree = GetAsShapeTree(shape);
+  for (const auto& index_to_sharding : shape_tree.leaves()) {
+    if (index_to_sharding.first.empty()) {
+      // An empty tuple has a ShapeTree with a single leaf at the empty index.
+      continue;
+    }
+    Status status = index_to_sharding.second.ValidateNonTuple(
+        ShapeUtil::GetSubshape(shape, index_to_sharding.first), num_devices);
+    if (!status.ok()) {
+      tensorflow::errors::AppendToMessage(
+          &status, StrCat("Note: While validating sharding tuple element ",
+                          index_to_sharding.first.ToString(), " which is ",
+                          index_to_sharding.second.ToString()));
+      return status;
+    }
+  }
+  return Status::OK();
+}
+
 Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
+  Status status = IsTuple() ? ValidateTuple(shape, num_devices)
+                            : ValidateNonTuple(shape, num_devices);
+  if (!status.ok()) {
+    tensorflow::errors::AppendToMessage(
+        &status, StrCat("Note: While validating sharding ", ToString(),
+                        " against shape ", ShapeUtil::HumanString(shape)));
+  }
+  return status;
+}
+
+Status HloSharding::ValidateNonTuple(const Shape& shape,
+                                     int64 num_devices) const {
+  if (ShapeUtil::IsTuple(shape)) {
+    return tensorflow::errors::InvalidArgument(
+        StrCat("Validation shape is a tuple but sharding is not."));
+  }
   if (replicated_) {
     return Status::OK();
   }
@@ -170,17 +228,15 @@ Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
   Status status = Status::OK();
   std::set<int64> seen_cores;
   tile_assignment_.Each(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 core) {
+      [&](tensorflow::gtl::ArraySlice<int64> indices, int32 core) {
         // Don't overwrite a bad status, so we report the first error.
         if (status.ok()) {
           if (core >= num_devices) {
-            status =
-                tensorflow::errors::InvalidArgument(tensorflow::strings::StrCat(
-                    "core ", core, " > ", num_devices, " in tile assignment"));
+            status = tensorflow::errors::InvalidArgument(StrCat(
+                "core ", core, " > ", num_devices, " in tile assignment"));
           } else if (seen_cores.count(core) != 0) {
-            status =
-                tensorflow::errors::InvalidArgument(tensorflow::strings::StrCat(
-                    "core ", core, " is not unique in tile assignment"));
+            status = tensorflow::errors::InvalidArgument(
+                StrCat("core ", core, " is not unique in tile assignment"));
           }
         }
         seen_cores.insert(core);
@@ -196,7 +252,8 @@ Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
   // The tile rank must be the same as the input rank.
   if (ShapeUtil::Rank(shape) != ShapeUtil::Rank(tile_shape_)) {
     return tensorflow::errors::InvalidArgument(
-        "Tile rank is different to the input rank");
+        "Tile rank is different to the input rank. sharding=", ToString(),
+        ", input_shape=", ShapeUtil::HumanString(shape));
   }
 
   // The tile shape must not be the same as the input shape without maximal_
@@ -214,9 +271,9 @@ Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
     auto tile_dim = tile_shape_.dimensions(i);
     auto shape_dim = shape.dimensions(i);
     if (tile_dim > shape_dim) {
-      return tensorflow::errors::InvalidArgument(tensorflow::strings::StrCat(
-          "Tile is larger than input shape (dimension ", i, ", ", tile_dim,
-          " > ", shape_dim));
+      return tensorflow::errors::InvalidArgument(
+          StrCat("Tile is larger than input shape (dimension ", i, ", ",
+                 tile_dim, " > ", shape_dim));
     }
   }
 
@@ -226,10 +283,10 @@ Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
     int64 expected_dim =
         CeilOfRatio(shape.dimensions(i), tile_shape_.dimensions(i));
     if (tile_assignment_.dimensions()[i] != expected_dim) {
-      return tensorflow::errors::InvalidArgument(tensorflow::strings::StrCat(
-          "Tile assignment tensor has incorrect shape. Dimension ", i,
-          " expected ", expected_dim, " but got ",
-          tile_assignment_.dimensions()[i]));
+      return tensorflow::errors::InvalidArgument(
+          StrCat("Tile assignment tensor has incorrect shape. Dimension ", i,
+                 " expected ", expected_dim, " but got ",
+                 tile_assignment_.dimensions()[i]));
     }
   }
 
@@ -291,6 +348,47 @@ OpSharding HloSharding::ToProto() const {
     result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
   }
   return result;
+}
+
+HloSharding HloSharding::TransformShardedTileShape(
+    const Shape& new_shape,
+    const std::function<int64(int64, int64)>& transform) const {
+  CHECK(!IsTuple());
+  if (IsTileMaximal()) {
+    return *this;
+  }
+  CHECK_EQ(ShapeUtil::Rank(new_shape), ShapeUtil::Rank(tile_shape()));
+  Shape new_tile_shape;
+  new_tile_shape.set_element_type(tile_shape().element_type());
+  for (int64 i = 0; i < ShapeUtil::Rank(new_shape); ++i) {
+    int64 dim;
+    if (tile_assignment().dim(i) == 1) {
+      dim = new_shape.dimensions(i);
+    } else if (transform) {
+      dim = transform(i, tile_shape().dimensions(i));
+    } else {
+      dim = tile_shape().dimensions(i);
+    }
+    new_tile_shape.add_dimensions(dim);
+  }
+  TF_CHECK_OK(
+      LayoutUtil::CopyLayoutBetweenShapes(tile_shape_, &new_tile_shape));
+  return HloSharding::Tile(new_tile_shape, tile_assignment());
+}
+
+HloSharding HloSharding::GetSubSharding(const Shape& shape,
+                                        const ShapeIndex& index) const {
+  CHECK(IsTuple());
+
+  ShapeTree<HloSharding> sub_shape_tree(ShapeUtil::GetSubshape(shape, index),
+                                        Replicate());
+  sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
+  return Tuple(sub_shape_tree);
+}
+
+std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {
+  out << sharding.ToString();
+  return out;
 }
 
 }  // namespace xla

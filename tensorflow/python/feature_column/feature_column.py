@@ -16,7 +16,7 @@
 
 FeatureColumns provide a high level abstraction for ingesting and representing
 features. FeatureColumns are also the primary way of encoding features for
-canned ${tf.estimator.Estimator}s.
+canned @{tf.estimator.Estimator}s.
 
 When using FeatureColumns with `Estimators`, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
@@ -134,10 +134,13 @@ import math
 import numpy as np
 import six
 
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras._impl.keras.engine import training
+from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -147,15 +150,71 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import tf_export
 
 
+def _internal_input_layer(features,
+                          feature_columns,
+                          weight_collections=None,
+                          trainable=True,
+                          cols_to_vars=None,
+                          scope=None):
+  """See input_layer. `scope` is a name or variable scope to use."""
+
+  feature_columns = _clean_feature_columns(feature_columns)
+  for column in feature_columns:
+    if not isinstance(column, _DenseColumn):
+      raise ValueError(
+          'Items of feature_columns must be a _DenseColumn. '
+          'You can wrap a categorical column with an '
+          'embedding_column or indicator_column. Given: {}'.format(column))
+  weight_collections = list(weight_collections or [])
+  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
+  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+
+  # a non-None `scope` can allow for variable reuse, when, e.g., this function
+  # is wrapped by a `make_template`.
+  with variable_scope.variable_scope(
+      scope, default_name='input_layer', values=features.values()):
+    builder = _LazyBuilder(features)
+    output_tensors = []
+    ordered_columns = []
+    for column in sorted(feature_columns, key=lambda x: x.name):
+      ordered_columns.append(column)
+      with variable_scope.variable_scope(
+          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
+        tensor = column._get_dense_tensor(  # pylint: disable=protected-access
+            builder,
+            weight_collections=weight_collections,
+            trainable=trainable)
+        num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
+        batch_size = array_ops.shape(tensor)[0]
+        output_tensors.append(
+            array_ops.reshape(tensor, shape=(batch_size, num_elements)))
+        if cols_to_vars is not None:
+          # Retrieve any variables created (some _DenseColumn's don't create
+          # variables, in which case an empty list is returned).
+          cols_to_vars[column] = ops.get_collection(
+              ops.GraphKeys.GLOBAL_VARIABLES,
+              scope=variable_scope.get_variable_scope().name)
+    _verify_static_batch_size_equality(output_tensors, ordered_columns)
+    return array_ops.concat(output_tensors, 1)
+
+
+@tf_export('feature_column.input_layer')
 def input_layer(features,
                 feature_columns,
                 weight_collections=None,
@@ -192,7 +251,7 @@ def input_layer(features,
       `bucketized_column`, `indicator_column`. If you have categorical features,
       you can wrap them with an `embedding_column` or `indicator_column`.
     weight_collections: A list of collection names to which the Variable will be
-      added. Note that, variables will also be added to collections
+      added. Note that variables will also be added to collections
       `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
@@ -214,45 +273,69 @@ def input_layer(features,
   Raises:
     ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
   """
-  feature_columns = _clean_feature_columns(feature_columns)
-  for column in feature_columns:
-    if not isinstance(column, _DenseColumn):
-      raise ValueError(
-          'Items of feature_columns must be a _DenseColumn. '
-          'You can wrap a categorical column with an '
-          'embedding_column or indicator_column. Given: {}'.format(column))
-  weight_collections = list(weight_collections or [])
-  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
-  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
-  with variable_scope.variable_scope(
-      None, default_name='input_layer', values=features.values()):
-    builder = _LazyBuilder(features)
-    output_tensors = []
-    ordered_columns = []
-    for column in sorted(feature_columns, key=lambda x: x.name):
-      ordered_columns.append(column)
-      with variable_scope.variable_scope(
-          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
-        tensor = column._get_dense_tensor(  # pylint: disable=protected-access
-            builder,
-            weight_collections=weight_collections,
-            trainable=trainable)
-        if cols_to_vars is not None:
-          # Retrieve any variables created (some _DenseColumn's don't create
-          # variables, in which case an empty list is returned).
-          cols_to_vars[column] = ops.get_collection(
-              ops.GraphKeys.GLOBAL_VARIABLES,
-              scope=variable_scope.get_variable_scope().name)
-        num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
-        batch_size = array_ops.shape(tensor)[0]
-        tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
-        output_tensors.append(tensor)
-    _verify_static_batch_size_equality(output_tensors, ordered_columns)
-    return array_ops.concat(output_tensors, 1)
+  return _internal_input_layer(features, feature_columns, weight_collections,
+                               trainable, cols_to_vars)
 
 
+# TODO(akshayka): InputLayer should be a subclass of Layer, and it
+# should implement the logic in input_layer using Layer's build-and-call
+# paradigm; input_layer should create an instance of InputLayer and
+# return the result of inovking its apply method, just as functional layers do.
+class InputLayer(object):
+  """An object-oriented version of `input_layer` that reuses variables."""
+
+  def __init__(self,
+               feature_columns,
+               weight_collections=None,
+               trainable=True,
+               cols_to_vars=None):
+    """See `input_layer`."""
+
+    self._feature_columns = feature_columns
+    self._weight_collections = weight_collections
+    self._trainable = trainable
+    self._cols_to_vars = cols_to_vars
+    self._input_layer_template = template.make_template(
+        'feature_column_input_layer',
+        _internal_input_layer,
+        create_scope_now_=True)
+    self._scope = self._input_layer_template.variable_scope
+
+  def __call__(self, features):
+    return self._input_layer_template(
+        features=features,
+        feature_columns=self._feature_columns,
+        weight_collections=self._weight_collections,
+        trainable=self._trainable,
+        cols_to_vars=None,
+        scope=self._scope)
+
+  @property
+  def non_trainable_variables(self):
+    return self._input_layer_template.non_trainable_variables
+
+  @property
+  def non_trainable_weights(self):
+    return self._input_layer_template.non_trainable_weights
+
+  @property
+  def trainable_variables(self):
+    return self._input_layer_template.trainable_variables
+
+  @property
+  def trainable_weights(self):
+    return self._input_layer_template.trainable_weights
+
+  @property
+  def variables(self):
+    return self._input_layer_template.variables
+
+  @property
+  def weights(self):
+    return self._input_layer_template.weights
+
+
+@tf_export('feature_column.linear_model')
 def linear_model(features,
                  feature_columns,
                  units=1,
@@ -344,13 +427,13 @@ def linear_model(features,
       with variable_scope.variable_scope(
           None, default_name=column._var_scope_name):  # pylint: disable=protected-access
         ordered_columns.append(column)
-        if isinstance(column, _CategoricalColumn):
-          weighted_sum = _create_categorical_column_weighted_sum(
-              column, builder, units, sparse_combiner, weight_collections,
-              trainable)
-        else:
-          weighted_sum = _create_dense_column_weighted_sum(
-              column, builder, units, weight_collections, trainable)
+        weighted_sum = _create_weighted_sum(
+            column=column,
+            builder=builder,
+            units=units,
+            sparse_combiner=sparse_combiner,
+            weight_collections=weight_collections,
+            trainable=trainable)
         weighted_sums.append(weighted_sum)
         if cols_to_vars is not None:
           # Retrieve the variables created.
@@ -371,11 +454,161 @@ def linear_model(features,
     if cols_to_vars is not None:
       # Add the bias to cols_to_vars as well, converting the Variable or
       # PartitionedVariable to a list of Variable's.
-      if isinstance(bias, variables.Variable):
+      if (isinstance(bias, variables.Variable) or
+          resource_variable_ops.is_resource_variable(bias)):
         cols_to_vars['bias'] = [bias]
       else:  # Must be a PartitionedVariable.
         cols_to_vars['bias'] = list(bias)
     return predictions
+
+
+class _FCLinearWrapper(base.Layer):
+  """Wraps a _FeatureColumn in a layer for use in a linear model.
+
+  See `linear_model` above.
+  """
+
+  def __init__(self,
+               feature_column,
+               units=1,
+               sparse_combiner='sum',
+               weight_collections=None,
+               trainable=True,
+               name=None,
+               **kwargs):
+    super(_FCLinearWrapper, self).__init__(
+        trainable=trainable, name=name, **kwargs)
+    self._feature_column = feature_column
+    self._units = units
+    self._sparse_combiner = sparse_combiner
+    self._weight_collections = weight_collections
+    self._state = {}
+
+  def build(self, _):
+    self._state = self._feature_column._create_state(  # pylint: disable=protected-access
+        self._weight_collections, self.add_variable)
+
+    if isinstance(self._feature_column, _CategoricalColumn):
+      weight = self.add_variable(
+          name='weights',
+          shape=(self._feature_column._num_buckets, self._units),  # pylint: disable=protected-access
+          initializer=init_ops.zeros_initializer(),
+          trainable=self.trainable)
+    else:
+      num_elements = self._feature_column._variable_shape.num_elements()  # pylint: disable=protected-access
+      weight = self.add_variable(
+          name='weights',
+          shape=[num_elements, self._units],
+          initializer=init_ops.zeros_initializer(),
+          trainable=self.trainable)
+    ops.add_to_collections(self._weight_collections, weight)
+    self._weight_var = weight
+    self.built = True
+
+  def call(self, builder):
+    weighted_sum = _create_weighted_sum(
+        column=self._feature_column,
+        builder=builder,
+        units=self._units,
+        sparse_combiner=self._sparse_combiner,
+        weight_collections=self._weight_collections,
+        trainable=self.trainable,
+        weight_var=self._weight_var,
+        state=self._state)
+    return weighted_sum
+
+
+class _BiasLayer(base.Layer):
+  """A layer for the bias term.
+  """
+
+  def __init__(self,
+               units=1,
+               trainable=True,
+               weight_collections=None,
+               name=None,
+               **kwargs):
+    super(_BiasLayer, self).__init__(trainable=trainable, name=name, **kwargs)
+    self._units = units
+    self._weight_collections = weight_collections
+
+  def build(self, _):
+    self._bias_variable = self.add_variable(
+        'bias_weights',
+        shape=[self._units],
+        initializer=init_ops.zeros_initializer(),
+        trainable=self.trainable)
+    ops.add_to_collections(self._weight_collections, self._bias_variable)
+    self.built = True
+
+  def call(self, _):
+    return self._bias_variable
+
+
+class _LinearModel(training.Model):
+  """Creates a linear model using feature columns.
+  """
+
+  def __init__(self,
+               feature_columns,
+               units=1,
+               sparse_combiner='sum',
+               weight_collections=None,
+               trainable=True,
+               name=None,
+               **kwargs):
+    super(_LinearModel, self).__init__(name=name, **kwargs)
+    self._feature_columns = _clean_feature_columns(feature_columns)
+    self._weight_collections = list(weight_collections or [])
+    if ops.GraphKeys.MODEL_VARIABLES not in self._weight_collections:
+      self._weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+
+    column_layers = {}
+    for column in sorted(self._feature_columns, key=lambda x: x.name):
+      with variable_scope.variable_scope(
+          None, default_name=column._var_scope_name) as vs:  # pylint: disable=protected-access
+        column_name = vs.name
+      column_layer = _FCLinearWrapper(column, units, sparse_combiner,
+                                      self._weight_collections, trainable,
+                                      column_name, **kwargs)
+      column_layers[column_name] = column_layer
+    self._column_layers = self._add_layers(column_layers)
+    self._bias_layer = _BiasLayer(
+        units=units,
+        trainable=trainable,
+        weight_collections=self._weight_collections,
+        name='bias_layer',
+        **kwargs)
+
+  def call(self, features):
+    with variable_scope.variable_scope(self.name):
+      for column in self._feature_columns:
+        if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
+          raise ValueError(
+              'Items of feature_columns must be either a '
+              '_DenseColumn or _CategoricalColumn. Given: {}'.format(column))
+      weighted_sums = []
+      ordered_columns = []
+      builder = _LazyBuilder(features)
+      for layer in sorted(self._column_layers.values(), key=lambda x: x.name):
+        ordered_columns.append(layer._feature_column)  # pylint: disable=protected-access
+        weighted_sum = layer(builder)
+        weighted_sums.append(weighted_sum)
+
+      _verify_static_batch_size_equality(weighted_sums, ordered_columns)
+      predictions_no_bias = math_ops.add_n(
+          weighted_sums, name='weighted_sum_no_bias')
+      predictions = nn_ops.bias_add(
+          predictions_no_bias, self._bias_layer(builder), name='weighted_sum')  # pylint: disable=not-callable
+    return predictions
+
+  def _add_layers(self, layers):
+    # "Magic" required for keras.Model classes to track all the variables in
+    # a list of layers.Layer objects.
+    # TODO(ashankar): Figure out API so user code doesn't have to do this.
+    for name, layer in layers.items():
+      setattr(self, 'layer-%s' % name, layer)
+    return layers
 
 
 def _transform_features(features, feature_columns):
@@ -422,6 +655,7 @@ def _transform_features(features, feature_columns):
   return outputs
 
 
+@tf_export('feature_column.make_parse_example_spec')
 def make_parse_example_spec(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
 
@@ -431,6 +665,7 @@ def make_parse_example_spec(feature_columns):
 
   ```python
   # Define features and transformations
+  feature_a = categorical_column_with_vocabulary_file(...)
   feature_b = numeric_column(...)
   feature_c_bucketized = bucketized_column(numeric_column("feature_c"), ...)
   feature_a_x_feature_c = crossed_column(
@@ -481,6 +716,7 @@ def make_parse_example_spec(feature_columns):
   return result
 
 
+@tf_export('feature_column.embedding_column')
 def embedding_column(
     categorical_column, dimension, combiner='mean', initializer=None,
     ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None,
@@ -554,6 +790,7 @@ def embedding_column(
     ValueError: if exactly one of `ckpt_to_load_from` and `tensor_name_in_ckpt`
       is specified.
     ValueError: if `initializer` is specified and is not callable.
+    RuntimeError: If eager execution is enabled.
   """
   if (dimension is None) or (dimension < 1):
     raise ValueError('Invalid dimension {}.'.format(dimension))
@@ -574,18 +811,18 @@ def embedding_column(
       dimension=dimension,
       combiner=combiner,
       initializer=initializer,
-      shared_embedding_collection_name=None,
       ckpt_to_load_from=ckpt_to_load_from,
       tensor_name_in_ckpt=tensor_name_in_ckpt,
       max_norm=max_norm,
       trainable=trainable)
 
 
-def _shared_embedding_columns(
+@tf_export('feature_column.shared_embedding_columns')
+def shared_embedding_columns(
     categorical_columns, dimension, combiner='mean', initializer=None,
     shared_embedding_collection_name=None, ckpt_to_load_from=None,
     tensor_name_in_ckpt=None, max_norm=None, trainable=True):
-  """List of `_DenseColumn`s that convert from sparse, categorical input.
+  """List of dense columns that convert from sparse, categorical input.
 
   This is similar to `embedding_column`, except that that it produces a list of
   embedding columns that share the same embedding weights.
@@ -594,7 +831,7 @@ def _shared_embedding_columns(
   impression video IDs that share the same vocabulary), and you want to convert
   them to a dense representation (e.g., to feed to a DNN).
 
-  Inputs must be a list of `_CategoricalColumn` created by any of the
+  Inputs must be a list of categorical columns created by any of the
   `categorical_column_*` function. They must all be of the same type and have
   the same arguments except `key`. E.g. they can be
   categorical_column_with_vocabulary_file with the same vocabulary_file. Some or
@@ -638,7 +875,7 @@ def _shared_embedding_columns(
   ```
 
   Args:
-    categorical_columns: List of `_CategoricalColumn`s created by a
+    categorical_columns: List of categorical columns created by a
       `categorical_column_with_*` function. These columns produce the sparse IDs
       that are inputs to the embedding lookup. All columns must be of the same
       type and have the same arguments except `key`. E.g. they can be
@@ -668,7 +905,7 @@ def _shared_embedding_columns(
     trainable: Whether or not the embedding is trainable. Default is True.
 
   Returns:
-    A list of `_DenseColumn`s that converts from sparse input. The order of
+    A list of dense columns that converts from sparse input. The order of
     results follows the ordering of `categorical_columns`.
 
   Raises:
@@ -689,18 +926,36 @@ def _shared_embedding_columns(
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
     initializer = init_ops.truncated_normal_initializer(
-        mean=0.0, stddev=1 / math.sqrt(dimension))
-  # TODO(b/67952670): Validate categorical_columns.
+        mean=0.0, stddev=1. / math.sqrt(dimension))
+
+  # Sort the columns so the default collection name is deterministic even if the
+  # user passes columns from an unsorted collection, such as dict.values().
+  sorted_columns = sorted(categorical_columns, key=lambda x: x.name)
+
+  c0 = sorted_columns[0]
+  if not isinstance(c0, _CategoricalColumn):
+    raise ValueError(
+        'All categorical_columns must be subclasses of _CategoricalColumn. '
+        'Given: {}, of type: {}'.format(c0, type(c0)))
+  if isinstance(c0, _WeightedCategoricalColumn):
+    c0 = c0.categorical_column
+  for c in sorted_columns[1:]:
+    if isinstance(c, _WeightedCategoricalColumn):
+      c = c.categorical_column
+    if not isinstance(c, type(c0)):
+      raise ValueError(
+          'To use shared_embedding_column, all categorical_columns must have '
+          'the same type, or be weighted_categorical_column of the same type. '
+          'Given column: {} of type: {} does not match given column: {} of '
+          'type: {}'.format(c0, type(c0), c, type(c)))
+
   if not shared_embedding_collection_name:
-    # Sort the columns so the name is deterministic even if the user passes
-    # columns from an unsorted collection, such as dict.values().
-    sorted_columns = sorted(categorical_columns, key=lambda x: x.name)
     shared_embedding_collection_name = '_'.join(c.name for c in sorted_columns)
     shared_embedding_collection_name += '_shared_embedding'
 
   result = []
   for column in categorical_columns:
-    result.append(_EmbeddingColumn(
+    result.append(_SharedEmbeddingColumn(
         categorical_column=column,
         dimension=dimension,
         combiner=combiner,
@@ -713,6 +968,7 @@ def _shared_embedding_columns(
   return result
 
 
+@tf_export('feature_column.numeric_column')
 def numeric_column(key,
                    shape=(1,),
                    default_value=None,
@@ -787,6 +1043,7 @@ def numeric_column(key,
       normalizer_fn=normalizer_fn)
 
 
+@tf_export('feature_column.bucketized_column')
 def bucketized_column(source_column, boundaries):
   """Represents discretized dense input.
 
@@ -876,6 +1133,7 @@ def _assert_string_or_int(dtype, prefix):
         '{} dtype must be string or integer. dtype: {}.'.format(prefix, dtype))
 
 
+@tf_export('feature_column.categorical_column_with_hash_bucket')
 def categorical_column_with_hash_bucket(key,
                                         hash_bucket_size,
                                         dtype=dtypes.string):
@@ -932,9 +1190,13 @@ def categorical_column_with_hash_bucket(key,
   return _HashedCategoricalColumn(key, hash_bucket_size, dtype)
 
 
-def categorical_column_with_vocabulary_file(
-    key, vocabulary_file, vocabulary_size, num_oov_buckets=0,
-    default_value=None, dtype=dtypes.string):
+@tf_export('feature_column.categorical_column_with_vocabulary_file')
+def categorical_column_with_vocabulary_file(key,
+                                            vocabulary_file,
+                                            vocabulary_size=None,
+                                            num_oov_buckets=0,
+                                            default_value=None,
+                                            dtype=dtypes.string):
   """A `_CategoricalColumn` with a vocabulary file.
 
   Use this when your inputs are in string or integer format, and you have a
@@ -993,7 +1255,7 @@ def categorical_column_with_vocabulary_file(
     vocabulary_file: The vocabulary file name.
     vocabulary_size: Number of the elements in the vocabulary. This must be no
       greater than length of `vocabulary_file`, if less than length, later
-      values are ignored.
+      values are ignored. If None, it is set to the length of `vocabulary_file`.
     num_oov_buckets: Non-negative integer, the number of out-of-vocabulary
       buckets. All out-of-vocabulary inputs will be assigned IDs in the range
       `[vocabulary_size, vocabulary_size+num_oov_buckets)` based on a hash of
@@ -1008,7 +1270,7 @@ def categorical_column_with_vocabulary_file(
     A `_CategoricalColumn` with a vocabulary file.
 
   Raises:
-    ValueError: `vocabulary_file` is missing.
+    ValueError: `vocabulary_file` is missing or cannot be opened.
     ValueError: `vocabulary_size` is missing or < 1.
     ValueError: `num_oov_buckets` is a negative integer.
     ValueError: `num_oov_buckets` and `default_value` are both specified.
@@ -1016,8 +1278,19 @@ def categorical_column_with_vocabulary_file(
   """
   if not vocabulary_file:
     raise ValueError('Missing vocabulary_file in {}.'.format(key))
+
+  if vocabulary_size is None:
+    if not gfile.Exists(vocabulary_file):
+      raise ValueError('vocabulary_file in {} does not exist.'.format(key))
+
+    with gfile.GFile(vocabulary_file) as f:
+      vocabulary_size = sum(1 for _ in f)
+    logging.info(
+        'vocabulary_size = %d in %s is inferred from the number of elements '
+        'in the vocabulary_file %s.', vocabulary_size, key, vocabulary_file)
+
   # `vocabulary_size` isn't required for lookup, but it is for `_num_buckets`.
-  if (vocabulary_size is None) or (vocabulary_size < 1):
+  if vocabulary_size < 1:
     raise ValueError('Invalid vocabulary_size in {}.'.format(key))
   if num_oov_buckets:
     if default_value is not None:
@@ -1037,6 +1310,7 @@ def categorical_column_with_vocabulary_file(
       dtype=dtype)
 
 
+@tf_export('feature_column.categorical_column_with_vocabulary_list')
 def categorical_column_with_vocabulary_list(
     key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
   """A `_CategoricalColumn` with in-memory vocabulary.
@@ -1147,6 +1421,7 @@ def categorical_column_with_vocabulary_list(
       default_value=default_value, num_oov_buckets=num_oov_buckets)
 
 
+@tf_export('feature_column.categorical_column_with_identity')
 def categorical_column_with_identity(key, num_buckets, default_value=None):
   """A `_CategoricalColumn` that returns identity values.
 
@@ -1214,6 +1489,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
       key=key, num_buckets=num_buckets, default_value=default_value)
 
 
+@tf_export('feature_column.indicator_column')
 def indicator_column(categorical_column):
   """Represents multi-hot representation of given categorical column.
 
@@ -1242,6 +1518,7 @@ def indicator_column(categorical_column):
   return _IndicatorColumn(categorical_column)
 
 
+@tf_export('feature_column.weighted_categorical_column')
 def weighted_categorical_column(
     categorical_column, weight_feature_key, dtype=dtypes.float32):
   """Applies weight values to a `_CategoricalColumn`.
@@ -1316,6 +1593,7 @@ def weighted_categorical_column(
       dtype=dtype)
 
 
+@tf_export('feature_column.crossed_column')
 def crossed_column(keys, hash_bucket_size, hash_key=None):
   """Returns a column for performing crosses of categorical features.
 
@@ -1462,7 +1740,7 @@ class _FeatureColumn(object):
 
   @abc.abstractproperty
   def name(self):
-    """Returns string. Used for naming."""
+    """Returns string. Used for naming and for name_scope."""
     pass
 
   @property
@@ -1501,7 +1779,7 @@ class _FeatureColumn(object):
 
     It is used for get_parsing_spec for `tf.parse_example`. Returned spec is a
     dict from keys ('string') to `VarLenFeature`, `FixedLenFeature`, and other
-    supported objects. Please check documentation of ${tf.parse_example} for all
+    supported objects. Please check documentation of @{tf.parse_example} for all
     supported spec objects.
 
     Let's say a Feature column depends on raw feature ('raw') and another
@@ -1515,6 +1793,19 @@ class _FeatureColumn(object):
     ```
     """
     pass
+
+  def _create_state(self, weight_collections=None, creator=None):
+    """Returns an object that captures the state of the column.
+
+    Args:
+      weight_collections: Collections to add the variable to
+      creator: Variable creator method called, if provided.
+
+    Returns:
+      An object that encapsulates the state of the column. Can return None.
+    """
+    del weight_collections, creator  # Unused
+    return None
 
 
 class _DenseColumn(_FeatureColumn):
@@ -1535,7 +1826,11 @@ class _DenseColumn(_FeatureColumn):
     pass
 
   @abc.abstractmethod
-  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+  def _get_dense_tensor(self,
+                        inputs,
+                        weight_collections=None,
+                        trainable=None,
+                        state=None):
     """Returns a `Tensor`.
 
     The output of this function will be used by model-builder-functions. For
@@ -1552,7 +1847,10 @@ class _DenseColumn(_FeatureColumn):
       weight_collections: List of graph collections to which Variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.Variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.Variable}).
+      state: An object encapsulating the state of the column. Columns that
+        create state using the _create_state method would have that state
+        passed in to this method.
 
     Returns:
       `Tensor` of shape [batch_size] + `_variable_shape`.
@@ -1560,22 +1858,66 @@ class _DenseColumn(_FeatureColumn):
     pass
 
 
-def _create_dense_column_weighted_sum(
-    column, builder, units, weight_collections, trainable):
+def _create_weighted_sum(column,
+                         builder,
+                         units,
+                         sparse_combiner,
+                         weight_collections,
+                         trainable,
+                         weight_var=None,
+                         state=None):
+  """Creates a weighted sum for a dense or sparse column for linear_model."""
+  if isinstance(column, _CategoricalColumn):
+    return _create_categorical_column_weighted_sum(
+        column=column,
+        builder=builder,
+        units=units,
+        sparse_combiner=sparse_combiner,
+        weight_collections=weight_collections,
+        trainable=trainable,
+        weight_var=weight_var)
+  else:
+    return _create_dense_column_weighted_sum(
+        column=column,
+        builder=builder,
+        units=units,
+        weight_collections=weight_collections,
+        trainable=trainable,
+        weight_var=weight_var,
+        state=state)
+
+
+def _create_dense_column_weighted_sum(column,
+                                      builder,
+                                      units,
+                                      weight_collections,
+                                      trainable,
+                                      weight_var=None,
+                                      state=None):
   """Create a weighted sum of a dense column for linear_model."""
-  tensor = column._get_dense_tensor(  # pylint: disable=protected-access
-      builder,
-      weight_collections=weight_collections,
-      trainable=trainable)
+  if state is not None:
+    tensor = column._get_dense_tensor(  # pylint: disable=protected-access
+        builder,
+        weight_collections=weight_collections,
+        trainable=trainable,
+        state=state)
+  else:
+    tensor = column._get_dense_tensor(  # pylint: disable=protected-access
+        builder,
+        weight_collections=weight_collections,
+        trainable=trainable)
   num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
   batch_size = array_ops.shape(tensor)[0]
   tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
-  weight = variable_scope.get_variable(
-      name='weights',
-      shape=[num_elements, units],
-      initializer=init_ops.zeros_initializer(),
-      trainable=trainable,
-      collections=weight_collections)
+  if weight_var is not None:
+    weight = weight_var
+  else:
+    weight = variable_scope.get_variable(
+        name='weights',
+        shape=[num_elements, units],
+        initializer=init_ops.zeros_initializer(),
+        trainable=trainable,
+        collections=weight_collections)
   return math_ops.matmul(tensor, weight, name='weighted_sum')
 
 
@@ -1585,7 +1927,7 @@ class _CategoricalColumn(_FeatureColumn):
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
 
-  A categorical feature typically handled with a ${tf.SparseTensor} of IDs.
+  A categorical feature typically handled with a @{tf.SparseTensor} of IDs.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -1620,13 +1962,18 @@ class _CategoricalColumn(_FeatureColumn):
       weight_collections: List of graph collections to which variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.get_variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.get_variable}).
     """
     pass
 
 
-def _create_categorical_column_weighted_sum(
-    column, builder, units, sparse_combiner, weight_collections, trainable):
+def _create_categorical_column_weighted_sum(column,
+                                            builder,
+                                            units,
+                                            sparse_combiner,
+                                            weight_collections,
+                                            trainable,
+                                            weight_var=None):
   """Create a weighted sum of a categorical column for linear_model."""
   sparse_tensors = column._get_sparse_tensors(  # pylint: disable=protected-access
       builder,
@@ -1640,18 +1987,36 @@ def _create_categorical_column_weighted_sum(
     weight_tensor = sparse_ops.sparse_reshape(
         weight_tensor, [array_ops.shape(weight_tensor)[0], -1])
 
-  weight = variable_scope.get_variable(
-      name='weights',
-      shape=(column._num_buckets, units),  # pylint: disable=protected-access
-      initializer=init_ops.zeros_initializer(),
-      trainable=trainable,
-      collections=weight_collections)
+  if weight_var is not None:
+    weight = weight_var
+  else:
+    weight = variable_scope.get_variable(
+        name='weights',
+        shape=(column._num_buckets, units),  # pylint: disable=protected-access
+        initializer=init_ops.zeros_initializer(),
+        trainable=trainable,
+        collections=weight_collections)
   return _safe_embedding_lookup_sparse(
       weight,
       id_tensor,
       sparse_weights=weight_tensor,
       combiner=sparse_combiner,
       name='weighted_sum')
+
+
+class _SequenceDenseColumn(_FeatureColumn):
+  """Represents dense sequence data."""
+
+  __metaclass__ = abc.ABCMeta
+
+  TensorSequenceLengthPair = collections.namedtuple(  # pylint: disable=invalid-name
+      'TensorSequenceLengthPair', ['dense_tensor', 'sequence_length'])
+
+  @abc.abstractmethod
+  def _get_sequence_dense_tensor(
+      self, inputs, weight_collections=None, trainable=None):
+    """Returns a `TensorSequenceLengthPair`."""
+    pass
 
 
 class _LazyBuilder(object):
@@ -1724,12 +2089,12 @@ class _LazyBuilder(object):
       self._feature_tensors[key] = feature_tensor
       return feature_tensor
 
-    if not isinstance(key, (str, _FeatureColumn)):
-      raise TypeError('"key" must be either a "str" or "_FeatureColumn". '
-                      'Provided: {}'.format(key))
+    if isinstance(key, str):
+      raise ValueError('Feature {} is not in features dictionary.'.format(key))
 
     if not isinstance(key, _FeatureColumn):
-      raise ValueError('Feature {} is not in features dictionary.'.format(key))
+      raise TypeError('"key" must be either a "str" or "_FeatureColumn". '
+                      'Provided: {}'.format(key))
 
     column = key
     logging.debug('Transforming feature_column %s.', column)
@@ -1825,29 +2190,26 @@ def _to_sparse_input(input_tensor, ignore_value=None):
   if isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
     return input_tensor
   with ops.name_scope(None, 'to_sparse_input', (input_tensor, ignore_value,)):
-    input_rank = input_tensor.get_shape().ndims
-    if input_rank is None:
-      # TODO(b/32318825): Implement dense_to_sparse_tensor for undefined rank.
-      raise ValueError('Undefined input_tensor shape.')
     if ignore_value is None:
-      ignore_value = '' if input_tensor.dtype == dtypes.string else -1
-    dense_shape = math_ops.cast(array_ops.shape(input_tensor), dtypes.int64)
-    indices = array_ops.where(math_ops.not_equal(
-        input_tensor, math_ops.cast(ignore_value, input_tensor.dtype)))
-    # Flattens the tensor and indices for use with gather.
-    flat_tensor = array_ops.reshape(input_tensor, [-1])
-    flat_indices = indices[:, input_rank - 1]
-    # Computes the correct flattened indices for 2d (or higher) tensors.
-    if input_rank > 1:
-      higher_dims = indices[:, :input_rank - 1]
-      shape_offsets = array_ops.stack(
-          _shape_offsets(array_ops.unstack(dense_shape)[1:]))
-      offsets = math_ops.reduce_sum(
-          math_ops.multiply(higher_dims, shape_offsets),
-          reduction_indices=[1])
-      flat_indices = math_ops.add(flat_indices, offsets)
-    values = array_ops.gather(flat_tensor, flat_indices)
-    return sparse_tensor_lib.SparseTensor(indices, values, dense_shape)
+      if input_tensor.dtype == dtypes.string:
+        # Exception due to TF strings are converted to numpy objects by default.
+        ignore_value = ''
+      elif input_tensor.dtype.is_integer:
+        ignore_value = -1  # -1 has a special meaning of missing feature
+      else:
+        # NOTE: `as_numpy_dtype` is a property, so with the parentheses this is
+        # constructing a new numpy object of the given type, which yields the
+        # default value for that type.
+        ignore_value = input_tensor.dtype.as_numpy_dtype()
+    ignore_value = math_ops.cast(
+        ignore_value, input_tensor.dtype, name='ignore_value')
+    indices = array_ops.where(
+        math_ops.not_equal(input_tensor, ignore_value), name='indices')
+    return sparse_tensor_lib.SparseTensor(
+        indices=indices,
+        values=array_ops.gather_nd(input_tensor, indices, name='values'),
+        dense_shape=array_ops.shape(
+            input_tensor, out_type=dtypes.int64, name='dense_shape'))
 
 
 def _clean_feature_columns(feature_columns):
@@ -2005,26 +2367,18 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
 
 
 class _EmbeddingColumn(
-    _DenseColumn,
+    _DenseColumn, _SequenceDenseColumn,
     collections.namedtuple('_EmbeddingColumn', (
         'categorical_column', 'dimension', 'combiner', 'initializer',
-        'shared_embedding_collection_name', 'ckpt_to_load_from',
-        'tensor_name_in_ckpt', 'max_norm', 'trainable'
+        'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable'
     ))):
   """See `embedding_column`."""
 
   @property
   def name(self):
     if not hasattr(self, '_name'):
-      if self.shared_embedding_collection_name:
-        self._name = '{}_shared_embedding'.format(self.categorical_column.name)
-      else:
-        self._name = '{}_embedding'.format(self.categorical_column.name)
+      self._name = '{}_embedding'.format(self.categorical_column.name)
     return self._name
-
-  @property
-  def _var_scope_name(self):
-    return self.shared_embedding_collection_name or self.name
 
   @property
   def _parse_example_spec(self):
@@ -2039,54 +2393,44 @@ class _EmbeddingColumn(
       self._shape = tensor_shape.vector(self.dimension)
     return self._shape
 
-  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
-    # Get sparse IDs and weights.
-    sparse_tensors = self.categorical_column._get_sparse_tensors(  # pylint: disable=protected-access
-        inputs, weight_collections=weight_collections, trainable=trainable)
-    sparse_ids = sparse_tensors.id_tensor
-    sparse_weights = sparse_tensors.weight_tensor
-
+  def _create_state(self, weight_collections=None, creator=None):
+    variables_map = {}
     embedding_shape = (self.categorical_column._num_buckets, self.dimension)  # pylint: disable=protected-access
-    if self.shared_embedding_collection_name:
-      shared_embedding_collection = ops.get_collection(
-          self.shared_embedding_collection_name)
-      if shared_embedding_collection:
-        if len(shared_embedding_collection) > 1:
-          raise ValueError(
-              'Collection {} can only contain one variable. '
-              'Suggested fix A: Choose a unique name for this collection. '
-              'Suggested fix B: Do not add any variables to this collection. '
-              'The feature_column library already adds a variable under the '
-              'hood.'.format(shared_embedding_collection))
-        embedding_weights = shared_embedding_collection[0]
-        if embedding_weights.shape != embedding_shape:
-          raise ValueError(
-              'Shared embedding collection {} contains variable {} of '
-              'unexpected shape {}. Expected shape is {}. '
-              'Suggested fix A: Choose a unique name for this collection. '
-              'Suggested fix B: Do not add any variables to this collection. '
-              'The feature_column library already adds a variable under the '
-              'hood.'.format(
-                  self.shared_embedding_collection_name, embedding_weights.name,
-                  embedding_weights.shape, embedding_shape))
-      else:
-        embedding_weights = variable_scope.get_variable(
-            name='embedding_weights',
-            shape=embedding_shape,
-            dtype=dtypes.float32,
-            initializer=self.initializer,
-            trainable=self.trainable and trainable,
-            collections=weight_collections)
-        ops.add_to_collection(
-            self.shared_embedding_collection_name, embedding_weights)
+    if creator is not None:
+      embedding_weights = creator(
+          name='embedding_weights',
+          shape=embedding_shape,
+          dtype=dtypes.float32,
+          initializer=self.initializer,
+          trainable=self.trainable)
+      ops.add_to_collections(weight_collections, embedding_weights)
     else:
       embedding_weights = variable_scope.get_variable(
           name='embedding_weights',
           shape=embedding_shape,
           dtype=dtypes.float32,
           initializer=self.initializer,
-          trainable=self.trainable and trainable,
+          trainable=self.trainable,
           collections=weight_collections)
+    variables_map['embedding_weights'] = embedding_weights
+    return variables_map
+
+  def _get_dense_tensor_internal(self,
+                                 inputs,
+                                 weight_collections=None,
+                                 trainable=None,
+                                 state=None):
+    """Private method that follows the signature of _get_dense_tensor."""
+    # Get sparse IDs and weights.
+    sparse_tensors = self.categorical_column._get_sparse_tensors(  # pylint: disable=protected-access
+        inputs, weight_collections=weight_collections, trainable=trainable)
+    sparse_ids = sparse_tensors.id_tensor
+    sparse_weights = sparse_tensors.weight_tensor
+
+    if state is None:
+      state = self._create_state(weight_collections)
+    embedding_weights = state['embedding_weights']
+
     if self.ckpt_to_load_from is not None:
       to_restore = embedding_weights
       if isinstance(to_restore, variables.PartitionedVariable):
@@ -2103,6 +2447,174 @@ class _EmbeddingColumn(
         combiner=self.combiner,
         name='%s_weights' % self.name,
         max_norm=self.max_norm)
+
+  def _get_dense_tensor(self,
+                        inputs,
+                        weight_collections=None,
+                        trainable=None,
+                        state=None):
+    if isinstance(self.categorical_column, _SequenceCategoricalColumn):
+      raise ValueError(
+          'In embedding_column: {}. '
+          'categorical_column must not be of type _SequenceCategoricalColumn. '
+          'Suggested fix A: If you wish to use input_layer, use a '
+          'non-sequence categorical_column_with_*. '
+          'Suggested fix B: If you wish to create sequence input, use '
+          'sequence_input_layer instead of input_layer. '
+          'Given (type {}): {}'.format(
+              self.name, type(self.categorical_column),
+              self.categorical_column))
+    return self._get_dense_tensor_internal(
+        inputs=inputs,
+        weight_collections=weight_collections,
+        trainable=trainable,
+        state=state)
+
+  def _get_sequence_dense_tensor(
+      self, inputs, weight_collections=None, trainable=None):
+    if not isinstance(self.categorical_column, _SequenceCategoricalColumn):
+      raise ValueError(
+          'In embedding_column: {}. '
+          'categorical_column must be of type _SequenceCategoricalColumn '
+          'to use sequence_input_layer. '
+          'Suggested fix: Use one of sequence_categorical_column_with_*. '
+          'Given (type {}): {}'.format(
+              self.name, type(self.categorical_column),
+              self.categorical_column))
+    dense_tensor = self._get_dense_tensor_internal(  # pylint: disable=protected-access
+        inputs=inputs,
+        weight_collections=weight_collections,
+        trainable=trainable)
+    sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
+        sparse_tensors.id_tensor)
+    return _SequenceDenseColumn.TensorSequenceLengthPair(
+        dense_tensor=dense_tensor, sequence_length=sequence_length)
+
+
+class _SharedEmbeddingColumn(
+    _DenseColumn,
+    collections.namedtuple('_SharedEmbeddingColumn', (
+        'categorical_column', 'dimension', 'combiner', 'initializer',
+        'shared_embedding_collection_name', 'ckpt_to_load_from',
+        'tensor_name_in_ckpt', 'max_norm', 'trainable'
+    ))):
+  """See `embedding_column`."""
+
+  @property
+  def name(self):
+    if not hasattr(self, '_name'):
+      self._name = '{}_shared_embedding'.format(self.categorical_column.name)
+    return self._name
+
+  @property
+  def _var_scope_name(self):
+    return self.shared_embedding_collection_name
+
+  @property
+  def _parse_example_spec(self):
+    return self.categorical_column._parse_example_spec  # pylint: disable=protected-access
+
+  def _transform_feature(self, inputs):
+    return inputs.get(self.categorical_column)
+
+  @property
+  def _variable_shape(self):
+    if not hasattr(self, '_shape'):
+      self._shape = tensor_shape.vector(self.dimension)
+    return self._shape
+
+  def _create_state(self, weight_collections=None, creator=None):
+    variables_map = {}
+    shared_embedding_collection = ops.get_collection(
+        self.shared_embedding_collection_name)
+    if not shared_embedding_collection:
+      embedding_shape = (self.categorical_column._num_buckets, self.dimension)  # pylint: disable=protected-access
+      if creator is not None:
+        embedding_weights = creator(
+            name='embedding_weights',
+            shape=embedding_shape,
+            dtype=dtypes.float32,
+            initializer=self.initializer,
+            trainable=self.trainable)
+        ops.add_to_collections(weight_collections, embedding_weights)
+      else:
+        embedding_weights = variable_scope.get_variable(
+            name='embedding_weights',
+            shape=embedding_shape,
+            dtype=dtypes.float32,
+            initializer=self.initializer,
+            trainable=self.trainable,
+            collections=weight_collections)
+      ops.add_to_collection(self.shared_embedding_collection_name,
+                            embedding_weights)
+      variables_map['embedding_weights'] = embedding_weights
+
+    return variables_map
+
+  def _get_dense_tensor(self,
+                        inputs,
+                        weight_collections=None,
+                        trainable=None,
+                        state=None):
+    # This method is called from a variable_scope with name _var_scope_name,
+    # which is shared among all shared embeddings. Open a name_scope here, so
+    # that the ops for different columns have distinct names.
+    with ops.name_scope(None, default_name=self.name):
+      # Get sparse IDs and weights.
+      sparse_tensors = self.categorical_column._get_sparse_tensors(  # pylint: disable=protected-access
+          inputs, weight_collections=weight_collections, trainable=trainable)
+      sparse_ids = sparse_tensors.id_tensor
+      sparse_weights = sparse_tensors.weight_tensor
+
+      embedding_shape = (self.categorical_column._num_buckets, self.dimension)  # pylint: disable=protected-access
+      shared_embedding_collection = ops.get_collection(
+          self.shared_embedding_collection_name)
+      if shared_embedding_collection:
+        if len(shared_embedding_collection) > 1:
+          raise ValueError(
+              'Collection {} can only contain one variable. '
+              'Suggested fix A: Choose a unique name for this collection. '
+              'Suggested fix B: Do not add any variables to this collection. '
+              'The feature_column library already adds a variable under the '
+              'hood.'.format(shared_embedding_collection))
+        embedding_weights = shared_embedding_collection[0]
+        if embedding_weights.get_shape() != embedding_shape:
+          raise ValueError(
+              'Shared embedding collection {} contains variable {} of '
+              'unexpected shape {}. Expected shape is {}. '
+              'Suggested fix A: Choose a unique name for this collection. '
+              'Suggested fix B: Do not add any variables to this collection. '
+              'The feature_column library already adds a variable under the '
+              'hood.'.format(
+                  self.shared_embedding_collection_name, embedding_weights.name,
+                  embedding_weights.get_shape(), embedding_shape))
+      else:
+        embedding_weights = variable_scope.get_variable(
+            name='embedding_weights',
+            shape=embedding_shape,
+            dtype=dtypes.float32,
+            initializer=self.initializer,
+            trainable=self.trainable and trainable,
+            collections=weight_collections)
+        ops.add_to_collection(
+            self.shared_embedding_collection_name, embedding_weights)
+      if self.ckpt_to_load_from is not None:
+        to_restore = embedding_weights
+        if isinstance(to_restore, variables.PartitionedVariable):
+          to_restore = to_restore._get_variable_list()  # pylint: disable=protected-access
+        checkpoint_utils.init_from_checkpoint(self.ckpt_to_load_from, {
+            self.tensor_name_in_ckpt: to_restore
+        })
+
+      # Return embedding lookup result.
+      return _safe_embedding_lookup_sparse(
+          embedding_weights=embedding_weights,
+          sparse_ids=sparse_ids,
+          sparse_weights=sparse_weights,
+          combiner=self.combiner,
+          name='%s_weights' % self.name,
+          max_norm=self.max_norm)
 
 
 def _create_tuple(shape, value):
@@ -2636,6 +3148,9 @@ def _safe_embedding_lookup_sparse(embedding_weights,
 
     # Prune invalid ids and weights.
     sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
+    if combiner != 'sum':
+      sparse_ids, sparse_weights = _prune_invalid_weights(
+          sparse_ids, sparse_weights)
 
     # Fill in dummy values for empty features, if necessary.
     sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(sparse_ids,
@@ -2684,14 +3199,24 @@ def _prune_invalid_ids(sparse_ids, sparse_weights):
   is_id_valid = math_ops.greater_equal(sparse_ids.values, 0)
   if sparse_weights is not None:
     is_id_valid = math_ops.logical_and(
-        is_id_valid, math_ops.greater(sparse_weights.values, 0))
+        is_id_valid,
+        array_ops.ones_like(sparse_weights.values, dtype=dtypes.bool))
   sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_id_valid)
   if sparse_weights is not None:
     sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
   return sparse_ids, sparse_weights
 
 
-class _IndicatorColumn(_DenseColumn,
+def _prune_invalid_weights(sparse_ids, sparse_weights):
+  """Prune invalid weights (< 0) from the input ids and weights."""
+  if sparse_weights is not None:
+    is_weights_valid = math_ops.greater(sparse_weights.values, 0)
+    sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_weights_valid)
+    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_weights_valid)
+  return sparse_ids, sparse_weights
+
+
+class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,
                        collections.namedtuple('_IndicatorColumn',
                                               ['categorical_column'])):
   """Represents a one-hot column for use in deep networks.
@@ -2767,14 +3292,52 @@ class _IndicatorColumn(_DenseColumn,
 
     Returns:
       Dense `Tensor` created within `_transform_feature`.
+
+    Raises:
+      ValueError: If `categorical_column` is a `_SequenceCategoricalColumn`.
     """
     # Do nothing with weight_collections and trainable since no variables are
     # created in this function.
     del weight_collections
     del trainable
+    if isinstance(self.categorical_column, _SequenceCategoricalColumn):
+      raise ValueError(
+          'In indicator_column: {}. '
+          'categorical_column must not be of type _SequenceCategoricalColumn. '
+          'Suggested fix A: If you wish to use input_layer, use a '
+          'non-sequence categorical_column_with_*. '
+          'Suggested fix B: If you wish to create sequence input, use '
+          'sequence_input_layer instead of input_layer. '
+          'Given (type {}): {}'.format(
+              self.name, type(self.categorical_column),
+              self.categorical_column))
     # Feature has been already transformed. Return the intermediate
     # representation created by _transform_feature.
     return inputs.get(self)
+
+  def _get_sequence_dense_tensor(
+      self, inputs, weight_collections=None, trainable=None):
+    # Do nothing with weight_collections and trainable since no variables are
+    # created in this function.
+    del weight_collections
+    del trainable
+    if not isinstance(self.categorical_column, _SequenceCategoricalColumn):
+      raise ValueError(
+          'In indicator_column: {}. '
+          'categorical_column must be of type _SequenceCategoricalColumn '
+          'to use sequence_input_layer. '
+          'Suggested fix: Use one of sequence_categorical_column_with_*. '
+          'Given (type {}): {}'.format(
+              self.name, type(self.categorical_column),
+              self.categorical_column))
+    # Feature has been already transformed. Return the intermediate
+    # representation created by _transform_feature.
+    dense_tensor = inputs.get(self)
+    sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
+        sparse_tensors.id_tensor)
+    return _SequenceDenseColumn.TensorSequenceLengthPair(
+        dense_tensor=dense_tensor, sequence_length=sequence_length)
 
 
 def _verify_static_batch_size_equality(tensors, columns):
@@ -2791,3 +3354,68 @@ def _verify_static_batch_size_equality(tensors, columns):
             'Batch size of columns ({}, {}): ({}, {})'.format(
                 columns[bath_size_column_index].name, columns[i].name,
                 expected_batch_size, tensors[i].shape[0]))
+
+
+def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):
+  """Returns a [batch_size] Tensor with per-example sequence length."""
+  with ops.name_scope(None, 'sequence_length') as name_scope:
+    row_ids = sp_tensor.indices[:, 0]
+    column_ids = sp_tensor.indices[:, 1]
+    column_ids += array_ops.ones_like(column_ids)
+    seq_length = math_ops.to_int64(
+        math_ops.segment_max(column_ids, segment_ids=row_ids) / num_elements)
+    # If the last n rows do not have ids, seq_length will have shape
+    # [batch_size - n]. Pad the remaining values with zeros.
+    n_pad = array_ops.shape(sp_tensor)[:1] - array_ops.shape(seq_length)[:1]
+    padding = array_ops.zeros(n_pad, dtype=seq_length.dtype)
+    return array_ops.concat([seq_length, padding], axis=0, name=name_scope)
+
+
+class _SequenceCategoricalColumn(
+    _CategoricalColumn,
+    collections.namedtuple(
+        '_SequenceCategoricalColumn', ['categorical_column'])):
+  """Represents sequences of categorical data."""
+
+  @property
+  def name(self):
+    return self.categorical_column.name
+
+  @property
+  def _parse_example_spec(self):
+    return self.categorical_column._parse_example_spec  # pylint: disable=protected-access
+
+  def _transform_feature(self, inputs):
+    return self.categorical_column._transform_feature(inputs)  # pylint: disable=protected-access
+
+  @property
+  def _num_buckets(self):
+    return self.categorical_column._num_buckets  # pylint: disable=protected-access
+
+  def _get_sparse_tensors(self, inputs, weight_collections=None,
+                          trainable=None):
+    sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
+    id_tensor = sparse_tensors.id_tensor
+    weight_tensor = sparse_tensors.weight_tensor
+    # Expands final dimension, so that embeddings are not combined during
+    # embedding lookup.
+    check_id_rank = check_ops.assert_equal(
+        array_ops.rank(id_tensor), 2,
+        data=[
+            'Column {} expected ID tensor of rank 2. '.format(self.name),
+            'id_tensor shape: ', array_ops.shape(id_tensor)])
+    with ops.control_dependencies([check_id_rank]):
+      id_tensor = sparse_ops.sparse_reshape(
+          id_tensor,
+          shape=array_ops.concat([id_tensor.dense_shape, [1]], axis=0))
+    if weight_tensor is not None:
+      check_weight_rank = check_ops.assert_equal(
+          array_ops.rank(weight_tensor), 2,
+          data=[
+              'Column {} expected weight tensor of rank 2.'.format(self.name),
+              'weight_tensor shape:', array_ops.shape(weight_tensor)])
+      with ops.control_dependencies([check_weight_rank]):
+        weight_tensor = sparse_ops.sparse_reshape(
+            weight_tensor,
+            shape=array_ops.concat([weight_tensor.dense_shape, [1]], axis=0))
+    return _CategoricalColumn.IdWeightPair(id_tensor, weight_tensor)

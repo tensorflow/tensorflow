@@ -72,6 +72,13 @@ bool ReadFakeQuantMinMax::Run(Model* model, std::size_t op_index) {
     minmax.min = min_array.GetBuffer<ArrayDataType::kFloat>().data[0];
     minmax.max = max_array.GetBuffer<ArrayDataType::kFloat>().data[0];
     // We always want [min, max] to contain 0.
+    if (minmax.min > 0 || minmax.max < 0) {
+      LOG(ERROR) << "For " << LogName(*fakequant_op) << " the MinMax range "
+                 << "[" << minmax.min << ", " << minmax.max
+                 << "] does not contain 0. "
+                 << "Proceeding by tweaking it to contain 0, which will result "
+                    "in poor accuracy.";
+    }
     minmax.min = std::min(minmax.min, 0.);
     minmax.max = std::max(minmax.max, 0.);
 
@@ -80,7 +87,7 @@ bool ReadFakeQuantMinMax::Run(Model* model, std::size_t op_index) {
     // else.
     for (int i = 1; i <= 2; i++) {
       if (CountOpsWithInput(*model, fakequant_op->inputs[i]) == 1) {
-        model->arrays.erase(fakequant_op->inputs[i]);
+        model->EraseArray(fakequant_op->inputs[i]);
       }
     }
     fakequant_op->inputs.resize(1);

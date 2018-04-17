@@ -159,7 +159,10 @@ class BatchToSpaceNDOp : public XlaOpKernel {
                  block_shape, crops);
   }
 };
-REGISTER_XLA_OP(Name("BatchToSpaceND"), BatchToSpaceNDOp);
+REGISTER_XLA_OP(Name("BatchToSpaceND")
+                    .CompileTimeConstInput("block_shape")
+                    .CompileTimeConstInput("crops"),
+                BatchToSpaceNDOp);
 
 class BatchToSpaceOp : public XlaOpKernel {
  public:
@@ -181,7 +184,8 @@ class BatchToSpaceOp : public XlaOpKernel {
  private:
   int block_size_;
 };
-REGISTER_XLA_OP(Name("BatchToSpace"), BatchToSpaceOp);
+REGISTER_XLA_OP(Name("BatchToSpace").CompileTimeConstInput("crops"),
+                BatchToSpaceOp);
 
 }  // namespace
 }  // namespace tensorflow

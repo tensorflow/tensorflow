@@ -23,10 +23,18 @@ import unittest
 
 import numpy as np
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
-from tensorflow.python.keras._impl.keras.engine.training import _weighted_masked_objective
+from tensorflow.python.keras._impl.keras.engine.training_utils import weighted_masked_objective
+from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+
+try:
+  import scipy.sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
+except ImportError:
+  scipy_sparse = None
 
 
 class TrainingTest(test.TestCase):
@@ -72,6 +80,14 @@ class TrainingTest(test.TestCase):
           batch_size=5,
           verbose=2)
       model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
+
+      # Test model with input data as a list of lists
+      model.fit(
+          [np.ndarray.tolist(input_a_np), np.ndarray.tolist(input_b_np)],
+          [output_d_np, output_e_np],
+          epochs=2,
+          batch_size=5,
+          verbose=2)
 
       # Test with validation data
       model.fit(
@@ -169,7 +185,7 @@ class TrainingTest(test.TestCase):
       with self.assertRaises(ValueError):
         model.train_on_batch({'input_a': input_a_np},
                              [output_d_np, output_e_np])
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         model.fit(
             [input_a_np, input_b_np], [output_d_np, output_e_np],
             epochs=1,
@@ -177,7 +193,7 @@ class TrainingTest(test.TestCase):
             verbose=0)
       with self.assertRaises(ValueError):
         model.train_on_batch([input_a_np], [output_d_np, output_e_np])
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         model.train_on_batch(1, [output_d_np, output_e_np])
       with self.assertRaises(ValueError):
         model.train_on_batch(input_a_np, [output_d_np, output_e_np])
@@ -199,6 +215,16 @@ class TrainingTest(test.TestCase):
       model.fit([input_a_np], output_d_np, epochs=1)
       with self.assertRaises(ValueError):
         model.fit([input_a_np, input_a_np], output_d_np, epochs=1)
+
+      # Test model on a list of floats
+      input_a_np = np.random.random((10, 3))
+      input_b_np = np.random.random((10, 4))
+
+      model.fit([np.ndarray.tolist(input_a_np)],
+                [np.ndarray.tolist(input_b_np)],
+                epochs=2,
+                batch_size=5,
+                verbose=2)
 
   def test_evaluate_predict_on_arrays(self):
     with self.test_session():
@@ -312,6 +338,64 @@ class TrainingTest(test.TestCase):
         model.compile(loss=None,
                       optimizer='rmsprop')
 
+  def test_training_on_sparse_data_with_dense_placeholders(self):
+    if scipy_sparse is None:
+      return
+
+    with self.test_session():
+      test_inputs = [
+          scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)]
+      test_outputs = [
+          scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)]
+      in1 = keras.layers.Input(shape=(3,))
+      in2 = keras.layers.Input(shape=(3,))
+      out1 = keras.layers.Dropout(0.5, name='dropout')(in1)
+      out2 = keras.layers.Dense(4, name='dense_1')(in2)
+      model = keras.Model([in1, in2], [out1, out2])
+      model.predict(test_inputs, batch_size=2)
+      model.compile('rmsprop', 'mse')
+      model.fit(test_inputs, test_outputs,
+                epochs=1, batch_size=2, validation_split=0.5)
+      model.evaluate(test_inputs, test_outputs, batch_size=2)
+
+  def test_that_trainable_disables_updates(self):
+    val_a = np.random.random((10, 4))
+    val_out = np.random.random((10, 4))
+
+    with self.test_session():
+      a = keras.layers.Input(shape=(4,))
+      layer = keras.layers.BatchNormalization(input_shape=(4,))
+      b = layer(a)
+      model = keras.Model(a, b)
+
+      model.trainable = False
+      assert not model.updates
+
+      model.compile('sgd', 'mse')
+      assert not model.updates
+
+      x1 = model.predict(val_a)
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      self.assertAllClose(x1, x2, atol=1e-7)
+
+      model.trainable = True
+      model.compile('sgd', 'mse')
+      assert model.updates
+
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      assert np.abs(np.sum(x1 - x2)) > 1e-5
+
+      layer.trainable = False
+      model.compile('sgd', 'mse')
+      assert not model.updates
+
+      x1 = model.predict(val_a)
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      self.assertAllClose(x1, x2, atol=1e-7)
+
 
 class LossWeightingTest(test.TestCase):
 
@@ -399,7 +483,7 @@ class LossWeightingTest(test.TestCase):
       model.add(keras.layers.Activation('softmax'))
       model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
 
-      np.random.seed(1337)
+      np.random.seed(43)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=train_samples,
           test_samples=test_samples,
@@ -624,7 +708,7 @@ class LossMaskingTest(test.TestCase):
 
   def test_loss_masking(self):
     with self.test_session():
-      weighted_loss = _weighted_masked_objective(keras.losses.get('mae'))
+      weighted_loss = weighted_masked_objective(keras.losses.get('mae'))
       shape = (3, 4, 2)
       x = np.arange(24).reshape(shape)
       y = 2 * x
@@ -795,9 +879,9 @@ class TestGeneratorMethods(test.TestCase):
 
     def custom_generator():
       batch_size = 10
-      n_samples = 50
+      num_samples = 50
       while True:
-        batch_index = np.random.randint(0, n_samples - batch_size)
+        batch_index = np.random.randint(0, num_samples - batch_size)
         start = batch_index
         end = start + batch_size
         x = arr_data[start: end]
@@ -836,6 +920,11 @@ class TestGeneratorMethods(test.TestCase):
                             use_multiprocessing=False,
                             validation_data=custom_generator(),
                             validation_steps=10)
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            validation_data=custom_generator(),
+                            validation_steps=1,
+                            workers=0)
         model.predict_generator(custom_generator(),
                                 steps=5,
                                 max_queue_size=10,
@@ -845,6 +934,10 @@ class TestGeneratorMethods(test.TestCase):
                                 steps=5,
                                 max_queue_size=10,
                                 use_multiprocessing=False)
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_queue_size=10,
+                                workers=0)
         model.evaluate_generator(custom_generator(),
                                  steps=5,
                                  max_queue_size=10,
@@ -854,25 +947,11 @@ class TestGeneratorMethods(test.TestCase):
                                  steps=5,
                                  max_queue_size=10,
                                  use_multiprocessing=False)
-
-        # Test legacy API
-        model.fit_generator(custom_generator(),
-                            steps_per_epoch=5,
-                            epochs=1,
-                            verbose=1,
-                            max_q_size=10,
-                            workers=4,
-                            pickle_safe=True)
-        model.predict_generator(custom_generator(),
-                                steps=5,
-                                max_q_size=10,
-                                workers=2,
-                                pickle_safe=True)
         model.evaluate_generator(custom_generator(),
                                  steps=5,
-                                 max_q_size=10,
-                                 workers=2,
-                                 pickle_safe=True)
+                                 max_queue_size=10,
+                                 use_multiprocessing=False,
+                                 workers=0)
 
   def test_generator_methods_with_sample_weights(self):
     arr_data = np.random.random((50, 2))
@@ -881,9 +960,9 @@ class TestGeneratorMethods(test.TestCase):
 
     def custom_generator():
       batch_size = 10
-      n_samples = 50
+      num_samples = 50
       while True:
-        batch_index = np.random.randint(0, n_samples - batch_size)
+        batch_index = np.random.randint(0, num_samples - batch_size)
         start = batch_index
         end = start + batch_size
         x = arr_data[start: end]
@@ -946,7 +1025,7 @@ class TestGeneratorMethods(test.TestCase):
                             use_multiprocessing=False,
                             validation_data=custom_generator(),
                             validation_steps=10)
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         model.predict_generator(custom_generator(),
                                 steps=5,
                                 max_queue_size=10,
@@ -957,50 +1036,218 @@ class TestGeneratorMethods(test.TestCase):
                                  max_queue_size=10,
                                  use_multiprocessing=False)
 
+  def test_training_with_sequences(self):
+
+    class DummySequence(keras.utils.Sequence):
+
+      def __getitem__(self, idx):
+        return np.zeros([10, 2]), np.ones([10])
+
+      def __len__(self):
+        return 10
+
+    arr_data = np.random.random((50, 2))
+    arr_labels = np.random.random((50,))
+    arr_sample_weights = np.random.random((50,))
+
+    def custom_generator():
+      batch_size = 10
+      num_samples = 50
+      while True:
+        batch_index = np.random.randint(0, num_samples - batch_size)
+        start = batch_index
+        end = start + batch_size
+        x = arr_data[start: end]
+        y = arr_labels[start: end]
+        w = arr_sample_weights[start: end]
+        yield x, y, w
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(1, input_shape=(2,)))
+      model.compile(loss='mse', optimizer='sgd')
+
+    model.fit_generator(DummySequence(),
+                        steps_per_epoch=10,
+                        validation_data=custom_generator(),
+                        validation_steps=1,
+                        max_queue_size=10,
+                        workers=0,
+                        use_multiprocessing=True)
+    model.fit_generator(DummySequence(),
+                        steps_per_epoch=10,
+                        validation_data=custom_generator(),
+                        validation_steps=1,
+                        max_queue_size=10,
+                        workers=0,
+                        use_multiprocessing=False)
+
 
 class TestTrainingUtils(test.TestCase):
 
   def test_check_array_lengths(self):
-    keras.engine.training._check_array_lengths(None, None, None)
+    keras.engine.training_utils.check_array_lengths(None, None, None)
     a_np = np.random.random((4, 3, 3))
-    keras.engine.training._check_array_lengths(a_np, a_np, a_np)
-    keras.engine.training._check_array_lengths(
+    keras.engine.training_utils.check_array_lengths(a_np, a_np, a_np)
+    keras.engine.training_utils.check_array_lengths(
         [a_np, a_np], [a_np, a_np], [a_np, a_np])
-    keras.engine.training._check_array_lengths([None], [None], [None])
+    keras.engine.training_utils.check_array_lengths([None], [None], [None])
 
     b_np = np.random.random((3, 4))
     with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths(a_np, None, None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths(a_np, a_np, None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], [None], None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], [b_np], None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], None, [b_np])
+      keras.engine.training_utils.check_array_lengths([a_np], [b_np], None)
 
   def test_slice_arrays(self):
     input_a = np.random.random((10, 3))
-    keras.engine.training._slice_arrays(None)
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(None)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = [None, [1, 1], None, [1, 1]]
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = [None]
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = None
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
 
 
 class TestTrainingWithDataTensors(test.TestCase):
+
+  def test_training_and_eval_methods_on_symbolic_tensors_single_io(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = keras.backend.zeros(shape=(10, 3))
+      targets = keras.backend.zeros(shape=(10, 4))
+
+      model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
+      model.evaluate(inputs, targets, steps=2, verbose=0)
+      model.predict(inputs, steps=2)
+      model.train_on_batch(inputs, targets)
+      model.test_on_batch(inputs, targets)
+      model.fit(inputs, targets,
+                epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=(inputs, targets), validation_steps=2)
+
+      # Test with dynamic shape
+      inputs = array_ops.placeholder_with_default(
+          np.zeros((2, 3)), shape=tensor_shape.TensorShape([None, 3]))
+      targets = array_ops.placeholder_with_default(
+          np.zeros((2, 4)), shape=tensor_shape.TensorShape([None, 4]))
+      self.assertEqual(inputs.shape[0].value, None)
+      model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
+      model.evaluate(inputs, targets, steps=2, verbose=0)
+      model.predict(inputs, steps=2)
+      model.train_on_batch(inputs, targets)
+      model.test_on_batch(inputs, targets)
+      model.fit(inputs, targets,
+                epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=(inputs, targets), validation_steps=2)
+
+  def test_training_and_eval_methods_on_symbolic_tensors_multi_io(self):
+    with self.test_session():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      b = keras.layers.Input(shape=(3,), name='input_b')
+
+      dense = keras.layers.Dense(4, name='dense')
+      c = dense(a)
+      d = dense(b)
+      e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+      model = keras.models.Model([a, b], [d, e])
+
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      loss_weights = [1., 0.5]
+      metrics = ['mae']
+      model.compile(optimizer, loss, metrics=metrics, loss_weights=loss_weights)
+
+      input_a_tf = keras.backend.zeros(shape=(10, 3))
+      input_b_tf = keras.backend.zeros(shape=(10, 3))
+
+      output_d_tf = keras.backend.zeros(shape=(10, 4))
+      output_e_tf = keras.backend.zeros(shape=(10, 4))
+
+      model.fit(
+          [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
+          epochs=1,
+          steps_per_epoch=2,
+          verbose=0)
+      with self.assertRaisesRegexp(ValueError,
+                                   'should specify the `steps_per_epoch`'):
+        model.fit(
+            [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
+            epochs=1,
+            batch_size=5,
+            verbose=0)
+      model.train_on_batch([input_a_tf, input_b_tf], [output_d_tf, output_e_tf])
+
+      # Test with dictionary inputs
+      model.fit(
+          {'input_a': input_a_tf,
+           'input_b': input_b_tf},
+          {'dense': output_d_tf,
+           'dropout': output_e_tf},
+          epochs=1,
+          steps_per_epoch=2,
+          verbose=0)
+      model.fit(
+          {'input_a': input_a_tf,
+           'input_b': input_b_tf},
+          {'dense': output_d_tf,
+           'dropout': output_e_tf},
+          validation_data=({'input_a': input_a_tf,
+                            'input_b': input_b_tf},
+                           {'dense': output_d_tf,
+                            'dropout': output_e_tf}),
+          epochs=1,
+          steps_per_epoch=2,
+          validation_steps=2,
+          verbose=0)
+      model.train_on_batch(
+          {'input_a': input_a_tf,
+           'input_b': input_b_tf},
+          {'dense': output_d_tf,
+           'dropout': output_e_tf})
+
+      # Test with validation data
+      model.fit(
+          [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
+          validation_data=([input_a_tf, input_b_tf],
+                           [output_d_tf, output_e_tf]),
+          epochs=1,
+          steps_per_epoch=2,
+          validation_steps=2,
+          verbose=0)
+      # Test with validation split
+      with self.assertRaisesRegexp(ValueError,
+                                   'you cannot use `validation_split`'):
+        model.fit(
+            [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
+            epochs=2,
+            steps_per_epoch=2,
+            verbose=0,
+            validation_split=0.2,
+            validation_steps=2)
+
+      # Test evaluation / prediction methods
+      model.evaluate([input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
+                     steps=2, verbose=0)
+      model.predict([input_a_tf, input_b_tf], steps=2)
+      model.test_on_batch([input_a_tf, input_b_tf], [output_d_tf, output_e_tf])
 
   def test_model_with_input_feed_tensor(self):
     """We test building a model with a TF variable as input.
@@ -1439,4 +1686,13 @@ class TestTrainingWithDataTensors(test.TestCase):
 
 
 if __name__ == '__main__':
+  # Bazel sets these environment variables to very long paths.
+  # Tempfile uses them to create long paths, and in turn multiprocessing
+  # library tries to create sockets named after paths. Delete whatever bazel
+  # writes to these to avoid tests failing due to socket addresses being too
+  # long.
+  for var in ('TMPDIR', 'TMP', 'TEMP'):
+    if var in os.environ:
+      del os.environ[var]
+
   test.main()

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import argparse
 import collections
+import functools
 import itertools
 import os
 import sys
@@ -29,10 +30,12 @@ import numpy as np
 from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.contrib.rnn.python.ops import rnn as contrib_rnn_lib
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -49,7 +52,12 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import adagrad
+from tensorflow.python.training import adam
+from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import momentum
+from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -259,7 +267,7 @@ def _CreateCudnnCompatibleCanonicalRNN(rnn, inputs, is_bidi=False, scope=None):
     return outputs, (output_state_fw, output_state_bw)
 
 
-class CudnnRNNTestBasic(TensorFlowTestCase):
+class CudnnRNNTestBasic(test_util.TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
@@ -314,10 +322,154 @@ class CudnnRNNTestBasic(TensorFlowTestCase):
       self.assertEqual(0, total_sum2_v)
       self.assertEqual(0, total_sum3_v)
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testOptimizersSupport(self):
+    for opt in ("adagrad", "adam", "rmsprop", "momentum", "sgd"):
+      self._TestOptimizerSupportHelper(opt)
+
+  def _GetOptimizer(self, opt):
+    if opt == "adagrad":
+      return adagrad.AdagradOptimizer(learning_rate=1e-2)
+    elif opt == "adam":
+      return adam.AdamOptimizer(learning_rate=1e-2)
+    elif opt == "rmsprop":
+      return rmsprop.RMSPropOptimizer(learning_rate=1e-2)
+    elif opt == "momentum":
+      return momentum.MomentumOptimizer(learning_rate=1e-2, momentum=0.9)
+    elif opt == "sgd":
+      return gradient_descent.GradientDescentOptimizer(learning_rate=1e-2)
+    else:
+      raise ValueError("Unsupported optimizer: %s" % opt)
+
+  def _TestOptimizerSupportHelper(self, opt):
+    num_layers = 4
+    num_units = 2
+    batch_size = 8
+    direction = CUDNN_RNN_UNIDIRECTION
+    dir_count = 1
+
+    with ops.Graph().as_default() as g:
+      kernel_initializer = init_ops.constant_initializer(0.)
+      bias_initializer = init_ops.constant_initializer(0.)
+      inputs = random_ops.random_uniform([
+          num_layers * dir_count, batch_size, num_units], dtype=dtypes.float32)
+
+      lstm = cudnn_rnn.CudnnLSTM(num_layers, num_units,
+                                 direction=direction,
+                                 kernel_initializer=kernel_initializer,
+                                 bias_initializer=bias_initializer,
+                                 name="awesome_lstm")
+      outputs, _ = lstm(inputs)
+      loss = math_ops.reduce_sum(outputs)
+      optimizer = self._GetOptimizer(opt)
+      train_op = optimizer.minimize(loss)
+
+    with self.test_session(use_gpu=True, graph=g) as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(train_op)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testSaveableGraphDeviceAssignment(self):
+    num_layers = 4
+    num_units = 2
+    batch_size = 8
+    direction = CUDNN_RNN_UNIDIRECTION
+    dir_count = 1
+
+    def DeviceFn(op):
+      if op.type in ("Variable", "VariableV2"):
+        return "/cpu:0"
+      else:
+        return "/gpu:0"
+
+    with ops.Graph().as_default() as g:
+      with ops.device(DeviceFn):
+        with vs.variable_scope("main"):
+          kernel_initializer = init_ops.constant_initializer(3.14)
+          bias_initializer = init_ops.constant_initializer(1.59)
+          inputs = random_ops.random_uniform(
+              [num_layers * dir_count, batch_size, num_units],
+              dtype=dtypes.float32)
+
+          lstm = cudnn_rnn.CudnnLSTM(num_layers, num_units,
+                                     direction=direction,
+                                     kernel_initializer=kernel_initializer,
+                                     bias_initializer=bias_initializer,
+                                     name="awesome_lstm")
+          outputs = lstm(inputs)
+
+        # saver is created in the scope of DeviceFn.
+        saver = saver_lib.Saver()
+
+    with self.test_session(use_gpu=True, graph=g) as sess:
+      save_path = os.path.join(self.get_temp_dir(),
+                               "test-saveable-device-assignment")
+      sess.run(variables.global_variables_initializer())
+
+      saver.save(sess, save_path)
+      saver.restore(sess, save_path)
+      sess.run(outputs)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testDifferentShapesEager(self):
+    # Checks that kernel caching does not cause sharing of temporary storage
+    # across different input shapes when executing eagerly.
+    with context.eager_mode():
+      with ops.device("gpu:0"):
+        first_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+            array_ops.zeros([28, 100, 28]))
+        second_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+            array_ops.zeros([28, 100, 100]))
+        self.assertAllEqual([28, 100, 100], first_output.shape)
+        self.assertAllEqual([28, 100, 100], second_output.shape)
+
+        def _LossFunc():
+          first_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+              array_ops.zeros([28, 100, 28]))
+          second_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+              array_ops.zeros([28, 100, 100]))
+          return (math_ops.reduce_sum(first_output) +
+                  math_ops.reduce_sum(second_output))
+
+        backprop.implicit_grad(_LossFunc)()
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testDifferentShapesGraph(self):
+    # Tests that a single kernel instance presented with multiple input shapes
+    # does not crash with graph execution.
+    with ops.device("gpu:0"):
+      layer = cudnn_rnn.CudnnGRU(1, 100)
+      layer(array_ops.zeros([28, 100, 100]))
+
+      def _Cond(index, accumulation):
+        del accumulation  # unused
+        return math_ops.less(index, 4)
+
+      def _Body(index, accumulation):
+        layer_input = accumulation[:, :, 10 * (1 + index % 2):]
+        output, _ = layer(layer_input)
+        return index + 1, accumulation + output
+
+      original_input = array_ops.zeros([28, 100, 100])
+      _, accumulation = control_flow_ops.while_loop(_Cond, _Body,
+                                                    [0, original_input])
+      grad, = gradients.gradients(
+          math_ops.reduce_sum(accumulation), (original_input,))
+    init_op = variables.global_variables_initializer()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      accumulation_eval, grad_eval = sess.run((accumulation, grad))
+      self.assertAllEqual([28, 100, 100], accumulation_eval.shape)
+      self.assertAllEqual([28, 100, 100], grad_eval.shape)
+
 
 # TODO(jamesqin): Transform to parameterized test after it is included in the
 # TF open source codebase.
-class CudnnRNNTestSaveRestore(TensorFlowTestCase):
+class CudnnRNNTestSaveRestore(test_util.TensorFlowTestCase):
 
   def _CompareWeights(self, lhs, rhs):
     self.assertEqual(len(lhs), len(rhs))
@@ -551,9 +703,146 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
     self._TestSaveRestoreHelper(CUDNN_RNN_RELU)
 
 
+class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
+
+  def _VerifyCheckpoint(
+      self, checkpoint_path, compatible_cell_fn, cudnn_cell_fn,
+      num_layers, input_size, expected_variable_values, num_applications=3):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    with ops.device("gpu:0"):
+      cudnn_layer = cudnn_cell_fn()
+      cudnn_checkpoint = checkpointable_utils.Checkpoint(cell=cudnn_layer)
+      status = cudnn_checkpoint.restore(checkpoint_path)
+      inputs = 3. * array_ops.ones([num_applications, num_layers, input_size],
+                                   dtype=dtypes.float32)
+      cudnn_output, _ = cudnn_layer(inputs)
+      status.assert_consumed().run_restore_ops()
+    second_save_path = cudnn_checkpoint.save(checkpoint_prefix)
+    restore_layer = compatible_cell_fn()
+    restore_layer_checkpoint = checkpointable_utils.Checkpoint(
+        cell=restore_layer)
+    status = restore_layer_checkpoint.restore(second_save_path)
+    current_state = restore_layer.zero_state(1, dtypes.float32)
+    for _ in range(num_applications):
+      restore_layer_output, current_state = restore_layer(
+          inputs=3. * array_ops.ones([1, input_size]),
+          state=current_state)
+    status.assert_consumed().run_restore_ops()
+    self.assertTrue(restore_layer.variables)
+    for variable, expected_value in zip(
+        restore_layer.variables, expected_variable_values):
+      self.assertAllClose(expected_value, self.evaluate(variable))
+    self.assertAllClose(self.evaluate(restore_layer_output),
+                        self.evaluate(cudnn_output)[-1, -1:, ...])
+
+  def _CheckpointableSingleCellUnidirectionalTestTemplate(
+      self, single_cell_fn, cudnn_cell_fn):
+    # Single-layer cuDNN cells with object-based checkpointing should be
+    # checkpoint compatible with either single CudnnCompatible cells or
+    # MultiRnnCells with one cell.
+    input_size = 3
+    save_cell_layer = single_cell_fn()
+    save_cell_layer(
+        inputs=array_ops.ones([1, input_size]),
+        state=save_cell_layer.zero_state(1, dtypes.float32))
+    self.assertTrue(save_cell_layer.variables)
+    expected_values = []
+    np.random.seed(10)
+    for variable in save_cell_layer.variables:
+      value = np.random.normal(size=variable.shape)
+      expected_values.append(value)
+      self.evaluate(variable.assign(value))
+    save_checkpoint = checkpointable_utils.Checkpoint(cell=save_cell_layer)
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    first_save_path = save_checkpoint.save(checkpoint_prefix)
+    self._VerifyCheckpoint(
+        checkpoint_path=first_save_path,
+        compatible_cell_fn=
+        lambda: rnn_cell_impl.MultiRNNCell([single_cell_fn()]),
+        cudnn_cell_fn=cudnn_cell_fn,
+        num_layers=1,
+        expected_variable_values=expected_values,
+        input_size=input_size)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  @test_util.run_in_graph_and_eager_modes()
+  def testLSTMCheckpointableSingleLayer(self):
+    num_units = 2
+    direction = CUDNN_RNN_UNIDIRECTION
+    self._CheckpointableSingleCellUnidirectionalTestTemplate(
+        single_cell_fn=functools.partial(
+            cudnn_rnn_ops.CudnnCompatibleLSTMCell, num_units=num_units),
+        cudnn_cell_fn=functools.partial(
+            cudnn_rnn.CudnnLSTM, num_layers=1, num_units=num_units,
+            direction=direction, name="awesome_lstm"))
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  @test_util.run_in_graph_and_eager_modes()
+  def testGRUCheckpointableSingleLayer(self):
+    num_units = 2
+    direction = CUDNN_RNN_UNIDIRECTION
+    with self.assertRaises(NotImplementedError):
+      # TODO(allenl): Implement object-based saving for GRUs and other cells.
+      self._CheckpointableSingleCellUnidirectionalTestTemplate(
+          single_cell_fn=functools.partial(
+              cudnn_rnn_ops.CudnnCompatibleGRUCell, num_units=num_units),
+          cudnn_cell_fn=functools.partial(
+              cudnn_rnn.CudnnGRU, num_layers=1, num_units=num_units,
+              direction=direction, name="awesome_gru"))
+
+  def _CheckpointableMultiLayerTestTemplate(
+      self, single_cell_fn, cudnn_cell_fn, num_layers):
+
+    def _MultiCellFn():
+      return rnn_cell_impl.MultiRNNCell(
+          [single_cell_fn() for _ in range(num_layers)])
+    input_size = 3
+    save_graph = ops.Graph()
+    with save_graph.as_default(), self.test_session(graph=save_graph):
+      save_layer = _MultiCellFn()
+      save_layer(inputs=array_ops.ones([1, input_size]),
+                 state=save_layer.zero_state(1, dtypes.float32))
+      self.assertTrue(save_layer.variables)
+      expected_values = []
+      np.random.seed(10)
+      for variable in save_layer.variables:
+        value = np.random.normal(size=variable.shape)
+        expected_values.append(value)
+        self.evaluate(variable.assign(value))
+      save_checkpoint = checkpointable_utils.Checkpoint(cell=save_layer)
+      checkpoint_directory = self.get_temp_dir()
+      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+      first_save_path = save_checkpoint.save(checkpoint_prefix)
+    self._VerifyCheckpoint(
+        checkpoint_path=first_save_path,
+        compatible_cell_fn=_MultiCellFn, cudnn_cell_fn=cudnn_cell_fn,
+        num_layers=num_layers,
+        expected_variable_values=expected_values,
+        input_size=input_size)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  @test_util.run_in_graph_and_eager_modes()
+  def testCudnnCompatibleLSTMCheckpointablMultiLayer(self):
+    num_units = 2
+    num_layers = 3
+    direction = CUDNN_RNN_UNIDIRECTION
+    self._CheckpointableMultiLayerTestTemplate(
+        single_cell_fn=functools.partial(
+            cudnn_rnn_ops.CudnnCompatibleLSTMCell, num_units=num_units),
+        cudnn_cell_fn=functools.partial(
+            cudnn_rnn.CudnnLSTM, num_layers=num_layers, num_units=num_units,
+            direction=direction, name="awesome_lstm"),
+        num_layers=num_layers)
+
+
 # TODO(jamesqin): Transform to parameterized test after it is included in the
 # TF open source codebase.
-class CudnnRNNTestCompatibleRNNCells(TensorFlowTestCase):
+class CudnnRNNTestCompatibleRNNCells(test_util.TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
@@ -734,7 +1023,7 @@ class CudnnRNNTestCompatibleRNNCells(TensorFlowTestCase):
                               rtol=2e-5)
 
 
-class CudnnRNNTestParamsSize(TensorFlowTestCase):
+class CudnnRNNTestParamsSize(test_util.TensorFlowTestCase):
 
   def _TestOpaqueParamsSize(self, rnn_mode, num_layers, num_units, input_size,
                             dtype, direction):
@@ -781,7 +1070,7 @@ class CudnnRNNTestParamsSize(TensorFlowTestCase):
                                    dtype, direction)
 
 
-class CudnnRNNTestTraining(TensorFlowTestCase):
+class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
 
   def _ComputeNumericGrad(self, sess, y, x, delta=1e-4, step=1):
     """Compute the numeric gradient of y wrt to x.

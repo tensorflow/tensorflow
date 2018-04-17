@@ -263,8 +263,7 @@ if __name__ == "__main__":
       "--data_dir",
       type=str,
       default="/tmp/census-data",
-      help="Directory for storing the census data"
-  )
+      help="Directory for storing the census data")
   parser.add_argument(
       "--model_dir",
       type=str,

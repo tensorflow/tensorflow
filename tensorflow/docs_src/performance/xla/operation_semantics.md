@@ -13,6 +13,179 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## BatchNormGrad
+
+See also
+[`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h)
+and [the original batch normalization paper](https://arxiv.org/abs/1502.03167)
+for a detailed description of the algorithm.
+
+Calculates gradients of batch norm.
+
+<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------  | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
+:                 :                         : normalized (x)                   :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\gamma\\))                   :
+| `mean`          | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))  |
+| `variance`      | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\sigma^2\\))                 :
+| `grad_output`   | `ComputationDataHandle` | Gradients passed to              |
+:                 :                         : `BatchNormTraining`              :
+:                 :                         : (\\( \nabla y\\))                :
+| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
+| `feature_index` | `int64`                 | Index to feature dimension in    |
+:                 :                         : `operand`                        :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the gradients with
+respect to `operand`, `offset` and `scale` across all the other dimensions. The
+`feature_index` must be a valid index for the feature dimension in `operand`.
+
+The three gradients are defined by the following formulas (Assuming a
+4-dimensional tensor as `operand` and (l) is the index for feature dimension):
+
+\\( coef_l = \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (\nabla y_{ijkl} * (x_{ijkl} - \mu_l) / (\sigma^2_{l}+\epsilon)) \\)
+
+\\( \nabla x_{ijkl} = \gamma_{l} * (1/\sqrt{\sigma^2_{l}+\epsilon}) * [\nabla y_{ijkl} - mean(\nabla y) - (x_{ijkl} - \mu_{l}) * coef_l] \\)
+
+\\( \nabla \beta_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} \\)
+
+\\( \nabla \gamma_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} * ((x_{ijkl} - \mu_l) / \sqrt{\sigma^2_{l}+\epsilon}) \\)
+
+The inputs `mean` and `variance` represents moments value
+across batch and spatial dimensions.
+
+The output type is a tuple of three handles:
+
+|Outputs       | Type                    | Semantics                            |
+|------------- | ----------------------- | ------------------------------------ |
+|`grad_operand`| `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `operand` (\\( \nabla x\\))          :
+|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `scale` (\\( \nabla \gamma\\))       :
+|`grad_offset` | `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `offset`(\\( \nabla \beta\\))        :
+
+
+## BatchNormInference
+
+See also
+[`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h) and
+[the original batch normalization paper](https://arxiv.org/abs/1502.03167)
+for a detailed description of the algorithm.
+
+Normalizes an array across batch and spatial dimensions.
+
+<b> `BatchNormInference(operand, scale, offset, mean, variance, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                       |
+| --------------  | ----------------------- | ------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be       |
+:                 :                         : normalized                      :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array             |
+| `offset`        | `ComputationDataHandle` | 1 dimensional array             |
+| `mean`          | `ComputationDataHandle` | 1 dimensional array             |
+| `variance`      | `ComputationDataHandle` | 1 dimensional array             |
+| `epsilon`       | `float`                 | Epsilon value                   |
+| `feature_index` | `int64`                 | Index to feature dimension in   |
+:                 :                         : `operand`                       :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the mean and variance
+across all the other dimensions and uses the mean and variance to normalize each
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
+
+`BatchNormInference`  is equivalent to calling `BatchNormTraining` without
+computing `mean` and `variance` for each batch. It uses the input `mean` and
+`variance` instead as estimated values. The purpose of this op is to reduce
+latency in inference, hence the name `BatchNormInference`.
+
+The output is an n-dimensional, normalized array with the same shape as input
+`operand`.
+
+## BatchNormTraining
+
+See also
+[`ComputationBuilder::BatchNormTraining`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h) and
+[`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
+for a detailed description of the algorithm.
+
+Normalizes an array across batch and spatial dimensions.
+
+<b> `BatchNormTraining(operand, scale, offset, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------- | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
+:                 :                         : normalized (x)                   :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\gamma\\))                   :
+| `offset`        | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\beta\\))                    :
+| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
+| `feature_index` | `int64`                 | Index to feature dimension       |
+:                 :                         : in `operand`                     :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the mean and variance
+across all the other dimensions and uses the mean and variance to normalize each
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
+
+The algorithm goes as follows for each batch in `operand` \\(x\\) that
+contains `m` elements with `w` and `h` as the size of spatial dimensions
+(assuming `operand` is an 4 dimensional array):
+
+- Calculates batch mean \\(\mu_l\\) for each feature `l` in feature dimension:
+\\(\mu_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h x_{ijkl}\\)
+
+- Calculates batch variance \\(\sigma^2_l\\):
+\\(\sigma^2_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (x_{ijkl} - \mu_l)^2\\)
+
+- Normalizes, scales and shifts:
+\\(y_{ijkl}=\frac{\gamma_l(x_{ijkl}-\mu_l)}{\sqrt[2]{\sigma^2_l+\epsilon}}+\beta_l\\)
+
+The epsilon value, usually a small number, is added to avoid divide-by-zero errors.
+
+The output type is a tuple of three `ComputationDataHandle`s:
+
+| Outputs      | Type                    | Semantics                            |
+| ------------ | ----------------------- | -------------------------------------|
+| `output`     | `ComputationDataHandle` | n dimensional array with the same    |
+:              :                         : shape as input `operand` (y)         :
+| `batch_mean` | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))      |
+| `batch_var`  | `ComputationDataHandle` | 1 dimensional array (\\(\sigma^2\\)) |
+
+The `batch_mean` and `batch_var` are moments calculated across the batch and
+spatial dimensions using the formulas above.
+
+## BitcastConvertType
+
+See also
+[`ComputationBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
+operation from a data shape to a target shape. The dimensions must match, and
+the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
+via bitcast routine. Bitcast is implemented as a low-level cast, so machines
+with different floating-point representations will give different results.
+
+<b> `BitcastConvertType(operand, new_element_type)` </b>
+
+Arguments          | Type                    | Semantics
+------------------ | ----------------------- | ---------------------------
+`operand`          | `ComputationDataHandle` | array of type T with dims D
+`new_element_type` | `PrimitiveType`         | type U
+
+The dimensions of the operand and the target shape must match. The bit-width of
+the source and destination element types must be equal. The source
+and destination element types must not be tuples.
+
 ## Broadcast
 
 See also
@@ -68,23 +241,20 @@ See also
 
 Clamps an operand to within the range between a minimum and maximum value.
 
-<b> `Clamp(computation, args...)` </b>
+<b> `Clamp(min, operand, max)` </b>
 
 | Arguments     | Type                    | Semantics                        |
 | ------------- | ----------------------- | -------------------------------- |
-| `computation` | `Computation`           | computation of type `T_0, T_1,   |
-:               :                         : ..., T_N -> S` with N parameters :
-:               :                         : of arbitrary type                :
-| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `min`         | `ComputationDataHandle` | array of type T                  |
+| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `max`         | `ComputationDataHandle` | array of type T                  |
 
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+range.  That is, `clamp(a, x, b) =  min(max(a, x), b)`.
 
-All three arrays must be the same shape. Alternately, as a restricted form of
+All three arrays must be the same shape. Alternatively, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
 
 Example with scalar `min` and `max`:
@@ -94,7 +264,7 @@ let operand: s32[3] = {-1, 5, 9};
 let min: s32 = 0;
 let max: s32 = 6;
 ==>
-Clamp(operand, min, max) = s32[3]{0, 5, 6};
+Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ```
 
 ## Collapse
@@ -181,7 +351,7 @@ each other) and contains the arguments in the order that they were specified.
 :             :                         : concatenated between the `operands`. :
 
 With the exception of `dimension` all dimensions must be the same. This is
-because XLA does not support "ragged" arrays Also note that rank-0 values
+because XLA does not support "ragged" arrays. Also note that rank-0 values
 cannot be concatenated (as it's impossible to name the dimension along which the
 concatenation occurs).
 
@@ -217,40 +387,34 @@ Diagram:
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_concatenate.png">
 </div>
 
-## ConvertElementType
+## Conditional
 
-See also
-[`ComputationBuilder::ConvertElementType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+See also [`ComputationBuilder::Conditional`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
-Similar to an element-wise `static_cast` in C++, performs an element-wise
-conversion operation from a data shape to a target shape. The dimensions must
-match, and the conversion is an element-wise one; e.g. `s32` elements become
-`f32` elements via an `s32`-to-`f32` conversion routine.
+<b> `Conditional(pred, true_operand, true_computation, false_operand,
+    false_computation)` </b>
 
-<b> `ConvertElementType(operand, new_element_type)` </b>
+| Arguments           | Type                    | Semantics                   |
+| ------------------- | ----------------------- | --------------------------- |
+| `pred`              | `ComputationDataHandle` | Scalar of type `PRED`       |
+| `true_operand`      | `ComputationDataHandle` | Argument of type `T_0`      |
+| `true_computation`  | `Computation`           | Computation of type `T_0 -> |
+:                     :                         : S`                          :
+| `false_operand`     | `ComputationDataHandle` | Argument of type `T_1`      |
+| `false_computation` | `Computation`           | Computation of type `T_1 -> |
+:                     :                         : S`                          :
 
-Arguments          | Type                    | Semantics
------------------- | ----------------------- | ---------------------------
-`operand`          | `ComputationDataHandle` | array of type T with dims D
-`new_element_type` | `PrimitiveType`         | type U
+Executes `true_computation` if `pred` is `true`, `false_computation` if `pred`
+is `false`, and returns the result.
 
-If the dimensions of the operand and the target shape do not match, or an
-invalid conversion is requested (e.g. to/from a tuple) an error will be
-produced.
+The `true_computation` must take in a single argument of type `T_0` and will be
+invoked with `true_operand` which must be of the same type. The
+`false_computation` must take in a single argument of type `T_1` and will be
+invoked with `false_operand` which must be of the same type. The type of the
+returned value of `true_computation` and `false_computation` must be the same.
 
-A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
-conversion routine such as round-to-nearest-even.
-
-> Note: The precise float-to-int and visa-versa conversions are currently
-> unspecified, but may become additional arguments to the convert operation in
-> the future.  Not all possible conversions have been implemented for all
->targets.
-
-```
-let a: s32[3] = {0, 1, 2};
-let b: f32[3] = convert(a, f32);
-then b == f32[3]{0.0, 1.0, 2.0}
-```
+Note that only one of `true_computation` and `false_computation` will be
+executed depending on the value of `pred`.
 
 ## Conv (convolution)
 
@@ -276,11 +440,13 @@ area and a computation is performed for each possible position of the window.
 | `lhs`            | `ComputationDataHandle` | rank n+2 array of inputs      |
 | `rhs`            | `ComputationDataHandle` | rank n+2 array of kernel      |
 :                  :                         : weights                       :
-| `window_strides` | `ArraySlice<int64>`     | n-d array of kernel strides   |
-| `padding`        | `ArraySlice<pair<int64, | n-d array of (low, high)      |
+| `window_strides` | `ArraySlice<int64>`     | size n array of kernel strides|
+| `padding`        | `ArraySlice<pair<int64, | size n array of (low, high)   |
 :                  : int64>>`                : padding                       :
-| `lhs_dilation`   | `ArraySlice<int64>`     | n-d lhs dilation factor array |
-| `rhs_dilation`   | `ArraySlice<int64>`     | n-d rhs dilation factor array |
+| `lhs_dilation`   | `ArraySlice<int64>`     | size n lhs dilation factor    |
+:                  :                         : array                         |
+| `rhs_dilation`   | `ArraySlice<int64>`     | size n rhs dilation factor
+:                  :                         : array                         |
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course
@@ -304,7 +470,7 @@ filter/kernel/window. The dimensions are, in this order:
     window that moves across the base area.
 
 The `window_strides` argument specifies the stride of the convolutional window
-in the spatial dimensions. For example, if the stride in a the first spatial
+in the spatial dimensions. For example, if the stride in the first spatial
 dimension is 3, then the window can only be placed at coordinates where the
 first spatial index is divisible by 3.
 
@@ -374,6 +540,40 @@ for (b, oz, oy, ox) {  // output coordinates
 }
 ```
 
+## ConvertElementType
+
+See also
+[`ComputationBuilder::ConvertElementType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Similar to an element-wise `static_cast` in C++, performs an element-wise
+conversion operation from a data shape to a target shape. The dimensions must
+match, and the conversion is an element-wise one; e.g. `s32` elements become
+`f32` elements via an `s32`-to-`f32` conversion routine.
+
+<b> `ConvertElementType(operand, new_element_type)` </b>
+
+Arguments          | Type                    | Semantics
+------------------ | ----------------------- | ---------------------------
+`operand`          | `ComputationDataHandle` | array of type T with dims D
+`new_element_type` | `PrimitiveType`         | type U
+
+The dimensions of the operand and the target shape must match. The source and
+destination element types must not be tuples.
+
+A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
+conversion routine such as round-to-nearest-even.
+
+> Note: The precise float-to-int and visa-versa conversions are currently
+> unspecified, but may become additional arguments to the convert operation in
+> the future.  Not all possible conversions have been implemented for all
+>targets.
+
+```
+let a: s32[3] = {0, 1, 2};
+let b: f32[3] = convert(a, f32);
+then b == f32[3]{0.0, 1.0, 2.0}
+```
+
 ## CrossReplicaSum
 
 See also
@@ -388,9 +588,9 @@ Computes a sum across replicas.
 | `operand`    | `ComputationDataHandle` | Array to sum across replicas.      |
 
 The output shape is the same as the input shape. For example, if there are two
-replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.1)`
+replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
 respectively on the two replicas, then the output value from this op will be
-`(4.0, 7.6)` on both replicas.
+`(4.0, 7.75)` on both replicas.
 
 Computing the result of CrossReplicaSum requires having one input from each
 replica, so if one replica executes a CrossReplicaSum node more times than
@@ -490,6 +690,216 @@ contracted dimensions of `lhs` and `rhs` must be of the same size. In practice,
 it can be used to perform dot products between vectors, vector/matrix
 multiplications or matrix/matrix multiplications.
 
+## DotGeneral
+
+See also
+[`ComputationBuilder::DotGeneral`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `DotGeneral(lhs, rhs, dimension_numbers)` </b>
+
+| Arguments | Type                    | Semantics
+| --------- | ----------------------- | ---------------
+| `lhs`     | `ComputationDataHandle` | array of type T
+| `rhs`     | `ComputationDataHandle` | array of type T
+| `dimension_numbers` | `DotDimensionNumbers` | array of type T
+
+As Dot, but allows contracting and batch dimension numbers to be specified for
+both the 'lhs' and 'rhs'.
+
+| DotDimensionNumbers Fields | Type                    | Semantics
+| --------- | ----------------------- | ---------------
+| 'lhs_contracting_dimensions' | repeated int64 | 'lhs' contracting dimension numbers |
+| 'rhs_contracting_dimensions' | repeated int64 | 'rhs' contracting dimension numbers |
+| 'lhs_batch_dimensions' | repeated int64 | 'lhs' batch dimension numbers |
+| 'rhs_batch_dimensions' | repeated int64 | 'rhs' batch dimension numbers |
+
+DotGeneral performs the sum of products over contracting dimensions specified
+in 'dimension_numbers'.
+
+Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
+to be the same, but must be listed in the same order in both
+'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
+There must be exactly one contracting dimension on both 'lhs' and 'rhs'.
+
+Example with contracting dimension numbers:
+
+```
+lhs = { {1.0, 2.0, 3.0},
+        {4.0, 5.0, 6.0} }
+
+rhs = { {1.0, 1.0, 1.0},
+        {2.0, 2.0, 2.0} }
+
+DotDimensionNumbers dnums;
+dnums.add_lhs_contracting_dimensions(1);
+dnums.add_rhs_contracting_dimensions(1);
+
+DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
+                                 {15.0, 30.0} }
+```
+
+Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
+dimension number, must be listed in the same order in both arrays, must
+have the same dimension sizes, and must be ordered before contracting and
+non-contracting/non-batch dimension numbers.
+
+Example with batch dimension numbers (batch size 2, 2x2 matrices):
+
+```
+lhs = { { {1.0, 2.0},
+          {3.0, 4.0} },
+        { {5.0, 6.0},
+          {7.0, 8.0} } }
+
+rhs = { { {1.0, 0.0},
+          {0.0, 1.0} },
+        { {1.0, 0.0},
+          {0.0, 1.0} } }
+
+DotDimensionNumbers dnums;
+dnums.add_lhs_contracting_dimensions(2);
+dnums.add_rhs_contracting_dimensions(1);
+dnums.add_lhs_batch_dimensions(0);
+dnums.add_rhs_batch_dimensions(0);
+
+DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
+                                   {3.0, 4.0} },
+                                 { {5.0, 6.0},
+                                   {7.0, 8.0} } }
+```
+
+| Input                               | Output            | Semantics        |
+| ----------------------------------- | ----------------- | ---------------- |
+| [b0, m, k] `dot` [b0, k, n]         | [b0, m, n]        |  batch matmul    |
+| [b0, b1, m, k] `dot` [b0, b1, k, n] | [b0, b1, m, n]    |  batch matmul    |
+
+It follows that the resulting dimension number starts with the batch dimension,
+then the 'lhs' non-contracting/non-batch dimension, and finally the 'rhs'
+non-contracting/non-batch dimension.
+
+## DynamicSlice
+
+See also
+[`ComputationBuilder::DynamicSlice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+DynamicSlice extracts a sub-array from the input array at dynamic
+`start_indices`. The size of the slice in each dimension is passed in
+`size_indices`, which specify the end point of exclusive slice intervals in each
+dimension: [start, start + size). The shape of `start_indices` must be rank ==
+1, with dimension size equal to the rank of `operand`.
+Note: handling of out-of-bounds slice indices (generated by incorrect runtime
+calculation of 'start_indices') is currently implementation-defined.
+
+<b> `DynamicSlice(operand, start_indices, size_indices)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------- | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | N dimensional array of type T    |
+| `start_indices` | `ComputationDataHandle` | Rank 1 array of N integers       |
+:                 :                         : containing the starting indices  :
+:                 :                         : of the slice for each dimension. :
+:                 :                         : Value must be greater than or    :
+:                 :                         : equal to zero.                   :
+| `size_indices`  | `ArraySlice<int64>`     | List of N integers containing    |
+:                 :                         : the slice size for each          :
+:                 :                         : dimension. Each value must be    :
+:                 :                         : strictly greater than zero, and  :
+:                 :                         : start + size must be less than   :
+:                 :                         : or equal to the size of the      :
+:                 :                         : dimension to avoid wrapping      :
+:                 :                         : modulo dimension size.           :
+
+1-dimensional example:
+
+```
+let a = {0.0, 1.0, 2.0, 3.0, 4.0}
+let s = {2}
+
+DynamicSlice(a, s, {2}) produces:
+  {2.0, 3.0}
+```
+
+2-dimensional example:
+
+```
+let b =
+ { {0.0,  1.0,  2.0},
+   {3.0,  4.0,  5.0},
+   {6.0,  7.0,  8.0},
+   {9.0, 10.0, 11.0} }
+let s = {2, 1}
+
+DynamicSlice(b, s, {2, 2}) produces:
+  { { 7.0,  8.0},
+    {10.0, 11.0} }
+```
+## DynamicUpdateSlice
+
+See also
+[`ComputationBuilder::DynamicUpdateSlice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+DynamicUpdateSlice generates a result which is the value of the input array
+`operand`, with a slice `update` overwritten at `start_indices`.
+The shape of `update` determines the shape of the sub-array of the result which
+is updated.
+The shape of `start_indices` must be rank == 1, with dimension size equal to
+the rank of `operand`.
+Note: handling of out-of-bounds slice indices (generated by incorrect runtime
+calculation of 'start_indices') is currently implementation-defined.
+
+<b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------- | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | N dimensional array of type T    |
+| `update`        | `ComputationDataHandle` | N dimensional array of type T    |
+:                 :                         : containing the slice update.     :
+:                 :                         : Each dimension of update shape   :
+:                 :                         : must be strictly greater than    :
+:                 :                         : zero, and start + update must be :
+:                 :                         : less than or equal to the operand:
+:                 :                         : size for each dimension to avoid :
+:                 :                         : generating out-of-bounds update  :
+:                 :                         : indices.                         :
+| `start_indices` | `ComputationDataHandle` | Rank 1 array of N integers       |
+:                 :                         : containing the starting indices  :
+:                 :                         : of the slice for each dimension. :
+:                 :                         : Value must be greater than or    :
+:                 :                         : equal to zero.                   :
+
+1-dimensional example:
+
+```
+let a = {0.0, 1.0, 2.0, 3.0, 4.0}
+let u = {5.0, 6.0}
+let s = {2}
+
+DynamicUpdateSlice(a, u, s) produces:
+  {0.0, 1.0, 5.0, 6.0, 4.0}
+```
+
+2-dimensional example:
+
+```
+let b =
+ { {0.0,  1.0,  2.0},
+   {3.0,  4.0,  5.0},
+   {6.0,  7.0,  8.0},
+   {9.0, 10.0, 11.0} }
+let u =
+ { {12.0,  13.0},
+   {14.0,  15.0},
+   {16.0,  17.0} }
+
+let s = {1, 1}
+
+DynamicUpdateSlice(b, u, s) produces:
+ { {0.0,  1.0,  2.0},
+   {3.0, 12.0, 13.0},
+   {6.0, 14.0, 15.0},
+   {9.0, 16.0, 17.0} }
+```
+
 ## Element-wise binary arithmetic operations
 
 See also
@@ -531,7 +941,7 @@ expand the rank of the lower-rank operand up to the rank of the higher-rank
 operand. `broadcast_dimensions` maps the dimensions of the lower-rank shape to
 the dimensions of the higher-rank shape. The unmapped dimensions of the expanded
 shape are filled with dimensions of size one. Degenerate-dimension broadcasting
-then broadcasts the shapes along these degenerate dimension to equalize the
+then broadcasts the shapes along these degenerate dimensions to equalize the
 shapes of both operands. The semantics are described in detail on the
 @{$broadcasting$broadcasting page}.
 
@@ -616,157 +1026,213 @@ Arguments | Type                    | Semantics
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 
+## Gather
 
-## BatchNormTraining
+The XLA gather operation stitches together several slices (each slice at a
+potentially different runtime offset) of an input tensor into an output tensor.
 
-See also
-[`ComputationBuilder::BatchNormTraining`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h) and
-[`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
-for a detailed description of the algorithm.
-
-<b> Warning: Not implemented on GPU backend yet. </b>
-
-Normalizes an array across batch and spatial dimensions.
-
-<b> `BatchNormTraining(operand, scale, offset, epsilon, feature_index)` </b>
-
-| Arguments       | Type                    | Semantics                        |
-| --------------- | ----------------------- | -------------------------------- |
-| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
-:                 :                         : normalized                       :
-| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
-:                 :                         : (\\(\gamma\\))                   :
-| `offset`        | `ComputationDataHandle` | 1 dimensional array              |
-:                 :                         : (\\(\beta\\ )                    :
-| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
-| `feature_index` | `int64`                 | Index to feature dimension       |
-:                 :                         : in `operand`                     :
-
-
-For each feature in the feature dimension (`feature_index` is the index for the
-feature dimension in `operand`), the operation calculates the mean and variance
-across all the other dimensions and use the mean and variance to normalize each
-element in `operand`. If an invalid `feature_index` is passed, an error is
-produced.
-
-The algorithm goes as follows for each batch in `operand` \\(x\\) that
-contains `m` elements with `w` and `h` as the size of spatial dimensions (
-assuming `operand` is an 4 dimensional array):
-
-- Calculates batch mean \\(\mu_l\\) for each feature `l` in feature dimension:
-\\(\mu_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h x_{ijkl}\\)
-
-- Calculates batch variance \\(\sigma^2_l\\):
-\\(\sigma^2_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (x_{ijkl} - \mu_l)^2\\)
-
-- Normalizes, scales and shifts:
-\\(y_{ijkl}=\frac{\gamma_l(x_{ijkl}-\mu_l)}{\sqrt[2]{\sigma^2_l+\epsilon}}+\beta_l\\)
-
-The epsilon value, usually a small number, is added to avoid divide-by-zero errors.
-
-The output type is a tuple of three ComputationDataHandles:
-
-| Outputs      | Type                    | Semantics                            |
-| ------------ | ----------------------- | -------------------------------------|
-| `output`     | `ComputationDataHandle` | n dimensional array with the same    |
-:              :                         : shape as input `operand` (y)         :
-| `batch_mean` | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))      |
-| `batch_var`  | `ComputationDataHandle` | 1 dimensional array (\\(\sigma^2\\)) |
-
-The `batch_mean` and `batch_var` are moments calculated across the batch and
-spatial dimensions using the formulas above.
-
-## BatchNormInference
+### General Semantics
 
 See also
-[`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+[`ComputationBuilder::Gather`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+For a more intuitive description, see the "Informal Description" section below.
 
-<b> Warning: Not implemented yet. </b>
+<b> `gather(operand, gather_indices, output_window_dims, elided_window_dims, window_bounds, gather_dims_to_operand_dims)` </b>
 
-Normalizes an array across batch and spatial dimensions.
+|Arguments         | Type                    | Semantics                       |
+|----------------- | ----------------------- | --------------------------------|
+|`operand`         | `ComputationDataHandle` | The tensor we’re gathering      |
+:                  :                         : from.                           :
+|`gather_indices`  | `ComputationDataHandle` | Tensor containing the starting  |
+:                  :                         : indices of the slices we're     :
+:                  :                         : we're stitching together into   :
+:                  :                         : the output tensor.              :
+|`index_vector_dim`  | `int64`               | The dimension in                |
+:                  :                         : `gather_indices` that contains  :
+:                  :                         : the starting indices.           :
+|`output_window_dims` | `ArraySlice<int64>`  | The set of dimensions in the    |
+:                  :                         : output shape that are _window   :
+:                  :                         : dimensions_ (defined below).    :
+:                  :                         : Not all window dimensions may   :
+:                  :                         : be present in the output shape. :
+|`elided_window_dims` | `ArraySlice<int64>`  | The set of _window dimensions_  |
+:                  :            : that are not present in the output shape.    :
+:                  :            : `window_bounds[i]` must be `1` for all `i`   :
+:                  :            : in `elided_window_dims`.                     :
+|`window_bounds`   | `ArraySlice<int64>`    | `window_bounds[i]` is the bounds |
+:                  :            : for  window dimension `i`. This includes     :
+:                  :            : both the window dimensions that are          :
+:                  :            : explicitly part of the output shape (via     :
+:                  :            : `output_window_dims`) and the window         :
+:                  :            : dimensions that are elided (via              :
+:                  :            : `elided_window_dims`).                       :
+|`gather_dims_to_operand_dims` | `ArraySlice<int64>` | A dimension map (the    |
+:                  :            : array is interpreted as mapping `i` to       :
+:                  :            : `gather_dims_to_operand_dims[i]`)  from      :
+:                  :            : the gather indices in `gather_indices` to    :
+:                  :            : the operand index space.  It has to be       :
+:                  :            : one-to-one and total.                        :
 
-<b> `BatchNormInference(operand, scale, offset, mean, variance, epsilon, feature_index)` </b>
+For every index `Out` in the output tensor, we compute two things (more
+precisely described later):
 
-| Arguments       | Type                    | Semantics                       |
-| --------------  | ----------------------- | ------------------------------- |
-| `operand`       | `ComputationDataHandle` | n dimensional array to be       |
-:                 :                         : normalized                      :
-| `scale`         | `ComputationDataHandle` | 1 dimensional array             |
-| `offset`        | `ComputationDataHandle` | 1 dimensional array             |
-| `mean`          | `ComputationDataHandle` | 1 dimensional array             |
-| `variance`      | `ComputationDataHandle` | 1 dimensional array             |
-| `epsilon`       | `float`                 | Epsilon value                   |
-| `feature_index` | `int64`                 | Index to feature dimension in   |
-:                 :                         : `operand`                       :
+  - An index into `gather_indices.rank` - `1` dimensions of `gather_indices`,
+    which gives us a starting index of a slice, _operand slice_, in the operand
+    tensor.  These `gather_indices.rank` - `1` dimensions are all the dimensions
+    in `gather_indices` except `index_vector_dim`.
 
-For each feature in the feature dimension (`feature_index` is the index for the
-feature dimension in `operand`), the operation calculates the mean and variance
-across all the other dimensions and use the mean and variance to normalize each
-element in `operand`. If an invalid `feature_index` is passed, an error is
-produced.
+  - A _window index_ that has the same rank as the operand.  This index is
+    composed of the values in `Out` at dimensions `output_window_dims`, embedded
+    with zeroes according to `elided_window_dims`.
 
-`BatchNormInference`  is equivalent to calling `BatchNormTraining` without
-computing `mean` and `variance` for each batch. It uses the input `mean` and
-`variance` instead as estimated values. The purpose of this op is to reduce
-latency in inference, hence the name `BatchNormInference`.
+The _window index_ is the relative index of the element in _operand slice_ that
+should be present in the output at index `Out`.
 
-The output is a n dimensional, normalized array with the same shape as input
-`operand`.
+The output is a tensor of rank `output_window_dims.size` + `gather_indices.rank`
+- `1`.  Additionally, as a shorthand, we define `output_gather_dims` of type
+`ArraySlice<int64>` as the set of dimensions in the output shape but not in
+`output_window_dims`, in ascending order.  E.g. if the output tensor has rank
+`5`, `output_window_dims` is {`2`, `4`} then `output_gather_dims` is {`0`, `1`,
+`3`}
 
-## BatchNormGrad
+If `index_vector_dim` is equal to `gather_indices.rank` we implicitly
+consider `gather_indices` to have a trailing `1` dimension (i.e. if
+`gather_indices` was of shape `[6,7]` and `index_vector_dim` is `2` then
+we implicitly consider the shape of `gather_indices` to be `[6,7,1]`).
 
-See also
-[`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+The bounds for the output tensor along dimension `i` is computed as follows:
 
-<b> Warning: Not implemented yet. </b>
+  1. If `i` is present in `output_gather_dims` (i.e. is equal to
+     `output_gather_dims[k]` for some `k`) then we pick the corresponding
+     dimension bounds out of `gather_indices.shape`, skipping
+     `index_vector_dim` (i.e. pick `gather_indices.shape.dims`[`k`] if `k`
+     < `index_vector_dim` and `gather_indices.shape.dims`[`k`+`1`]
+     otherwise).
+  2. If `i` is present in `output_window_dims` (i.e. equal to
+     `output_window_dims`[`k`] for some `k`) then we pick the corresponding
+     bound out of `window_bounds` after accounting for `elided_window_dims`
+     (i.e. we pick `adjusted_window_bounds`[`k`] where `adjusted_window_bounds`
+     is `window_bounds` with the bounds at indices `elided_window_dims`
+     removed).
 
-Calculates gradients of batch norm.
+The operand index `In` corresponding to an output index `Out` is computed as
+follows:
 
-<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
+  1. Let `G` = { `Out`[`k`] for `k` in `output_gather_dims` }.  Use `G` to slice
+     out vector `S` such that `S`[`i`] = `gather_indices`[Combine(`G`, `i`)]
+     where Combine(A, b) inserts b at position `index_vector_dim` into A.
+     Note that this is well defined even if `G` is empty -- if `G` is empty then
+     `S` = `gather_indices`.
+  2. Create an index, `S`<sub>`in`</sub>, into `operand` using `S` by
+     scattering `S` using the `gather_dims_to_operand_dims` map
+     (`S`<sub>`in`</sub> is the starting indices for _operand slice_ mentioned
+     above).  More precisely:
+       1. `S`<sub>`in`</sub>[`gather_dims_to_operand_dims`[`k`]] = `S`[`k`] if `k` <
+          `gather_dims_to_operand_dims.size`.
+       2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
+  3. Create an index `W`<sub>`in`</sub> into `operand` by scattering the indices
+     at the output window dimensions in `Out` according to
+     the `elided_window_dims` set (`W`<sub>`in`</sub> is the _window index_
+     mentioned above).  More precisely:
+       1. `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `Out`[`k`] if
+          `k` < `output_window_dims.size` (`window_dims_to_operand_dims` is
+          defined below).
+       2. `W`<sub>`in`</sub>[`_`] = `0` otherwise.
+  4. `In` is `W`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
+     addition.
 
-| Arguments       | Type                    | Semantics                        |
-| --------------  | ----------------------- | -------------------------------- |
-| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
-:                 :                         : normalized (x)                   :
-| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
-:                 :                         : (\\(\gamma\\))                   :
-| `mean`          | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))  |
-| `variance`      | `ComputationDataHandle` | 1 dimensional array              |
-:                 :                         : (\\(\sigma^2\\))                 :
-| `grad_output`   | `ComputationDataHandle` | Gradients passed to              |
-:                 :                         : `BatchNormTraining`              :
-:                 :                         : (\\( \nabla y\\))                :
-| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
-| `feature_index` | `int64`                 | Index to feature dimension in    |
-:                 :                         : `operand`                        :
+`window_dims_to_operand_dims` is the monotonic function with domain [`0`,
+`output_window_dims.size`) and range [`0`, `operand.rank`) \
+`elided_window_dims`.  So if, e.g., `output_window_dims.size` is `4`,
+`operand.rank` is `6` and `elided_window_dims` is {`0`, `2`} then
+`window_dims_to_operand_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
 
-For each feature in the feature dimension (`feature_index` is the index for the
-feature dimension in `operand`), the operation calculates the gradients with
-respect to `operand`, `offset` and `scale` across all the other dimensions. If
-an invalid `feature_index` is passed, an error is produced.
+### Informal Description and Examples
 
-The three gradients are defined by the following formulas:
+`index_vector_dim` is set to `gather_indices.rank` - `1` in all of the
+examples that follow.  More interesting values for `index_vector_dim`
+does not change the operation fundamentally, but makes the visual representation
+more cumbersome.
 
-\\( \nabla x = \nabla y * \gamma * \sqrt{\sigma^2+\epsilon} \\)
+To get an intuition on how all of the above fits together, let's look at an
+example that gathers 5 slices of shape `[8,6]` from a `[16,11]` tensor.  The
+position of a slice into the `[16,11]` tensor can be represented as an index
+vector of shape `S64[2]`, so the set of 5 positions can be represented as a
+`S64[5,2]` tensor.
 
-\\( \nabla \gamma = sum(\nabla y * (x - \mu) * \sqrt{\sigma^2 + \epsilon}) \\)
+The behavior of the gather operation can then be depicted as an index
+transformation that takes [`G`,`W`<sub>`0`</sub>,`W`<sub>`1`</sub>], an index in
+the output shape, and maps it to an element in the input tensor in the following
+way:
 
-\\( \nabla \beta = sum(\nabla y) \\)
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/ops_xla_gather_0.svg">
+</div>
 
-The inputs `mean` and `variance` represents moments value
-across batch and spatial dimensions.
+We first select an (`X`,`Y`) vector from the gather indices tensor using `G`.
+The element in the output tensor at index
+[`G`,`W`<sub>`0`</sub>,`W`<sub>`1`</sub>] is then the element in the input
+tensor at index [`X`+`W`<sub>`0`</sub>,`Y`+`W`<sub>`1`</sub>].
 
-The output type is a tuple of three ComputationDataHandles:
+`window_bounds` is `[8,6]`, which decides the range of W<sub>`0`</sub> and
+W<sub>`1`</sub>, and this in turn decides the bounds of the slice.
 
-|Outputs       | Type                    | Semantics                           |
-|------------- | ----------------------- | ------------------------------------|
-|`grad_operand`| `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `operand`                           :
-|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `offset`                            :
-|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `scale`                             :
+This gather operation acts as a batch dynamic slice with `G` as the batch
+dimension.
 
+The gather indices may be multidimensional.  For instance, a more general
+version of the example above using a "gather indices" tensor of shape `[4,5,2]`
+would translate indices like this:
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/ops_xla_gather_1.svg">
+</div>
+
+Again, this acts as a batch dynamic slice `G`<sub>`0`</sub> and
+`G`<sub>`1`</sub> as the batch dimensions.  The window bounds are still `[8,6]`.
+
+The gather operation in XLA generalizes the informal semantics outlined above in
+the following ways:
+
+ 1. We can configure which dimensions in the output shape are the window
+    dimensions (dimensions containing `W`<sub>`0`</sub>, `W`<sub>`1`</sub> in
+    the last example).  The output gather dimensions (dimensions containing
+    `G`<sub>`0`</sub>, `G`<sub>`1`</sub> in the last example) are defined to be
+    the output dimensions that are not window dimensions.
+
+ 2. The number of output window dimensions explicitly present in the output
+    shape may be smaller than the input rank.  These "missing" dimensions, which
+    are listed explicitly as `elided_window_dims`, must have a window bound of
+    `1`.  Since they have a window bound of `1` the only valid index for them is
+    `0` and eliding them does not introduce ambiguity.
+
+ 3. The slice extracted from the "Gather Indices" tensor ((`X`, `Y`) in the last
+    example) may have fewer elements than the input tensor rank, and an explicit
+    mapping dictates how the index should be expanded to have the same rank as
+    the input.
+
+As a final example, we use (2) and (3) to implement `tf.gather_nd`:
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/ops_xla_gather_2.svg">
+</div>
+
+`G`<sub>`0`</sub> and `G`<sub>`1`</sub> are used to slice out a starting index
+from the gather indices tensor as usual, except the starting index has only one
+element, `X`.  Similarly, there is only one output window index with the value
+`W`<sub>`0`</sub>.  However, before being used as indices into the input tensor,
+these are expanded in accordance to "Gather Index Mapping"
+(`gather_dims_to_operand_dims` in the formal description) and "Window Mapping"
+(`window_dims_to_operand_dims` in the formal description) into
+[`0`,`W`<sub>`0`</sub>] and [`X`,`0`] respectively, adding up to
+[`X`,`W`<sub>`0`</sub>].  In other words, the output index
+[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`W`<sub>`0`</sub>] maps to the input index
+[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
+the semantics for `tf.gather_nd`.
+
+`window_bounds` for this case is `[1,11]`.  Intuitively this means that every
+index `X` in the gather indices tensor picks an entire row and the result is the
+concatenation of all these rows.
 
 ## GetTupleElement
 
@@ -808,8 +1274,7 @@ device, interpreting the data as the given shape and its layout, and returns a
 `ComputationDataHandle` of the data. Multiple Infeed operations are allowed in a
 computation, but there must be a total order among the Infeed operations. For
 example, two Infeeds in the code below have a total order since there is a
-dependency between the while loops. The compiler issues an error if there isn't
-a total order.
+dependency between the while loops.
 
 ```
 result1 = while (condition, init = init_value) {
@@ -822,7 +1287,7 @@ result2 = while (condition, init = result1) {
 ```
 
 Nested tuple shapes are not supported. For an empty tuple shape, the Infeed
-operation is effectively a nop and proceeds without reading any data from the
+operation is effectively a no-op and proceeds without reading any data from the
 Infeed of the device.
 
 > Note: We plan to allow multiple Infeed operations without a total order, in
@@ -885,7 +1350,7 @@ dimension.
 
 `PaddingConfig` is a repeated field of `PaddingConfigDimension`, which contains
 three fields for each dimension: `edge_padding_low`, `edge_padding_high`, and
-`interior_padding`. `edge_padding_low` and `edge_padding_high` specifies the
+`interior_padding`. `edge_padding_low` and `edge_padding_high` specify the
 amount of padding added at the low-end (next to index 0) and the high-end (next
 to the highest index) of each dimension respectively. The amount of edge padding
 can be negative -- the absolute value of negative padding indicates the number
@@ -894,8 +1359,8 @@ the amount of padding added between any two elements in each dimension. Interior
 padding occurs logically before edge padding, so in the case of negative edge
 padding elements are removed from the interior-padded operand. This operation is
 a no-op if the edge padding pairs are all (0, 0) and the interior padding values
-are all 0. Figure below shows examples of different `edge_padding` and
-`interior_padding` values for a two dimensional array.
+are all 0. The figure below shows examples of different `edge_padding` and
+`interior_padding` values for a two-dimensional array.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">
@@ -934,61 +1399,6 @@ transfer. The context is a tuple of {receive buffer (shape), request identifier
 
 Given a context created by a `Recv` instruction, waits for the data transfer to
 complete and returns the received data.
-
-## Send
-
-See also
-[`ComputationBuilder::Send`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
-
-<b> `Send(operand, channel_handle)` </b>
-
-| Arguments        | Type                    | Semantics                        |
-| ---------------- | ----------------------- | -------------------------------- |
-| `operand`        | `ComputationDataHandle` | data to send (array of type T)   |
-| `channel_handle` | `ChannelHandle`         | unique identifier for each send/recv pair |
-
-Sends the given operand data to a `Recv` instruction in another computation
-that shares the same channel handle. Does not return any data.
-
-Similar to the `Recv` operation, the client API of `Send` operation represents
-synchronous communication, and is internally decomposed into 2 HLO instructions
-(`Send` and `SendDone`) to enable asynchronous data transfers. See also
-[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
-
-<b>`Send(HloInstruction operand, int64 channel_id)`</b>
-
-Initiates an asynchronous transfer of the operand to the resources allocated by
-the `Recv` instruction with the same channel id. Returns a context, which is
-used by a following `SendDone` instruction to wait for the completion of the
-data transfer. The context is a tuple of {operand (shape), request identifier
-(U32)} and it can only be used by a `SendDone` instruction.
-
-<b> `SendDone(HloInstruction context)` </b>
-
-Given a context created by a `Send` instruction, waits for the data transfer to
-complete.  The instruction does not return any data.
-
-<b> Scheduling of channel instructions </b>
-
-The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
-`Send`, `SendDone`) is as below.
-
-<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:70%" src="../../images/send_recv_order.png">
-</div>
-
-* `Recv` happens before `Send`
-* `Send` happens before `RecvDone`
-* `Recv` happens before `RecvDone`
-* `Send` happens before `SendDone`
-
-When the backend compilers generate a linear schedule for each computation that
-communicates via channel instructions, there must not be cycles across the
-computations. For example, below schedules lead to deadlocks.
-
-<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/send_recv_schedule.png">
-</div>
 
 ## Reduce
 
@@ -1142,7 +1552,6 @@ distinguish a zero value from an infinity, since both have a zero mantissa), and
 must have a non-negative number of mantissa bits.  The number of exponent or
 mantissa bits may exceed the corresponding value for type `T`; the corresponding
 portion of the conversion is then simply a no-op.
-
 
 ## ReduceWindow
 
@@ -1328,23 +1737,6 @@ the reversing dimensions, its index i is transformed into N - 1 - i).
 One use for the `Rev` operation is to reverse the convolution weight array along
 the two window dimensions during the gradient computation in neural networks.
 
-## RngBernoulli
-
-See also
-[`ComputationBuilder::RngBernoulli`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
-
-Constructs an output of a given shape with random numbers generated following
-the Bernoulli distribution. The parameter needs to be a scalar valued F32
-operand while the output shape needs to have elemental type U32.
-
-<b>`RngBernoulli(mean, shape)`</b>
-
-| Arguments | Type                    | Semantics                             |
-| --------- | ----------------------- | ------------------------------------- |
-| `mean`    | `ComputationDataHandle` | Scalar of type F32 specifying mean of |
-:           :                         : generated numbers                     :
-| `shape`   | `Shape`                 | Output shape of type U32              |
-
 ## RngNormal
 
 See also
@@ -1385,6 +1777,57 @@ is implementation-defined.
 | `b`       | `ComputationDataHandle` | Scalar of type T specifying upper |
 :           :                         : limit of interval                 :
 | `shape`   | `Shape`                 | Output shape of type T            |
+
+## Select
+
+See also
+[`ComputationBuilder::Select`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Constructs an output array from elements of two input arrays, based on the
+values of a predicate array.
+
+<b> `Select(pred, on_true, on_false)` </b>
+
+Arguments  | Type                    | Semantics
+---------- | ----------------------- | ------------------
+`pred`     | `ComputationDataHandle` | array of type PRED
+`on_true`  | `ComputationDataHandle` | array of type T
+`on_false` | `ComputationDataHandle` | array of type T
+
+The arrays `on_true` and `on_false` must have the same shape. This is also the
+shape of the output array. The array `pred` must have the same dimensionality as
+`on_true` and `on_false`, with the `PRED` element type.
+
+For each element `P` of `pred`, the corresponding element of the output array is
+taken from `on_true` if the value of `P` is `true`, and from `on_false` if the
+value of `P` is `false`. As a restricted form of [broadcasting]
+(broadcasting.md), `pred` can be a scalar of type `PRED`. In this case, the
+output array is taken wholly from `on_true` if `pred` is `true`, and from
+`on_false` if `pred` is `false`.
+
+Example with non-scalar `pred`:
+
+```
+let pred: PRED[4] = {true, false, false, true};
+let v1: s32[4] = {1, 2, 3, 4};
+let v2: s32[4] = {100, 200, 300, 400};
+==>
+Select(pred, v1, v2) = s32[4]{1, 200, 300, 4};
+```
+
+Example with scalar `pred`:
+
+```
+let pred: PRED = true;
+let v1: s32[4] = {1, 2, 3, 4};
+let v2: s32[4] = {100, 200, 300, 400};
+==>
+Select(pred, v1, v2) = s32[4]{1, 2, 3, 4};
+```
+
+Selections between tuples are supported. Tuples are considered to be scalar
+types for this purpose. If `on_true` and `on_false` are tuples (which must have
+the same shape!) then `pred` has to be a scalar of type `PRED`.
 
 ## SelectAndScatter
 
@@ -1467,56 +1910,60 @@ non-deterministic. Therefore, the `scatter` function should not be overly
 sensitive to reassociation. See the discussion about associativity in the
 context of [`Reduce`](#reduce) for more details.
 
-## Select
+## Send
 
 See also
-[`ComputationBuilder::Select`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+[`ComputationBuilder::Send`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
-Constructs an output array from elements of two input arrays, based on the
-values of a predicate array.
+<b> `Send(operand, channel_handle)` </b>
 
-<b> `Select(pred, on_true, on_false)` </b>
+| Arguments        | Type                    | Semantics                        |
+| ---------------- | ----------------------- | -------------------------------- |
+| `operand`        | `ComputationDataHandle` | data to send (array of type T)   |
+| `channel_handle` | `ChannelHandle`         | unique identifier for each send/recv pair |
 
-Arguments  | Type                    | Semantics
----------- | ----------------------- | ------------------
-`pred`     | `ComputationDataHandle` | array of type PRED
-`on_true`  | `ComputationDataHandle` | array of type T
-`on_false` | `ComputationDataHandle` | array of type T
+Sends the given operand data to a `Recv` instruction in another computation
+that shares the same channel handle. Does not return any data.
 
-The arrays `on_true` and `on_false` must have the same shape. This is also the
-shape of the output array. The array `pred` must have the same dimensionality as
-`on_true` and `on_false`, with the `PRED` element type.
+Similar to the `Recv` operation, the client API of `Send` operation represents
+synchronous communication, and is internally decomposed into 2 HLO instructions
+(`Send` and `SendDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
 
-For each element `P` of `pred`, the corresponding element of the output array is
-taken from `on_true` if the value of `P` is `true`, and from `on_false` if the
-value of `P` is `false`. As a restricted form of [broadcasting]
-(broadcasting.md), `pred` can be a scalar of type `PRED`. In this case, the
-output array is taken wholly from `on_true` if `pred` is `true`, and from
-`on_false` if `pred` is `false`.
+<b>`Send(HloInstruction operand, int64 channel_id)`</b>
 
-Example with non-scalar `pred`:
+Initiates an asynchronous transfer of the operand to the resources allocated by
+the `Recv` instruction with the same channel id. Returns a context, which is
+used by a following `SendDone` instruction to wait for the completion of the
+data transfer. The context is a tuple of {operand (shape), request identifier
+(U32)} and it can only be used by a `SendDone` instruction.
 
-```
-let pred: PRED[4] = {true, false, false, true};
-let v1: s32[4] = {1, 2, 3, 4};
-let v2: s32[4] = {100, 200, 300, 400};
-==>
-Select(pred, v1, v2) = s32[4]{1, 200, 300, 4};
-```
+<b> `SendDone(HloInstruction context)` </b>
 
-Example with scalar `pred`:
+Given a context created by a `Send` instruction, waits for the data transfer to
+complete.  The instruction does not return any data.
 
-```
-let pred: PRED = true;
-let v1: s32[4] = {1, 2, 3, 4};
-let v2: s32[4] = {100, 200, 300, 400};
-==>
-Select(pred, v1, v2) = s32[4]{1, 2, 3, 4};
-```
+<b> Scheduling of channel instructions </b>
 
-Selections between tuples are supported. Tuples are considered to be scalar
-types for this purpose. If `on_true` and `on_false` are tuples (which must have
-the same shape!) then `pred` has to be a scalar of type `PRED`.
+The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
+`Send`, `SendDone`) is as below.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:70%" src="../../images/send_recv_order.png">
+</div>
+
+* `Recv` happens before `Send`
+* `Send` happens before `RecvDone`
+* `Recv` happens before `RecvDone`
+* `Send` happens before `SendDone`
+
+When the backend compilers generate a linear schedule for each computation that
+communicates via channel instructions, there must not be cycles across the
+computations. For example, below schedules lead to deadlocks.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/send_recv_schedule.png">
+</div>
 
 ## Slice
 
@@ -1568,132 +2015,6 @@ let b =
 Slice(b, {2, 1}, {4, 3}) produces:
   { { 7.0,  8.0},
     {10.0, 11.0} }
-```
-
-## DynamicSlice
-
-See also
-[`ComputationBuilder::DynamicSlice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
-
-DynamicSlice extracts a sub-array from the input array at dynamic
-`start_indices`. The size of the slice in each dimension is passed in
-`size_indices`, which specify the end point of exclusive slice intervals in each
-dimension: [start, start + size). The shape of `start_indices` must be rank ==
-1, with dimension size equal to the rank of `operand`.
-Note: handling of out-of-bounds slice indices (generated by incorrect runtime
-calculation of 'start_indices') is currently implementation-defined. Currently,
-slice indices are computed modulo input dimension sizes to prevent out-of-bound
-array accesses, but this behavior may change in future implementations.
-
-<b> `DynamicSlice(operand, start_indices, size_indices)` </b>
-
-| Arguments       | Type                    | Semantics                        |
-| --------------- | ----------------------- | -------------------------------- |
-| `operand`       | `ComputationDataHandle` | N dimensional array of type T    |
-| `start_indices` | `ComputationDataHandle` | Rank 1 array of N integers       |
-:                 :                         : containing the starting indices  :
-:                 :                         : of the slice for each dimension. :
-:                 :                         : Value must be greater than or    :
-:                 :                         : equal to zero.                   :
-| `size_indices`  | `ArraySlice<int64>`     | List of N integers containing    |
-:                 :                         : the slice size for each          :
-:                 :                         : dimension. Each value must be    :
-:                 :                         : strictly greater than zero, and  :
-:                 :                         : start + size must be less than   :
-:                 :                         : or equal to the size of the      :
-:                 :                         : dimension to avoid wrapping      :
-:                 :                         : modulo dimension size.           :
-
-1-dimensional example:
-
-```
-let a = {0.0, 1.0, 2.0, 3.0, 4.0}
-let s = {2}
-
-DynamicSlice(a, s, {2}) produces:
-  {2.0, 3.0}
-```
-
-2-dimensional example:
-
-```
-let b =
- { {0.0,  1.0,  2.0},
-   {3.0,  4.0,  5.0},
-   {6.0,  7.0,  8.0},
-   {9.0, 10.0, 11.0} }
-let s = {2, 1}
-
-DynamicSlice(b, s, {2, 2}) produces:
-  { { 7.0,  8.0},
-    {10.0, 11.0} }
-```
-## DynamicUpdateSlice
-
-See also
-[`ComputationBuilder::DynamicUpdateSlice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
-
-DynamicUpdateSlice generates a result which is the value of the input array
-`operand`, with a slice `update` overwritten at `start_indices`.
-The shape of `update` determines the shape of the sub-array of the result which
-is updated.
-The shape of `start_indices` must be rank == 1, with dimension size equal to
-the rank of `operand`.
-Note: handling of out-of-bounds slice indices (generated by incorrect runtime
-calculation of 'start_indices') is currently implementation-defined. Currently,
-slice indices are computed modulo update dimension sizes to prevent out-of-bound
-array accesses, but this behavior may change in future implementations.
-
-<b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
-
-| Arguments       | Type                    | Semantics                        |
-| --------------- | ----------------------- | -------------------------------- |
-| `operand`       | `ComputationDataHandle` | N dimensional array of type T    |
-| `update`        | `ComputationDataHandle` | N dimensional array of type T    |
-:                 :                         : containing the slice update.     :
-:                 :                         : Each dimension of update shape    :
-:                 :                         : must be strictly greater than    :
-:                 :                         : zero, and start + update must be :
-:                 :                         : less than operand size for each  :
-:                 :                         : dimension to avoid generating    :
-:                 :                         : out-of-bounds update indices.    :
-| `start_indices` | `ComputationDataHandle` | Rank 1 array of N integers       |
-:                 :                         : containing the starting indices  :
-:                 :                         : of the slice for each dimension. :
-:                 :                         : Value must be greater than or    :
-:                 :                         : equal to zero.                   :
-
-1-dimensional example:
-
-```
-let a = {0.0, 1.0, 2.0, 3.0, 4.0}
-let u = {5.0, 6.0}
-let s = {2}
-
-DynamicUpdateSlice(a, u, s) produces:
-  {0.0, 1.0, 5.0, 6.0, 4.0}
-```
-
-2-dimensional example:
-
-```
-let b =
- { {0.0,  1.0,  2.0},
-   {3.0,  4.0,  5.0},
-   {6.0,  7.0,  8.0},
-   {9.0, 10.0, 11.0} }
-let u =
- { {12.0,  13.0},
-   {14.0,  15.0},
-   {16.0,  17.0} }
-
-let s = {1, 1}
-
-DynamicUpdateSlice(b, u, s) produces:
- { {0.0,  1.0,  2.0},
-   {3.0, 12.0, 13.0},
-   {6.0, 14.0, 15.0},
-   {9.0, 16.0, 17.0} }
 ```
 
 ## Sort

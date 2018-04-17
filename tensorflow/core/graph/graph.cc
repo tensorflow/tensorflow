@@ -339,7 +339,7 @@ Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   return node;
 }
 
-Node* Graph::CopyNode(Node* node) {
+Node* Graph::CopyNode(const Node* node) {
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
   Node* copy = AllocateNode(node->props_, node);
@@ -522,6 +522,12 @@ void Graph::ToGraphDef(GraphDef* graph_def) const {
   ToGraphDefSubRange(graph_def, 0);
 }
 
+GraphDef Graph::ToGraphDefDebug() const {
+  GraphDef ret;
+  ToGraphDef(&ret);
+  return ret;
+}
+
 void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();
@@ -561,6 +567,11 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
         inputs[edge->dst_input()] = edge;
       }
     }
+    // Sort the control inputs for more predictable serialization.
+    std::sort(inputs.begin() + node->num_inputs(), inputs.end(),
+              [](const Edge* a, const Edge* b) -> bool {
+                return a->src()->name() < b->src()->name();
+              });
     node_def->clear_input();
     node_def->mutable_input()->Reserve(inputs.size());
 

@@ -33,11 +33,14 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader as saved_model_loader
 from tensorflow.python.saved_model import tag_constants
 
+_SPARSE_FLOAT_FEATURE_NAME_TEMPLATE = "%s_%d"
+
 
 def make_custom_export_strategy(name,
                                 convert_fn,
                                 feature_columns,
-                                export_input_fn):
+                                export_input_fn,
+                                use_core_columns=False):
   """Makes custom exporter of GTFlow tree format.
 
   Args:
@@ -52,11 +55,11 @@ def make_custom_export_strategy(name,
     An `ExportStrategy`.
   """
   base_strategy = saved_model_export_utils.make_export_strategy(
-      serving_input_fn=export_input_fn)
+      serving_input_fn=export_input_fn, strip_default_attrs=True)
   input_fn = export_input_fn()
   (sorted_feature_names, dense_floats, sparse_float_indices, _, _,
    sparse_int_indices, _, _) = gbdt_batch.extract_features(
-       input_fn.features, feature_columns)
+       input_fn.features, feature_columns, use_core_columns)
 
   def export_fn(estimator, export_dir, checkpoint_path=None, eval_result=None):
     """A wrapper to export to SavedModel, and convert it to other formats."""
@@ -91,7 +94,9 @@ def make_custom_export_strategy(name,
                          "w") as f:
           f.write("\n".join("%s, %f" % (k, v) for k, v in sorted_by_importance))
     return result_dir
-  return export_strategy.ExportStrategy(name, export_fn)
+
+  return export_strategy.ExportStrategy(
+      name, export_fn, strip_default_attrs=True)
 
 
 def convert_to_universal_format(dtec, sorted_feature_names,
@@ -147,13 +152,15 @@ def convert_to_universal_format(dtec, sorted_feature_names,
           inequality_test.threshold.float_value = split.threshold
         elif node_type == "sparse_float_binary_split_default_left":
           split = gtflow_node.sparse_float_binary_split_default_left.split
-          node.default_direction = (
-              generic_tree_model_pb2.BinaryNode.LEFT)
-          # TODO(nponomareva): adjust this id assignement when we allow multi-
-          # column sparse tensors.
+          node.default_direction = (generic_tree_model_pb2.BinaryNode.LEFT)
           feature_id = split.feature_column + num_dense
           inequality_test = node.inequality_left_child_test
-          inequality_test.feature_id.id.value = sorted_feature_names[feature_id]
+          inequality_test.feature_id.id.value = (
+              _SPARSE_FLOAT_FEATURE_NAME_TEMPLATE %
+              (sorted_feature_names[feature_id], split.dimension_id))
+          model_and_features.features.pop(sorted_feature_names[feature_id])
+          (model_and_features.features[inequality_test.feature_id.id.value]
+           .SetInParent())
           inequality_test.type = (
               generic_tree_model_pb2.InequalityTest.LESS_OR_EQUAL)
           inequality_test.threshold.float_value = split.threshold
@@ -165,7 +172,12 @@ def convert_to_universal_format(dtec, sorted_feature_names,
           # column sparse tensors.
           feature_id = split.feature_column + num_dense
           inequality_test = node.inequality_left_child_test
-          inequality_test.feature_id.id.value = sorted_feature_names[feature_id]
+          inequality_test.feature_id.id.value = (
+              _SPARSE_FLOAT_FEATURE_NAME_TEMPLATE %
+              (sorted_feature_names[feature_id], split.dimension_id))
+          model_and_features.features.pop(sorted_feature_names[feature_id])
+          (model_and_features.features[inequality_test.feature_id.id.value]
+           .SetInParent())
           inequality_test.type = (
               generic_tree_model_pb2.InequalityTest.LESS_OR_EQUAL)
           inequality_test.threshold.float_value = split.threshold
@@ -201,10 +213,14 @@ def _get_feature_importances(dtec, feature_names, num_dense_floats,
         split_column = feature_names[split.feature_column]
       elif node_type == "sparse_float_binary_split_default_left":
         split = tree_node.sparse_float_binary_split_default_left.split
-        split_column = feature_names[split.feature_column + num_dense_floats]
+        split_column = _SPARSE_FLOAT_FEATURE_NAME_TEMPLATE % (
+            feature_names[split.feature_column + num_dense_floats],
+            split.dimension_id)
       elif node_type == "sparse_float_binary_split_default_right":
         split = tree_node.sparse_float_binary_split_default_right.split
-        split_column = feature_names[split.feature_column + num_dense_floats]
+        split_column = _SPARSE_FLOAT_FEATURE_NAME_TEMPLATE % (
+            feature_names[split.feature_column + num_dense_floats],
+            split.dimension_id)
       elif node_type == "categorical_id_binary_split":
         split = tree_node.categorical_id_binary_split
         split_column = feature_names[split.feature_column + num_dense_floats +

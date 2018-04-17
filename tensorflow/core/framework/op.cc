@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -63,26 +64,32 @@ Status OpRegistry::LookUp(const string& op_type_name,
   const OpRegistrationData* res = nullptr;
 
   bool first_call = false;
+  bool first_unregistered = false;
   {  // Scope for lock.
     mutex_lock lock(mu_);
     first_call = MustCallDeferred();
     res = gtl::FindWithDefault(registry_, op_type_name, nullptr);
+
+    static bool unregistered_before = false;
+    first_unregistered = !unregistered_before && (res == nullptr);
+    if (first_unregistered) {
+      unregistered_before = true;
+    }
     // Note: Can't hold mu_ while calling Export() below.
   }
   if (first_call) {
     TF_QCHECK_OK(ValidateKernelRegistrations(*this));
   }
   if (res == nullptr) {
-    static bool first_unregistered = true;
     if (first_unregistered) {
       OpList op_list;
       Export(true, &op_list);
       if (VLOG_IS_ON(3)) {
-         LOG(INFO) << "All registered Ops:";
-         for (const auto& op : op_list.op())
-            LOG(INFO) << SummarizeOpDef(op);
+        LOG(INFO) << "All registered Ops:";
+        for (const auto& op : op_list.op()) {
+          LOG(INFO) << SummarizeOpDef(op);
+        }
       }
-      first_unregistered = false;
     }
     Status status =
         errors::NotFound("Op type not registered '", op_type_name,
@@ -101,6 +108,15 @@ void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
   MustCallDeferred();
   for (const auto& p : registry_) {
     op_defs->push_back(p.second->op_def);
+  }
+}
+
+void OpRegistry::GetOpRegistrationData(
+    std::vector<OpRegistrationData>* op_data) {
+  mutex_lock lock(mu_);
+  MustCallDeferred();
+  for (const auto& p : registry_) {
+    op_data->push_back(*p.second);
   }
 }
 
@@ -127,7 +143,7 @@ void OpRegistry::Export(bool include_internal, OpList* ops) const {
   out->Reserve(sorted.size());
 
   for (const auto& item : sorted) {
-    if (include_internal || !StringPiece(item.first).starts_with("_")) {
+    if (include_internal || !str_util::StartsWith(item.first, "_")) {
       *out->Add() = item.second->op_def;
     }
   }

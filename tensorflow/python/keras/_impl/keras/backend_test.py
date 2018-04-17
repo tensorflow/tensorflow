@@ -22,6 +22,7 @@ import scipy.sparse
 
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
@@ -114,11 +115,34 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
 
   def test_learning_phase(self):
-    with self.test_session():
+    with self.test_session() as sess:
       keras.backend.set_learning_phase(1)
       self.assertEqual(keras.backend.learning_phase(), 1)
       with self.assertRaises(ValueError):
         keras.backend.set_learning_phase(2)
+
+      # Test running with a learning-phase-consuming layer
+      keras.backend.set_learning_phase(0)
+      x = keras.Input((3,))
+      y = keras.layers.BatchNormalization()(x)
+      sess.run(variables.global_variables_initializer())
+      sess.run(y, feed_dict={x: np.random.random((2, 3))})
+
+  def test_learning_phase_scope(self):
+    with self.test_session():
+      initial_learning_phase = keras.backend.learning_phase()
+      with keras.backend.learning_phase_scope(1) as lp:
+        self.assertEqual(lp, 1)
+        self.assertEqual(keras.backend.learning_phase(), 1)
+      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+      with keras.backend.learning_phase_scope(0) as lp:
+        self.assertEqual(lp, 0)
+        self.assertEqual(keras.backend.learning_phase(), 0)
+      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+      with self.assertRaises(ValueError):
+        with keras.backend.learning_phase_scope(None):
+          pass
+      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
 
   def test_int_shape(self):
     x = keras.backend.placeholder(shape=(3, 4))
@@ -165,6 +189,39 @@ class BackendUtilsTest(test.TestCase):
     for y in ys:
       self.assertEqual(y.op.name[:12], 'StopGradient')
 
+  def test_function_tf_feed_symbols(self):
+    with self.test_session():
+      # Test feeding a resource variable to `function`.
+      x1 = keras.backend.placeholder(shape=())
+      x2 = keras.backend.placeholder(shape=())
+      lr = keras.backend.learning_phase()  # Include a placeholder_with_default.
+
+      y1 = keras.backend.variable(10.)
+      y2 = 3
+
+      f = keras.backend.function(
+          inputs=[x1, x2, lr],
+          outputs=[x1 + 1,
+                   keras.backend.in_train_phase(x2 + 2, x2 - 1)])
+      outs = f([y1, y2, None])  # Use default learning_phase value.
+      self.assertEqual(outs, [11., 2.])
+      outs = f([y1, y2, 1])  # Set learning phase value.
+      self.assertEqual(outs, [11., 5.])
+
+      # Test triggering a callable refresh by changing the input.
+      y3 = keras.backend.constant(20.)  # Test with tensor
+      outs = f([y3, y2, None])
+      self.assertEqual(outs, [21., 2.])
+
+      y4 = 4  # Test with non-symbol
+      outs = f([y4, y2, None])
+      self.assertEqual(outs, [5., 2.])
+
+      # Test with a different dtype
+      y5 = keras.backend.constant(10., dtype='float64')
+      outs = f([y5, y2, None])
+      self.assertEqual(outs, [11., 2.])
+
   def test_function_tf_fetches(self):
     # Additional operations can be passed to tf.Session().run() via its
     # `fetches` arguments. In contrast to `updates` argument of
@@ -182,8 +239,9 @@ class BackendUtilsTest(test.TestCase):
                                  updates=[(x, x_placeholder + 1.)],
                                  fetches=[keras.backend.update(y, 5.)])
       output = f([10., 20.])
-      assert output == [30.]
-      assert keras.backend.get_session().run(fetches=[x, y]) == [11., 5.]
+      self.assertEqual(output, [30.])
+      self.assertEqual(
+          keras.backend.get_session().run(fetches=[x, y]), [11., 5.])
 
   def test_function_tf_feed_dict(self):
     # Additional substitutions can be passed to `tf.Session().run()` via its
@@ -205,14 +263,16 @@ class BackendUtilsTest(test.TestCase):
                                  feed_dict=feed_dict,
                                  fetches=fetches)
       output = f([10.])
-      assert output == [11.]
-      assert keras.backend.get_session().run(fetches=[x, y]) == [20., 30.]
+      self.assertEqual(output, [11.])
+      self.assertEqual(
+          keras.backend.get_session().run(fetches=[x, y]), [20., 30.])
 
       # updated value in feed_dict will be modified within the K.function()
       feed_dict[y_placeholder] = 4.
       output = f([20.])
-      assert output == [21.]
-      assert keras.backend.get_session().run(fetches=[x, y]) == [30., 40.]
+      self.assertEqual(output, [21.])
+      self.assertEqual(
+          keras.backend.get_session().run(fetches=[x, y]), [30., 40.])
 
 
 class BackendVariableTest(test.TestCase):
@@ -907,6 +967,15 @@ class BackendNNOpsTest(test.TestCase):
         last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
                                                              initial_states,
                                                              **kwargs)
+        # check static shape inference
+        self.assertEquals(last_output.get_shape().as_list(),
+                          [num_samples, output_dim])
+        self.assertEquals(outputs.get_shape().as_list(),
+                          [num_samples, timesteps, output_dim])
+        for state in new_states:
+          self.assertEquals(state.get_shape().as_list(),
+                            [num_samples, output_dim])
+
         last_output_list[i].append(keras.backend.eval(last_output))
         outputs_list[i].append(keras.backend.eval(outputs))
         self.assertEqual(len(new_states), 1)
@@ -946,20 +1015,8 @@ class BackendNNOpsTest(test.TestCase):
     x = keras.backend.variable(val)
     reduction_axes = (0, 2, 3)
 
-    # case: need broadcasting
     g_val = np.random.random((3,))
     b_val = np.random.random((3,))
-    gamma = keras.backend.variable(g_val)
-    beta = keras.backend.variable(b_val)
-    normed, mean, var = keras.backend.normalize_batch_in_training(
-        x, gamma, beta, reduction_axes, epsilon=1e-3)
-    self.assertEqual(normed.get_shape().as_list(), [10, 3, 10, 10])
-    self.assertEqual(mean.get_shape().as_list(), [3,])
-    self.assertEqual(var.get_shape().as_list(), [3,])
-
-    # case: doesn't need broadcasting
-    g_val = np.random.random((1, 3, 1, 1))
-    b_val = np.random.random((1, 3, 1, 1))
     gamma = keras.backend.variable(g_val)
     beta = keras.backend.variable(b_val)
     normed, mean, var = keras.backend.normalize_batch_in_training(

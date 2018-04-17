@@ -54,6 +54,9 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.CompoundButton;
+import android.widget.NumberPicker;
+import android.widget.ToggleButton;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.IOException;
@@ -82,6 +85,8 @@ public class Camera2BasicFragment extends Fragment
   private boolean runClassifier = false;
   private boolean checkedPermissions = false;
   private TextView textView;
+  private ToggleButton toggle;
+  private NumberPicker np;
   private ImageClassifier classifier;
 
   /** Max preview width that is guaranteed by Camera2 API */
@@ -289,6 +294,24 @@ public class Camera2BasicFragment extends Fragment
   public void onViewCreated(final View view, Bundle savedInstanceState) {
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
     textView = (TextView) view.findViewById(R.id.text);
+    toggle = (ToggleButton) view.findViewById(R.id.button);
+
+    toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+      public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+        classifier.setUseNNAPI(isChecked);
+      }
+    });
+
+    np = (NumberPicker) view.findViewById(R.id.np);
+    np.setMinValue(1);
+    np.setMaxValue(10);
+    np.setWrapSelectorWheel(true);
+    np.setOnValueChangedListener(new NumberPicker.OnValueChangeListener() {
+      @Override
+      public void onValueChange(NumberPicker picker, int oldVal, int newVal){
+        classifier.setNumThreads(newVal);
+      }
+    });
   }
 
   /** Load the model and labels. */
@@ -296,9 +319,10 @@ public class Camera2BasicFragment extends Fragment
   public void onActivityCreated(Bundle savedInstanceState) {
     super.onActivityCreated(savedInstanceState);
     try {
-      classifier = new ImageClassifier(getActivity());
+      // create either a new ImageClassifierQuantizedMobileNet or an ImageClassifierFloatInception
+      classifier = new ImageClassifierQuantizedMobileNet(getActivity());
     } catch (IOException e) {
-      Log.e(TAG, "Failed to initialize an image classifier.");
+      Log.e(TAG, "Failed to initialize an image classifier.", e);
     }
     startBackgroundThread();
   }
@@ -432,7 +456,7 @@ public class Camera2BasicFragment extends Fragment
         return;
       }
     } catch (CameraAccessException e) {
-      e.printStackTrace();
+      Log.e(TAG, "Failed to access Camera", e);
     } catch (NullPointerException e) {
       // Currently an NPE is thrown when the Camera2API is used but not supported on the
       // device this code runs.
@@ -477,7 +501,7 @@ public class Camera2BasicFragment extends Fragment
       }
       manager.openCamera(cameraId, stateCallback, backgroundHandler);
     } catch (CameraAccessException e) {
-      e.printStackTrace();
+      Log.e(TAG, "Failed to open Camera", e);
     } catch (InterruptedException e) {
       throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
     }
@@ -544,7 +568,7 @@ public class Camera2BasicFragment extends Fragment
         runClassifier = false;
       }
     } catch (InterruptedException e) {
-      e.printStackTrace();
+      Log.e(TAG, "Interrupted when stopping background thread", e);
     }
   }
 
@@ -603,7 +627,7 @@ public class Camera2BasicFragment extends Fragment
                 captureSession.setRepeatingRequest(
                     previewRequest, captureCallback, backgroundHandler);
               } catch (CameraAccessException e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to set up config to capture Camera", e);
               }
             }
 
@@ -614,7 +638,7 @@ public class Camera2BasicFragment extends Fragment
           },
           null);
     } catch (CameraAccessException e) {
-      e.printStackTrace();
+      Log.e(TAG, "Failed to preview Camera", e);
     }
   }
 
@@ -658,8 +682,7 @@ public class Camera2BasicFragment extends Fragment
       showToast("Uninitialized Classifier or invalid context.");
       return;
     }
-    Bitmap bitmap =
-        textureView.getBitmap(ImageClassifier.DIM_IMG_SIZE_X, ImageClassifier.DIM_IMG_SIZE_Y);
+    Bitmap bitmap = textureView.getBitmap(classifier.getImageSizeX(), classifier.getImageSizeY());
     String textToShow = classifier.classifyFrame(bitmap);
     bitmap.recycle();
     showToast(textToShow);

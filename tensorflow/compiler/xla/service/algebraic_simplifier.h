@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace xla {
 
-// A pass which performs AlgebraicSimplications.
+// A pass which performs algebraic simplifications.
 class AlgebraicSimplifier : public HloPassInterface {
  public:
   // Given shapes 'from_shape' and 'to_shape', determines if it is valid to
@@ -40,11 +40,11 @@ class AlgebraicSimplifier : public HloPassInterface {
   // bitcasts.
   AlgebraicSimplifier(bool is_layout_sensitive,
                       ValidBitcastCallback valid_bitcast_callback,
-                      bool enable_dot_simplification = true,
+                      bool enable_dot_strength_reduction = true,
                       bool enable_conv_simplification = true)
       : is_layout_sensitive_(is_layout_sensitive),
         valid_bitcast_callback_(std::move(valid_bitcast_callback)),
-        enable_dot_simplification_(enable_dot_simplification),
+        enable_dot_strength_reduction_(enable_dot_strength_reduction),
         enable_conv_simplification_(enable_conv_simplification) {}
   ~AlgebraicSimplifier() override = default;
   tensorflow::StringPiece name() const override { return "algsimp"; }
@@ -57,10 +57,10 @@ class AlgebraicSimplifier : public HloPassInterface {
   bool is_layout_sensitive_;
   ValidBitcastCallback valid_bitcast_callback_;
 
-  // Enable dot simplication on platforms where it is profitable.
-  bool enable_dot_simplification_;
+  // Enable dot simplification on platforms where it is profitable.
+  bool enable_dot_strength_reduction_;
 
-  // Enable convolution simplication on platforms where it is profitable.
+  // Enable convolution simplification on platforms where it is profitable.
   bool enable_conv_simplification_;
 };
 

@@ -20,8 +20,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
@@ -76,25 +78,40 @@ string PyRepr(PyObject* obj) {
 bool IsPyDimension(PyObject* obj) {
   const char* tp_name = obj->ob_type->tp_name;
   if (strcmp(tp_name, "Dimension") != 0) return false;
-  bool ret =
-      StringPiece(PyRepr(PyType(obj)))
-          .ends_with("tensorflow.python.framework.tensor_shape.Dimension'>");
+  bool ret = str_util::EndsWith(
+      PyRepr(PyType(obj)),
+      "tensorflow.python.framework.tensor_shape.Dimension'>");
   return ret;
 }
 
 Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
+  std::vector<Safe_PyObjectPtr> refs_to_clean;
   while (true) {
     // We test strings first, in case a string is considered a sequence.
     if (IsPyString(obj)) {
       *dtype = DT_STRING;
     } else if (PySequence_Check(obj)) {
       auto length = PySequence_Length(obj);
-      shape->AddDim(length);
       if (length > 0) {
+        shape->AddDim(length);
         obj = PySequence_GetItem(obj, 0);
+        refs_to_clean.push_back(make_safe(obj));
         continue;
-      } else {
+      } else if (length == 0) {
+        shape->AddDim(length);
         *dtype = DT_INVALID;  // Invalid dtype for empty tensors.
+      } else {
+        // The sequence does not have a valid length (PySequence_Length < 0).
+        if (PyErr_Occurred()) {
+          // PySequence_Length failed and set an exception. Fetch the message
+          // and convert it to a failed status.
+          return errors::InvalidArgument(PyExceptionFetch());
+        } else {
+          // This is almost certainly dead code: PySequence_Length failed but
+          // did not set an exception.
+          return errors::InvalidArgument(
+              "Attempted to convert an invalid sequence to a Tensor.");
+        }
       }
     } else if (IsPyFloat(obj)) {
       *dtype = DT_DOUBLE;
@@ -153,14 +170,15 @@ const char ErrorFoundFloat[] =
     if (shape.dims() > 1) {                                               \
       /* Iterate over outer dim, and recursively convert each element. */ \
       const int64 s = shape.dim_size(0);                                  \
-      if (TF_PREDICT_FALSE(s != PySequence_Length(obj))) {                \
+      Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));         \
+      if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {   \
         return ErrorRectangular;                                          \
       }                                                                   \
       TensorShape rest = shape;                                           \
       rest.RemoveDim(0);                                                  \
       for (int64 i = 0; i < s; ++i) {                                     \
-        const char* error =                                               \
-            FUNCTION##Helper(PySequence_GetItem(obj, i), rest, buf);      \
+        const char* error = FUNCTION##Helper(                             \
+            PySequence_Fast_GET_ITEM(seq.get(), i), rest, buf);           \
         if (TF_PREDICT_FALSE(error != nullptr)) return error;             \
       }                                                                   \
     } else {                                                              \

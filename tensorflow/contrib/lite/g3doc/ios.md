@@ -22,6 +22,15 @@ Then install
 brew install automake
 brew install libtool
 ```
+If you get an error where either automake or libtool install but do not link correctly, you'll first need to:
+```bash
+sudo chown -R $(whoami) /usr/local/*
+```
+Then follow the instructions to perform the linking:
+```bash
+brew link automake
+brew link libtool
+```
 
 Then you need to run a shell script to download the dependencies you need:
 
@@ -44,6 +53,10 @@ different versions of the library, followed by a call to `lipo` to bundle them
 into a universal file containing armv7, armv7s, arm64, i386, and x86_64
 architectures. The resulting library is in
 `tensorflow/contrib/lite/gen/lib/libtensorflow-lite.a`.
+
+If you get an error such as `no such file or directory: 'x86_64'` when running 
+`build_ios_universal_lib.sh`: open Xcode > Preferences > Locations, and ensure 
+a value is selected in the "Command Line Tools" dropdown.
 
 ## Using in your own application
 

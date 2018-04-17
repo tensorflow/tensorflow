@@ -22,12 +22,12 @@ from __future__ import print_function
 import argparse
 import sys
 
-from nets import inception
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import app
+from nets import inception
 
 cmd_args = None
 
