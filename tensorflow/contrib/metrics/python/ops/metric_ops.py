@@ -3235,7 +3235,7 @@ def streaming_mean_cosine_distance(predictions,
   radial_diffs = math_ops.reduce_sum(
       radial_diffs, reduction_indices=[
           dim,
-      ], keep_dims=True)
+      ], keepdims=True)
   mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,
                                             name or 'mean_cosine_distance')
   mean_distance = math_ops.subtract(1.0, mean_distance)

@@ -485,7 +485,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
           reduction=losses.Reduction.NONE)
       # Averages loss over classes.
       unweighted_loss = math_ops.reduce_mean(
-          unweighted_loss, axis=-1, keep_dims=True)
+          unweighted_loss, axis=-1, keepdims=True)
     weights = head_lib._get_weights_and_check_match_logits(  # pylint:disable=protected-access,
         features=features, weight_column=self._weight_column, logits=logits)
     training_loss = losses.compute_weighted_loss(

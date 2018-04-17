@@ -45,7 +45,7 @@ from tensorflow.python.platform import googletest
 def _squared_loss(label, unused_weights, predictions):
   """Unweighted loss implementation."""
   loss = math_ops.reduce_sum(
-      math_ops.square(predictions - label), 1, keep_dims=True)
+      math_ops.square(predictions - label), 1, keepdims=True)
   return loss
 
 
