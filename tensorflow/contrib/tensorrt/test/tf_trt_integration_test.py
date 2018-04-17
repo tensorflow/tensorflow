@@ -37,10 +37,11 @@ from tensorflow.python.platform import googletest
 @test_util.with_c_api
 class IntegrationTest(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration."""
+
   def setUp(self):
     """Setup method."""
     super(IntegrationTest, self).setUp()
-    warnings.simplefilter('always')
+    warnings.simplefilter("always")
     inp_dims = (100, 24, 24, 2)
     self._input = np.random.random_sample(inp_dims)
     self._original_graph = self.get_simple_graph_def()
@@ -151,5 +152,5 @@ class IntegrationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(result1, result)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   googletest.main()
