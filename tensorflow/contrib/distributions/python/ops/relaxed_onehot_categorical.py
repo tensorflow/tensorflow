@@ -409,5 +409,5 @@ class RelaxedOneHotCategorical(
                                        validate_args=validate_args,
                                        allow_nan_stats=allow_nan_stats)
     super(RelaxedOneHotCategorical, self).__init__(dist,
-                                                   bijectors.Exp(event_ndims=1),
+                                                   bijectors.Exp(),
                                                    name=name)

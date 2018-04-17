@@ -326,10 +326,6 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
-					../../../../../../,
-					../../../downloads/flatbuffers/include/,
-					../../../downloads/eigen/,
-					../../../downloads/,
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
@@ -373,10 +369,6 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
-					../../../../../../,
-					../../../downloads/flatbuffers/include/,
-					../../../downloads/eigen/,
-					../../../downloads/,
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
 				MTL_ENABLE_DEBUG_INFO = NO;

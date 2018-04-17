@@ -103,11 +103,8 @@ struct CollectiveParams {
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
   std::vector<int> subdiv_source_rank;
-  const Tensor* in_tensor;             // kernel input
-  Tensor* out_tensor;                  // kernel output
   std::unique_ptr<OpKernel> merge_op;  // reduction only
   std::unique_ptr<OpKernel> final_op;  // reduction only
-  OpKernelContext* op_context;
   string ToString() const;
 };
 
@@ -181,7 +178,7 @@ class StepSequenceInterface {
   virtual void RefreshStepIdSequenceAsync(int64 graph_key,
                                           const StatusCallback& done) = 0;
 
-  // Returns the the step_id that should be used for initiating a new execution
+  // Returns the step_id that should be used for initiating a new execution
   // on the specified graph. May return the same step_id multiple times if
   // RetireStepId or RefreshStepIdReservation is not called.
   virtual int64 NextStepId(int64 graph_key) = 0;

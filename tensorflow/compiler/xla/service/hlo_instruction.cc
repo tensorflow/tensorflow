@@ -159,6 +159,23 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->fft_length_.push_back(fft_len);
   }
 
+  if (proto.has_sharding()) {
+    TF_ASSIGN_OR_RETURN(const auto& sharding,
+                        HloSharding::FromProto(proto.sharding()));
+    instruction->set_sharding(sharding);
+  }
+
+  if (proto.has_gather_dimension_numbers()) {
+    instruction->gather_dimension_numbers_ =
+        MakeUnique<GatherDimensionNumbers>(proto.gather_dimension_numbers());
+  }
+  for (int64 bound : proto.gather_window_bounds()) {
+    instruction->gather_window_bounds_.push_back(bound);
+  }
+
+  instruction->channel_name_ = proto.channel_name();
+  instruction->cost_estimate_ns_ = proto.cost_estimate_ns();
+
   return std::move(instruction);
 }
 
@@ -684,6 +701,15 @@ HloInstruction::CreateSelectAndScatter(
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBroadcastDimOne(const Shape& shape,
+                                      HloInstruction* operand) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBroadcastDimOne, shape));
+  instruction->AppendOperand(operand);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBroadcastSequence(
     const Shape& output_shape, HloInstruction* operand,
     const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
@@ -810,6 +836,16 @@ static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
   instruction->called_computations_.push_back(fusion_computation);
   fusion_computation->SetFusionInstruction(instruction.get());
   return instruction;
+}
+
+void HloInstruction::SetupDerivedInstruction(
+    HloInstruction* derived_instruction) const {
+  if (sharding_ != nullptr) {
+    derived_instruction->set_sharding(*sharding_);
+  } else {
+    derived_instruction->clear_sharding();
+  }
+  derived_instruction->set_metadata(metadata_);
 }
 
 HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
@@ -1275,6 +1311,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBroadcast(shape, new_operands[0], dimensions_);
       break;
+    case HloOpcode::kBroadcastDimOne:
+      CHECK_EQ(new_operands.size(), 1);
+      clone = CreateBroadcastDimOne(shape, new_operands[0]);
+      break;
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
       break;
@@ -1450,10 +1490,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
-  clone->set_metadata(metadata_);
-  if (has_sharding()) {
-    clone->set_sharding(sharding());
-  }
+  SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
   return clone;
 }
@@ -1826,6 +1863,8 @@ bool HloInstruction::IdenticalSlowPath(
 
     // Remaining instructions with special values.
     case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcastDimOne:
+    case HloOpcode::kDynamicUpdateSlice:
       return eq_shapes(shape(), other.shape());
     case HloOpcode::kBroadcast:
       return eq_shapes(shape(), other.shape()) &&
@@ -1844,8 +1883,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDynamicSlice:
       return eq_shapes(shape(), other.shape()) &&
              dynamic_slice_sizes_ == other.dynamic_slice_sizes_;
-    case HloOpcode::kDynamicUpdateSlice:
-      return eq_shapes(shape(), other.shape());
     case HloOpcode::kCall:
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
@@ -2403,6 +2440,15 @@ HloInstructionProto HloInstruction::ToProto() const {
     proto.add_fft_length(fft_len);
   }
 
+  if (gather_dimension_numbers_ != nullptr) {
+    *proto.mutable_gather_dimension_numbers() = *gather_dimension_numbers_;
+  }
+  for (int64 bound : gather_window_bounds_) {
+    proto.add_gather_window_bounds(bound);
+  }
+  proto.set_channel_name(channel_name_);
+  proto.set_cost_estimate_ns(cost_estimate_ns_);
+
   return proto;
 }
 
@@ -2646,6 +2692,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
       return visitor->HandleBroadcast(this);
+    case HloOpcode::kBroadcastDimOne:
+      return visitor->HandleBroadcastDimOne(this);
     case HloOpcode::kPad:
       return visitor->HandlePad(this);
     case HloOpcode::kReshape:

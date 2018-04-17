@@ -295,6 +295,19 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertNotEqual(dtypes.int32, int)
     self.assertNotEqual(dtypes.float64, 2.1)
 
+  def testPythonTypesConversion(self):
+    self.assertIs(dtypes.float32, dtypes.as_dtype(float))
+    self.assertIs(dtypes.bool, dtypes.as_dtype(bool))
+
+  def testReduce(self):
+    for enum in dtypes._TYPE_TO_STRING:
+      dtype = dtypes.DType(enum)
+      ctor, args = dtype.__reduce__()
+      self.assertEquals(ctor, dtypes.as_dtype)
+      self.assertEquals(args, (dtype.name,))
+      reconstructed = ctor(*args)
+      self.assertEquals(reconstructed, dtype)
+
 
 if __name__ == "__main__":
   googletest.main()

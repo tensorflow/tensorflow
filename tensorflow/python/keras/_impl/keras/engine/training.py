@@ -31,10 +31,10 @@ from tensorflow.python.keras._impl.keras.engine import training_arrays
 from tensorflow.python.keras._impl.keras.engine import training_eager
 from tensorflow.python.keras._impl.keras.engine import training_generator
 from tensorflow.python.keras._impl.keras.engine import training_utils
+from tensorflow.python.keras._impl.keras.engine.base_layer import DeferredTensor
 from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
 from tensorflow.python.keras._impl.keras.engine.network import Network
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
-from tensorflow.python.layers.base import _DeferredTensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
@@ -891,15 +891,6 @@ class Model(Network):
     else:
       self._symbolic_set_inputs(inputs, training=training)
 
-  def _set_scope(self, scope=None):
-    """Modify the Layer scope creation logic to create ResourceVariables."""
-    super(Model, self)._set_scope(scope=scope)
-    # Subclassed Models create ResourceVariables by default. This makes it
-    # easier to use Models in an eager/graph agnostic way (since eager execution
-    # always uses ResourceVariables).
-    if not self._is_graph_network:
-      self._scope.set_use_resource(True)
-
   def _eager_set_inputs(self, inputs):
     """Set model's input and output specs based on the input data received.
 
@@ -933,11 +924,11 @@ class Model(Network):
     else:
       dummy_output_values = [dummy_output_values]
     self.outputs = [
-        _DeferredTensor(shape=(None for _ in v.shape),
-                        dtype=v.dtype) for v in dummy_output_values]
+        DeferredTensor(shape=(None for _ in v.shape),
+                       dtype=v.dtype) for v in dummy_output_values]
     self.inputs = [
-        _DeferredTensor(shape=(None for _ in v.shape),
-                        dtype=v.dtype) for v in dummy_input_values]
+        DeferredTensor(shape=(None for _ in v.shape),
+                       dtype=v.dtype) for v in dummy_input_values]
     self.input_names = [
         'input_%d' % (i + 1) for i in range(len(dummy_input_values))]
     self.output_names = [

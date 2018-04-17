@@ -29,19 +29,24 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.7.0'
+_VERSION = '1.8.0-rc0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
-    'grpcio >= 1.8.6',
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
     'tensorboard >= 1.7.0, < 1.8.0',
     'termcolor >= 1.1.0',
 ]
+
+if sys.byteorder == 'little':
+  # grpcio does not build correctly on big-endian machines due to lack of
+  # BoringSSL support.
+  # See https://github.com/tensorflow/tensorflow/issues/17882.
+  REQUIRED_PACKAGES.append('grpcio >= 1.8.6')
 
 project_name = 'tensorflow'
 if '--project_name' in sys.argv:

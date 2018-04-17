@@ -67,18 +67,23 @@ def format_import(source_module_name, source_name, dest_name):
       return 'import %s as %s' % (source_name, dest_name)
 
 
-class _ModuleImportsBuilder(object):
+class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
   def __init__(self):
-    self.module_imports = collections.defaultdict(list)
-    self._seen_api_names = set()
+    self.module_imports = collections.defaultdict(
+        lambda: collections.defaultdict(set))
+    self._dest_import_to_id = collections.defaultdict(int)
+    # Names that start with underscore in the root module.
+    self._underscore_names_in_root = []
 
   def add_import(
-      self, dest_module_name, source_module_name, source_name, dest_name):
+      self, symbol_id, dest_module_name, source_module_name, source_name,
+      dest_name):
     """Adds this import to module_imports.
 
     Args:
+      symbol_id: (number) Unique identifier of the symbol to import.
       dest_module_name: (string) Module name to add import to.
       source_module_name: (string) Module to import from.
       source_name: (string) Name of the symbol to import.
@@ -89,34 +94,67 @@ class _ModuleImportsBuilder(object):
         dest_name has already been added to dest_module_name.
     """
     import_str = format_import(source_module_name, source_name, dest_name)
-    if import_str in self.module_imports[dest_module_name]:
-      return
 
     # Check if we are trying to expose two different symbols with same name.
     full_api_name = dest_name
     if dest_module_name:
       full_api_name = dest_module_name + '.' + full_api_name
-    if full_api_name in self._seen_api_names:
+    if (full_api_name in self._dest_import_to_id and
+        symbol_id != self._dest_import_to_id[full_api_name] and
+        symbol_id != -1):
       raise SymbolExposedTwiceError(
           'Trying to export multiple symbols with same name: %s.' %
           full_api_name)
-    self._seen_api_names.add(full_api_name)
+    self._dest_import_to_id[full_api_name] = symbol_id
 
-    self.module_imports[dest_module_name].append(import_str)
+    if not dest_module_name and dest_name.startswith('_'):
+      self._underscore_names_in_root.append(dest_name)
+
+    # The same symbol can be available in multiple modules.
+    # We store all possible ways of importing this symbol and later pick just
+    # one.
+    self.module_imports[dest_module_name][full_api_name].add(import_str)
+
+  def build(self):
+    """Get a map from destination module to __init__.py code for that module.
+
+    Returns:
+      A dictionary where
+        key: (string) destination module (for e.g. tf or tf.consts).
+        value: (string) text that should be in __init__.py files for
+          corresponding modules.
+    """
+    module_text_map = {}
+    for dest_module, dest_name_to_imports in self.module_imports.items():
+      # Sort all possible imports for a symbol and pick the first one.
+      imports_list = [
+          sorted(imports)[0]
+          for _, imports in dest_name_to_imports.items()]
+      module_text_map[dest_module] = '\n'.join(sorted(imports_list))
+
+    # Expose exported symbols with underscores in root module
+    # since we import from it using * import.
+    underscore_names_str = ', '.join(
+        '\'%s\'' % name for name in self._underscore_names_in_root)
+    module_text_map[''] += '''
+_names_with_underscore = [%s]
+__all__ = [s for s in dir() if not s.startswith('_')]
+__all__.extend([s for s in _names_with_underscore])
+''' % underscore_names_str
+
+    return module_text_map
 
 
-def get_api_imports():
-  """Get a map from destination module to formatted imports.
+def get_api_init_text():
+  """Get a map from destination module to __init__.py code for that module.
 
   Returns:
     A dictionary where
       key: (string) destination module (for e.g. tf or tf.consts).
-      value: List of strings representing module imports
-          (for e.g. 'from foo import bar') and constant
-          assignments (for e.g. 'FOO = 123').
+      value: (string) text that should be in __init__.py files for
+        corresponding modules.
   """
-  module_imports_builder = _ModuleImportsBuilder()
-  visited_symbols = set()
+  module_code_builder = _ModuleInitCodeBuilder()
 
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
@@ -131,8 +169,6 @@ def get_api_imports():
 
     for module_contents_name in dir(module):
       attr = getattr(module, module_contents_name)
-      if id(attr) in visited_symbols:
-        continue
 
       # If attr is _tf_api_constants attribute, then add the constants.
       if module_contents_name == _API_CONSTANTS_ATTR:
@@ -140,30 +176,25 @@ def get_api_imports():
           for export in exports:
             names = export.split('.')
             dest_module = '.'.join(names[:-1])
-            module_imports_builder.add_import(
-                dest_module, module.__name__, value, names[-1])
+            module_code_builder.add_import(
+                -1, dest_module, module.__name__, value, names[-1])
         continue
 
       _, attr = tf_decorator.unwrap(attr)
       # If attr is a symbol with _tf_api_names attribute, then
       # add import for it.
       if hasattr(attr, '__dict__') and _API_NAMES_ATTR in attr.__dict__:
-        # If the same symbol is available using multiple names, only create
-        # imports for it once.
-        if id(attr) in visited_symbols:
-          continue
-        visited_symbols.add(id(attr))
-
         for export in attr._tf_api_names:  # pylint: disable=protected-access
           names = export.split('.')
           dest_module = '.'.join(names[:-1])
-          module_imports_builder.add_import(
-              dest_module, module.__name__, module_contents_name, names[-1])
+          module_code_builder.add_import(
+              id(attr), dest_module, module.__name__, module_contents_name,
+              names[-1])
 
   # Import all required modules in their parent modules.
   # For e.g. if we import 'foo.bar.Value'. Then, we also
   # import 'bar' in 'foo'.
-  imported_modules = set(module_imports_builder.module_imports.keys())
+  imported_modules = set(module_code_builder.module_imports.keys())
   for module in imported_modules:
     if not module:
       continue
@@ -176,11 +207,11 @@ def get_api_imports():
         parent_module += ('.' + module_split[submodule_index-1] if parent_module
                           else module_split[submodule_index-1])
         import_from += '.' + parent_module
-      module_imports_builder.add_import(
-          parent_module, import_from, module_split[submodule_index],
-          module_split[submodule_index])
+      module_code_builder.add_import(
+          -1, parent_module, import_from,
+          module_split[submodule_index], module_split[submodule_index])
 
-  return module_imports_builder.module_imports
+  return module_code_builder.build()
 
 
 def create_api_files(output_files):
@@ -196,16 +227,19 @@ def create_api_files(output_files):
   """
   module_name_to_file_path = {}
   for output_file in output_files:
+    # Convert path separators to '/' for easier parsing below.
+    normalized_output_file = output_file.replace(os.sep, '/')
     if _API_DIR not in output_file:
       raise ValueError(
           'Output files must be in api/ directory, found %s.' % output_file)
     # Get the module name that corresponds to output_file.
     # First get module directory under _API_DIR.
     module_dir = os.path.dirname(
-        output_file[output_file.rfind(_API_DIR)+len(_API_DIR):])
+        normalized_output_file[
+            normalized_output_file.rfind(_API_DIR)+len(_API_DIR):])
     # Convert / to .
     module_name = module_dir.replace('/', '.').strip('.')
-    module_name_to_file_path[module_name] = output_file
+    module_name_to_file_path[module_name] = os.path.normpath(output_file)
 
   # Create file for each expected output in genrule.
   for module, file_path in module_name_to_file_path.items():
@@ -213,11 +247,11 @@ def create_api_files(output_files):
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  module_imports = get_api_imports()
+  module_text_map = get_api_init_text()
 
   # Add imports to output files.
   missing_output_files = []
-  for module, exports in module_imports.items():
+  for module, text in module_text_map.items():
     # Make sure genrule output file list is in sync with API exports.
     if module not in module_name_to_file_path:
       module_file_path = '"api/%s/__init__.py"' %  (
@@ -225,7 +259,7 @@ def create_api_files(output_files):
       missing_output_files.append(module_file_path)
       continue
     with open(module_name_to_file_path[module], 'w') as fp:
-      fp.write(_GENERATED_FILE_HEADER + '\n'.join(exports))
+      fp.write(_GENERATED_FILE_HEADER + text)
 
   if missing_output_files:
     raise ValueError(
@@ -242,6 +276,16 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
       'outputs', metavar='O', type=str, nargs='+',
-      help='Python files that we expect this script to output.')
+      help='If a single file is passed in, then we we assume it contains a '
+      'semicolon-separated list of Python files that we expect this script to '
+      'output. If multiple files are passed in, then we assume output files '
+      'are listed directly as arguments.')
   args = parser.parse_args()
-  main(args.outputs)
+  if len(args.outputs) == 1:
+    # If we only get a single argument, then it must be a file containing
+    # list of outputs.
+    with open(args.outputs[0]) as output_list_file:
+      outputs = [line.strip() for line in output_list_file.read().split(';')]
+  else:
+    outputs = args.outputs
+  main(outputs)

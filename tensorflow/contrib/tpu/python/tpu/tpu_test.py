@@ -37,7 +37,7 @@ class TPUContextTest(test.TestCase):
   def testIsInContext(self):
     """Test that control_flow_util can check that we're in a TPU context."""
     z1 = array_ops.identity(1)
-    context = tpu.TPUReplicateContext(b"context")
+    context = tpu.TPUReplicateContext(b"context", 1)
     context.Enter()
     z2 = array_ops.identity(1)
     context.Exit()

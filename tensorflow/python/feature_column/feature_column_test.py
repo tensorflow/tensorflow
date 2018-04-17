@@ -1511,6 +1511,28 @@ class LinearModelTest(test.TestCase):
         sess.run(bias.assign([5.]))
         self.assertAllClose([[1005.], [5010.]], predictions.eval())
 
+  def test_sparse_combiner_with_negative_weights(self):
+    wire_cast = fc.categorical_column_with_hash_bucket('wire_cast', 4)
+    wire_cast_weights = fc.weighted_categorical_column(wire_cast, 'weights')
+
+    with ops.Graph().as_default():
+      wire_tensor = sparse_tensor.SparseTensor(
+          values=['omar', 'stringer', 'marlo'],  # hashed to = [2, 0, 3]
+          indices=[[0, 0], [1, 0], [1, 1]],
+          dense_shape=[2, 2])
+      features = {
+          'wire_cast': wire_tensor,
+          'weights': constant_op.constant([[1., 1., -1.0]])
+      }
+      predictions = fc.linear_model(
+          features, [wire_cast_weights], sparse_combiner='sum')
+      bias = get_linear_model_bias()
+      wire_cast_var = get_linear_model_column_var(wire_cast)
+      with _initialized_session() as sess:
+        sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
+        sess.run(bias.assign([5.]))
+        self.assertAllClose([[1005.], [-9985.]], predictions.eval())
+
   def test_dense_multi_dimension_multi_output(self):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
@@ -6164,14 +6186,16 @@ class WeightedCategoricalColumnTest(test.TestCase):
             key='ids', num_buckets=3),
         weight_feature_key='values')
     with ops.Graph().as_default():
-      predictions = get_keras_linear_model_predictions({
-          'ids':
-              sparse_tensor.SparseTensorValue(
-                  indices=((0, 0), (1, 0), (1, 1)),
-                  values=(0, 2, 1),
-                  dense_shape=(2, 2)),
-          'values': ((.5,), (1.,))
-      }, (column,))
+      predictions = get_keras_linear_model_predictions(
+          {
+              'ids':
+                  sparse_tensor.SparseTensorValue(
+                      indices=((0, 0), (1, 0), (1, 1)),
+                      values=(0, 2, 1),
+                      dense_shape=(2, 2)),
+              'values': ((.5,), (1.,))
+          }, (column,),
+          sparse_combiner='mean')
       with _initialized_session():
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
           predictions.eval()
@@ -6255,13 +6279,16 @@ class WeightedCategoricalColumnTest(test.TestCase):
             key='ids', num_buckets=3),
         weight_feature_key='values')
     with ops.Graph().as_default():
-      predictions = fc.linear_model({
-          'ids': sparse_tensor.SparseTensorValue(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=(0, 2, 1),
-              dense_shape=(2, 2)),
-          'values': ((.5,), (1.,))
-      }, (column,))
+      predictions = fc.linear_model(
+          {
+              'ids':
+                  sparse_tensor.SparseTensorValue(
+                      indices=((0, 0), (1, 0), (1, 1)),
+                      values=(0, 2, 1),
+                      dense_shape=(2, 2)),
+              'values': ((.5,), (1.,))
+          }, (column,),
+          sparse_combiner='mean')
       with _initialized_session():
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
           predictions.eval()

@@ -64,7 +64,8 @@ Status WriteGzippedDataToFile(const string& filename, const string& data) {
 
 Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
                                const string& encoded_trace, std::ostream* os) {
-  string proto_path = JoinPath(run_dir, kProtoTraceFileName);
+  string proto_path =
+      JoinPath(run_dir, StrCat(host_prefix, kProtoTraceFileName));
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), proto_path, encoded_trace));
   LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;

@@ -51,6 +51,11 @@ class Base(gast.NodeTransformer):
     self._lineno = 0
     self._col_offset = 0
     self.context = context
+    self._enclosing_entities = []
+
+  @property
+  def enclosing_entities(self):
+    return tuple(self._enclosing_entities)
 
   def debug_print(self, node):
     """Helper method useful for debugging."""
@@ -61,13 +66,20 @@ class Base(gast.NodeTransformer):
   def visit(self, node):
     source_code = self.context.source_code
     source_file = self.context.source_file
+    did_enter_function = False
+
     try:
+      if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
+        self._enclosing_entities.append(node)
+        did_enter_function = True
+
       if source_code and hasattr(node, 'lineno'):
         self._lineno = node.lineno
         self._col_offset = node.col_offset
       if anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
         return node
       return super(Base, self).visit(node)
+
     except (ValueError, AttributeError, KeyError, NotImplementedError,
             AssertionError) as e:
       msg = '%s: %s\nOffending source:\n%s\n\nOccurred at node:\n%s' % (
@@ -82,3 +94,6 @@ class Base(gast.NodeTransformer):
                       msg,
                       (source_file, self._lineno, self._col_offset + 1, line)),
                   sys.exc_info()[2])
+    finally:
+      if did_enter_function:
+        self._enclosing_entities.pop()

@@ -147,6 +147,23 @@ void FixNoOrphanedArray(Model* model);
 // Fixes input/output arrays that may have issues during export or inference.
 void FixEdgeArrays(Model* model);
 
+// Copies the contents of an array into another.
+// Expects that the shape and data type match.
+template <ArrayDataType A>
+void CopyArrayBuffer(const Array& source_array, Array* target_array) {
+  int source_buffer_size = RequiredBufferSizeForShape(source_array.shape());
+  int target_buffer_size = RequiredBufferSizeForShape(target_array->shape());
+  CHECK_EQ(source_buffer_size, target_buffer_size)
+      << "Buffer sizes must match in element count";
+  CHECK(source_array.data_type == target_array->data_type)
+      << "Data types must match";
+  if (source_array.buffer) {
+    const auto& source_buffer = source_array.GetBuffer<A>();
+    auto& target_buffer = target_array->GetMutableBuffer<A>();
+    target_buffer.data = source_buffer.data;
+  }
+}
+
 // Inserts a no-op reshape operator between the source array and the target
 // array. This effectively just copies the data.
 void InsertCopyOperator(Model* model, const string& source_array_name,

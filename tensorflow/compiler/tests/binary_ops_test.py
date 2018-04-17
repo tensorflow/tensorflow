@@ -360,11 +360,13 @@ class BinaryOpsTest(XLATestCase):
           np.array([2, -1], dtype=dtype),
           expected=np.array([[[[3, 1], [5, 3]]]], dtype=dtype))
 
-    self._testBinary(
-        math_ops.add,
-        np.array([0xffffffff, 0xfffffffff, 1, 1], dtype=np.int64),
-        np.array([1, 1, 0xffffffff, 0xfffffffff], dtype=np.int64),
-        expected=np.array([1 << 32, 1 << 36, 1 << 32, 1 << 36], dtype=np.int64))
+    if np.int64 in self.numeric_types:
+      self._testBinary(
+          math_ops.add,
+          np.array([0xffffffff, 0xfffffffff, 1, 1], dtype=np.int64),
+          np.array([1, 1, 0xffffffff, 0xfffffffff], dtype=np.int64),
+          expected=np.array([1 << 32, 1 << 36, 1 << 32, 1 << 36],
+                            dtype=np.int64))
 
   def testComplexOps(self):
     for dtype in self.complex_types:

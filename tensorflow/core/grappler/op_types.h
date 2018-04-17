@@ -95,6 +95,7 @@ bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
 bool IsPolygamma(const NodeDef& node);
+bool IsPrint(const NodeDef& node);
 bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
 bool IsReal(const NodeDef& node);
@@ -166,6 +167,10 @@ bool ModifiesInputsInPlace(const NodeDef& node);
 // Returns true if the op is an element-wise involution, i.e. if it is its
 // own inverse such that f(f(x)) == x.
 bool IsInvolution(const NodeDef& node);
+
+// Returns true if the op preserves the order and value of elements in its
+// first input tensor and possible changes its shape.
+bool IsValueAndOrderPreserving(const NodeDef& node);
 
 // Returns true if the op in node only rearranges the order of elements in its
 // first input tensor and possible changes its shape. More precisely, this
