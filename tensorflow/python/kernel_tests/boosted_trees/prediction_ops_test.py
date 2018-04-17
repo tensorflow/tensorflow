@@ -49,7 +49,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -116,7 +115,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values],
@@ -189,7 +187,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=4,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -299,7 +296,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=4,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -429,7 +425,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -562,7 +557,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=3,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -705,7 +699,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=3,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -782,7 +775,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=1,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -905,8 +897,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       predict_op = boosted_trees_ops.predict(
           tree_ensemble_handle,
           bucketized_features=[feature_0_values, feature_1_values],
-          logits_dimension=1,
-          max_depth=2)
+          logits_dimension=1)
 
       logits = session.run(predict_op)
       self.assertAllClose(expected_logits, logits)
@@ -915,8 +906,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       predict_op = boosted_trees_ops.predict(
           tree_ensemble_handle,
           bucketized_features=[feature_0_values, feature_1_values],
-          logits_dimension=1,
-          max_depth=2)
+          logits_dimension=1)
 
       logits = session.run(predict_op)
       self.assertAllClose(expected_logits, logits)

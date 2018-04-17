@@ -398,13 +398,16 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(x, np.sign, math_ops.sign)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
-    self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sign, math_ops.sign)
+
+  def testInt64Square(self):
+    x = np.arange(-6 << 20, 6 << 20, 2 << 20).reshape(1, 3, 2).astype(np.int64)
+    self._compareCpu(x, np.square, math_ops.square)
+    self._compareBothSparse(x, np.square, math_ops.square)
 
   def testComplex64Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(

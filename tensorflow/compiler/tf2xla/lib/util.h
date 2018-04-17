@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,15 +32,38 @@ xla::ComputationDataHandle Zeros(xla::ComputationBuilder* builder,
 xla::ComputationDataHandle FloatLiteral(xla::ComputationBuilder* builder,
                                         xla::PrimitiveType type, double value);
 
+// Makes a 1D tensor [0, ..., x, y] from two tensors x and y with zeros
+// prepended until the array is length n_dims.
+xla::ComputationDataHandle PrependZerosInMajorDims(
+    xla::ComputationBuilder* builder,
+    gtl::ArraySlice<xla::ComputationDataHandle> starts);
+
 // Returns a integer scalar constant of 'type' with 'value'.
 // If 'type' is complex, returns a real value with zero imaginary component.
 xla::ComputationDataHandle IntegerLiteral(xla::ComputationBuilder* builder,
                                           xla::PrimitiveType type, int64 value);
 
+// Builds a vector of zeros of length rank(x) with the last two values being
+// those in `starts`.
+xla::StatusOr<xla::ComputationDataHandle> PrependZerosInMajorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+    const std::vector<xla::ComputationDataHandle>& starts);
+
 // Performs a slice in the minor dimensions of a Tensor.
 xla::StatusOr<xla::ComputationDataHandle> SliceInMinorDims(
     xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
     gtl::ArraySlice<int64> start, gtl::ArraySlice<int64> end);
+
+// Builds a 1-d vector out of a concatenation of `major_dims` and `starts`.
+std::vector<int64> PrependMajorDims(xla::ComputationBuilder* builder,
+                                    const gtl::ArraySlice<int64>& major_dims,
+                                    const gtl::ArraySlice<int64>& indices);
+
+// Performs a dynamic slice in the minor dimensions of a Tensor.
+xla::StatusOr<xla::ComputationDataHandle> DynamicSliceInMinorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+    const std::vector<xla::ComputationDataHandle>& starts,
+    const gtl::ArraySlice<int64>& sizes);
 
 // Updates a slice of 'x', i.e.,
 // x[start[0], ..., start[n]] = update
@@ -53,6 +76,11 @@ xla::StatusOr<xla::ComputationDataHandle> UpdateSlice(
 xla::StatusOr<xla::ComputationDataHandle> UpdateSliceInMinorDims(
     xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
     const xla::ComputationDataHandle& update, gtl::ArraySlice<int64> start);
+
+xla::StatusOr<xla::ComputationDataHandle> DynamicUpdateSliceInMinorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+    const xla::ComputationDataHandle& update,
+    const std::vector<xla::ComputationDataHandle>& starts);
 
 // Transposes a stack of matrices `x` by swapping the last two dimensions.
 xla::StatusOr<xla::ComputationDataHandle> TransposeInMinorDims(

@@ -40,7 +40,13 @@ def try_ast_to_source(node):
 
 
 class Base(gast.NodeTransformer):
-  """Base class for specialized transformers."""
+  """Base class for specialized transformers.
+
+  Scope-local state tracking: to keep state across nodes, at the level of
+  (possibly nested) scopes, use enter/exit_local_scope and set/get_local.
+  You must call enter/exit_local_scope manually, but the transformer detects
+  when they are not properly paired.
+  """
 
   def __init__(self, context):
     """Initialize the transformer. Subclasses should call this.
@@ -53,9 +59,27 @@ class Base(gast.NodeTransformer):
     self.context = context
     self._enclosing_entities = []
 
+    # A stack that allows keeping mutable, scope-local state where scopes may be
+    # nested. For example, it can be used to track the usage of break
+    # statements in each loop, where loops may be nested.
+    self._local_scope_state = []
+    self.enter_local_scope()
+
   @property
   def enclosing_entities(self):
     return tuple(self._enclosing_entities)
+
+  def enter_local_scope(self):
+    self._local_scope_state.append({})
+
+  def exit_local_scope(self):
+    return self._local_scope_state.pop()
+
+  def set_local(self, name, value):
+    self._local_scope_state[-1][name] = value
+
+  def get_local(self, name, default=None):
+    return self._local_scope_state[-1].get(name, default)
 
   def debug_print(self, node):
     """Helper method useful for debugging."""
@@ -63,10 +87,23 @@ class Base(gast.NodeTransformer):
       print(pretty_printer.fmt(node))
     return node
 
+  def visit_block(self, nodes):
+    """Helper equivalent to generic_visit, but for node lists."""
+    results = []
+    for node in nodes:
+      replacement = self.visit(node)
+      if replacement:
+        if isinstance(replacement, (list, tuple)):
+          results.extend(replacement)
+        else:
+          results.append(replacement)
+    return results
+
   def visit(self, node):
     source_code = self.context.source_code
     source_file = self.context.source_file
     did_enter_function = False
+    local_scope_state_size = len(self._local_scope_state)
 
     try:
       if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
@@ -97,3 +134,10 @@ class Base(gast.NodeTransformer):
     finally:
       if did_enter_function:
         self._enclosing_entities.pop()
+
+      if local_scope_state_size != len(self._local_scope_state):
+        raise AssertionError(
+            'Inconsistent local scope stack. Before entering node %s, the'
+            ' stack had length %d, after exit it has length %d. This'
+            ' indicates enter_local_scope and exit_local_scope are not'
+            ' well paired.')
