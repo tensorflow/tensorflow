@@ -2731,7 +2731,7 @@ class ScopedGraphTest(test.TestCase):
       # The rest of the variables.
       rest_variables = list(
           set(variables.global_variables()) - set(var_list.keys()))
-      init_rest_op = variables.initialize_variables(rest_variables)
+      init_rest_op = variables.variables_initializer(rest_variables)
 
     with self.test_session(graph=graph) as sess:
       saver = saver_module.Saver(var_list=var_list, max_to_keep=1)
