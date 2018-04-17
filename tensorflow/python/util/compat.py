@@ -45,7 +45,6 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('compat.as_bytes', 'compat.as_str')
 def as_bytes(bytes_or_text, encoding='utf-8'):
   """Converts either bytes or unicode to `bytes`, using utf-8 encoding for text.
 
