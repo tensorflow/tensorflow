@@ -303,9 +303,9 @@ TEST_F(GraphPropertiesTest, Queues) {
       root.WithOpName("Queue5"),
       {DataType::DT_FLOAT, DataType::DT_DOUBLE, DataType::DT_FLOAT});
   Output rnd2 =
-      ops::RandomNormal(root.WithOpName("rnd"), {10}, DataType::DT_DOUBLE);
+      ops::RandomNormal(root.WithOpName("rnd2"), {10}, DataType::DT_DOUBLE);
   Output rnd3 =
-      ops::RandomNormal(root.WithOpName("rnd"), {1, 2, 3}, DataType::DT_FLOAT);
+      ops::RandomNormal(root.WithOpName("rnd3"), {1, 2, 3}, DataType::DT_FLOAT);
   auto enqueue5 =
       ops::QueueEnqueue(root.WithOpName("Enqueue5"), q5, {rnd, rnd2, rnd3});
   auto dequeue5 = ops::QueueDequeue(
