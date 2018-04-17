@@ -25,21 +25,21 @@ from __future__ import print_function
 
 import os
 from tensorflow.contrib.lite.python import convert_saved_model
-from tensorflow.python import estimator
 from tensorflow.python import keras
-from tensorflow.python import layers
-from tensorflow.python import losses
-from tensorflow.python import nn
-from tensorflow.python import saved_model
-from tensorflow.python import train
 from tensorflow.python.client import session
+from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import saved_model
+from tensorflow.python.training import training as train
 
 
 class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):

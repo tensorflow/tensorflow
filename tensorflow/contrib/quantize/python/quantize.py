@@ -27,6 +27,7 @@ from tensorflow.contrib.quantize.python import quant_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import tf_logging as logging
 
 # Quantizable operation types that are supported by the quantization rewrite.
 _QUANTIZABLE_TYPES = {'Conv2D', 'MatMul', 'DepthwiseConv2dNative'}
@@ -41,8 +42,15 @@ def Quantize(graph,
              activation_bits=8,
              ema_decay=0.999,
              quant_delay=None,
-             vars_collection=ops.GraphKeys.GLOBAL_VARIABLES):
+             vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
+             scope=None):
   """Updates graph with quantization operations.
+
+  Currently we quantize the following tensors:
+  * Conv/MatMul: Quantize the weights if it matches.
+  * Activation: Quantize the output if it matches.
+  * Bypass/Post-activation Bypass: Quantize both input and output
+    if it matches.
 
   Args:
     graph: Graph to modify.
@@ -57,13 +65,21 @@ def Quantize(graph,
       training.
     vars_collection: (Optional) Collection where to store the variables for
       quantization interval ends.
+    scope: The scope to be transformed. If it's not None, only the ops which
+      are in this scope will be transformed.
   Raises:
     ValueError: When quantization fails.
   """
+  if scope and not scope.endswith('/'):
+    scope += '/'
+
   input_to_ops_map = input_to_ops.InputToOps(graph)
   for layer_match in _FindLayersToQuantize(graph):
     # Quantize the weights.
     context = _GetContextFromOp(layer_match.layer_op)
+
+    # If `scope` is given, only quantize it if the consumer of weights
+    # (the layer op) is in the right scope.
     _InsertQuantOp(
         context,
         'weights_quant',
@@ -74,7 +90,8 @@ def Quantize(graph,
         quant_delay=quant_delay,
         narrow_range=True,
         vars_collection=vars_collection,
-        bits=weight_bits)
+        bits=weight_bits,
+        consumer_scope=scope)
 
     # Quantize the activations.
     consumer_ops = input_to_ops_map.ConsumerOperations(
@@ -82,6 +99,9 @@ def Quantize(graph,
     add_context = context
     if layer_match.bypass_op:
       add_context = re.search(r'^(.*)/([^/]+)', context).group(1)
+
+    # If `scope` is given, only quantize it if the producer of weights
+    # (usually it's the layer op) is in the right scope.
     _InsertQuantOp(
         add_context,
         'act_quant',
@@ -93,11 +113,14 @@ def Quantize(graph,
         quant_delay=quant_delay,
         vars_collection=vars_collection,
         bits=activation_bits,
-        init_min=0.0)
+        init_min=0.0,
+        producer_scope=scope)
 
     # Quantize the inputs and output to the bypass (if it exists). The input to
     # the bypass is the bias add, and the output is the activation.
     if layer_match.bypass_op is not None:
+      # If `scope` is given, only quantize it if the both the producer and the
+      # consumer are in the right scope.
       _InsertQuantOp(
           context,
           'conv_quant',
@@ -107,7 +130,9 @@ def Quantize(graph,
           ema_decay=ema_decay,
           quant_delay=quant_delay,
           vars_collection=vars_collection,
-          bits=activation_bits)
+          bits=activation_bits,
+          producer_scope=scope,
+          consumer_scope=scope)
       _InsertQuantOp(
           add_context,
           'add_quant',
@@ -118,12 +143,16 @@ def Quantize(graph,
           ema_decay=ema_decay,
           quant_delay=quant_delay,
           vars_collection=vars_collection,
-          bits=activation_bits)
+          bits=activation_bits,
+          producer_scope=scope,
+          consumer_scope=scope)
 
     # Quantize bypass ops that occur after the activation.
     if layer_match.post_activation_bypass_op is not None:
       post_activation_bypass_context = re.search(
           r'^(.*)/([^/]+)', layer_match.post_activation_bypass_op.name).group(1)
+      # If `scope` is given, only quantize it if the producer is in the right
+      # scope.
       _InsertQuantOp(
           post_activation_bypass_context,
           'post_activation_bypass_quant',
@@ -135,7 +164,8 @@ def Quantize(graph,
           ema_decay=ema_decay,
           quant_delay=quant_delay,
           vars_collection=vars_collection,
-          bits=activation_bits)
+          bits=activation_bits,
+          producer_scope=scope)
 
 
 def _FindLayersToQuantize(graph):
@@ -382,7 +412,9 @@ def _InsertQuantOp(context,
                    ema_decay=0.999,
                    quant_delay=None,
                    vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
-                   narrow_range=False):
+                   narrow_range=False,
+                   producer_scope=None,
+                   consumer_scope=None):
   """Inserts a quant op between a producer op and (multiple) consumer ops.
 
   Args:
@@ -407,10 +439,34 @@ def _InsertQuantOp(context,
       quantization interval ends.
     narrow_range: Whether to use the narrow quantization range
       [1; 2^bits - 1] or wide range [0; 2^bits - 1].
+    producer_scope: The restriction of producer scope. If not None, the new op
+      will be inserted only when the producer is in this scope.
+    consumer_scope: The restriction of producer scope. If not None, the new op
+      will be inserted only when all the consumers are in this scope.
   Raises:
     ValueError: When producer operation is not directly connected to the
       consumer operation.
   """
+  if producer_scope and not producer.name.startswith(producer_scope):
+    logging.info(
+        '_InsertQuantOp ignores context="%s" name="%s" '
+        'because producer "%s" is not in scope "%s"',
+        context, name, producer.name, producer_scope)
+    return
+
+  if consumer_scope:
+    consumers_in_scope = []
+    for consumer in consumers:
+      if consumer.name.startswith(consumer_scope):
+        consumers_in_scope.append(consumer)
+      else:
+        logging.info(
+            '_InsertQuantOp context="%s" name="%s" ignores '
+            'consumer "%s" because it is not in scope "%s"',
+            context, name, consumer.name, consumer_scope)
+        return
+    consumers = consumers_in_scope
+
   name_prefix = _AddContextToName(context, name)
   # This is needed on TPU where name_scope == 'TPUReplicate/loop', and
   # name_prefix starts with 'TPUReplicate/loop/'; without dropping it

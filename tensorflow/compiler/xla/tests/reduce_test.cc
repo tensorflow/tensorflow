@@ -39,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -502,21 +504,18 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
 // Test that algebraic simplifier does not incorrectly fold a transpose into a
 // reduction operation.
 XLA_TEST_F(ReduceTest, TransposeAndReduceR3_12x111x50_To_R2) {
-  ComputationBuilder builder(client_, TestName());
-  Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+  XlaBuilder builder(TestName());
+  XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
   const Shape input_shape = ShapeUtil::MakeShape(F32, {12, 111, 50});
-  ComputationDataHandle input = builder.Parameter(0, input_shape, "input");
-  ComputationDataHandle zero = builder.ConstantR0<float>(0.0);
-  ComputationDataHandle transpose =
-      builder.Transpose(input, /*permutation=*/{1, 0, 2});
-  ComputationDataHandle reduce =
-      builder.Reduce(transpose, zero, add_f32, /*dimensions_to_reduce=*/{0});
+  XlaOp input = builder.Parameter(0, input_shape, "input");
+  XlaOp zero = builder.ConstantR0<float>(0.0);
+  XlaOp transpose = builder.Transpose(input, /*permutation=*/{1, 0, 2});
+  builder.Reduce(transpose, zero, add_f32, /*dimensions_to_reduce=*/{0});
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> input_data,
                           MakeFakeLiteral(input_shape));
 
-  ComputeAndCompare(&builder, reduce, {std::move(*input_data)},
-                    ErrorSpec(0.01, 1e-4));
+  ComputeAndCompare(&builder, {std::move(*input_data)}, ErrorSpec(0.01, 1e-4));
 }
 
 XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {

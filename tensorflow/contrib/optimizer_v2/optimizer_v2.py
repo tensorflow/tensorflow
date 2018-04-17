@@ -579,7 +579,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   ### State
 
-  Internal methods apre passed a `state` argument with the correct
+  Internal methods are passed a `state` argument with the correct
   values to use for the slot and non-slot variables, and the hyper
   parameters.
   """

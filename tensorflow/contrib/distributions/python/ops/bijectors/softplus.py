@@ -62,7 +62,7 @@ class Softplus(bijector.Bijector):
     ```python
     # Create the Y=g(X)=softplus(X) transform which works only on Tensors with 1
     # batch ndim and 2 event ndims (i.e., vector of matrices).
-    softplus = Softplus(event_ndims=2)
+    softplus = Softplus()
     x = [[[1., 2],
           [3, 4]],
          [[5, 6],
@@ -81,7 +81,6 @@ class Softplus(bijector.Bijector):
               "Nonzero floating point `Tensor`.  Controls the softness of what "
               "would otherwise be a kink at the origin.  Default is 1.0")})
   def __init__(self,
-               event_ndims=0,
                hinge_softness=None,
                validate_args=False,
                name="softplus"):
@@ -101,7 +100,7 @@ class Softplus(bijector.Bijector):
             [nonzero_check], self.hinge_softness)
 
     super(Softplus, self).__init__(
-        event_ndims=event_ndims,
+        forward_min_event_ndims=0,
         validate_args=validate_args,
         name=name)
 
@@ -130,14 +129,12 @@ class Softplus(bijector.Bijector):
     # 1 - exp{-Y} approx Y.
     if self.hinge_softness is not None:
       y /= math_ops.cast(self.hinge_softness, y.dtype)
-    return -math_ops.reduce_sum(math_ops.log(-math_ops.expm1(-y)),
-                                axis=self._event_dims_tensor(y))
+    return -math_ops.log(-math_ops.expm1(-y))
 
   def _forward_log_det_jacobian(self, x):
     if self.hinge_softness is not None:
       x /= math_ops.cast(self.hinge_softness, x.dtype)
-    return -math_ops.reduce_sum(nn_ops.softplus(-x),
-                                axis=self._event_dims_tensor(x))
+    return -nn_ops.softplus(-x)
 
   @property
   def hinge_softness(self):

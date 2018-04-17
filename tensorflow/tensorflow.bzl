@@ -163,7 +163,6 @@ def if_override_eigen_strong_inline(a):
 
 def get_win_copts(is_external=False):
     WINDOWS_COPTS = [
-        "/D__VERSION__=\\\"MSVC\\\"",
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
         "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
@@ -1704,7 +1703,7 @@ def tf_version_info_genrule():
       ],
       outs=["util/version_info.cc"],
       cmd=
-      "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\"",
+      "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
       local=1,
       tools=[clean_dep("//tensorflow/tools/git:gen_git_source.py")],)
 

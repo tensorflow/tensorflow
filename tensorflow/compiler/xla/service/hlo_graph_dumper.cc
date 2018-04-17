@@ -956,6 +956,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
+    case HloOpcode::kBroadcastDimOne:
       // De-emphasize nodes which broadcast a scalar within a fusion node --
       // these are essentially free.
       if (instr->IsFused() &&

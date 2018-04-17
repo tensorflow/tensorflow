@@ -711,7 +711,7 @@ def _find_loss_augmented_facility_idx(pairwise_distances, labels, chosen_ids,
       candidate_scores, margin_multiplier * nmi_scores)
 
   argmax_index = math_ops.to_int32(
-      math_ops.argmax(candidate_scores, dimension=0))
+      math_ops.argmax(candidate_scores, axis=0))
 
   return candidate_ids[argmax_index]
 
@@ -811,7 +811,7 @@ def update_medoid_per_cluster(pairwise_distances, pairwise_distances_subset,
   candidate_scores = math_ops.add(scores_fac, margin_multiplier * scores_margin)
 
   argmax_index = math_ops.to_int32(
-      math_ops.argmax(candidate_scores, dimension=0))
+      math_ops.argmax(candidate_scores, axis=0))
 
   best_medoid = math_ops.to_int32(cluster_member_ids[argmax_index])
   chosen_ids = update_1d_tensor(chosen_ids, cluster_idx, best_medoid)

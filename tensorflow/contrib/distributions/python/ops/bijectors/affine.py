@@ -184,6 +184,7 @@ class Affine(bijector.Bijector):
     with self._name_scope("init", values=[
         shift, scale_identity_multiplier, scale_diag, scale_tril,
         scale_perturb_diag, scale_perturb_factor]):
+
       # In the absence of `loc` and `scale`, we'll assume `dtype` is `float32`.
       dtype = dtypes.float32
 
@@ -234,7 +235,7 @@ class Affine(bijector.Bijector):
           event_ndims=1,
           validate_args=validate_args)
       super(Affine, self).__init__(
-          event_ndims=1,
+          forward_min_event_ndims=1,
           graph_parents=(
               [self._scale] if tensor_util.is_tensor(self._scale)
               else self._scale.graph_parents +
@@ -360,16 +361,17 @@ class Affine(bijector.Bijector):
         x, sample_shape, expand_batch_dim=False)
     return x
 
-  def _inverse_log_det_jacobian(self, y):
-    return -self._forward_log_det_jacobian(y)
-
   def _forward_log_det_jacobian(self, x):
+    # is_constant_jacobian = True for this bijector, hence the
+    # `log_det_jacobian` need only be specified for a single input, as this will
+    # be tiled to match `event_ndims`.
     if self._is_only_identity_multiplier:
       # We don't pad in this case and instead let the fldj be applied
       # via broadcast.
       event_size = array_ops.shape(x)[-1]
       event_size = math_ops.cast(event_size, dtype=self._scale.dtype)
       return math_ops.log(math_ops.abs(self._scale)) * event_size
+
     return self.scale.log_abs_determinant()
 
   def _maybe_check_scale(self):

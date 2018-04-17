@@ -11,6 +11,10 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_protos_grappler",
 )
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+)
 
 cc_library(
     name = "static_schedule",
@@ -357,9 +361,11 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
 
@@ -477,9 +483,13 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/costs:virtual_placer",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
 
@@ -531,11 +541,28 @@ tf_cuda_cc_test(
     ],
 )
 
+# This rule is header-only unless the build is static (--config=monolithic). Its
+# implementation is included directly in the framework shared object.
 cc_library(
     name = "custom_graph_optimizer_registry",
-    srcs = ["custom_graph_optimizer_registry.cc"],
     hdrs = ["custom_graph_optimizer_registry.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        ":custom_graph_optimizer",
+        "//tensorflow/core:lib",
+    ] + if_static(
+        [":custom_graph_optimizer_registry_impl"],
+    ),
+)
+
+# This rule contains static variables for the optimizer registry. Do not depend
+# on it directly; use :custom_graph_optimizer_registry, and link against
+# libtensorflow_framework.so for the registry symbols.
+cc_library(
+    name = "custom_graph_optimizer_registry_impl",
+    srcs = ["custom_graph_optimizer_registry.cc"],
+    hdrs = ["custom_graph_optimizer_registry.h"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":custom_graph_optimizer",
         "//tensorflow/core:lib",

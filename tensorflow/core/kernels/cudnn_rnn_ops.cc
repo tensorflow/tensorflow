@@ -227,22 +227,43 @@ inline perftools::gputools::port::Status ToExecutorStatus(const Status& s) {
                       s.error_message());
 }
 
-// A helper to allocate temporary scratch memory for Cudnn RNN models. It takes
-// the ownership of the underlying memory. The expectation is that the memory
-// should be alive for the span of the Cudnn RNN itself.
-class CudnnRNNWorkspaceAllocator : public ScratchAllocator {
+template <typename>
+struct ToTFDataType;
+
+template <>
+struct ToTFDataType<Eigen::half> : std::integral_constant<DataType, DT_HALF> {};
+
+template <>
+struct ToTFDataType<float> : std::integral_constant<DataType, DT_FLOAT> {};
+
+template <>
+struct ToTFDataType<double> : std::integral_constant<DataType, DT_DOUBLE> {};
+
+template <>
+struct ToTFDataType<uint8> : std::integral_constant<DataType, DT_UINT8> {};
+
+// A helper to allocate temporary scratch memory for Cudnn RNN models. It
+// takes the ownership of the underlying memory. The expectation is that the
+// memory should be alive for the span of the Cudnn RNN itself.
+template <typename T>
+class CudnnRnnAllocatorInTemp : public ScratchAllocator {
  public:
-  ~CudnnRNNWorkspaceAllocator() override {}
-  explicit CudnnRNNWorkspaceAllocator(OpKernelContext* context)
+  ~CudnnRnnAllocatorInTemp() = default;
+
+  explicit CudnnRnnAllocatorInTemp(OpKernelContext* context)
       : context_(context) {}
   int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override {
     return std::numeric_limits<int64>::max();
   }
+
   StatusOr<DeviceMemory<uint8>> AllocateBytes(
       perftools::gputools::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
+    const DataType tf_data_type = ToTFDataType<T>::value;
+    int64 allocate_count =
+        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
     Status allocation_status(context_->allocate_temp(
-        DT_UINT8, TensorShape({byte_size}), &temporary_memory));
+        tf_data_type, TensorShape({allocate_count}), &temporary_memory));
     if (!allocation_status.ok()) {
       return ToExecutorStatus(allocation_status);
     }
@@ -250,10 +271,16 @@ class CudnnRNNWorkspaceAllocator : public ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return StatusOr<DeviceMemory<uint8>>(
-        AsDeviceMemory<uint8>(&temporary_memory));
+    return DeviceMemory<uint8>::MakeFromByteSize(
+        temporary_memory.template flat<T>().data(),
+        temporary_memory.template flat<T>().size() * sizeof(T));
   }
-  int64 TotalByteSize() { return total_byte_size_; }
+
+  int64 TotalByteSize() const { return total_byte_size_; }
+
+  Tensor get_allocated_tensor(int index) const {
+    return allocated_tensors_[index];
+  }
 
  private:
   int64 total_byte_size_ = 0;
@@ -261,15 +288,15 @@ class CudnnRNNWorkspaceAllocator : public ScratchAllocator {
   std::vector<Tensor> allocated_tensors_;
 };
 
-// A helper to allocate reserve-space memory for Cudnn RNN models. The tensors
-// are allocated as a kernel output, and will be fed into the backward pass.
+// A helper to allocate memory for Cudnn RNN models as a kernel output. It is
+// used by forward pass kernel to feed the output to the backward pass.
 // The memory is expected to live long enough after the backward pass is
 // finished.
 template <typename T>
-class CudnnRNNReserveSpaceAllocator : public ScratchAllocator {
+class CudnnRnnAllocatorInOutput : public ScratchAllocator {
  public:
-  ~CudnnRNNReserveSpaceAllocator() override {}
-  CudnnRNNReserveSpaceAllocator(OpKernelContext* context, int output_index)
+  ~CudnnRnnAllocatorInOutput() override {}
+  CudnnRnnAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
   int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override {
     return std::numeric_limits<int64>::max();
@@ -343,13 +370,14 @@ struct CudnnModelTypes {
   TFRNNInputMode rnn_input_mode;
   RnnDirectionMode rnn_direction_mode;
   bool HasInputC() const {
-    // For Cudnn 5.0, only LSTM has input-c. All other models use only input-h.
+    // For Cudnn 5.0, only LSTM has input-c. All other models use only
+    // input-h.
     return rnn_mode == RnnMode::kRnnLstm;
   }
 };
 
 // A helper class that collects the shapes to describe a RNN model.
-struct CudnnModelShapes {
+struct CudnnRnnModelShapes {
   int num_layers;
   int input_size;
   int num_units;
@@ -360,7 +388,7 @@ struct CudnnModelShapes {
   TensorShape output_shape;
   TensorShape hidden_state_shape;
   // At present only fields related to cached RnnDescriptor are concerned.
-  bool IsCompatibleWith(const CudnnModelShapes& rhs) const {
+  bool IsCompatibleWith(const CudnnRnnModelShapes& rhs) const {
     return num_layers == rhs.num_layers && input_size == rhs.input_size &&
            num_units == rhs.num_units && dir_count == rhs.dir_count;
   }
@@ -371,9 +399,9 @@ struct CudnnModelShapes {
   }
 };
 
-// Utility class for using CudnnModelShapes as a hash table key.
-struct CudnnModelShapesHasher {
-  uint64 operator()(const CudnnModelShapes& to_hash) const {
+// Utility class for using CudnnRnnModelShapes as a hash table key.
+struct CudnnRnnModelShapesHasher {
+  uint64 operator()(const CudnnRnnModelShapes& to_hash) const {
     uint64 hash = static_cast<uint64>(to_hash.num_layers);
     hash = tensorflow::FingerprintCat64(
         hash, static_cast<uint64>(to_hash.input_size));
@@ -384,21 +412,21 @@ struct CudnnModelShapesHasher {
   }
 };
 
-// Utility class for using CudnnModelShapes as a hash table key.
-struct CudnnModelShapesComparator {
-  bool operator()(const CudnnModelShapes& first,
-                  const CudnnModelShapes& second) const {
+// Utility class for using CudnnRnnModelShapes as a hash table key.
+struct CudnnRnnModelShapesComparator {
+  bool operator()(const CudnnRnnModelShapes& first,
+                  const CudnnRnnModelShapes& second) const {
     return first.IsCompatibleWith(second);
   }
 };
 
-// Extract and checks the forward input tensors, parameters, and shapes from the
-// OpKernelContext.
+// Extract and checks the forward input tensors, parameters, and shapes from
+// the OpKernelContext.
 Status ExtractForwardInput(OpKernelContext* context,
                            const CudnnModelTypes& model_types,
                            const Tensor** input, const Tensor** input_h,
                            const Tensor** input_c, const Tensor** params,
-                           CudnnModelShapes* model_shapes) {
+                           CudnnRnnModelShapes* model_shapes) {
   TF_RETURN_IF_ERROR(context->input("input", input));
   TF_RETURN_IF_ERROR(context->input("input_h", input_h));
   if (model_types.HasInputC()) {
@@ -810,7 +838,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* input_h = nullptr;
     const Tensor* input_c = nullptr;
     const Tensor* params = nullptr;
-    CudnnModelShapes model_shapes;
+    CudnnRnnModelShapes model_shapes;
     OP_REQUIRES_OK(context,
                    ExtractForwardInput(context, model_types(), &input, &input_h,
                                        &input_c, &params, &model_shapes));
@@ -876,7 +904,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     // Creates a memory callback for the reserve_space. The memory lives in the
     // output of this kernel. And it will be fed into the backward pass when
     // needed.
-    CudnnRNNReserveSpaceAllocator<T> reserve_space_allocator(context, 3);
+    CudnnRnnAllocatorInOutput<T> reserve_space_allocator(context, 3);
     if (!is_training_) {
       Tensor* dummy_reserve_space = nullptr;
       OP_REQUIRES_OK(context,
@@ -884,7 +912,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     }
     // Creates a memory callback for the workspace. The memory lives to the end
     // of this kernel calls.
-    CudnnRNNWorkspaceAllocator workspace_allocator(context);
+    CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
     bool launch_status = false;
     {
       mutex_lock l(mu_);
@@ -910,7 +938,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                   input_c_data, params_data, *output_desc, &output_data,
                   *hidden_state_desc, &output_h_data, *hidden_state_desc,
                   &output_c_data, is_training_, &reserve_space_allocator,
-                  &workspace_allocator, /* output_result_profile */ nullptr)
+                  &workspace_allocator, /*output_result_profile=*/nullptr)
               .ok();
     }
     OP_REQUIRES(context, launch_status,
@@ -920,8 +948,8 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
  private:
   mutex mu_;
   bool is_training_;
-  std::unordered_map<CudnnModelShapes, RnnScratchSpace, CudnnModelShapesHasher,
-                     CudnnModelShapesComparator>
+  std::unordered_map<CudnnRnnModelShapes, RnnScratchSpace,
+                     CudnnRnnModelShapesHasher, CudnnRnnModelShapesComparator>
       rnn_state_cache_ GUARDED_BY(mu_);
 };
 
@@ -949,7 +977,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* input_h = nullptr;
     const Tensor* input_c = nullptr;
     const Tensor* params = nullptr;
-    CudnnModelShapes model_shapes;
+    CudnnRnnModelShapes model_shapes;
     OP_REQUIRES_OK(context,
                    ExtractForwardInput(context, model_types(), &input, &input_h,
                                        &input_c, &params, &model_shapes));
@@ -1090,7 +1118,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     auto reserve_space_uint8 = CastDeviceMemory<uint8, T>(reserve_space);
     // Creates a memory callback for the workspace. The memory lives to the end
     // of this kernel calls.
-    CudnnRNNWorkspaceAllocator workspace_allocator(context);
+    CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
     bool launch_status = false;
     {
       mutex_lock l(mu_);
@@ -1119,7 +1147,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                   output_c_backprop_data, &input_backprop_data,
                   &input_h_backprop_data, &input_c_backprop_data,
                   &params_backprop_data, &reserve_space_uint8,
-                  &workspace_allocator, /* output_result_profile */ nullptr)
+                  &workspace_allocator, /*output_result_profile=*/nullptr)
               .ok();
     }
     OP_REQUIRES(context, launch_status,
@@ -1128,8 +1156,8 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
  private:
   mutex mu_;
-  std::unordered_map<CudnnModelShapes, RnnScratchSpace, CudnnModelShapesHasher,
-                     CudnnModelShapesComparator>
+  std::unordered_map<CudnnRnnModelShapes, RnnScratchSpace,
+                     CudnnRnnModelShapesHasher, CudnnRnnModelShapesComparator>
       rnn_state_cache_ GUARDED_BY(mu_);
 };
 

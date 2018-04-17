@@ -142,6 +142,8 @@ cuda_py_test(
         ":tape",
         ":test",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],

@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -48,7 +47,6 @@ class Kumaraswamy(bijector.Bijector):
   def __init__(self,
                concentration1=None,
                concentration0=None,
-               event_ndims=0,
                validate_args=False,
                name="kumaraswamy"):
     """Instantiates the `Kumaraswamy` bijector.
@@ -60,30 +58,13 @@ class Kumaraswamy(bijector.Bijector):
       concentration0: Python `float` scalar indicating the transform power,
         i.e., `Y = g(X) = (1 - (1 - X)**(1 / b))**(1 / a)` where `b` is
         `concentration0`.
-      event_ndims: Python scalar indicating the number of dimensions associated
-        with a particular draw from the distribution. Currently only zero is
-        supported.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
-
-    Raises:
-      ValueError:  If `event_ndims` is not zero.
     """
     self._graph_parents = []
     self._name = name
     self._validate_args = validate_args
-
-    event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
-    event_ndims_const = tensor_util.constant_value(event_ndims)
-    if event_ndims_const is not None and event_ndims_const not in (0,):
-      raise ValueError("event_ndims(%s) was not 0" % event_ndims_const)
-    else:
-      if validate_args:
-        event_ndims = control_flow_ops.with_dependencies(
-            [check_ops.assert_equal(
-                event_ndims, 0, message="event_ndims was not 0")],
-            event_ndims)
 
     with self._name_scope("init", values=[concentration1, concentration0]):
       concentration1 = self._maybe_assert_valid_concentration(
@@ -96,7 +77,7 @@ class Kumaraswamy(bijector.Bijector):
     self._concentration1 = concentration1
     self._concentration0 = concentration0
     super(Kumaraswamy, self).__init__(
-        event_ndims=0,
+        forward_min_event_ndims=0,
         validate_args=validate_args,
         name=name)
 
@@ -123,12 +104,10 @@ class Kumaraswamy(bijector.Bijector):
 
   def _inverse_log_det_jacobian(self, y):
     y = self._maybe_assert_valid(y)
-    event_dims = self._event_dims_tensor(y)
-    return math_ops.reduce_sum(
+    return (
         math_ops.log(self.concentration1) + math_ops.log(self.concentration0) +
         (self.concentration1 - 1) * math_ops.log(y) +
-        (self.concentration0 - 1) * math_ops.log1p(-y**self.concentration1),
-        axis=event_dims)
+        (self.concentration0 - 1) * math_ops.log1p(-y**self.concentration1))
 
   def _maybe_assert_valid_concentration(self, concentration, validate_args):
     """Checks the validity of a concentration parameter."""

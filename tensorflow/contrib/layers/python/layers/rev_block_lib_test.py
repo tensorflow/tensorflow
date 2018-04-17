@@ -60,8 +60,8 @@ class RevBlockTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       x1, x2, x1_inv, x2_inv = sess.run([x1, x2, x1_inv, x2_inv])
 
-      self.assertAllClose(x1, x1_inv)
-      self.assertAllClose(x2, x2_inv)
+      self.assertAllClose(x1, x1_inv, atol=1e-5)
+      self.assertAllClose(x2, x2_inv, atol=1e-5)
 
   def testBackwardForward(self):
 
@@ -303,6 +303,20 @@ class RecomputeTest(test.TestCase):
         for g in grads[1:]:
           self.assertAllClose(current, g)
           current = g
+
+  def testResourceVariable(self):
+    @rev_block_lib.recompute_grad(tupleize_grads=True)
+    def layer_with_recompute(inputs):
+      var = variable_scope.get_variable("var", ())
+      return var * inputs
+
+    inputs = array_ops.ones((), dtypes.float32)
+    with variable_scope.variable_scope("layer", use_resource=True):
+      outputs = layer_with_recompute(inputs)
+      loss = math_ops.square(outputs)
+      grads = gradients_impl.gradients(loss, variables.trainable_variables())
+      self.assertEqual(1, len(grads))
+      self.assertTrue(grads[0] is not None)
 
 
 class FnWithCustomGradTest(test.TestCase):

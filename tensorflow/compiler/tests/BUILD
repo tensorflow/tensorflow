@@ -124,6 +124,7 @@ tf_xla_py_test(
     name = "categorical_op_test",
     size = "small",
     srcs = ["categorical_op_test.py"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -199,6 +200,11 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
+    tags = [
+        # Allocates very large amounts of memory and does not work under TSAN.
+        "notsan",
+        "optonly",  # Times out frequently in fastbuild.
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -262,6 +268,18 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "dynamic_slice_ops_test",
+    size = "small",
+    srcs = ["dynamic_slice_ops_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
     ],
 )
 
@@ -492,6 +510,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "reduce_window_test",
+    size = "small",
+    srcs = ["reduce_window_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "reverse_ops_test",
     size = "medium",
     srcs = ["reverse_ops_test.py"],
@@ -678,6 +712,21 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "while_test",
+    size = "small",
+    srcs = ["while_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
     ],
