@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/interpreter.h"
+
 #include <cassert>
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+
 #include "tensorflow/contrib/lite/arena_planner.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#include "tensorflow/contrib/lite/profiling/profiler.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/util.h"
 
@@ -544,6 +547,7 @@ TfLiteStatus Interpreter::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
+    SCOPED_OPERATOR_PROFILE(profiler_, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
     // need to be copied from Delegate buffer to raw memory, which is often not

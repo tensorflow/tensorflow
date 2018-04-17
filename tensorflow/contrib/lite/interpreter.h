@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
+#include "tensorflow/contrib/lite/profiling/profiler.h"
 
 namespace tflite {
 
@@ -321,6 +323,12 @@ class Interpreter {
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
+  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+
+  profiling::Profiler* GetProfiler(profiling::Profiler* profiler) {
+    return profiler_;
+  }
+
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
   // The capacity headroom of `tensors_` vector before calling ops'
@@ -532,8 +540,10 @@ class Interpreter {
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
-  // WARNING: This is an experimental interface that is subject to change.
   bool allow_buffer_handle_output_ = false;
+
+  // Profiler for this interpreter instance.
+  profiling::Profiler* profiler_;
 };
 
 }  // namespace tflite
