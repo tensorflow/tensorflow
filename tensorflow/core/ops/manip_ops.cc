@@ -37,7 +37,7 @@ REGISTER_OP("Roll")
       // The `axis` must be scalar or 1-D.
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &unused));
       // Validate 'shift' is the same shape as axis'.
-      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->input(2), &unused) );
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->input(2), &unused));
       return shape_inference::UnchangedShape(c);
     });
 
