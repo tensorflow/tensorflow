@@ -1762,7 +1762,6 @@ class MklDnnData {
 class DnnOp {
  public:
   virtual ~DnnOp() {}
-  virtual void Execute() = 0;
 
   // Dummy data. Its size, hard-coded as 256 here, does
   // not matter since MKL should never operate on this buffer.
@@ -1817,24 +1816,14 @@ class FactoryKeyCreator {
 
   void AddAsKey(const mkldnn::memory::dims &dims) {
     for (unsigned int i = 0; i < dims.size(); i++) {
-      AddAsKey(dims[i]);
+      AddAsKey<int>(dims[i]);
     }
   }
 
-  void AddAsKey(const float data) {
+  template <typename T>
+  void AddAsKey(const T data) {
     auto buffer = reinterpret_cast<const char *>(&data);
-    Append(buffer, sizeof(float));
-  }
-
-  void AddAsKey(const int data) {
-    auto buffer = reinterpret_cast<const char*>(&data);
-    auto len = sizeof(data) - (__builtin_clz(data)/8);
-    Append(buffer, len);
-  }
-
-  void AddAsKey(const bool data) {
-    auto buffer = reinterpret_cast<const char*>(&data);
-    Append(buffer, sizeof(bool));
+    Append(buffer, sizeof(T));
   }
 
   std::string GetKey() {

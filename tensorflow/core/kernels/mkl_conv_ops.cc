@@ -92,8 +92,6 @@ class Conv2DFwd : public DnnOp {
 
   ~Conv2DFwd() {}
 
-  void Execute() {}
-
   // Convolution forward execute with bias
   void Execute(T* src, T* w, T* b, T* dst) {
     src_mem_->set_data_handle(static_cast<void*>(src));
