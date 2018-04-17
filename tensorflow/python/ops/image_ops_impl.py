@@ -1575,7 +1575,7 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
       # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
       return control_flow_ops.cond(
-        is_jpeg(contents), _jpeg, check_png, name='cond_jpeg')
+          is_jpeg(contents), _jpeg, check_png, name='cond_jpeg')
 
 
 @tf_export('image.total_variation')
