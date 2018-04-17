@@ -330,8 +330,10 @@ GENERATE_PYTHON_OP_LIB("ctc_ops")
 GENERATE_PYTHON_OP_LIB("cudnn_rnn_ops")
 GENERATE_PYTHON_OP_LIB("data_flow_ops")
 GENERATE_PYTHON_OP_LIB("dataset_ops")
-GENERATE_PYTHON_OP_LIB("decode_proto_ops")
-GENERATE_PYTHON_OP_LIB("encode_proto_ops")
+GENERATE_PYTHON_OP_LIB("decode_proto_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/proto/python/ops/gen_decode_proto_op.py)
+GENERATE_PYTHON_OP_LIB("encode_proto_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/proto/python/ops/gen_encode_proto_op.py)
 GENERATE_PYTHON_OP_LIB("image_ops")
 GENERATE_PYTHON_OP_LIB("io_ops")
 GENERATE_PYTHON_OP_LIB("linalg_ops")
@@ -345,7 +347,8 @@ GENERATE_PYTHON_OP_LIB("random_ops")
 GENERATE_PYTHON_OP_LIB("remote_fused_graph_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/remote_fused_graph/pylib/python/ops/gen_remote_fused_graph_ops.py)
 GENERATE_PYTHON_OP_LIB("resource_variable_ops")
-GENERATE_PYTHON_OP_LIB("rpc_ops")
+GENERATE_PYTHON_OP_LIB("rpc_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rpc/python/ops/gen_rpc_op.py)
 GENERATE_PYTHON_OP_LIB("script_ops")
 GENERATE_PYTHON_OP_LIB("sdca_ops")
 GENERATE_PYTHON_OP_LIB("set_ops")

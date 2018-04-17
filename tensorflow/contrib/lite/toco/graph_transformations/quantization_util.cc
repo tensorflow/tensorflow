@@ -22,6 +22,20 @@ limitations under the License.
 
 namespace toco {
 
+bool InferQuantizedDataTypeFromFakeQuant(
+    const FakeQuantOperator& op, ArrayDataType* out_quantized_data_type) {
+  if (op.num_bits <= 8) {
+    *out_quantized_data_type = ArrayDataType::kUint8;
+    return true;
+  } else if (op.num_bits <= 16) {
+    *out_quantized_data_type = ArrayDataType::kInt16;
+    return true;
+  } else {
+    *out_quantized_data_type = ArrayDataType::kNone;
+    return false;
+  }
+}
+
 bool GetQuantizedDataTypeNumericalRange(ArrayDataType data_type,
                                         double* out_min_value,
                                         double* out_max_value) {
@@ -100,6 +114,80 @@ void GetQuantizationParams(ArrayDataType data_type, const MinMax& minmax,
     default:
       LOG(FATAL) << "Unhandled final quantization type "
                  << static_cast<int>(data_type);
+  }
+}
+
+namespace {
+
+template <ArrayDataType A>
+std::unique_ptr<GenericBuffer> QuantizeBuffer(
+    const GenericBuffer& buffer,
+    const QuantizationParams& quantization_params) {
+  const auto inverse_scale = 1. / quantization_params.scale;
+  CHECK(buffer.type == ArrayDataType::kFloat);
+  const auto& float_buffer =
+      static_cast<const Buffer<ArrayDataType::kFloat>&>(buffer);
+  auto* quantized_buffer = new Buffer<A>;
+  quantized_buffer->data.resize(float_buffer.data.size());
+  for (std::size_t i = 0; i < float_buffer.data.size(); i++) {
+    const float src_val = float_buffer.data[i];
+    double scaled_val;  // Astonishingly, using 'float' degrades accuracy just
+                        // enough to make a few tests fail!
+    if (quantization_params.scale == 0) {
+      CHECK_EQ(src_val, 0) << "The quantization scale for this array is 0, "
+                           << "so all its values should be 0.";
+      scaled_val = quantization_params.zero_point;
+    } else {
+      scaled_val = quantization_params.zero_point + inverse_scale * src_val;
+    }
+    quantized_buffer->data[i] =
+        tflite::SafeCast<DataType<A>>(std::round(scaled_val));
+  }
+  return std::unique_ptr<GenericBuffer>(quantized_buffer);
+}
+
+template <ArrayDataType A>
+void QuantizeArray(GraphTransformation* transformation, Model* model,
+                   const string& name,
+                   const QuantizationParams& quantization_params) {
+  auto& array = model->GetArray(name);
+  CHECK(array.data_type == ArrayDataType::kFloat);
+  CHECK(!array.quantization_params);
+  array.GetOrCreateQuantizationParams() = quantization_params;
+  if (array.buffer) {
+    array.buffer = QuantizeBuffer<A>(*array.buffer, quantization_params);
+  }
+  array.data_type = A;
+  array.final_data_type = A;
+  transformation->AddMessageF(
+      "Quantized array %s to %s zero_point=%g, scale=%g", name,
+      ArrayDataTypeName(array.data_type), quantization_params.zero_point,
+      quantization_params.scale);
+}
+
+}  // namespace
+
+void QuantizeArray(GraphTransformation* transformation, Model* model,
+                   const string& name, ArrayDataType quantized_data_type,
+                   const QuantizationParams& quantization_params) {
+  ArrayDataType adjusted_data_type = quantized_data_type;
+  auto& array = model->GetArray(name);
+  if (array.final_data_type == ArrayDataType::kInt16) {
+    adjusted_data_type = array.final_data_type;
+  }
+
+  switch (adjusted_data_type) {
+    case ArrayDataType::kUint8:
+      return QuantizeArray<ArrayDataType::kUint8>(transformation, model, name,
+                                                  quantization_params);
+    case ArrayDataType::kInt16:
+      return QuantizeArray<ArrayDataType::kInt16>(transformation, model, name,
+                                                  quantization_params);
+    case ArrayDataType::kInt32:
+      return QuantizeArray<ArrayDataType::kInt32>(transformation, model, name,
+                                                  quantization_params);
+    default:
+      LOG(FATAL) << "Unhandled case.";
   }
 }
 

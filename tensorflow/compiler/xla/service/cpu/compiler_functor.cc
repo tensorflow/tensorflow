@@ -25,11 +25,11 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/ExecutionEngine/ObjectMemoryBuffer.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/SmallVectorMemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO.h"
@@ -158,7 +158,7 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
 
   // Construct ObjectFile from machine code buffer.
   return std::unique_ptr<llvm::MemoryBuffer>(
-      new llvm::ObjectMemoryBuffer(std::move(stream_buffer)));
+      new llvm::SmallVectorMemoryBuffer(std::move(stream_buffer)));
 }
 
 static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {

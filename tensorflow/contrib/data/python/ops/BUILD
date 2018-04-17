@@ -172,8 +172,18 @@ py_library(
     srcs = ["interleave_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":contrib_op_loader",
+        ":gen_dataset_ops",
+        ":random_ops",
+        "//tensorflow/contrib/stateless",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
     ],
 )
 

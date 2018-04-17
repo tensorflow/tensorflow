@@ -540,7 +540,7 @@ batched into a fixed size.
 # to a fixed shape.
 def _parse_function(filename, label):
   image_string = tf.read_file(filename)
-  image_decoded = tf.image.decode_image(image_string)
+  image_decoded = tf.image.decode_jpeg(image_string)
   image_resized = tf.image.resize_images(image_decoded, [28, 28])
   return image_resized, label
 

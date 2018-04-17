@@ -188,7 +188,7 @@ class DimensionTest(test_util.TensorFlowTestCase):
   def testUnsupportedType(self):
     with self.assertRaises(TypeError):
       tensor_shape.Dimension(dtypes.string)
-      
+
   def testMod(self):
     four = tensor_shape.Dimension(4)
     nine = tensor_shape.Dimension(9)

@@ -655,7 +655,7 @@ def monotonic_attention(p_choose_i, previous_attention, mode):
     shifted_1mp_choose_i = array_ops.concat(
         [array_ops.ones((batch_size, 1)), 1 - p_choose_i[:, :-1]], 1)
     # Compute attention distribution recursively as
-    # q[i] = (1 - p_choose_i[i])*q[i - 1] + previous_attention[i]
+    # q[i] = (1 - p_choose_i[i - 1])*q[i - 1] + previous_attention[i]
     # attention[i] = p_choose_i[i]*q[i]
     attention = p_choose_i*array_ops.transpose(functional_ops.scan(
         # Need to use reshape to remind TF of the shape between loop iterations

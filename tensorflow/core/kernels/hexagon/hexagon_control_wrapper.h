@@ -67,8 +67,8 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
   // CAVEAT: Need offset as HVX library reserves some ids
   static constexpr int NODE_ID_OFFSET = 0x10000;
 
-  static GraphTransferInfo::NodeInfo* FindNodeInfo(
-      const string& node_name, GraphTransferInfo* graph_transfer_info);
+  static GraphTransferNodeInfo* FindNodeInfo(
+      const string& name, GraphTransferInfo* graph_transfer_info);
 
   const RemoteFusedGraphExecuteInfo* execute_info_{};
   GraphTransferer graph_transferer_{};

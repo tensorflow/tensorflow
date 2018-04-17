@@ -35,7 +35,7 @@ class GrpcByteSource : public TensorResponse::Source {
   explicit GrpcByteSource(::grpc::ByteBuffer* buffer) : buffer_(buffer) {}
   ~GrpcByteSource() override { DeleteStream(); }
 
-  typedef ::grpc::GrpcProtoBufferReader Reader;
+  typedef ::grpc::ProtoBufferReader Reader;
 
   protobuf::io::ZeroCopyInputStream* contents() override {
     DeleteStream();
