@@ -18,29 +18,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import warnings
+import numpy as np
 
 from tensorflow.contrib import tensorrt as trt
 from tensorflow.core.protobuf import config_pb2 as cpb2
-from tensorflow.python.client import session as csess
-from tensorflow.python.framework import test_util
 from tensorflow.python.framework import constant_op as cop
 from tensorflow.python.framework import dtypes as dtypes
 from tensorflow.python.framework import importer as importer
 from tensorflow.python.framework import ops as ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops as aops
 from tensorflow.python.ops import nn as nn
 from tensorflow.python.ops import nn_ops as nn_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test
 
 
 @test_util.with_c_api
 class IntegrationTest(test_util.TensorFlowTestCase):
-
+  """Class to test Tensorflow-TensorRT integration."""
   def setUp(self):
-    """ Setup method """
+    """Setup method."""
     super(IntegrationTest, self).setUp()
     warnings.simplefilter('always')
     inp_dims = (100, 24, 24, 2)
@@ -103,8 +101,8 @@ class IntegrationTest(test_util.TensorFlowTestCase):
           graph_def=gdef, return_elements=["input", "output"])
       inp = inp.outputs[0]
       out = out.outputs[0]
-      # run over real calibration data here, we are mimicking a calibration set of
-      # 30 different batches. Use as much calibration data as you want
+      # run over real calibration data here, we are mimicking a calibration
+      # set of 30 different batches. Use as much calibration data as you want
     with self.test_session(
         graph=g, config=self._config, use_gpu=True,
         force_gpu=True) as sess:
@@ -113,42 +111,20 @@ class IntegrationTest(test_util.TensorFlowTestCase):
     return val
 
   def get_trt_graph(self, mode):
-    """  return trt converted graph """
-    if mode == "FP32":
+    """Return trt converted graph."""
+    if mode in  ["FP32", "FP16", "INT8"]:
       return trt.create_inference_graph(
           input_graph_def=self._original_graph,
           outputs=["output"],
           max_batch_size=self._input.shape[0],
           max_workspace_size_bytes=1 << 25,
-          precision_mode=
-          "FP32",  # TRT Engine precision "FP32","FP16" or "INT8"
+          precision_mode=mode,  # TRT Engine precision "FP32","FP16" or "INT8"
           minimum_segment_size=2  # minimum number of nodes in an engine
           )
-    elif mode == "FP16":
-      return trt.create_inference_graph(
-          input_graph_def=self._original_graph,
-          outputs=["output"],
-          max_batch_size=self._input.shape[0],
-          max_workspace_size_bytes=1 << 25,
-          precision_mode=
-          "FP16",  # TRT Engine precision "FP32","FP16" or "INT8"
-          minimum_segment_size=2  # minimum number of nodes in an engine
-          )
-    elif mode == "INT8":
-      return trt.create_inference_graph(
-          input_graph_def=self._original_graph,
-          outputs=["output"],
-          max_batch_size=self._input.shape[0],
-          max_workspace_size_bytes=1 << 25,
-          precision_mode=
-          "INT8",  # TRT Engine precision "FP32","FP16" or "INT8"
-          minimum_segment_size=2  # minimum number of nodes in an engine
-          )
-
     return None
 
   def testFP32(self):
-    """ Test FP32 conversion. Results should be identical to native case """
+    """Test FP32 conversion. Results should be identical to native case."""
     trt_graph = self.get_trt_graph("FP32")
     result = self.run_graph(trt_graph, self._input)
     self.assertAllEqual(self._reference, result)
@@ -156,21 +132,21 @@ class IntegrationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(result1, result)
 
   def testFP16(self):
-    """ Test FP16 conversion. Results may be different from native case """
+    """Test FP16 conversion. Results may be different from native case."""
     trt_graph = self.get_trt_graph("FP16")
     result = self.run_graph(trt_graph, self._input)
-    self.assertAllClose(self._reference, result,rtol=1.e-03)
+    self.assertAllClose(self._reference, result, rtol=1.e-03)
     result1 = self.run_graph(trt_graph, self._input)
     self.assertAllEqual(result1, result)
 
   def testINT8(self):
-    """ Test INT8 conversion. Results may be different from native case """
+    """Test INT8 conversion. Results may be different from native case."""
     calib_graph = self.get_trt_graph("INT8")
     result = self.run_calibration(calib_graph, self._input)
     self.assertAllEqual(self._reference, result)
     int8_graph = trt.calib_graph_to_infer_graph(calib_graph)
     result = self.run_graph(int8_graph, self._input)
-    self.assertAllClose(self._reference, result,rtol=1.e-03)
+    self.assertAllClose(self._reference, result, rtol=1.e-03)
     result1 = self.run_graph(int8_graph, self._input)
     self.assertAllEqual(result1, result)
 

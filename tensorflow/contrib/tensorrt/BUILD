@@ -139,6 +139,7 @@ tf_custom_op_py_library(
     ]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:resources",
     ],
@@ -173,6 +174,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":wrap_conversion",
+        "//tensorflow/python:tf_optimizer",
     ],
 )
 
@@ -274,10 +276,13 @@ tf_cc_test(
 )
 
 py_test(
-  name = "tf_trt_integration_test",
-  srcs = ["test/test_integration.py"],
-  srcs_version = "PY2AND3",
-  deps = [
-    ":init_py"
-  ]
+    name = "tf_trt_integration_test",
+    srcs = ["test/tf_trt_integration_test.py"],
+    main = "test/tf_trt_integration_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":init_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
 )
