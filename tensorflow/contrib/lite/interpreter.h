@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
+#include "tensorflow/contrib/lite/profiling/profiler.h"
 
 namespace tflite {
 
@@ -282,6 +284,7 @@ class Interpreter {
 
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
+  // WARNING: This is an experimental API and subject to change.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
     TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
     TfLiteTensor* tensor = &tensors_[tensor_index];
@@ -320,6 +323,12 @@ class Interpreter {
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
+  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+
+  profiling::Profiler* GetProfiler(profiling::Profiler* profiler) {
+    return profiler_;
+  }
+
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
   // The capacity headroom of `tensors_` vector before calling ops'
@@ -327,6 +336,18 @@ class Interpreter {
   // allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
   // pointers to existing tensors.
   static constexpr int kTensorsCapacityHeadroom = 16;
+
+  // Set if buffer handle output is allowed.
+  //
+  // When using hardware delegation, Interpreter will make the data of output
+  // tensors available in `tensor->data` by default. If the application can
+  // consume the buffer handle directly (e.g. reading output from OpenGL
+  // texture), it can set this flag to false, so Interpreter won't copy the data
+  // from buffer handle to CPU memory.
+  // WARNING: This is an experimental API and subject to change.
+  void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
+    allow_buffer_handle_output_ = allow_buffer_handle_output;
+  }
 
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
@@ -518,6 +539,11 @@ class Interpreter {
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
+
+  bool allow_buffer_handle_output_ = false;
+
+  // Profiler for this interpreter instance.
+  profiling::Profiler* profiler_;
 };
 
 }  // namespace tflite

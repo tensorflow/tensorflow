@@ -17,7 +17,7 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 09386db3939cae1ac12e5f09b735adfa8958c68e)
+set(GRPC_TAG d184fa229d75d336aedea0041bd59cb93e7e267f)
 
 if(WIN32)
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")

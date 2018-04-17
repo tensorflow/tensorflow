@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gast
-
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
 from tensorflow.contrib.autograph.pyct import transformer
@@ -35,86 +33,62 @@ class BreakCanonicalizationTransformer(transformer.Base):
     # Each item is a list [break_used, break_variable_name]
     self.break_uses = []
 
-  def _create_break_check(self):
-    template = """
-      (not var_name)
-    """
-    expr, = templates.replace(template, var_name=self.break_uses[-1][1])
-    return expr.value
-
-  def _create_break_trigger(self):
-    template = """
-      var_name = True
-    """
-    block = templates.replace(template, var_name=self.break_uses[-1][1])
-    block.append(gast.Continue())
-    return block
-
-  def _create_break_init(self):
-    template = """
-      var_name = False
-    """
-    assign, = templates.replace(template, var_name=self.break_uses[-1][1])
-    return assign
-
-  # TODO(mdan): Surely the transformer supports this better?
-  def _manual_visit_list(self, block):
-    new_block = []
-    for n in block:
-      new_n = self.visit(n)
-      if isinstance(new_n, list):
-        new_block.extend(new_n)
-      else:
-        new_block.append(new_n)
-    return new_block
-
-  def visit_While(self, node):
-    self.generic_visit(node.test)
-    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-
-    break_var = self.context.namer.new_symbol('break_requested',
-                                              scope.referenced)
-    self.break_uses.append([False, break_var])
-    node.body = self._manual_visit_list(node.body)
-    if self.break_uses[-1][0]:
-      node.test = gast.BoolOp(gast.And(), [
-          node.test,
-          gast.UnaryOp(gast.Not(), gast.Name(break_var, gast.Load(), None))
-      ])
-      final_nodes = [self._create_break_init(), node]
-    else:
-      final_nodes = node
-    self.break_uses.pop()
-
-    for n in node.orelse:
-      self.generic_visit(n)
-    return final_nodes
-
-  def visit_For(self, node):
-    self.generic_visit(node.target)
-    self.generic_visit(node.iter)
-    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-
-    break_var = self.context.namer.new_symbol('break_requested',
-                                              scope.referenced)
-    self.break_uses.append([False, break_var])
-    node.body = self._manual_visit_list(node.body)
-    if self.break_uses[-1][0]:
-      extra_cond = templates.replace_as_expression(
-          'not var_name', var_name=break_var)
-      anno.setanno(node, 'extra_cond', extra_cond)
-      final_nodes = [self._create_break_init(), node]
-    else:
-      final_nodes = node
-    self.break_uses.pop()
-
-    for n in node.orelse:
-      self.generic_visit(n)
-    return final_nodes
-
   def visit_Break(self, node):
     self.break_uses[-1][0] = True
-    return self._create_break_trigger()
+    template = """
+      var_name = True
+      continue
+    """
+    return templates.replace(template, var_name=self.break_uses[-1][1])
+
+  def visit_While(self, node):
+    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    break_var = self.context.namer.new_symbol('break_requested',
+                                              scope.referenced)
+
+    self.break_uses.append([False, break_var])
+    node = self.generic_visit(node)
+    if self.break_uses[-1][0]:
+      template = """
+        var_name = False
+        while original_test and not var_name:
+          original_body
+        else:
+          original_orelse
+      """
+      node = templates.replace(
+          template,
+          var_name=break_var,
+          original_test=node.test,
+          original_body=node.body,
+          original_orelse=node.orelse)
+    self.break_uses.pop()
+
+    return node
+
+  def visit_For(self, node):
+    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    break_var = self.context.namer.new_symbol('break_requested',
+                                              scope.referenced)
+
+    self.break_uses.append([False, break_var])
+    node = self.generic_visit(node)
+    if self.break_uses[-1][0]:
+      template = """
+        var_name = False
+        original_for
+      """
+      node = templates.replace(
+          template,
+          var_name=break_var,
+          original_for=node)
+      extra_cond = templates.replace_as_expression(
+          'not var_name', var_name=break_var)
+      new_for_node = node[1]
+      anno.setanno(new_for_node, 'extra_cond', extra_cond)
+    self.break_uses.pop()
+
+    return node
 
 
 def transform(node, context):

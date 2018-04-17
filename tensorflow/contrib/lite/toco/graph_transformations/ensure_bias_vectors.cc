@@ -47,7 +47,7 @@ bool EnsureBiasVectors::Run(Model* model, std::size_t op_index) {
       op->type == OperatorType::kDepthwiseConv ||
       op->type == OperatorType::kFullyConnected) {
     if (ProcessLinearOperator(model, op)) {
-      AddMessageF("Added bias vector to %s", LogName(*op));
+      AddMessageF("Added bias vector to %s as %s", LogName(*op), op->inputs[2]);
       return true;
     }
   }

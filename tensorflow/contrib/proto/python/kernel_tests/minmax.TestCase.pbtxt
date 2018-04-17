@@ -1,0 +1,161 @@
+primitive {
+  double_value: -1.7976931348623158e+308
+  double_value: 2.2250738585072014e-308
+  double_value: 1.7976931348623158e+308
+  float_value: -3.402823466e+38
+  float_value: 1.175494351e-38
+  float_value: 3.402823466e+38
+  int64_value: -9223372036854775808
+  int64_value: 9223372036854775807
+  uint64_value: 0
+  uint64_value: 18446744073709551615
+  int32_value: -2147483648
+  int32_value: 2147483647
+  fixed64_value: 0
+  fixed64_value: 18446744073709551615
+  fixed32_value: 0
+  fixed32_value: 4294967295
+  bool_value: false
+  bool_value: true
+  string_value: ""
+  string_value: "I refer to the infinite."
+  uint32_value: 0
+  uint32_value: 4294967295
+  sfixed32_value: -2147483648
+  sfixed32_value: 2147483647
+  sfixed64_value: -9223372036854775808
+  sfixed64_value: 9223372036854775807
+  sint32_value: -2147483648
+  sint32_value: 2147483647
+  sint64_value: -9223372036854775808
+  sint64_value: 9223372036854775807
+}
+shape: 1
+sizes: 3
+sizes: 3
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+sizes: 2
+field {
+  name: "double_value"
+  dtype: DT_DOUBLE
+  expected {
+    double_value: -1.7976931348623158e+308
+    double_value: 2.2250738585072014e-308
+    double_value: 1.7976931348623158e+308
+  }
+}
+field {
+  name: "float_value"
+  dtype: DT_FLOAT
+  expected {
+    float_value: -3.402823466e+38
+    float_value: 1.175494351e-38
+    float_value: 3.402823466e+38
+  }
+}
+field {
+  name: "int64_value"
+  dtype: DT_INT64
+  expected {
+    int64_value: -9223372036854775808
+    int64_value: 9223372036854775807
+  }
+}
+field {
+  name: "uint64_value"
+  dtype: DT_INT64
+  expected {
+    int64_value: 0
+    int64_value: -1
+  }
+}
+field {
+  name: "int32_value"
+  dtype: DT_INT32
+  expected {
+    int32_value: -2147483648
+    int32_value: 2147483647
+  }
+}
+field {
+  name: "fixed64_value"
+  dtype: DT_INT64
+  expected {
+    int64_value: 0
+    int64_value: -1  # unsigned is 18446744073709551615
+  }
+}
+field {
+  name: "fixed32_value"
+  dtype: DT_INT32
+  expected {
+    int32_value: 0
+    int32_value: -1  # unsigned is 4294967295
+  }
+}
+field {
+  name: "bool_value"
+  dtype: DT_BOOL
+  expected {
+    bool_value: false
+    bool_value: true
+  }
+}
+field {
+  name: "string_value"
+  dtype: DT_STRING
+  expected {
+    string_value: ""
+    string_value: "I refer to the infinite."
+  }
+}
+field {
+  name: "uint32_value"
+  dtype: DT_INT32
+  expected {
+    int32_value: 0
+    int32_value: -1  # unsigned is 4294967295
+  }
+}
+field {
+  name: "sfixed32_value"
+  dtype: DT_INT32
+  expected {
+    int32_value: -2147483648
+    int32_value: 2147483647
+  }
+}
+field {
+  name: "sfixed64_value"
+  dtype: DT_INT64
+  expected {
+    int64_value: -9223372036854775808
+    int64_value: 9223372036854775807
+  }
+}
+field {
+  name: "sint32_value"
+  dtype: DT_INT32
+  expected {
+    int32_value: -2147483648
+    int32_value: 2147483647
+  }
+}
+field {
+  name: "sint64_value"
+  dtype: DT_INT64
+  expected {
+    int64_value: -9223372036854775808
+    int64_value: 9223372036854775807
+  }
+}

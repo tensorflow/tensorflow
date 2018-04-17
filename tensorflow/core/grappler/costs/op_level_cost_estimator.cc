@@ -35,6 +35,7 @@ constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kPlaceholder[] = "Placeholder";
 constexpr char kIdentity[] = "Identity";
+constexpr char kIdentityN[] = "IdentityN";
 constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
@@ -211,6 +212,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kIdentityN, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kRefIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kStopGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kPreventGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
