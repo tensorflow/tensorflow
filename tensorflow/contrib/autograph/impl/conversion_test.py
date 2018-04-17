@@ -78,6 +78,28 @@ class ConversionTest(test.TestCase):
         conversion_map.dependency_cache[f].body[0].body[0].value.func.id)
     self.assertEqual('tf__g', conversion_map.dependency_cache[g].name)
 
+  def test_entity_to_graph_lambda(self):
+    f = lambda a: a
+
+    with self.assertRaises(NotImplementedError):
+      conversion_map = self._simple_conversion_map()
+      conversion.entity_to_graph(f, conversion_map, None, None)
+
+  def test_ag_module_cached(self):
+    def callee():
+      return range(3)
+
+    def caller(a):
+      return a()
+
+    conversion_map = self._simple_conversion_map()
+    _, _, callee_ns = conversion.entity_to_graph(
+        callee, conversion_map, None, None)
+    _, _, caller_ns = conversion.entity_to_graph(
+        caller, conversion_map, None, None)
+
+    self.assertTrue(callee_ns['ag__'] is caller_ns['ag__'])
+
 
 if __name__ == '__main__':
   test.main()
