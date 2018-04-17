@@ -32,7 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import template as template_ops
 from tensorflow.python.ops import variable_scope as variable_scope_lib
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [
@@ -42,7 +42,7 @@ __all__ = [
 ]
 
 
-class MaskedAutoregressiveFlow(bijector_lib.Bijector):
+class MaskedAutoregressiveFlow(bijector.Bijector):
   """Affine MaskedAutoregressiveFlow bijector for vector-valued events.
 
   The affine autoregressive flow [(Papamakarios et al., 2016)][3] provides a
