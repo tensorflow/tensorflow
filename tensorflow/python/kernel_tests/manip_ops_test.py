@@ -115,14 +115,20 @@ class RollTest(test_util.TensorFlowTestCase):
                                    "input must be 1-D or higher"):
         manip_ops.roll(tensor, shift, axis).eval(feed_dict={tensor: 7})
 
+  def testInvalidAxisShape(self):
+    # The axis should be a scalar or 1-D, checked in shape function.
+    with self.assertRaisesRegexp(ValueError, "Shape must be at most rank 1 but is rank 2"):
+      roll = manip_ops.roll([[1, 2], [3, 4]], 1, [[0, 1]])
+
   def testRollAxisMustBeScalarOrVectorRaises(self):
+    # The axis should be a scalar or 1-D, checked in kernel.
     tensor = [[1, 2], [3, 4]]
     shift = 1
-    axis = [[0, 1]]
+    axis = array_ops.placeholder(dtype=dtypes.int32)
     with self.test_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "axis must be a scalar or a 1-D vector"):
-        manip_ops.roll(tensor, shift, axis).eval()
+        manip_ops.roll(tensor, shift, axis).eval(feed_dict={axis: [[0, 1]]})
 
   def testRollShiftMustBeScalarOrVectorRaises(self):
     tensor = [[1, 2], [3, 4]]
