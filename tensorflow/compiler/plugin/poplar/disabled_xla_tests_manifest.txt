@@ -238,3 +238,5 @@ DotOperationTest.DotOfInputTupleElem POPLAR // dot of a tuple
 
 GatherOperationTest POPLAR // don't support Gather
 GatherClientLibraryTest POPLAR
+
+TestUtilsTest.UnusedParam POPLAR // Decide what to do with strange reductions
