@@ -785,7 +785,7 @@ class FillTriangularTest(test.TestCase):
 @test_util.with_c_api
 class ReduceWeightedLogSumExp(test.TestCase):
 
-  def _reduce_weighted_logsumexp(self, logx, w, axis, keep_dims=False):
+  def _reduce_weighted_logsumexp(self, logx, w, axis, keepdims=False):
     m = np.max(logx, axis=axis, keepdims=True)
     sum_ = np.sum(w * np.exp(logx - m), axis=axis, keepdims=keep_dims)
     sgn = np.sign(sum_)

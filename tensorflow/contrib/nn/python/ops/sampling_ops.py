@@ -88,7 +88,7 @@ def _rank_resample(weights, biases, inputs, sampled_values, num_resampled,
     return math_ops.reduce_logsumexp(
         math_ops.matmul(embeddings, reweighted_inputs, transpose_b=True),
         axis=1,
-        keep_dims=False)
+        keepdims=False)
 
   # Calling this protected form of embedding_lookup allows co-locating
   # the logsumexp computation with the partitioned weights, which yields
