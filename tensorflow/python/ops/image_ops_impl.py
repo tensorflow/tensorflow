@@ -1483,7 +1483,7 @@ def is_jpeg(contents, name=None):
 
 
 @tf_export('image.decode_image')
-def decode_image(contents, channels=None, name=None):
+def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
 
@@ -1550,7 +1550,7 @@ def decode_image(contents, channels=None, name=None):
 
     def _png():
       """Decodes a PNG image."""
-      return gen_image_ops.decode_png(contents, channels)
+      return gen_image_ops.decode_png(contents, channels, dtype=dtype)
 
     def check_png():
       """Checks if an image is PNG."""
@@ -1568,10 +1568,14 @@ def decode_image(contents, channels=None, name=None):
       with ops.control_dependencies([assert_channels]):
         return gen_image_ops.decode_jpeg(contents, channels)
 
-    # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
-    # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
-    return control_flow_ops.cond(
-        is_jpeg(contents), _jpeg, check_png, name='cond_jpeg')
+    if dtype == dtypes.uint16:
+      # Decode a PNG-encoded image to a uint16 tensor.
+      return _png()
+    else:
+      # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
+      # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
+      return control_flow_ops.cond(
+          is_jpeg(contents), _jpeg, check_png, name='cond_jpeg')
 
 
 @tf_export('image.total_variation')
