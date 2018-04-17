@@ -56,7 +56,11 @@ class RPCState : public GrpcClientCQTag {
     }
 
     response_ = response;
-    GrpcMaybeUnparseProto(request, &request_buf_);
+    ::grpc::Status s = GrpcMaybeUnparseProto(request, &request_buf_);
+    if (!s.ok()) {
+      LOG(ERROR) << "GrpcMaybeUnparseProto returned with non-ok status: "
+                 << s.error_message();
+    }
     call_ =
         std::move(stub->PrepareUnaryCall(&context_, method, request_buf_, cq));
     call_->StartCall();
@@ -73,7 +77,7 @@ class RPCState : public GrpcClientCQTag {
       // to Finish for client-side unary calls, ok should never be false
       s.Update(errors::Internal("unexpected ok value at rpc completion"));
     }
-    if (s.ok() && !GrpcMaybeParseProto(response_buf_, response_)) {
+    if (s.ok() && !GrpcMaybeParseProto(&response_buf_, response_)) {
       s.Update(errors::Internal("could not parse rpc response"));
     }
     if (!s.ok()) {
