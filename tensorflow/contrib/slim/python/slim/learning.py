@@ -389,7 +389,7 @@ def create_train_op(total_loss,
     total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
     global_step: A `Tensor` representing the global step variable. If left as
-      `_USE_GLOBAL_STEP`, then slim.variables.global_step() is used.
+      `_USE_GLOBAL_STEP`, then tf.contrib.framework.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
@@ -578,7 +578,8 @@ def train(train_op,
     is_chief: Specifies whether or not the training is being run by the primary
       replica during replica training.
     global_step: The `Tensor` representing the global step. If left as `None`,
-      then slim.variables.get_or_create_global_step() is used.
+      then training_util.get_or_create_global_step(), that is,
+      tf.contrib.framework.global_step() is used.
     number_of_steps: The max number of gradient steps to take during training,
       as measured by 'global_step': training will stop if global_step is
       greater than 'number_of_steps'. If the value is left as None, training
