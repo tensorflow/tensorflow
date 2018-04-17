@@ -4484,6 +4484,7 @@ class Graph(object):
       TypeError: If `control_inputs` is not a list of `Operation` or
         `Tensor` objects.
     """
+    control_inputs = nest.flatten(control_inputs)
     if all(x is None for x in control_inputs):
       return self._ControlDependenciesController(self, None)
     else any(x is None for x in control_inputs):
@@ -4495,7 +4496,7 @@ class Graph(object):
     #   redundant control inputs.
     control_ops = []
     current = self._current_control_dependencies()
-    for c in nest.flatten(control_inputs):
+    for c in control_inputs:
       if isinstance(c, IndexedSlices):
         c = c.op
       c = self.as_graph_element(c)
