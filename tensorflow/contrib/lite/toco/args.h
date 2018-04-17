@@ -237,6 +237,7 @@ struct ParsedTocoFlags {
   Arg<string> input_types;
   Arg<bool> debug_disable_recurrent_cell_fusion = Arg<bool>(false);
   Arg<bool> drop_control_dependency = Arg<bool>(false);
+  Arg<bool> propagate_fake_quant_num_bits = Arg<bool>(false);
 };
 
 }  // namespace toco

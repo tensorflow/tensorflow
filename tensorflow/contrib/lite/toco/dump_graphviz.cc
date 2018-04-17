@@ -95,10 +95,8 @@ Color GetColorForArray(const Model& model, const string& array_name) {
       array_name == dump_options.graphviz_last_array) {
     return Color(0x9E, 0x9E, 0x9E);
   }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return Color(0x9E, 0x9E, 0x9E);
-    }
+  if (IsOutputArray(model, array_name)) {
+    return Color(0x9E, 0x9E, 0x9E);
   }
   // Remaining arrays are intermediate activation arrays.
   // Lighter tone of the same grey as for input/output arrays:
@@ -115,6 +113,12 @@ void AppendArrayVal(string* string, Array const& array, int index) {
     AppendF(string, "%.3f", data[index]);
   } else if (array.buffer->type == ArrayDataType::kUint8) {
     const auto& data = array.GetBuffer<ArrayDataType::kUint8>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kInt16) {
+    const auto& data = array.GetBuffer<ArrayDataType::kInt16>().data;
     if (index >= data.size()) {
       return;
     }

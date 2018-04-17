@@ -135,6 +135,7 @@ DECLARE_GRAPH_TRANSFORMATION(IdentifyDilatedConv)
 DECLARE_GRAPH_TRANSFORMATION(MakeInitialDequantizeOperator)
 DECLARE_GRAPH_TRANSFORMATION(PropagateActivationFunctionIntoConstants)
 DECLARE_GRAPH_TRANSFORMATION(PropagateArrayDataTypes)
+DECLARE_GRAPH_TRANSFORMATION(PropagateFakeQuantNumBits);
 DECLARE_GRAPH_TRANSFORMATION(PropagateFixedSizes)
 DECLARE_GRAPH_TRANSFORMATION(HardcodeMinMax)
 DECLARE_GRAPH_TRANSFORMATION(Quantize)
@@ -144,6 +145,7 @@ DECLARE_GRAPH_TRANSFORMATION(RemoveTensorFlowIdentity)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialBinaryOperator)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialConcatenation)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialConcatenationInput)
+DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialSlice)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialQuantizedActivationFunc)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialQuantizedMinMax)
@@ -163,7 +165,6 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowMerge)
 DECLARE_GRAPH_TRANSFORMATION(ResolveSqueezeAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowSwitch)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowTile)
-DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantConcatenation)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantReshape)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantTranspose)
@@ -208,6 +209,23 @@ class RemoveTrivialReshape : public GraphTransformation {
 
  private:
   bool treat_expand_dims_as_trivial_ = false;
+};
+
+class ResolveConstantFakeQuant : public GraphTransformation {
+ public:
+  bool Run(Model* model, std::size_t op_index) override;
+  const char* Name() const override { return "ResolveConstantFakeQuant"; }
+
+  // True if the num_bits should adjust the final data type.
+  bool propagate_fake_quant_num_bits() const {
+    return propagate_fake_quant_num_bits_;
+  }
+  void set_propagate_fake_quant_num_bits(bool val) {
+    propagate_fake_quant_num_bits_ = val;
+  }
+
+ private:
+  bool propagate_fake_quant_num_bits_ = false;
 };
 
 #undef DECLARE_GRAPH_TRANSFORMATION
