@@ -45,7 +45,51 @@ class ListTest(converter_test_base.TestCase):
       result.utils = utils
       result.dtypes = dtypes
       with self.test_session() as sess:
-        self.assertEqual(test_fn(), sess.run(result.test_fn().stack()))
+        self.assertAllEqual([1], sess.run(result.test_fn().stack()))
+
+  def test_empty_annotated_lists_unpacked(self):
+
+    def test_fn():
+      l, m = [], []
+      utils.set_element_type(l, dtypes.int32)
+      utils.set_element_type(m, dtypes.int32)
+      l.append(1)
+      m.append(2)
+      return l, m
+
+    node = self.parse_and_analyze(test_fn, {'dtypes': dtypes, 'utils': utils})
+    node = lists.transform(node, self.ctx)
+
+    with self.compiled(node, tensor_array_ops.TensorArray,
+                       dtypes.int32) as result:
+      result.utils = utils
+      result.dtypes = dtypes
+      with self.test_session() as sess:
+        res_l, res_m = result.test_fn()
+        self.assertEqual([1], sess.run(res_l.stack()))
+        self.assertEqual([2], sess.run(res_m.stack()))
+
+  def test_empty_annotated_lists_list_unpacked(self):
+
+    def test_fn():
+      [l, m] = [], []
+      utils.set_element_type(l, dtypes.int32)
+      utils.set_element_type(m, dtypes.int32)
+      l.append(1)
+      m.append(2)
+      return l, m
+
+    node = self.parse_and_analyze(test_fn, {'dtypes': dtypes, 'utils': utils})
+    node = lists.transform(node, self.ctx)
+
+    with self.compiled(node, tensor_array_ops.TensorArray,
+                       dtypes.int32) as result:
+      result.utils = utils
+      result.dtypes = dtypes
+      with self.test_session() as sess:
+        res_l, res_m = result.test_fn()
+        self.assertEqual([1], sess.run(res_l.stack()))
+        self.assertEqual([2], sess.run(res_m.stack()))
 
 
 if __name__ == '__main__':
