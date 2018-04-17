@@ -277,7 +277,6 @@ tf_cc_test(
 )
 
 # Library for the plugin factory 
-#cc_library(
 tf_cuda_library(
     name = "trt_plugins",
     srcs = [
@@ -292,9 +291,21 @@ tf_cuda_library(
     ],
     linkstatic = 1,
     deps = [
-        #"@protobuf_archive//:protobuf_headers",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),
 )
 
+tf_cuda_cc_test(
+    name = "trt_plugins_test",
+    size = "small",
+    srcs = ["plugin/trt_plugins_test.cc"],
+    deps = [
+        ":trt_plugins",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)

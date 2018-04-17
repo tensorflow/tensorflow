@@ -21,13 +21,13 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-PluginTensorRT* PluginFactoryTensorRT::createPlugin(const char* layerName,
+PluginTensorRT* PluginFactoryTensorRT::createPlugin(const char* layer_name,
                                                     const void* serial_data,
                                                     size_t serial_length) {
   size_t parsed_byte = 0;
   // extract op_name from serial_data
-  size_t encoded_op_name =
-      ExtractOpName(serial_data, serial_length, parsed_byte);
+  std::string encoded_op_name =
+      ExtractOpName(serial_data, serial_length, &parsed_byte);
 
   if (!IsPlugin(encoded_op_name)) {
     return nullptr;
@@ -37,20 +37,18 @@ PluginTensorRT* PluginFactoryTensorRT::createPlugin(const char* layerName,
   instance_m_.lock();
   auto plugin_ptr =
       plugin_registry_[encoded_op_name].first(serial_data, serial_length);
-  // string op_name = "IncPluginTRT";
-  // auto plugin_ptr = plugin_registry_[EncodeLayerName(&op_name)].second();
-  // auto plugin_ptr = plugin_registry_.begin()->second.second();
   owned_plugins_.emplace_back(plugin_ptr);
   instance_m_.unlock();
 
   return plugin_ptr;
 }
 
-PluginTensorRT* PluginFactoryTensorRT::CreatePlugin(const string* op_name) {
+PluginTensorRT* PluginFactoryTensorRT::CreatePlugin(
+    const std::string& op_name) {
   if (!IsPlugin(op_name)) return nullptr;
 
   instance_m_.lock();
-  auto plugin_ptr = plugin_registry_[EncodeLayerName(op_name)].second();
+  auto plugin_ptr = plugin_registry_[op_name].second();
   owned_plugins_.emplace_back(plugin_ptr);
   instance_m_.unlock();
 
@@ -58,21 +56,27 @@ PluginTensorRT* PluginFactoryTensorRT::CreatePlugin(const string* op_name) {
 }
 
 bool PluginFactoryTensorRT::RegisterPlugin(
-    const string* op_name, PluginDeserializeFunc deserialize_func,
+    const std::string& op_name, PluginDeserializeFunc deserialize_func,
     PluginConstructFunc construct_func) {
   if (IsPlugin(op_name)) return false;
 
   // get instance_m_ first before write to registry;
   instance_m_.lock();
   auto ret = plugin_registry_.emplace(
-      EncodeLayerName(op_name),
-      std::make_pair(deserialize_func, construct_func));
+      op_name, std::make_pair(deserialize_func, construct_func));
   instance_m_.unlock();
 
   return ret.second;
 }
 
-void PluginFactoryTensorRT::DestroyPlugins() { return; }
+void PluginFactoryTensorRT::DestroyPlugins() {
+  instance_m_.lock();
+  for (auto& owned_plugin_ptr : owned_plugins_) {
+    owned_plugin_ptr.release();
+  }
+  owned_plugins_.clear();
+  instance_m_.unlock();
+}
 
 }  // namespace tensorrt
 }  // namespace tensorflow

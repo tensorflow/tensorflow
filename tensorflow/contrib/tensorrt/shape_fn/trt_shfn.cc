@@ -35,7 +35,7 @@ tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
   nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
   nvinfer1::ICudaEngine* trt_engine = infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(),
-      &tensorrt::PluginFactoryTensorRT::GetInstance());
+      tensorrt::PluginFactoryTensorRT::GetInstance());
 
   int num_batch = -1;
   std::vector<::tensorflow::DataType> input_type;

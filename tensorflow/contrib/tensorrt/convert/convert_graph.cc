@@ -77,7 +77,7 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
   return (candidate_ops.count(node->type_string()) ||
-          PluginFactoryTensorRT::GetInstance().IsPlugin(&node->type_string()));
+          PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
 }
 
 void GetSubGraphIncomingEdges(const tensorflow::Graph& graph,

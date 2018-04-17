@@ -26,10 +26,10 @@ namespace tensorrt {
 
 PluginTensorRT::PluginTensorRT(const void* serialized_data, size_t length) {
   // sanity check.
-  assert(EncodeOpName(GetPluginName()) !=
-         *static_cast<size_t*>(serialized_data));
-  const char* buffer = static_cast<const char*>(serialized_data) +
-                       sizeof(input_dim_list_.size());
+  const char* buffer = static_cast<const char*>(serialized_data);
+  size_t op_name_char_count = *reinterpret_cast<const size_t*>(buffer);
+  buffer += sizeof(size_t);
+  buffer += op_name_char_count;
 
   size_t count = *reinterpret_cast<const size_t*>(buffer);
   buffer += sizeof(size_t);
@@ -46,17 +46,36 @@ PluginTensorRT::PluginTensorRT(const void* serialized_data, size_t length) {
   }
 }
 
+void PluginTensorRT::configure(const nvinfer1::Dims* inputs, int num_inputs,
+                               const nvinfer1::Dims* outputs, int num_outputs,
+                               int max_batch_size) {
+  for (int index = 0; index < num_inputs; index++) {
+    nvinfer1::Dims dim;
+    dim.nbDims = inputs[index].nbDims;
+    for (int i = 0; i < dim.nbDims; i++) {
+      dim.d[i] = inputs[index].d[i];
+      dim.type[i] = inputs[index].type[i];
+    }
+    input_dim_list_.emplace_back(dim);
+  }
+  return;
+}
+
 size_t PluginTensorRT::getSerializationSize() {
   nvinfer1::Dims dim;
-  return sizeof(size_t) + sizeof(input_dim_list_.size()) + sizeof(dim.nbDims) +
-         sizeof(dim.d) + sizeof(dim.type);
+  return sizeof(size_t) + GetPluginName().size() +
+         sizeof(input_dim_list_.size()) + sizeof(dim.nbDims) + sizeof(dim.d) +
+         sizeof(dim.type);
 }
 
 void PluginTensorRT::serialize(void* serialized_data) {
-  size_t encode_op_name = EncodeOpName(GetPluginName());
+  size_t op_name_size = GetPluginName().size();
   char* buffer = static_cast<char*>(serialized_data);
-  std::memcpy(buffer, &encode_op_name, sizeof(size_t));
+  std::memcpy(buffer, &op_name_size, sizeof(size_t));
   buffer += sizeof(size_t);
+
+  std::memcpy(buffer, GetPluginName().data(), op_name_size);
+  buffer += op_name_size;
 
   auto list_size = input_dim_list_.size();
   std::memcpy(buffer, &list_size, sizeof(input_dim_list_.size()));
@@ -73,7 +92,7 @@ void PluginTensorRT::serialize(void* serialized_data) {
   }
 }
 
-bool PluginTensorRT::StoreAttribute(const string& key, const void* ptr,
+bool PluginTensorRT::StoreAttribute(const std::string& key, const void* ptr,
                                     const size_t size) {
   if (attr_map_.count(key) != 0) return false;
 

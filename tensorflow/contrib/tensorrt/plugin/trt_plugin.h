@@ -28,46 +28,37 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-using std::string;
-using std::unordered_map;
-
+// A wrapper class for TensorRT plugin
+// User application should inherit from this class to write custom kernels.
+// Allows user to insert custom op in TensorRT engine
+// To register plugin in converter, user should also register custom
+// tensorflow::tensorrt::PluginDeserializeFunc &
+// tensorflow::tensorrt::PluginConstructFunc through
+// tensorflow::tensorrt::PluginFactoryTensorRT
 class PluginTensorRT : public nvinfer1::IPlugin {
  public:
   PluginTensorRT(){};
   PluginTensorRT(const void* serialized_data, size_t length);
-  // PluginTensorRT(const void* serialized_data, size_t length, size_t
-  // &incremental);
-  virtual string GetPluginName() = 0;
+  virtual const std::string& GetPluginName() = 0;
   virtual bool Finalize() = 0;
 
-  virtual bool SetAttribute(const string& key, const void* ptr,
+  virtual bool SetAttribute(const std::string& key, const void* ptr,
                             const size_t size) = 0;
-  virtual bool GetAttribute(const string& key, const void* ptr,
+  virtual bool GetAttribute(const std::string& key, const void* ptr,
                             size_t& size) = 0;
 
-  void configure(const nvinfer1::Dims* inputs, int nbInputs,
-                 const nvinfer1::Dims* outputs, int nbOutputs,
-                 int maxBatchSize) override {
-    for (int index = 0; index < nbInputs; index++) {
-      nvinfer1::Dims dim;
-      dim.nbDims = inputs[index].nbDims;
-      for (int i = 0; i < dim.nbDims; i++) {
-        dim.d[i] = inputs[index].d[i];
-        dim.type[i] = inputs[index].type[i];
-      }
-      input_dim_list_.emplace_back(dim);
-    }
-    return;
-  }
+  void configure(const nvinfer1::Dims* inputs, int num_inputs,
+                 const nvinfer1::Dims* outputs, int num_outputs,
+                 int max_batch_size) override;
 
-  virtual bool StoreAttribute(const string& key, const void* ptr,
+  virtual bool StoreAttribute(const std::string& key, const void* ptr,
                               const size_t size);
 
   virtual size_t getSerializationSize() override;
   virtual void serialize(void* buffer) override;
 
  protected:
-  std::unordered_map<string, std::vector<char> > attr_map_;
+  std::unordered_map<std::string, std::vector<char> > attr_map_;
 
   std::vector<nvinfer1::Dims> input_dim_list_;
 };

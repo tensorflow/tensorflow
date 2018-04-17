@@ -32,39 +32,34 @@ namespace tensorrt {
 class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
  public:
   // deserialization method
-  // virtual nvinfer1::IPlugin* createPlugin(const char* layerName, const void*
-  // serialData, size_t serialLength) override;
-  PluginTensorRT* createPlugin(const char* layerName, const void* serialData,
-                               size_t serialLength) override;
+  PluginTensorRT* createPlugin(const char* layer_name, const void* serial_data,
+                               size_t serial_length) override;
 
-  // construction
-  PluginTensorRT* CreatePlugin(const string* op_name);
+  // plugin construction, PluginFactoryTensorRT owns the plugin;
+  PluginTensorRT* CreatePlugin(const std::string& op_name);
 
-  static PluginFactoryTensorRT& GetInstance() {
-    static PluginFactoryTensorRT factory_instance;
+  static PluginFactoryTensorRT* GetInstance() {
+    static PluginFactoryTensorRT* factory_instance = nullptr;
+    if (factory_instance == nullptr) {
+      factory_instance = new PluginFactoryTensorRT();
+    }
     return factory_instance;
   }
 
-  bool RegisterPlugin(const string* op_name,
+  bool RegisterPlugin(const std::string& op_name,
                       PluginDeserializeFunc deserialize_func,
                       PluginConstructFunc construct_func);
 
-  bool IsPlugin(const size_t encode_name) {
-    return plugin_registry_.find(encode_name) != plugin_registry_.end();
+  bool IsPlugin(const std::string& op_name) {
+    return plugin_registry_.find(op_name) != plugin_registry_.end();
   }
 
-  bool IsPlugin(const string* op_name) {
-    return IsPlugin(EncodeLayerName(op_name));
-  }
-
-  size_t EncodeLayerName(const string* op_name) {
-    return EncodeOpName(*op_name);
-  }
+  size_t CountOwnedPlugins() { return owned_plugins_.size(); }
 
   void DestroyPlugins();
 
  protected:
-  std::unordered_map<size_t,
+  std::unordered_map<std::string,
                      std::pair<PluginDeserializeFunc, PluginConstructFunc> >
       plugin_registry_;
 

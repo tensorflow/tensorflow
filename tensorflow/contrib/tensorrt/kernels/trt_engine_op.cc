@@ -60,7 +60,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   IRuntime* infer = nvinfer1::createInferRuntime(logger);
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(),
-      &PluginFactoryTensorRT::GetInstance()));
+      PluginFactoryTensorRT::GetInstance()));
   trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
   // Runtime is safe to delete after engine creation
   infer->destroy();
