@@ -51,8 +51,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 #ifdef __APPLE__
@@ -384,5 +383,4 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
 
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

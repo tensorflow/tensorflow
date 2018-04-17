@@ -23,8 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace gpu = ::perftools::gputools;
-
 // On the open-source platform, stream_executor currently uses
 // tensorflow::Status
 inline Status FromStreamExecutorStatus(

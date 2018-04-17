@@ -37,8 +37,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Structure used for device memory leak checking.
 struct AllocRecord {
@@ -95,7 +94,7 @@ class StreamExecutor {
   // Parameters:
   //   spec: The MultiKernelLoaderSpec is usually generated as a compile-time
   //    constant into an appropriate namespace. For example, see
-  //    perftools::gputools::executor_sample::kKernelLoaderSpecs, from which a
+  //    stream_executor::executor_sample::kKernelLoaderSpecs, from which a
   //    MultiKernelLoaderSpec is selected.
   //   kernel: Outparam that the kernel is loaded into. A given Kernel
   //    instantiation should not be loaded into more than once.
@@ -803,7 +802,6 @@ inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
   return *this;
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_

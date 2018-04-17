@@ -39,8 +39,7 @@ namespace {
 bool FLAGS_check_device_leaks = false;
 }  // namespace
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace {
 
 string StackTraceIfVLOG10() {
@@ -788,5 +787,4 @@ internal::StreamExecutorInterface *StreamExecutor::implementation() {
   return implementation_->GetUnderlyingExecutor();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

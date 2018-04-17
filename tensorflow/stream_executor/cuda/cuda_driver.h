@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "cuda/include/cuda.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // Identifies the memory space where an allocation resides. See
@@ -506,7 +505,6 @@ class CudaContext {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_

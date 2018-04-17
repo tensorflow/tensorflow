@@ -18,14 +18,23 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 using tensorflow::gtl::ArraySlice;
 using tensorflow::gtl::MutableArraySlice;
 
 }  // namespace port
+}  // namespace stream_executor
+
+namespace perftools {
+namespace gputools {
+
+// Temporarily pull stream_executor into perftools::gputools while we migrate
+// code to the new namespace.  TODO(b/77980417): Remove this once we've
+// completed the migration.
+using namespace stream_executor;  // NOLINT[build/namespaces]
+
 }  // namespace gputools
 }  // namespace perftools
 

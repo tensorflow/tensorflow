@@ -19,8 +19,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 const PluginId kNullPlugin = nullptr;
 
@@ -244,5 +243,4 @@ EMIT_PLUGIN_SPECIALIZATIONS(DnnFactory, dnn, "DNN");
 EMIT_PLUGIN_SPECIALIZATIONS(FftFactory, fft, "FFT");
 EMIT_PLUGIN_SPECIALIZATIONS(RngFactory, rng, "RNG");
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -18,8 +18,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace dnn {
 
 bool DnnSupport::GetConvolveAlgorithms(
@@ -554,5 +553,4 @@ string NormalizeDescriptor::ToShortString() const {
 }
 
 }  // namespace dnn
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

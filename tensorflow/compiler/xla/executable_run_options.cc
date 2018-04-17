@@ -36,12 +36,12 @@ DeviceMemoryAllocator* ExecutableRunOptions::allocator() const {
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_stream(
-    perftools::gputools::Stream* stream) {
+    stream_executor::Stream* stream) {
   stream_ = stream;
   return *this;
 }
 
-perftools::gputools::Stream* ExecutableRunOptions::stream() const {
+stream_executor::Stream* ExecutableRunOptions::stream() const {
   return stream_;
 }
 

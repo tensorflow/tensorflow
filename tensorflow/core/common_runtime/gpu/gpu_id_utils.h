@@ -23,7 +23,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
-namespace gpu = ::perftools::gputools;
+
+// TODO(b/77980417): Remove this and use the regular tensorflow::se alias once
+// that's available.
+namespace gpu = ::stream_executor;
 
 // Utility methods for translation between Tensorflow GPU ids and CUDA GPU ids.
 class GpuIdUtil {

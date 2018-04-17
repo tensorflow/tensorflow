@@ -34,11 +34,9 @@ struct SyclDevice;
 #endif
 }  // end namespace Eigen
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 class Stream;
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 namespace tensorflow {
 
@@ -69,9 +67,10 @@ class PerOpGpuDevice {
 class DeviceContext : public core::RefCounted {
  public:
   ~DeviceContext() override {}
-  virtual perftools::gputools::Stream* stream() const { return nullptr; }
-  virtual void MaintainLifetimeOnStream(
-      const Tensor* t, perftools::gputools::Stream* stream) const {}
+  virtual stream_executor::Stream* stream() const { return nullptr; }
+  virtual void MaintainLifetimeOnStream(const Tensor* t,
+                                        stream_executor::Stream* stream) const {
+  }
 
   // "cpu_tensor" is a tensor on a CPU. Copies "cpu_tensor" into
   // "device_tensor" which is on a GPU device "device". "device_tensor"
@@ -133,7 +132,7 @@ class DeviceBase {
   // but also by TPU devices (to provide default device context).
   struct GpuDeviceInfo {
     // Make sure all the defaults are NULL, so we can spot missing assignments.
-    perftools::gputools::Stream* stream = nullptr;
+    stream_executor::Stream* stream = nullptr;
     DeviceContext* default_context = nullptr;
     EventMgr* event_mgr = nullptr;
     int gpu_id = -1;

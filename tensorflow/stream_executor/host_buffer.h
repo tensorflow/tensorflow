@@ -18,8 +18,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/dnn.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // A HostBuffer is a block of memory in host memory containing the data for a
 // dnn::BatchDescriptor using a device-dependent memory layout.
@@ -42,7 +41,6 @@ class HostBuffer {
   const dnn::BatchDescriptor descriptor_;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_HOST_BUFFER_H_

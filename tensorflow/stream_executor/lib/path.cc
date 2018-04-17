@@ -16,8 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 namespace internal {
 
@@ -58,5 +57,4 @@ string JoinPathImpl(std::initializer_list<port::StringPiece> paths) {
 
 }  // namespace internal
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

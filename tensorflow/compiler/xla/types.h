@@ -46,4 +46,12 @@ using ::Eigen::half;
 
 }  // namespace xla
 
+// Alias namespace ::stream_executor as ::xla::se.
+namespace stream_executor {}
+namespace xla {
+// TODO(b/77980417): Uncomment this once all namespace aliases named 'se' are
+// removed in ::xla.
+// namespace se = ::stream_executor;
+}  // namespace xla
+
 #endif  // TENSORFLOW_COMPILER_XLA_TYPES_H_

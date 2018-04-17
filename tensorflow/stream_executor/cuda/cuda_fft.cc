@@ -31,8 +31,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuFftPlugin);
@@ -44,7 +43,7 @@ namespace wrap {
 // manner on first use. This dynamic loading technique is used to avoid DSO
 // dependencies on vendor libraries which may or may not be available in the
 // deployed binary environment.
-#define PERFTOOLS_GPUTOOLS_CUFFT_WRAP(__name)                    \
+#define STREAM_EXECUTOR_CUFFT_WRAP(__name)                       \
   struct WrapperShim__##__name {                                 \
     template <typename... Args>                                  \
     cufftResult operator()(CUDAExecutor *parent, Args... args) { \
@@ -68,7 +67,7 @@ namespace wrap {
                                               __macro(cufftGetSizeMany)        \
                                                   __macro(cufftMakePlanMany)
 
-CUFFT_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUFFT_WRAP)
+CUFFT_ROUTINE_EACH(STREAM_EXECUTOR_CUFFT_WRAP)
 
 }  // namespace wrap
 
@@ -514,62 +513,59 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   return true;
 }
 
-#define PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2, \
-                                           __fft_type3)                      \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<std::complex<__type>> &input,       \
-                      DeviceMemory<std::complex<__type>> *output) {          \
-    return DoFftWithDirectionInternal(                                       \
-        stream, plan, wrap::cufftExec##__fft_type1, input, output);          \
-  }                                                                          \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<__type> &input,                     \
-                      DeviceMemory<std::complex<__type>> *output) {          \
-    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type2, input,  \
-                         output);                                            \
-  }                                                                          \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<std::complex<__type>> &input,       \
-                      DeviceMemory<__type> *output) {                        \
-    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type3, input,  \
-                         output);                                            \
+#define STREAM_EXECUTOR_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2,   \
+                                        __fft_type3)                        \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
+                      const DeviceMemory<std::complex<__type>> &input,      \
+                      DeviceMemory<std::complex<__type>> *output) {         \
+    return DoFftWithDirectionInternal(                                      \
+        stream, plan, wrap::cufftExec##__fft_type1, input, output);         \
+  }                                                                         \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
+                      const DeviceMemory<__type> &input,                    \
+                      DeviceMemory<std::complex<__type>> *output) {         \
+    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type2, input, \
+                         output);                                           \
+  }                                                                         \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
+                      const DeviceMemory<std::complex<__type>> &input,      \
+                      DeviceMemory<__type> *output) {                       \
+    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type3, input, \
+                         output);                                           \
   }
 
-PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(float, C2C, R2C, C2R)
-PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
+STREAM_EXECUTOR_CUDA_DEFINE_FFT(float, C2C, R2C, C2R)
+STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 
-#undef PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT
+#undef STREAM_EXECUTOR_CUDA_DEFINE_FFT
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
 
-namespace gpu = ::perftools::gputools;
+void initialize_cufft() {
+  port::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
+          cuda::kCudaPlatformId, cuda::kCuFftPlugin, "cuFFT",
+          [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
+            cuda::CUDAExecutor *cuda_executor =
+                dynamic_cast<cuda::CUDAExecutor *>(parent);
+            if (cuda_executor == nullptr) {
+              LOG(ERROR) << "Attempting to initialize an instance of the cuFFT "
+                         << "support library with a non-CUDA StreamExecutor";
+              return nullptr;
+            }
 
-REGISTER_MODULE_INITIALIZER(register_cufft, {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::FftFactory>(
-              gpu::cuda::kCudaPlatformId, gpu::cuda::kCuFftPlugin, "cuFFT",
-              [](gpu::internal::StreamExecutorInterface
-                     *parent) -> gpu::fft::FftSupport * {
-                gpu::cuda::CUDAExecutor *cuda_executor =
-                    dynamic_cast<gpu::cuda::CUDAExecutor *>(parent);
-                if (cuda_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the cuFFT "
-                      << "support library with a non-CUDA StreamExecutor";
-                  return nullptr;
-                }
-
-                return new gpu::cuda::CUDAFft(cuda_executor);
-              });
+            return new cuda::CUDAFft(cuda_executor);
+          });
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuFFT factory: "
                << status.error_message();
   }
 
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,
-                                                     gpu::PluginKind::kFft,
-                                                     gpu::cuda::kCuFftPlugin);
-});
+  PluginRegistry::Instance()->SetDefaultFactory(
+      cuda::kCudaPlatformId, PluginKind::kFft, cuda::kCuFftPlugin);
+}
+
+}  // namespace stream_executor
+
+REGISTER_MODULE_INITIALIZER(register_cufft,
+                            { stream_executor::initialize_cufft(); });

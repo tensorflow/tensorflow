@@ -19,8 +19,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/stream.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 Event::Event(StreamExecutor* stream_exec)
     : stream_exec_(stream_exec),
@@ -48,5 +47,4 @@ Event::Status Event::PollForStatus() {
   return stream_exec_->PollForEventStatus(this);
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
