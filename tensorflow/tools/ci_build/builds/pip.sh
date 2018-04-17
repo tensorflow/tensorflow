@@ -124,7 +124,7 @@ done
 BAZEL_FLAGS=$(str_strip "${BAZEL_FLAGS}")
 
 if [[ -z "$GIT_TAG_OVERRIDE" ]]; then
-  BAZEL_FLAGS+=" --action_env=GIT_TAG_OVERRIDE=${GIT_TAG_OVERRIDE}"
+  BAZEL_FLAGS+=" --action_env=GIT_TAG_OVERRIDE"
 fi
 
 echo "Using Bazel flags: ${BAZEL_FLAGS}"
