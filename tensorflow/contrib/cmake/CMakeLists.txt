@@ -128,8 +128,16 @@ endif()
 
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
+  if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      # 64 bits
+      add_definitions(-DWIN64)
+  elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+      # 32 bits
+      # temporary fix for #18241
+      add_definitions(-DEIGEN_DEFAULT_DENSE_INDEX_TYPE=std::int64_t)
+  endif()
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11)
-  add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
+  add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
   add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
