@@ -29,7 +29,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     """Testing Gain calculation without any regularization."""
     with self.test_session() as sess:
       max_splits = 7
-      node_id_range = [1, 2]  # node 1 through 2 will be processed.
+      node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
           [
               [[0., 0.], [.08, .09], [0., 0.], [0., 0.]],  # node 0; ignored
@@ -76,7 +76,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     """Testing Gain calculation with L2."""
     with self.test_session() as sess:
       max_splits = 7
-      node_id_range = [1, 2]  # node 1 through 2 will be processed.
+      node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
           [
               [[0., 0.], [.08, .09], [0., 0.], [0., 0.]],  # node 0; ignored
@@ -123,7 +123,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     """Testing Gain calculation with L1."""
     with self.test_session() as sess:
       max_splits = 7
-      node_id_range = [1, 2]  # node 1 through 2 will be processed.
+      node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
           [
               [[0., 0.], [.08, .09], [0., 0.], [0., 0.]],  # node 0; ignored
@@ -173,7 +173,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     """Testing Gain calculation with L2."""
     with self.test_session() as sess:
       max_splits = 7
-      node_id_range = [1, 2]  # node 1 through 2 will be processed.
+      node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
           [
               [[0., 0.], [.08, .09], [0., 0.], [0., 0.]],  # node 0; ignored
