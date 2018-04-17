@@ -55,6 +55,12 @@ build:rpi3 --cpu=armv7 --define=target_system=rpi3
 build:rpi3 --copt=-march=armv7-a --copt=-mtune=cortex-a53 --copt=-mfloat-abi=hard --copt=-mfpu=neon-fp-armv8 --copt=-DRASPBERRY_PI --copt=-D_GLIBCXX_USE_CXX11_ABI=0
 build:rpi3_opt --copt=-funsafe-math-optimizations --copt=-ftree-vectorize --copt=-pipe
 
+build:rpi3-armv8 --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
+build:rpi3-armv8 --crosstool_top=//tools/arm_compiler/linaro-gcc49-aarch64:toolchain
+build:rpi3-armv8 --cpu=armv8 --define=target_system=rpi3-armv8
+build:rpi3-armv8 --copt=-march=armv8-a --copt=-mtune=cortex-a53 --copt=-DRASPBERRY_PI --copt=-D_GLIBCXX_USE_CXX11_ABI=0
+build:rpi3-armv8_opt --copt=-funsafe-math-optimizations --copt=-ftree-vectorize --copt=-pipe
+
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 build --define=grpc_no_ares=true

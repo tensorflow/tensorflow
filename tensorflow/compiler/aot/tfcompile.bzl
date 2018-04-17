@@ -346,5 +346,6 @@ def target_llvm_triple():
       "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
       "//tensorflow:darwin": "x86_64-none-darwin",
       "//tensorflow:rpi3": "armv7-linux-gnueabihf",
+      "//tensorflow:rpi3-armv8": "aarch64-linux-gnueabihf",
       "//conditions:default": "x86_64-pc-linux",
   })
