@@ -1283,6 +1283,7 @@ cc_library(
         ":hlo_creation_utils",
         ":hlo_pass",
         ":hlo_query",
+        ":pattern_matcher",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

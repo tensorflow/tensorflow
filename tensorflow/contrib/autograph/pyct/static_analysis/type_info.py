@@ -168,16 +168,8 @@ class TypeInfoResolver(transformer.Base):
                      anno.getanno(definition, 'element_type'))
     return node
 
-  def _process_tuple_assignment(self, source, t):
-    for i, e in enumerate(t.elts):
-      if isinstance(e, gast.Tuple):
-        self._process_tuple_assignment(source, e)
-      else:
-        self.scope.setval(
-            anno.getanno(e, anno.Basic.QN),
-            gast.Subscript(source, gast.Index(i), ctx=gast.Store()))
-
   def _process_variable_assignment(self, source, targets):
+    # Special case: constructors.
     if isinstance(source, gast.Call):
       func = source.func
       if anno.hasanno(func, 'live_val'):
@@ -190,15 +182,26 @@ class TypeInfoResolver(transformer.Base):
           # We can have a whitelist of no-side-effects constructors.
           # We can also step inside the constructor and further analyze.
 
-    for t in targets:
-      if isinstance(t, gast.Tuple):
-        # need to recurse on the case of assigning nested tuples,
-        # ex. a, (b, c) = f()
-        self._process_tuple_assignment(source, t)
-      elif isinstance(t, (gast.Name, gast.Attribute)):
-        self.scope.setval(anno.getanno(t, anno.Basic.QN), source)
+    # Multiple targets mean multiple assignment.
+    for target in targets:
+      # Tuple target means unpacking.
+      if isinstance(target, gast.Tuple):
+        for i, target_item in enumerate(target.elts):
+          # Two cases here:
+          #   1. Static unpacking, e.g. a, b = c, d
+          #   2. Dynamic unpacking, e.g. a, b = c
+          # The former case is optimized away.
+          if isinstance(source, (gast.Tuple, gast.List)):
+            source_item = source.elts[i]
+          else:
+            source_item = gast.Subscript(source, gast.Index(i), ctx=None)
+          self._process_variable_assignment(source_item, (target_item,))
+      elif isinstance(target, (gast.Name, gast.Attribute)):
+        target_symbol = anno.getanno(target, anno.Basic.QN)
+        self.scope.setval(target_symbol, source)
       else:
-        raise ValueError('Dont know how to handle assignment to %s' % t)
+        raise ValueError(
+            'assignment target has unknown type: %s' % target_item)
 
   def visit_With(self, node):
     for wi in node.items:

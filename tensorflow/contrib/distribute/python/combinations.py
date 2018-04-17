@@ -45,6 +45,7 @@ from absl.testing import parameterized
 
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import one_device_strategy
+from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.eager import context
@@ -55,6 +56,7 @@ from tensorflow.python.util import tf_inspect
 
 
 GPU_TEST = "test_gpu" in sys.argv[0]
+TPU_TEST = "test_tpu" in sys.argv[0]
 
 
 def generate(combinations):
@@ -108,6 +110,11 @@ def generate(combinations):
       if "distribution" in kwargs:
         distribution = kwargs["distribution"]
         kwargs["distribution"] = distribution.strategy
+        if distribution.required_tpu and not TPU_TEST:
+          self.skipTest("Test requires a TPU, but it's not available.")
+        if not distribution.required_tpu and TPU_TEST:
+          self.skipTest("Test that doesn't require a TPU.")
+
         if not distribution.required_gpus:
           if GPU_TEST:
             self.skipTest("Test that doesn't require GPUs.")
@@ -232,10 +239,12 @@ class NamedObject(object):
 class NamedDistribution(object):
   """Translates DistributionStrategy and its data into a good name."""
 
-  def __init__(self, name, distribution, required_gpus):
+  def __init__(self, name, distribution, required_gpus=None,
+               required_tpu=False):
     self._distribution = distribution
     self._name = name
     self._required_gpus = required_gpus
+    self._required_tpu = required_tpu
 
   def __repr__(self):
     return self._name
@@ -248,10 +257,16 @@ class NamedDistribution(object):
   def required_gpus(self):
     return self._required_gpus
 
+  @property
+  def required_tpu(self):
+    return self._required_tpu
+
 
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", one_device_strategy.OneDeviceStrategy("/cpu:0"),
     None)
+tpu_strategy = NamedDistribution(
+    "TPU", tpu_strategy.TpuStrategy(), required_tpu=True)
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
     mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"]), 1)

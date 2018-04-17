@@ -98,9 +98,15 @@ def dynamic_print(*values):
   if all(map(is_tf_print_compatible, values)):
     return logging_ops.Print(1, values)
 
-  def flushed_print(*vals):
+  def print_wrapper(*vals):
+    if six.PY3:
+      # TensorFlow doesn't seem to generate Unicode when passing strings to
+      # py_func. This causes the print to add a "b'" wrapper to the output,
+      # which is probably never what you want.
+      vals = tuple(v.decode() if isinstance(v, bytes) else v for v in vals)
     print(*vals)
+    # The flush helps avoid garbled output in IPython.
     sys.stdout.flush()
 
   return py_func.wrap_py_func(
-      flushed_print, None, values, use_dummy_return=True)
+      print_wrapper, None, values, use_dummy_return=True)

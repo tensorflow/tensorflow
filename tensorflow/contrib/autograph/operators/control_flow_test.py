@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph import operators
+from tensorflow.contrib.autograph.operators import control_flow
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class ForLoopTest(test.TestCase):
 
   def test_tensor(self):
-    s = operators.for_loop(
+    s = control_flow.for_loop(
         constant_op.constant([1, 2, 3, 4]),
         extra_cond=lambda s: True,
         loop_body=lambda i, s: (s + i,),
@@ -38,7 +38,7 @@ class ForLoopTest(test.TestCase):
       self.assertEqual((10,), sess.run(s))
 
   def test_python(self):
-    s = operators.for_loop(
+    s = control_flow.for_loop(
         range(5),
         extra_cond=lambda s: True,
         loop_body=lambda i, s: (s + i,),
@@ -47,7 +47,7 @@ class ForLoopTest(test.TestCase):
 
   def test_dataset(self):
     to_int32 = lambda i: math_ops.cast(i, dtypes.int32)
-    s = operators.for_loop(
+    s = control_flow.for_loop(
         dataset_ops.Dataset.range(5).map(to_int32),
         extra_cond=lambda s: True,
         loop_body=lambda i, s: (s + i,),
@@ -60,7 +60,7 @@ class WhileLoopTest(test.TestCase):
 
   def test_tensor(self):
     n = constant_op.constant(5)
-    results = operators.while_loop(
+    results = control_flow.while_loop(
         loop_cond=lambda i, s: i < n,
         loop_body=lambda i, s: (i + 1, s + i,),
         init_state=(0, 0),
@@ -70,12 +70,29 @@ class WhileLoopTest(test.TestCase):
 
   def test_python(self):
     n = 5
-    results = operators.while_loop(
+    results = control_flow.while_loop(
         loop_cond=lambda i, s: i < n,
         loop_body=lambda i, s: (i + 1, s + i),
         init_state=(0, 0),
         extra_deps=(n,))
     self.assertEqual((5, 10), results)
+
+
+class IfStmtTest(test.TestCase):
+
+  def test_tensor(self):
+    def test_if_stmt(cond):
+      return control_flow.if_stmt(
+          cond=cond,
+          body=lambda: 1,
+          orelse=lambda: -1)
+    with self.test_session() as sess:
+      self.assertEqual(1, sess.run(test_if_stmt(constant_op.constant(True))))
+      self.assertEqual(-1, sess.run(test_if_stmt(constant_op.constant(False))))
+
+  def test_python(self):
+    self.assertEqual(1, control_flow.if_stmt(True, lambda: 1, lambda: -1))
+    self.assertEqual(-1, control_flow.if_stmt(False, lambda: 1, lambda: -1))
 
 
 if __name__ == '__main__':

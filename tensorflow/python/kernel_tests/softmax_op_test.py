@@ -39,6 +39,10 @@ class SoftmaxTest(test.TestCase):
       dim = len(features.shape) - 1
     one_only_on_dim = list(features.shape)
     one_only_on_dim[dim] = 1
+    is_fp16 = features.dtype == np.float16
+    if is_fp16:
+      # Do the compute in fp32 and cast the input back to fp32.
+      features = features.astype(np.float32)
     e = np.exp(features - np.reshape(
         np.amax(
             features, axis=dim), one_only_on_dim))
@@ -47,6 +51,8 @@ class SoftmaxTest(test.TestCase):
       res = np.log(softmax)
     else:
       res = softmax
+    if is_fp16:
+      res = res.astype(np.float16)
     return res
 
   def _testSoftmax(self, np_features, dim=-1, log=False, use_gpu=False):
@@ -125,8 +131,8 @@ class SoftmaxTest(test.TestCase):
                        "Test only applicable when running on GPUs")
   def testFloatGPU(self):
     if test.is_gpu_available(cuda_only=True):
-      rows = [2**x + np.random.randint(0, 1024) for x in range(1, 10)]
-      cols = [2**x + np.random.randint(0, 1024) for x in range(1, 10)]
+      rows = [2**x + np.random.randint(0, 16) for x in range(1, 4)]
+      cols = [2**x + np.random.randint(0, 16) for x in range(1, 4)]
       for row, col in zip(rows, cols):
         logging.info("Testing softmax float dtype in shape [%d, %d]", row, col)
         data = np.random.rand(row, col)
@@ -140,8 +146,8 @@ class SoftmaxTest(test.TestCase):
                        "Test only applicable when running on GPUs")
   def testHalfGPU(self):
     if test.is_gpu_available(cuda_only=True):
-      rows = [2**x + np.random.randint(0, 1024) for x in range(1, 8)]
-      cols = [2**x + np.random.randint(0, 1024) for x in range(1, 8)]
+      rows = [2**x + np.random.randint(0, 16) for x in range(1, 4)]
+      cols = [2**x + np.random.randint(0, 16) for x in range(1, 4)]
       for row, col in zip(rows, cols):
         logging.info("Testing softmax half dtype in shape [%d, %d]", row, col)
         data = np.random.rand(row, col)

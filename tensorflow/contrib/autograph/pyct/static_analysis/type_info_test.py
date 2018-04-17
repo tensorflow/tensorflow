@@ -196,19 +196,26 @@ class TypeInfoResolverTest(test.TestCase):
     f_ref = node.body[0].body[1].value
     self.assertEqual(anno.getanno(f_ref, 'element_type'), Foo)
 
-  def test_nested_assignment(self):
+  def test_nested_unpacking(self):
 
-    def test_fn(foo):
-      a, (b, c) = foo
+    class Foo(object):
+      pass
+
+    class Bar(object):
+      pass
+
+    def test_fn():
+      a, (b, c) = (Foo(), (Bar(), Foo()))
       return a, b, c
 
-    node = self._parse_and_analyze(test_fn, {'foo': (1, 2, 3)})
+    node = self._parse_and_analyze(test_fn, {'Foo': Foo, 'Bar': Bar})
     lhs = node.body[0].body[1].value.elts
     a = lhs[0]
     b = lhs[1]
     c = lhs[2]
-    # TODO(mdan): change these once we have the live values propagating
-    # correctly
+    self.assertEquals(Foo, anno.getanno(a, 'type'))
+    self.assertEquals(Bar, anno.getanno(b, 'type'))
+    self.assertEquals(Foo, anno.getanno(c, 'type'))
     self.assertFalse(anno.hasanno(a, 'live_val'))
     self.assertFalse(anno.hasanno(b, 'live_val'))
     self.assertFalse(anno.hasanno(c, 'live_val'))

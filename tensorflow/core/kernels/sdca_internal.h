@@ -369,7 +369,7 @@ class Examples {
 
   // Computes squared example norm per example i.e |x|^2. This function modifies
   // the |examples| passed in and adds the squared norm per example.
-  static void ComputeSquaredNormPerExample(
+  static Status ComputeSquaredNormPerExample(
       const DeviceBase::CpuWorkerThreads& worker_threads, int num_examples,
       int num_sparse_features, int num_dense_features,
       std::vector<Example>* const examples);
