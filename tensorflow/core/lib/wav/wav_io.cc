@@ -223,13 +223,13 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
       ReadValue<uint32>(wav_string, &format_chunk_size, &offset));
   if ((format_chunk_size != 16) && (format_chunk_size != 18)) {
     return errors::InvalidArgument(
-        "Bad file size for WAV: Expected 16 or 18, but got ", format_chunk_size);
+        "Bad chunk size for WAV: Expected 16 or 18, but got ", format_chunk_size);
   }
   uint16 audio_format;
   TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, &audio_format, &offset));
   if (audio_format != 1) {
     return errors::InvalidArgument(
-        "Bad audio format for WAV: Expected 1 (PCM), but got audio format number ", audio_format);
+        "Bad audio format for WAV: Expected 1 (PCM), but got ", audio_format);
   }
   TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, channel_count, &offset));
   TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, sample_rate, &offset));
