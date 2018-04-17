@@ -36,6 +36,7 @@ class _BoostedTreesEstimator(estimator.Estimator):
                l1_regularization=0.,
                l2_regularization=0.,
                tree_complexity=0.,
+               min_node_weight=0.,
                config=None):
     """Initializes a `BoostedTreesEstimator` instance.
 
@@ -65,13 +66,16 @@ class _BoostedTreesEstimator(estimator.Estimator):
       l2_regularization: regularization multiplier applied to the square weights
         of the tree leafs.
       tree_complexity: regularization factor to penalize trees with more leaves.
+      min_node_weight: minimum hessian a node must have for a split to be
+        considered. The value will be compared with sum(leaf_hessian)/
+        (batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
     """
     # pylint:disable=protected-access
     # HParams for the model.
     tree_hparams = canned_boosted_trees._TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-        tree_complexity)
+        tree_complexity, min_node_weight)
 
     def _model_fn(features, labels, mode, config):
       return canned_boosted_trees._bt_model_fn(
@@ -96,6 +100,7 @@ def boosted_trees_classifier_train_in_memory(
     l1_regularization=0.,
     l2_regularization=0.,
     tree_complexity=0.,
+    min_node_weight=0.,
     config=None,
     train_hooks=None):
   """Trains a boosted tree classifier with in memory dataset.
@@ -162,6 +167,9 @@ def boosted_trees_classifier_train_in_memory(
     l2_regularization: regularization multiplier applied to the square weights
       of the tree leafs.
     tree_complexity: regularization factor to penalize trees with more leaves.
+    min_node_weight: minimum hessian a node must have for a split to be
+        considered. The value will be compared with sum(leaf_hessian)/
+        (batch_size * n_batches_per_layer).
     config: `RunConfig` object to configure the runtime settings.
     train_hooks: a list of Hook instances to be passed to estimator.train().
 
@@ -184,7 +192,7 @@ def boosted_trees_classifier_train_in_memory(
   # HParams for the model.
   tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-      tree_complexity)
+      tree_complexity, min_node_weight)
 
   def _model_fn(features, labels, mode, config):
     return canned_boosted_trees._bt_model_fn(
@@ -220,6 +228,7 @@ def boosted_trees_regressor_train_in_memory(
     l1_regularization=0.,
     l2_regularization=0.,
     tree_complexity=0.,
+    min_node_weight=0.,
     config=None,
     train_hooks=None):
   """Trains a boosted tree regressor with in memory dataset.
@@ -279,6 +288,9 @@ def boosted_trees_regressor_train_in_memory(
     l2_regularization: regularization multiplier applied to the square weights
       of the tree leafs.
     tree_complexity: regularization factor to penalize trees with more leaves.
+    min_node_weight: minimum hessian a node must have for a split to be
+        considered. The value will be compared with sum(leaf_hessian)/
+        (batch_size * n_batches_per_layer).
     config: `RunConfig` object to configure the runtime settings.
     train_hooks: a list of Hook instances to be passed to estimator.train().
 
@@ -300,7 +312,7 @@ def boosted_trees_regressor_train_in_memory(
   # HParams for the model.
   tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-      tree_complexity)
+      tree_complexity, min_node_weight)
 
   def _model_fn(features, labels, mode, config):
     return canned_boosted_trees._bt_model_fn(

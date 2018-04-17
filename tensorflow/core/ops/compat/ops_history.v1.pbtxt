@@ -10747,6 +10747,10 @@ op {
     name: "tree_complexity"
     type: DT_FLOAT
   }
+  input_arg {
+    name: "min_node_weight"
+    type: DT_FLOAT
+  }
   output_arg {
     name: "node_ids_list"
     type: DT_INT32

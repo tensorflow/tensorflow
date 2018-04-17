@@ -40,6 +40,7 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
     .Input("l1: float")
     .Input("l2: float")
     .Input("tree_complexity: float")
+    .Input("min_node_weight: float")
     .Attr("max_splits: int >= 1")
     .Attr("num_features: int >= 1")  // not passed but populated automatically.
     .Output("node_ids_list: num_features * int32")
