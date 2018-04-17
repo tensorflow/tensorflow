@@ -31,16 +31,9 @@ typedef std::function<PluginTensorRT*(const void*, size_t)>
 
 typedef std::function<PluginTensorRT*(void)> PluginConstructFunc;
 
-inline size_t EncodeOpName(std::string str) {
-  return std::hash<std::string>{}(str);
-}
-
 // TODO(jie): work on error handling here
-size_t ExtractOpName(const void* serial_data, size_t serial_length,
-                     size_t& incremental);
-
-// size_t Deserialize(const char* serial_data, size_t serial_length, size_t
-// &incremental);
+std::string ExtractOpName(const void* serial_data, size_t serial_length,
+                          size_t* incremental);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

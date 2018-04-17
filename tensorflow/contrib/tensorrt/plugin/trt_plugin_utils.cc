@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin_utils.h"
+#include <cassert>
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -21,12 +22,17 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-size_t ExtractOpName(const void* serial_data, size_t serial_length,
-                     size_t& incremental) {
-  incremental = sizeof(size_t);
-  if (serial_length < incremental) return 0;
-  size_t encoded_op_name = *static_cast<const size_t*>(serial_data);
-  return encoded_op_name;
+std::string ExtractOpName(const void* serial_data, size_t serial_length,
+                          size_t* incremental) {
+  size_t op_name_char_count = *static_cast<const size_t*>(serial_data);
+  *incremental = sizeof(size_t) + op_name_char_count;
+
+  assert(serial_length >= *incremental);
+
+  const char* buffer = static_cast<const char*>(serial_data) + sizeof(size_t);
+  std::string op_name(buffer, op_name_char_count);
+
+  return op_name;
 }
 
 }  // namespace tensorrt

@@ -249,9 +249,8 @@ class TFAttrs {
 
   std::vector<string> GetAllAttrKey() {
     std::vector<string> attr_list;
-    for (AttrMap::iterator iter = attrs_.begin(); iter != attrs_.end();
-         iter++) {
-      attr_list.emplace_back(iter->first);
+    for (auto & attr_item : attrs_) {
+      attr_list.emplace_back(attr_item.first);
     }
     return attr_list;
   }
@@ -508,7 +507,7 @@ class Converter {
     TF_RETURN_IF_ERROR(this->get_inputs(node_def, &inputs));
     string op = node_def.op();
     std::vector<TRT_TensorOrWeights> outputs;
-    if (PluginFactoryTensorRT::GetInstance().IsPlugin(&op)) {
+    if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
       TF_RETURN_IF_ERROR(plugin_converter_(*this, node_def, inputs, &outputs));
     } else {
       if (!op_registry_.count(op)) {
@@ -1207,14 +1206,13 @@ tensorflow::Status ConvertPlugin(Converter& ctx,
   // plugin is owned by PluginFactory
   // TODO(jie): destroy plugins later (resource management)
   PluginTensorRT* plugin =
-      PluginFactoryTensorRT::GetInstance().CreatePlugin(&node_def.op());
+      PluginFactoryTensorRT::GetInstance()->CreatePlugin(node_def.op());
 
   // passing attributes
   // TODO(jie): support more general attribute
   TFAttrs attrs(node_def);
   auto attr_key_vector = attrs.GetAllAttrKey();
   for (auto attr_key : attr_key_vector) {
-    std::cout << attr_key << std::endl;
     // TODO(jie): support only list of float for toy example here.
     auto data = attrs.get<std::vector<float>>(attr_key);
     size_t size_data = data.size() * sizeof(float);
