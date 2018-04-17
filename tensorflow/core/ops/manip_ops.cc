@@ -32,6 +32,8 @@ REGISTER_OP("Roll")
       shape_inference::ShapeHandle unused;
       // The `input` must be 1-D or higher
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused));
+      // The `shift` must be scalar or 1-D.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &unused));
       // The `axis` must be scalar or 1-D.
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &unused));
 
