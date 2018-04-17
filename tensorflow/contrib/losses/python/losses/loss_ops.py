@@ -29,6 +29,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
 __all__ = [
     "absolute_difference", "add_loss", "cosine_distance",
@@ -651,11 +652,9 @@ def cosine_distance(predictions,
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `weights` is `None`.
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
-  if axis is None and dim is None:
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "dim", dim)
+  if axis is None:
     raise ValueError("You must specify 'axis'.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       [predictions, labels, weights]) as scope:
