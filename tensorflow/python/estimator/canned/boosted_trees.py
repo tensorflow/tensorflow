@@ -40,9 +40,11 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import tf_export
 
-_TreeHParams = collections.namedtuple(
-    'TreeHParams',
-    ['n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity'])
+# TODO(nponomareva): Reveal pruning params here.
+_TreeHParams = collections.namedtuple('TreeHParams', [
+    'n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity',
+    'min_node_weight'
+])
 
 _HOLD_FOR_MULTI_CLASS_SUPPORT = object()
 _HOLD_FOR_MULTI_DIM_SUPPORT = object()
@@ -397,6 +399,7 @@ def _bt_model_fn(
                  l1=tree_hparams.l1,
                  l2=tree_hparams.l2,
                  tree_complexity=tree_hparams.tree_complexity,
+                 min_node_weight=tree_hparams.min_node_weight,
                  max_splits=max_splits))
         grow_op = boosted_trees_ops.update_ensemble(
             # Confirm if local_tree_ensemble or tree_ensemble should be used.
@@ -515,21 +518,21 @@ def _create_regression_head(label_dimension, weight_column=None):
 class BoostedTreesClassifier(estimator.Estimator):
   """A Classifier for Tensorflow Boosted Trees models."""
 
-  def __init__(
-      self,
-      feature_columns,
-      n_batches_per_layer,
-      model_dir=None,
-      n_classes=_HOLD_FOR_MULTI_CLASS_SUPPORT,
-      weight_column=None,
-      label_vocabulary=None,
-      n_trees=100,
-      max_depth=6,
-      learning_rate=0.1,
-      l1_regularization=0.,
-      l2_regularization=0.,
-      tree_complexity=0.,
-      config=None):
+  def __init__(self,
+               feature_columns,
+               n_batches_per_layer,
+               model_dir=None,
+               n_classes=_HOLD_FOR_MULTI_CLASS_SUPPORT,
+               weight_column=None,
+               label_vocabulary=None,
+               n_trees=100,
+               max_depth=6,
+               learning_rate=0.1,
+               l1_regularization=0.,
+               l2_regularization=0.,
+               tree_complexity=0.,
+               min_node_weight=0.,
+               config=None):
     """Initializes a `BoostedTreesClassifier` instance.
 
     Example:
@@ -593,6 +596,9 @@ class BoostedTreesClassifier(estimator.Estimator):
       l2_regularization: regularization multiplier applied to the square weights
         of the tree leafs.
       tree_complexity: regularization factor to penalize trees with more leaves.
+      min_node_weight: min_node_weight: minimum hessian a node must have for a
+        split to be considered. The value will be compared with
+        sum(leaf_hessian)/(batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
 
     Raises:
@@ -606,9 +612,9 @@ class BoostedTreesClassifier(estimator.Estimator):
         n_classes, weight_column, label_vocabulary=label_vocabulary)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(
-        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-        tree_complexity)
+    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
+                                l1_regularization, l2_regularization,
+                                tree_complexity, min_node_weight)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access
@@ -630,20 +636,20 @@ class BoostedTreesClassifier(estimator.Estimator):
 class BoostedTreesRegressor(estimator.Estimator):
   """A Regressor for Tensorflow Boosted Trees models."""
 
-  def __init__(
-      self,
-      feature_columns,
-      n_batches_per_layer,
-      model_dir=None,
-      label_dimension=_HOLD_FOR_MULTI_DIM_SUPPORT,
-      weight_column=None,
-      n_trees=100,
-      max_depth=6,
-      learning_rate=0.1,
-      l1_regularization=0.,
-      l2_regularization=0.,
-      tree_complexity=0.,
-      config=None):
+  def __init__(self,
+               feature_columns,
+               n_batches_per_layer,
+               model_dir=None,
+               label_dimension=_HOLD_FOR_MULTI_DIM_SUPPORT,
+               weight_column=None,
+               n_trees=100,
+               max_depth=6,
+               learning_rate=0.1,
+               l1_regularization=0.,
+               l2_regularization=0.,
+               tree_complexity=0.,
+               min_node_weight=0.,
+               config=None):
     """Initializes a `BoostedTreesRegressor` instance.
 
     Example:
@@ -700,6 +706,9 @@ class BoostedTreesRegressor(estimator.Estimator):
       l2_regularization: regularization multiplier applied to the square weights
         of the tree leafs.
       tree_complexity: regularization factor to penalize trees with more leaves.
+      min_node_weight: min_node_weight: minimum hessian a node must have for a
+        split to be considered. The value will be compared with
+        sum(leaf_hessian)/(batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
 
     Raises:
@@ -712,9 +721,9 @@ class BoostedTreesRegressor(estimator.Estimator):
     head = _create_regression_head(label_dimension, weight_column)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(
-        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-        tree_complexity)
+    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
+                                l1_regularization, l2_regularization,
+                                tree_complexity, min_node_weight)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access
