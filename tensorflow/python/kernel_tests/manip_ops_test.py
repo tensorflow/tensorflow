@@ -102,8 +102,9 @@ class RollTest(test_util.TensorFlowTestCase):
 
   def testInvalidInputShape(self):
     # The input should be 1-D or higher, checked in shape function.
-    with self.assertRaisesRegexp(ValueError, "Shape must be at least rank 1 but is rank 0"):
-      roll = manip_ops.roll(7, 1, 0)
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be at least rank 1 but is rank 0"):
+      manip_ops.roll(7, 1, 0)
 
   def testRollInputMustVectorHigherRaises(self):
     # The input should be 1-D or higher, checked is done in kernel.
@@ -117,8 +118,9 @@ class RollTest(test_util.TensorFlowTestCase):
 
   def testInvalidAxisShape(self):
     # The axis should be a scalar or 1-D, checked in shape function.
-    with self.assertRaisesRegexp(ValueError, "Shape must be at most rank 1 but is rank 2"):
-      roll = manip_ops.roll([[1, 2], [3, 4]], 1, [[0, 1]])
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be at most rank 1 but is rank 2"):
+      manip_ops.roll([[1, 2], [3, 4]], 1, [[0, 1]])
 
   def testRollAxisMustBeScalarOrVectorRaises(self):
     # The axis should be a scalar or 1-D, checked in kernel.
@@ -132,8 +134,9 @@ class RollTest(test_util.TensorFlowTestCase):
 
   def testInvalidShiftShape(self):
     # The shift should be a scalar or 1-D, checked in shape function.
-    with self.assertRaisesRegexp(ValueError, "Shape must be at most rank 1 but is rank 2"):
-      roll = manip_ops.roll([[1, 2], [3, 4]], [[0, 1]], 1)
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be at most rank 1 but is rank 2"):
+      manip_ops.roll([[1, 2], [3, 4]], [[0, 1]], 1)
 
   def testRollShiftMustBeScalarOrVectorRaises(self):
     # The shift should be a scalar or 1-D, checked in kernel.
@@ -148,7 +151,7 @@ class RollTest(test_util.TensorFlowTestCase):
   def testInvalidShiftAndAxisNotEqualShape(self):
     # The shift and axis must be same size, checked in shape function.
     with self.assertRaisesRegexp(ValueError, "both shapes must be equal"):
-      roll = manip_ops.roll([[1, 2], [3, 4]], [1], [0, 1])
+      manip_ops.roll([[1, 2], [3, 4]], [1], [0, 1])
 
   def testRollShiftAndAxisMustBeSameSizeRaises(self):
     # The shift and axis must be same size, checked in kernel.
