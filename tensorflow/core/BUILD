@@ -160,6 +160,7 @@ exports_files(["ops/ops.pbtxt"])
 #
 # Note that some protos are in neither additional_core_proto_srcs nor this
 # filegroup; e.g.  ones with individual proto_library targets.
+# LINT.IfChange
 CORE_PROTO_SRCS = [
     "example/example.proto",
     "example/feature.proto",
@@ -201,6 +202,7 @@ CORE_PROTO_SRCS = [
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
 ]
+# LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
 
 # Protos which are not needed on mobile builds, but should be included in
 # protos_all.

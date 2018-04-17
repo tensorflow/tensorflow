@@ -21,12 +21,16 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph import utils
+from tensorflow.contrib.autograph.impl import api
 from tensorflow.contrib.autograph.impl import conversion
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
 class ConversionTest(test.TestCase):
+
+  def _simple_conversion_map(self):
+    return conversion.ConversionMap(True, (), (), api)
 
   def test_is_whitelisted_for_graph(self):
 
@@ -39,7 +43,7 @@ class ConversionTest(test.TestCase):
 
   def test_entity_to_graph_unsupported_types(self):
     with self.assertRaises(ValueError):
-      conversion_map = conversion.ConversionMap(True, (), (), None)
+      conversion_map = self._simple_conversion_map()
       conversion.entity_to_graph('dummy', conversion_map, None, None)
 
   def test_entity_to_graph_callable(self):
@@ -47,7 +51,7 @@ class ConversionTest(test.TestCase):
     def f(a):
       return a + b
 
-    conversion_map = conversion.ConversionMap(True, (), (), None)
+    conversion_map = self._simple_conversion_map()
     ast, name, ns = conversion.entity_to_graph(f, conversion_map, None, None)
     self.assertTrue(isinstance(ast, gast.FunctionDef), ast)
     self.assertEqual('tf__f', name)
@@ -61,7 +65,7 @@ class ConversionTest(test.TestCase):
     def f(a):
       return g(a)
 
-    conversion_map = conversion.ConversionMap(True, (), (), None)
+    conversion_map = self._simple_conversion_map()
     conversion.entity_to_graph(f, conversion_map, None, None)
 
     self.assertTrue(f in conversion_map.dependency_cache)

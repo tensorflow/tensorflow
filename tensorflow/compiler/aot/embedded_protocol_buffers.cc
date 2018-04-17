@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "llvm/ADT/Triple.h"
-#include "llvm/ExecutionEngine/ObjectMemoryBuffer.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"

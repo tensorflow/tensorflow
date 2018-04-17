@@ -825,8 +825,7 @@ tf_cc_test(
         "comparisons_test.cc",
     ],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",

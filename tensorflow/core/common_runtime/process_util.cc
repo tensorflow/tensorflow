@@ -54,12 +54,12 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   if (inter_op != 0) return inter_op;
 #ifdef INTEL_MKL
   // MKL library executes ops in parallel using OMP threads
-  // Set inter_op conservatively to avoid thread oversubscription that could 
+  // Set inter_op conservatively to avoid thread oversubscription that could
   // lead to severe perf degradations and OMP resource exhaustion
   const int mkl_intra_op = omp_get_max_threads();
   CHECK_GE(mkl_intra_op, 1);
   const int32 mkl_inter_op = std::max(
-          (port::NumSchedulableCPUs() + mkl_intra_op - 1) / mkl_intra_op, 2);
+      (port::NumSchedulableCPUs() + mkl_intra_op - 1) / mkl_intra_op, 2);
   VLOG(0) << "Creating new thread pool with default inter op setting: "
           << mkl_inter_op
           << ". Tune using inter_op_parallelism_threads for best performance.";

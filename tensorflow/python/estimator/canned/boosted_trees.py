@@ -32,6 +32,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
@@ -40,12 +41,40 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import tf_export
 
-_TreeHParams = collections.namedtuple(
-    'TreeHParams',
-    ['n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity'])
+# TODO(nponomareva): Reveal pruning params here.
+_TreeHParams = collections.namedtuple('TreeHParams', [
+    'n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity',
+    'min_node_weight'
+])
 
 _HOLD_FOR_MULTI_CLASS_SUPPORT = object()
 _HOLD_FOR_MULTI_DIM_SUPPORT = object()
+
+
+def _get_max_buckets(feature_columns):
+  """Gets the maximum number of buckets from feature_columns.
+
+  Args:
+    feature_columns: a list/set of tf.feature_column.
+
+  Returns:
+    max_buckets: the maximum number of buckets among bucketized_columns.
+
+  Raises:
+    ValueError: when unsupported feature_columns are given.
+  """
+  if not feature_columns:
+    raise ValueError('feature_columns must be a non-empty list/set of '
+                     'tf.feature_column.')
+  max_buckets = 1
+  for fc in feature_columns:
+    if isinstance(fc, feature_column_lib._BucketizedColumn):  # pylint:disable=protected-access
+      # N boundaries creates (N+1) buckets.
+      max_buckets = max(max_buckets, len(fc.boundaries) + 1)
+    else:
+      raise ValueError('For now, only bucketized_column is supported but '
+                       'got: {}'.format(fc))
+  return max_buckets
 
 
 def _get_transformed_features(features, feature_columns):
@@ -57,36 +86,31 @@ def _get_transformed_features(features, feature_columns):
 
   Returns:
     result_features: a list of the transformed features, sorted by the name.
-    num_buckets: the maximum number of buckets across bucketized_columns.
 
   Raises:
     ValueError: when unsupported features/columns are tried.
   """
-  num_buckets = 1
   # pylint:disable=protected-access
   for fc in feature_columns:
-    if isinstance(fc, feature_column_lib._BucketizedColumn):
-      # N boundaries creates (N+1) buckets.
-      num_buckets = max(num_buckets, len(fc.boundaries) + 1)
-    else:
+    if not isinstance(fc, feature_column_lib._BucketizedColumn):
       raise ValueError('For now, only bucketized_column is supported but '
                        'got: {}'.format(fc))
-  transformed = feature_column_lib._transform_features(features,
-                                                       feature_columns)
+  transformed_features = feature_column_lib._transform_features(
+      features, feature_columns)
   # pylint:enable=protected-access
   result_features = []
-  for column in sorted(transformed, key=lambda tc: tc.name):
+  for column in sorted(transformed_features, key=lambda tc: tc.name):
     source_name = column.source_column.name
-    squeezed_tensor = array_ops.squeeze(transformed[column], axis=1)
+    squeezed_tensor = array_ops.squeeze(transformed_features[column], axis=1)
     if len(squeezed_tensor.shape) > 1:
       raise ValueError('For now, only supports features equivalent to rank 1 '
                        'but column `{}` got: {}'.format(
                            source_name, features[source_name].shape))
     result_features.append(squeezed_tensor)
-  return result_features, num_buckets
+  return result_features
 
 
-def _keep_as_local_variable(tensor, name=None):
+def _local_variable(tensor, name=None):
   """Stores a tensor as a local Variable for faster read."""
   return variable_scope.variable(
       initial_value=tensor,
@@ -94,6 +118,48 @@ def _keep_as_local_variable(tensor, name=None):
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
       validate_shape=False,
       name=name)
+
+
+def _cache_transformed_features(features, feature_columns, batch_size):
+  """Transform features and cache, then returns (cached_features, cache_op)."""
+  num_features = len(feature_columns)
+  cached_features = [
+      _local_variable(
+          array_ops.zeros([batch_size], dtype=dtypes.int32),
+          name='cached_feature_{}'.format(i))
+      for i in range(num_features)
+  ]
+  are_features_cached = _local_variable(False, name='are_features_cached')
+
+  def cache_features_and_return():
+    """Caches transoformed features.
+
+    The intention is to hide get_transformed_features() from the graph by
+    caching the result except the first step, since bucketize operation
+    (inside get_transformed_features) is expensive.
+
+    Returns:
+      input_feature_list: a list of input features.
+      cache_flip_op: op to add to graph to make sure cache update is included to
+          the graph.
+    """
+
+    transformed_features = _get_transformed_features(features, feature_columns)
+    cached = [
+        state_ops.assign(cached_features[i], transformed_features[i])
+        for i in range(num_features)
+    ]
+    # TODO(youngheek): Try other combination of dependencies so that the
+    # function returns a single result, not a tuple.
+    with ops.control_dependencies(cached):
+      cache_flip_op = are_features_cached.assign(True)
+    return cached, cache_flip_op
+
+  input_feature_list, cache_flip_op = control_flow_ops.cond(
+      are_features_cached,
+      lambda: (cached_features, control_flow_ops.no_op()),
+      cache_features_and_return)
+  return input_feature_list, cache_flip_op
 
 
 class _CacheTrainingStatesUsingHashTable(object):
@@ -184,13 +250,13 @@ class _CacheTrainingStatesUsingVariables(object):
       logits_dimension: a constant (int) for the dimension of logits.
     """
     self._logits_dimension = logits_dimension
-    self._tree_ids = _keep_as_local_variable(
+    self._tree_ids = _local_variable(
         array_ops.zeros([batch_size], dtype=dtypes.int32),
         name='tree_ids_cache')
-    self._node_ids = _keep_as_local_variable(
+    self._node_ids = _local_variable(
         array_ops.zeros([batch_size], dtype=dtypes.int32),
         name='node_ids_cache')
-    self._logits = _keep_as_local_variable(
+    self._logits = _local_variable(
         array_ops.zeros([batch_size, logits_dimension], dtype=dtypes.float32),
         name='logits_cache')
 
@@ -288,33 +354,38 @@ def _bt_model_fn(
         'When train_in_memory is enabled, input_fn should return the entire '
         'dataset as a single batch, and n_batches_per_layer should be set as '
         '1.')
+    if (not config.is_chief or config.num_worker_replicas > 1 or
+        config.num_ps_replicas > 0):
+      raise ValueError('train_in_memory is supported only for '
+                       'non-distributed training.')
   worker_device = control_flow_ops.no_op().device
   # maximum number of splits possible in the whole tree =2^(D-1)-1
   # TODO(youngheek): perhaps storage could be optimized by storing stats with
   # the dimension max_splits_per_layer, instead of max_splits (for the entire
   # tree).
   max_splits = (1 << tree_hparams.max_depth) - 1
+  max_buckets = _get_max_buckets(feature_columns)
+  train_op = []
   with ops.name_scope(name) as name:
     # Prepare.
     global_step = training_util.get_or_create_global_step()
-    input_feature_list, num_buckets = _get_transformed_features(
-        features, feature_columns)
-    if train_in_memory and mode == model_fn.ModeKeys.TRAIN:
-      input_feature_list = [
-          _keep_as_local_variable(feature) for feature in input_feature_list
-      ]
-    num_features = len(input_feature_list)
-
-    cache = None
-    if mode == model_fn.ModeKeys.TRAIN:
-      if train_in_memory and is_single_machine:  # maybe just train_in_memory?
-        batch_size = array_ops.shape(input_feature_list[0])[0]
-        cache = _CacheTrainingStatesUsingVariables(batch_size,
-                                                   head.logits_dimension)
-      elif example_id_column_name:
+    num_features = len(feature_columns)
+    # Extract input features and set up cache for training.
+    training_state_cache = None
+    if mode == model_fn.ModeKeys.TRAIN and train_in_memory:
+      # cache transformed features as well for in-memory training.
+      batch_size = array_ops.shape(labels)[0]
+      input_feature_list, input_cache_op = _cache_transformed_features(
+          features, feature_columns, batch_size)
+      train_op.append(input_cache_op)
+      training_state_cache = _CacheTrainingStatesUsingVariables(
+          batch_size, head.logits_dimension)
+    else:
+      input_feature_list = _get_transformed_features(features, feature_columns)
+      if mode == model_fn.ModeKeys.TRAIN and example_id_column_name:
         example_ids = features[example_id_column_name]
-        cache = _CacheTrainingStatesUsingHashTable(example_ids,
-                                                   head.logits_dimension)
+        training_state_cache = _CacheTrainingStatesUsingHashTable(
+            example_ids, head.logits_dimension)
 
     # Create Ensemble resources.
     tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
@@ -325,8 +396,7 @@ def _bt_model_fn(
           # so no local copy is needed; using tree_ensemble directly.
           tree_ensemble_handle=tree_ensemble.resource_handle,
           bucketized_features=input_feature_list,
-          logits_dimension=head.logits_dimension,
-          max_depth=tree_hparams.max_depth)
+          logits_dimension=head.logits_dimension)
     else:
       if is_single_machine:
         local_tree_ensemble = tree_ensemble
@@ -339,11 +409,12 @@ def _bt_model_fn(
         # TODO(soroush): Do partial updates if this becomes a bottleneck.
         ensemble_reload = local_tree_ensemble.deserialize(
             *tree_ensemble.serialize())
-      if cache:
-        cached_tree_ids, cached_node_ids, cached_logits = cache.lookup()
+      if training_state_cache:
+        cached_tree_ids, cached_node_ids, cached_logits = (
+            training_state_cache.lookup())
       else:
         # Always start from the beginning when no cache is set up.
-        batch_size = array_ops.shape(input_feature_list[0])[0]
+        batch_size = array_ops.shape(labels)[0]
         cached_tree_ids, cached_node_ids, cached_logits = (
             array_ops.zeros([batch_size], dtype=dtypes.int32),
             array_ops.zeros([batch_size], dtype=dtypes.int32),
@@ -361,16 +432,14 @@ def _bt_model_fn(
             cached_tree_ids=cached_tree_ids,
             cached_node_ids=cached_node_ids,
             bucketized_features=input_feature_list,
-            logits_dimension=head.logits_dimension,
-            max_depth=tree_hparams.max_depth)
+            logits_dimension=head.logits_dimension)
       logits = cached_logits + partial_logits
 
     # Create training graph.
     def _train_op_fn(loss):
       """Run one training iteration."""
-      train_op = []
-      if cache:
-        train_op.append(cache.insert(tree_ids, node_ids, logits))
+      if training_state_cache:
+        train_op.append(training_state_cache.insert(tree_ids, node_ids, logits))
       if closed_form_grad_and_hess_fn:
         gradients, hessians = closed_form_grad_and_hess_fn(logits, labels)
       else:
@@ -385,7 +454,7 @@ def _bt_model_fn(
                   hessians=hessians,
                   bucketized_features_list=[input_feature_list[f]],
                   max_splits=max_splits,
-                  num_buckets=num_buckets),
+                  num_buckets=max_buckets),
               axis=0) for f in range(num_features)
       ]
 
@@ -399,6 +468,7 @@ def _bt_model_fn(
                  l1=tree_hparams.l1,
                  l2=tree_hparams.l2,
                  tree_complexity=tree_hparams.tree_complexity,
+                 min_node_weight=tree_hparams.min_node_weight,
                  max_splits=max_splits))
         grow_op = boosted_trees_ops.update_ensemble(
             # Confirm if local_tree_ensemble or tree_ensemble should be used.
@@ -421,7 +491,7 @@ def _bt_model_fn(
         summary_accumulator = data_flow_ops.ConditionalAccumulator(
             dtype=dtypes.float32,
             # The stats consist of gradients and hessians (the last dimension).
-            shape=[num_features, max_splits, num_buckets, 2],
+            shape=[num_features, max_splits, max_buckets, 2],
             shared_name='stats_summary_accumulator')
         apply_grad = summary_accumulator.apply_grad(
             array_ops.stack(stats_summary_list, axis=0), stamp_token)
@@ -517,21 +587,21 @@ def _create_regression_head(label_dimension, weight_column=None):
 class BoostedTreesClassifier(estimator.Estimator):
   """A Classifier for Tensorflow Boosted Trees models."""
 
-  def __init__(
-      self,
-      feature_columns,
-      n_batches_per_layer,
-      model_dir=None,
-      n_classes=_HOLD_FOR_MULTI_CLASS_SUPPORT,
-      weight_column=None,
-      label_vocabulary=None,
-      n_trees=100,
-      max_depth=6,
-      learning_rate=0.1,
-      l1_regularization=0.,
-      l2_regularization=0.,
-      tree_complexity=0.,
-      config=None):
+  def __init__(self,
+               feature_columns,
+               n_batches_per_layer,
+               model_dir=None,
+               n_classes=_HOLD_FOR_MULTI_CLASS_SUPPORT,
+               weight_column=None,
+               label_vocabulary=None,
+               n_trees=100,
+               max_depth=6,
+               learning_rate=0.1,
+               l1_regularization=0.,
+               l2_regularization=0.,
+               tree_complexity=0.,
+               min_node_weight=0.,
+               config=None):
     """Initializes a `BoostedTreesClassifier` instance.
 
     Example:
@@ -595,6 +665,9 @@ class BoostedTreesClassifier(estimator.Estimator):
       l2_regularization: regularization multiplier applied to the square weights
         of the tree leafs.
       tree_complexity: regularization factor to penalize trees with more leaves.
+      min_node_weight: min_node_weight: minimum hessian a node must have for a
+        split to be considered. The value will be compared with
+        sum(leaf_hessian)/(batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
 
     Raises:
@@ -608,9 +681,9 @@ class BoostedTreesClassifier(estimator.Estimator):
         n_classes, weight_column, label_vocabulary=label_vocabulary)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(
-        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-        tree_complexity)
+    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
+                                l1_regularization, l2_regularization,
+                                tree_complexity, min_node_weight)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access
@@ -632,20 +705,20 @@ class BoostedTreesClassifier(estimator.Estimator):
 class BoostedTreesRegressor(estimator.Estimator):
   """A Regressor for Tensorflow Boosted Trees models."""
 
-  def __init__(
-      self,
-      feature_columns,
-      n_batches_per_layer,
-      model_dir=None,
-      label_dimension=_HOLD_FOR_MULTI_DIM_SUPPORT,
-      weight_column=None,
-      n_trees=100,
-      max_depth=6,
-      learning_rate=0.1,
-      l1_regularization=0.,
-      l2_regularization=0.,
-      tree_complexity=0.,
-      config=None):
+  def __init__(self,
+               feature_columns,
+               n_batches_per_layer,
+               model_dir=None,
+               label_dimension=_HOLD_FOR_MULTI_DIM_SUPPORT,
+               weight_column=None,
+               n_trees=100,
+               max_depth=6,
+               learning_rate=0.1,
+               l1_regularization=0.,
+               l2_regularization=0.,
+               tree_complexity=0.,
+               min_node_weight=0.,
+               config=None):
     """Initializes a `BoostedTreesRegressor` instance.
 
     Example:
@@ -702,6 +775,9 @@ class BoostedTreesRegressor(estimator.Estimator):
       l2_regularization: regularization multiplier applied to the square weights
         of the tree leafs.
       tree_complexity: regularization factor to penalize trees with more leaves.
+      min_node_weight: min_node_weight: minimum hessian a node must have for a
+        split to be considered. The value will be compared with
+        sum(leaf_hessian)/(batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
 
     Raises:
@@ -714,9 +790,9 @@ class BoostedTreesRegressor(estimator.Estimator):
     head = _create_regression_head(label_dimension, weight_column)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(
-        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-        tree_complexity)
+    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
+                                l1_regularization, l2_regularization,
+                                tree_complexity, min_node_weight)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access
