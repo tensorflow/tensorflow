@@ -4408,7 +4408,7 @@ class Graph(object):
     `control_inputs`. For example:
 
     ```python
-    with g.control_dependencies([a, b, c]):
+    with g.control_dependencies(a, b, c):
       # `d` and `e` will only run after `a`, `b`, and `c` have executed.
       d = ...
       e = ...
@@ -4419,13 +4419,22 @@ class Graph(object):
     of `control_inputs` from all active contexts.
 
     ```python
-    with g.control_dependencies([a, b]):
+    with g.control_dependencies(a, b):
       # Ops constructed here run after `a` and `b`.
-      with g.control_dependencies([c, d]):
-        # Ops constructed here run after `a`, `b`, `c`, and `d`.
+      with g.control_dependencies(c):
+        # Ops constructed here run after `a`, `b`, and `c`.
     ```
 
-    You can pass None to clear the control dependencies:
+    Conversely, the argument to control_dependencies can be a (possibly nested)
+    structure of tuples.
+    ```python
+    ops = [a, (b, [c, d])]
+    with g.control_dependencies(ops):
+      # `x` will only run after every op in ops has been executed.
+      x = ...
+    ```
+
+    You can pass `None` to clear the control dependencies:
 
     ```python
     with g.control_dependencies([a, b]):
@@ -4460,9 +4469,11 @@ class Graph(object):
     ```
 
     Args:
-      control_inputs: A list of `Operation` or `Tensor` objects which
+      control_inputs: One or more `Operation` or `Tensor` objects which
         must be executed or computed before running the operations
-        defined in the context.  Can also be `None` to clear the control
+        defined in the context. When passed a (possibly nested) tuple 
+        the structure will be flattened to a single list before defining
+        the context. Can also be `None` to clear the control
         dependencies.
 
     Returns:
@@ -4473,8 +4484,11 @@ class Graph(object):
       TypeError: If `control_inputs` is not a list of `Operation` or
         `Tensor` objects.
     """
-    if control_inputs is None:
+    if all(x is None for x in control_inputs):
       return self._ControlDependenciesController(self, None)
+    else any(x is None for x in control_inputs):
+      raise ValueError("To clear existing dependencies, every element passed "
+                       "to control_dependencies must be `None`.")
     # First convert the inputs to ops, and deduplicate them.
     # NOTE(mrry): Other than deduplication, we do not currently track direct
     #   or indirect dependencies between control_inputs, which may result in
