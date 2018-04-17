@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.contrib.estimator.python.estimator import boosted_trees
 from tensorflow.core.kernels.boosted_trees import boosted_trees_pb2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator.canned import boosted_trees as canned_boosted_trees
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
@@ -49,12 +50,24 @@ def _make_train_input_fn(is_classification):
   """Makes train input_fn for classification/regression."""
 
   def _input_fn():
-    features = dict(FEATURES_DICT)
-    if is_classification:
-      labels = CLASSIFICATION_LABELS
-    else:
-      labels = REGRESSION_LABELS
-    return features, labels
+    features_dict = dict(FEATURES_DICT)
+    labels = CLASSIFICATION_LABELS if is_classification else REGRESSION_LABELS
+    return features_dict, labels
+
+  return _input_fn
+
+
+def _make_train_input_fn_dataset(is_classification):
+  """Makes input_fn using Dataset."""
+
+  def _input_fn():
+    features_dict = dict(FEATURES_DICT)
+    labels = CLASSIFICATION_LABELS if is_classification else REGRESSION_LABELS
+    ds = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.from_tensors(features_dict),
+         dataset_ops.Dataset.from_tensors(labels)
+        ))
+    return ds
 
   return _input_fn
 
@@ -132,18 +145,35 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
 
     est = boosted_trees.boosted_trees_classifier_train_in_memory(
-        train_input_fn=train_input_fn,
-        feature_columns=self._feature_columns,
-        n_trees=1,
-        max_depth=5)
+        train_input_fn=train_input_fn, feature_columns=self._feature_columns,
+        n_trees=1, max_depth=5)
     # It will stop after 5 steps because of the max depth and num trees.
     self._assert_checkpoint(
         est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
 
-    # Check eval.
+    # Check evaluate and predict.
     eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
     self.assertAllClose(eval_res['accuracy'], 1.0)
     # Validate predictions.
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose([[0], [1], [1], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
+
+  def testBinaryClassifierTrainInMemoryWithDataset(self):
+    train_input_fn = _make_train_input_fn_dataset(is_classification=True)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.boosted_trees_classifier_train_in_memory(
+        train_input_fn=train_input_fn, feature_columns=self._feature_columns,
+        n_trees=1, max_depth=5)
+    # It will stop after 5 steps because of the max depth and num trees.
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+
+    # Check evaluate and predict.
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
     predictions = list(est.predict(input_fn=predict_input_fn))
     self.assertAllClose([[0], [1], [1], [0], [0]],
                         [pred['class_ids'] for pred in predictions])
@@ -154,18 +184,34 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
 
     est = boosted_trees.boosted_trees_regressor_train_in_memory(
-        train_input_fn=train_input_fn,
-        feature_columns=self._feature_columns,
-        n_trees=1,
-        max_depth=5)
+        train_input_fn=train_input_fn, feature_columns=self._feature_columns,
+        n_trees=1, max_depth=5)
     # It will stop after 5 steps because of the max depth and num trees.
     self._assert_checkpoint(
         est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
 
-    # Check eval.
+    # Check evaluate and predict.
     eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
     self.assertAllClose(eval_res['average_loss'], 2.478283)
-    # Validate predictions.
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose(
+        [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
+        [pred['predictions'] for pred in predictions])
+
+  def testRegressorTrainInMemoryWithDataset(self):
+    train_input_fn = _make_train_input_fn_dataset(is_classification=False)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.boosted_trees_regressor_train_in_memory(
+        train_input_fn=train_input_fn, feature_columns=self._feature_columns,
+        n_trees=1, max_depth=5)
+    # It will stop after 5 steps because of the max depth and num trees.
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    # Check evaluate and predict.
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertAllClose(eval_res['average_loss'], 2.478283)
     predictions = list(est.predict(input_fn=predict_input_fn))
     self.assertAllClose(
         [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
