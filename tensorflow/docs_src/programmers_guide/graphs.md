@@ -210,7 +210,7 @@ with tf.device("/device:GPU:0"):
   # Operations created in this context will be pinned to the GPU.
   result = tf.matmul(weights, img)
 ```
-If you are deploying TensorFlow in a @{$deploy/distributed$typical distributed configuration},
+If you are deploying TensorFlow in a @{$distributed$typical distributed configuration},
 you might specify the job name and task ID to place variables on
 a task in the parameter server job (`"/job:ps"`), and the other operations on
 task in the worker job (`"/job:worker"`):
@@ -362,7 +362,7 @@ operations that are needed to compute the result.
 
 @{tf.Session.run} requires you to specify a list of **fetches**, which determine
 the return values, and may be a @{tf.Operation}, a @{tf.Tensor}, or
-a [tensor-like type](#tensor-like-objects) such as @{tf.Variable}. These fetches
+a [tensor-like type](#tensor-like_objects) such as @{tf.Variable}. These fetches
 determine what **subgraph** of the overall @{tf.Graph} must be executed to
 produce the result: this is the subgraph that contains all operations named in
 the fetch list, plus all operations whose outputs are used to compute the value
@@ -505,7 +505,7 @@ multiple graphs in the same process.
 As noted above, TensorFlow provides a "default graph" that is implicitly passed
 to all API functions in the same context. For many applications, a single graph
 is sufficient. However, TensorFlow also provides methods for manipulating
-the default graph, which can be useful in more advanced used cases. For example:
+the default graph, which can be useful in more advanced use cases. For example:
 
 * A @{tf.Graph} defines the namespace for @{tf.Operation} objects: each
   operation in a single graph must have a unique name. TensorFlow will
