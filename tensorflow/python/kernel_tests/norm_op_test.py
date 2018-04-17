@@ -76,7 +76,7 @@ def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
         tf_norm = linalg_ops.norm(
             tf_matrix, ord=ord_, axis=axis_, keepdims=keep_dims_)
         tf_norm_val = sess.run(tf_norm, feed_dict={tf_matrix: matrix})
-    self.assertAllClose(np_norm, tf_norm_val)
+    self.assertAllClose(np_norm, tf_norm_val, rtol=1e-5, atol=1e-5)
 
   def Test(self):
     is_matrix_norm = (isinstance(axis_, tuple) or
