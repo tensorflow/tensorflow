@@ -325,8 +325,7 @@ def _bt_model_fn(
           # so no local copy is needed; using tree_ensemble directly.
           tree_ensemble_handle=tree_ensemble.resource_handle,
           bucketized_features=input_feature_list,
-          logits_dimension=head.logits_dimension,
-          max_depth=tree_hparams.max_depth)
+          logits_dimension=head.logits_dimension)
     else:
       if is_single_machine:
         local_tree_ensemble = tree_ensemble
@@ -361,8 +360,7 @@ def _bt_model_fn(
             cached_tree_ids=cached_tree_ids,
             cached_node_ids=cached_node_ids,
             bucketized_features=input_feature_list,
-            logits_dimension=head.logits_dimension,
-            max_depth=tree_hparams.max_depth)
+            logits_dimension=head.logits_dimension)
       logits = cached_logits + partial_logits
 
     # Create training graph.

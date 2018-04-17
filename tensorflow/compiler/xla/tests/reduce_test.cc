@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -932,6 +933,37 @@ XLA_TEST_F(ReduceInitializerTest, U64InitializerOne) {
 
 XLA_TEST_F(ReduceInitializerTest, U64InitializerBigValue) {
   DoTest<uint64>(1234556789123, 1024);
+}
+
+// Test the operational semantic that the init value is passed on the lhs for
+// reduces. Can be tested by performing an "identity" reduce (that simply
+// returns one of the parameters). In this case, we return the rhs, which for
+// a 1D array with one element, should not be the init value.
+XLA_TEST_F(ReduceTest, ReduceIdentity) {
+  ComputationBuilder builder(client_, TestName());
+  Shape single_float = ShapeUtil::MakeShape(F32, {});
+  builder.Parameter(0, single_float, "lhs-unused");
+  builder.Parameter(1, single_float, "rhs-used");
+  auto computation_status = builder.Build();
+  TF_ASSERT_OK(computation_status.status());
+
+  Shape operand_shape = ShapeUtil::MakeShape(F32, {1});
+  builder.Reduce(builder.Parameter(0, operand_shape, "operand"),
+                 builder.Parameter(1, single_float, "init"),
+                 computation_status.ValueOrDie(), {0});
+
+  float operand[] = {42.0f};
+  float init = 58.5f;
+  float expected = 42.0f;
+  std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(operand);
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+  std::unique_ptr<Literal> input_literal2 = Literal::CreateR0<float>(init);
+  std::unique_ptr<GlobalData> input_global_data2 =
+      client_->TransferToServer(*input_literal2).ConsumeValueOrDie();
+  ComputeAndCompareR0<float>(
+      &builder, expected, {input_global_data.get(), input_global_data2.get()},
+      ErrorSpec(0.0001));
 }
 
 }  // namespace
