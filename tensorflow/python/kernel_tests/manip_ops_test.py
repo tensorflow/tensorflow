@@ -145,14 +145,20 @@ class RollTest(test_util.TensorFlowTestCase):
                                    "shift must be a scalar or a 1-D vector"):
         manip_ops.roll(tensor, shift, axis).eval(feed_dict={shift: [[0, 1]]})
 
+  def testInvalidShiftAndAxisNotEqualShape(self):
+    # The shift and axis must be same size, checked in shape function.
+    with self.assertRaisesRegexp(ValueError, "both shapes must be equal"):
+      roll = manip_ops.roll([[1, 2], [3, 4]], [1], [0, 1])
+
   def testRollShiftAndAxisMustBeSameSizeRaises(self):
+    # The shift and axis must be same size, checked in kernel.
     tensor = [[1, 2], [3, 4]]
-    shift = [1]
+    shift = array_ops.placeholder(dtype=dtypes.int32)
     axis = [0, 1]
     with self.test_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "shift and axis must have the same size"):
-        manip_ops.roll(tensor, shift, axis).eval()
+        manip_ops.roll(tensor, shift, axis).eval(feed_dict={shift: [1]})
 
   def testRollAxisOutOfRangeRaises(self):
     tensor = [1, 2]
