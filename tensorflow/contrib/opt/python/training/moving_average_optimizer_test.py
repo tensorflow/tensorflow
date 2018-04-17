@@ -85,7 +85,7 @@ class MovingAverageOptimizerTest(test.TestCase):
               state_ops.assign_add(ema_var1, [4.0, 4.0])
           ])
 
-          # Test taht saver with missing ema variables will fail.
+          # Test that saver with missing ema variables will fail.
           with self.assertRaisesRegexp(ValueError, r'Variable to swap'):
             opt.swapping_saver(var_list=[var0])
 
@@ -123,7 +123,7 @@ class MovingAverageOptimizerTest(test.TestCase):
             self.assertAllCloseAccordingToType([0.9, 1.9], ema_var0.eval())
             self.assertAllCloseAccordingToType([4.98, 5.98], var1.eval())
             self.assertAllCloseAccordingToType([6.99, 7.99], ema_var1.eval())
-            # Restore back to previou state.
+            # Restore back to previous state.
             train_saver.restore(sess, save_path)
 
           # If updates are parallel, this is not always true after the 1st step.

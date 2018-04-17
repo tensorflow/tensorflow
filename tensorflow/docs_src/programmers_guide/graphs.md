@@ -96,7 +96,7 @@ to all API functions in the same context.  For example:
   (See @{$programmers_guide/variables} for more information about variables.)
 
 * Calling @{tf.train.Optimizer.minimize} will add operations and tensors to the
-  default graph that calculate gradients, and return a @{tf.Operation} that,
+  default graph that calculates gradients, and return a @{tf.Operation} that,
   when run, will apply those gradients to a set of variables.
 
 Most programs rely solely on the default graph. However,

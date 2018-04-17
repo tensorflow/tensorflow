@@ -183,6 +183,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shape_inference_helpers",
+    srcs = ["shape_inference_helpers.cc"],
+    hdrs = ["shape_inference_helpers.h"],
+    deps = ["//tensorflow/core:graph"],
+)
+
 # Internal targets below this point.
 
 cc_library(
@@ -293,6 +300,7 @@ cc_library(
     deps = [
         ":common",
         ":graph_to_functiondef",
+        ":shape_inference_helpers",
         ":union_find",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
@@ -316,6 +324,25 @@ cc_library(
 cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
+)
+
+cc_library(
+    name = "producer_consumer_queue",
+    hdrs = ["producer_consumer_queue.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+tf_cc_test(
+    name = "producer_consumer_queue_test",
+    size = "small",
+    srcs = ["producer_consumer_queue_test.cc"],
+    deps = [
+        ":producer_consumer_queue",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cc_test(

@@ -5,7 +5,7 @@ works. The units are as follows:
 
 ## High Level APIs
 
-  * @{$programmers_guide/eager}, which is the easiest way to use tensorflow.
+  * @{$programmers_guide/eager}, which is the easiest way to use TensorFlow.
   * @{$programmers_guide/estimators}, which introduces a high-level
     TensorFlow API that greatly simplifies ML programming.
   * @{$programmers_guide/datasets}, which explains how to

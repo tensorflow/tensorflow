@@ -48,6 +48,10 @@ template <>
 constexpr TfLiteType typeToTfLiteType<unsigned char>() {
   return kTfLiteUInt8;
 }
+template <>
+constexpr TfLiteType typeToTfLiteType<bool>() {
+  return kTfLiteBool;
+}
 
 // Forward declare since NNAPIDelegate uses Interpreter.
 class NNAPIDelegate;

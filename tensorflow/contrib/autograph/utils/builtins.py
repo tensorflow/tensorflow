@@ -84,7 +84,7 @@ def is_tf_print_compatible(value):
 
 
 def dynamic_print(*values):
-  """Implementartion of print using dynamic dispatch.
+  """Implementation of print using dynamic dispatch.
 
   The function attempts to use tf.Print if all the values are compatible.
   Otherwise, it will fall back to py_func.

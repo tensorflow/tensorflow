@@ -151,6 +151,7 @@ class TestSequential(test.TestCase):
     with self.test_session():
       model = keras.models.Sequential()
       model.add(keras.layers.BatchNormalization(input_shape=(4,)))
+      assert model.updates
 
       model.trainable = False
       assert not model.updates

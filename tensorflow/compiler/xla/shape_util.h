@@ -319,6 +319,11 @@ class ShapeUtil {
   // Returns an empty tuple shape. Can be used to indicate side-effects.
   static Shape MakeNil() { return MakeTupleShape({}); }
 
+  // Checks whether the shape is initialized.
+  static bool IsInitialized(const Shape& shape) {
+    return shape.element_type() != PRIMITIVE_TYPE_INVALID;
+  }
+
   // Constructs a new shape with the given element type and sequence of
   // dimensions.
   static Shape MakeShape(PrimitiveType element_type,
@@ -442,6 +447,9 @@ class ShapeUtil {
   // DEPRECATED: Use Equal() instead.
   static bool ShapeIs(const Shape& shape, PrimitiveType element_type,
                       std::initializer_list<int64> dimensions);
+
+  // Returns true if the given shape has a subshape at the given index.
+  static bool IndexIsValid(const Shape& shape, ShapeIndexView index);
 
   // GetSubshape and GetMutableSubshape return a particular nested Shape within
   // the given Shape argument.

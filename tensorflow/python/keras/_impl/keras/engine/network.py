@@ -35,8 +35,6 @@ from tensorflow.python.keras._impl.keras.engine import saving
 from tensorflow.python.keras._impl.keras.utils import generic_utils
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras._impl.keras.utils.layer_utils import print_summary as print_layer_summary
-from tensorflow.python.layers import base as tf_base_layers
-from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpointable
 from tensorflow.python.util import nest
@@ -82,7 +80,7 @@ class Network(base_layer.Layer):
     # self.losses
     # self.updates
 
-    self._init_set_name(name)
+    self._init_set_name(name, zero_based=True)
     self._activity_regularizer = None
     # This acts just like the `trainable` attribute of any layer instance.
     # It does not affect users of the underlying layers, only users of the
@@ -132,14 +130,14 @@ class Network(base_layer.Layer):
     if context.executing_eagerly():
       # Check that all inputs/outputs are DeferredTensors.
       for tensor in self.inputs:
-        if not isinstance(tensor, tf_base_layers._DeferredTensor):  # pylint: disable=protected-access
+        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
           raise TypeError('When eager execution is enabled, '
                           'inputs must come from a call to '
                           '`tf.keras.Input` (called after '
                           'tfe.enable_eager_execution()). '
                           'Received invalid input: ' + str(tensor))
       for tensor in self.outputs:
-        if not isinstance(tensor, tf_base_layers._DeferredTensor):  # pylint: disable=protected-access
+        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
           raise TypeError('When eager execution is enabled, '
                           'outputs must come from a call to '
                           'a layer (called after '
@@ -230,7 +228,7 @@ class Network(base_layer.Layer):
     self._layers_by_depth = layers_by_depth
 
     # Create the node linking internal inputs to internal outputs.
-    tf_base_layers.Node(
+    base_layer.Node(
         outbound_layer=self,
         inbound_layers=[],
         node_indices=[],
@@ -243,8 +241,8 @@ class Network(base_layer.Layer):
     for x in self.inputs:
       mask = x._keras_mask if hasattr(x, '_keras_mask') else None  # pylint: disable=protected-access
       masks.append(mask)
-    mask_cache_key = (tf_layers_util.object_list_uid(self.inputs) + '_' +
-                      tf_layers_util.object_list_uid(masks))
+    mask_cache_key = (base_layer.object_list_uid(self.inputs) + '_' +
+                      base_layer.object_list_uid(masks))
     masks = []
     for x in self.outputs:
       mask = x._keras_mask if hasattr(x, '_keras_mask') else None  # pylint: disable=protected-access
@@ -289,7 +287,7 @@ class Network(base_layer.Layer):
     self.built = False
 
   def __setattr__(self, name, value):
-    if isinstance(value, (tf_base_layers.Layer, Network)):
+    if isinstance(value, (base_layer.Layer, Network)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -299,6 +297,10 @@ class Network(base_layer.Layer):
       if not is_graph_network:
         if value not in self._layers:
           self._layers.append(value)
+          if hasattr(value, '_use_resource_variables'):
+            # In subclassed models, legacy layers (tf.layers) must always use
+            # resource variables.
+            value._use_resource_variables = True
     if isinstance(value, checkpointable.CheckpointableBase):
       # Layer (and therefore Network/Model) inherit from CheckpointableBase
       # rather than Checkpointable, which means there is no Checkpointable
@@ -387,8 +389,8 @@ class Network(base_layer.Layer):
       masks = [None for _ in range(len(inputs))]
     else:
       masks = generic_utils.to_list(mask)
-    cache_key = (tf_layers_util.object_list_uid(inputs)
-                 + '_' + tf_layers_util.object_list_uid(masks))
+    cache_key = (base_layer.object_list_uid(inputs)
+                 + '_' + base_layer.object_list_uid(masks))
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:
@@ -502,8 +504,7 @@ class Network(base_layer.Layer):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
-    reachable = tf_layers_util.get_reachable_from_inputs(relevant_inputs,
-                                                         updates)
+    reachable = base_layer.get_reachable_from_inputs(relevant_inputs, updates)
     relevant_conditional_updates = [x for x in updates if x in reachable]
     unconditional_updates = [
         x for x in updates if x._unconditional_update]  # pylint: disable=protected-access
@@ -540,8 +541,7 @@ class Network(base_layer.Layer):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
-    reachable = tf_layers_util.get_reachable_from_inputs(relevant_inputs,
-                                                         losses)
+    reachable = base_layer.get_reachable_from_inputs(relevant_inputs, losses)
     relevant_conditional_losses = [x for x in losses if x in reachable]
     unconditional_losses = [
         x for x in losses if x._unconditional_loss]  # pylint: disable=protected-access
@@ -623,8 +623,8 @@ class Network(base_layer.Layer):
     if not context.executing_eagerly():
       # Try to retrieve cached outputs if the layer has already been called
       # on these exact inputs.
-      cache_key = (tf_layers_util.object_list_uid(inputs)
-                   + '_' + tf_layers_util.object_list_uid(masks))
+      cache_key = (base_layer.object_list_uid(inputs)
+                   + '_' + base_layer.object_list_uid(masks))
       if cache_key in self._output_tensor_cache:
         # Cache hit.
         return self._output_tensor_cache[cache_key]
@@ -656,7 +656,7 @@ class Network(base_layer.Layer):
                        ': model has ' + str(len(self._input_layers)) +
                        ' tensor inputs.')
 
-    cache_key = tf_layers_util.object_list_uid(input_shapes)
+    cache_key = base_layer.object_list_uid(input_shapes)
     if cache_key not in self._output_shape_cache:
       # Cache miss. We have to run the network graph manually (recursive calls
       # to `compute_output_shape`).
@@ -845,7 +845,7 @@ class Network(base_layer.Layer):
     for x in self.outputs:
       assert str(id(x)) in tensor_map, 'Could not compute output ' + str(x)
       tensor, mask = tensor_map[str(id(x))]
-      output_shapes.append(tf_layers_util.static_shape(x))
+      output_shapes.append(base_layer.static_shape(x))
       output_tensors.append(tensor)
       output_masks.append(mask)
 
@@ -859,14 +859,14 @@ class Network(base_layer.Layer):
     if not context.executing_eagerly():
       # Update cache;
       # keys are based on ids on input tensors and inputs masks.
-      cache_key = (tf_layers_util.object_list_uid(inputs)
-                   + '_' + tf_layers_util.object_list_uid(masks))
+      cache_key = (base_layer.object_list_uid(inputs)
+                   + '_' + base_layer.object_list_uid(masks))
       self._output_tensor_cache[cache_key] = output_tensors
       self._output_mask_cache[cache_key] = output_masks
 
       if output_shapes is not None:
-        input_shapes = [tf_layers_util.static_shape(x) for x in inputs]
-        cache_key = tf_layers_util.object_list_uid(input_shapes)
+        input_shapes = [base_layer.static_shape(x) for x in inputs]
+        cache_key = base_layer.object_list_uid(input_shapes)
         self._output_shape_cache[cache_key] = output_shapes
 
     return output_tensors, output_masks

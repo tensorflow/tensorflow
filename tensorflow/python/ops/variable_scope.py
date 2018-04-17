@@ -307,6 +307,17 @@ class _VariableStore(object):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
+    with ops.init_scope():
+      if context.executing_eagerly():
+        # Variable creation and initialization takes place in `init_scope`s;
+        # as such, if an `init_scope` lifts us into the eager context, then we
+        # need to use `ResourceVariable`s.
+        use_resource = True
+
+    # Note that it's fine to reuse eager variables whose initialization was
+    # lifted from a function-building graph into the eager context (that's why
+    # the following clause is not wrapped in an `init_scope`); lifted variables
+    # are tracked by the graph's `VariableStore`.
     if context.executing_eagerly():
       if not self._store_eager_variables and reuse:
         raise RuntimeError(
@@ -315,7 +326,6 @@ class _VariableStore(object):
             " EagerVariableStore for example usage.")
       if self._store_eager_variables:
         reuse = AUTO_REUSE
-      use_resource = True
 
     # If a *_ref type is passed in an error would be triggered further down the
     # stack. We prevent this using base_dtype to get a non-ref version of the

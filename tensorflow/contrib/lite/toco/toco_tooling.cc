@@ -83,6 +83,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantGather);
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
+  transformations->Add(new ResolveConstantReshape);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
@@ -279,10 +280,13 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
           {new HardcodeMinMax});
     }
     CheckIsReadyForQuantization(*model);
-    RunGraphTransformations(
-        model, "quantization graph transformations",
-        {new Quantize, new RemoveTrivialQuantizedActivationFunc,
-         new RemoveFinalDequantizeOp});
+    RunGraphTransformations(model, "quantization graph transformations",
+                            {
+                                new RemoveTrivialQuantizedActivationFunc,
+                                new RemoveTrivialQuantizedMinMax,
+                                new Quantize,
+                                new RemoveFinalDequantizeOp,
+                            });
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
     // Dequantize creates FakeQuant nodes. We may want to discard

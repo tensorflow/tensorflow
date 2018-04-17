@@ -54,6 +54,9 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.CompoundButton;
+import android.widget.NumberPicker;
+import android.widget.ToggleButton;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.IOException;
@@ -82,6 +85,8 @@ public class Camera2BasicFragment extends Fragment
   private boolean runClassifier = false;
   private boolean checkedPermissions = false;
   private TextView textView;
+  private ToggleButton toggle;
+  private NumberPicker np;
   private ImageClassifier classifier;
 
   /** Max preview width that is guaranteed by Camera2 API */
@@ -289,6 +294,24 @@ public class Camera2BasicFragment extends Fragment
   public void onViewCreated(final View view, Bundle savedInstanceState) {
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
     textView = (TextView) view.findViewById(R.id.text);
+    toggle = (ToggleButton) view.findViewById(R.id.button);
+
+    toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+      public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+        classifier.setUseNNAPI(isChecked);
+      }
+    });
+
+    np = (NumberPicker) view.findViewById(R.id.np);
+    np.setMinValue(1);
+    np.setMaxValue(10);
+    np.setWrapSelectorWheel(true);
+    np.setOnValueChangedListener(new NumberPicker.OnValueChangeListener() {
+      @Override
+      public void onValueChange(NumberPicker picker, int oldVal, int newVal){
+        classifier.setNumThreads(newVal);
+      }
+    });
   }
 
   /** Load the model and labels. */

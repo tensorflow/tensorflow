@@ -919,6 +919,7 @@ class NodeProcessor : public GraphProcessor {
         ParseNodeName(input_name, &port);
         if (IsHostMemory(*input, port)) {
           parsed_name.type = "CPU";
+          parsed_name.id = 0;
           device = DeviceNameUtils::ParsedNameToString(parsed_name);
         }
       }

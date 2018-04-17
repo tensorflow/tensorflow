@@ -211,11 +211,9 @@ def argmax(input,
            name=None,
            dimension=None,
            output_type=dtypes.int64):
-  if dimension is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dimension'")
-    axis = dimension
-  elif axis is None:
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "dimension", dimension)
+  if axis is None:
     axis = 0
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
@@ -231,11 +229,9 @@ def argmin(input,
            name=None,
            dimension=None,
            output_type=dtypes.int64):
-  if dimension is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dimension'")
-    axis = dimension
-  elif axis is None:
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "dimension", dimension)
+  if axis is None:
     axis = 0
   return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
@@ -1632,7 +1628,7 @@ def reduce_min(input_tensor,
   tensor with a single element is returned.
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real numeric type.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
@@ -1681,7 +1677,7 @@ def reduce_max(input_tensor,
   tensor with a single element is returned.
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real numeric type.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
