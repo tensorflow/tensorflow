@@ -32,6 +32,7 @@ cc_library(
     name = "optimizers",
     srcs = [
         "driver/allocation_finder.cc",
+        "driver/computation_flattener.cc",
         "driver/fuse_ops.cc",
         "driver/hlo_matcher.cc",
         "driver/inplace_finder.cc",
@@ -43,6 +44,7 @@ cc_library(
     ],
     hdrs = [
         "driver/allocation_finder.h",
+        "driver/computation_flattener.h",
         "driver/fuse_ops.h",
         "driver/hlo_matcher.h",
         "driver/inplace_finder.h",
@@ -54,6 +56,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/xla:xla_headers_lib",
+        "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/compiler/xla/service:hlo_scheduling",
@@ -111,7 +114,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
-        "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:generic_transfer_manager",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
@@ -125,6 +127,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:inliner",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

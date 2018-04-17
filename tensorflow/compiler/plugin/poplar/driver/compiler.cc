@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/computation_flattener.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
-#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -224,8 +225,10 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
           [](const Shape&, const Shape&) { return false; });
   pipeline.AddPass<ZeroSizedHloElimination>();
-  //pipeline.AddPass<TupleSimplifier>();
+  pipeline.AddPass<ComputationFlattener>();
+  pipeline.AddPass<TupleSimplifier>();
   //pipeline.AddPass<WhileLoopSimplifier>();
+  //pass.AddPass<ConditionalSimplifier>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
   pipeline.AddPass<WideConstFinder>();
