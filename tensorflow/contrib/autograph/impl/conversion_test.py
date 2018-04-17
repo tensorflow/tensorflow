@@ -43,14 +43,15 @@ class ConversionTest(test.TestCase):
       conversion.entity_to_graph('dummy', conversion_map, None, None)
 
   def test_entity_to_graph_callable(self):
-
+    b = 2
     def f(a):
-      return a
+      return a + b
 
     conversion_map = conversion.ConversionMap(True, (), (), None)
-    ast, new_name = conversion.entity_to_graph(f, conversion_map, None, None)
+    ast, name, ns = conversion.entity_to_graph(f, conversion_map, None, None)
     self.assertTrue(isinstance(ast, gast.FunctionDef), ast)
-    self.assertEqual('tf__f', new_name)
+    self.assertEqual('tf__f', name)
+    self.assertTrue(ns['b'] is b)
 
   def test_entity_to_graph_call_tree(self):
 

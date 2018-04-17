@@ -110,7 +110,7 @@ we've added a separate rewrite for the *eval graph*:
 
 ```
 # Build eval model
-logits = tf.nn.softmax_cross_entropy_with_logits(...)
+logits = tf.nn.softmax_cross_entropy_with_logits_v2(...)
 
 # Call the eval rewrite which rewrites the graph in-place with
 # FakeQuantization nodes and fold batchnorm for eval.

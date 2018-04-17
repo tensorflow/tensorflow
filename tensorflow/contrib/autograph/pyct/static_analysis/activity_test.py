@@ -108,7 +108,7 @@ class ScopeTest(test.TestCase):
     self.assertFalse(QN('a') in child.referenced)
 
 
-class ActivityAnalizerTest(test.TestCase):
+class ActivityAnalyzerTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn)

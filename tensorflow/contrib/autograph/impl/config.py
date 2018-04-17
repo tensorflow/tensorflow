@@ -46,10 +46,4 @@ NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 COMPILED_IMPORT_STATEMENTS = (
     'from __future__ import print_function',
     'import tensorflow as tf',
-    'from tensorflow.contrib.autograph.impl import api'
-    ' as autograph_api',
-    'from tensorflow.contrib.autograph import utils'
-    ' as autograph_utils',
-    'from tensorflow.contrib.autograph import operators'
-    ' as __ops',
 )

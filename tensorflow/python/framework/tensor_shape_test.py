@@ -197,6 +197,14 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertEqual(nine % 4, 1)
     self.assertEqual(4 % nine, 4)
 
+  def testReduce(self):
+    dim = tensor_shape.Dimension(5)
+    ctor, args = dim.__reduce__()
+    self.assertEquals(ctor, tensor_shape.Dimension)
+    self.assertEquals(args, (5,))
+    reconstructed = ctor(*args)
+    self.assertEquals(reconstructed, dim)
+
 
 class ShapeTest(test_util.TensorFlowTestCase):
 
@@ -421,6 +429,16 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([None, None], tensor_shape.unknown_shape(2).as_list())
     self.assertAllEqual([2, None, 4], tensor_shape.TensorShape(
         (2, None, 4)).as_list())
+
+  def testReduce(self):
+    shape = tensor_shape.TensorShape([2, 3])
+    ctor, args = shape.__reduce__()
+    self.assertEquals(ctor, tensor_shape.TensorShape)
+    self.assertEquals(args, ([tensor_shape.Dimension(2),
+                              tensor_shape.Dimension(3)],))
+    reconstructed = ctor(*args)
+    self.assertEquals(reconstructed, shape)
+
 
 if __name__ == "__main__":
   googletest.main()

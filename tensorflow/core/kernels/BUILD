@@ -617,6 +617,7 @@ cc_library(
         ":batch_space_ops",
         ":bcast_ops",
         ":bitcast_op",
+        ":broadcast_to_op",
         ":concat_op",
         ":constant_op",
         ":depth_space_ops",
@@ -665,6 +666,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bitcast_op",
     prefix = "bitcast_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "broadcast_to_op",
+    prefix = "broadcast_to_op",
     deps = ARRAY_DEPS,
 )
 
@@ -4323,6 +4330,7 @@ tf_kernel_library(
     deps = [
         ":random_op",
         ":random_ops",
+        ":stateless_random_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -5943,8 +5951,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -5959,8 +5966,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -5976,8 +5982,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -5997,8 +6002,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6014,8 +6018,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6031,8 +6034,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6040,8 +6042,7 @@ tf_mkl_kernel_library(
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = NN_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6049,8 +6050,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_aggregate_ops",
     deps = MATH_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6058,8 +6058,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_concat_op",
     deps = ARRAY_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6067,8 +6066,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_reshape_op",
     deps = ARRAY_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6076,8 +6074,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_identity_op",
     deps = ARRAY_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(
@@ -6085,8 +6082,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_lrn_op",
     deps = NN_DEPS + [
         "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ],
+    ] + if_mkl(["@mkl_dnn"]),
 )
 
 tf_mkl_kernel_library(

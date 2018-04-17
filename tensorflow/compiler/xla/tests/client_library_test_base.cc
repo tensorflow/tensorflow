@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -35,6 +36,10 @@ namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace {
+
+// Name of the interpreter backend.
+constexpr char kInterpreter[] = "interpreter";
+
 // Wrapper function that creates a nicer error message (than a bare
 // ValueOrDie()) if the platform we intend to test is not available.
 Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
@@ -43,6 +48,14 @@ Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
   TF_CHECK_OK(result.status()) << " could not create local client for testing";
   return result.ValueOrDie();
 }
+
+// Helper functions to get the reference platform.
+se::Platform* GetReferencePlatform() {
+  auto result = PlatformUtil::GetPlatform(kInterpreter);
+  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
+  return result.ValueOrDie();
+}
+
 }  // namespace
 
 ClientLibraryTestBase::ClientLibraryTestBase(
@@ -66,6 +79,11 @@ ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
   LocalClientOptions default_options;
   default_options.set_platform(platform);
   client_ = GetOrCreateLocalClientOrDie(default_options);
+
+  LocalClientOptions ref_options;
+  ref_options.set_platform(GetReferencePlatform());
+  ref_client_ = GetOrCreateLocalClientOrDie(ref_options);
+
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
 }
@@ -125,6 +143,20 @@ StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return ExecuteAndTransfer(computation, arguments, shape_with_output_layout);
+}
+
+StatusOr<std::unique_ptr<Literal>>
+ClientLibraryTestBase::ExecuteAndTransferReference(
+    const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const Shape* shape_with_output_layout) {
+  ExecutionOptions execution_options = execution_options_;
+  if (shape_with_output_layout != nullptr) {
+    *execution_options.mutable_shape_with_output_layout() =
+        *shape_with_output_layout;
+  }
+  return ref_client_->ExecuteAndTransfer(computation, arguments,
+                                         &execution_options);
 }
 
 std::unique_ptr<GlobalData> ClientLibraryTestBase::ExecuteOrDie(
@@ -518,6 +550,69 @@ ClientLibraryTestBase::ComputeValueAndReference(
       builder->ComputeConstant(operand, /*output_layout=*/nullptr, arguments));
   TF_ASSIGN_OR_RETURN(auto result,
                       ExecuteAndTransfer(builder, argument_data_ptr));
+  return std::make_pair(std::move(reference), std::move(result));
+}
+
+void ClientLibraryTestBase::ComputeAndCompare(
+    XlaBuilder* builder, tensorflow::gtl::ArraySlice<Literal> arguments) {
+  auto status_or_data = ComputeValueAndReference(builder, arguments);
+  EXPECT_IS_OK(status_or_data);
+  if (!status_or_data.ok()) {
+    return;
+  }
+  std::unique_ptr<Literal> reference, result;
+  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
+  LiteralTestUtil::ExpectEqual(*reference, *result);
+}
+
+void ClientLibraryTestBase::ComputeAndCompare(
+    XlaBuilder* builder, tensorflow::gtl::ArraySlice<Literal> arguments,
+    ErrorSpec error) {
+  auto status_or_data = ComputeValueAndReference(builder, arguments);
+  EXPECT_IS_OK(status_or_data);
+  if (!status_or_data.ok()) {
+    return;
+  }
+  std::unique_ptr<Literal> reference, result;
+  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
+  LiteralTestUtil::ExpectNear(*reference, *result, error);
+}
+
+StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
+ClientLibraryTestBase::ComputeValueAndReference(
+    XlaBuilder* builder, tensorflow::gtl::ArraySlice<Literal> arguments) {
+  // Transfer the arguments to the executor service. We put the unique_ptr's
+  // into a vector to keep the data alive on the service until the end of this
+  // function.
+  std::vector<std::unique_ptr<GlobalData>> argument_data;
+  std::vector<std::unique_ptr<GlobalData>> ref_argument_data;
+  for (const auto& arg : arguments) {
+    TF_ASSIGN_OR_RETURN(auto data, client_->TransferToServer(arg.Clone()));
+    TF_ASSIGN_OR_RETURN(auto ref_data, ref_client_->TransferToServer(arg));
+    argument_data.push_back(std::move(data));
+    ref_argument_data.push_back(std::move(ref_data));
+  }
+
+  // Create raw pointers to the GlobalData for the rest of the call stack.
+  std::vector<GlobalData*> argument_data_ptr;
+  std::transform(
+      argument_data.begin(), argument_data.end(),
+      std::back_inserter(argument_data_ptr),
+      [](const std::unique_ptr<GlobalData>& data) { return data.get(); });
+  std::vector<GlobalData*> ref_argument_data_ptr;
+  std::transform(
+      ref_argument_data.begin(), ref_argument_data.end(),
+      std::back_inserter(ref_argument_data_ptr),
+      [](const std::unique_ptr<GlobalData>& data) { return data.get(); });
+
+  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+
+  TF_ASSIGN_OR_RETURN(auto result,
+                      ExecuteAndTransfer(computation, argument_data_ptr));
+
+  TF_ASSIGN_OR_RETURN(auto reference, ExecuteAndTransferReference(
+                                          computation, ref_argument_data_ptr));
+
   return std::make_pair(std::move(reference), std::move(result));
 }
 
