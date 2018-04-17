@@ -34,24 +34,24 @@ class BuiltinFunctionTransformer(transformer.Base):
   def __init__(self, context):
     super(BuiltinFunctionTransformer, self).__init__(context)
 
-  # pylint:disable=invalid-name
-
   def _convert_builtin(self, node):
     template = """
-      autograph_utils.dynamic_builtin(func, args)
+      ag__.utils.dynamic_builtin(func, args)
     """
     return templates.replace(template, func=node.func, args=node.args)[0].value
 
   def _convert_print(self, node):
     template = """
-      autograph_utils.dynamic_print(args)
+      ag__.utils.dynamic_print(args)
     """
     return templates.replace(template, args=node.args)[0].value
 
   def visit_Call(self, node):
     self.generic_visit(node)
     # TODO(mdan): This won't work if the function was hidden.
-    if isinstance(node.func, gast.Name) and node.func.id in ('len', 'range'):
+    # TODO(mdan): Rely on the live_val and use inspect_utils.is_builtin instead.
+    if (isinstance(node.func, gast.Name) and
+        node.func.id in ('len', 'range', 'xrange')):
       return self._convert_builtin(node)
     # Print needs to be handled separately because it can be read as statement.
     if isinstance(node.func, gast.Name) and node.func.id == 'print':
@@ -69,8 +69,6 @@ class BuiltinFunctionTransformer(transformer.Base):
     """
     function_call = templates.replace(template, fname='print', args=args)[0]
     return self.visit(function_call)
-
-  # pylint:enable=invalid-name
 
 
 def transform(node, context):

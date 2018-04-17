@@ -4009,6 +4009,18 @@ op {
     type: DT_FLOAT
     number_attr: "num_features"
   }
+  input_arg {
+    name: "l1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tree_complexity"
+    type: DT_FLOAT
+  }
   output_arg {
     name: "node_ids_list"
     type: DT_INT32
@@ -4033,18 +4045,6 @@ op {
     name: "right_node_contribs_list"
     type: DT_FLOAT
     number_attr: "num_features"
-  }
-  attr {
-    name: "l1"
-    type: "float"
-  }
-  attr {
-    name: "l2"
-    type: "float"
-  }
-  attr {
-    name: "tree_complexity"
-    type: "float"
   }
   attr {
     name: "max_splits"
@@ -4208,12 +4208,6 @@ op {
     name: "logits_dimension"
     type: "int"
   }
-  attr {
-    name: "max_depth"
-    type: "int"
-    has_minimum: true
-    minimum: 1
-  }
   is_stateful: true
 }
 op {
@@ -4273,12 +4267,6 @@ op {
     name: "logits_dimension"
     type: "int"
   }
-  attr {
-    name: "max_depth"
-    type: "int"
-    has_minimum: true
-    minimum: 1
-  }
   is_stateful: true
 }
 op {
@@ -4316,15 +4304,13 @@ op {
     type: DT_FLOAT
     number_attr: "num_features"
   }
-  attr {
+  input_arg {
     name: "max_depth"
-    type: "int"
-    has_minimum: true
-    minimum: 1
+    type: DT_INT32
   }
-  attr {
+  input_arg {
     name: "learning_rate"
-    type: "float"
+    type: DT_FLOAT
   }
   attr {
     name: "pruning_mode"
@@ -4723,6 +4709,50 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "ClipByValue"
+  input_arg {
+    name: "t"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "clip_value_min"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "clip_value_max"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }

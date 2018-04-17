@@ -1604,8 +1604,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             // Evaluate computation with specified literal operands.
             auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
             auto result_val_literal = Literal::CreateR0<ReturnT>(result_val);
-            std::vector<const Literal*> args = {curr_val_literal.get(),
-                                                result_val_literal.get()};
+            std::vector<const Literal*> args = {result_val_literal.get(),
+                                                curr_val_literal.get()};
 
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator.Evaluate<const Literal*>(*function, args)
@@ -1804,7 +1804,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 const auto result_val_literal =
                     Literal::CreateR0<ReturnT>(result_val);
                 const std::vector<const Literal*> args = {
-                    curr_val_literal.get(), result_val_literal.get()};
+                    result_val_literal.get(), curr_val_literal.get()};
                 std::unique_ptr<Literal> computed_result =
                     embedded_evaluator.Evaluate<const Literal*>(*function, args)
                         .ConsumeValueOrDie();

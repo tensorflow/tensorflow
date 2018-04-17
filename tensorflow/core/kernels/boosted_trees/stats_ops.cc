@@ -29,10 +29,6 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
   explicit BoostedTreesCalculateBestGainsPerFeatureOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("l1", &l1_));
-    OP_REQUIRES_OK(context, context->GetAttr("l2", &l2_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("tree_complexity", &tree_complexity_));
     OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
     OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
   }
@@ -54,6 +50,20 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
     for (const auto& tensor : stats_summary_list) {
       stats_summary.emplace_back(tensor.tensor<float, 3>());
     }
+    const Tensor* l1_t;
+    OP_REQUIRES_OK(context, context->input("l1", &l1_t));
+    const auto l1 = l1_t->scalar<float>()();
+    const Tensor* l2_t;
+    OP_REQUIRES_OK(context, context->input("l2", &l2_t));
+    const auto l2 = l2_t->scalar<float>()();
+    const Tensor* tree_complexity_t;
+    OP_REQUIRES_OK(context,
+                   context->input("tree_complexity", &tree_complexity_t));
+    const auto tree_complexity = tree_complexity_t->scalar<float>()();
+    const Tensor* min_node_weight_t;
+    OP_REQUIRES_OK(context,
+                   context->input("min_node_weight", &min_node_weight_t));
+    const auto min_node_weight = min_node_weight_t->scalar<float>()();
 
     // Allocate output lists of tensors:
     OpOutputList output_node_ids_list;
@@ -99,6 +109,11 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
           cum_grad.push_back(total_grad);
           cum_hess.push_back(total_hess);
         }
+        // Check if node has enough of average hessian.
+        if (total_hess < min_node_weight) {
+          // Do not split the node because not enough avg hessian.
+          continue;
+        }
         float best_gain = std::numeric_limits<float>::lowest();
         float best_bucket = 0;
         float best_contrib_for_left = 0.0;
@@ -106,7 +121,8 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
         // Parent gain.
         float parent_gain;
         float unused;
-        CalculateWeightsAndGains(total_grad, total_hess, &unused, &parent_gain);
+        CalculateWeightsAndGains(total_grad, total_hess, l1, l2, &unused,
+                                 &parent_gain);
 
         for (int bucket = 0; bucket < num_buckets; ++bucket) {
           const float cum_grad_bucket = cum_grad[bucket];
@@ -114,13 +130,13 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
           // Left child.
           float contrib_for_left;
           float gain_for_left;
-          CalculateWeightsAndGains(cum_grad_bucket, cum_hess_bucket,
+          CalculateWeightsAndGains(cum_grad_bucket, cum_hess_bucket, l1, l2,
                                    &contrib_for_left, &gain_for_left);
           // Right child.
           float contrib_for_right;
           float gain_for_right;
           CalculateWeightsAndGains(total_grad - cum_grad_bucket,
-                                   total_hess - cum_hess_bucket,
+                                   total_hess - cum_hess_bucket, l1, l2,
                                    &contrib_for_right, &gain_for_right);
 
           if (gain_for_left + gain_for_right > best_gain) {
@@ -173,7 +189,7 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
       for (int i = 0; i < num_nodes; ++i) {
         output_node_ids_vec(i) = output_node_ids[i];
         // Adjust the gains to penalize by tree complexity.
-        output_gains_vec(i) = output_gains[i] - tree_complexity_;
+        output_gains_vec(i) = output_gains[i] - tree_complexity;
         output_thresholds_vec(i) = output_thresholds[i];
         // Logits are 1-dimensional for now.
         // TODO(nponomareva): Consider multi-dimensional logits.
@@ -184,8 +200,8 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
   }
 
  private:
-  void CalculateWeightsAndGains(const float g, const float h, float* weight,
-                                float* gain) {
+  void CalculateWeightsAndGains(const float g, const float h, const float l1,
+                                const float l2, float* weight, float* gain) {
     //
     // The formula for weight is -(g+l1*sgn(w))/(H+l2), for gain it is
     // (g+l1*sgn(w))^2/(h+l2).
@@ -196,11 +212,11 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
     // 1) Assume w>0 => w=-(g+l1)/(h+l2)=> g+l1 < 0 => g < -l1
     // 2) Assume w<0 => w=-(g-l1)/(h+l2)=> g-l1 > 0 => g > l1
     // For g from (-l1, l1), thus there is no solution => set to 0.
-    if (l1_ > 0) {
-      if (g > l1_) {
-        g_with_l1 -= l1_;
-      } else if (g < -l1_) {
-        g_with_l1 += l1_;
+    if (l1 > 0) {
+      if (g > l1) {
+        g_with_l1 -= l1;
+      } else if (g < -l1) {
+        g_with_l1 += l1;
       } else {
         *weight = 0.0;
         *gain = 0.0;
@@ -208,19 +224,16 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
       }
     }
     // Apply L2 regularization.
-    if (h + l2_ <= kEps) {
+    if (h + l2 <= kEps) {
       // Avoid division by 0 or infinitesimal.
       *weight = 0;
       *gain = 0;
     } else {
-      *weight = -g_with_l1 / (h + l2_);
+      *weight = -g_with_l1 / (h + l2);
       *gain = -g_with_l1 * (*weight);
     }
   }
 
-  float l1_;
-  float l2_;
-  float tree_complexity_;
   int max_splits_;
   int num_features_;
 };

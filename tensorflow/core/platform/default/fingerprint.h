@@ -18,14 +18,16 @@ limitations under the License.
 
 #include <farmhash.h>
 
+#include "tensorflow/core/lib/core/stringpiece.h"
+
 namespace tensorflow {
 
-inline uint64 Fingerprint64(const string& s) {
-  return ::util::Fingerprint64(s);
+inline uint64 Fingerprint64(StringPiece s) {
+  return ::util::Fingerprint64(s.data(), s.size());
 }
 
-inline Fprint128 Fingerprint128(const string& s) {
-  const auto fingerprint = ::util::Fingerprint128(s);
+inline Fprint128 Fingerprint128(StringPiece s) {
+  const auto fingerprint = ::util::Fingerprint128(s.data(), s.size());
   return {::util::Uint128Low64(fingerprint),
           ::util::Uint128High64(fingerprint)};
 }

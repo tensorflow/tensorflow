@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import imp
+
 import gast
 
 from tensorflow.contrib.autograph import operators
@@ -221,12 +223,17 @@ def _add_reserved_symbol(namespace, name, entity):
 
 
 def _add_self_references(namespace, api_module):
-  # Manually add the utils namespace which may be used from generated code.
-  _add_reserved_symbol(namespace, 'autograph_utils', utils)
-  _add_reserved_symbol(namespace, '__ops', operators)
-  # We also make reference to the api module for dynamic conversion, but
-  # to avoid circular references we don't import it here.
-  _add_reserved_symbol(namespace, 'autograph_api', api_module)
+  # Craft a module that exposes parts of the external API as well as certain
+  # internal modules.
+  ag_internal = imp.new_module('autograph')
+  ag_internal.converted_call = api_module.converted_call
+  ag_internal.utils = utils
+  # TODO(mdan): Add safeguards against name clashes.
+  # We don't want to create a submodule because we want the operators to be
+  # accessible as ag__.<operator>
+  ag_internal.__dict__.update(operators.__dict__)
+
+  _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
 def function_to_graph(f, conversion_map, arg_values, arg_types,
@@ -312,6 +319,8 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = ifexp.transform(node, ctx)
   node, deps = decorators.transform(node, nocompile_decorators)
   node = break_statements.transform(node, ctx)
+  node = _static_analysis_pass(node, ctx)
+
   node = asserts.transform(node, ctx)
 
   # Note: sequencing continue canonicalization before for loop one avoids

@@ -48,8 +48,8 @@ class SequenceDatasetSerializationTest(
     self.run_core_tests(lambda: self._build_skip_dataset(0), None, 10)
 
   def testInvalidSkip(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), None, 0)
 
   def _build_take_dataset(self, count):
@@ -75,8 +75,8 @@ class SequenceDatasetSerializationTest(
     self.run_core_tests(lambda: self._build_take_dataset(0), None, 0)
 
   def testInvalidTake(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_take_dataset([1, 2]), None, 0)
 
   def _build_repeat_dataset(self, count, take_count=3):
