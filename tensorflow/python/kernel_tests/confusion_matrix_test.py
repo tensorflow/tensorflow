@@ -105,8 +105,7 @@ class ConfusionMatrixTest(test.TestCase):
       d, l, cm_out = sess.run([data, lab, cm], {m_neg: 0.0, m_pos: 1.0, s: 1.0})
 
       truth = np.zeros([2, 2], dtype=np_dtype)
-      range_builder = xrange
-      for i in range_builder(len(d)):
+      for i in xrange(len(d)):
         truth[l[i], d[i]] += 1
 
       self.assertEqual(cm_out.dtype, np_dtype)
