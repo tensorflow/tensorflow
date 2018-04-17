@@ -127,12 +127,10 @@ class ClipTest(test.TestCase):
       x = constant_op.constant([-5.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3, 1])
       # Use a nonsensical shape.
       clip = constant_op.constant([1.0, 2.0])
-      with self.assertRaises(errors_impl.InvalidArgumentError):
-        ans = clip_ops.clip_by_value(x, -clip, clip)
-        tf_ans = ans.eval()
-      with self.assertRaises(errors_impl.InvalidArgumentError):
-        ans = clip_ops.clip_by_value(x, 1.0, clip)
-        tf_ans = ans.eval()
+      with self.assertRaises(ValueError):
+        _ = clip_ops.clip_by_value(x, -clip, clip)
+      with self.assertRaises(ValueError):
+        _ = clip_ops.clip_by_value(x, 1.0, clip)
 
   def testClipByValueNonFinite(self):
     # TODO(b/78016351): Enable test on GPU once the bug is fixed.
