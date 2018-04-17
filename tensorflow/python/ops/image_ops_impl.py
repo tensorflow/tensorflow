@@ -1301,7 +1301,7 @@ def adjust_saturation(image, saturation_factor, name=None):
     return convert_image_dtype(rgb_altered, orig_dtype)
 
 
-def decode_image(contents, channels=None, name=None):
+def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
 
@@ -1369,7 +1369,7 @@ def decode_image(contents, channels=None, name=None):
 
     def _png():
       """Decodes a PNG image."""
-      return gen_image_ops.decode_png(contents, channels)
+      return gen_image_ops.decode_png(contents, channels, dtype=dtype)
 
     def check_png():
       """Checks if an image is PNG."""
@@ -1387,10 +1387,14 @@ def decode_image(contents, channels=None, name=None):
       with ops.control_dependencies([assert_channels]):
         return gen_image_ops.decode_jpeg(contents, channels)
 
-    # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
-    # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
-    is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff', name='is_jpeg')
-    return control_flow_ops.cond(is_jpeg, _jpeg, check_png, name='cond_jpeg')
+    if dtype == dtypes.uint16:
+      # Decode a PNG-encoded image to a uint16 tensor.
+      return _png()
+    else:
+      # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
+      # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
+      is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff', name='is_jpeg')
+      return control_flow_ops.cond(is_jpeg, _jpeg, check_png, name='cond_jpeg')
 
 
 def total_variation(images, name=None):
