@@ -66,16 +66,18 @@ struct ConvFwdDimensions {
   memory::dims dst_dims;
   memory::dims strides;
   memory::dims dilations;
-  memory::dims padding_l;
-  memory::dims padding_r;
+  memory::dims padding_left;
+  memory::dims padding_right;
 
-  ConvFwdDimensions(memory::dims src_d,
-      memory::dims filter_d, memory::dims bias_d,
-      memory::dims dst_d, memory::dims strides,
-      memory::dims dilations, memory::dims pl,
-      memory::dims pr) : src_dims(src_d), filter_dims(filter_d),
-          bias_dims(bias_d), dst_dims(dst_d), strides(strides),
-          dilations(dilations), padding_l(pl), padding_r(pr) {
+  ConvFwdDimensions(memory::dims src_dims,
+    memory::dims filter_dims, memory::dims bias_dims,
+    memory::dims dst_dims, memory::dims strides,
+    memory::dims dilations, memory::dims padding_left,
+    memory::dims padding_right) :
+      src_dims(src_dims), filter_dims(filter_dims),
+      bias_dims(bias_dims), dst_dims(dst_dims),
+      strides(strides), dilations(dilations),
+      padding_left(padding_left), padding_right(padding_right) {
   }
 };
 
@@ -152,13 +154,13 @@ class Conv2DFwd : public DnnOp {
     if (!convFwdDims.bias_dims.empty()) {
       fwd_desc_.reset(new convolution_forward::desc(prop_kind::forward,
           convolution_direct, *src_md_, *filter_md_, *bias_md_, *dst_md_,
-          convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_l,
-          convFwdDims.padding_r, padding_kind::zero));
+          convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_left,
+          convFwdDims.padding_right, padding_kind::zero));
     } else {
       fwd_desc_.reset(new convolution_forward::desc(prop_kind::forward,
           convolution_direct, *src_md_, *filter_md_, *dst_md_,
-          convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_l,
-          convFwdDims.padding_r, padding_kind::zero));
+          convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_left,
+          convFwdDims.padding_right, padding_kind::zero));
     }
 
     fwd_pd_.reset(new convolution_forward::primitive_desc(
@@ -252,8 +254,8 @@ class Conv2DFwdFactory : public DnnOpFactory<T> {
     key_creator.AddAsKey(convFwdDims.dst_dims);
     key_creator.AddAsKey(convFwdDims.strides);
     key_creator.AddAsKey(convFwdDims.dilations);
-    key_creator.AddAsKey(convFwdDims.padding_l);
-    key_creator.AddAsKey(convFwdDims.padding_r);
+    key_creator.AddAsKey(convFwdDims.padding_left);
+    key_creator.AddAsKey(convFwdDims.padding_right);
     return key_creator.GetKey();
   }
 
