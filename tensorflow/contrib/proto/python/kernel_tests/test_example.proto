@@ -1,0 +1,149 @@
+// Test description and protos to work with it.
+//
+// Many of the protos in this file are for unit tests that haven't been written yet.
+
+syntax = "proto2";
+
+import "tensorflow/core/framework/types.proto";
+
+package tensorflow.contrib.proto;
+
+// A TestCase holds a proto and a bunch of assertions
+// about how it should decode.
+message TestCase {
+  // A batch of primitives to be serialized and decoded.
+  repeated RepeatedPrimitiveValue primitive = 1;
+  // The shape of the batch.
+  repeated int32 shape = 2;
+  // Expected sizes for each field.
+  repeated int32 sizes = 3;
+  // Expected values for each field.
+  repeated FieldSpec field = 4;
+};
+
+// FieldSpec describes the expected output for a single field.
+message FieldSpec {
+  optional string name = 1;
+  optional tensorflow.DataType dtype = 2;
+  optional RepeatedPrimitiveValue expected = 3;
+};
+
+message TestValue {
+  optional PrimitiveValue primitive_value = 1;
+  optional EnumValue enum_value = 2;
+  optional MessageValue message_value = 3;
+  optional RepeatedMessageValue repeated_message_value = 4;
+  optional RepeatedPrimitiveValue repeated_primitive_value = 6;
+}
+
+message PrimitiveValue {
+  optional double double_value = 1;
+  optional float float_value = 2;
+  optional int64 int64_value = 3;
+  optional uint64 uint64_value = 4;
+  optional int32 int32_value = 5;
+  optional fixed64 fixed64_value = 6;
+  optional fixed32 fixed32_value = 7;
+  optional bool bool_value = 8;
+  optional string string_value = 9;
+  optional bytes bytes_value = 12;
+  optional uint32 uint32_value = 13;
+  optional sfixed32 sfixed32_value = 15;
+  optional sfixed64 sfixed64_value = 16;
+  optional sint32 sint32_value = 17;
+  optional sint64 sint64_value = 18;
+}
+
+// NOTE: This definition must be kept in sync with PackedPrimitiveValue.
+message RepeatedPrimitiveValue {
+  repeated double double_value = 1;
+  repeated float float_value = 2;
+  repeated int64 int64_value = 3;
+  repeated uint64 uint64_value = 4;
+  repeated int32 int32_value = 5;
+  repeated fixed64 fixed64_value = 6;
+  repeated fixed32 fixed32_value = 7;
+  repeated bool bool_value = 8;
+  repeated string string_value = 9;
+  repeated bytes bytes_value = 12;
+  repeated uint32 uint32_value = 13;
+  repeated sfixed32 sfixed32_value = 15;
+  repeated sfixed64 sfixed64_value = 16;
+  repeated sint32 sint32_value = 17;
+  repeated sint64 sint64_value = 18;
+  repeated PrimitiveValue message_value = 19;
+}
+
+// A PackedPrimitiveValue looks exactly the same as a RepeatedPrimitiveValue
+// in the text format, but the binary serializion is different.
+// We test the packed representations by loading the same test cases
+// using this definition instead of RepeatedPrimitiveValue.
+// NOTE: This definition must be kept in sync with RepeatedPrimitiveValue
+// in every way except the packed=true declaration.
+message PackedPrimitiveValue {
+  repeated double double_value = 1 [packed = true];
+  repeated float float_value = 2 [packed = true];
+  repeated int64 int64_value = 3 [packed = true];
+  repeated uint64 uint64_value = 4 [packed = true];
+  repeated int32 int32_value = 5 [packed = true];
+  repeated fixed64 fixed64_value = 6 [packed = true];
+  repeated fixed32 fixed32_value = 7 [packed = true];
+  repeated bool bool_value = 8 [packed = true];
+  repeated string string_value = 9;
+  repeated bytes bytes_value = 12;
+  repeated uint32 uint32_value = 13 [packed = true];
+  repeated sfixed32 sfixed32_value = 15 [packed = true];
+  repeated sfixed64 sfixed64_value = 16 [packed = true];
+  repeated sint32 sint32_value = 17 [packed = true];
+  repeated sint64 sint64_value = 18 [packed = true];
+  repeated PrimitiveValue message_value = 19;
+}
+
+message EnumValue {
+  enum Color {
+    RED = 0;
+    ORANGE = 1;
+    YELLOW = 2;
+    GREEN = 3;
+    BLUE = 4;
+    INDIGO = 5;
+    VIOLET = 6;
+  };
+  optional Color enum_value = 14;
+  repeated Color repeated_enum_value = 15;
+}
+
+
+message InnerMessageValue {
+  optional float float_value = 2;
+  repeated bytes bytes_values = 8;
+}
+
+message MiddleMessageValue {
+  repeated int32 int32_values = 5;
+  optional InnerMessageValue message_value = 11;
+  optional uint32 uint32_value = 13;
+}
+
+message MessageValue {
+  optional double double_value = 1;
+  optional MiddleMessageValue message_value = 11;
+}
+
+message RepeatedMessageValue {
+  message NestedMessageValue {
+    optional float float_value = 2;
+    repeated bytes bytes_values = 8;
+  }
+
+  repeated NestedMessageValue message_values = 11;
+}
+
+// Message containing fields with field numbers higher than any field above. An
+// instance of this message is prepended to each binary message in the test to
+// exercise the code path that handles fields encoded out of order of field
+// number.
+message ExtraFields {
+  optional string string_value = 1776;
+  optional bool bool_value = 1777;
+}

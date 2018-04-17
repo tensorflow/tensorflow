@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/eigen_pooling.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -174,7 +175,8 @@ static void SpatialMaxPoolWithArgMaxHelper(
         // Although this check is in the inner loop, it is worth its value
         // so we don't end up with memory corruptions. Our benchmark shows that
         // the performance impact is quite small
-        //CHECK(input_backprop_index >= in_start && input_backprop_index < in_end)
+        // CHECK(input_backprop_index >= in_start && input_backprop_index <
+        // in_end)
         FastBoundsCheck(input_backprop_index - in_start, in_end - in_start);
         input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
       }
@@ -873,7 +875,7 @@ template <typename T>
 struct LaunchMaxPoolingWithArgmax<CPUDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, Tensor* argmax,
-                     bool propogate_nans) {
+                     bool propagate_nans) {
     Tensor unused;
     SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
         context, output, argmax, nullptr, input, unused, params);

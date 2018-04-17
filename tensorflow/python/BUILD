@@ -4,16 +4,14 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-package(
-    default_visibility = [
-        "//engedu/ml/tf_from_scratch:__pkg__",
-        "//tensorflow:internal",
-        "//tensorflow/contrib/lite/toco/python:__pkg__",
-        "//tensorflow_models:__subpackages__",
-        # TODO(aselle): to pass open source test.
-        "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
-    ],
-)
+package(default_visibility = [
+    "//engedu/ml/tf_from_scratch:__pkg__",
+    "//tensorflow:internal",
+    "//tensorflow/contrib/lite/toco/python:__pkg__",
+    "//tensorflow_models:__subpackages__",
+    # TODO(aselle): to pass open source test.
+    "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
