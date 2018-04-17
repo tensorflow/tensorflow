@@ -52,7 +52,6 @@ tf_custom_op_library(
         "ops/trt_engine_op.cc",
     ],
     deps = [
-        ":trt_engine_op_kernel",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
@@ -183,6 +182,7 @@ tf_py_wrap_cc(
     copts = tf_copts(),
     deps = [
         ":trt_conversion",
+        ":trt_engine_op_kernel",
         "//tensorflow/core:framework_lite",
         "//util/python:python_headers",
     ],
