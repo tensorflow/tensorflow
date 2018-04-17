@@ -241,12 +241,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "png_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.2.53.tar.gz",
-          "https://github.com/glennrp/libpng/archive/v1.2.53.tar.gz",
+          "https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.6.34.tar.gz",
+          "https://github.com/glennrp/libpng/archive/v1.6.34.tar.gz",
       ],
-      sha256 = "716c59c7dfc808a4c368f8ada526932be72b2fcea11dd85dc9d88b1df1dfe9c2",
-      strip_prefix = "libpng-1.2.53",
-      build_file = str(Label("//third_party:png.BUILD")),
+      sha256 = "e45ce5f68b1d80e2cb9a2b601605b374bdf51e1798ef1c2c2bd62131dfcf9eef",
+      strip_prefix = "libpng-1.6.34",
+      build_file = clean_dep("//third_party:png.BUILD"),
   )
 
   tf_http_archive(
@@ -524,12 +524,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "zlib_archive",
       urls = [
-          "https://mirror.bazel.build/zlib.net/zlib-1.2.8.tar.gz",
-          "http://zlib.net/fossils/zlib-1.2.8.tar.gz",
+          "https://mirror.bazel.build/zlib.net/zlib-1.2.11.tar.gz",
+          "https://zlib.net/zlib-1.2.11.tar.gz",
       ],
-      sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
-      strip_prefix = "zlib-1.2.8",
-      build_file = str(Label("//third_party:zlib.BUILD")),
+      sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
+      strip_prefix = "zlib-1.2.11",
+      build_file = clean_dep("//third_party:zlib.BUILD"),
   )
 
   tf_http_archive(
@@ -545,12 +545,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "snappy",
       urls = [
-          "https://mirror.bazel.build/github.com/google/snappy/archive/1.1.4.tar.gz",
-          "https://github.com/google/snappy/archive/1.1.4.tar.gz",
+          "https://mirror.bazel.build/github.com/google/snappy/archive/1.1.7.tar.gz",
+          "https://github.com/google/snappy/archive/1.1.7.tar.gz",
       ],
-      sha256 = "2f7504c73d85bac842e893340333be8cb8561710642fc9562fccdd9d2c3fcc94",
-      strip_prefix = "snappy-1.1.4",
-      build_file = str(Label("//third_party:snappy.BUILD")),
+      sha256 = "3dfa02e873ff51a11ee02b9ca391807f0c8ea0529a4924afa645fbf97163f9d4",
+      strip_prefix = "snappy-1.1.7",
+      build_file = clean_dep("//third_party:snappy.BUILD"),
   )
 
   tf_http_archive(
