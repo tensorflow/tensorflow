@@ -60,6 +60,10 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input("tree_complexity", &tree_complexity_t));
     const auto tree_complexity = tree_complexity_t->scalar<float>()();
+    const Tensor* min_node_weight_t;
+    OP_REQUIRES_OK(context,
+                   context->input("min_node_weight", &min_node_weight_t));
+    const auto min_node_weight = min_node_weight_t->scalar<float>()();
 
     // Allocate output lists of tensors:
     OpOutputList output_node_ids_list;
@@ -104,6 +108,11 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
           total_hess += stats_summary[feature_idx](node_id, bucket, 1);
           cum_grad.push_back(total_grad);
           cum_hess.push_back(total_hess);
+        }
+        // Check if node has enough of average hessian.
+        if (total_hess < min_node_weight) {
+          // Do not split the node because not enough avg hessian.
+          continue;
         }
         float best_gain = std::numeric_limits<float>::lowest();
         float best_bucket = 0;

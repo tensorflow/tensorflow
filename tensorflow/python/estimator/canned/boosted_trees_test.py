@@ -188,7 +188,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         learning_rate=0.1,
         l1=0.,
         l2=0.01,
-        tree_complexity=0.)
+        tree_complexity=0.,
+        min_node_weight=0.)
 
   def _get_expected_ensembles_for_classification(self):
     first_round = """
