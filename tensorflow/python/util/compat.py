@@ -93,8 +93,12 @@ def as_text(bytes_or_text, encoding='utf-8'):
 # Convert an object to a `str` in both Python 2 and 3.
 if _six.PY2:
   as_str = as_bytes
+  tf_export('compat.as_bytes', 'compat.as_str')(as_bytes)
+  tf_export('compat.as_text')(as_text)
 else:
   as_str = as_text
+  tf_export('compat.as_bytes')(as_bytes)
+  tf_export('compat.as_text', 'compat.as_str')(as_text)
 
 
 @tf_export('compat.as_str_any')
