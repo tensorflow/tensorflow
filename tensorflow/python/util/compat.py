@@ -67,7 +67,6 @@ def as_bytes(bytes_or_text, encoding='utf-8'):
                     (bytes_or_text,))
 
 
-@tf_export('compat.as_text')
 def as_text(bytes_or_text, encoding='utf-8'):
   """Returns the given argument as a unicode string.
 
