@@ -87,6 +87,18 @@ class Base(gast.NodeTransformer):
       print(pretty_printer.fmt(node))
     return node
 
+  def visit_block(self, nodes):
+    """Helper equivalent to generic_visit, but for node lists."""
+    results = []
+    for node in nodes:
+      replacement = self.visit(node)
+      if replacement:
+        if isinstance(replacement, (list, tuple)):
+          results.extend(replacement)
+        else:
+          results.append(replacement)
+    return results
+
   def visit(self, node):
     source_code = self.context.source_code
     source_file = self.context.source_file

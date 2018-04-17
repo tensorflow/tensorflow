@@ -48,6 +48,9 @@ from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
 
+# TODO(mdan): Remove the duplication between this and activity.py.
+# In particular, the symbol definitions we track here could as well be tracked
+# there because they follow the same rules for visibility.
 class Scope(object):
   """Tracks symbol value references.
 
@@ -99,20 +102,16 @@ class TypeInfoResolver(transformer.Base):
   def __init__(self, context):
     super(TypeInfoResolver, self).__init__(context)
     self.scope = Scope(None)
-    self.function_level = 0
 
   def visit_FunctionDef(self, node):
     self.scope = Scope(self.scope)
-    self.function_level += 1
-    self.generic_visit(node)
-    self.function_level -= 1
+    node = self.generic_visit(node)
     self.scope = self.scope.parent
     return node
 
   def _visit_block(self, block):
     self.scope = Scope(self.scope)
-    for i, n in enumerate(block):
-      block[i] = self.generic_visit(n)
+    block = self.visit_block(block)
     self.scope = self.scope.parent
     return block
 
@@ -137,7 +136,7 @@ class TypeInfoResolver(transformer.Base):
 
   def _process_function_arg(self, arg_name):
     str_name = str(arg_name)
-    if self.function_level == 1 and str_name in self.context.arg_types:
+    if len(self.enclosing_entities) == 1 and str_name in self.context.arg_types:
       # Forge a node to hold the type information, so that method calls on
       # it can resolve the type.
       type_holder = arg_name.ast()
@@ -221,19 +220,26 @@ class TypeInfoResolver(transformer.Base):
       # type that it specified.
       if (anno.getanno(node.func, 'live_val') is
           self.context.type_annotation_func):
-        # Expecting the actual type to be the second argument.
+
         if len(node.args) != 2:
           raise ValueError('"%s" must have exactly two parameters'
                            % self.context.type_annotation_func)
-        if not anno.hasanno(node.args[0], anno.Basic.QN):
+        target_arg, type_arg = node.args
+        if not anno.hasanno(target_arg, anno.Basic.QN):
           raise ValueError('the first argument of "%s" must by a symbol'
                            % self.context.type_annotation_func)
-        if not anno.hasanno(node.args[1], 'live_val'):
-          raise ValueError(
-              'the second argument of "%s" must be statically resolvable' %
-              self.context.type_annotation_func)
-        target_symbol = anno.getanno(node.args[0], anno.Basic.QN)
-        element_type = anno.getanno(node.args[1], 'live_val')
+        if isinstance(type_arg, gast.Str):
+          element_type = type_arg.s
+        elif isinstance(type_arg, gast.Num):
+          element_type = type_arg.n
+        else:
+          if not anno.hasanno(type_arg, 'live_val'):
+            raise ValueError(
+                'the second argument of "%s" must be statically resolvable' %
+                self.context.type_annotation_func)
+          element_type = anno.getanno(type_arg, 'live_val')
+
+        target_symbol = anno.getanno(target_arg, anno.Basic.QN)
         # Find the definition of this symbol and annotate it with the given
         # data type. That in turn will cause future uses of the symbol
         # to receive the same type annotation.
