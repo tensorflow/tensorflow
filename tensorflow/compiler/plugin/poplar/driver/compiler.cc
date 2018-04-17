@@ -252,8 +252,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   VLOG(1) << "Begin compilation: " << module->name();
 
   if (stream_exec == nullptr) {
-    return port::Status(port::error::UNKNOWN,
-                        "NULL stream pointer in poplar compiler");
+    return Status(tensorflow::error::UNKNOWN,
+                  "NULL stream pointer in poplar compiler");
   }
 
   sep::PoplarExecutor* poplarExecutor(
@@ -308,9 +308,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
   }
   catch (std::logic_error e) {
-    return port::Status(port::error::UNKNOWN,
-                        port::StrCat("[Poplar Compile] ",
-                                     e.what()));
+    return Status(tensorflow::error::UNKNOWN,
+                  port::StrCat("[Poplar Compile] ", e.what()));
   }
 
   std::shared_ptr<poplar::Engine> engine;
@@ -326,9 +325,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       engine.reset(new poplar::Engine(dev, *graph, progs));
     }
     catch (std::logic_error e) {
-      return port::Status(port::error::UNKNOWN,
-                          port::StrCat("[Poplar Engine] ",
-                                       e.what()));
+      return Status(tensorflow::error::UNKNOWN,
+                    port::StrCat("[Poplar Engine] ", e.what()));
     }
 
     if (poplarExecutor->CompilerReportingEnabled()) {

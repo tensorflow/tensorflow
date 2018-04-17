@@ -37,7 +37,7 @@ CountShapes(const Shape& shape);
 std::vector<xla::Shape>
 FlattenedXlaShape(const xla::Shape& shape);
 
-port::StatusOr<std::vector<int64>>
+StatusOr<std::vector<int64>>
 LiteralVectorToInt64Vector(const xla::Literal& lit);
 
 }

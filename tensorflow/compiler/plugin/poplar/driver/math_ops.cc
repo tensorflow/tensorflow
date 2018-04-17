@@ -39,7 +39,7 @@ static const std::string out_conn("out");
 #define UNUSED_OPCODE(O) case HloOpcode::O: break;
 
 
-port::StatusOr<popops::expr::UnaryOpType>
+StatusOr<popops::expr::UnaryOpType>
 LookupUnaryFn(const HloInstruction* inst) {
   HloOpcode opcode = inst->opcode();
   switch (opcode) {
@@ -79,12 +79,12 @@ LookupUnaryFn(const HloInstruction* inst) {
     }
   }
 
-  return port::Status(port::error::UNKNOWN,
-                      port::StrCat("[Poplar] Invalid opcode lookup ",
-                                   HloOpcodeString(opcode)));
+  return Status(tensorflow::error::UNKNOWN,
+                port::StrCat("[Poplar] Invalid opcode lookup ",
+                             HloOpcodeString(opcode)));
 }
 
-port::StatusOr<popops::expr::BinaryOpType>
+StatusOr<popops::expr::BinaryOpType>
 LookupBinaryFn(const HloInstruction* inst) {
   HloOpcode opcode = inst->opcode();
   switch (opcode) {
@@ -144,12 +144,12 @@ LookupBinaryFn(const HloInstruction* inst) {
     }
   }
 
-  return port::Status(port::error::UNKNOWN,
-                      port::StrCat("[Poplar] Invalid opcode lookup ",
-                                   HloOpcodeString(opcode)));
+  return Status(tensorflow::error::UNKNOWN,
+                port::StrCat("[Poplar] Invalid opcode lookup ",
+                             HloOpcodeString(opcode)));
 }
 
-port::StatusOr<popops_inplace_fn>
+StatusOr<popops_inplace_fn>
 LookupBinaryInPlaceFn(const HloInstruction* inst) {
   HloOpcode opcode = inst->opcode();
   switch (opcode) {
@@ -159,9 +159,9 @@ LookupBinaryInPlaceFn(const HloInstruction* inst) {
     default:
       break;
   }
-  return port::Status(port::error::UNKNOWN,
-                      port::StrCat("[Poplar] Invalid opcode lookup ",
-                                   HloOpcodeString(opcode)));
+  return Status(tensorflow::error::UNKNOWN,
+                port::StrCat("[Poplar] Invalid opcode lookup ",
+                             HloOpcodeString(opcode)));
 }
 
 static std::string GetMatMulPass(const HloInstruction* inst) {
@@ -177,7 +177,7 @@ static std::string GetMatMulPass(const HloInstruction* inst) {
   return "INFERENCE_FWD";
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateUnaryElementwiseOp(poplar::Graph &graph,
                          CompilerResources& res,
                          const HloInstruction *inst,
@@ -201,7 +201,7 @@ CreateUnaryElementwiseOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateBinaryElementwiseOp(poplar::Graph &graph,
                           CompilerResources& res,
                           const HloInstruction *inst,
@@ -240,9 +240,8 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
 
       tensorflow::BCast bcast(shape1, shape2);
       if (!bcast.IsValid()) {
-        return port::Status(port::error::FAILED_PRECONDITION,
-                            port::StrCat("Incompatible broadcast on ",
-                                         inst->name()));
+        return Status(tensorflow::error::FAILED_PRECONDITION,
+                      port::StrCat("Incompatible broadcast on ", inst->name()));
       }
 
       in0 = in0.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
@@ -273,7 +272,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
   }
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateMatMulOp(poplar::Graph &graph,
                CompilerResources& res,
                const HloInstruction *inst,
@@ -291,9 +290,8 @@ CreateMatMulOp(poplar::Graph &graph,
   poplar::program::Sequence seq;
 
   if (in0.rank() > 2 || in1.rank() > 2) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        port::StrCat("Unsupported Dot operation on ",
-                                     inst->name()));
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  port::StrCat("Unsupported Dot operation on ", inst->name()));
   }
 
   if (in0.rank() == 1) {
@@ -315,7 +313,7 @@ CreateMatMulOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateSelectOp(poplar::Graph &graph,
                CompilerResources& res,
                const HloInstruction *inst,
@@ -329,9 +327,8 @@ CreateSelectOp(poplar::Graph &graph,
   ArgVector in1 = FindInstructionInputs(tensor_map, inst, 2);
 
   if (in0.size() != in1.size()) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        port::StrCat("Mismatching tuple sizes on ",
-                                     inst->name()));
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  port::StrCat("Mismatching tuple sizes on ", inst->name()));
   }
 
   poplar::program::Sequence seq;
@@ -356,7 +353,7 @@ CreateSelectOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateCastOp(poplar::Graph &graph,
              CompilerResources& res,
              const HloInstruction *inst,
@@ -380,7 +377,7 @@ CreateCastOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateClampOp(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,
@@ -416,7 +413,7 @@ CreateClampOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateReluOp(poplar::Graph &graph,
              CompilerResources& res,
              const HloInstruction *inst,
@@ -438,7 +435,7 @@ CreateReluOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateReluGradOp(poplar::Graph &graph,
                  CompilerResources& res,
                  const HloInstruction *inst,
@@ -463,7 +460,7 @@ CreateReluGradOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateSigmoidOp(poplar::Graph &graph,
                 CompilerResources& res,
                 const HloInstruction *inst,
@@ -485,7 +482,7 @@ CreateSigmoidOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateSigmoidGradOp(poplar::Graph &graph,
                     CompilerResources& res,
                     const HloInstruction *inst,

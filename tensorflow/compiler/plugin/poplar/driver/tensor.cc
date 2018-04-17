@@ -41,7 +41,7 @@ namespace sep = ::perftools::gputools::poplarplugin;
 namespace xla {
 namespace poplarplugin {
 
-port::StatusOr<poplar::Type>
+StatusOr<poplar::Type>
 PoplarDataType(const xla::Shape& shape) {
   switch (shape.element_type()) {
     case PRED:
@@ -130,7 +130,7 @@ ConvertFromDeviceLayout(const Shape& shape, const poplar::Tensor& tensor) {
   return out;
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 AddPlainTensor(poplar::Graph& graph,
                const HloInstruction* inst,
                const xla::Shape& shape) {
@@ -144,7 +144,7 @@ AddPlainTensor(poplar::Graph& graph,
   return out;
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 AddRnnSequence(poplar::Graph& graph,
                const HloInstruction* inst,
                const xla::Shape& shape) {
@@ -162,7 +162,7 @@ AddRnnSequence(poplar::Graph& graph,
   return out;
 }
 
-static port::StatusOr<poplar::Tensor>
+static StatusOr<poplar::Tensor>
 AddConvolutionInput(poplar::Graph& graph,
                     const HloInstruction* inst,
                     const HloInstruction* op_target,
@@ -178,7 +178,7 @@ AddConvolutionInput(poplar::Graph& graph,
   return ShuffleConvolutionInputToTensorflow(conv_target, out);
 }
 
-static port::StatusOr<poplar::Tensor>
+static StatusOr<poplar::Tensor>
 AddConvolutionWeights(poplar::Graph& graph,
                       const HloInstruction* inst,
                       const HloInstruction* op_target,
@@ -197,7 +197,7 @@ AddConvolutionWeights(poplar::Graph& graph,
   return ShuffleConvolutionWeightsToTensorflow(conv_target, out);
 }
 
-static port::StatusOr<poplar::Tensor>
+static StatusOr<poplar::Tensor>
 AddLeftMatMul(poplar::Graph& graph,
               const HloInstruction* inst,
               const HloInstruction* target,
@@ -212,7 +212,7 @@ AddLeftMatMul(poplar::Graph& graph,
                                       &resources.dot_cache);
 }
 
-static port::StatusOr<poplar::Tensor>
+static StatusOr<poplar::Tensor>
 AddRightMatMul(poplar::Graph& graph,
               const HloInstruction* inst,
               const HloInstruction* target,
@@ -228,7 +228,7 @@ AddRightMatMul(poplar::Graph& graph,
 }
 
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
           const TensorSource& src,
           const xla::Shape& shape,
@@ -259,8 +259,8 @@ AddTensor(poplar::Graph& graph,
           }
           default:
             return tensorflow::errors::FailedPrecondition(
-                    port::StrCat("invalid operand for tensor allocation on ",
-                                 src.first->name()));
+                port::StrCat("invalid operand for tensor allocation on ",
+                             src.first->name()));
         }
         break;
       }
@@ -283,8 +283,8 @@ AddTensor(poplar::Graph& graph,
           }
           default:
             return tensorflow::errors::FailedPrecondition(
-                    port::StrCat("invalid operand for tensor allocation on ",
-                                 src.first->name()));
+                port::StrCat("invalid operand for tensor allocation on ",
+                             src.first->name()));
         }
         break;
       }
@@ -358,8 +358,8 @@ AddTensor(poplar::Graph& graph,
       }
       default:
         return tensorflow::errors::FailedPrecondition(
-                port::StrCat("Unknown tensor target for ", src.first->name(),
-                             ": ", target->second.tgt->name()));
+            port::StrCat("Unknown tensor target for ", src.first->name(),
+                         ": ", target->second.tgt->name()));
     }
 
     // Now apply any transformations required by the path from the source to
@@ -493,7 +493,7 @@ Set64BitInitialTensorValue(poplar::Graph &graph,
   graph.setInitialValue<int>(tensor, static_cast<const int*>(data32));
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 AddConstantTensor(poplar::Graph& graph,
                   const TensorSource& src,
                   const xla::Shape& shape,
@@ -577,13 +577,13 @@ template poplar::Tensor
 TileTensor<std::vector<std::size_t>>(const std::vector<std::size_t> &,
                                      const poplar::Tensor &);
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 PadTensor(const PaddingConfig& cfg,
           const poplar::Tensor &in,
           const poplar::Tensor& pad) {
   if (pad.numElements() != 1) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "PadTensor: pad tensor is not single valued");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "PadTensor: pad tensor is not single valued");
   }
 
   poplar::Tensor p(pad.reshape(std::vector<std::size_t>(in.rank(), 1)));
@@ -619,7 +619,7 @@ PadTensor(const PaddingConfig& cfg,
   return out;
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 ReverseTensor(const poplar::Tensor &in,
               const std::vector<int64>& dimensions) {
   poplar::Tensor out = in;
@@ -631,7 +631,7 @@ ReverseTensor(const poplar::Tensor &in,
   return out;
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 BroadcastTensor(const poplar::Tensor &in,
                 const xla::Shape& out,
                 const std::vector<int64>& dimensions) {
@@ -655,8 +655,8 @@ BroadcastTensor(const poplar::Tensor &in,
 
   tensorflow::BCast bcast(tensor_shape, bcast_shape);
   if (!bcast.IsValid()) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Incompatible broadcast");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Incompatible broadcast");
   }
 
   poplar::Tensor o = in;

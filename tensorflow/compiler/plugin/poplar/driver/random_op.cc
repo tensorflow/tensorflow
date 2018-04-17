@@ -16,11 +16,11 @@
 namespace xla {
 namespace poplarplugin {
 
-static port::StatusOr<double>
+static StatusOr<double>
 DoubleValueOfScalarLiteral(const xla::Literal& lit) {
   if (ShapeUtil::ElementsIn(lit.shape()) != 1) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Literal element count != 1");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Literal element count != 1");
   }
 
   std::unique_ptr<Literal> double_lit;
@@ -30,7 +30,7 @@ DoubleValueOfScalarLiteral(const xla::Literal& lit) {
   return *val;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 TruncatedNormalScale(poplar::Graph &graph,
                      CompilerResources& res,
                      const HloInstruction *inst,
@@ -68,7 +68,7 @@ TruncatedNormalScale(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 TruncatedNormal(poplar::Graph &graph,
                 CompilerResources& res,
                 const HloInstruction *inst,
@@ -95,7 +95,7 @@ TruncatedNormal(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 RandomNormalScale(poplar::Graph &graph,
                   CompilerResources& res,
                   const HloInstruction *inst,
@@ -128,7 +128,7 @@ RandomNormalScale(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 RandomUniformScale(poplar::Graph &graph,
                    CompilerResources& res,
                    const HloInstruction *inst,
@@ -161,7 +161,7 @@ RandomUniformScale(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 RandomNormal(poplar::Graph &graph,
              CompilerResources& res,
              const HloInstruction *inst,
@@ -187,7 +187,7 @@ RandomNormal(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 RandomUniform(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,

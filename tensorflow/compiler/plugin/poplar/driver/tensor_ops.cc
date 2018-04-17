@@ -20,7 +20,7 @@
 namespace xla {
 namespace poplarplugin {
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateSliceUpdateOp(poplar::Graph &graph,
                     CompilerResources& res,
                     const HloInstruction *inst,
@@ -41,8 +41,8 @@ CreateSliceUpdateOp(poplar::Graph &graph,
                       LiteralVectorToInt64Vector(root->operand(2)->literal()));
 
   if (begin.size() != input.rank()) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Invalid update slice start");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Invalid update slice start");
   }
 
   poplar::program::Sequence seq;
@@ -77,7 +77,7 @@ CreateSliceUpdateOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateSliceOp(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,
@@ -94,8 +94,8 @@ CreateSliceOp(poplar::Graph &graph,
                       LiteralVectorToInt64Vector(root->operand(1)->literal()));
 
   if (begin.size() != input.rank()) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Invalid update slice start");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Invalid update slice start");
   }
 
   std::vector<std::size_t> s_begin =
@@ -113,7 +113,7 @@ CreateSliceOp(poplar::Graph &graph,
   return poplar::program::Copy(slice, out);
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateDynamicSliceUpdateOp(poplar::Graph &graph,
                            CompilerResources& res,
                            const HloInstruction *inst,
@@ -188,7 +188,7 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateDynamicSliceOp(poplar::Graph &graph,
                      CompilerResources& res,
                      const HloInstruction *inst,
@@ -251,7 +251,7 @@ CreateDynamicSliceOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateWideConstant(poplar::Graph &graph,
                    CompilerResources& res,
                    const HloInstruction *inst,
@@ -271,7 +271,7 @@ CreateWideConstant(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateZeroPadOp(poplar::Graph &graph,
                 CompilerResources& res,
                 const HloInstruction *inst,

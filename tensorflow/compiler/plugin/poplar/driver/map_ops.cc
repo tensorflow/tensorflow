@@ -25,7 +25,7 @@
 namespace xla {
 namespace poplarplugin {
 
-static port::StatusOr<ComputationMap::iterator>
+static StatusOr<ComputationMap::iterator>
 GetOrCompileSubComputation(poplar::Graph &graph,
                            CompilerResources& res,
                            const ArgVectors& inputs,
@@ -77,7 +77,7 @@ public:
   bool _is_ok;
 };
 
-port::StatusOr<bool>
+StatusOr<bool>
 IsParallelMap(const HloInstruction* inst,
               const HloComputation* computation) {
   HloInstruction* root(computation->root_instruction());
@@ -88,7 +88,7 @@ IsParallelMap(const HloInstruction* inst,
   return tester._is_ok;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateParallelMap(poplar::Graph &graph,
                   CompilerResources& res,
                   const HloInstruction *inst,
@@ -116,7 +116,7 @@ CreateParallelMap(poplar::Graph &graph,
   return visitor.sequence;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateCallOp(poplar::Graph &graph,
              CompilerResources& res,
              const HloInstruction *inst,
@@ -140,8 +140,8 @@ CreateCallOp(poplar::Graph &graph,
   for (int64 o = 0; o < op_count; o++) {
     auto& inputs = subcomp_visitor->second.inputs()[o];
     if (inputs.size() != args[o].size()) {
-      return port::Status(port::error::FAILED_PRECONDITION,
-                          "Mismatched number of inputs");
+      return Status(tensorflow::error::FAILED_PRECONDITION,
+                    "Mismatched number of inputs");
     }
     for (int64 i = 0; i < inputs.size(); i++) {
       if (subcomp_visitor->second.input_valid(o, i)) {
@@ -162,7 +162,7 @@ CreateCallOp(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateFusionOp(poplar::Graph &graph,
                CompilerResources& res,
                const HloInstruction *inst,
@@ -195,7 +195,7 @@ CreateFusionOp(poplar::Graph &graph,
 
 
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateWhileOp(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,
@@ -223,20 +223,20 @@ CreateWhileOp(poplar::Graph &graph,
   const ArgVector& cond_outputs = cond->second.outputs();
 
   if (body_inputs.size() != param_count) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Invalid number of body inputs");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Invalid number of body inputs");
   }
   if (body_outputs.size() != param_count) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Invalid number of body outputs");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Invalid number of body outputs");
   }
   if (cond_inputs.size() != param_count) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Invalid number of condition inputs");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Invalid number of condition inputs");
   }
   if (cond_outputs.size() != 1) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Invalid number of condition outputs");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Invalid number of condition outputs");
   }
 
 
@@ -326,7 +326,7 @@ CreateWhileOp(poplar::Graph &graph,
   return main_seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateIfOp(poplar::Graph &graph,
            CompilerResources& res,
            const HloInstruction *inst,
@@ -357,8 +357,8 @@ CreateIfOp(poplar::Graph &graph,
 
   if (true_body->second.inputs().size() != 1 ||
       false_body->second.inputs().size() != 1) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Invalid input count");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Invalid input count");
   }
 
   poplar::program::Sequence true_seq;
@@ -381,8 +381,8 @@ CreateIfOp(poplar::Graph &graph,
 
   unsigned int output_count = true_body->second.outputs().size();
   if (output_count != false_body->second.outputs().size()) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Mismatched output size");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Mismatched output size");
   }
 
   for (unsigned int i=0; i<output_count; i++) {

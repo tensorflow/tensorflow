@@ -49,7 +49,7 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace poplarplugin {
 
-typedef port::StatusOr<poplar::program::Program> (*FusedCallFn)(
+typedef StatusOr<poplar::program::Program> (*FusedCallFn)(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&);
 
@@ -86,9 +86,8 @@ BaseVisitor::GetOutputShape(HloInstruction* inst) const {
 }
 
 Status BaseVisitor::Unimplemented(HloInstruction* inst) {
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Status(tensorflow::error::UNIMPLEMENTED,
+                port::StrCat(inst->name(), " not implemented"));
 }
 
 Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
@@ -288,9 +287,9 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     } else {
-      return port::Status(port::error::FAILED_PRECONDITION,
-                          port::StrCat("Unrecognized special call op ",
-                                       inst->name(), ": ", name));
+      return Status(tensorflow::error::FAILED_PRECONDITION,
+                    port::StrCat("Unrecognized special call op ", inst->name(),
+                                 ": ", name));
     }
   } else {
     poplar::program::Program prog;

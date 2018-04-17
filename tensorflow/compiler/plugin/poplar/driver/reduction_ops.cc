@@ -222,7 +222,7 @@ GetOverlapLayerNum(const Tpos& pos,
   return layer;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateSimpleReduction(poplar::Graph &graph,
                       CompilerResources& res,
                       const HloInstruction *inst,
@@ -276,7 +276,7 @@ CreateSimpleReduction(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateSimpleWindowReduction(poplar::Graph &graph,
                             CompilerResources& res,
                             const HloInstruction *inst,
@@ -384,7 +384,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
   return seq;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreatePoplibsWindowReduction(poplar::Graph &graph,
                              CompilerResources& res,
                              const HloInstruction *inst,
@@ -446,8 +446,8 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
     }
 
     if (reduction_dims.size() != 2) {
-      return port::Status(port::error::FAILED_PRECONDITION,
-                          "poplar pooling only supports 2D pooling");
+      return Status(tensorflow::error::FAILED_PRECONDITION,
+                    "poplar pooling only supports 2D pooling");
     }
 
     std::vector<std::size_t> kernel_shape;
@@ -490,7 +490,7 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
   return prog;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateSimpleSelectAndScatter(poplar::Graph &graph,
                              CompilerResources& res,
                              const HloInstruction *inst,

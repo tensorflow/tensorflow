@@ -23,7 +23,7 @@
 namespace xla {
 namespace poplarplugin {
 
-port::StatusOr<popconv::ConvParams>
+StatusOr<popconv::ConvParams>
 GetConvolutionParameters(const HloInstruction* operands_inst,
                          const HloInstruction* parameters_inst) {
 
@@ -123,7 +123,7 @@ static bool is_identity_shuffle(const std::vector<unsigned int> shuffle) {
   return true;
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 ShuffleConvolutionInputToPoplar(const HloInstruction* inst,
                                 const poplar::Tensor& tensor) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
@@ -138,7 +138,7 @@ ShuffleConvolutionInputToPoplar(const HloInstruction* inst,
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 ShuffleConvolutionWeightsToPoplar(const HloInstruction* inst,
                                   const poplar::Tensor& tensor,
                                   bool swap_features) {
@@ -159,7 +159,7 @@ ShuffleConvolutionWeightsToPoplar(const HloInstruction* inst,
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 ShuffleConvolutionInputToTensorflow(const HloInstruction* inst,
                                     const poplar::Tensor& tensor) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
@@ -174,7 +174,7 @@ ShuffleConvolutionInputToTensorflow(const HloInstruction* inst,
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 ShuffleConvolutionWeightsToTensorflow(const HloInstruction* inst,
                                       const poplar::Tensor& tensor) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
@@ -189,7 +189,7 @@ ShuffleConvolutionWeightsToTensorflow(const HloInstruction* inst,
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 ShuffleConvolutionOutputToTensorflow(const HloInstruction* inst,
                                      const poplar::Tensor& tensor) {
   const auto& d(inst->convolution_dimension_numbers());
@@ -253,7 +253,7 @@ poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
   return out;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 CreateConv2D(poplar::Graph &graph,
              CompilerResources& res,
              const HloInstruction *inst,
@@ -297,7 +297,7 @@ CreateConv2D(poplar::Graph &graph,
   return prog;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 Create2DConvWithReverse(poplar::Graph &graph,
                         CompilerResources& res,
                         const HloInstruction *inst,
@@ -340,7 +340,7 @@ Create2DConvWithReverse(poplar::Graph &graph,
   return prog;
 }
 
-port::StatusOr <poplar::program::Program>
+StatusOr <poplar::program::Program>
 CreateBiasAddOp(poplar::Graph &graph,
                 CompilerResources& res,
                 const HloInstruction *inst,
@@ -362,7 +362,7 @@ CreateBiasAddOp(poplar::Graph &graph,
   return prog;
 }
 
-port::StatusOr<poplar::program::Program>
+StatusOr<poplar::program::Program>
 ConvBiasApply(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,

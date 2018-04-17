@@ -38,11 +38,11 @@ FlattenedXlaShape(const xla::Shape& shape) {
 }
 
 
-port::StatusOr<std::vector<int64>>
+StatusOr<std::vector<int64>>
 LiteralVectorToInt64Vector(const xla::Literal& lit) {
   if (lit.shape().dimensions_size() != 1) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Literal rank != 1");
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Literal rank != 1");
   }
 
   std::unique_ptr<Literal> s64_lit;

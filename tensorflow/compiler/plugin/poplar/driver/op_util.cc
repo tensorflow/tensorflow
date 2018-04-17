@@ -26,18 +26,16 @@ FindTupleInInstructionInput(const TensorMap& map,
   return ArgVector(&outputs[start], &outputs[end]);
 }
 
-port::StatusOr<poplar::Tensor>
+StatusOr<poplar::Tensor>
 FindInstructionInput(const TensorMap& map,
                      const HloInstruction* inst,
                      int64 input) {
   const HloInstruction* operand = inst->operand(input);
   OutVector outputs = FindInstructionOutputs(map, operand);
   if (outputs.size() == 0) {
-    return port::Status(port::error::UNKNOWN,
-                        port::StrCat("[Poplar] Couldn't find input ",
-                                     input,
-                                     " for ",
-                                     inst->name()));
+    return Status(tensorflow::error::UNKNOWN,
+                  port::StrCat("[Poplar] Couldn't find input ", input, " for ",
+                               inst->name()));
   }
   return outputs[0];
 }
@@ -63,7 +61,7 @@ FindInstructionOutputs(const TensorMap& map,
   return outputs;
 }
 
-port::Status
+Status
 AddOutputTensor(TensorMap& map,
                 const HloInstruction* inst,
                 int64 n,
@@ -71,10 +69,9 @@ AddOutputTensor(TensorMap& map,
   auto p = std::make_pair(inst->name(),n);
   auto it = map.find(p);
   if (it != map.end()) {
-    return port::Status(port::error::UNKNOWN,
-                        port::StrCat("[Poplar] Ouptut Tensor for ",
-                                     inst->name(),
-                                     " already exists"));
+    return Status(tensorflow::error::UNKNOWN,
+                  port::StrCat("[Poplar] Ouptut Tensor for ", inst->name(),
+                               " already exists"));
   }
   map[p] = tensor;
   return Status::OK();
@@ -95,7 +92,7 @@ static void SetFp16VertexField(poplar::Graph& graph,
   graph.setInitialValueHalf(field, *value);
 }
 
-port::Status SetVertexField(poplar::Graph &graph,
+Status SetVertexField(poplar::Graph &graph,
                             const poplar::FieldRef &field,
                             const Literal &literal) {
   switch (literal.shape().element_type()) {
@@ -113,9 +110,9 @@ port::Status SetVertexField(poplar::Graph &graph,
       SetVertexField<float>(graph, field, literal);
       break;
     default:
-      return port::Status(port::error::FAILED_PRECONDITION,
-                          port::StrCat("Unrecognised type in SetVertexField: ",
-                                       literal.shape().element_type()));
+      return Status(tensorflow::error::FAILED_PRECONDITION,
+                    port::StrCat("Unrecognised type in SetVertexField: ",
+                                 literal.shape().element_type()));
   }
   return Status::OK();
 }
