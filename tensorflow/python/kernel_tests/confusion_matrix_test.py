@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 from six.moves import xrange
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
