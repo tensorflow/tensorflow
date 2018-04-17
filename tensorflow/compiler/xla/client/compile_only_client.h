@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/computation.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/compile_only_service.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -52,6 +53,27 @@ class CompileOnlyClient : public Client {
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
       const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
+      const AotCompilationOptions& options);
+
+  // A description of an xla computation to compile using CompileAheadOfTime.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  struct AotXlaComputationInstance {
+    const XlaComputation* computation;
+    // Inform the compiler of the expected layout for arguments.
+    std::vector<const Shape*> argument_layouts;
+    // Specifies the expected result layout.
+    const Shape* result_layout;
+  };
+
+  // Compiles a list of xla computations for ahead-of-time execution.  This is
+  // intended for use in static compilation. The |options| parameter describes
+  // the target for which the compiler should emit code.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(
+      const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
       const AotCompilationOptions& options);
 
   // Returns the size of a pointer in bytes for a given triple.
