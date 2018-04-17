@@ -19,6 +19,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -280,6 +281,10 @@ py_test(
     srcs = ["test/tf_trt_integration_test.py"],
     main = "test/tf_trt_integration_test.py",
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":init_py",
         "//tensorflow/python:client_testlib",
