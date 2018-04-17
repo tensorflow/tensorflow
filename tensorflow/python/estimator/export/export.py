@@ -74,8 +74,20 @@ class ServingInputReceiver(collections.namedtuple(
         raise ValueError('feature keys must be strings: {}.'.format(name))
       if not (isinstance(tensor, ops.Tensor)
               or isinstance(tensor, sparse_tensor.SparseTensor)):
-        raise ValueError(
+        value_error = ValueError(
             'feature {} must be a Tensor or SparseTensor.'.format(name))
+        # NOTE(ericmc): This if-else block is a specific carve-out for
+        # LabeledTensor, which has a `.tensor` attribute and which is
+        # convertible to tf.Tensor via ops.convert_to_tensor.
+        # Allowing all types convertible to tf.Tensor is considered by soergel@
+        # to be too permissive.
+        if hasattr(tensor, 'tensor'):
+          try:
+            ops.convert_to_tensor(tensor)
+          except TypeError:
+            raise value_error
+        else:
+          raise value_error
 
     if receiver_tensors is None:
       raise ValueError('receiver_tensors must be defined.')
