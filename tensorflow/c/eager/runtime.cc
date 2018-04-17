@@ -184,8 +184,7 @@ void CombineUnordered(const tensorflow::Fprint128& a,
 
 inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s,
                                             const tensorflow::Fprint128& b) {
-  // TODO(agarwal): avoid ToString().
-  tensorflow::Fprint128 a = tensorflow::Fingerprint128(s.ToString());
+  tensorflow::Fprint128 a = tensorflow::Fingerprint128(s);
   return FingerprintCat128(a, b);
 }
 
@@ -213,10 +212,8 @@ tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) const {
     if (node_def_finalized_) return f;
   }
   for (const auto& p : string_attrs_) {
-    // TODO(agarwal): avoid ToString().
-    CombineUnordered(CacheKeyHelper(p.first, tensorflow::Fingerprint128(
-                                                 p.second.ToString())),
-                     &f);
+    CombineUnordered(
+        CacheKeyHelper(p.first, tensorflow::Fingerprint128(p.second)), &f);
   }
   for (const auto& p : int_attrs_) {
     CombineUnordered(CacheKeyHelper(p.first, static_cast<uint64>(p.second)),

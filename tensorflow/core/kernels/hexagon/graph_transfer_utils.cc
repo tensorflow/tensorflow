@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"

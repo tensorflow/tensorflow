@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# TODO(mdan): Bring only the relevant symbols to the top level.
 from tensorflow.contrib.autograph import utils
 from tensorflow.contrib.autograph.impl.api import convert
 from tensorflow.contrib.autograph.impl.api import converted_call

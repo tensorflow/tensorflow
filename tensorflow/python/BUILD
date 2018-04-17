@@ -4,16 +4,14 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-package(
-    default_visibility = [
-        "//engedu/ml/tf_from_scratch:__pkg__",
-        "//tensorflow:internal",
-        "//tensorflow/contrib/lite/toco/python:__pkg__",
-        "//tensorflow_models:__subpackages__",
-        # TODO(aselle): to pass open source test.
-        "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
-    ],
-)
+package(default_visibility = [
+    "//engedu/ml/tf_from_scratch:__pkg__",
+    "//tensorflow:internal",
+    "//tensorflow/contrib/lite/toco/python:__pkg__",
+    "//tensorflow_models:__subpackages__",
+    # TODO(aselle): to pass open source test.
+    "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -1795,6 +1793,16 @@ py_library(
 )
 
 py_library(
+    name = "cudnn_rnn_grad",
+    srcs = ["ops/cudnn_rnn_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        "//tensorflow/python:cudnn_rnn_ops_gen",
+    ],
+)
+
+py_library(
     name = "data_flow_grad",
     srcs = ["ops/data_flow_grad.py"],
     srcs_version = "PY2AND3",
@@ -2467,6 +2475,7 @@ py_library(
         ":clip_ops",
         ":confusion_matrix",
         ":control_flow_ops",
+        ":cudnn_rnn_grad",
         ":data_flow_grad",
         ":data_flow_ops",
         ":framework_for_generated_wrappers",
