@@ -11,6 +11,7 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -19,7 +20,6 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
