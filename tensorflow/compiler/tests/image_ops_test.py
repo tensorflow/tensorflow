@@ -37,6 +37,10 @@ from tensorflow.python.platform import test
 class RGBToHSVTest(XLATestCase):
 
   def testBatch(self):
+    # TODO(b/78230407): Reenable the test on GPU.
+    if self.device == "XLA_GPU":
+      return
+
     # Build an arbitrary RGB image
     np.random.seed(7)
     batch_size = 5
