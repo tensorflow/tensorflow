@@ -43,7 +43,7 @@ class OrderedBijectorTest(test.TestCase):
       self.assertAllClose(y, ordered.forward(x).eval())
       self.assertAllClose(x, ordered.inverse(y).eval())
       self.assertAllClose(
-          -np.sum(y[..., 1:], axis=-1),
+          np.sum(np.asarray(y)[..., 1:], axis=-1),
           ordered.inverse_log_det_jacobian(y, event_ndims=1).eval(),
           atol=0.,
           rtol=1e-7)
@@ -66,7 +66,7 @@ class OrderedBijectorTest(test.TestCase):
       self.assertAllClose(real_x, ordered.inverse(y).eval(
           feed_dict={y: real_y}))
       self.assertAllClose(
-          -np.sum(y[..., 1:], axis=-1),
+          np.sum(np.asarray(real_y)[..., 1:], axis=-1),
           ordered.inverse_log_det_jacobian(y, event_ndims=1).eval(
               feed_dict={y: real_y}),
           atol=0.,
@@ -96,14 +96,8 @@ class OrderedBijectorTest(test.TestCase):
   def testBijectiveAndFinite(self):
     with self.test_session():
       ordered = Ordered()
-      x = np.linspace(-50, 50, num=10).reshape(5, 2).astype(np.float32)
-      # Make y values on the simplex with a wide range.
-      y_0 = np.ones(5).astype(np.float32)
-      y_1 = (1e-5 * rng.rand(5)).astype(np.float32)
-      y_2 = (1e1 * rng.rand(5)).astype(np.float32)
-      y = np.array([y_0, y_1, y_2])
-      y /= y.sum(axis=0)
-      y = y.T  # y.shape = [5, 3]
+      x = np.sort(rng.randn(3, 10), axis=-1).astype(np.float32)
+      y = (rng.randn(3, 10)).astype(np.float32)
       assert_bijective_and_finite(ordered, x, y, event_ndims=1)
 
 
