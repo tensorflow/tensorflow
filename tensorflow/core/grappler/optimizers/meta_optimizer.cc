@@ -164,6 +164,26 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       TF_RETURN_IF_ERROR(opt->Init());
       optimizers.push_back(std::move(opt));
     }
+
+    // Append custom configurable optimizers.
+    std::vector<tensorflow::RewriterConfig_CustomGraphOptimizer>
+        custom_configurable_optimizers;
+    for (const auto& optimizer : cfg_.custom_optimizers()) {
+      if (available_optimizers.find(optimizer.name()) !=
+          available_optimizers.end()) {
+        optimizers.push_back(NewOptimizer(optimizer.name()));
+      } else {
+        custom_configurable_optimizers.push_back(optimizer);
+      }
+    }
+    // Now initialize and configure the custom optimizers.
+    for (const auto& optimizer : custom_configurable_optimizers) {
+      std::unique_ptr<CustomGraphOptimizer> opt =
+          CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer.name());
+      if (opt == nullptr) continue;
+      TF_RETURN_IF_ERROR(opt->Init(&optimizer));
+      optimizers.push_back(std::move(opt));
+    }
   }
 
   if (optimizers.empty()) {
@@ -253,7 +273,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
-         !cfg.optimizers().empty();
+         !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
