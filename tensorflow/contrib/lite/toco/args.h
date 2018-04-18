@@ -240,6 +240,7 @@ struct ParsedTocoFlags {
   Arg<bool> debug_disable_recurrent_cell_fusion = Arg<bool>(false);
   Arg<bool> drop_control_dependency = Arg<bool>(false);
   Arg<bool> propagate_fake_quant_num_bits = Arg<bool>(false);
+  Arg<bool> allow_nudging_weights_to_use_fast_gemm_kernel = Arg<bool>(false);
 };
 
 }  // namespace toco

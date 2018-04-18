@@ -246,6 +246,19 @@ class ResolveConstantFakeQuant : public GraphTransformation {
   bool propagate_fake_quant_num_bits_ = false;
 };
 
+class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
+ public:
+  bool Run(Model* model, std::size_t op_index) override;
+  const char* Name() const override {
+    return "EnsureUint8WeightsSafeForFastInt8Kernels";
+  }
+  bool allow_nudging_weights() const { return allow_nudging_weights_; }
+  void set_allow_nudging_weights(bool val) { allow_nudging_weights_ = val; }
+
+ private:
+  bool allow_nudging_weights_ = false;
+};
+
 #undef DECLARE_GRAPH_TRANSFORMATION
 
 }  // end namespace toco

@@ -37,7 +37,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 17.
+// Next ID to use: 18.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -156,4 +156,9 @@ message TocoFlags {
   // Input and output array data types may change because of this propagation
   // and users must be sure to query the final data_type values.
   optional bool propagate_fake_quant_num_bits = 14;
+
+  // Some fast uint8 GEMM kernels require uint8 weights to avoid the value 0.
+  // This flag allows nudging them to 1 to allow proceeding, with moderate
+  // inaccuracy.
+  optional bool allow_nudging_weights_to_use_fast_gemm_kernel = 17;
 }

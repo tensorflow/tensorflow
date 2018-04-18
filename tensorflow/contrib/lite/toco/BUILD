@@ -219,6 +219,7 @@ cc_library(
         "graph_transformations/drop_fake_quant.cc",
         "graph_transformations/drop_im2col_arrays.cc",
         "graph_transformations/ensure_bias_vectors.cc",
+        "graph_transformations/ensure_uint8_weights_safe_for_fast_int8_kernels.cc",
         "graph_transformations/experimental_shuffle_fc_weights.cc",
         "graph_transformations/fuse_activation_functions.cc",
         "graph_transformations/fuse_binary_into_following_affine.cc",

@@ -141,6 +141,13 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.propagate_fake_quant_num_bits.default_value(),
            "If true, use FakeQuant* operator num_bits attributes to adjust "
            "array data_types."),
+      Flag("allow_nudging_weights_to_use_fast_gemm_kernel",
+           parsed_flags.allow_nudging_weights_to_use_fast_gemm_kernel.bind(),
+           parsed_flags.allow_nudging_weights_to_use_fast_gemm_kernel
+               .default_value(),
+           "Some fast uint8 GEMM kernels require uint8 weights to avoid the "
+           "value 0. This flag allows nudging them to 1 to allow proceeding, "
+           "with moderate inaccuracy."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -230,6 +237,8 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(drop_control_dependency, FlagRequirement::kNone);
   READ_TOCO_FLAG(debug_disable_recurrent_cell_fusion, FlagRequirement::kNone);
   READ_TOCO_FLAG(propagate_fake_quant_num_bits, FlagRequirement::kNone);
+  READ_TOCO_FLAG(allow_nudging_weights_to_use_fast_gemm_kernel,
+                 FlagRequirement::kNone);
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {

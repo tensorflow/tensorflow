@@ -317,12 +317,17 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     }
 
     CheckIsReadyForQuantization(*model);
+    auto* ensure_safe_for_int8_kernels =
+        new EnsureUint8WeightsSafeForFastInt8Kernels;
+    ensure_safe_for_int8_kernels->set_allow_nudging_weights(
+        toco_flags.allow_nudging_weights_to_use_fast_gemm_kernel());
     RunGraphTransformations(model, "quantization graph transformations",
                             {
                                 new RemoveTrivialQuantizedActivationFunc,
                                 new RemoveTrivialQuantizedMinMax,
                                 new Quantize,
                                 new RemoveFinalDequantizeOp,
+                                ensure_safe_for_int8_kernels,
                             });
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
