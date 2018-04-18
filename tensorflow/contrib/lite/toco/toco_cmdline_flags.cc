@@ -61,11 +61,21 @@ bool ParseTocoFlagsFromCommandLineFlags(
       Flag("default_ranges_min", parsed_flags.default_ranges_min.bind(),
            parsed_flags.default_ranges_min.default_value(),
            "If defined, will be used as the default value for the min bound "
-           "of min/max ranges used for quantization."),
+           "of min/max ranges used for quantization of uint8 arrays."),
       Flag("default_ranges_max", parsed_flags.default_ranges_max.bind(),
            parsed_flags.default_ranges_max.default_value(),
            "If defined, will be used as the default value for the max bound "
-           "of min/max ranges used for quantization."),
+           "of min/max ranges used for quantization of uint8 arrays."),
+      Flag("default_int16_ranges_min",
+           parsed_flags.default_int16_ranges_min.bind(),
+           parsed_flags.default_int16_ranges_min.default_value(),
+           "If defined, will be used as the default value for the min bound "
+           "of min/max ranges used for quantization of int16 arrays."),
+      Flag("default_int16_ranges_max",
+           parsed_flags.default_int16_ranges_max.bind(),
+           parsed_flags.default_int16_ranges_max.default_value(),
+           "If defined, will be used as the default value for the max bound "
+           "of min/max ranges used for quantization of int16 arrays."),
       Flag("inference_type", parsed_flags.inference_type.bind(),
            parsed_flags.inference_type.default_value(),
            "Target data type of arrays in the output file (for input_arrays, "
@@ -212,6 +222,8 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   PARSE_TOCO_FLAG(IODataType, inference_input_type, FlagRequirement::kNone);
   READ_TOCO_FLAG(default_ranges_min, FlagRequirement::kNone);
   READ_TOCO_FLAG(default_ranges_max, FlagRequirement::kNone);
+  READ_TOCO_FLAG(default_int16_ranges_min, FlagRequirement::kNone);
+  READ_TOCO_FLAG(default_int16_ranges_max, FlagRequirement::kNone);
   READ_TOCO_FLAG(drop_fake_quant, FlagRequirement::kNone);
   READ_TOCO_FLAG(reorder_across_fake_quant, FlagRequirement::kNone);
   READ_TOCO_FLAG(allow_custom_ops, FlagRequirement::kNone);

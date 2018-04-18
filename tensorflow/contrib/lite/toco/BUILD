@@ -238,6 +238,7 @@ cc_library(
         "graph_transformations/merge_reshape_into_preceding_transpose.cc",
         "graph_transformations/propagate_activation_function_into_constants.cc",
         "graph_transformations/propagate_array_data_types.cc",
+        "graph_transformations/propagate_default_min_max.cc",
         "graph_transformations/propagate_fake_quant_num_bits.cc",
         "graph_transformations/propagate_fixed_sizes.cc",
         "graph_transformations/quantization_util.cc",

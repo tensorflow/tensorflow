@@ -227,6 +227,8 @@ struct ParsedTocoFlags {
   // TODO(aselle): command_line_flags  doesn't support doubles
   Arg<float> default_ranges_min = Arg<float>(0.);
   Arg<float> default_ranges_max = Arg<float>(0.);
+  Arg<float> default_int16_ranges_min = Arg<float>(0.);
+  Arg<float> default_int16_ranges_max = Arg<float>(0.);
   Arg<string> inference_type;
   Arg<string> inference_input_type;
   Arg<bool> drop_fake_quant = Arg<bool>(false);
