@@ -126,6 +126,9 @@ Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
     case NPY_INT8:
       *tf = DT_INT8;
       break;
+    case NPY_UINT16:
+      *tf = DT_UINT16;
+      break;
     case NPY_INT16:
       *tf = DT_INT16;
       break;
