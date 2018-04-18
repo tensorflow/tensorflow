@@ -62,6 +62,7 @@ class PyFuncTest(test.TestCase):
         y = constant_op.constant(2, dtype=dtype)
         z = self.evaluate(script_ops.py_func(sum_func, [x, y], dtype))
         self.assertEqual(z, dtype(3))
+
   def testComplexDataTypes(self):
     def sum_func(x, y):
       return x + y
