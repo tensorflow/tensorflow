@@ -55,7 +55,8 @@ class PyFuncTest(test.TestCase):
   def testRealDataTypes(self):
     def sum_func(x, y):
       return x + y
-    for dtype in [np.float16, np.float32, np.float64, np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64]:
+    for dtype in [np.float16, np.float32, np.float64,
+                  np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64]:
       with self.test_session():
         x = constant_op.constant(1, dtype=dtype)
         y = constant_op.constant(2, dtype=dtype)
