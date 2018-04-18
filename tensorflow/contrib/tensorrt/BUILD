@@ -291,6 +291,7 @@ tf_cuda_library(
     ],
     linkstatic = 1,
     deps = [
+        "//tensorflow/core:platform_base",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),

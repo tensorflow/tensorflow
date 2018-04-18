@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_INC_OP_PLUGIN
 #define TENSORFLOW_CONTRIB_TENSORRT_INC_OP_PLUGIN
 
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
-#include <string>
-#include <cstring>
-#include <vector>
-#include <unordered_map>
 #include <cassert>
+#include <cstring>
 #include <iostream>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -31,50 +31,44 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-using std::string;
-using std::unordered_map;
-
-class IncOpPlugin : public PluginTensorRT
-{
-public:
-  static const string plugin_name_;
-  IncOpPlugin() {};
+class IncOpPlugin : public PluginTensorRT {
+ public:
+  static const std::string plugin_name_;
+  IncOpPlugin(){};
   IncOpPlugin(const void* serialized_data, size_t length);
-  const string GetPluginName() override {return plugin_name_;};
-  bool Finalize() override {return true;};
-  bool SetAttribute(const string &key, const void *ptr, const size_t size) override;
-  bool GetAttribute(const string &key, const void *ptr, size_t &size) override;
+  const std::string& GetPluginName() const override { return plugin_name_; };
+  bool Finalize() override { return true; };
+  bool SetAttribute(const std::string& key, const void* ptr,
+                    const size_t size) override;
+  bool GetAttribute(const std::string& key, const void** ptr,
+                    size_t* size) const override;
 
-  // TRT IPlugin methods
-  int getNbOutputs() const override {return 1;}
+  int getNbOutputs() const override { return 1; }
 
-  nvinfer1::Dims getOutputDimensions(int index, const nvinfer1::Dims* inputs, int nbInputDims) override {
-    assert(index==0);
-    assert(nbInputDims==1);
+  nvinfer1::Dims getOutputDimensions(int index, const nvinfer1::Dims* inputs,
+                                     int num_input_dims) override {
+    assert(index == 0);
+    assert(num_input_dims == 1);
     return inputs[0];
   }
 
-  // no configure needed
   // use configure to setup input dimensions
-  void configure(const nvinfer1::Dims *inputs, int nbInputs, const nvinfer1::Dims *outputs, int nbOutputs, int maxBatchSize) override {
-    assert(nbInputs==1);
-    PluginTensorRT::configure(inputs, nbInputs, outputs, nbOutputs, maxBatchSize);
-    return;
+  void configure(const nvinfer1::Dims* inputs, int num_inputs,
+                 const nvinfer1::Dims* outputs, int num_outputs,
+                 int max_batch_size) override {
+    assert(nb_inputs == 1);
+    PluginTensorRT::configure(inputs, num_inputs, outputs, num_outputs,
+                              max_batch_size);
   }
 
-  int initialize() override {
-    return 0;
-  }
+  int initialize() override { return 0; }
 
-  void terminate() override {
-    return;
-  }
+  void terminate() override {}
 
-  size_t getWorkspaceSize(int maxBatchSize) const override {
-    return 0;
-  }
+  size_t getWorkspaceSize(int max_batch_size) const override { return 0; }
 
-  int enqueue(int batchSize, const void*const *inputs, void** outputs, void* workspace, cudaStream_t stream) override; 
+  int enqueue(int batch_size, const void* const* inputs, void** outputs,
+              void* workspace, cudaStream_t stream) override;
 
   size_t getSerializationSize() override {
     return PluginTensorRT::getSerializationSize() + sizeof(float);
@@ -86,24 +80,23 @@ public:
     PluginTensorRT::serialize(buffer);
 
     // incremented buffer after parent serialization;
-    buffer = static_cast<char*>(buffer) + PluginTensorRT::getSerializationSize();
+    buffer =
+        static_cast<char*>(buffer) + PluginTensorRT::getSerializationSize();
 
     std::memcpy(buffer, &inc_, sizeof(float));
     buffer = static_cast<char*>(buffer) + sizeof(float);
-    return;
   }
 
-protected:
+ protected:
   float inc_;
   nvinfer1::Dims dim_;
-  // std::unordered_map<string, std::vector<char> > attr_map_;
 };
 
-IncOpPlugin* CreateIncPlugin(); 
+IncOpPlugin* CreateIncPlugin();
 IncOpPlugin* CreateIncPluginDeserialize(const void*, size_t);
 bool RegisterIncOpPlugin();
-void IncrementKernel(const float* d_input, float inc, float* d_output, int count, cudaStream_t stream);
-
+void IncrementKernel(const float* d_input, float inc, float* d_output,
+                     int count, cudaStream_t stream);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

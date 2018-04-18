@@ -13,30 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_utils.h"
-#include <cassert>
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
-namespace tensorflow {
-namespace tensorrt {
+using namespace tensorflow;
 
-string ExtractOpName(const void* serial_data, size_t serial_length,
-                     size_t* incremental) {
-  size_t op_name_char_count = *static_cast<const size_t*>(serial_data);
-  *incremental = sizeof(size_t) + op_name_char_count;
-
-  assert(serial_length >= *incremental);
-
-  const char* buffer = static_cast<const char*>(serial_data) + sizeof(size_t);
-  std::string op_name(buffer, op_name_char_count);
-
-  return op_name;
-}
-
-}  // namespace tensorrt
-}  // namespace tensorflow
+REGISTER_OP("IncPluginTRT")
+    .Attr("inc: list(float)")
+    .Input("input: float32")
+    .Output("output: float32")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
 
 #endif  // GOOGLE_CUDA
 #endif  // GOOGLE_TENSORRT

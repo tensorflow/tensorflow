@@ -13,33 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS
-#define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS
-
-#include <functional>
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
+#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_plugin.h"
 
 #if GOOGLE_CUDA
+#define EIGEN_USE_GPU
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-typedef std::function<PluginTensorRT*(const void*, size_t)>
-    PluginDeserializeFunc;
+__global__ void VecInc(const float* vec, float inc, float* dest, int n) {
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
+  if (i < n) dest[i] = vec[i] + inc;
+}
 
-typedef std::function<PluginTensorRT*(void)> PluginConstructFunc;
+void IncrementKernel(const float* d_input, float inc, float* d_output,
+                     int count, cudaStream_t stream) {
+  int threads_per_block = 256;
+  int blocks_per_grid = (count + threads_per_block - 1) / threads_per_block;
 
-// TODO(jie): work on error handling here
-string ExtractOpName(const void* serial_data, size_t serial_length,
-                     size_t* incremental);
+  VecInc<<<threads_per_block, blocks_per_grid, 0, stream>>>(d_input, inc,
+                                                            d_output, count);
+}
 
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
-
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS
+#endif  // GOOGLE_TENSORRT

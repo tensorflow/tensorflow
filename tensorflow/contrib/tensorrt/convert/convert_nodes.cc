@@ -249,7 +249,7 @@ class TFAttrs {
 
   std::vector<string> GetAllAttrKey() {
     std::vector<string> attr_list;
-    for (auto & attr_item : attrs_) {
+    for (const auto& attr_item : attrs_) {
       attr_list.emplace_back(attr_item.first);
     }
     return attr_list;
