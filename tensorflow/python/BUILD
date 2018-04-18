@@ -1945,7 +1945,8 @@ py_library(
         ":array_ops",
         ":constant_op",
         ":dtypes",
-        ":linalg_ops",
+        ":linalg_ops_gen",
+        ":linalg_ops_impl",
         ":math_ops",
         ":nn_ops",
         ":random_ops",
@@ -1996,7 +1997,22 @@ py_library(
         ":array_ops",
         ":dtypes",
         ":framework_ops",
+        ":functional_ops",
         ":linalg_ops_gen",
+        ":linalg_ops_impl",
+        ":math_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "linalg_ops_impl",
+    srcs = ["ops/linalg_ops_impl.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":dtypes",
+        ":framework_ops",
         ":math_ops",
         "//third_party/py/numpy",
     ],
