@@ -107,7 +107,7 @@ class RollTest(test_util.TensorFlowTestCase):
       manip_ops.roll(7, 1, 0)
 
   def testRollInputMustVectorHigherRaises(self):
-    # The input should be 1-D or higher, checked is done in kernel.
+    # The input should be 1-D or higher, checked in kernel.
     tensor = array_ops.placeholder(dtype=dtypes.int32)
     shift = 1
     axis = 0
