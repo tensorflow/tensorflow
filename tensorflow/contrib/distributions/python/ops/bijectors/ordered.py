@@ -37,6 +37,9 @@ class Ordered(bijector.Bijector):
   """Bijector which maps a tensor x_k that has increasing elements in the last
   dimension to an unconstrained tensor y_k.
 
+  The inverse of the bijector applied to a normal random vector `X ~ N(0, 1)`
+  gives back a sorted random vector with the same distribution `Y ~ N(0, 1)`
+
   On the last dimension of the tensor, Ordered bijector performs:
   `y[0] = x[0]`
   `y[1:] = math_ops.log(x[1:] - x[:-1])`
@@ -79,7 +82,6 @@ class Ordered(bijector.Bijector):
 
   def _inverse_event_shape_tensor(self, output_shape):
     if self.validate_args:
-      # It is not possible for a negative shape so we need only check <= 1.
       is_greater_one = check_ops.assert_greater(
           output_shape[-1], 1, message="Need last dimension greater than 1.")
       output_shape = control_flow_ops.with_dependencies(
@@ -108,7 +110,7 @@ class Ordered(bijector.Bijector):
   def _maybe_assert_valid_x(self, x):
     if not self.validate_args:
       return x
-    is_valid = check_ops.is_strictly_increasing(
-        x,
+    is_valid = check_ops.assert_positive(
+        x[..., 1:] - x[..., :-1],
         message="Forward transformation input must be strictly increasing.")
     return control_flow_ops.with_dependencies([is_valid], x)
