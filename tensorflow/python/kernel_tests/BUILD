@@ -1603,10 +1603,8 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    shard_count = 4,
+    tags = ["noasan"],
 )
 
 cuda_py_test(
