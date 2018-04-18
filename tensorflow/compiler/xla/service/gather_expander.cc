@@ -86,8 +86,7 @@ static StatusOr<HloInstruction*> CanonicalizeGatherIndices(
   // all of the non-index-vector dimensions.
   const Shape& shape = transposed_gather_indices->shape();
   if (shape.dimensions_size() == 1) {
-    return ExpandFirstDimIntoNDims(transposed_gather_indices,
-                                   {1, shape.dimensions(0)});
+    return PrependDegenerateDims(transposed_gather_indices, 1);
   } else {
     return CollapseFirstNDims(transposed_gather_indices,
                               shape.dimensions_size() - 1);
@@ -112,11 +111,7 @@ static StatusOr<HloInstruction*> AdjustGatherDimsInAccumulator(
     // dynamic-slice.  In that case, there is a leading degenerate gather
     // dimension that we added to make this special case play well with the
     // general while loop which we need to remove now.
-    CHECK_EQ(accumulator->shape().dimensions(0), 1);
-    ArraySlice<int64> reshaped_dim_sizes =
-        AsInt64Slice(accumulator->shape().dimensions());
-    reshaped_dim_sizes.remove_prefix(1);
-    return MakeReshapeHlo(reshaped_dim_sizes, accumulator);
+    return ElideDegenerateDims(accumulator, {0});
   }
 
   return ExpandFirstDimIntoNDims(accumulator, output_gather_dim_bounds);
@@ -195,10 +190,8 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
                       MakeDynamicSliceHlo(operand, gathered_slice_start,
                                           gather.gather_window_bounds()));
 
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * gathered_slice_for_update,
-      ExpandFirstDimIntoNDims(gathered_slice,
-                              {1, gathered_slice->shape().dimensions(0)}));
+  TF_ASSIGN_OR_RETURN(HloInstruction * gathered_slice_for_update,
+                      PrependDegenerateDims(gathered_slice, 1));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * index_vector_into_accumulator,
