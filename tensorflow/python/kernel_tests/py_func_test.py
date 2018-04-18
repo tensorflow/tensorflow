@@ -73,6 +73,16 @@ class PyFuncTest(test.TestCase):
         z = self.evaluate(script_ops.py_func(sub_func, [x, y], dtype))
         self.assertEqual(z, dtype(-1 + 3j))
 
+  def testBoolDataTypes(self):
+    def and_func(x, y):
+      return x and y
+    for dtype in [np.bool]:
+      with self.test_session():
+        x = constant_op.constant(True, dtype=dtype)
+        y = constant_op.constant(False, dtype=dtype)
+        z = self.evaluate(script_ops.py_func(and_func, [x, y], dtype))
+        self.assertEqual(z, dtype(False))
+
   def testSingleType(self):
     with self.test_session():
       x = constant_op.constant(1.0, dtypes.float32)
