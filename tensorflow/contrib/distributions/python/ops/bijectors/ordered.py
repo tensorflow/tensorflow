@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import bijector
 
 
@@ -37,8 +36,9 @@ class Ordered(bijector.Bijector):
   """Bijector which maps a tensor x_k that has increasing elements in the last
   dimension to an unconstrained tensor y_k.
 
-  The inverse of the bijector applied to a normal random vector `X ~ N(0, 1)`
-  gives back a sorted random vector with the same distribution `Y ~ N(0, 1)`
+  The inverse of the bijector applied to a normal random vector `y ~ N(0, 1)`
+  gives back a sorted random vector with the same distribution `x ~ N(0, 1)`
+  where `x = sort(y)`
 
   On the last dimension of the tensor, Ordered bijector performs:
   `y[0] = x[0]`
@@ -47,11 +47,11 @@ class Ordered(bijector.Bijector):
   Example Use:
 
   ```python
-  bijector.Ordered().forward(tf.log([2, 3, 4]))
-  # Result: [0.6931472, 3.6931472, 7.693147]
+  bijector.Ordered().forward([2, 3, 4])
+  # Result: [2., 0., 0.]
 
-  bijector.Ordered().inverse([0.2, 0.3, 0.4])
-  # Result: tf.log([2, 3, 4])
+  bijector.Ordered().inverse([0.06428002, -1.07774478, -0.71530371])
+  # Result: [0.06428002, 0.40464228, 0.8936858]
   ```
   """
 
@@ -105,7 +105,9 @@ class Ordered(bijector.Bijector):
     return math_ops.reduce_sum(y[..., 1:], axis=-1)
 
   def _forward_log_det_jacobian(self, x):
-    pass
+    return -math_ops.reduce_sum(
+      math_ops.log(x[..., 1:] - x[..., :-1]),
+      axis=-1)
 
   def _maybe_assert_valid_x(self, x):
     if not self.validate_args:
