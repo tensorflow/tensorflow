@@ -220,3 +220,44 @@ Follow the documentation [here](https://github.com/tensorflow/tensorflow/tree/ma
 ## Core ML support
 
 Core ML is a machine learning framework used across Apple products. In addition to using Tensorflow Lite models directly in their applications, developers have the option to convert their trained Tensorflow models to the [CoreML](https://developer.apple.com/machine-learning/) format for use on Apple devices. For information on how to use the converter please refer to the [Tensorflow-CoreML converter documentation](https://github.com/tf-coreml/tf-coreml).
+
+
+# TensorFlow Lite Makefile
+
+Basically, the environment to be prepared is the same as TensorFlow. See the README.md in tensorflow/contrib/makefile/
+
+
+## Android
+
+You can compile a TensorFlow Lite library for Android target. It can then be compiled into static or shared library as required.
+
+First, you will need to download and unzip the [Native Development Kit (NDK)](https://developer.android.com/ndk/).
+You will not need to install the standalone toolchain, however.
+
+Assign your NDK location to $NDK_ROOT:
+
+```bash
+export NDK_ROOT=/absolute/path/to/NDK/android-ndk-rxxx/
+```
+
+To compile TensorFlow Lite library using the Makefile, you need the cpufeatures library in NDK.
+
+```bash
+mkdir -p $NDK_ROOT/sources/android/cpufeatures/jni
+cp $NDK_ROOT/sources/android/cpufeatures/cpu-features.* $NDK_ROOT/sources/android/cpufeatures/jni
+cp $NDK_ROOT/sources/android/cpufeatures/Android.mk $NDK_ROOT/sources/android/cpufeatures/jni
+ndk-build NDK_PROJECT_PATH="$NDK_ROOT/sources/android/cpufeatures" NDK_APPLICATION_MK="$NDK_ROOT/sources/android/cpufeatures/Android.mk"
+```
+
+Then, you will have complied a static library in 'gen/lib/' and the [benchmark app](./tools/) compiled for Android as execute the following:
+
+```bash
+tensorflow/contrib/makefile/download_dependencies.sh
+make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID
+```
+
+If you need a shared library, execute the following command.
+
+```bash
+make -f tensorflow/contrib/lite/Makefile TARGET=ANDROID SUB_MAKEFILES=tensorflow/contrib/lite/sub_makefiles/android/Makefile.in libtensorflow-lite.so
+```

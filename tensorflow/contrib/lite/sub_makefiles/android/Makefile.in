@@ -1,0 +1,14 @@
+# libtensorflow-lite.so
+
+LITE_SO_NAME:= libtensorflow-lite.so
+LITE_SO_PATH  := $(LIBDIR)$(LITE_SO_NAME)
+
+$(LITE_SO_PATH): $(LIB_OBJS)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $@ $(LIB_OBJS) \
+	$(LIBFLAGS) $(LDFLAGS) \
+	-shared -Wl,-soname,$(LITE_SO_NAME) \
+	$(LIBS)
+
+$(LITE_SO_NAME): $(LITE_SO_PATH)
