@@ -303,9 +303,9 @@ TEST_F(GraphPropertiesTest, Queues) {
       root.WithOpName("Queue5"),
       {DataType::DT_FLOAT, DataType::DT_DOUBLE, DataType::DT_FLOAT});
   Output rnd2 =
-      ops::RandomNormal(root.WithOpName("rnd"), {10}, DataType::DT_DOUBLE);
+      ops::RandomNormal(root.WithOpName("rnd2"), {10}, DataType::DT_DOUBLE);
   Output rnd3 =
-      ops::RandomNormal(root.WithOpName("rnd"), {1, 2, 3}, DataType::DT_FLOAT);
+      ops::RandomNormal(root.WithOpName("rnd3"), {1, 2, 3}, DataType::DT_FLOAT);
   auto enqueue5 =
       ops::QueueEnqueue(root.WithOpName("Enqueue5"), q5, {rnd, rnd2, rnd3});
   auto dequeue5 = ops::QueueDequeue(
@@ -755,25 +755,25 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
       z = MyAdd(x, y)
       z = MyAdd(x, z)
   */
-  // Check that the shape of the second MyAdd node propagates
-  // correctly.
+  // Check that the shape inference code infers what it can.
   GrapplerItem item;
   string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
                                  "simple_function.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
   TF_CHECK_OK(properties.InferStatically(false));
-  const auto props = properties.GetOutputProperties("MyAdd_55e046a8_1");
-  const OpInfo::TensorProperties& prop = props[0];
-  EXPECT_EQ(DT_FLOAT, prop.dtype());
-  EXPECT_FALSE(prop.shape().unknown_rank());
-  EXPECT_EQ(2, prop.shape().dim_size());
-  EXPECT_EQ(1, prop.shape().dim(0).size());
-  EXPECT_EQ(2, prop.shape().dim(1).size());
+  const auto out_props = properties.GetOutputProperties("MyAdd_55e046a8");
+  const OpInfo::TensorProperties& out_prop = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop.dtype());
+  EXPECT_TRUE(out_prop.shape().unknown_rank());
 
-  PartialTensorShape shape(prop.shape());
-  EXPECT_TRUE(shape.IsFullyDefined());
-  EXPECT_FALSE(shape.unknown_rank());
+  const auto in_props = properties.GetInputProperties("MyAdd_55e046a8");
+  const OpInfo::TensorProperties& in_prop = in_props[0];
+  EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+  EXPECT_FALSE(in_prop.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop.shape().dim_size());
+  EXPECT_EQ(1, in_prop.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop.shape().dim(1).size());
 }
 
 TEST_F(GraphPropertiesTest, SymbolicShapes) {

@@ -90,7 +90,8 @@ $(wildcard tensorflow/contrib/lite/kernels/*.c) \
 $(wildcard tensorflow/contrib/lite/kernels/internal/*.c) \
 $(wildcard tensorflow/contrib/lite/kernels/internal/optimized/*.c) \
 $(wildcard tensorflow/contrib/lite/kernels/internal/reference/*.c) \
-$(wildcard tensorflow/contrib/lite/downloads/farmhash/src/farmhash.cc)
+$(wildcard tensorflow/contrib/lite/downloads/farmhash/src/farmhash.cc) \
+$(wildcard tensorflow/contrib/lite/downloads/fft2d/fftsg.c)
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \

@@ -71,8 +71,8 @@ XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, LogF32) {
 #ifdef XLA_TEST_BACKEND_CPU
   // TODO(b/73141998): The vectorized Log implementation gives results outside
   // our error spec in this range (these numbers are bitwise representations of
-  // floats expressed as a zero extended int64):
-  std::pair<int64, int64> known_incorrect_range = {1, 8315654};
+  // floats expressed as a zero extended int64).
+  std::pair<int64, int64> known_incorrect_range = {1, 8388608};
 #else
   std::pair<int64, int64> known_incorrect_range = {0, 0};
 #endif

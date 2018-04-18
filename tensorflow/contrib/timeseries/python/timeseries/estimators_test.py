@@ -19,6 +19,7 @@ from __future__ import print_function
 import tempfile
 
 import numpy
+import six
 
 from tensorflow.contrib.timeseries.python.timeseries import ar_model
 from tensorflow.contrib.timeseries.python.timeseries import estimators
@@ -125,6 +126,33 @@ class TimeSeriesRegressorTest(test.TestCase):
             },
             signatures=signatures,
             session=sess)
+
+        # Test cold starting
+        six.assertCountEqual(
+            self,
+            [feature_keys.FilteringFeatures.TIMES,
+             feature_keys.FilteringFeatures.VALUES],
+            signatures.signature_def[
+                feature_keys.SavedModelLabels.COLD_START_FILTER].inputs.keys())
+        batch_numpy_times = numpy.tile(
+            numpy.arange(30, dtype=numpy.int64)[None, :], (10, 1))
+        batch_numpy_values = numpy.ones([10, 30, 1])
+        state = saved_model_utils.cold_start_filter(
+            signatures=signatures,
+            session=sess,
+            features={
+                feature_keys.FilteringFeatures.TIMES: batch_numpy_times,
+                feature_keys.FilteringFeatures.VALUES: batch_numpy_values
+            }
+        )
+        predict_times = numpy.tile(
+            numpy.arange(30, 45, dtype=numpy.int64)[None, :], (10, 1))
+        predictions = saved_model_utils.predict_continuation(
+            continue_from=state,
+            times=predict_times,
+            signatures=signatures,
+            session=sess)
+        self.assertAllEqual([10, 15, 1], predictions["mean"].shape)
 
   def test_fit_restore_fit_ar_regressor(self):
     def _estimator_fn(model_dir):

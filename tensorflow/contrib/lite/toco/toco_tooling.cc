@@ -66,6 +66,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new RemoveTensorFlowIdentity);
   transformations->Add(new RemoveTrivialConcatenation);
   transformations->Add(new RemoveTrivialConcatenationInput);
+  transformations->Add(new RemoveTrivialFakeQuant);
   transformations->Add(new RemoveTrivialSlice);
   transformations->Add(new RemoveUnusedOp);
   transformations->Add(new EnsureBiasVectors);
@@ -74,12 +75,16 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
-  transformations->Add(new ReorderActivationFunctions);
+  transformations->Add(new MergeReshapeIntoPrecedingTranspose);
+  transformations->Add(new ReorderElementwiseUnary);
+  transformations->Add(new ReorderReshapeTranspose);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
   transformations->Add(new ResolveConstantGather);
+  transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
+  transformations->Add(new ResolveConstantReshape);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
@@ -94,6 +99,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
+  transformations->Add(new IdentifyPRelu);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
@@ -104,7 +110,6 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveMeanAttributes);
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
-  transformations->Add(new ResolveConstantFakeQuant);
   transformations->Add(new UnpartitionEmbeddingLookup);
 }
 
@@ -126,20 +131,26 @@ bool SupportsPreallocatedWorkspace(FileFormat format) {
 }
 
 bool IsRealValued(toco::ArrayDataType type) {
+  // TODO(benoitjacob) - this is hardcoding that uint8 and int16 are only used
+  // for quantized real-number values, and no other integer type is ever used
+  // for that. This is dirty, should be resolved as part of a more general push
+  // to more explicitly distinguish between true-integers and
+  // integers used as quantized values representing real numbers.
   return static_cast<bool>(type == toco::ArrayDataType::kFloat ||
-                           type == toco::ArrayDataType::kUint8);
+                           type == toco::ArrayDataType::kUint8 ||
+                           type == toco::ArrayDataType::kInt16);
 }
 
 void SetFinalDataTypeOnInputs(const TocoFlags& toco_flags, Model* model) {
   const FileFormat output_format = toco_flags.output_format();
   ArrayDataType type;
-  if (toco_flags.has_inference_input_type()) {
+  if (!SupportsQuantization(output_format)) {
+    // Data type is implicitly float for non-quantized formats
+    type = ArrayDataType::kFloat;
+  } else if (toco_flags.has_inference_input_type()) {
     type = ConvertIODataTypeToArrayDataType(toco_flags.inference_input_type());
   } else if (toco_flags.has_inference_type()) {
     type = ConvertIODataTypeToArrayDataType(toco_flags.inference_type());
-  } else if (!SupportsQuantization(output_format)) {
-    // Data type is implicitly float for non-quantized formats
-    type = ArrayDataType::kFloat;
   } else {
     // Nothing to do. Data types stay as-is.
     return;
@@ -194,11 +205,6 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
 }
 
 void Transform(const TocoFlags& toco_flags, Model* model) {
-  // Clean up after import.
-  SetFinalDataTypeOnInputs(toco_flags, model);
-  UseArraysExtraInfo(model);
-  FinishBuildingRNNStates(model);
-
   const FileFormat output_format = toco_flags.output_format();
   const IODataType inference_type = toco_flags.inference_type();
 
@@ -211,6 +217,11 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
         << "Quantized inference is not allowed with float inputs.";
   }
 
+  // Clean up after import.
+  SetFinalDataTypeOnInputs(toco_flags, model);
+  UseArraysExtraInfo(model, quantize_output);
+  FinishBuildingRNNStates(model);
+
   // Remove unused ops before performing any other optimizations. This is to
   // stop optimizations from crossing the input/output boundaries. For example
   // this will stop BatchNorm fusing if the output node is in between a conv
@@ -222,6 +233,12 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   MakeGeneralGraphTransformationsSet(&transformations);
   auto* remove_trivial_reshape = new RemoveTrivialReshape;
   transformations.Add(remove_trivial_reshape);
+  auto* resolve_constant_fake_quant = new ResolveConstantFakeQuant;
+  if (quantize_output) {
+    resolve_constant_fake_quant->set_propagate_fake_quant_num_bits(
+        toco_flags.propagate_fake_quant_num_bits());
+  }
+  transformations.Add(resolve_constant_fake_quant);
   if (SupportsFusedActivationFunction(output_format)) {
     transformations.Add(new FuseActivationFunctions);
   } else {
@@ -253,9 +270,21 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
 
+  // Fix any issues with IO edges. This must happen after any transform that
+  // may modify the structure of the edges.
+  FixEdgeArrays(model);
+
   if (quantize_output) {
+    if (toco_flags.propagate_fake_quant_num_bits()) {
+      RunGraphTransformations(model,
+                              "fake quant propagation graph transformations",
+                              {new PropagateFakeQuantNumBits});
+    }
     RunGraphTransformations(model, "pre-quantization graph transformations",
-                            {new HardcodeMinMax, new DropFakeQuant});
+                            {
+                                new HardcodeMinMax,
+                                new DropFakeQuant,
+                            });
   }
 
   if (quantize_output) {
@@ -269,10 +298,13 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
           {new HardcodeMinMax});
     }
     CheckIsReadyForQuantization(*model);
-    RunGraphTransformations(
-        model, "quantization graph transformations",
-        {new Quantize, new RemoveTrivialQuantizedActivationFunc,
-         new RemoveFinalDequantizeOp});
+    RunGraphTransformations(model, "quantization graph transformations",
+                            {
+                                new RemoveTrivialQuantizedActivationFunc,
+                                new RemoveTrivialQuantizedMinMax,
+                                new Quantize,
+                                new RemoveFinalDequantizeOp,
+                            });
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
     // Dequantize creates FakeQuant nodes. We may want to discard

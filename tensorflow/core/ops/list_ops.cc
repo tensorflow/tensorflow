@@ -30,7 +30,8 @@ REGISTER_OP("EmptyTensorList")
       DataType t;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
       shape_inference::ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(0, &s));
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{{s, t}});
       return Status::OK();
@@ -43,6 +44,50 @@ REGISTER_OP("TensorListPushBack")
     .Attr("element_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
+      DataType t;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
+      shape_inference::ShapeHandle s = c->UnknownShape();
+
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr && handle_data->size() != 1) {
+        return errors::InvalidArgument(
+            "Trying to push to list with wrong variant data.");
+      }
+      if (handle_data != nullptr) {
+        const shape_inference::ShapeAndType& list_shape_type =
+            (*handle_data)[0];
+        if (list_shape_type.dtype != t) {
+          return errors::InvalidArgument(
+              "Trying to push to list with wrong element dtype. List has type ",
+              DataTypeString(list_shape_type.dtype),
+              " but trying to push element with type ", DataTypeString(t));
+        }
+        shape_inference::ShapeHandle ignored;
+        TF_RETURN_IF_ERROR(c->Merge(s, list_shape_type.shape, &ignored));
+        s = list_shape_type.shape;
+      }
+      c->set_output_handle_shapes_and_types(
+          0, std::vector<shape_inference::ShapeAndType>{{s, t}});
+      return Status::OK();
+    });
+
+REGISTER_OP("TensorListPushBackBatch")
+    .Input("input_handles: variant")
+    .Input("tensor: element_dtype")
+    .Output("output_handles: variant")
+    .Attr("element_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle input_handles;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input_handles));
+
+      shape_inference::ShapeHandle tensor;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &tensor));
+
+      TF_RETURN_IF_ERROR(
+          c->MergePrefix(tensor, input_handles, &tensor, &input_handles));
+
+      c->set_output(0, input_handles);
+
       DataType t;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
       shape_inference::ShapeHandle s = c->UnknownShape();
@@ -135,10 +180,6 @@ REGISTER_OP("TensorListStack")
         }
         shape_inference::ShapeHandle ignored;
         TF_RETURN_IF_ERROR(c->Merge(s, list_shape_type.shape, &ignored));
-        if (!c->FullyDefined(list_shape_type.shape)) {
-          return errors::InvalidArgument(
-              "Can only stack a list with fully defined shapes.");
-        }
         s = list_shape_type.shape;
       }
       int expected_num_elements = -1;
@@ -197,6 +238,7 @@ REGISTER_OP("TensorListReserve")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       DataType t;

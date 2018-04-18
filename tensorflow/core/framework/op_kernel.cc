@@ -96,7 +96,7 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       output_memory_types_(context->output_memory_types().begin(),
                            context->output_memory_types().end()),
       graph_def_version_(context->graph_def_version()),
-      is_internal_(StringPiece(type_string()).starts_with("_")),
+      is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,
@@ -282,8 +282,13 @@ OpKernelContext::~OpKernelContext() {
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
-  Allocator* allocator =
-      params_->device->GetStepAllocator(attr, resource_manager());
+  Allocator* allocator = nullptr;
+  if (attr.scope_id > 0) {
+    allocator = params_->device->GetScopedAllocator(attr, step_id());
+    CHECK(allocator);
+  } else {
+    allocator = params_->device->GetStepAllocator(attr, resource_manager());
+  }
   if (track_allocations()) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {
@@ -360,7 +365,7 @@ Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
 
 const Tensor& OpKernelContext::input(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_inputs());
+  DCHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
   DCHECK(!input_is_ref(index));
   const Tensor& tensor = *((*params_->inputs)[index].tensor);
   record_tensor_reference(tensor);
@@ -415,8 +420,8 @@ bool OpKernelContext::forward_input_to_output_with_shape(
                                ? AllocatorAttributes()
                                : output_alloc_attr(output_index);
   std::unique_ptr<Tensor> new_tensor = forward_input(
-      input_index, expected_output_dtype(output_index), output_shape,
-      output_memory_type(output_index), output_attr);
+      input_index, output_index, expected_output_dtype(output_index),
+      output_shape, output_memory_type(output_index), output_attr);
   if (new_tensor != nullptr) {
     // Transfer ownership to the output slot in OpKernelContext.
     outputs_[output_index] = TensorValue(new_tensor.release());
@@ -456,35 +461,66 @@ Status OpKernelContext::forward_input_to_output_with_shape(
 }
 
 std::unique_ptr<Tensor> OpKernelContext::forward_input(
-    int input_index, DataType output_dtype, const TensorShape& output_shape,
-    MemoryType output_memory_type, const AllocatorAttributes& output_attr) {
+    int input_index, int output_index, DataType output_dtype,
+    const TensorShape& output_shape, MemoryType output_memory_type,
+    const AllocatorAttributes& output_attr) {
   DCHECK_GE(input_index, 0);
   DCHECK_LT(input_index, num_inputs());
   const TensorValue& input = (*params_->inputs)[input_index];
-  // Check that input tensor exists, is not a ref, and has no other consumers.
-  if (input.tensor == nullptr || input.is_ref() || !input->RefCountIsOne()) {
+  // Check whether at graph construction time this output was marked
+  // either for no forwarding or with a reservation for this input.
+  // If it's reserved for this input we'll skip the refcount and
+  // AllocatorAttribute checks.
+  // TODO(tucker): Maybe we should skip all of the checks?
+  bool never_forward =
+      (params_->forward_from_array != nullptr && output_index >= 0 &&
+       params_->forward_from_array[output_index] == Params::kNeverForward);
+  if (never_forward) return nullptr;
+  bool forward_expected =
+      (params_->forward_from_array != nullptr && output_index >= 0 &&
+       params_->forward_from_array[output_index] == input_index);
+  if (!forward_expected && params_->forward_from_array != nullptr) {
+    // Check for possibly conflicting forward.
+    for (int i = 0; i < num_outputs(); ++i) {
+      if (params_->forward_from_array[i] == input_index) {
+        // This input is reserved for output i.
+        return nullptr;
+      }
+    }
+  }
+  // Check that input tensor exists and is not a ref.
+  if (input.tensor == nullptr || input.is_ref()) {
+    CHECK(!forward_expected);
     return nullptr;
   }
   // Check that input type matches.
   if (input_dtype(input_index) != output_dtype) {
+    CHECK(!forward_expected);
     return nullptr;
   }
   // Check that the input and output sizes are compatible.
   if (input.tensor->shape().num_elements() != output_shape.num_elements()) {
+    CHECK(!forward_expected);
     return nullptr;
   }
   // Check that input and output memory types match, i.e.
   // that they either both live in host or both live in device memory.
   if (input_memory_type(input_index) != output_memory_type) {
+    CHECK(!forward_expected);
     return nullptr;
   }
-  // Check that output allocator attributes are not more restrictive than
-  // input allocator attributes.
-  const auto input_attr = params_->input_alloc_attrs == nullptr
-                              ? AllocatorAttributes()
-                              : input_alloc_attr(input_index);
-  if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
-    return nullptr;
+  if (!forward_expected) {
+    if (!input->RefCountIsOne()) {
+      return nullptr;
+    }
+    // Check that output allocator attributes are not more restrictive than
+    // input allocator attributes.
+    const auto input_attr = params_->input_alloc_attrs == nullptr
+                                ? AllocatorAttributes()
+                                : input_alloc_attr(input_index);
+    if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
+      return nullptr;
+    }
   }
   // TODO(rmlarsen): Use MakeUnique here. There is already a copy in
   // tensorflow/compiler/xla/ptr_util.h. Perhaps this should be part of
@@ -500,7 +536,8 @@ Status OpKernelContext::forward_input_or_allocate_temp(
     Tensor* out_temp) {
   for (int input_index : candidate_input_indices) {
     std::unique_ptr<Tensor> new_tensor =
-        forward_input(input_index, type, shape, DEVICE_MEMORY, allocator_attr);
+        forward_input(input_index, Params::kNoReservation /*output_index*/,
+                      type, shape, DEVICE_MEMORY, allocator_attr);
     if (new_tensor != nullptr) {
       *out_temp = std::move(*new_tensor);
       return Status::OK();
@@ -590,6 +627,14 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
                                         Tensor** output) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
+  bool forward_expected =
+      (params_->forward_from_array != nullptr && index >= 0 &&
+       params_->forward_from_array[index] >= 0);
+  if (forward_expected) {
+    return errors::Internal(
+        "Explicit allocate_output call where input forwarding required.  Try "
+        "turning off the ScopedAllocator optimizer.");
+  }
   AllocatorAttributes attr = output_alloc_attr(index);
   return allocate_output(index, shape, output, attr);
 }
@@ -1228,51 +1273,59 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
 }
 #endif
 
+namespace {
+template <class OpKernelT>
+void CtxFailureInternal(OpKernelT* op_kernel, const char* file, int line,
+                        const Status& s) {
+  const string logging_prefix =
+      file == nullptr ? "CtxFailure: "
+                      : strings::StrCat("CtxFailure at ", io::Basename(file),
+                                        ":", line, ": ");
+
+  if (errors::IsOutOfRange(s)) {
+    // VLOG OutOfRange errors. Dataset ops create OutOfRange errors when they
+    // reach end-of-sequence.
+    VLOG(1) << logging_prefix << s;
+  } else {
+    LOG(WARNING) << logging_prefix << s;
+  }
+  op_kernel->SetStatus(s);
+}
+}  // anonymous namespace
+
 void OpKernelConstruction::CtxFailure(const Status& s) {
-  VLOG(1) << s;
-  SetStatus(s);
+  CtxFailureInternal(this, nullptr, 0, s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const Status& s) {
-  LOG(WARNING) << s;
-  SetStatus(s);
+  CtxFailureInternal(this, nullptr, 0, s);
 }
 
 void OpKernelConstruction::CtxFailure(const char* file, int line,
                                       const Status& s) {
-  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
-          << " : " << s;
-  SetStatus(s);
+  CtxFailureInternal(this, file, line, s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
                                                  const Status& s) {
-  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
-               << " : " << s;
-  SetStatus(s);
+  CtxFailureInternal(this, file, line, s);
 }
 
 void OpKernelContext::CtxFailure(const Status& s) {
-  VLOG(1) << s;
-  SetStatus(s);
+  CtxFailureInternal(this, nullptr, 0, s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const Status& s) {
-  LOG(WARNING) << s;
-  SetStatus(s);
+  CtxFailureInternal(this, nullptr, 0, s);
 }
 
 void OpKernelContext::CtxFailure(const char* file, int line, const Status& s) {
-  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
-          << " : " << s;
-  SetStatus(s);
+  CtxFailureInternal(this, file, line, s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
                                             const Status& s) {
-  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
-               << " : " << s;
-  SetStatus(s);
+  CtxFailureInternal(this, file, line, s);
 }
 
 }  // namespace tensorflow

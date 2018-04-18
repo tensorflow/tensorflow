@@ -72,6 +72,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_INT64;
     case kTfLiteString:
       return NPY_OBJECT;
+    case kTfLiteBool:
+      return NPY_BOOL;
     case kTfLiteNoType:
       return -1;
   }
@@ -90,6 +92,8 @@ TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
       return kTfLiteUInt8;
     case NPY_INT64:
       return kTfLiteInt64;
+    case NPY_BOOL:
+      return kTfLiteBool;
     case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE:
@@ -107,6 +111,13 @@ PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(int));
   memcpy(pydata, data, size * sizeof(int));
   return PyArray_SimpleNewFromData(1, &size, NPY_INT32, pydata);
+}
+
+PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {
+  PyObject* result = PyTuple_New(2);
+  PyTuple_SET_ITEM(result, 0, PyFloat_FromDouble(param.scale));
+  PyTuple_SET_ITEM(result, 1, PyInt_FromLong(param.zero_point));
+  return result;
 }
 
 }  // namespace
@@ -179,7 +190,7 @@ bool InterpreterWrapper::ResizeInputTensor(int i, PyObject* value) {
   std::vector<int> dims(PyArray_SHAPE(array)[0]);
   memcpy(dims.data(), PyArray_BYTES(array), dims.size() * sizeof(int));
 
-  return interpreter_->ResizeInputTensor(i, dims);
+  return (interpreter_->ResizeInputTensor(i, dims) == kTfLiteOk);
 }
 
 std::string InterpreterWrapper::TensorName(int i) const {
@@ -212,6 +223,16 @@ PyObject* InterpreterWrapper::TensorSize(int i) const {
       PyArrayFromIntVector(tensor->dims->data, tensor->dims->size);
 
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
+}
+
+PyObject* InterpreterWrapper::TensorQuantization(int i) const {
+  if (!interpreter_ || i >= interpreter_->tensors_size() || i < 0) {
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+
+  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  return PyTupleFromQuantizationParam(tensor->params);
 }
 
 bool InterpreterWrapper::SetTensor(int i, PyObject* value) {
@@ -302,10 +323,17 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
-InterpreterWrapper* InterpreterWrapper::CreateWrapperCPP(
+InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const char* model_path) {
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(model_path);
+  return model ? new InterpreterWrapper(std::move(model)) : nullptr;
+}
+
+InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
+    const char* data, size_t len) {
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromBuffer(data, len);
   return model ? new InterpreterWrapper(std::move(model)) : nullptr;
 }
 

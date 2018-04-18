@@ -33,8 +33,8 @@ namespace {
 template <typename T>
 bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > std::numeric_limits<RealType>::max() ||
-      value < std::numeric_limits<RealType>::min()) {
+  if (value > static_cast<double>(std::numeric_limits<RealType>::max()) ||
+      value < static_cast<double>(std::numeric_limits<RealType>::min())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);
@@ -142,36 +142,10 @@ bool IsSameInput(const string& name1, const string& name2) {
     return true;
   }
   int position1;
-  string node1 = ParseNodeName(name1, &position1);
+  StringPiece node1 = ParseNodeNameAsStringPiece(name1, &position1);
   int position2;
-  string node2 = ParseNodeName(name2, &position2);
+  StringPiece node2 = ParseNodeNameAsStringPiece(name2, &position2);
   return (position1 == position2) && (node1 == node2);
-}
-
-string ParseNodeName(const string& name, int* position) {
-  // Strip the prefix '^' (if any), and strip the trailing ":{digits} (if any)
-  // to get a node name.
-  strings::Scanner scan(name);
-  scan.ZeroOrOneLiteral("^")
-      .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
-      .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
-  StringPiece capture;
-  StringPiece remaining;
-  if (scan.Peek(':') != ':' || !scan.GetResult(&remaining, &capture)) {
-    *position = 0;
-    return "";
-  } else {
-    if (name[0] == '^') {
-      *position = -1;
-    } else if (remaining.empty()) {
-      *position = 0;
-    } else {
-      // Skip the first ':' character.
-      CHECK(strings::safe_strto32(remaining.substr(1), position));
-    }
-    return capture.ToString();
-  }
 }
 
 bool IsControlInput(const string& name) {
@@ -185,7 +159,7 @@ string NodeName(const string& name) {
 
 int NodePosition(const string& name) {
   int position;
-  ParseNodeName(name, &position);
+  ParseNodeNameAsStringPiece(name, &position);
   return position;
 }
 
@@ -255,6 +229,14 @@ int NumOutputs(const NodeDef& node, GraphDef* graph) {
   return num_outputs;
 }
 
+bool HasControlInputs(const NodeDef& node) {
+  int num_inputs = node.input_size();
+  if (num_inputs > 0 && IsControlInput(node.input(num_inputs - 1))) {
+    return true;
+  }
+  return false;
+}
+
 int NumNonControlInputs(const NodeDef& node) {
   int num_inputs = node.input_size();
   for (const string& input : node.input()) {
@@ -267,13 +249,20 @@ int NumNonControlInputs(const NodeDef& node) {
 
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   int num_outputs = 0;
+  int pos;
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
     for (const string& node_as_input : output->input()) {
       if (IsControlInput(node_as_input)) {
         break;
       }
-      if (NodeName(node_as_input) == node.name()) {
+      if (node_as_input == node.name()) {
         ++num_outputs;
+      } else {
+        const StringPiece name =
+            ParseNodeNameAsStringPiece(node_as_input, &pos);
+        if (name == node.name()) {
+          ++num_outputs;
+        }
       }
     }
   }
@@ -422,18 +411,28 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
 }
 
 void SimpleGraphView::DepthFirstSearch(
-    const std::unordered_set<string>& op_types_to_traverse, int node_idx,
+    const std::unordered_set<string>& op_types_to_traverse, int root_node,
     std::set<int>* nodes_found) const {
-  if (nodes_found->find(node_idx) != nodes_found->end()) {
-    return;
-  }
-  nodes_found->insert(node_idx);
-  const string& op_type = graph_->node(node_idx).op();
+  nodes_found->clear();
+  const string& op_type = graph_->node(root_node).op();
   if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
     return;
   }
-  for (auto output_idx : this->outputs(node_idx)) {
-    DepthFirstSearch(op_types_to_traverse, output_idx, nodes_found);
+  std::vector<int> stack;
+  stack.reserve(32);
+  stack.push_back(root_node);
+  while (!stack.empty()) {
+    const int node_idx = stack.back();
+    stack.pop_back();
+    nodes_found->insert(node_idx);
+    const string& op_type = graph_->node(node_idx).op();
+    if (op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
+      for (auto output_idx : this->outputs(node_idx)) {
+        if (nodes_found->find(output_idx) == nodes_found->end()) {
+          stack.push_back(output_idx);
+        }
+      }
+    }
   }
 }
 
@@ -473,8 +472,8 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
         "Expected scalar tensor, got num_elements = ", tensor->NumElements());
   }
   switch (dtype) {
-    // TODO(rmlarsen): Handle DT_HALF.
-    //    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_BFLOAT16);
     HANDLE_CASE(DT_BOOL);
     HANDLE_CASE(DT_FLOAT);
     HANDLE_CASE(DT_DOUBLE);

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
+#include "tensorflow/contrib/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -44,6 +45,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowMinimum ||
          type == OperatorType::kTensorFlowMaximum ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
+         type == OperatorType::kLogSoftmax ||
          type == OperatorType::kTensorFlowSplit || type == OperatorType::kSub ||
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
          type == OperatorType::kTensorFlowReshape ||
@@ -52,76 +54,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||
-         type == OperatorType::kTranspose;
-}
-
-template <ArrayDataType A>
-std::unique_ptr<GenericBuffer> QuantizeBuffer(
-    const GenericBuffer& buffer,
-    const QuantizationParams& quantization_params) {
-  const auto inverse_scale = 1. / quantization_params.scale;
-  CHECK(buffer.type == ArrayDataType::kFloat);
-  const auto& float_buffer =
-      static_cast<const Buffer<ArrayDataType::kFloat>&>(buffer);
-  auto* quantized_buffer = new Buffer<A>;
-  quantized_buffer->data.resize(float_buffer.data.size());
-  const auto qmin = static_cast<int32>(std::numeric_limits<DataType<A>>::min());
-  const auto qmax = static_cast<int32>(std::numeric_limits<DataType<A>>::max());
-  for (std::size_t i = 0; i < float_buffer.data.size(); i++) {
-    const float src_val = float_buffer.data[i];
-    double scaled_val;  // Astonishingly, using 'float' degrades accuracy just
-                        // enough to make a few tests fail!
-    if (quantization_params.scale == 0) {
-      CHECK_EQ(src_val, 0) << "The quantization scale for this array is 0, "
-                           << "so all its values should be 0.";
-      scaled_val = quantization_params.zero_point;
-    } else {
-      scaled_val = quantization_params.zero_point + inverse_scale * src_val;
-    }
-    const auto rounded_val = static_cast<int32>(std::round(scaled_val));
-    const auto clamped_val = std::min(qmax, std::max(qmin, rounded_val));
-    quantized_buffer->data[i] = static_cast<DataType<A>>(clamped_val);
-  }
-  return std::unique_ptr<GenericBuffer>(quantized_buffer);
-}
-
-template <ArrayDataType A>
-void QuantizeArray(GraphTransformation* transformation, Model* model,
-                   const string& name,
-                   const QuantizationParams& quantization_params) {
-  auto& array = model->GetArray(name);
-  CHECK(array.data_type == ArrayDataType::kFloat);
-  CHECK(!array.quantization_params);
-  array.GetOrCreateQuantizationParams() = quantization_params;
-  if (array.buffer) {
-    array.buffer = QuantizeBuffer<A>(*array.buffer, quantization_params);
-  }
-  array.data_type = A;
-  transformation->AddMessageF("Quantized array %s", name);
-}
-
-void QuantizeArray(GraphTransformation* transformation, Model* model,
-                   const string& name, ArrayDataType quantized_data_type,
-                   const QuantizationParams& quantization_params) {
-  ArrayDataType adjusted_data_type = quantized_data_type;
-  auto& array = model->GetArray(name);
-  if (array.final_data_type == ArrayDataType::kInt16) {
-    adjusted_data_type = array.final_data_type;
-  }
-
-  switch (adjusted_data_type) {
-    case ArrayDataType::kUint8:
-      return QuantizeArray<ArrayDataType::kUint8>(transformation, model, name,
-                                                  quantization_params);
-    case ArrayDataType::kInt16:
-      return QuantizeArray<ArrayDataType::kInt16>(transformation, model, name,
-                                                  quantization_params);
-    case ArrayDataType::kInt32:
-      return QuantizeArray<ArrayDataType::kInt32>(transformation, model, name,
-                                                  quantization_params);
-    default:
-      LOG(FATAL) << "Unhandled case.";
-  }
+         type == OperatorType::kTranspose || type == OperatorType::kMean;
 }
 
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
@@ -207,70 +140,6 @@ QuantizationPoints GetQuantizationPoints(ArrayDataType data_type) {
   }
 }
 
-ArrayDataType GetQuantizedDataType(const Array& array,
-                                   ArrayDataType default_type) {
-  switch (array.final_data_type) {
-    case ArrayDataType::kInt8:
-    case ArrayDataType::kUint8:
-    case ArrayDataType::kInt16:
-    case ArrayDataType::kUint16:
-    case ArrayDataType::kInt32:
-    case ArrayDataType::kUint32:
-    case ArrayDataType::kInt64:
-    case ArrayDataType::kUint64:
-      return array.final_data_type;
-    case ArrayDataType::kFloat:
-    case ArrayDataType::kNone:
-      return default_type;
-    default:
-      LOG(FATAL) << "Unhandled final quantization type "
-                 << static_cast<int>(array.final_data_type);
-  }
-}
-
-void GetQuantizationParams(ArrayDataType data_type, const MinMax& minmax,
-                           QuantizationParams* quantization_params) {
-  switch (data_type) {
-    case ArrayDataType::kInt8:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt8>(
-          minmax, quantization_params);
-      break;
-    case ArrayDataType::kUint8:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
-          minmax, quantization_params);
-      break;
-    case ArrayDataType::kInt16:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-          minmax, quantization_params);
-      break;
-    case ArrayDataType::kUint16:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kUint16>(
-          minmax, quantization_params);
-      break;
-    case ArrayDataType::kInt32:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt32>(
-          minmax, quantization_params);
-      break;
-    case ArrayDataType::kUint32:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kUint32>(
-          minmax, quantization_params);
-      break;
-    case ArrayDataType::kInt64:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt64>(
-          minmax, quantization_params);
-      break;
-    case ArrayDataType::kUint64:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kUint64>(
-          minmax, quantization_params);
-      break;
-    case ArrayDataType::kFloat:
-    case ArrayDataType::kNone:
-    default:
-      LOG(FATAL) << "Unhandled final quantization type "
-                 << static_cast<int>(data_type);
-  }
-}
-
 bool ChooseQuantizationForOperatorInput(
     GraphTransformation* transformation, Model* model, const Operator& op,
     std::size_t input_index, ArrayDataType* quantized_data_type,
@@ -310,6 +179,8 @@ bool ChooseQuantizationForOperatorInput(
     const auto& input_weights = model->GetArray(op.inputs[weights_input_index]);
     if (!input_activations.quantization_params ||
         !input_weights.quantization_params) {
+      transformation->AddMessageF(
+          "Input array %s is a bias vector but has no qparams", input);
       return false;
     }
     const auto input_activations_scale =
@@ -338,12 +209,11 @@ bool ChooseQuantizationForOperatorInput(
   *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
   GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
   transformation->AddMessageF(
-      "For input array %s with min=%g"
-      ", max=%g"
-      ", chose to quantize as %s with zero_point=%d"
-      ", scale=%g",
+      "For input array %s with min=%g, max=%g, chose to quantize as %s (f=%s) "
+      "with zero_point=%d, scale=%g",
       input, minmax.min, minmax.max, ArrayDataTypeName(*quantized_data_type),
-      quantization_params->zero_point, quantization_params->scale);
+      ArrayDataTypeName(array.final_data_type), quantization_params->zero_point,
+      quantization_params->scale);
   return true;
 }
 
@@ -397,6 +267,19 @@ bool ChooseHardcodedQuantizationForOperatorOutput(
                                  *quantization_params));
     return true;
   }
+  if (op.type == OperatorType::kLogSoftmax) {
+    // LogSoftmax has range: [LogSoftmaxOperator::kOutputRangeMin, 0].
+    *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
+    const QuantizationPoints qp = GetQuantizationPoints(*quantized_data_type);
+    quantization_params->zero_point = qp.max_value;
+    quantization_params->scale =
+        -LogSoftmaxOperator::kOutputRangeMin / (qp.max_value + 1);
+    // While not strictly necessary, it is easier to interpret output data and
+    // quantization if the scale is similar to others (such as power of 2).
+    CHECK(IsExactlyRepresentable(LogSoftmaxOperator::kOutputRangeMin / 2,
+                                 *quantized_data_type, *quantization_params));
+    return true;
+  }
   if (op.type == OperatorType::kTanh) {
     // Tanh has the range: [-1, 1].
     *quantized_data_type = GetQuantizedDataType(array, *quantized_data_type);
@@ -419,6 +302,9 @@ bool ChooseQuantizationForOperatorOutput(
   const auto& output = op.outputs[output_index];
   auto& array = model->GetArray(output);
   if (array.data_type != ArrayDataType::kFloat) {
+    transformation->AddMessageF("Array data type already set to %s, final=%s",
+                                ArrayDataTypeName(array.data_type),
+                                ArrayDataTypeName(array.final_data_type));
     return false;
   }
   *quantized_data_type = model->GetArray(op.inputs[0]).data_type;
@@ -434,7 +320,8 @@ bool ChooseQuantizationForOperatorOutput(
       (op.type == OperatorType::kSpaceToDepth) ||
       (op.type == OperatorType::kTensorFlowReshape) ||
       (op.type == OperatorType::kTensorFlowSplit) ||
-      (op.type == OperatorType::kConcatenation)) {
+      (op.type == OperatorType::kConcatenation &&
+       model->flags.change_concat_input_ranges())) {
     int data_input_index = 0;
     if (op.type == OperatorType::kTensorFlowSplit) {
       data_input_index = 1;
@@ -475,6 +362,41 @@ bool ChooseQuantizationForOperatorOutput(
 
   return true;
 }
+
+// Fixes array minmax info to match the quantization parameters.
+// This is required for when quantization parameters change for an array during
+// quantization (such as ChooseQuantizationForOperatorOutput).
+void FixMinMaxPostQuantization(GraphTransformation* transformation,
+                               ArrayDataType quantized_data_type,
+                               const QuantizationParams& quantization_params,
+                               MinMax* minmax) {
+  double quantized_min, quantized_max;
+  if (!GetQuantizedDataTypeNumericalRange(quantized_data_type, &quantized_min,
+                                          &quantized_max)) {
+    // Not quantized - no update required.
+    return;
+  }
+
+  // Compute new minmax values.
+  double min = (quantized_min - quantization_params.zero_point) *
+               quantization_params.scale;
+  double max = (quantized_max - quantization_params.zero_point) *
+               quantization_params.scale;
+
+  // If we are close to the existing minmax values don't bother changing them.
+  // This prevents propagating small floating point precision errors.
+  constexpr double kMinMaxThreshold = 1e-5;
+  const double width = max - min;
+  if (std::abs(min - minmax->min) > kMinMaxThreshold * width ||
+      std::abs(max - minmax->max) > kMinMaxThreshold * width) {
+    transformation->AddMessageF(
+        "Adjusting min/max from %g,%g to %g,%g to match quantization params",
+        minmax->min, minmax->max, min, max);
+    minmax->min = min;
+    minmax->max = max;
+  }
+}
+
 }  // namespace
 
 bool Quantize::Run(Model* model, std::size_t op_index) {
@@ -579,10 +501,33 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
             // input instead.
             for (int i = 0; i < model->flags.output_arrays_size(); i++) {
               if (model->flags.output_arrays(i) == dequantize_op->outputs[0]) {
-                model->flags.set_output_arrays(i, dequantize_op->inputs[0]);
+                // TODO(b/78013785): never rename output arrays.
+                if (IsInputArray(*model, dequantize_op->inputs[0])) {
+                  // The op input is an input array and the output is an output
+                  // array and we can't have an array be both. Insert a copy
+                  // op to ensure the two arrays stay separate.
+                  AddMessageF(
+                      "Tried to rename output array %d while removing dequant "
+                      "op %s but array is also an input; inserting copy %s "
+                      "-> %s",
+                      i, LogName(*dequantize_op), model->flags.output_arrays(i),
+                      dequantize_op->inputs[0]);
+                  InsertCopyOperator(model, dequantize_op->inputs[0],
+                                     dequantize_op->outputs[0]);
+                } else {
+                  // Op output is strictly used as an output array, so we can
+                  // just rename the array and directly bypass the op.
+                  AddMessageF(
+                      "Renaming output array %d after removing dequant op %s: "
+                      "%s -> %s",
+                      i, LogName(*dequantize_op), model->flags.output_arrays(i),
+                      dequantize_op->inputs[0]);
+                  model->flags.set_output_arrays(i, dequantize_op->inputs[0]);
+                  model->EraseArray(dequantize_op->outputs[0]);
+                }
+                break;
               }
             }
-            model->EraseArray(dequantize_op->outputs[0]);
             model->operators.erase(dequantize_it);
           }
           changed = true;
@@ -621,15 +566,25 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
                                             &quantization_params)) {
       changed = true;
       const auto& output = op.outputs[output_index];
+      auto& output_array = model->GetArray(output);
+
+      // Fix up the min/max information on the output array to match the chosen
+      // quantization parameters.
+      CHECK(output_array.minmax)
+          << "Output array named " << output << " lacks minmax";
+      auto& output_minmax = output_array.GetMinMax();
+      FixMinMaxPostQuantization(this, quantized_data_type, quantization_params,
+                                &output_minmax);
+
       QuantizeArray(this, model, output, quantized_data_type,
                     quantization_params);
+
       const auto& dequantized_output =
           AvailableArrayName(*model, output + "_dequantized");
-      const auto& output_array = model->GetArray(output);
-      const auto& output_minmax = output_array.GetMinMax();
       auto& dequantized_output_array =
           model->GetOrCreateArray(dequantized_output);
       dequantized_output_array.data_type = ArrayDataType::kFloat;
+      dequantized_output_array.final_data_type = output_array.data_type;
       auto& dequantized_output_minmax =
           dequantized_output_array.GetOrCreateMinMax();
       dequantized_output_minmax.min = output_minmax.min;
@@ -646,6 +601,12 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
       dequantize_op->outputs = {dequantized_output};
       for (int i = 0; i < model->flags.output_arrays_size(); i++) {
         if (model->flags.output_arrays(i) == output) {
+          // TODO(b/78013785): never rename output arrays.
+          AddMessageF(
+              "Renaming output array %d after inserting dequant op %s: %s -> "
+              "%s",
+              i, LogName(*dequantize_op), model->flags.output_arrays(i),
+              dequantized_output);
           model->flags.set_output_arrays(i, dequantized_output);
         }
       }

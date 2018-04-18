@@ -17,8 +17,8 @@ limitations under the License.
 #error This file must only be included when building with Cuda support
 #endif
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
 #include <memory>
 #include <string>
@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -95,11 +96,19 @@ class BaseGPUDevice : public LocalDevice {
   // corresponds to the cuda context.
   gpu::StreamExecutor* executor() const { return executor_; }
 
+  Allocator* GetScopedAllocator(AllocatorAttributes attr,
+                                int64 step_id) override;
+
+  ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
+    return scoped_allocator_mgr_.get();
+  }
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
 
   gpu::StreamExecutor* executor_;  // not owned
+  std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
  private:
   struct StreamGroup {
@@ -205,4 +214,4 @@ class BaseGPUDeviceFactory : public DeviceFactory {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_

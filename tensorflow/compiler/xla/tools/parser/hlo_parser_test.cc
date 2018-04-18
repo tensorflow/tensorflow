@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -54,6 +55,18 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)
   %y = f32[2,4]{1,0} parameter(2)
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+}
+
+)"
+},
+// broadcast size-one dimensions
+{
+"BroadcastDimOne",
+R"(HloModule broadcast_dim_one_module
+
+ENTRY %broadcast-dim-one () -> f32[2,2] {
+  %constant = f32[1,2]{1,0} constant(f32[1,2] { { 1.1, 2.2 } })
+  ROOT %broadcast-dim-one = f32[2,2]{1,0} broadcast-dim-one(f32[1,2]{1,0} %constant)
 }
 
 )"
@@ -894,7 +907,7 @@ class HloParserTest : public ::testing::Test,
                       public ::testing::WithParamInterface<TestData> {
  protected:
   static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-    EXPECT_TRUE(StringPiece(s).contains(expected))
+    EXPECT_TRUE(tensorflow::str_util::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
 

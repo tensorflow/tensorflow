@@ -149,6 +149,15 @@ class GatherTest(test.TestCase):
       self.assertAllEqual([b"asdf", b"qwer"],
                           array_ops.gather(params, 0, axis=1).eval())
 
+  def testUInt32AndUInt64(self):
+    for unsigned_type in (dtypes.uint32, dtypes.uint64):
+      params = self._buildParams(
+          np.array([[1, 2, 3], [7, 8, 9]]), unsigned_type)
+      with self.test_session():
+        self.assertAllEqual([7, 8, 9],
+                            array_ops.gather(params, 1, axis=0).eval())
+        self.assertAllEqual([1, 7], array_ops.gather(params, 0, axis=1).eval())
+
   def testUnknownIndices(self):
     params = constant_op.constant([[0, 1, 2]])
     indices = array_ops.placeholder(dtypes.int32)

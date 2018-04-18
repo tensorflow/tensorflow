@@ -124,6 +124,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -142,6 +143,7 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -168,6 +170,41 @@ cc_library(
 )
 
 cc_library(
+    name = "toco_saved_model",
+    srcs = [
+        "toco_saved_model.cc",
+    ],
+    hdrs = [
+        "toco_saved_model.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":model_cmdline_flags",
+        ":model_flags_proto_cc",
+        ":toco_flags_proto_cc",
+        ":types_proto_cc",
+        "//tensorflow/cc/tools:freeze_saved_model",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "toco_saved_model_test",
+    srcs = ["toco_saved_model_test.cc"],
+    deps = [
+        ":model_cmdline_flags",
+        ":toco_cmdline_flags",
+        ":toco_saved_model",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "graph_transformations",
     srcs = [
         "graph_transformations/convert_expanddims_to_reshape.cc",
@@ -182,6 +219,7 @@ cc_library(
         "graph_transformations/drop_fake_quant.cc",
         "graph_transformations/drop_im2col_arrays.cc",
         "graph_transformations/ensure_bias_vectors.cc",
+        "graph_transformations/experimental_shuffle_fc_weights.cc",
         "graph_transformations/fuse_activation_functions.cc",
         "graph_transformations/fuse_binary_into_following_affine.cc",
         "graph_transformations/fuse_binary_into_preceding_affine.cc",
@@ -193,12 +231,17 @@ cc_library(
         "graph_transformations/identify_lstm.cc",
         "graph_transformations/identify_lstm_merge_inputs.cc",
         "graph_transformations/identify_lstm_split_inputs.cc",
+        "graph_transformations/identify_prelu.cc",
         "graph_transformations/identify_relu1.cc",
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
+        "graph_transformations/merge_reshape_into_preceding_transpose.cc",
         "graph_transformations/propagate_activation_function_into_constants.cc",
         "graph_transformations/propagate_array_data_types.cc",
+        "graph_transformations/propagate_fake_quant_num_bits.cc",
         "graph_transformations/propagate_fixed_sizes.cc",
+        "graph_transformations/quantization_util.cc",
+        "graph_transformations/quantization_util.h",
         "graph_transformations/quantize.cc",
         "graph_transformations/read_fake_quant_min_max.cc",
         "graph_transformations/remove_final_dequantize_op.cc",
@@ -207,13 +250,16 @@ cc_library(
         "graph_transformations/remove_trivial_binary.cc",
         "graph_transformations/remove_trivial_concatenation.cc",
         "graph_transformations/remove_trivial_concatenation_input.cc",
+        "graph_transformations/remove_trivial_fake_quant.cc",
         "graph_transformations/remove_trivial_passthrough.cc",
         "graph_transformations/remove_trivial_passthrough.h",
         "graph_transformations/remove_trivial_quantized_activation_func.cc",
+        "graph_transformations/remove_trivial_quantized_min_max.cc",
         "graph_transformations/remove_trivial_reshape.cc",
         "graph_transformations/remove_trivial_slice.cc",
         "graph_transformations/remove_unused_op.cc",
-        "graph_transformations/reorder_activation_functions.cc",
+        "graph_transformations/reorder_elementwise_unary.cc",
+        "graph_transformations/reorder_reshape_transpose.cc",
         "graph_transformations/resolve_batch_normalization.cc",
         "graph_transformations/resolve_batch_to_space_nd_attributes.cc",
         "graph_transformations/resolve_constant_binary.cc",
@@ -221,7 +267,9 @@ cc_library(
         "graph_transformations/resolve_constant_fake_quant.cc",
         "graph_transformations/resolve_constant_fill.cc",
         "graph_transformations/resolve_constant_gather.cc",
+        "graph_transformations/resolve_constant_random_uniform.cc",
         "graph_transformations/resolve_constant_range.cc",
+        "graph_transformations/resolve_constant_reshape.cc",
         "graph_transformations/resolve_constant_shape_or_rank.cc",
         "graph_transformations/resolve_constant_stack.cc",
         "graph_transformations/resolve_constant_strided_slice.cc",
@@ -257,7 +305,7 @@ cc_library(
         ":runtime",
         ":toco_port",
         ":tooling_util",
-        ":types_proto_cc",
+        "//tensorflow/contrib/lite/kernels/internal:quantization_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -332,7 +380,6 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
-        "//tensorflow/contrib/lite/kernels/internal:quantization_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@protobuf_archive//:protobuf_headers",
@@ -362,6 +409,7 @@ tf_cc_binary(
         ":toco_cmdline_flags",
         ":toco_flags_proto_cc",
         ":toco_port",
+        ":toco_saved_model",
         ":toco_tooling",
         ":types_proto_cc",
         "//tensorflow/core:lib",
@@ -379,16 +427,4 @@ tf_cc_test(
         ":toco_port",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

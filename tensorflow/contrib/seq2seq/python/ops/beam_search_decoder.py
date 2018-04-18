@@ -821,9 +821,9 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight):
   Returns:
     The scores normalized by the length_penalty.
   """
-  length_penality_ = _length_penalty(
+  length_penalty_ = _length_penalty(
       sequence_lengths=sequence_lengths, penalty_factor=length_penalty_weight)
-  return log_probs / length_penality_
+  return log_probs / length_penalty_
 
 
 def _length_penalty(sequence_lengths, penalty_factor):
@@ -860,7 +860,7 @@ def _mask_probs(probs, eos_token, finished):
   unfinished beams remain unchanged.
 
   Args:
-    probs: Log probabiltiies of shape `[batch_size, beam_width, vocab_size]`
+    probs: Log probabilities of shape `[batch_size, beam_width, vocab_size]`
     eos_token: An int32 id corresponding to the EOS token to allocate
       probability to.
     finished: A boolean tensor of shape `[batch_size, beam_width]` that

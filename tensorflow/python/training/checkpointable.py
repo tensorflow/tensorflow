@@ -26,6 +26,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.util import nest
 
+
+# Key where the object graph proto is saved in a TensorBundle
+OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
+
+
 # A key indicating a variable's value in an object's checkpointed Tensors
 # (Checkpointable._gather_saveables_for_checkpoint). If this is the only key and
 # the object has no dependencies, then its value may be restored on object
@@ -94,12 +99,13 @@ class _CheckpointPosition(object):
 
   def restore(self, checkpointable):
     """Restore this value into `checkpointable`."""
-    if self.bind_object(checkpointable):
-      # This object's correspondence with a checkpointed object is new, so
-      # process deferred restorations for it and its dependencies.
-      restore_ops = checkpointable._restore_from_checkpoint_position(self)  # pylint: disable=protected-access
-      if restore_ops:
-        self._checkpoint.restore_ops.extend(restore_ops)
+    with ops.init_scope():
+      if self.bind_object(checkpointable):
+        # This object's correspondence with a checkpointed object is new, so
+        # process deferred restorations for it and its dependencies.
+        restore_ops = checkpointable._restore_from_checkpoint_position(self)  # pylint: disable=protected-access
+        if restore_ops:
+          self._checkpoint.restore_ops.extend(restore_ops)
 
   def bind_object(self, checkpointable):
     """Set a checkpoint<->object correspondence and process slot variables.
@@ -321,8 +327,10 @@ class CheckpointableBase(object):
     # Maps names -> Checkpointable objects
     self._unconditional_dependency_names = {}
     # Restorations for other Checkpointable objects on which this object may
-    # eventually depend.
-    self._deferred_dependencies = {}  # local name -> _CheckpointPosition list
+    # eventually depend. Maps local name -> _CheckpointPosition list. Optimizers
+    # tack on conditional dependencies, and so need separate management of
+    # deferred dependencies too.
+    self._unconditional_deferred_dependencies = {}
     # The UID of the highest assignment to this object. Used to ensure that the
     # last requested assignment determines the final value of an object.
     if hasattr(self, "_update_uid"):
@@ -343,6 +351,21 @@ class CheckpointableBase(object):
       object.
     """
     return self._unconditional_checkpoint_dependencies
+
+  @property
+  def _deferred_dependencies(self):
+    """A dictionary with deferred dependencies.
+
+    Stores restorations for other Checkpointable objects on which this object
+    may eventually depend. May be overridden by sub-classes (e.g. Optimizers use
+    conditional dependencies based the current graph, and so need separate
+    management of deferred dependencies too).
+
+    Returns:
+      A dictionary mapping from local name to a list of _CheckpointPosition
+      objects.
+    """
+    return self._unconditional_deferred_dependencies
 
   def _lookup_dependency(self, name):
     """Look up a dependency by name.
@@ -392,28 +415,29 @@ class CheckpointableBase(object):
            "Checkpointable._add_variable called to create another with "
            "that name. Variable names must be unique within a Checkpointable "
            "object.") % (name,))
-    if context.executing_eagerly():
-      # If this is a variable with a single Tensor stored in the checkpoint, we
-      # can set that value as an initializer rather than initializing and then
-      # assigning (when executing eagerly). This call returns None if there is
-      # nothing to restore.
-      checkpoint_initializer = self._preload_simple_restoration(
-          name=name, shape=shape)
-    else:
-      checkpoint_initializer = None
-    if (checkpoint_initializer is not None
-        and not (
-            isinstance(initializer, CheckpointInitialValue)
-            and initializer.restore_uid > checkpoint_initializer.restore_uid)):
-      # If multiple Checkpointable objects are "creating" the same variable via
-      # the magic of custom getters, the one with the highest restore UID (the
-      # one called last) has to make the final initializer. If another custom
-      # getter interrupts this process by overwriting the initializer, then
-      # we'll catch that when we call _track_checkpointable. So this is "best
-      # effort" to set the initializer with the highest restore UID.
-      initializer = checkpoint_initializer
-      shape = None
-
+    with ops.init_scope():
+      if context.executing_eagerly():
+        # If this is a variable with a single Tensor stored in the checkpoint,
+        # we can set that value as an initializer rather than initializing and
+        # then assigning (when executing eagerly). This call returns None if
+        # there is nothing to restore.
+        checkpoint_initializer = self._preload_simple_restoration(
+            name=name, shape=shape)
+      else:
+        checkpoint_initializer = None
+      if (checkpoint_initializer is not None
+          and not (
+              isinstance(initializer, CheckpointInitialValue)
+              and (initializer.restore_uid
+                   > checkpoint_initializer.restore_uid))):
+        # If multiple Checkpointable objects are "creating" the same variable
+        # via the magic of custom getters, the one with the highest restore UID
+        # (the one called last) has to make the final initializer. If another
+        # custom getter interrupts this process by overwriting the initializer,
+        # then we'll catch that when we call _track_checkpointable. So this is
+        # "best effort" to set the initializer with the highest restore UID.
+        initializer = checkpoint_initializer
+        shape = None
     new_variable = getter(
         name=name, shape=shape, dtype=dtype, initializer=initializer,
         **kwargs_for_getter)
@@ -543,6 +567,7 @@ class CheckpointableBase(object):
       checkpointable: The Checkpointable object to restore (inheriting from
         `CheckpointableBase`).
     """
+    self._maybe_initialize_checkpointable()
     deferred_dependencies_list = self._deferred_dependencies.pop(name, ())
     for checkpoint_position in sorted(
         deferred_dependencies_list,

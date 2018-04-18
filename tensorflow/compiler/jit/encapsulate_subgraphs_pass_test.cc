@@ -13,16 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -31,6 +34,24 @@ namespace {
 
 const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
+
+Status AddGraphDefToFunctionLibrary(const GraphDefBuilder& graphdef_builder,
+                                    const string& name_suffix,
+                                    FunctionDefLibrary* library) {
+  GraphDef graphdef;
+  TF_RETURN_IF_ERROR(graphdef_builder.ToGraphDef(&graphdef));
+  std::unique_ptr<Graph> graph =
+      std::unique_ptr<Graph>(new Graph(OpRegistry::Global()));
+  GraphConstructorOptions opts;
+  opts.allow_internal_ops = true;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graphdef, graph.get()));
+  FunctionDef* fdef = library->add_function();
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *graph,
+      strings::StrCat("_outside_compilation_shape_inference_", name_suffix),
+      fdef));
+  return Status::OK();
+}
 
 template <class Tkey, class Tvalue>
 bool EqualProtoMap(const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
@@ -115,23 +136,7 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
       a.attr(), b.attr(), [](const string& s) { return s; },
       [](const AttrValue& v) { return v.DebugString(); },
       [](const string& key, const AttrValue& av, const AttrValue& bv) {
-        if (key == "shape_inference_graph") {
-          // Default serialization of GraphDef is unstable because maps don't
-          // serialize deterministically. Rather than go through the hoops to
-          // turn on deterministic serialization of this attr just for this
-          // test, add logic here to compare determinstically.
-          GraphDef ga;
-          if (!ga.ParseFromString(av.s())) {
-            return false;
-          }
-          GraphDef gb;
-          if (!gb.ParseFromString(bv.s())) {
-            return false;
-          }
-          return EqualGraphDef(ga, gb, nullptr);
-        } else {
-          return av.DebugString() == bv.DebugString();
-        }
+        return av.DebugString() == bv.DebugString();
       },
       strings::StrCat(diff_preamble, " attr mismatch for node ", a.name()),
       diff);
@@ -378,24 +383,36 @@ Node* KeyPlaceholder(const string& call_node,
       .FinalizeBuilder(&node_builder);
 }
 
-Node* RecvAtHost(ops::NodeOut key_input, const string& key,
+Node* RecvAtHost(ops::NodeOut key_input, const string& cluster,
+                 const string& oc_cluster,
                  const gtl::ArraySlice<DataType>& dtypes,
                  const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
-  NodeBuilder node_builder(opts.GetNameForOp("_XlaRecvAtHost"),
+  string key =
+      strings::StrCat("host_compute_channel_", cluster, "_", oc_cluster);
+  string name = strings::StrCat("outside_compilation_", cluster, "_",
+                                oc_cluster, "_recv");
+  NodeBuilder node_builder(opts.WithName(name).GetNameForOp("_XlaRecvAtHost"),
                            "_XlaRecvAtHost", opts.op_registry());
   node_builder.Input(std::move(key_input));
   return opts.WithAttr("Toutputs", dtypes)
       .WithAttr("key", key)
       .WithAttr("device_ordinal", 0)
+      .WithAttr("_encapsulate", cluster)
+      .WithAttr("_outside", oc_cluster)
       .FinalizeBuilder(&node_builder);
 }
 
-Node* SendFromHost(ops::NodeOut key_input, const string& key,
+Node* SendFromHost(ops::NodeOut key_input, const string& cluster,
+                   const string& oc_cluster,
                    const std::vector<ops::NodeOut>& inputs,
                    const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
-  NodeBuilder node_builder(opts.GetNameForOp("_XlaSendFromHost"),
+  string key =
+      strings::StrCat("host_compute_channel_", cluster, "_", oc_cluster);
+  string name = strings::StrCat("outside_compilation_", cluster, "_",
+                                oc_cluster, "_send");
+  NodeBuilder node_builder(opts.WithName(name).GetNameForOp("_XlaSendFromHost"),
                            "_XlaSendFromHost", opts.op_registry());
   node_builder.Input(inputs);
   node_builder.Input(std::move(key_input));
@@ -406,6 +423,8 @@ Node* SendFromHost(ops::NodeOut key_input, const string& key,
   return opts.WithAttr("Tinputs", dtypes)
       .WithAttr("key", key)
       .WithAttr("device_ordinal", 0)
+      .WithAttr("_encapsulate", cluster)
+      .WithAttr("_outside", oc_cluster)
       .FinalizeBuilder(&node_builder);
 }
 
@@ -753,7 +772,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
         Graph* graph = graph_ptr->get();
         for (const Node* n : graph->nodes()) {
           if (n->type_string() == "_Arg" &&
-              StringPiece(n->name()).starts_with("const")) {
+              str_util::StartsWith(n->name(), "const")) {
             ++guaranteed_consts;
             EXPECT_TRUE(HasGuaranteeConstAttr(*n));
           } else {
@@ -798,7 +817,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
         Graph* graph = graph_ptr->get();
         for (const Node* n : graph->nodes()) {
           if (n->type_string() == "_Arg" &&
-              StringPiece(n->name()).starts_with("const")) {
+              str_util::StartsWith(n->name(), "const")) {
             ++guaranteed_consts;
             EXPECT_TRUE(HasGuaranteeConstAttr(*n));
           } else {
@@ -848,22 +867,20 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
-  string shape_string_expected;
   {
     GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
         KeyPlaceholderShape(shape.opts().WithName("KnownShape/_0"));
-    Node* recv =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                   {DT_FLOAT, DT_FLOAT},
-                   shape.opts().WithName("outside_compilation_F1_O1_recv"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, shape.opts());
     Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
-                     shape.opts().WithName("E"));
-    SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                 {e}, shape.opts().WithName("outside_compilation_F1_O1_send"));
-    GraphDef shape_graph;
-    TF_EXPECT_OK(shape.ToGraphDef(&shape_graph));
-    EXPECT_TRUE(shape_graph.SerializeToString(&shape_string_expected));
+                     shape.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
   }
 
   *library_expected.add_function() = test::function::XTimesTwo();
@@ -883,8 +900,10 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O1"},
-            {"shape_inference_graph", shape_string_expected},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"c"}},
       },
       {{"f_0_retval", "F:o:0"}});
@@ -898,17 +917,16 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
 
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
-    Node* recv =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                   {DT_FLOAT, DT_FLOAT},
-                   b2.opts().WithName("outside_compilation_F1_O1_recv"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, b2.opts());
     Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
-                     b2.opts().WithName("E").WithControlInputs({recv, b}));
-    Node* send = SendFromHost(ops::NodeOut(key_constant, 0),
-                              "host_compute_channel_F1_O1", {e},
-                              b2.opts()
-                                  .WithName("outside_compilation_F1_O1_send")
-                                  .WithControlInput(e));
+                     b2.opts()
+                         .WithName("E")
+                         .WithControlInputs({recv, b})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* send = SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e},
+                              b2.opts().WithControlInput(e));
 
     Node* s = Sequencer(
         b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}),
@@ -969,45 +987,43 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
-  string shape_string_expected_1;
   {
     GraphDefBuilder shape1(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
         KeyPlaceholderShape(shape1.opts().WithName("KnownShape/_0"));
-    Node* recv =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                   {DT_FLOAT, DT_FLOAT},
-                   shape1.opts().WithName("outside_compilation_F1_O1_recv"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, shape1.opts());
     Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
-                     shape1.opts().WithName("E"));
-    SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                 {e}, shape1.opts().WithName("outside_compilation_F1_O1_send"));
-    GraphDef shape1_graph;
-    TF_EXPECT_OK(shape1.ToGraphDef(&shape1_graph));
-    EXPECT_TRUE(shape1_graph.SerializeToString(&shape_string_expected_1));
+                     shape1.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape1.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape1, "F1_O1", &library_expected));
   }
 
-  string shape_string_expected_2;
   {
     GraphDefBuilder shape2(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
         KeyPlaceholderShape(shape2.opts().WithName("KnownShape/_0"));
-    Node* recv1 =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                   {DT_FLOAT, DT_FLOAT},
-                   shape2.opts().WithName("outside_compilation_F1_O1_recv"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT, DT_FLOAT}, shape2.opts());
     Node* e = Binary(ops::NodeOut(recv1, 0), ops::NodeOut(recv1, 1),
-                     shape2.opts().WithName("E"));
-    Node* recv2 =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O2",
-                   {DT_FLOAT, DT_FLOAT},
-                   shape2.opts().WithName("outside_compilation_F1_O2_recv"));
-    Node* h = Binary(ops::NodeOut(recv2, 0), e, shape2.opts().WithName("H"));
-    SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O2",
-                 {h}, shape2.opts().WithName("outside_compilation_F1_O2_send"));
-    GraphDef shape2_graph;
-    TF_EXPECT_OK(shape2.ToGraphDef(&shape2_graph));
-    EXPECT_TRUE(shape2_graph.SerializeToString(&shape_string_expected_2));
+                     shape2.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
+                             {DT_FLOAT, DT_FLOAT}, shape2.opts());
+    Node* h = Binary(ops::NodeOut(recv2, 0), e,
+                     shape2.opts()
+                         .WithName("H")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O2"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O2", {h}, shape2.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape2, "F1_O2", &library_expected));
   }
 
   *library_expected.add_function() = FunctionDefHelper::Create(
@@ -1029,8 +1045,10 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O2"},
-            {"shape_inference_graph", shape_string_expected_2},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O2"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O2"}},
            {"F"}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
@@ -1038,8 +1056,10 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O1"},
-            {"shape_inference_graph", shape_string_expected_1},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
       {{"i_0_retval", "I:o:0"}});
@@ -1053,28 +1073,32 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
 
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
-    Node* recv1 =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                   {DT_FLOAT, DT_FLOAT},
-                   b2.opts().WithName("outside_compilation_F1_O1_recv"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT, DT_FLOAT}, b2.opts());
     Node* e = Binary(ops::NodeOut(recv1, 0), ops::NodeOut(recv1, 1),
-                     b2.opts().WithName("E").WithControlInputs({recv1, b}));
-    Node* send1 = SendFromHost(ops::NodeOut(key_constant, 0),
-                               "host_compute_channel_F1_O1", {e},
-                               b2.opts()
-                                   .WithName("outside_compilation_F1_O1_send")
-                                   .WithControlInput(e));
+                     b2.opts()
+                         .WithName("E")
+                         .WithControlInputs({recv1, b})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* send1 = SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e},
+                               b2.opts().WithControlInput(e));
 
-    Node* recv2 =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O2",
-                   {DT_FLOAT, DT_FLOAT},
-                   b2.opts().WithName("outside_compilation_F1_O2_recv"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
+                             {DT_FLOAT, DT_FLOAT}, b2.opts());
     Node* g = Binary(e, ops::NodeOut(recv2, 1),
-                     b2.opts().WithName("G").WithControlInputs({recv2, e}));
-    Node* h = Binary(ops::NodeOut(recv2, 0), e, b2.opts().WithName("H"));
-    Node* send2 = SendFromHost(
-        ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O2", {h},
-        b2.opts().WithName("outside_compilation_F1_O2_send"));
+                     b2.opts()
+                         .WithName("G")
+                         .WithControlInputs({recv2, e})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O2"));
+    Node* h = Binary(ops::NodeOut(recv2, 0), e,
+                     b2.opts()
+                         .WithName("H")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O2"));
+    Node* send2 =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O2", {h}, b2.opts());
 
     Node* s = Sequencer(b2.opts()
                             .WithName("F1_sequencer")
@@ -1134,22 +1158,20 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
-  string shape_string_expected;
   {
     GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
         KeyPlaceholderShape(shape.opts().WithName("KnownShape/_0"));
-    Node* recv =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                   {DT_FLOAT, DT_FLOAT},
-                   shape.opts().WithName("outside_compilation_F1_O1_recv"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, shape.opts());
     Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
-                     shape.opts().WithName("E"));
-    SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                 {e}, shape.opts().WithName("outside_compilation_F1_O1_send"));
-    GraphDef shape_graph;
-    TF_EXPECT_OK(shape.ToGraphDef(&shape_graph));
-    EXPECT_TRUE(shape_graph.SerializeToString(&shape_string_expected));
+                     shape.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
   }
 
   TensorShapeProto shape_proto_expected;
@@ -1172,8 +1194,10 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O1"},
-            {"shape_inference_graph", shape_string_expected},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
       {{"d_0_retval", "D:o:0"}, {"f_0_retval", "F:o:0"}});
@@ -1194,7 +1218,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
             {"key", "host_compute_channel_F2_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})}}},
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"g_0_retval", "G:o:0"}, {"i_0_retval", "I:o:0"}});
 
@@ -1207,17 +1232,16 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
 
     Node* key_constant1 =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
-    Node* recv1 =
-        RecvAtHost(ops::NodeOut(key_constant1, 0), "host_compute_channel_F1_O1",
-                   {DT_FLOAT, DT_FLOAT},
-                   b2.opts().WithName("outside_compilation_F1_O1_recv"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant1, 0), "F1", "O1",
+                             {DT_FLOAT, DT_FLOAT}, b2.opts());
     Node* e = Binary(ops::NodeOut(recv1, 0), ops::NodeOut(recv1, 1),
-                     b2.opts().WithName("E").WithControlInputs({recv1, b}));
-    Node* send1 = SendFromHost(ops::NodeOut(key_constant1, 0),
-                               "host_compute_channel_F1_O1", {e},
-                               b2.opts()
-                                   .WithName("outside_compilation_F1_O1_send")
-                                   .WithControlInput(e));
+                     b2.opts()
+                         .WithName("E")
+                         .WithControlInputs({recv1, b})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* send1 = SendFromHost(ops::NodeOut(key_constant1, 0), "F1", "O1", {e},
+                               b2.opts().WithControlInput(e));
     Node* s1 = Sequencer(
         b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
         "F1");
@@ -1229,13 +1253,15 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
 
     Node* key_constant2 =
         KeyPlaceholder("F2", b2.opts().WithName("F2_key_placeholder"));
-    Node* recv2 = RecvAtHost(
-        ops::NodeOut(key_constant2, 0), "host_compute_channel_F2_O1",
-        {DT_FLOAT}, b2.opts().WithName("outside_compilation_F2_O1_recv"));
-    Node* h = Binary(ops::NodeOut(call1, 1), recv2, b2.opts().WithName("H"));
-    Node* send2 = SendFromHost(
-        ops::NodeOut(key_constant2, 0), "host_compute_channel_F2_O1", {h},
-        b2.opts().WithName("outside_compilation_F2_O1_send"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant2, 0), "F2", "O1",
+                             {DT_FLOAT}, b2.opts());
+    Node* h = Binary(ops::NodeOut(call1, 1), recv2,
+                     b2.opts()
+                         .WithName("H")
+                         .WithAttr("_encapsulate", "F2")
+                         .WithAttr("_outside", "O1"));
+    Node* send2 = SendFromHost(ops::NodeOut(key_constant2, 0), "F2", "O1", {h},
+                               b2.opts());
 
     Node* s2 = Sequencer(
         b2.opts().WithName("F2_sequencer").WithControlInputs({recv2, send2}),
@@ -1300,7 +1326,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})}}},
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1311,12 +1338,14 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
     Node* a = InputShaped(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
-    Node* e = Unary(a, b2.opts().WithName("E"));
+    Node* e = Unary(a, b2.opts()
+                           .WithName("E")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
-    Node* send1 = SendFromHost(
-        ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {e},
-        b2.opts().WithName("outside_compilation_F1_O1_send"));
+    Node* send1 =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, b2.opts());
     Node* s1 = Sequencer(
         b2.opts().WithName("F1_sequencer").WithControlInput(send1), "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
@@ -1380,7 +1409,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})}},
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
       {{"f_0_retval", "F:o:0"}});
@@ -1395,12 +1425,14 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
     Node* recv1 =
-        RecvAtHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                   {}, b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = Unary(a, b2.opts().WithName("E").WithControlInput(recv1));
-    Node* send1 = SendFromHost(
-        ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {e},
-        b2.opts().WithName("outside_compilation_F1_O1_send"));
+        RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1", {}, b2.opts());
+    Node* e = Unary(a, b2.opts()
+                           .WithName("E")
+                           .WithControlInput(recv1)
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
+    Node* send1 =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, b2.opts());
     Node* s1 = Sequencer(
         b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
         "F1");
@@ -1457,7 +1489,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
             {"Toutputs", gtl::ArraySlice<DataType>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})}}},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1470,10 +1503,12 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
 
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
-    Node* recv1 = RecvAtHost(
-        ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {DT_FLOAT},
-        b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = Unary(recv1, b2.opts().WithName("E"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT}, b2.opts());
+    Node* e = Unary(recv1, b2.opts()
+                               .WithName("E")
+                               .WithAttr("_encapsulate", "F1")
+                               .WithAttr("_outside", "O1"));
     Node* s1 = Sequencer(
         b2.opts().WithName("F1_sequencer").WithControlInput(recv1), "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
@@ -1534,7 +1569,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
             {"Toutputs", gtl::ArraySlice<DataType>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})}}},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1547,15 +1583,14 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
 
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
-    Node* recv1 = RecvAtHost(
-        ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {DT_FLOAT},
-        b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = Unary(recv1, b2.opts().WithName("E"));
-    Node* send1 = SendFromHost(ops::NodeOut(key_constant, 0),
-                               "host_compute_channel_F1_O1", {},
-                               b2.opts()
-                                   .WithName("outside_compilation_F1_O1_send")
-                                   .WithControlInput(e));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT}, b2.opts());
+    Node* e = Unary(recv1, b2.opts()
+                               .WithName("E")
+                               .WithAttr("_encapsulate", "F1")
+                               .WithAttr("_outside", "O1"));
+    Node* send1 = SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {},
+                               b2.opts().WithControlInput(e));
     Node* s1 = Sequencer(
         b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
         "F1");
@@ -1615,7 +1650,10 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputsOrOutputs) {
     Node* a = Input(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
-    Node* e = Unary(a, b2.opts().WithName("E"));
+    Node* e = Unary(a, b2.opts()
+                           .WithName("E")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
     Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
@@ -1661,21 +1699,21 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
-  string shape_string_expected;
   {
     GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
         KeyPlaceholderShape(shape.opts().WithName("KnownShape/_0"));
     Node* known = KnownShape({2}, shape.opts().WithName("KnownShape/_1"));
-    Node* recv = RecvAtHost(
-        ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {DT_FLOAT},
-        shape.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = BinaryUnknownShape(known, recv, shape.opts().WithName("E"));
-    SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
-                 {e}, shape.opts().WithName("outside_compilation_F1_O1_send"));
-    GraphDef shape_graph;
-    TF_EXPECT_OK(shape.ToGraphDef(&shape_graph));
-    EXPECT_TRUE(shape_graph.SerializeToString(&shape_string_expected));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT}, shape.opts());
+    Node* e = BinaryUnknownShape(known, recv,
+                                 shape.opts()
+                                     .WithName("E")
+                                     .WithAttr("_encapsulate", "F1")
+                                     .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
   }
 
   *library_expected.add_function() = test::function::XTimesTwo();
@@ -1694,8 +1732,10 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O1"},
-            {"shape_inference_graph", shape_string_expected},
-            {"shapes", gtl::ArraySlice<DataType>({})}},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"c"}},
       },
       {{"f_0_retval", "F:o:0"}});
@@ -1710,17 +1750,16 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
 
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
-    Node* recv = RecvAtHost(
-        ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {DT_FLOAT},
-        b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = BinaryUnknownShape(
-        c, ops::NodeOut(recv, 0),
-        b2.opts().WithName("E").WithControlInputs({recv, b}));
-    Node* send = SendFromHost(ops::NodeOut(key_constant, 0),
-                              "host_compute_channel_F1_O1", {e},
-                              b2.opts()
-                                  .WithName("outside_compilation_F1_O1_send")
-                                  .WithControlInput(e));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT}, b2.opts());
+    Node* e = BinaryUnknownShape(c, ops::NodeOut(recv, 0),
+                                 b2.opts()
+                                     .WithName("E")
+                                     .WithControlInputs({recv, b})
+                                     .WithAttr("_encapsulate", "F1")
+                                     .WithAttr("_outside", "O1"));
+    Node* send = SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e},
+                              b2.opts().WithControlInput(e));
 
     Node* s = Sequencer(
         b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}),

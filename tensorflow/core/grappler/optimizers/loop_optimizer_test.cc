@@ -25,7 +25,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-namespace {
 
 class LoopOptimizerTest : public GrapplerTest {
  protected:
@@ -57,6 +56,23 @@ class LoopOptimizerTest : public GrapplerTest {
     attributes.emplace_back("T", type);
     AddNode(name, op, inputs, attributes, graph);
   }
+
+  void DisableAllStages(LoopOptimizer* optimizer) {
+    LoopOptimizer::LoopOptimizerOptions options;
+    options.enable_loop_invariant_node_motion = false;
+    options.enable_stack_push_removal = false;
+    optimizer->options_ = options;
+  }
+
+  void EnableOnlyLoopInvariantNodeMotion(LoopOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.enable_loop_invariant_node_motion = true;
+  }
+
+  void EnableOnlyStackPushRemoval(LoopOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.enable_stack_push_removal = true;
+  }
 };
 
 TEST_F(LoopOptimizerTest, Basic) {
@@ -82,6 +98,7 @@ TEST_F(LoopOptimizerTest, Basic) {
   item.graph = graph;
 
   LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -129,6 +146,7 @@ TEST_F(LoopOptimizerTest, Const) {
   item.graph = graph;
 
   LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -176,6 +194,7 @@ TEST_F(LoopOptimizerTest, ControlOutput) {
   item.graph = graph;
 
   LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -236,6 +255,7 @@ TEST_F(LoopOptimizerTest, NestedLoop1) {
   item.graph = graph;
 
   LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -303,6 +323,7 @@ TEST_F(LoopOptimizerTest, NestedLoop2) {
   item.graph = graph;
 
   LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -366,6 +387,7 @@ TEST_F(LoopOptimizerTest, NestedLoopConst1) {
   item.graph = graph;
 
   LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -430,6 +452,7 @@ TEST_F(LoopOptimizerTest, NestedLoopConst2) {
   item.graph = graph;
 
   LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -475,6 +498,7 @@ TEST_F(LoopOptimizerTest, NoOp) {
   CHECK(fake_input.NextItem(&item));
 
   LoopOptimizer optimizer;
+  EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -502,7 +526,9 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   AddSimpleNode("stack3", "StackV2", {}, &graph);
   AddSimpleNode("push3", "StackPushV2", {"stack3", "c"}, &graph);
   AddSimpleNode("stop", "StopGradient", {"stack3"}, &graph);
+
   LoopOptimizer optimizer;
+  EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -525,12 +551,20 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   AddSimpleNode("stack3", "StackV2", {}, &graph);
   AddSimpleNode("push3", "StackPushV2", {"stack3", "c"}, &graph);
   AddSimpleNode("pop3", "StackPopV2", {"stack3"}, &graph);
+  // Push for a Pop without consumer that is fetched should not be removed.
+  AddSimpleNode("stack4", "StackV2", {}, &graph);
+  AddSimpleNode("push4", "StackPushV2", {"stack4", "c"}, &graph);
+  AddSimpleNode("pop4", "StackPopV2", {"stack4"}, &graph);
+
+  item.fetch.push_back("pop4");
 
   LoopOptimizer optimizer;
+  EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  EXPECT_EQ(10, output.node_size());
+
+  EXPECT_EQ(13, output.node_size());
   for (int i = 0; i < output.node_size(); ++i) {
     const NodeDef& node = output.node(i);
     if (node.name() == "push1") {
@@ -555,6 +589,5 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   }
 }
 
-}  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

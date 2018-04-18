@@ -24,12 +24,16 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/framework/visitable_allocator.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
 
 #include "i_malloc.h"
+
+#ifdef _WIN32
+typedef unsigned int uint;
+#endif
 
 namespace tensorflow {
 

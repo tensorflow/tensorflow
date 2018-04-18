@@ -32,9 +32,13 @@ import java.util.Map;
 final class NativeInterpreterWrapper implements AutoCloseable {
 
   NativeInterpreterWrapper(String modelPath) {
+    this(modelPath, /* numThreads= */ -1);
+  }
+
+  NativeInterpreterWrapper(String modelPath, int numThreads) {
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModel(modelPath, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle, errorHandle);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle, numThreads);
     isMemoryAllocated = true;
   }
 
@@ -44,10 +48,19 @@ final class NativeInterpreterWrapper implements AutoCloseable {
    * NativeInterpreterWrapper}.
    */
   NativeInterpreterWrapper(MappedByteBuffer mappedByteBuffer) {
+    this(mappedByteBuffer, /* numThreads= */ -1);
+  }
+
+  /**
+   * Initializes a {@code NativeInterpreterWrapper} with a {@code MappedByteBuffer} and specifies
+   * the number of inference threads. The MappedByteBuffer should not be modified after the
+   * construction of a {@code NativeInterpreterWrapper}.
+   */
+  NativeInterpreterWrapper(MappedByteBuffer mappedByteBuffer, int numThreads) {
     modelByteBuffer = mappedByteBuffer;
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle, errorHandle);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle, numThreads);
     isMemoryAllocated = true;
   }
 
@@ -140,8 +153,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     useNNAPI(interpreterHandle, useNNAPI);
   }
 
-  void setNumThreads(int numRecommendedThreads) {
-    numThreads(interpreterHandle, numRecommendedThreads);
+  void setNumThreads(int num_threads) {
+    numThreads(interpreterHandle, num_threads);
   }
 
   /** Gets index of an input given its name. */
@@ -312,7 +325,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native void useNNAPI(long interpreterHandle, boolean state);
 
-  private static native void numThreads(long interpreterHandle, int numRecommendedThreads);
+  private static native void numThreads(long interpreterHandle, int num_threads);
 
   private static native long createErrorReporter(int size);
 
@@ -320,7 +333,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native long createModelWithBuffer(MappedByteBuffer modelBuffer, long errorHandle);
 
-  private static native long createInterpreter(long modelHandle, long errorHandle);
+  private static native long createInterpreter(long modelHandle, long errorHandle, int numThreads);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
 

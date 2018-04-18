@@ -44,7 +44,7 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
     return errors::FailedPrecondition("Table already initialized.");
   }
 
-  TF_RETURN_IF_ERROR(DoPrepare(iter.total_size()));
+  TF_RETURN_IF_ERROR(DoLazyPrepare([&iter]() { return iter.total_size(); }));
   while (iter.Valid()) {
     TF_RETURN_IF_ERROR(DoInsert(iter.keys(), iter.values()));
     iter.Next();

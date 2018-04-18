@@ -438,12 +438,14 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
 
   if (kind == XfeedKind::kInfeed) {
     // Copy to the program buffer address from the acquired buffer.
-    ir_builder_.CreateMemCpy(program_buffer_address, acquired_pointer,
-                             length_32, 1);
+    ir_builder_.CreateMemCpy(program_buffer_address, /*DstAlign=*/1,
+                             acquired_pointer,
+                             /*SrcAlign=*/1, length_32);
   } else {
     // Outfeed -- copy from the in-program address to the acquired buffer.
-    ir_builder_.CreateMemCpy(acquired_pointer, program_buffer_address,
-                             length_32, 1);
+    ir_builder_.CreateMemCpy(acquired_pointer, /*DstAlign=*/1,
+                             program_buffer_address,
+                             /*SrcAlign=*/1, length_32);
   }
 
   ir_builder_.CreateCall(release_func,
@@ -2441,7 +2443,8 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
     target_array.AnnotateLoadStoreInstructionWithMetadata(store_instruction);
   } else {
     auto* memcpy_instruction = ir_builder_.CreateMemCpy(
-        target, source, element_count * primitive_type_size, element_alignment);
+        target, /*DstAlign=*/element_alignment, source,
+        /*SrcAlign=*/element_alignment, element_count * primitive_type_size);
 
     // The memcpy does the load and the store internally.  The aliasing related
     // metadata has to reflect that.
@@ -2905,7 +2908,8 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
   llvm::Value* destination_value = GetEmittedValueFor(&destination);
   int64 source_size = ByteSizeOf(source.shape());
   // TODO(b/63762267): Be more aggressive about specifying alignment.
-  ir_builder_.CreateMemCpy(destination_value, source_value, source_size, 1);
+  ir_builder_.CreateMemCpy(destination_value, /*DstAlign=*/1, source_value,
+                           /*SrcAlign=*/1, source_size);
   return Status::OK();
 }
 

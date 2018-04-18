@@ -72,15 +72,37 @@ py_library(
 )
 
 py_library(
+    name = "pruning_utils",
+    srcs = ["python/pruning_utils.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "pruning",
     srcs = ["python/pruning.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
         ":core_layers",
+        ":pruning_utils",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/python:platform",
-        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "pruning_utils_test",
+    size = "small",
+    srcs = ["python/pruning_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pruning_utils",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -124,16 +146,4 @@ py_library(
         ":pruning",
         ":rnn_cells",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

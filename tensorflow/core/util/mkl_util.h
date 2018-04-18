@@ -45,6 +45,10 @@ using mkldnn::primitive;
 using mkldnn::reorder;
 #endif
 
+#ifdef _WIN32
+typedef unsigned int uint;
+#endif
+
 // The file contains a number of utility classes and functions used by MKL
 // enabled kernels
 
@@ -1579,10 +1583,10 @@ class MklDnnData {
   }
 
   /// Set function for data buffer of user memory primitive.
-  inline void* SetUsrMemDataHandle(void* data_buffer) {
+  inline void SetUsrMemDataHandle(void* data_buffer) {
     CHECK_NOTNULL(user_memory_);
     CHECK_NOTNULL(data_buffer);
-    return user_memory_->set_data_handle(data_buffer);
+    user_memory_->set_data_handle(data_buffer);
   }
 
   /// Set function for data buffer of user memory primitive.

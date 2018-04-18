@@ -452,8 +452,7 @@ class Template(checkpointable.CheckpointableBase):
       # Only reuse variables if they were already created.
       with variable_scope.variable_scope(
           self._variable_scope, reuse=self._variables_created):
-        result = self._call_func(args, kwargs)
-      return result
+        return self._call_func(args, kwargs)
     else:
       # The scope was not created at construction time, so create it here.
       # Subsequent calls should reuse variables.
@@ -461,8 +460,7 @@ class Template(checkpointable.CheckpointableBase):
           self._unique_name, self._name,
           custom_getter=self._custom_getter) as vs:
         self._variable_scope = vs
-        result = self._call_func(args, kwargs)
-        return result
+        return self._call_func(args, kwargs)
 
   @property
   def name(self):
@@ -583,7 +581,7 @@ class _EagerTemplateVariableStore(object):
       if self._variable_scope_name is None:
         raise RuntimeError("A variable scope must be set before an "
                            "_EagerTemplateVariableStore object exits.")
-      self._eager_variable_store._store.close_variable_subscopes(  # pylint: disable=protected-access
+      variable_scope.get_variable_scope_store().close_variable_subscopes(
           self._variable_scope_name)
 
   def _variables_in_scope(self, variable_list):
@@ -730,8 +728,7 @@ class EagerTemplate(Template):
             self._variable_scope, reuse=variable_scope.AUTO_REUSE)
       with self._variable_scope_context_manager:
         with self._template_store.as_default():
-          result = self._call_func(args, kwargs)
-      return result
+          return self._call_func(args, kwargs)
     else:
       # The scope was not created at construction time, so create it here.
       # Subsequent calls should reuse variables.
@@ -743,8 +740,7 @@ class EagerTemplate(Template):
         # store's variable scope name is unset; set it here.
         self._template_store.set_variable_scope_name(vs.name)
         with self._template_store.as_default():
-          result = self._call_func(args, kwargs)
-        return result
+          return self._call_func(args, kwargs)
 
   @property
   def name(self):

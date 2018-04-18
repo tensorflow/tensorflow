@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
+#include "tensorflow/contrib/lite/profiling/profiler.h"
 
 namespace tflite {
 
@@ -47,6 +49,10 @@ constexpr TfLiteType typeToTfLiteType<float>() {
 template <>
 constexpr TfLiteType typeToTfLiteType<unsigned char>() {
   return kTfLiteUInt8;
+}
+template <>
+constexpr TfLiteType typeToTfLiteType<bool>() {
+  return kTfLiteBool;
 }
 
 // Forward declare since NNAPIDelegate uses Interpreter.
@@ -208,7 +214,7 @@ class Interpreter {
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
-      int node_index) {
+      int node_index) const {
     if (node_index >= nodes_and_registration_.size() || node_index < 0)
       return nullptr;
     return &nodes_and_registration_[node_index];
@@ -272,10 +278,13 @@ class Interpreter {
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate,
+                                       bool allow_dynamic_tensors = false);
 
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
+  // WARNING: This is an experimental API and subject to change.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
     TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
     TfLiteTensor* tensor = &tensors_[tensor_index];
@@ -314,6 +323,12 @@ class Interpreter {
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
+  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+
+  profiling::Profiler* GetProfiler(profiling::Profiler* profiler) {
+    return profiler_;
+  }
+
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
   // The capacity headroom of `tensors_` vector before calling ops'
@@ -321,6 +336,18 @@ class Interpreter {
   // allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
   // pointers to existing tensors.
   static constexpr int kTensorsCapacityHeadroom = 16;
+
+  // Set if buffer handle output is allowed.
+  //
+  // When using hardware delegation, Interpreter will make the data of output
+  // tensors available in `tensor->data` by default. If the application can
+  // consume the buffer handle directly (e.g. reading output from OpenGL
+  // texture), it can set this flag to false, so Interpreter won't copy the data
+  // from buffer handle to CPU memory.
+  // WARNING: This is an experimental API and subject to change.
+  void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
+    allow_buffer_handle_output_ = allow_buffer_handle_output;
+  }
 
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
@@ -447,6 +474,20 @@ class Interpreter {
     }
   }
 
+  // The state of the Interpreter.
+  enum State {
+    // The interpreter isn't ready to be invoked.
+    // `AllocateTensor` need to be called to enter an invokable state.
+    kStateUninvokable = 0,
+    // The interpreter is ready to be invoked.
+    kStateInvokable,
+    // The interpreter is ready to be invoked, and graph can't be further
+    // modified. The interpreter will enter this state when calling
+    // `ModifyGraphWithDelegate` with `allow_dynamic_tensors=false`.
+    kStateInvokableAndImmutable,
+  };
+  State state_ = kStateUninvokable;
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -461,10 +502,6 @@ class Interpreter {
   // of every node and the global inputs and outputs are valid indexes into
   // the tensor array.
   bool consistent_ = true;
-
-  // Whether the model is safe to invoke (if any errors occurred this
-  // will be false).
-  bool invokable_ = false;
 
   // Array of indices representing the tensors that are inputs to the
   // interpreter.
@@ -502,6 +539,11 @@ class Interpreter {
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
+
+  bool allow_buffer_handle_output_ = false;
+
+  // Profiler for this interpreter instance.
+  profiling::Profiler* profiler_;
 };
 
 }  // namespace tflite

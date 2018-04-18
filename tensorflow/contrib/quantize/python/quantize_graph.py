@@ -28,7 +28,8 @@ def _create_graph(input_graph=None,
                   weight_bits=8,
                   activation_bits=8,
                   quant_delay=None,
-                  freeze_bn_delay=None):
+                  freeze_bn_delay=None,
+                  scope=None):
   """Rewrites an input_graph in place for simulated quantization.
 
   The graph has fake quantization ops inserted to simulate the error
@@ -48,6 +49,8 @@ def _create_graph(input_graph=None,
       frozen and used instead of batch statistics during training.
       freeze_bn_delay should be greater than quant_delay and should correspond
       to the number of steps when training has almost converged
+    scope: The scope to be transformed. If it's not None, only the ops which
+      are in this scope will be transformed.
 
   Raises:
     ValueError: If elements contains an element that isn't a tf.Tensor or
@@ -66,7 +69,8 @@ def _create_graph(input_graph=None,
         is_training,
         quant_delay=quant_delay,
         weight_bits=weight_bits,
-        activation_bits=activation_bits)
+        activation_bits=activation_bits,
+        scope=scope)
 
 
 def create_training_graph(input_graph=None, quant_delay=0):
@@ -99,16 +103,7 @@ def create_training_graph(input_graph=None, quant_delay=0):
   # TODO(raghuramank) Need to have freeze_bn_delay be a function of batch size
   # Currently the values below are hardcoded for mobilenetV1 on imagenet
   # Please use the experimental API if you need to tune these values.
-  if quant_delay == 0:
-    # Corresponds to case of restoring from a floating point checkpoint
-    # In this case, we can freeze the moving mean and variance early on and
-    # switch to using them during training. Therefore, freeze_bn_delay is set to
-    # 2e5.
-    freeze_bn_delay = int(2e5)
-  else:
-    # If training from scratch, set freeze_bn_delay to 100 epochs after quant
-    # delay. With a batch size of 64, this corresponds to 20000*100=2M steps.
-    freeze_bn_delay = quant_delay + int(2e6)
+  freeze_bn_delay = None
 
   _create_graph(
       input_graph=input_graph,
@@ -142,7 +137,8 @@ def experimental_create_training_graph(input_graph=None,
                                        weight_bits=8,
                                        activation_bits=8,
                                        quant_delay=0,
-                                       freeze_bn_delay=int(2e5)):
+                                       freeze_bn_delay=None,
+                                       scope=None):
   """Rewrites a training input_graph in place for simulated quantization.
 
   Variables added by the rewrite get added to the global variables collection.
@@ -174,6 +170,8 @@ def experimental_create_training_graph(input_graph=None,
       frozen and used instead of batch statistics during training.
       freeze_bn_delay should be greater than quant_delay and should correspond
       to when training has almost converged
+    scope: The scope to be transformed. If it's not None, only the ops which
+      are in this scope will be transformed.
 
   Raises:
     ValueError: If elements contains an element that isn't a tf.Tensor or
@@ -186,12 +184,14 @@ def experimental_create_training_graph(input_graph=None,
       weight_bits=weight_bits,
       activation_bits=activation_bits,
       quant_delay=quant_delay,
-      freeze_bn_delay=freeze_bn_delay)
+      freeze_bn_delay=freeze_bn_delay,
+      scope=scope)
 
 
 def experimental_create_eval_graph(input_graph=None,
                                    weight_bits=8,
-                                   activation_bits=8):
+                                   activation_bits=8,
+                                   scope=None):
   """Rewrites an eval input_graph in place for simulated quantization.
 
   Variables added by the rewrite get added to the global variables collection.
@@ -209,8 +209,8 @@ def experimental_create_eval_graph(input_graph=None,
       default graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
-
-
+    scope: The scope to be transformed. If it's not None, only the ops which
+      are in this scope will be transformed.
 
   Raises:
     ValueError: If elements contains an element that isn't a tf.Tensor or
@@ -220,4 +220,5 @@ def experimental_create_eval_graph(input_graph=None,
       input_graph=input_graph,
       is_training=False,
       weight_bits=weight_bits,
-      activation_bits=activation_bits)
+      activation_bits=activation_bits,
+      scope=scope)

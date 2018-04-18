@@ -44,7 +44,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
       None (equivalent to an empty list).
     infeed_queue: if not None, the infeed queue from which to append a tuple
       of arguments as inputs to condition.
-    name: an optional name for the loop.
+    name: (Deprecated) Does nothing.
 
   Returns:
     The final values of the loop-carried tensors.
@@ -52,7 +52,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   Raises:
     TypeError: if body or condition has the wrong signature.
   """
-
+  del name
   # Converts inputs to Tensors.
   inputs = [] if inputs is None else [ops.convert_to_tensor(x) for
                                       x in inputs]
@@ -166,7 +166,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   if input_arity == 0:
     inputs = [array_ops.constant(0)]
   return control_flow_ops.while_loop(condition_wrapper, body_wrapper, inputs,
-                                     name=name)
+                                     name="")
 
 
 def repeat(n, body, inputs=None, infeed_queue=None, name=None):
@@ -183,7 +183,7 @@ def repeat(n, body, inputs=None, infeed_queue=None, name=None):
       None (equivalent to an empty list).
     infeed_queue: if not None, the infeed queue from which to append a tuple
       of arguments as inputs to condition.
-    name: an optional name for the loop.
+    name: (Deprecated) Does nothing.
   Returns:
     The final values of the loop-carried tensors.
   Raises:

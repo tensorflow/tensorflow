@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
@@ -68,20 +69,6 @@ namespace {
 auto* direct_session_runs = monitoring::Counter<0>::New(
     "/tensorflow/core/direct_session_runs",
     "The number of times DirectSession::Run() has been called.");
-
-int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
-  const int32 t = options.config.inter_op_parallelism_threads();
-  if (t != 0) return t;
-  // Default to using the number of cores available in the process.
-  return port::NumSchedulableCPUs();
-}
-
-thread::ThreadPool* NewThreadPoolFromSessionOptions(
-    const SessionOptions& options) {
-  const int32 num_threads = NumInterOpThreadsFromSessionOptions(options);
-  VLOG(1) << "Direct session inter op parallelism threads: " << num_threads;
-  return new thread::ThreadPool(options.env, "Compute", num_threads);
-}
 
 Status NewThreadPoolFromThreadPoolOptions(
     const SessionOptions& options,

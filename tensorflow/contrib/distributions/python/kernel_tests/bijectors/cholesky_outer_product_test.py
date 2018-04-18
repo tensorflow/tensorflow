@@ -51,10 +51,13 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
       self.assertAllClose(
-          ildj, bijector.inverse_log_det_jacobian(y).eval(), atol=0., rtol=1e-7)
+          ildj, bijector.inverse_log_det_jacobian(
+              y, event_ndims=2).eval(), atol=0., rtol=1e-7)
       self.assertAllClose(
-          -bijector.inverse_log_det_jacobian(y).eval(),
-          bijector.forward_log_det_jacobian(x).eval(),
+          -bijector.inverse_log_det_jacobian(
+              y, event_ndims=2).eval(),
+          bijector.forward_log_det_jacobian(
+              x, event_ndims=2).eval(),
           atol=0.,
           rtol=1e-7)
 

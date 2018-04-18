@@ -89,8 +89,16 @@ std::map<string, string> kBrokenTests = {
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
 
-    // Lstm kernel gets different results on tsan, asan, msan.
-    {R"(^\/lstmdtype=tf.float32.*)", "73830845"},
+    // PRelu only supports 4D input with (1, 1, channels) 3D alpha now.
+    {R"(^\/prelu.*shared_axes=\[1\])", "75975192"},
+
+    // No support for axis!=0 in GatherV2.
+    {R"(^\/gather.*axis=1)", "76910444"},
+
+    // No support for arbitrary dimensions in ArgMax.
+    {R"(^\/arg_max.*axis=0)", "77546240"},
+    {R"(^\/arg_max.*axis=1)", "77546240"},
+    {R"(^\/arg_max.*axis=2)", "77546240"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -233,6 +241,7 @@ TEST_P(OpsTest, RunStuff) {
       ::testing::ValuesIn(UnarchiveZipAndFindTestNames(#zip_base ".zip")));
 
 INSTANTIATE_TESTS(add)
+INSTANTIATE_TESTS(arg_max)
 INSTANTIATE_TESTS(avg_pool)
 INSTANTIATE_TESTS(batch_to_space_nd)
 INSTANTIATE_TESTS(concat)
@@ -250,13 +259,15 @@ INSTANTIATE_TESTS(l2_pool)
 INSTANTIATE_TESTS(l2norm)
 INSTANTIATE_TESTS(local_response_norm)
 INSTANTIATE_TESTS(log_softmax)
-INSTANTIATE_TESTS(lstm)
+INSTANTIATE_TESTS(maximum)
 INSTANTIATE_TESTS(max_pool)
 INSTANTIATE_TESTS(mean)
+INSTANTIATE_TESTS(minimum)
 INSTANTIATE_TESTS(mul)
 INSTANTIATE_TESTS(pad)
 INSTANTIATE_TESTS(relu)
 INSTANTIATE_TESTS(relu1)
+// INSTANTIATE_TESTS(prelu)
 INSTANTIATE_TESTS(relu6)
 INSTANTIATE_TESTS(reshape)
 INSTANTIATE_TESTS(resize_bilinear)
@@ -269,6 +280,7 @@ INSTANTIATE_TESTS(squeeze)
 INSTANTIATE_TESTS(strided_slice)
 INSTANTIATE_TESTS(sub)
 INSTANTIATE_TESTS(transpose)
+INSTANTIATE_TESTS(less)
 
 }  // namespace testing
 }  // namespace tflite
