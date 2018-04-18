@@ -13,24 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_utils.h"
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include <iostream>
+#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_plugin.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "inc_op_plugin.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-const string IncOpPlugin::plugin_name_ = "IncPluginTRT";
+const std::string IncOpPlugin::plugin_name_ = "IncPluginTRT";
 
-IncOpPlugin* CreateIncPlugin() {
-  return new IncOpPlugin();
-}
-
+IncOpPlugin* CreateIncPlugin() { return new IncOpPlugin(); }
 
 IncOpPlugin* CreateIncPluginDeserialize(const void* buffer, size_t length) {
   return new IncOpPlugin(buffer, length);
@@ -39,45 +34,49 @@ IncOpPlugin* CreateIncPluginDeserialize(const void* buffer, size_t length) {
 bool RegisterIncOpPlugin() {
   if (PluginFactoryTensorRT::GetInstance()->IsPlugin(IncOpPlugin::plugin_name_))
     return false;
-  return PluginFactoryTensorRT::GetInstance()->RegisterPlugin(IncOpPlugin::plugin_name_, CreateIncPluginDeserialize, CreateIncPlugin);
+  return PluginFactoryTensorRT::GetInstance()->RegisterPlugin(
+      IncOpPlugin::plugin_name_, CreateIncPluginDeserialize, CreateIncPlugin);
 }
 
-
-IncOpPlugin::IncOpPlugin(const void* serialized_data, size_t length) :
-    PluginTensorRT(serialized_data, length)
-{
+IncOpPlugin::IncOpPlugin(const void* serialized_data, size_t length)
+    : PluginTensorRT(serialized_data, length) {
   // account for the consumed pointer.
   size_t consumed_data = PluginTensorRT::getSerializationSize();
-  assert(length-consumed_data >= sizeof(float));
-  SetAttribute("inc", serialized_data+consumed_data, sizeof(float));
+  assert(length - consumed_data >= sizeof(float));
+  const char* buffer = reinterpret_cast<const char*>(serialized_data);
+  SetAttribute("inc", buffer + consumed_data, sizeof(float));
 }
 
-bool IncOpPlugin::SetAttribute(const string &key, const void *ptr, const size_t size) {
-  if (strcmp(key.c_str(), "inc")==0 && size == sizeof(float)) {
-    StoreAttribute(key, ptr, size); // save the attribute to own the data;
+bool IncOpPlugin::SetAttribute(const std::string& key, const void* ptr,
+                               const size_t size) {
+  if (strcmp(key.c_str(), "inc") == 0 && size == sizeof(float)) {
+    StoreAttribute(key, ptr, size);  // save the attribute to own the data;
     inc_ = *static_cast<const float*>(ptr);
     return true;
   }
   return false;
 }
 
-bool IncOpPlugin::GetAttribute(const string &key, const void *ptr, size_t &size) {
-  if (attr_map_.find(key) != attr_map_.end()) {
-    ptr = attr_map_[key].data();
-    size = attr_map_[key].size();
+bool IncOpPlugin::GetAttribute(const std::string& key, const void** ptr,
+                               size_t* size) const {
+  const auto& iter = attr_map_.find(key);
+  if (iter != attr_map_.end()) {
+    *ptr = iter->second.data();
+    *size = iter->second.size();
     return true;
   }
   return false;
 }
 
-int IncOpPlugin::enqueue(int batchSize, const void*const *inputs, void** outputs, void*, cudaStream_t stream) {
+int IncOpPlugin::enqueue(int batch_size, const void* const* inputs,
+                         void** outputs, void*, cudaStream_t stream) {
   int count = 1;
-  for (int i=0; i<input_dim_list_[0].nbDims; i++) {
+  for (int i = 0; i < input_dim_list_[0].nbDims; i++) {
     count *= input_dim_list_[0].d[i];
   }
-  count *= batchSize;
-  const float *input = reinterpret_cast<const float*>(inputs[0]);
-  float *output = reinterpret_cast<float*>(outputs[0]);
+  count *= batch_size;
+  const float* input = reinterpret_cast<const float*>(inputs[0]);
+  float* output = reinterpret_cast<float*>(outputs[0]);
   IncrementKernel(input, inc_, output, count, stream);
   return 0;
 }

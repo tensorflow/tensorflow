@@ -13,28 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS
-#define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS
-
-#include <functional>
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
-#include "tensorflow/core/platform/types.h"
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_INC_OP
+#define TENSORFLOW_CONTRIB_TENSORRT_INC_OP
 
 #if GOOGLE_CUDA
+#define EIGEN_USE_GPU
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-typedef std::function<PluginTensorRT*(const void*, size_t)>
-    PluginDeserializeFunc;
-
-typedef std::function<PluginTensorRT*(void)> PluginConstructFunc;
-
-// TODO(jie): work on error handling here
-string ExtractOpName(const void* serial_data, size_t serial_length,
-                     size_t* incremental);
+__global__ void VecInc(float* vec, float inc, float* dest, int n);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
@@ -42,4 +31,4 @@ string ExtractOpName(const void* serial_data, size_t serial_length,
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_INC_OP

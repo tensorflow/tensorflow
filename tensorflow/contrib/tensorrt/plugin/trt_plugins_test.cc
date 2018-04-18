@@ -51,9 +51,9 @@ class StubPlugin : public PluginTensorRT {
     return inputs[0];
   }
   int initialize() override { return 0; }
-  void terminate() override { return; }
+  void terminate() override {}
   size_t getWorkspaceSize(int maxBatchSize) const override { return 0; }
-  int enqueue(int batchSize, const void* const* inputs, void** outputs,
+  int enqueue(int batch_size, const void* const* inputs, void** outputs,
               void* workspace, cudaStream_t stream) override {
     return 0;
   }
@@ -78,8 +78,6 @@ class PluginTest : public ::testing::Test {
         StubPlugin::plugin_name_, CreateStubPluginDeserialize,
         CreateStubPlugin);
   }
-
- protected:
 };
 
 TEST_F(PluginTest, Registration) {

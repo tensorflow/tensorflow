@@ -39,10 +39,8 @@ class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
   PluginTensorRT* CreatePlugin(const std::string& op_name);
 
   static PluginFactoryTensorRT* GetInstance() {
-    static PluginFactoryTensorRT* factory_instance = nullptr;
-    if (factory_instance == nullptr) {
-      factory_instance = new PluginFactoryTensorRT();
-    }
+    static PluginFactoryTensorRT* factory_instance =
+        new PluginFactoryTensorRT();
     return factory_instance;
   }
 

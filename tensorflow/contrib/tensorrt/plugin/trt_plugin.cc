@@ -58,7 +58,6 @@ void PluginTensorRT::configure(const nvinfer1::Dims* inputs, int num_inputs,
     }
     input_dim_list_.emplace_back(dim);
   }
-  return;
 }
 
 size_t PluginTensorRT::getSerializationSize() {

@@ -32,20 +32,18 @@ namespace tensorrt {
 // User application should inherit from this class to write custom kernels.
 // Allows user to insert custom op in TensorRT engine
 // To register plugin in converter, user should also register custom
-// tensorflow::tensorrt::PluginDeserializeFunc &
-// tensorflow::tensorrt::PluginConstructFunc through
-// tensorflow::tensorrt::PluginFactoryTensorRT
+// PluginDeserializeFunc & PluginConstructFunc through PluginFactoryTensorRT
 class PluginTensorRT : public nvinfer1::IPlugin {
  public:
   PluginTensorRT(){};
   PluginTensorRT(const void* serialized_data, size_t length);
-  virtual const std::string& GetPluginName() = 0;
+  virtual const std::string& GetPluginName() const = 0;
   virtual bool Finalize() = 0;
 
   virtual bool SetAttribute(const std::string& key, const void* ptr,
                             const size_t size) = 0;
-  virtual bool GetAttribute(const std::string& key, const void* ptr,
-                            size_t& size) = 0;
+  virtual bool GetAttribute(const std::string& key, const void** ptr,
+                            size_t* size) const = 0;
 
   void configure(const nvinfer1::Dims* inputs, int num_inputs,
                  const nvinfer1::Dims* outputs, int num_outputs,
