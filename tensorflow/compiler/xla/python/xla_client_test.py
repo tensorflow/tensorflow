@@ -1161,7 +1161,6 @@ class EmbeddedComputationsTest(LocalComputationTest):
           c, expected=np.sum(input_array, axis=tuple(dims)))
 
     _ReduceAndTest(0)
-    _ReduceAndTest(0)
     _ReduceAndTest(0, 1)
     _ReduceAndTest(0, 2)
     _ReduceAndTest(1, 2)
