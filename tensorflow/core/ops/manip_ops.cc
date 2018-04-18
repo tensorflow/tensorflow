@@ -28,6 +28,17 @@ REGISTER_OP("Roll")
     .Attr("T: type")
     .Attr("Tshift: {int32,int64}")
     .Attr("Taxis: {int32,int64}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // The `input` must be 1-D or higher
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused));
+      // The `shift` must be scalar or 1-D.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &unused));
+      // The `axis` must be scalar or 1-D.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &unused));
+      // Validate 'shift' is the same shape as axis'.
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->input(2), &unused));
+      return shape_inference::UnchangedShape(c);
+    });
 
 }  // namespace tensorflow
