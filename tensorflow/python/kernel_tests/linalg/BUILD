@@ -123,6 +123,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 5,
+    tags = ["optonly"],
 )
 
 cuda_py_test(

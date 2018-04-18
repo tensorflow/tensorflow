@@ -2759,7 +2759,6 @@ tf_cc_tests(
         "lib/monitoring/sampler_test.cc",
         "lib/random/distribution_sampler_test.cc",
         "lib/random/philox_random_test.cc",
-        "lib/random/random_distributions_test.cc",
         "lib/random/random_test.cc",
         "lib/random/simple_philox_test.cc",
         "lib/strings/base64_test.cc",
@@ -2778,6 +2777,21 @@ tf_cc_tests(
         "platform/stacktrace_handler_test.cc",
         "platform/subprocess_test.cc",
     ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "lib_random_random_distributions_test",
+    srcs = ["lib/random/random_distributions_test.cc"],
+    tags = ["optonly"],
     deps = [
         ":lib",
         ":lib_internal",

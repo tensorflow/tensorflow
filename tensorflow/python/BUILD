@@ -2802,7 +2802,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/image_ops_test.py"],
     additional_deps = [
         ":array_ops",
@@ -4333,7 +4333,7 @@ py_test(
 
 tf_py_test(
     name = "input_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/input_test.py"],
     additional_deps = [
         ":array_ops",

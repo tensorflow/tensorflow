@@ -592,7 +592,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "matrix_solve_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matrix_solve_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1603,7 +1603,10 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 cuda_py_test(
