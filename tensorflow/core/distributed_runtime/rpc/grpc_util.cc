@@ -21,8 +21,8 @@ namespace tensorflow {
 ::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
                                      grpc::ByteBuffer* dst) {
   bool own_buffer;
-  return ::grpc::GenericSerialize<::grpc::ProtoBufferWriter, protobuf::Message>(
-      src, dst, &own_buffer);
+  return ::grpc::GenericSerialize<::grpc::ProtoBufferWriter,
+                                  protobuf::Message>(src, dst, &own_buffer);
 }
 
 // GrpcMaybeUnparseProto from a string simply copies the string to the
@@ -35,7 +35,7 @@ namespace tensorflow {
 }
 
 bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst) {
-  grpc::ProtoBufferReader reader(src);
+  ::grpc::ProtoBufferReader reader(src);
   return dst->ParseFromZeroCopyStream(&reader);
 }
 
