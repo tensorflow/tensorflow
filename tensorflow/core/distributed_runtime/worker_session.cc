@@ -97,6 +97,7 @@ WorkerSession::WorkerSession(const string& session_name,
       worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
       device_mgr(std::move(device_mgr)),
       graph_mgr(std::move(graph_mgr)),
-      cluster_flr(new ClusterFunctionLibraryRuntime(this)) {}
+      cluster_flr(
+          new ClusterFunctionLibraryRuntime(this, !session_name.empty())) {}
 
 }  // namespace tensorflow

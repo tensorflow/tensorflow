@@ -98,20 +98,26 @@ Status SessionMgr::DeleteSession(const string& session) {
   return Status::OK();
 }
 
-std::shared_ptr<WorkerSession> SessionMgr::WorkerSessionForSessionUnlocked(
-    const string& session) {
-  auto it = sessions_.find(session);
-  if (it == sessions_.end()) {
-    return legacy_session_;
+Status SessionMgr::WorkerSessionForSessionLocked(
+    const string& session_handle, std::shared_ptr<WorkerSession>* out_session) {
+  if (session_handle.empty()) {
+    *out_session = legacy_session_;
   } else {
-    return it->second;
+    auto it = sessions_.find(session_handle);
+    if (it == sessions_.end()) {
+      return errors::Aborted("Session handle is not found: ", session_handle,
+                             ". Possibly this worker just restarted.");
+    } else {
+      *out_session = it->second;
+    }
   }
+  return Status::OK();
 }
 
-std::shared_ptr<WorkerSession> SessionMgr::WorkerSessionForSession(
-    const string& session) {
+Status SessionMgr::WorkerSessionForSession(
+    const string& session_handle, std::shared_ptr<WorkerSession>* out_session) {
   mutex_lock l(mu_);
-  return WorkerSessionForSessionUnlocked(session);
+  return WorkerSessionForSessionLocked(session_handle, out_session);
 }
 
 std::shared_ptr<WorkerSession> SessionMgr::LegacySession() {
