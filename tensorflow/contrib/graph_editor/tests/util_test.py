@@ -150,6 +150,11 @@ class UtilTest(test.TestCase):
       self.assertEqual(c0.op.inputs[0].op.name, "geph__a0_0")
       self.assertEqual(c0.op.inputs[1].op.name, "geph")
 
+  def test_get_predefined_collection_names(self):
+    """Test ge.util.get_predefined_collection_names"""
+    names = ge.util.get_predefined_collection_names()
+    self.assertEqual(1, names.count('variables'))
+
 
 if __name__ == "__main__":
   test.main()

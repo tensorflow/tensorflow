@@ -496,9 +496,9 @@ _INTERNAL_VARIABLE_RE = re.compile(r"^__\w+__$")
 
 
 def get_predefined_collection_names():
-  """Return all the predefined collection names."""
+  """Return all the predefined collection names except the deprecated."""
   return [getattr(tf_ops.GraphKeys, key) for key in dir(tf_ops.GraphKeys)
-          if not _INTERNAL_VARIABLE_RE.match(key)]
+          if not _INTERNAL_VARIABLE_RE.match(key) and key != 'VARIABLES']
 
 
 def find_corresponding_elem(target, dst_graph, dst_scope="", src_scope=""):
