@@ -111,8 +111,8 @@ def contrastive_loss(labels, embeddings_anchor, embeddings_positive,
   #   label here is {0,1} for neg, pos.
   return math_ops.reduce_mean(
       math_ops.to_float(labels) * math_ops.square(distances) +
-      (1. - math_ops.to_float(labels)) *
-      math_ops.square(math_ops.maximum(margin - distances, 0.)),
+      (1.0 - math_ops.to_float(labels)) *
+      math_ops.square(math_ops.maximum(margin - distances, 0.0)),
       name='contrastive_loss')
 
 
