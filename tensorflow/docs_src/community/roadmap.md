@@ -1,5 +1,5 @@
 # Roadmap
-**Last updated: Feb 15, 2018**
+**Last updated: Apr 18, 2018**
 
 TensorFlow is a rapidly moving, community supported project. This document is intended 
 to provide guidance about priorities and focus areas of the core set of TensorFlow 
@@ -14,7 +14,7 @@ expected in the next one to two releases.
 
 ### APIs
 #### High Level APIs:
-* Easy multi-GPU utilization with Estimators
+* Easy multi-GPU and TPU utilization with Estimators
 * Easy-to-use high-level pre-made estimators for Gradient Boosted Trees, Time Series, and other models
 
 #### Eager Execution:
@@ -31,7 +31,7 @@ to create Keras models Eager- style via Model subclassing)
 
 #### Official Models:
 * A set of 
-[reference models](https://github.com/tensorflow/models/tree/master/official) 
+[models](https://github.com/tensorflow/models/tree/master/official) 
 across image recognition, speech, object detection, and 
   translation that demonstrate best practices and serve as a starting point for 
   high-performance model development.
@@ -57,6 +57,17 @@ across image recognition, speech, object detection, and
 * Improved CPU performance by quantization and other network optimizations (eg. pruning, distillation)
 * Increased support for devices beyond Android and iOS (eg. RPi, Cortex-M)
 
+#### TensorFlow.js:
+* Release package for Node.js bindings to the TensorFlow C API through the TensorFlow.js backend interface
+* Expand support for importing TensorFlow SavedModels and Keras models into browser with unified APIs supporting retraining in browser
+* Improve Layers API and allow model exporting/saving
+* Release tfjs-data API for efficient data input pipelines
+
+#### TensorFlow with Swift:
+* Establish open source project including documentation, open design, and code availability.
+* Continue implementing and refining implementation and design through 2018.
+* Aim for implementation to be solid enough for general use later in 2018.
+
 ### Performance
 #### Distributed TensorFlow:
 * Multi-GPU support optimized for a variety of GPU topologies
@@ -68,18 +79,36 @@ across image recognition, speech, object detection, and
 * Int8 support for SkyLake via MKL
 * Dynamic loading of SIMD-optimized kernels
 
-### Documentation and Usability:
-* Updated documentation, tutorials and Getting Started guides
-* Process to enable external contributions to tutorials, documentation, and blogs showcasing best practice use-cases of TensorFlow and high-impact applications
+### End-to-end ML systems:
+#### TensorFlow Hub:
+* Expand support for module-types in TF Hub with TF Eager integration, Keras layers integration, and TensorFlow.js integration
+* Accept variable-sized image input
+* Improve multi-GPU estimator support
+* Document and improve TPU integration
+
+#### TensorFlow Extended:
+* Open source more of the TensorFlow Extended platform to facilitate adoption of TensorFlow in production settings.
+* Release TFX libraries for Data Validation
+
+### Documentation and Resources:
+* Updated documentation, tutorials and Getting Started guides on all features and APIs
+* [Youtube Tensorflow channel](https://youtube.com/tensorflow) with weekly updates with new content:
+Coding TensorFlow - where we teach folks coding with tensorflow
+TensorFlow Meets - where we highlight community contributions
+Ask TensorFlow - where we answer community questions
+Guest and Showcase videos
+* [Official TensorFlow blog](https://blog.tensorflow.org) updated with regular articles from Google team and the Community
+
 
 ### Community and Partner Engagement
 #### Special Interest Groups: 
 * Mobilizing the community to work together in focused domains
 * [tf-distribute](https://groups.google.com/a/tensorflow.org/forum/#!forum/tf-distribute): build and packaging of TensorFlow
-* More to be identified and launched
+* SIG TensorBoard, SIG Rust, and more to be identified and launched
 
 #### Community:
 * Incorporate public feedback on significant design decisions via a Request-for-Comment (RFC) process
 * Formalize process for external contributions to land in TensorFlow and associated projects 
 * Grow global TensorFlow communities and user groups
 * Collaborate with partners to co-develop and publish research papers
+* Process to enable external contributions to tutorials, documentation, and blogs showcasing best practice use-cases of TensorFlow and high-impact applications
