@@ -150,7 +150,7 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
       weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
       with backend.name_scope(model.output_names[i] + '_loss'):
         output_loss = weighted_masked_fn(
-            outs[i], targets[i], weights, mask=mask)
+            targets[i], outs[i], weights, mask=mask)
       loss_metrics.append(backend.mean(output_loss))
 
       loss_weight = model.loss_weights_list[i]
