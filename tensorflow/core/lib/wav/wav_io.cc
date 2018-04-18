@@ -228,8 +228,20 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
   uint16 audio_format;
   TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, &audio_format, &offset));
   if (audio_format != 1) {
+    string audio_format_str;
+    if (audio_format == 3) {
+        audio_format_str << "IEEE FLOAT";
+    } else if (audio_format == 6) {
+        audio_format_str << "ALAW";
+    } else if (audio_format == 7) {
+        audio_format_str << "MULAW";
+    } else if (audio_format == 65534) {
+        audio_format_str << "EXTENSIBLE";
+    } else {
+        audio_format_str << "UNKNOWN";
+    }
     return errors::InvalidArgument(
-        "Bad audio format for WAV: Expected 1 (PCM), but got ", audio_format);
+        "Bad audio format for WAV: Expected 1 (PCM), but got ", audio_format, " (", audio_format_str ,")");
   }
   TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, channel_count, &offset));
   TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, sample_rate, &offset));
