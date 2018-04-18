@@ -36,7 +36,10 @@ class TestOptimizer : public CustomGraphOptimizer {
   TestOptimizer() {}
   string name() const override { return "test_optimizer"; }
 
-  Status Init() override { return Status::OK(); }
+  Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
+                  nullptr) override {
+    return Status::OK();
+  }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
