@@ -50,8 +50,6 @@ limitations under the License.
 
 using tensorflow::gtl::ArraySlice;
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace {
 

@@ -34,7 +34,7 @@ class CompileOnlyService : public Service {
   // platform that the service should target. If platform is null then the
   // default platform is used.
   static StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
-      perftools::gputools::Platform* platform);
+      se::Platform* platform);
   static StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
       const ServiceOptions& options);
 

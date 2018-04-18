@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
-CompileOnlyService::NewService(perftools::gputools::Platform* platform) {
+CompileOnlyService::NewService(se::Platform* platform) {
   ServiceOptions default_options;
   default_options.set_platform(platform);
   return NewService(default_options);
@@ -45,7 +45,7 @@ CompileOnlyService::NewService(perftools::gputools::Platform* platform) {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
 CompileOnlyService::NewService(const ServiceOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }

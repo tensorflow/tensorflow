@@ -77,7 +77,7 @@ class AllocationTracker {
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    perftools::gputools::DeviceMemoryBase device_memory;
+    se::DeviceMemoryBase device_memory;
 
     // The device that the memory is allocated on.
     int device_ordinal;
@@ -103,13 +103,13 @@ class AllocationTracker {
 
   // Adds the given device address to the allocation tracker, or if it already
   // exists, then increment it's reference count.
-  void AddAllocationOrIncrementRefCount(
-      perftools::gputools::DeviceMemoryBase device_memory, int device_ordinal)
+  void AddAllocationOrIncrementRefCount(se::DeviceMemoryBase device_memory,
+                                        int device_ordinal)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Decrements the reference count of the given device memory. Then, if it is
   // zero, deallocate the memory.
-  Status DecrementRefCount(perftools::gputools::DeviceMemoryBase device_memory,
+  Status DecrementRefCount(se::DeviceMemoryBase device_memory,
                            int device_ordinal) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // A map from device memory opaque value to allocation. One such map is

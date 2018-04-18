@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 
+// Pulls in the ::stream_executor -> ::xla::se namespace alias.
+#include "tensorflow/compiler/xla/types.h"
+
 // These classes are forward declared so that ExecutableRunOptions can be linked
 // into an XLA-compiled binary without having to link all of the pointed-to
 // objects (e.g., for an ahead-of-time compiled CPU binary, the gpu tools don't
@@ -36,10 +39,6 @@ struct ThreadPoolDevice;
 }  // namespace Eigen
 
 namespace xla {
-
-// TODO(b/77980417): Once the perftools::gputools -> stream_executor migration
-// is complete, add "using namespace se = stream_executor" here and
-// s/stream_executor/se::/ to match our idiom elsewhere.
 
 class DeviceMemoryAllocator;
 class DeviceAssignment;

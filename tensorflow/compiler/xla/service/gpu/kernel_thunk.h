@@ -61,8 +61,7 @@ class KernelThunk : public Thunk {
 
   // Executes the kernel for the thunk on "stream", which must be non-null.
   tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
 
  private:
   // Buffers passed to the kernel as arguments.
@@ -82,13 +81,11 @@ class KernelThunk : public Thunk {
   // Describes how to load this kernel. ExecuteOnStream reuses this loader
   // specification for all executions.
   mutable tensorflow::mutex mutex_;
-  std::unique_ptr<perftools::gputools::MultiKernelLoaderSpec> loader_spec_
-      GUARDED_BY(mutex_);
+  std::unique_ptr<se::MultiKernelLoaderSpec> loader_spec_ GUARDED_BY(mutex_);
 
   // Loaded kernels for each `StreamExecutor`
-  std::unordered_map<perftools::gputools::StreamExecutor*,
-                     perftools::gputools::KernelBase>
-      kernel_cache_ GUARDED_BY(mutex_);
+  std::unordered_map<se::StreamExecutor*, se::KernelBase> kernel_cache_
+      GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

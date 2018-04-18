@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 // TODO(b/30467474) Once GPU infeed implementation settles, consider
@@ -153,8 +151,8 @@ static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
 }
 
 static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(se::cuda::kCudaPlatformId,
-                                                &CreateGpuTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::cuda::kCudaPlatformId, &CreateGpuTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();

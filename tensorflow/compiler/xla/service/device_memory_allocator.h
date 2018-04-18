@@ -33,7 +33,7 @@ class DeviceMemoryAllocator {
  public:
   // Parameter platform indicates which platform the allocator allocates memory
   // on. Must be non-null.
-  explicit DeviceMemoryAllocator(const perftools::gputools::Platform* platform)
+  explicit DeviceMemoryAllocator(const se::Platform* platform)
       : platform_(platform) {}
   virtual ~DeviceMemoryAllocator() {}
 
@@ -43,20 +43,20 @@ class DeviceMemoryAllocator {
   // has only performance impact.
   // Allocate() should return a null pointer for a size-0 allocation.
   // Deallocate() must be a no-op for null pointers.
-  virtual StatusOr<perftools::gputools::DeviceMemoryBase> Allocate(
+  virtual StatusOr<se::DeviceMemoryBase> Allocate(
       int device_ordinal, uint64 size, bool retry_on_failure = true) = 0;
-  virtual tensorflow::Status Deallocate(
-      int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) = 0;
+  virtual tensorflow::Status Deallocate(int device_ordinal,
+                                        se::DeviceMemoryBase* mem) = 0;
 
   // Return the platform that the allocator allocates memory on.
-  const perftools::gputools::Platform* platform() const { return platform_; }
+  const se::Platform* platform() const { return platform_; }
 
   // Can we call Deallocate() as soon as a computation has been scheduled on
   // a stream, or do we have to wait for the computation to complete first?
   virtual bool AllowsAsynchronousDeallocation() const = 0;
 
  protected:
-  const perftools::gputools::Platform* platform_;
+  const se::Platform* platform_;
 };
 
 // Default memory allocator for a platform which uses
@@ -64,25 +64,23 @@ class DeviceMemoryAllocator {
 class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
   StreamExecutorMemoryAllocator(
-      const perftools::gputools::Platform* platform,
-      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-          stream_executors);
+      const se::Platform* platform,
+      tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> Allocate(
+  StatusOr<se::DeviceMemoryBase> Allocate(
       int device_ordinal, uint64 size, bool retry_on_failure = true) override;
-  tensorflow::Status Deallocate(
-      int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) override;
+  tensorflow::Status Deallocate(int device_ordinal,
+                                se::DeviceMemoryBase* mem) override;
 
   bool AllowsAsynchronousDeallocation() const override;
 
  private:
-  StatusOr<perftools::gputools::StreamExecutor*> GetStreamExecutor(
-      int device_ordinal);
+  StatusOr<se::StreamExecutor*> GetStreamExecutor(int device_ordinal);
 
   // A vector indexed by device ordinal of StreamExecutors for each device of
   // the allocator's platform type. If an element is nullptr, then the device
   // with the respective device ordinal is not supported by XLA.
-  std::vector<perftools::gputools::StreamExecutor*> stream_executors_;
+  std::vector<se::StreamExecutor*> stream_executors_;
 };
 
 }  // namespace xla

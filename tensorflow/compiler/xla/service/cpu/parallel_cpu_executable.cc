@@ -49,8 +49,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace cpu {
 
@@ -325,7 +323,7 @@ const void** Executor::GetOperandBuffers(HloInstruction* instruction) {
 
 Status ParallelCpuExecutable::AllocateBuffers(
     DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* buffers) {
+    std::vector<se::DeviceMemoryBase>* buffers) {
   CHECK_EQ(buffers->size(), assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
           << " allocations for module " << module().name();

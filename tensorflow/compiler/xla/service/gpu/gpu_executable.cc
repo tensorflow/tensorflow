@@ -34,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 namespace {
@@ -324,7 +322,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
             this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
         CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-        perftools::gputools::DeviceMemoryBase src_base =
+        se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
         *device_memory = src_base;

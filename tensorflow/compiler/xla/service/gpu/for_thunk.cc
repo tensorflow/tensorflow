@@ -36,8 +36,7 @@ tensorflow::Status ForThunk::Initialize(const GpuExecutable& executable) {
 }
 
 tensorflow::Status ForThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream) {
   for (int64 i = 0; i < loop_limit_; ++i) {
     // Invoke loop body thunk sequence.
     TF_RETURN_IF_ERROR(

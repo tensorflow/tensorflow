@@ -64,11 +64,10 @@ std::vector<TestCase> ExpandUseBfloat16(
 // A client library test establishes an in-process XLA client connection.
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
-  explicit ClientLibraryTestBase(
-      perftools::gputools::Platform* platform = nullptr);
+  explicit ClientLibraryTestBase(se::Platform* platform = nullptr);
 
   // Creates a new ClientLibraryTestBase with custom client options.
-  ClientLibraryTestBase(perftools::gputools::Platform* platform,
+  ClientLibraryTestBase(se::Platform* platform,
                         const LocalClientOptions& client_options);
 
   // Returns the name of the test currently being run.

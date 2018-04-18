@@ -46,8 +46,7 @@ class TupleThunk : public Thunk {
   TupleThunk& operator=(const TupleThunk&) = delete;
 
   tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
 
  private:
   const std::vector<BufferAllocation::Slice> tuple_element_buffers_;

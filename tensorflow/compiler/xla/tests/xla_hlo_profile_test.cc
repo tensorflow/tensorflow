@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
-namespace se = ::perftools::gputools;
+
 namespace gtl = ::tensorflow::gtl;
 
 class HloProfileTest : public ClientLibraryTestBase {};

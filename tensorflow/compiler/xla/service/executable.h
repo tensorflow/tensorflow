@@ -90,7 +90,7 @@ class Executable {
   // has completed.
   virtual Status PopulateExecutionProfile(
       HloExecutionProfile* hlo_execution_profile,
-      perftools::gputools::StreamExecutor* executor) {
+      se::StreamExecutor* executor) {
     return Status::OK();
   }
 

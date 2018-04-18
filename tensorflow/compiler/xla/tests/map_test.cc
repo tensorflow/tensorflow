@@ -41,7 +41,7 @@ namespace {
 
 class MapTest : public ClientLibraryTestBase {
  public:
-  explicit MapTest(perftools::gputools::Platform* platform = nullptr)
+  explicit MapTest(se::Platform* platform = nullptr)
       : ClientLibraryTestBase(platform) {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");

@@ -32,8 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id,
@@ -45,9 +43,9 @@ se::Platform::Id GenericTransferManager::PlatformId() const {
 }
 
 Status GenericTransferManager::WriteSingleTupleIndexTable(
-    perftools::gputools::StreamExecutor* executor,
+    se::StreamExecutor* executor,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
-    const Shape& shape, perftools::gputools::DeviceMemoryBase* region) {
+    const Shape& shape, se::DeviceMemoryBase* region) {
   TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
 
   std::vector<const void*> element_pointers;
@@ -144,20 +142,19 @@ Status GenericTransferManager::TransferLiteralToInfeed(
 }
 
 Status GenericTransferManager::TransferBufferToInfeed(
-    perftools::gputools::StreamExecutor* executor, int64 size,
-    const void* source) {
+    se::StreamExecutor* executor, int64 size, const void* source) {
   return Unimplemented("Generic transfer to Infeed");
 }
 
 Status GenericTransferManager::TransferLiteralFromOutfeed(
-    perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+    se::StreamExecutor* executor, const Shape& literal_shape,
     Literal* literal) {
   return Unimplemented(
       "Outfeed is not supported on this platform (b/30467474)");
 }
 
 Status GenericTransferManager::ResetDevices(
-    tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
+    tensorflow::gtl::ArraySlice<se::StreamExecutor*>
     /*executors*/) {
   return Unimplemented(
       "Device reset is not yet supported on this platform (b/30481585)");

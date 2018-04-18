@@ -61,10 +61,10 @@ Executable::ExecuteOnStreams(
 StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
     ArraySlice<const ShapedBuffer*> arguments) {
-  perftools::gputools::Stream* stream = run_options->stream();
-  std::unique_ptr<perftools::gputools::Timer> timer;
+  se::Stream* stream = run_options->stream();
+  std::unique_ptr<se::Timer> timer;
   if (profile != nullptr) {
-    timer.reset(new perftools::gputools::Timer(stream->parent()));
+    timer.reset(new se::Timer(stream->parent()));
     stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
   }
 

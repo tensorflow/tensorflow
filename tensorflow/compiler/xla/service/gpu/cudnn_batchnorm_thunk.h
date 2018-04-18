@@ -60,7 +60,7 @@ class CudnnBatchNormForwardInferenceThunk : public Thunk {
       const CudnnBatchNormForwardInferenceThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream) override;
 
  private:
   BufferAllocation::Slice operand_;
@@ -90,7 +90,7 @@ class CudnnBatchNormForwardTrainingThunk : public Thunk {
       const CudnnBatchNormForwardTrainingThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream) override;
 
  private:
   BufferAllocation::Slice operand_;
@@ -123,7 +123,7 @@ class CudnnBatchNormBackwardThunk : public Thunk {
       delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream) override;
 
  private:
   BufferAllocation::Slice operand_;

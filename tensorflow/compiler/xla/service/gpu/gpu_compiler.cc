@@ -91,8 +91,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
@@ -779,9 +777,9 @@ se::Platform::Id GpuCompiler::PlatformId() const {
 }  // namespace xla
 
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(se::cuda::kCudaPlatformId, []() {
-    return xla::MakeUnique<xla::gpu::GpuCompiler>();
-  });
+  xla::Compiler::RegisterCompilerFactory(
+      stream_executor::cuda::kCudaPlatformId,
+      []() { return xla::MakeUnique<xla::gpu::GpuCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

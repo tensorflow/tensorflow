@@ -22,8 +22,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace se = ::perftools::gputools;
-
 using se::DeviceMemory;
 using se::DeviceMemoryBase;
 using se::Stream;
@@ -215,14 +213,12 @@ string CudnnConvKindToString(CudnnConvKind kind) {
 
 Status RunCudnnConvolution(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, perftools::gputools::DeviceMemoryBase input_buf,
-    perftools::gputools::DeviceMemoryBase filter_buf,
-    perftools::gputools::DeviceMemoryBase output_buf,
-    perftools::gputools::DeviceMemoryBase scratch_buf, const Window& window,
+    const Shape& output_shape, se::DeviceMemoryBase input_buf,
+    se::DeviceMemoryBase filter_buf, se::DeviceMemoryBase output_buf,
+    se::DeviceMemoryBase scratch_buf, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
-    perftools::gputools::dnn::AlgorithmConfig algorithm,
-    perftools::gputools::Stream* stream,
-    perftools::gputools::dnn::ProfileResult* profile_result) {
+    se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
+    se::dnn::ProfileResult* profile_result) {
   ScratchBufAllocator scratch_allocator(scratch_buf);
   return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
                              input_buf, filter_buf, output_buf,
@@ -232,14 +228,12 @@ Status RunCudnnConvolution(
 
 Status RunCudnnConvolution(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, perftools::gputools::DeviceMemoryBase input_buf,
-    perftools::gputools::DeviceMemoryBase filter_buf,
-    perftools::gputools::DeviceMemoryBase output_buf,
-    perftools::gputools::ScratchAllocator* scratch_allocator,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    perftools::gputools::dnn::AlgorithmConfig algorithm,
-    perftools::gputools::Stream* stream,
-    perftools::gputools::dnn::ProfileResult* profile_result) {
+    const Shape& output_shape, se::DeviceMemoryBase input_buf,
+    se::DeviceMemoryBase filter_buf, se::DeviceMemoryBase output_buf,
+    se::ScratchAllocator* scratch_allocator, const Window& window,
+    const ConvolutionDimensionNumbers& dnums,
+    se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
+    se::dnn::ProfileResult* profile_result) {
   PrimitiveType output_primitive_type = output_shape.element_type();
   CHECK(output_primitive_type == F32 || output_primitive_type == F16)
       << ShapeUtil::HumanString(output_shape);

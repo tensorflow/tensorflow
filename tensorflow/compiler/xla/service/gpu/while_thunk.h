@@ -47,7 +47,7 @@ class WhileThunk : public Thunk {
 
   Status Initialize(const GpuExecutable& executable) override;
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream) override;
 
  private:
   const BufferAllocation::Slice condition_result_buffer_index_;

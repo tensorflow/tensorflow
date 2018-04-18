@@ -70,7 +70,7 @@ class AotCompilationOptions {
   virtual ~AotCompilationOptions() = default;
 
   // Returns the ID of the platform to which these options apply.
-  virtual perftools::gputools::Platform::Id PlatformId() const = 0;
+  virtual se::Platform::Id PlatformId() const = 0;
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
@@ -109,7 +109,7 @@ class Compiler {
   virtual ~Compiler() {}
 
   // Returns the ID of the platform that this compiler targets.
-  virtual perftools::gputools::Platform::Id PlatformId() const = 0;
+  virtual se::Platform::Id PlatformId() const = 0;
 
   // Runs Hlo passes to optimize the given Hlo module, returns the optimized
   // module.
@@ -120,8 +120,7 @@ class Compiler {
   // algorithm over those buffers, to see which variant is fastest.  Any space
   // allocated should be deallocated before this function returns.
   virtual StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* executor,
+      std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
       DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for execution on a device given by the executor,
@@ -137,8 +136,7 @@ class Compiler {
   //
   // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* executor,
+      std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
       DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
@@ -151,8 +149,7 @@ class Compiler {
   // modules to RunHloPasses and RunBackends.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::vector<std::unique_ptr<HloModule>> modules,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
-          stream_exec,
+      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
@@ -171,14 +168,12 @@ class Compiler {
   // be a singleton, so no ownership is transferred.
   //
   // Precondition: a platform kind must not be registered more than once.
-  static void RegisterCompilerFactory(
-      perftools::gputools::Platform::Id platform_id,
-      CompilerFactory compiler_factory);
+  static void RegisterCompilerFactory(se::Platform::Id platform_id,
+                                      CompilerFactory compiler_factory);
 
   // Returns the compiler singleton pointer if it is available for the given
   // platform, or an error status if it is not.
-  static StatusOr<Compiler*> GetForPlatform(
-      const perftools::gputools::Platform* platform);
+  static StatusOr<Compiler*> GetForPlatform(const se::Platform* platform);
 
   // Returns a function that computes the size in bytes of the logical
   // buffer that contains a shape.
@@ -198,12 +193,12 @@ class Compiler {
   static tensorflow::mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
-  static std::map<perftools::gputools::Platform::Id, CompilerFactory>*
+  static std::map<se::Platform::Id, CompilerFactory>*
   GetPlatformCompilerFactories();
 
   // Map from platform kind to compiler instance, if we made one already (based
   // on the factories above).
-  static std::map<perftools::gputools::Platform::Id, std::unique_ptr<Compiler>>*
+  static std::map<se::Platform::Id, std::unique_ptr<Compiler>>*
   GetPlatformCompilers();
 };
 
