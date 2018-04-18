@@ -2054,14 +2054,16 @@ class TPUEstimator(estimator_lib.Estimator):
                   },
                   every_n_secs=30)
           ] + input_hooks
-          chief_hooks = [
-              training.CheckpointSaverHook(
-                  self.model_dir,
-                  save_secs=self._config.save_checkpoints_secs,
-                  save_steps=self._config.save_checkpoints_steps,
-                  steps_per_run=self._config.tpu_config.iterations_per_loop,
-                  scaffold=scaffold)
-          ]
+          chief_hooks = []
+          if (self._config.save_checkpoints_secs or
+              self._config.save_checkpoints_steps):
+            chief_hooks.append(
+                training.CheckpointSaverHook(
+                    self.model_dir,
+                    save_secs=self._config.save_checkpoints_secs,
+                    save_steps=self._config.save_checkpoints_steps,
+                    steps_per_run=self._config.tpu_config.iterations_per_loop,
+                    scaffold=scaffold))
           summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
           with ops.control_dependencies([loss]):
             update_ops = _sync_variables_ops()
