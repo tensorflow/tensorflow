@@ -4632,7 +4632,7 @@ class Graph(object):
     control_inputs = nest.flatten(control_inputs)
     if all(x is None for x in control_inputs):
       return self._ControlDependenciesController(self, None)
-    else any(x is None for x in control_inputs):
+    elif any(x is None for x in control_inputs):
       raise ValueError("To clear existing dependencies, every element passed "
                        "to control_dependencies must be `None`.")
     # First convert the inputs to ops, and deduplicate them.
