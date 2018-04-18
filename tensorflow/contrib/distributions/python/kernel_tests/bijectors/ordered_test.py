@@ -38,12 +38,12 @@ class OrderedBijectorTest(test.TestCase):
     with self.test_session():
       ordered = Ordered()
       self.assertEqual("ordered", ordered.name)
-      x = np.log([[2., 3, 4], [4., 8, 12]])
-      y = [[0.2, 0.3, 0.4, 0.1], [0.16, 0.32, 0.48, 0.04]]
+      x = np.asarray([[2., 3, 4], [4., 8, 13]])
+      y = [[2., 0, 0], [4., np.log(4.), np.log(5.)]]
       self.assertAllClose(y, ordered.forward(x).eval())
       self.assertAllClose(x, ordered.inverse(y).eval())
       self.assertAllClose(
-          -np.sum(np.log(y), axis=1),
+          -np.sum(y[..., 1:], axis=-1),
           ordered.inverse_log_det_jacobian(y, event_ndims=1).eval(),
           atol=0.,
           rtol=1e-7)
@@ -58,15 +58,15 @@ class OrderedBijectorTest(test.TestCase):
       ordered = Ordered()
       self.assertEqual("ordered", ordered.name)
       x = array_ops.placeholder(shape=[2, None], dtype=dtypes.float32)
-      real_x = np.log([[2., 3, 4], [4., 8, 12]])
+      real_x = np.asarray([[2., 3, 4], [4., 8, 13]])
       y = array_ops.placeholder(shape=[2, None], dtype=dtypes.float32)
-      real_y = [[0.2, 0.3, 0.4, 0.1], [0.16, 0.32, 0.48, 0.04]]
+      real_y = [[2., 0, 0], [4., np.log(4.), np.log(5.)]]
       self.assertAllClose(real_y, ordered.forward(x).eval(
           feed_dict={x: real_x}))
       self.assertAllClose(real_x, ordered.inverse(y).eval(
           feed_dict={y: real_y}))
       self.assertAllClose(
-          -np.sum(np.log(real_y), axis=1),
+          -np.sum(y[..., 1:], axis=-1),
           ordered.inverse_log_det_jacobian(y, event_ndims=1).eval(
               feed_dict={y: real_y}),
           atol=0.,
@@ -82,7 +82,7 @@ class OrderedBijectorTest(test.TestCase):
   def testShapeGetters(self):
     with self.test_session():
       x = tensor_shape.TensorShape([4])
-      y = tensor_shape.TensorShape([5])
+      y = tensor_shape.TensorShape([4])
       bijector = Ordered(validate_args=True)
       self.assertAllEqual(y, bijector.forward_event_shape(x))
       self.assertAllEqual(y.as_list(),
