@@ -165,18 +165,19 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::move(opt));
     }
 
-    // append custom configurable optimizers
-    std::vector<tensorflow::RewriterConfig_CustomGraphOptimizer> custom_optimizer_list;
+    // Append custom configurable optimizers.
+    std::vector<tensorflow::RewriterConfig_CustomGraphOptimizer>
+        custom_configurable_optimizers;
     for (const auto& optimizer : cfg_.custom_optimizers()) {
       if (available_optimizers.find(optimizer.name()) !=
           available_optimizers.end()) {
         optimizers.push_back(NewOptimizer(optimizer.name()));
       } else {
-        custom_optimizer_list.push_back(optimizer);
+        custom_configurable_optimizers.push_back(optimizer);
       }
     }
     // Now initialize and configure the custom optimizers.
-    for (const auto& optimizer : custom_optimizer_list) {
+    for (const auto& optimizer : custom_configurable_optimizers) {
       std::unique_ptr<CustomGraphOptimizer> opt =
           CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer.name());
       if (opt == nullptr) continue;

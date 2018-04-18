@@ -27,7 +27,8 @@ namespace grappler {
 class CustomGraphOptimizer : public GraphOptimizer {
  public:
   virtual ~CustomGraphOptimizer() {}
-  virtual Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config=nullptr) = 0;
+  virtual Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
+                          config = nullptr) = 0;
 };
 
 }  // end namespace grappler
