@@ -1483,13 +1483,13 @@ def is_jpeg(contents, name=None):
 
 
 @tf_export('image.decode_image')
-def decode_image(contents, channels=None, name=None):
+def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
   appropriate operation to convert the input bytes `string` into a `Tensor` of
-  type `uint8`.
+  type `uint8` or `uint16`.
 
   Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
   opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
@@ -1501,10 +1501,12 @@ def decode_image(contents, channels=None, name=None):
     contents: 0-D `string`. The encoded image bytes.
     channels: An optional `int`. Defaults to `0`. Number of color channels for
       the decoded image.
+    dtype: The desired `tf.DType` of the returned `Tensor`. Must be either
+      `tf.uint8` or `tf.uint16`.
     name: A name for the operation (optional)
 
   Returns:
-    `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
+    `Tensor` with type `dtype` and shape `[height, width, num_channels]` for
       BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
       GIF images.
 
@@ -1515,6 +1517,7 @@ def decode_image(contents, channels=None, name=None):
     if channels not in (None, 0, 1, 3, 4):
       raise ValueError('channels must be in (None, 0, 1, 3, 4)')
     substr = string_ops.substr(contents, 0, 3)
+    dtype = dtypes.uint8 if dtype == dtypes.uint8 else dtypes.uint16
 
     def _bmp():
       """Decodes a GIF image."""
@@ -1570,8 +1573,8 @@ def decode_image(contents, channels=None, name=None):
 
     # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
     # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
-    return control_flow_ops.cond(
-        is_jpeg(contents), _jpeg, check_png, name='cond_jpeg')
+    return convert_image_dtype(control_flow_ops.cond(
+        is_jpeg(contents), _jpeg, check_png, name='cond_jpeg'), dtype)
 
 
 @tf_export('image.total_variation')
