@@ -52,6 +52,16 @@ class PyFuncTest(test.TestCase):
   """Encapsulates tests for py_func and eager_py_func."""
 
   # ----- Tests for py_func -----
+  def testRealDataTypes(self):
+    def sum_func(x, y):
+      return x + y
+    for dtype in [np.float16, np.float32, np.float64, np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64]:
+      with self.test_session():
+        x = constant_op.constant(1, dtype=dtype)
+        y = constant_op.constant(2, dtype=dtype)
+        z = self.evaluate(script_ops.py_func(sum_func, [x, y], dtype))
+        self.assertEqual(z, dtype(3))
+
   def testSingleType(self):
     with self.test_session():
       x = constant_op.constant(1.0, dtypes.float32)
