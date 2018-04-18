@@ -522,11 +522,19 @@ class ResourceVariable(variables.Variable):
     else:
       self._initial_value = None
     if variable_def.snapshot_name:
-      self._cached_value = g.as_graph_element(
+      snapshot = g.as_graph_element(
           ops.prepend_name_scope(
               variable_def.snapshot_name, import_scope=import_scope))
+      self._cached_value = snapshot
+      while snapshot.op.type != "ReadVariableOp":
+        snapshot = snapshot.op.inputs[0]
+      self._graph_element = snapshot
     else:
       self._cached_value = None
+      # Legacy case for protos without the snapshot name; assume it's the
+      # following.
+      self._graph_element = g.get_tensor_by_name(
+          self._handle.op.name + "/Read/ReadVariableOp:0")
     if variable_def.HasField("save_slice_info_def"):
       self._save_slice_info = variables.Variable.SaveSliceInfo(
           save_slice_info_def=variable_def.save_slice_info_def,
@@ -535,8 +543,6 @@ class ResourceVariable(variables.Variable):
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
-    self._graph_element = g.get_tensor_by_name(
-        self._handle.op.name + "/Read/ReadVariableOp:0")
     self._constraint = None
     self._cached_shape_as_list = None
 
@@ -745,6 +751,10 @@ class ResourceVariable(variables.Variable):
       if self._cached_value is not None:
         var_def.snapshot_name = ops.strip_name_scope(self._cached_value.name,
                                                      export_scope)
+      else:
+        # Store the graph_element here
+        var_def.snapshot_name = ops.strip_name_scope(self._graph_element.name,
+                                                     export_scope)
       var_def.is_resource = True
       if self._save_slice_info:
         var_def.save_slice_info_def.MergeFrom(
@@ -910,7 +920,6 @@ class ResourceVariable(variables.Variable):
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     del name
     if dtype is not None and dtype != self.dtype:
-      print("trying to switch the dtype to ", dtype, " from ", self.dtype)
       return NotImplemented
     if as_ref:
       return self.read_value().op.inputs[0]

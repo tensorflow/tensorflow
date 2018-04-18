@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
@@ -411,6 +412,23 @@ TEST(TFCompileTest, Splits) {
   EXPECT_NEAR(expected[1], fn.result0(0, 1), 1e4);
   EXPECT_NEAR(expected[2], fn.result0(1, 0), 1e4);
   EXPECT_NEAR(expected[3], fn.result0(1, 1), 1e4);
+}
+
+TEST(TFCompileTest, AssertEqAndReturnDiff) {
+  // Assert is converted into a no-op in XLA, so there is no failure even if the
+  // two args are different.
+  AssertComp assert;
+  EXPECT_EQ(assert.arg0_data(), assert.args()[0]);
+  EXPECT_EQ(assert.arg1_data(), assert.args()[1]);
+
+  assert.arg0() = 2;
+  assert.arg1() = 1;
+  const int32 expected_result = assert.arg0() - assert.arg1();
+  EXPECT_TRUE(assert.Run());
+  EXPECT_EQ(assert.error_msg(), "");
+  EXPECT_EQ(assert.result0(), expected_result);
+  EXPECT_EQ(assert.result0_data()[0], expected_result);
+  EXPECT_EQ(assert.result0_data(), assert.results()[0]);
 }
 
 TEST(TFCompileTest, LookupNameIndex) {

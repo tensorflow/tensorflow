@@ -58,6 +58,25 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    shard_count = 4,
+    shard_count = 5,
+    tags = ["noasan"],
+)
+
+cuda_py_test(
+    name = "linear_operator_kronecker_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/linear_operator_kronecker_test.py"],
+    additional_deps = [
+        ":linalg_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+    shard_count = 8,
     tags = ["noasan"],
 )

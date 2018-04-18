@@ -43,8 +43,6 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
  public:
   explicit BoostedTreesUpdateEnsembleOp(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("max_depth", &max_depth_));
-    OP_REQUIRES_OK(context, context->GetAttr("learning_rate", &learning_rate_));
     OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
 
     int32 pruning_index;
@@ -79,8 +77,15 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
 
     const Tensor* feature_ids_t;
     OP_REQUIRES_OK(context, context->input("feature_ids", &feature_ids_t));
+    const auto feature_ids = feature_ids_t->vec<int32>();
 
-    auto feature_ids = feature_ids_t->vec<int32>();
+    const Tensor* max_depth_t;
+    OP_REQUIRES_OK(context, context->input("max_depth", &max_depth_t));
+    const auto max_depth = max_depth_t->scalar<int32>()();
+
+    const Tensor* learning_rate_t;
+    OP_REQUIRES_OK(context, context->input("learning_rate", &learning_rate_t));
+    const auto learning_rate = learning_rate_t->scalar<float>()();
 
     // Find best splits for each active node.
     std::map<int32, SplitCandidate> best_splits;
@@ -101,6 +106,7 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
             << current_tree << " of ensemble of " << current_tree + 1
             << " trees.";
     bool split_happened = false;
+    int32 node_id_start = ensemble_resource->GetNumNodes(current_tree);
     // Add the splits to the tree.
     for (auto& split_entry : best_splits) {
       const int32 node_id = split_entry.first;
@@ -124,10 +130,10 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
       // For now assume that the weights vectors are one dimensional.
       // TODO(nponomareva): change here for multiclass.
       const float left_contrib =
-          learning_rate_ *
+          learning_rate *
           left_node_contribs[feature_idx].matrix<float>()(candidate_idx, 0);
       const float right_contrib =
-          learning_rate_ *
+          learning_rate *
           right_node_contribs[feature_idx].matrix<float>()(candidate_idx, 0);
 
       // unused.
@@ -139,11 +145,15 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
           right_contrib, &left_node_id, &right_node_id);
       split_happened = true;
     }
+    int32 node_id_end = ensemble_resource->GetNumNodes(current_tree);
     if (split_happened) {
       // Update growable tree metadata.
       ensemble_resource->SetNumLayersGrown(current_tree, new_num_layers);
       // Finalize the tree if needed.
-      if (ensemble_resource->GetNumLayersGrown(current_tree) >= max_depth_) {
+      if (ensemble_resource->GetNumLayersGrown(current_tree) >= max_depth) {
+        // If the tree is finalized, next growing will start from node 0;
+        node_id_start = 0;
+        node_id_end = 1;
         ensemble_resource->SetIsFinalized(current_tree, true);
         if (pruning_mode_ == kPostPruning) {
           ensemble_resource->PostPruneTree(current_tree);
@@ -153,6 +163,9 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
           ensemble_resource->AddNewTree(kLayerByLayerTreeWeight);
         }
       }
+      // If we managed to split, update the node range. If we didn't, don't
+      // update as we will try to split the same nodes with new instances.
+      ensemble_resource->UpdateLastLayerNodesRange(node_id_start, node_id_end);
     }
   }
 
@@ -208,8 +221,6 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
 
  private:
   int32 num_features_;
-  float learning_rate_;
-  int32 max_depth_;
   PruningMode pruning_mode_;
 };
 

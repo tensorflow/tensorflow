@@ -45,6 +45,10 @@ using mkldnn::primitive;
 using mkldnn::reorder;
 #endif
 
+#ifdef _WIN32
+typedef unsigned int uint;
+#endif
+
 // The file contains a number of utility classes and functions used by MKL
 // enabled kernels
 

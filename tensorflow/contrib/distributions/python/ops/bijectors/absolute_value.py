@@ -18,9 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -72,38 +70,22 @@ class AbsoluteValue(bijector.Bijector):
 
   """
 
-  def __init__(self, event_ndims=0, validate_args=False, name="absolute_value"):
+  def __init__(self, validate_args=False, name="absolute_value"):
     """Instantiates the `AbsoluteValue` bijector.
 
     Args:
-      event_ndims: Python scalar indicating the number of dimensions associated
-        with a particular draw from the distribution.  Currently only zero is
-        supported.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness, in particular whether inputs to `inverse` and
         `inverse_log_det_jacobian` are non-negative.
       name: Python `str` name given to ops managed by this object.
-
-    Raises:
-      ValueError:  If `event_ndims` is not zero.
     """
     self._graph_parents = []
     self._name = name
 
-    event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
-    event_ndims_const = tensor_util.constant_value(event_ndims)
-    if event_ndims_const is not None and event_ndims_const not in (0,):
-      raise ValueError("event_ndims(%s) was not 0" % event_ndims_const)
-    else:
-      if validate_args:
-        event_ndims = control_flow_ops.with_dependencies(
-            [check_ops.assert_equal(
-                event_ndims, 0, message="event_ndims was not 0")],
-            event_ndims)
-
     with self._name_scope("init"):
       super(AbsoluteValue, self).__init__(
-          event_ndims=event_ndims,
+          forward_min_event_ndims=0,
+          is_constant_jacobian=True,
           validate_args=validate_args,
           name=name)
 
@@ -121,8 +103,7 @@ class AbsoluteValue(bijector.Bijector):
     # If event_ndims = 2,
     # F^{-1}(y) = (-y, y), so DF^{-1}(y) = (-1, 1),
     # so Log|DF^{-1}(y)| = Log[1, 1] = [0, 0].
-    batch_shape = array_ops.shape(y)[:array_ops.rank(y) - self.event_ndims]
-    zeros = array_ops.zeros(batch_shape, dtype=y.dtype)
+    zeros = constant_op.constant(0., dtype=y.dtype)
     if self.validate_args:
       zeros = control_flow_ops.with_dependencies(
           [check_ops.assert_non_negative(y, message="Argument y was negative")],

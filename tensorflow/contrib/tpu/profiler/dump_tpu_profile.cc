@@ -64,7 +64,8 @@ Status WriteGzippedDataToFile(const string& filename, const string& data) {
 
 Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
                                const string& encoded_trace, std::ostream* os) {
-  string proto_path = JoinPath(run_dir, kProtoTraceFileName);
+  string proto_path =
+      JoinPath(run_dir, StrCat(host_prefix, kProtoTraceFileName));
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), proto_path, encoded_trace));
   LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
@@ -127,6 +128,7 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
   // Dumps profile data to <logdir>/plugins/profile/<run>/.
   string host_prefix = host.empty() ? "" : StrCat(host, ".");
   string profile_run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
+  *os << "Creating directory: " << profile_run_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));
 
   // Ignore computation_graph for now.

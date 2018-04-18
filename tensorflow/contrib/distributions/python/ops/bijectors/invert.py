@@ -66,8 +66,9 @@ class Invert(bijector_lib.Bijector):
 
     self._bijector = bijector
     super(Invert, self).__init__(
-        event_ndims=bijector.event_ndims,
         graph_parents=bijector.graph_parents,
+        forward_min_event_ndims=bijector.inverse_min_event_ndims,
+        inverse_min_event_ndims=bijector.forward_min_event_ndims,
         is_constant_jacobian=bijector.is_constant_jacobian,
         validate_args=validate_args,
         dtype=bijector.dtype,
