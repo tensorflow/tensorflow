@@ -146,6 +146,13 @@ function create_python_test_dir() {
   cmd /c "mklink /J $1\\tensorflow .\\tensorflow"
 }
 
+function set_gcs_remote_cache_options {
+  echo "build --experimental_remote_spawn_cache" >> "${TMP_BAZELRC}"
+  echo "build --experimental_remote_platform_override='properties:{name:\"build\" value:\"windows-x64\"}'" >> "${TMP_BAZELRC}"
+  echo "build --remote_http_cache=https://storage.googleapis.com/tensorflow-windows-cache" >> "${TMP_BAZELRC}"
+  echo "build --google_credentials=$GOOGLE_CLOUD_CREDENTIAL" >> "${TMP_BAZELRC}"
+}
+
 function reinstall_tensorflow_pip() {
   echo "y" | pip uninstall tensorflow -q || true
   pip install ${1} --no-deps
