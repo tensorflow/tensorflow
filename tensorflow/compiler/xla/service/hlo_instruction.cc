@@ -701,15 +701,6 @@ HloInstruction::CreateSelectAndScatter(
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateBroadcastDimOne(const Shape& shape,
-                                      HloInstruction* operand) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBroadcastDimOne, shape));
-  instruction->AppendOperand(operand);
-  return instruction;
-}
-
-/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBroadcastSequence(
     const Shape& output_shape, HloInstruction* operand,
     const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
@@ -1311,10 +1302,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBroadcast(shape, new_operands[0], dimensions_);
       break;
-    case HloOpcode::kBroadcastDimOne:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateBroadcastDimOne(shape, new_operands[0]);
-      break;
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
       break;
@@ -1863,8 +1850,6 @@ bool HloInstruction::IdenticalSlowPath(
 
     // Remaining instructions with special values.
     case HloOpcode::kBitcast:
-    case HloOpcode::kBroadcastDimOne:
-    case HloOpcode::kDynamicUpdateSlice:
       return eq_shapes(shape(), other.shape());
     case HloOpcode::kBroadcast:
       return eq_shapes(shape(), other.shape()) &&
@@ -1883,6 +1868,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDynamicSlice:
       return eq_shapes(shape(), other.shape()) &&
              dynamic_slice_sizes_ == other.dynamic_slice_sizes_;
+    case HloOpcode::kDynamicUpdateSlice:
+      return eq_shapes(shape(), other.shape());
     case HloOpcode::kCall:
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
@@ -2692,8 +2679,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
       return visitor->HandleBroadcast(this);
-    case HloOpcode::kBroadcastDimOne:
-      return visitor->HandleBroadcastDimOne(this);
     case HloOpcode::kPad:
       return visitor->HandlePad(this);
     case HloOpcode::kReshape:
