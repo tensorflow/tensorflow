@@ -137,6 +137,14 @@ class KerasLossesTest(test.TestCase):
         loaded_model = keras.models.load_model(model_filename)
         loaded_model.predict(np.random.rand(128, 2))
 
+  def test_categorical_crossentropy_with_integer_targets(self):
+    y_pred = keras.backend.variable(np.array([[0.3, 0.2, 0.1],
+                                              [0.1, 0.2, 0.7]]))
+    y_true = keras.backend.variable(np.array([[1], [0]]))
+    with self.assertRaisesRegexp(ValueError,
+                                 'sparse_categorical_crossentropy'):
+      keras.losses.categorical_crossentropy(y_true, y_pred)
+
 
 if __name__ == '__main__':
   test.main()

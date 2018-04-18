@@ -3451,6 +3451,15 @@ def categorical_crossentropy(target, output, from_logits=False):
   # Note: nn.softmax_cross_entropy_with_logits_v2
   # expects logits, Keras expects probabilities.
   if not from_logits:
+    if (target.shape[-1] == 1 and output.shape[-1]
+        and target.shape[-1] != output.shape[-1]):
+      raise ValueError('Expected target dimension = {}, Received: {}'
+                       'Suggested Fix:'
+                       'Your label is integer,'
+                       'to use `sparse_categorical_crossentropy` instead'
+                       'or convert your label to one-hot format.'.format(
+                           output.shape[-1], target.shape[-1]))
+
     # scale preds so that the class probas of each sample sum to 1
     output = output / math_ops.reduce_sum(  # pylint: disable=g-no-augmented-assignment
         output, len(output.get_shape()) - 1, True)
