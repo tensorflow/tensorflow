@@ -151,6 +151,14 @@ REGISTER_OP("LatencyStatsDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("SetStatsAggregatorDataset")
+    .Input("input_dataset: variant")
+    .Input("stats_aggregator: resource")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("MapDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
@@ -505,11 +513,6 @@ REGISTER_OP("StatsAggregatorHandle")
     .SetShapeFn(shape_inference::ScalarShape)
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''");
-
-REGISTER_OP("IteratorSetStatsAggregator")
-    .Input("iterator_handle: resource")
-    .Input("stats_aggregator_handle: resource")
-    .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("StatsAggregatorSummary")
     .Input("iterator: resource")

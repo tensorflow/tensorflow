@@ -25658,18 +25658,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "IteratorSetStatsAggregator"
-  input_arg {
-    name: "iterator_handle"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "stats_aggregator_handle"
-    type: DT_RESOURCE
-  }
-  is_stateful: true
-}
-op {
   name: "IteratorToStringHandle"
   input_arg {
     name: "resource_handle"

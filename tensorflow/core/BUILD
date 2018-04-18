@@ -547,6 +547,7 @@ tf_cuda_library(
         "framework/selective_registration.h",
         "framework/session_state.h",
         "framework/shape_inference.h",
+        "framework/stats_aggregator.h",
         "framework/tensor.h",
         "framework/tensor_shape.h",
         "framework/tensor_slice.h",
