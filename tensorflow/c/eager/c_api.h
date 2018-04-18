@@ -329,6 +329,20 @@ TF_CAPI_EXPORT extern void TFE_ContextExportRunMetadata(TFE_Context* ctx,
                                                         TF_Buffer* buf,
                                                         TF_Status* status);
 
+// Returns the serialized CppShapeInferenceResult::HandleData proto for
+// `output` if its a resource tensor, or otherwise returns an empty buffer.
+TF_CAPI_EXPORT extern void TFE_GetResourceHandleShapeAndType(
+    TF_Graph* graph, TF_Output output, TF_Buffer* output_proto,
+    TF_Status* status);
+
+// Sets `output` based on `proto`, which should be a serialized
+// CppShapeInferenceResult::HandleData proto.
+TF_CAPI_EXPORT extern void TFE_SetResourceHandleShapeAndType(TF_Graph* graph,
+                                                             TF_Output output,
+                                                             const void* proto,
+                                                             size_t proto_len,
+                                                             TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -41,6 +42,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import gradient_descent
 
 
+@test_util.with_c_shapes
 class FunctionTest(test.TestCase):
 
   def testBasic(self):
@@ -615,6 +617,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual([[[[4.0]]]], y.numpy())
 
 
+@test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
 
   def testBasic(self):

@@ -59,6 +59,8 @@ limitations under the License.
 %rename("%s") TFE_ContextOptionsSetAsync;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
+%rename("%s") TFE_GetResourceHandleShapeAndType;
+%rename("%s") TFE_SetResourceHandleShapeAndType;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
