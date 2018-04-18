@@ -61,7 +61,7 @@ class GroupByWindowTest(test.TestCase):
 
       self.assertEqual(len(components), sum(counts))
       num_full_batches = len([c for c in counts if c == 4])
-      self.assertGreaterEqual(num_full_batches, 23)
+      self.assertGreaterEqual(num_full_batches, 24)
       self.assertTrue(all(c == 4 for c in counts[:num_full_batches]))
 
   def testImmediateOutput(self):
