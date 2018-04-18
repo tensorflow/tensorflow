@@ -700,15 +700,10 @@ class Estimator(object):
     input_hooks = []
     if isinstance(result, dataset_ops.Dataset):
       if self._distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
-        # TODO(josh11b): This is currently using a one-shot iterator, we
-        # will update this to an initializeable iterator once the
-        # necessory support for creating an initializable iterator is
-        # available.
-        result = self._distribution.distribute_dataset(result).get_next()
-      else:
-        iterator = result.make_initializable_iterator()
-        input_hooks.append(_DatasetInitializerHook(iterator))
-        result = iterator.get_next()
+        result = self._distribution.distribute_dataset(result)
+      iterator = result.make_initializable_iterator()
+      input_hooks.append(_DatasetInitializerHook(iterator))
+      result = iterator.get_next()
     if isinstance(result, (list, tuple)):
       if len(result) != 2:
         raise ValueError(
