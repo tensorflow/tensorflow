@@ -48,10 +48,6 @@ constexpr size_t Allocator::kAllocatorAlignment;
 
 Allocator::~Allocator() {}
 
-void Allocator::DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) {
-  DeallocateRaw(ptr);
-}
-
 void RunResourceCtor(ResourceHandle* p, size_t n) {
   for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
 }
@@ -107,12 +103,7 @@ class CPUAllocator : public Allocator {
                    << "% of system memory.";
     }
 
-#ifdef __cpp_aligned_new
-    void* p =
-        ::operator new(num_bytes, static_cast<std::align_val_t>(alignment));
-#else
     void* p = port::AlignedMalloc(num_bytes, alignment);
-#endif
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
       mutex_lock l(mu_);
@@ -141,25 +132,7 @@ class CPUAllocator : public Allocator {
       mutex_lock l(mu_);
       stats_.bytes_in_use -= alloc_size;
     }
-#ifdef __cpp_aligned_new
-    ::operator delete(ptr);
-#else
     port::AlignedFree(ptr);
-#endif
-  }
-
-  void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) override {
-#ifdef __cpp_aligned_new
-    if (cpu_allocator_collect_stats) {
-      const std::size_t alloc_size =
-          port::MallocExtension_GetAllocatedSize(ptr);
-      mutex_lock l(mu_);
-      stats_.bytes_in_use -= alloc_size;
-    }
-    ::operator delete(ptr, num_bytes, static_cast<std::align_val_t>(alignment));
-#else
-    DeallocateRaw(ptr);
-#endif
   }
 
   void GetStats(AllocatorStats* stats) override {

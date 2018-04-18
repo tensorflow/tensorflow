@@ -101,11 +101,6 @@ class Allocator {
   // REQUIRES: "ptr" was previously returned by a call to AllocateRaw
   virtual void DeallocateRaw(void* ptr) = 0;
 
-  // Deallocate a block of memory pointer to by "ptr" with size "num_bytes"
-  // REQUIRES: "ptr" was previously returned by a call to AllocateRaw with
-  // "num_bytes" and "alignment"
-  virtual void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes);
-
   // Convenience functions to do typed allocation.  C++ constructors
   // and destructors are invoked for complex types if necessary,
   // depending on the concrete Allocator implementation. May return
@@ -137,7 +132,7 @@ class Allocator {
   void Deallocate(T* ptr, size_t num_elements) {
     if (ptr) {
       RunDtor<T>(ptr, num_elements);
-      DeallocateRaw(ptr, kAllocatorAlignment, sizeof(T) * num_elements);
+      DeallocateRaw(ptr);
     }
   }
 
@@ -308,10 +303,6 @@ class AllocatorWrapper : public Allocator {
   }
 
   void DeallocateRaw(void* ptr) override { wrapped_->DeallocateRaw(ptr); }
-
-  void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) override {
-    wrapped_->DeallocateRaw(ptr, alignment, num_bytes);
-  }
 
   bool TracksAllocationSizes() override {
     return wrapped_->TracksAllocationSizes();
