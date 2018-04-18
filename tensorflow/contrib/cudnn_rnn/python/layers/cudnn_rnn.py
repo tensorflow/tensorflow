@@ -358,7 +358,7 @@ class _CudnnRNN(base_layer.Layer):
             "CUDA/CuDNN generations.")
       # Initialize opaque params with a tensor.
       self.kernel = vs.get_variable(
-          "opaque_kernel", initializer=opaque_params_t, validate_shape=False)
+          "opaque_kernel", dtype=self._plain_dtype, initializer=opaque_params_t, validate_shape=False)
     # Create saveable in the outer scope of the cudnn subgraph, such that
     # alternative subgraph with platform-independent rnn cells can load the
     # checkpoints directly.
