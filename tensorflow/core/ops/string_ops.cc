@@ -123,6 +123,11 @@ REGISTER_OP("StringSplit")
       return Status::OK();
     });
 
+REGISTER_OP("StringStrip")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("EncodeBase64")
     .Input("input: string")
     .Output("output: string")
