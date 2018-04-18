@@ -60,8 +60,8 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.colocate_with(colocate_with):
       return next_creator(*args, **kwargs)
 
-  def distribute_dataset(self, dataset):
-    return dataset
+  def distribute_dataset(self, dataset_fn):
+    return self._call_dataset_fn(dataset_fn)
 
   def _broadcast(self, tensor, destinations):
     return tensor

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import threading
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -672,25 +673,35 @@ class DistributionStrategy(object):
     _require_distribution_strategy_scope(self)
     return variable_scope.variable_creator_scope(create_colocated_variable)
 
+  def _call_dataset_fn(self, dataset_fn):
+    result = dataset_fn()
+    if not isinstance(result, dataset_ops.Dataset):
+      raise ValueError(
+          "dataset_fn() must return a tf.data.Dataset when using a "
+          "DistributionStrategy.")
+    return result
+
   # TODO(josh11b): `PerDeviceDataset` currently only implements a few methods of
   # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
   # Extend to implement more functionality of datasets.
-  def distribute_dataset(self, dataset):
+  def distribute_dataset(self, dataset_fn):
     """Return a `dataset` split across all towers.
 
     Suitable for providing input to for `call_for_each_tower()` by creating an
     iterator:
 
     ```
+    def dataset_fn():
+      return tf.data.Dataset.from_tensors([[1.]]).repeat()
     with distribution_strategy.scope():
-      distributed_dataset = distribution_strategy.distribute_dataset(dataset)
+      distributed_dataset = distribution_strategy.distribute_dataset(dataset_fn)
       iterator = distributed_dataset.make_one_shot_iterator()
       tower_results = distribution_strategy.call_for_each_tower(
           tower_fn, iterator.get_next())
     ```
 
     Args:
-      dataset: A `tf.data.Dataset`.
+      dataset_fn: A function that returns a `tf.data.Dataset`.
 
     Returns:
       A `PerDeviceDataset` that will produce data for each tower.
@@ -1135,8 +1146,8 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     _require_distribution_strategy_scope(self)
     return ops.colocate_with(colocate_with_variable)
 
-  def distribute_dataset(self, dataset):
-    return dataset
+  def distribute_dataset(self, dataset_fn):
+    return self._call_dataset_fn(dataset_fn)
 
   def _broadcast(self, tensor, destinations):
     if destinations is None:

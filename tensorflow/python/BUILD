@@ -3048,6 +3048,7 @@ py_library(
         ":state_ops",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/data",
         "//tensorflow/python/ops/losses",
     ],
 )

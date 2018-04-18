@@ -54,21 +54,18 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
   def testTrainNetwork(self, distribution, optimizer_fn, use_callable_loss,
                        is_tpu):
     with distribution.scope():
-      model_fn, dataset, layer = minimize_loss_example(
-          optimizer_fn,
-          use_bias=True,
-          use_callable_loss=use_callable_loss)
+      model_fn, dataset_fn, layer = minimize_loss_example(
+          optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
 
+      def tpu_dataset_fn():
+        return dataset_fn().batch(2)
       # TODO(isaprykin):  Eliminate `is_tpu`. Probably add a
       # `DistributionStrategy.create_monitor` so that each DistributionStrategy
       # could influence its training loop. That method would return an instance
       # of Monitor.  TPUMonitor would execute tpu.initialize_system() and
       # tpu.shutdown_system().
-      if is_tpu:
-        dataset = dataset.batch(2)
-
       iterator = distribution.distribute_dataset(
-          dataset).make_one_shot_iterator()
+          tpu_dataset_fn if is_tpu else dataset_fn).make_one_shot_iterator()
 
       def run_step():
         # TODO(isaprykin): Make iterator get_next() return a list of sub-
@@ -122,14 +119,14 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     # `distribution.scope`.
     with variable_scope.variable_creator_scope(
         appending_creator), distribution.scope():
-      model_fn, dataset, layer = minimize_loss_example(
+      model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn,
           use_bias=True,
           use_callable_loss=True,
           create_optimizer_inside_model_fn=True)
 
       iterator = distribution.distribute_dataset(
-          dataset).make_one_shot_iterator()
+          dataset_fn).make_one_shot_iterator()
 
       def run_step():
         return distribution.group(
@@ -176,7 +173,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     """Verifies that moving mean updates are reduced across towers."""
     with distribution.scope():
       num_towers = len(distribution.worker_devices)
-      model_fn, dataset, batchnorm = batchnorm_example(
+      model_fn, dataset_fn, batchnorm = batchnorm_example(
           optimizer_fn,
           batch_per_epoch=num_towers,
           momentum=momentum,
@@ -188,7 +185,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       if isinstance(distribution, mirrored_strategy.MirroredStrategy):
         distribution._prefetch_on_device = False
       iterator = distribution.distribute_dataset(
-          dataset).make_one_shot_iterator()
+          dataset_fn).make_one_shot_iterator()
 
       def run_step():
         return control_flow_ops.group(
@@ -260,11 +257,13 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         else:
           return optimizer.minimize(loss_fn())
 
-      features = dataset_ops.Dataset.from_tensors([[2.], [7.]])
-      labels = dataset_ops.Dataset.from_tensors([[6.], [21.]])
-      dataset = dataset_ops.Dataset.zip((features, labels)).repeat()
+      def dataset_fn():
+        features = dataset_ops.Dataset.from_tensors([[2.], [7.]])
+        labels = dataset_ops.Dataset.from_tensors([[6.], [21.]])
+        return dataset_ops.Dataset.zip((features, labels)).repeat()
+
       iterator = distribution.distribute_dataset(
-          dataset).make_one_shot_iterator()
+          dataset_fn).make_one_shot_iterator()
 
       def run_step():
         return distribution.group(

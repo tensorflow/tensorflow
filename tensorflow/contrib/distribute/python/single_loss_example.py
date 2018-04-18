@@ -29,7 +29,10 @@ from tensorflow.python.ops import math_ops
 
 def single_loss_example(optimizer_fn, distribution, use_bias=False):
   """Build a very simple network to use in tests and examples."""
-  dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
+  def dataset_fn():
+    return dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
   optimizer = optimizer_fn()
   layer = core.Dense(1, use_bias=use_bias)
 
@@ -37,8 +40,8 @@ def single_loss_example(optimizer_fn, distribution, use_bias=False):
     y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
     return y * y
 
-  single_loss_step = step_fn.StandardSingleLossStep(dataset, loss_fn, optimizer,
-                                                    distribution)
+  single_loss_step = step_fn.StandardSingleLossStep(dataset_fn, loss_fn,
+                                                    optimizer, distribution)
 
   # Layer is returned for inspecting the kernels in tests.
   return single_loss_step, layer
@@ -49,7 +52,10 @@ def minimize_loss_example(optimizer_fn,
                           use_callable_loss=True,
                           create_optimizer_inside_model_fn=False):
   """Example of non-distribution-aware legacy code."""
-  dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
+  def dataset_fn():
+    return dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
   # An Optimizer instance is created either outside or inside model_fn.
   outer_optimizer = None
   if not create_optimizer_inside_model_fn:
@@ -71,7 +77,7 @@ def minimize_loss_example(optimizer_fn,
     else:
       return optimizer.minimize(loss_fn())
 
-  return model_fn, dataset, layer
+  return model_fn, dataset_fn, layer
 
 
 def batchnorm_example(optimizer_fn,
@@ -79,12 +85,15 @@ def batchnorm_example(optimizer_fn,
                       momentum=0.9,
                       renorm=False):
   """Example of non-distribution-aware legacy code with batch normalization."""
-  # input shape is [16, 8], input values are increasing in both dimensions.
-  dataset = dataset_ops.Dataset.from_tensor_slices(
-      [[[float(x * 8 + y + z * 100)
-         for y in range(8)]
-        for x in range(16)]
-       for z in range(batch_per_epoch)]).repeat()
+
+  def dataset_fn():
+    # input shape is [16, 8], input values are increasing in both dimensions.
+    return dataset_ops.Dataset.from_tensor_slices(
+        [[[float(x * 8 + y + z * 100)
+           for y in range(8)]
+          for x in range(16)]
+         for z in range(batch_per_epoch)]).repeat()
+
   optimizer = optimizer_fn()
   batchnorm = normalization.BatchNormalization(
       renorm=renorm, momentum=momentum, fused=False)
@@ -99,4 +108,4 @@ def batchnorm_example(optimizer_fn,
     # Callable loss.
     return optimizer.minimize(loss_fn)
 
-  return model_fn, dataset, batchnorm
+  return model_fn, dataset_fn, batchnorm

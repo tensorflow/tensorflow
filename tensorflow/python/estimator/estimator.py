@@ -688,22 +688,19 @@ class Estimator(object):
 
   def _get_features_and_labels_from_input_fn(self, input_fn, mode):
     """Extracts the `features` and labels from return values of `input_fn`."""
-    result = self._call_input_fn(input_fn, mode)
-    # TODO(anjalisridhar): What about the default DistributionStrategy? Perhaps
-    # using any input is alright in that case. There is also a
-    # has_dataset_or_queue_runner function that we may want to extend and use.
-    if (self._distribution is not None and
-        not isinstance(result, dataset_ops.Dataset) and
-        mode == model_fn_lib.ModeKeys.TRAIN):
-      raise ValueError('input_fn() must return a tf.data.Dataset when using a '
-                       'DistributionStrategy.')
     input_hooks = []
-    if isinstance(result, dataset_ops.Dataset):
-      if self._distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
-        result = self._distribution.distribute_dataset(result)
+    if self._distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
+      result = self._distribution.distribute_dataset(
+          lambda: self._call_input_fn(input_fn, mode))
       iterator = result.make_initializable_iterator()
       input_hooks.append(_DatasetInitializerHook(iterator))
       result = iterator.get_next()
+    else:
+      result = self._call_input_fn(input_fn, mode)
+      if isinstance(result, dataset_ops.Dataset):
+        iterator = result.make_initializable_iterator()
+        input_hooks.append(_DatasetInitializerHook(iterator))
+        result = iterator.get_next()
     if isinstance(result, (list, tuple)):
       if len(result) != 2:
         raise ValueError(
