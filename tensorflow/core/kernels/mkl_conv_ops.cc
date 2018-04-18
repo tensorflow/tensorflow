@@ -95,11 +95,15 @@ class Conv2DFwd : public DnnOp {
   ~Conv2DFwd() {}
 
   // Convolution forward execute with bias
-  void Execute(T* src, T* w, T* b, T* dst) {
-    src_mem_->set_data_handle(static_cast<void*>(src));
-    filter_mem_->set_data_handle(static_cast<void*>(w));
-    bias_mem_->set_data_handle(static_cast<void*>(b));
-    dst_mem_->set_data_handle(static_cast<void*>(dst));
+  //   src_data:    input data buffer of src
+  //   filter_data: input data buffer of filter (weights)
+  //   bias_data:   input data buffer of bias
+  //   dst_data:    output data buffer of dst
+  void Execute(T* src_data, T* filter_data, T* bias_data, T* dst_data) {
+    src_mem_->set_data_handle(static_cast<void*>(src_data));
+    filter_mem_->set_data_handle(static_cast<void*>(filter_data));
+    bias_mem_->set_data_handle(static_cast<void*>(bias_data));
+    dst_mem_->set_data_handle(static_cast<void*>(dst_data));
     fwd_stream_->submit(fwd_primitives_);
 
     // after exec, set data handle back
@@ -112,10 +116,13 @@ class Conv2DFwd : public DnnOp {
   }
 
   // Convolution forward execute without bias
-  void Execute(T* src, T* w, T* dst) {
-    src_mem_->set_data_handle(static_cast<void*>(src));
-    filter_mem_->set_data_handle(static_cast<void*>(w));
-    dst_mem_->set_data_handle(static_cast<void*>(dst));
+  //   src_data:    input data buffer of src
+  //   filter_data: input data buffer of filter (weights)
+  //   dst_data:    output data buffer of dst
+  void Execute(T* src_data, T* filter_data, T* dst_data) {
+    src_mem_->set_data_handle(static_cast<void*>(src_data));
+    filter_mem_->set_data_handle(static_cast<void*>(filter_data));
+    dst_mem_->set_data_handle(static_cast<void*>(dst_data));
     fwd_stream_->submit(fwd_primitives_);
 
     // after exec, set data handle back
@@ -757,7 +764,7 @@ class MklConv2DOp : public OpKernel {
       MklDnnData<T> filter(&cpu_engine);
       MklDnnData<T> dst(&cpu_engine);  // output
 
-      memory::dims src_dims, filter_dims, padding_l, padding_r,
+      memory::dims src_dims, filter_dims, padding_left, padding_right,
                    dilations, strides;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
@@ -769,7 +776,7 @@ class MklConv2DOp : public OpKernel {
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims,
           &strides, &dilations, &dst_dims_tf_order, &dst_dims_mkl_order,
-          &padding_l, &padding_r);
+          &padding_left, &padding_right);
       if (!context->status().ok()) return;
 
       // Check for corner case - if there is nothing to compute, return.
@@ -825,11 +832,11 @@ class MklConv2DOp : public OpKernel {
         memory::dims bias_dims = {};
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
         ConvFwdDimensions convFwdDims(src_dims, filter_dims, bias_dims,
-            dst_dims_mkl_order, strides, dilations, padding_l, padding_r);
+          dst_dims_mkl_order, strides, dilations, padding_left, padding_right);
         conv2d_fwd = Conv2DFwdFactory<T>::Get(convFwdDims);
       } else {
         ConvFwdDimensions convFwdDims(src_dims, filter_dims, NONE_DIMS,
-            dst_dims_mkl_order, strides, dilations, padding_l, padding_r);
+          dst_dims_mkl_order, strides, dilations, padding_left, padding_right);
         conv2d_fwd = Conv2DFwdFactory<T>::Get(convFwdDims);
       }
 
