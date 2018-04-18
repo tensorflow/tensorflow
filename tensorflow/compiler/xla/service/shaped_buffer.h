@@ -41,8 +41,7 @@ class ShapedBuffer {
   // determines the number of device allocations (DeviceMemoryBase) held by the
   // ShapedBuffer.
   ShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
-               const perftools::gputools::Platform* platform,
-               int device_ordinal);
+               const se::Platform* platform, int device_ordinal);
 
   // Returns the shape of the on-host representation of the data held by this
   // ShapedBuffer.
@@ -52,35 +51,29 @@ class ShapedBuffer {
   // ShapedBuffer.
   const Shape& on_device_shape() const { return on_device_shape_; }
 
-  const perftools::gputools::Platform* platform() const { return platform_; }
+  const se::Platform* platform() const { return platform_; }
   int device_ordinal() const { return device_ordinal_; }
 
   // Return the root buffer of the shape (shape index {}).
-  const perftools::gputools::DeviceMemoryBase& root_buffer() const {
+  const se::DeviceMemoryBase& root_buffer() const {
     return buffer(/*index=*/{});
   }
 
   // Returns the buffer at the given shape index where index is defined as in
   // ShapeUtil::GetSubshape.
-  const perftools::gputools::DeviceMemoryBase& buffer(
-      const ShapeIndex& index) const {
+  const se::DeviceMemoryBase& buffer(const ShapeIndex& index) const {
     return buffers_.element(index);
   }
 
   // Sets the device memory buffer at the given index.
-  void set_buffer(const perftools::gputools::DeviceMemoryBase& buffer,
-                  const ShapeIndex& index) {
+  void set_buffer(const se::DeviceMemoryBase& buffer, const ShapeIndex& index) {
     *buffers_.mutable_element(index) = buffer;
   }
 
   // Returns the underlying ShapeTree containing all the device addresses in the
   // ShapedBuffer.
-  const ShapeTree<perftools::gputools::DeviceMemoryBase>& buffers() const {
-    return buffers_;
-  }
-  ShapeTree<perftools::gputools::DeviceMemoryBase>& buffers() {
-    return buffers_;
-  }
+  const ShapeTree<se::DeviceMemoryBase>& buffers() const { return buffers_; }
+  ShapeTree<se::DeviceMemoryBase>& buffers() { return buffers_; }
 
   // Set all device memory pointers in the object to null.
   void clear();
@@ -101,13 +94,13 @@ class ShapedBuffer {
   Shape on_device_shape_;
 
   // The platform the memory is allocated on.
-  const perftools::gputools::Platform* platform_;
+  const se::Platform* platform_;
 
   // The device the memory is allocated on.
   int device_ordinal_;
 
   // The tree of device buffers. Its shape is on_device_shape().
-  ShapeTree<perftools::gputools::DeviceMemoryBase> buffers_;
+  ShapeTree<se::DeviceMemoryBase> buffers_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);

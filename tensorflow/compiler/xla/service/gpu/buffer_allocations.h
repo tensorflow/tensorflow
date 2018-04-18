@@ -41,7 +41,7 @@ class BufferAllocations {
     // user-specified result buffers) to the given buffer index. The builder
     // will skip allocating buffers for registered buffer indices.
     void RegisterBuffer(BufferAllocation::Index index,
-                        perftools::gputools::DeviceMemoryBase address);
+                        se::DeviceMemoryBase address);
 
     // Builds a BufferAllocations object from the given buffer assignment.
     // `memory_allocator` is what this function uses to allocate device memory.
@@ -52,8 +52,7 @@ class BufferAllocations {
         DeviceMemoryAllocator* memory_allocator);
 
    private:
-    std::map<BufferAllocation::Index, perftools::gputools::DeviceMemoryBase>
-        registered_buffers_;
+    std::map<BufferAllocation::Index, se::DeviceMemoryBase> registered_buffers_;
   };
 
   BufferAllocations(const BufferAllocations&) = delete;
@@ -65,22 +64,20 @@ class BufferAllocations {
   // Returns the device address of buffer `buffer_index`. `buffer_index` must be
   // a valid index, i.e., in [0, buffer_count). This function returns null if
   // `buffer_index` is not assigned to a buffer address.
-  perftools::gputools::DeviceMemoryBase GetDeviceAddress(
+  se::DeviceMemoryBase GetDeviceAddress(
       BufferAllocation::Index buffer_index) const;
 
   // Same as above, but also adjusts the returned address for the offset and
   // size contained in the given slice.
-  perftools::gputools::DeviceMemoryBase GetDeviceAddress(
+  se::DeviceMemoryBase GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice) const;
 
-  perftools::gputools::DeviceMemoryBase GetTempBufferBase() const {
-    return temp_buffer_base_;
-  }
+  se::DeviceMemoryBase GetTempBufferBase() const { return temp_buffer_base_; }
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
   tensorflow::Status TearDown(
-      const std::set<perftools::gputools::DeviceMemoryBase>& live_addresses,
+      const std::set<se::DeviceMemoryBase>& live_addresses,
       const BufferAssignment& buffer_assignment);
 
  private:
@@ -92,15 +89,15 @@ class BufferAllocations {
 
   // Sets the device address of buffer `buffer_index`.
   void SetBuffer(BufferAllocation::Index buffer_index,
-                 perftools::gputools::DeviceMemoryBase buffer);
+                 se::DeviceMemoryBase buffer);
 
   // An array of device pointers that stores the address of each buffer
   // indexed by Index. Each element can point to a temporary buffer, an
   // input buffer, or nullptr if no buffer is needed for that Index.
-  std::vector<perftools::gputools::DeviceMemoryBase> buffers_;
+  std::vector<se::DeviceMemoryBase> buffers_;
 
   // The base address of the memory block that contains all temporary buffers.
-  perftools::gputools::DeviceMemoryBase temp_buffer_base_;
+  se::DeviceMemoryBase temp_buffer_base_;
 
   int device_ordinal_;
 

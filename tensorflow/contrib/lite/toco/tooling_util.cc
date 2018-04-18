@@ -1474,28 +1474,6 @@ void CheckIsReadyForQuantization(const Model& model) {
   }
 }
 
-void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
-                                 double default_ranges_max) {
-  for (const auto& op : model->operators) {
-    for (const auto& input : op->inputs) {
-      auto& input_array = model->GetArray(input);
-      if (!input_array.minmax && !input_array.buffer) {
-        auto& minmax = input_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
-    }
-    for (const auto& output : op->outputs) {
-      auto& output_array = model->GetArray(output);
-      if (!output_array.minmax && !output_array.buffer) {
-        auto& minmax = output_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
-    }
-  }
-}
-
 int ElementSize(ArrayDataType data_type) {
   switch (data_type) {
     case ArrayDataType::kBool:

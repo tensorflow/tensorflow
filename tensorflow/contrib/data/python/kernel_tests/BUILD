@@ -122,7 +122,10 @@ py_test(
     size = "small",
     srcs = ["filter_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/python:array_ops",
@@ -211,7 +214,10 @@ py_test(
     size = "medium",
     srcs = ["map_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:error_ops",
@@ -306,7 +312,10 @@ py_test(
     srcs = ["resample_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "optonly",
+    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:resampling",
         "//tensorflow/python:client_testlib",

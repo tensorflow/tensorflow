@@ -46,7 +46,7 @@ namespace gpu {
 // the client. The client manages the memory of the buffer.
 class InfeedBuffer {
  public:
-  InfeedBuffer(perftools::gputools::StreamExecutor* executor, int64 length)
+  InfeedBuffer(se::StreamExecutor* executor, int64 length)
       : executor_(executor), length_(length) {
     device_memory_ = executor_->AllocateArray<uint8>(length);
     CHECK(!device_memory_.is_null());
@@ -60,14 +60,12 @@ class InfeedBuffer {
   // client to manage memory for the infeed buffers.
   void Done() { delete this; }
 
-  perftools::gputools::DeviceMemoryBase* device_memory() {
-    return &device_memory_;
-  }
+  se::DeviceMemoryBase* device_memory() { return &device_memory_; }
 
  private:
-  perftools::gputools::StreamExecutor* executor_;  // Not owned.
+  se::StreamExecutor* executor_;  // Not owned.
   const int64 length_;
-  perftools::gputools::DeviceMemoryBase device_memory_;
+  se::DeviceMemoryBase device_memory_;
 };
 
 // Client-side class used to enqueue infeed buffers.
@@ -100,8 +98,7 @@ class InfeedManager {
   // new stream on the first invocation. On subsequent invocations, if
   // the cached executor is not the same as the requested executor,
   // returns null.
-  perftools::gputools::Stream* GetStream(
-      perftools::gputools::StreamExecutor* executor);
+  se::Stream* GetStream(se::StreamExecutor* executor);
 
  private:
   // TODO(b/30467474): Revisit if this mutex becomes a point of
@@ -121,10 +118,10 @@ class InfeedManager {
   tensorflow::gtl::FlatSet<const InfeedBuffer*> dequeued_buffer_;
 
   // Cached host to device stream for queuing infeed data.
-  std::unique_ptr<perftools::gputools::Stream> host_to_device_stream_;
+  std::unique_ptr<se::Stream> host_to_device_stream_;
 
   // Executor that the host_to_device_stream belongs to. Not owned.
-  perftools::gputools::StreamExecutor* host_to_device_executor_;
+  se::StreamExecutor* host_to_device_executor_;
 };
 
 // Singleton creator-or-accessor: Returns the GPU infeed manager.

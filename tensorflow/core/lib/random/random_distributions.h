@@ -164,7 +164,8 @@ class UniformDistribution<Generator, int32> {
   typedef int32 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int32 lo, int32 hi) : lo_(lo), range_(hi - lo) {}
+  UniformDistribution(int32 lo, int32 hi)
+      : lo_(lo), range_(static_cast<uint32>(hi) - static_cast<uint32>(lo)) {}
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
@@ -198,7 +199,8 @@ class UniformDistribution<Generator, int64> {
   typedef int64 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int64 lo, int64 hi) : lo_(lo), range_(hi - lo) {}
+  UniformDistribution(int64 lo, int64 hi)
+      : lo_(lo), range_(static_cast<uint64>(hi) - static_cast<uint64>(lo)) {}
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {

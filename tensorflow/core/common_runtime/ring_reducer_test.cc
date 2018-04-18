@@ -572,9 +572,9 @@ DEF_TEST(INT32, CPU, 2, 8, 3, 4095, 0)
 DEF_TEST(INT64, CPU, 1, 2, 1, 1001, 0)
 DEF_TEST(INT64, CPU, 2, 8, 3, 4095, 0)
 
-// Failure tests
-DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 7)
-DEF_TEST(FLOAT, CPU, 2, 8, 2, 9408, 11)
+// // Failure tests
+// DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 7)
+// DEF_TEST(FLOAT, CPU, 2, 8, 2, 9408, 11)
 #endif
 
 #ifdef GOOGLE_CUDA
@@ -597,9 +597,9 @@ DEF_TEST(DOUBLE, GPU, 1, 2, 1, 1001, 0)
 // DEF_TEST(INT32, GPU, 1, 2, 1, 1001, 0)
 DEF_TEST(INT64, GPU, 1, 2, 1, 1001, 0)
 
-// Failure tests
-DEF_TEST(FLOAT, GPU, 1, 8, 1, 9408, 2)
-DEF_TEST(FLOAT, GPU, 1, 8, 2, 9408, 5)
+// // Failure tests
+// DEF_TEST(FLOAT, GPU, 1, 8, 1, 9408, 2)
+// DEF_TEST(FLOAT, GPU, 1, 8, 2, 9408, 5)
 #endif
 
 }  // namespace

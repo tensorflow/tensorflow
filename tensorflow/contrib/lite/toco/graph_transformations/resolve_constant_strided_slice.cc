@@ -23,38 +23,86 @@ namespace toco {
 
 namespace {
 
+// These StridedSlice utility functions are essentially a COPY of those in
+// reference_ops.h. See comments there.
+
+// Use until std::clamp() is available from C++17.
+int Clamp(const int v, const int lo, const int hi) {
+  if (hi < v) return hi;
+  if (v < lo) return lo;
+  return v;
+}
+
 int StartForAxis(StridedSliceOperator const& op, Shape const& input_shape,
                  int axis) {
-  int start;
+  // Begin with the specified index
+  int start = op.start_indices[axis];
+
+  // begin_mask override
   if (op.begin_mask & 1 << axis) {
-    // If begin mask bit is set, use the first element
-    start = 0;
-  } else {
-    // Otherwise, use the specified element
-    start = op.start_indices[axis];
-    if (start < 0) {
-      // Handle negative indices
-      start += input_shape.dims(axis);
+    if (op.strides[axis] > 0) {
+      // Forward iteration - use the first element. These values will get
+      // clamped below (Note: We could have set them to 0 and axis_size-1, but
+      // use lowest() and max() to maintain symmetry with StopForAxis())
+      start = std::numeric_limits<int>::lowest();
+    } else {
+      // Backward iteration - use the last element.
+      start = std::numeric_limits<int>::max();
     }
   }
+
+  // Handle negative indices
+  int axis_size = input_shape.dims(axis);
+  if (start < 0) {
+    start += axis_size;
+  }
+
+  // Clamping
+  start = Clamp(start, 0, axis_size - 1);
+
   return start;
 }
 
 int StopForAxis(StridedSliceOperator const& op, Shape const& input_shape,
                 int axis) {
-  int stop;
+  // Begin with the specified index
+  int stop = op.stop_indices[axis];
+
+  // end_mask override
   if (op.end_mask & (1 << axis)) {
-    // If end mask bit set, use the last element
-    stop = input_shape.dims(axis);
-  } else {
-    // Otherwise, use the specified element
-    stop = op.stop_indices[axis];
-    if (stop < 0) {
-      // Handle negative indices
-      stop += input_shape.dims(axis);
+    if (op.strides[axis] > 0) {
+      // Forward iteration - use the last element. These values will get
+      // clamped below
+      stop = std::numeric_limits<int>::max();
+    } else {
+      // Backward iteration - use the first element.
+      stop = std::numeric_limits<int>::lowest();
     }
   }
+
+  // Handle negative indices
+  int axis_size = input_shape.dims(axis);
+  if (stop < 0) {
+    stop += axis_size;
+  }
+
+  // Clamping
+  // Because the end index points one past the last element, we need slightly
+  // different clamping ranges depending on the direction.
+  if (op.strides[axis] > 0) {
+    // Forward iteration
+    stop = Clamp(stop, 0, axis_size);
+  } else {
+    // Backward iteration
+    stop = Clamp(stop, -1, axis_size - 1);
+  }
+
   return stop;
+}
+
+bool LoopCondition(int index, int stop, int stride) {
+  // True when we have reached the end of an axis and should loop.
+  return stride > 0 ? index >= stop : index <= stop;
 }
 
 template <ArrayDataType Type>
@@ -73,9 +121,6 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   int num_input_axes = op.start_indices.size();
   CHECK_EQ(num_input_axes, op.stop_indices.size());
   CHECK_EQ(num_input_axes, op.strides.size());
-  for (int i = 0; i < op.strides.size(); i++) {
-    CHECK_GE(op.strides[i], 0) << "Negative strides usupported";
-  }
 
   // Create a buffer for the output array
   std::vector<DataType<Type>>& output_data =
@@ -103,13 +148,15 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
     // Compute next source input coordinates.
     bool carry = true;
     for (int axis = 0; axis < num_input_axes; axis++) {
+      int stride = op.strides[axis];
       // Increment this axis if we carried from the previous one
       if (carry) {
-        src_coord[axis] += op.strides[axis];
+        src_coord[axis] += stride;
       }
 
       // Check if we've overflowed.
-      if (src_coord[axis] >= StopForAxis(op, input_shape, axis)) {
+      int stop = StopForAxis(op, input_shape, axis);
+      if (LoopCondition(src_coord[axis], stop, stride)) {
         // Reset axis and set carry
         src_coord[axis] = StartForAxis(op, input_shape, axis);
         carry = true;

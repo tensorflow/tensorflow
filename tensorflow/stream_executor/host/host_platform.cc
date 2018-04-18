@@ -26,10 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace gpu = ::perftools::gputools;
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 HostPlatform::HostPlatform() : name_("Host") {}
@@ -93,16 +90,15 @@ void HostPlatform::UnregisterTraceListener(TraceListener* listener) {
 }
 
 static void InitializeHostPlatform() {
-  std::unique_ptr<gpu::Platform> platform(new gpu::host::HostPlatform);
-  SE_CHECK_OK(gpu::MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  std::unique_ptr<Platform> platform(new host::HostPlatform);
+  SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(
-    host_platform, perftools::gputools::host::InitializeHostPlatform());
+REGISTER_MODULE_INITIALIZER(host_platform,
+                            stream_executor::host::InitializeHostPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 // Note that module initialization sequencing is not supported in the

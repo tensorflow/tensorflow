@@ -45,8 +45,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/trace_listener.h"
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 class Timer;
@@ -343,7 +342,6 @@ extern StreamExecutorFactory MakeHostExecutorImplementation;
 
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_

@@ -61,11 +61,21 @@ bool ParseTocoFlagsFromCommandLineFlags(
       Flag("default_ranges_min", parsed_flags.default_ranges_min.bind(),
            parsed_flags.default_ranges_min.default_value(),
            "If defined, will be used as the default value for the min bound "
-           "of min/max ranges used for quantization."),
+           "of min/max ranges used for quantization of uint8 arrays."),
       Flag("default_ranges_max", parsed_flags.default_ranges_max.bind(),
            parsed_flags.default_ranges_max.default_value(),
            "If defined, will be used as the default value for the max bound "
-           "of min/max ranges used for quantization."),
+           "of min/max ranges used for quantization of uint8 arrays."),
+      Flag("default_int16_ranges_min",
+           parsed_flags.default_int16_ranges_min.bind(),
+           parsed_flags.default_int16_ranges_min.default_value(),
+           "If defined, will be used as the default value for the min bound "
+           "of min/max ranges used for quantization of int16 arrays."),
+      Flag("default_int16_ranges_max",
+           parsed_flags.default_int16_ranges_max.bind(),
+           parsed_flags.default_int16_ranges_max.default_value(),
+           "If defined, will be used as the default value for the max bound "
+           "of min/max ranges used for quantization of int16 arrays."),
       Flag("inference_type", parsed_flags.inference_type.bind(),
            parsed_flags.inference_type.default_value(),
            "Target data type of arrays in the output file (for input_arrays, "
@@ -131,6 +141,13 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.propagate_fake_quant_num_bits.default_value(),
            "If true, use FakeQuant* operator num_bits attributes to adjust "
            "array data_types."),
+      Flag("allow_nudging_weights_to_use_fast_gemm_kernel",
+           parsed_flags.allow_nudging_weights_to_use_fast_gemm_kernel.bind(),
+           parsed_flags.allow_nudging_weights_to_use_fast_gemm_kernel
+               .default_value(),
+           "Some fast uint8 GEMM kernels require uint8 weights to avoid the "
+           "value 0. This flag allows nudging them to 1 to allow proceeding, "
+           "with moderate inaccuracy."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -212,12 +229,16 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   PARSE_TOCO_FLAG(IODataType, inference_input_type, FlagRequirement::kNone);
   READ_TOCO_FLAG(default_ranges_min, FlagRequirement::kNone);
   READ_TOCO_FLAG(default_ranges_max, FlagRequirement::kNone);
+  READ_TOCO_FLAG(default_int16_ranges_min, FlagRequirement::kNone);
+  READ_TOCO_FLAG(default_int16_ranges_max, FlagRequirement::kNone);
   READ_TOCO_FLAG(drop_fake_quant, FlagRequirement::kNone);
   READ_TOCO_FLAG(reorder_across_fake_quant, FlagRequirement::kNone);
   READ_TOCO_FLAG(allow_custom_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(drop_control_dependency, FlagRequirement::kNone);
   READ_TOCO_FLAG(debug_disable_recurrent_cell_fusion, FlagRequirement::kNone);
   READ_TOCO_FLAG(propagate_fake_quant_num_bits, FlagRequirement::kNone);
+  READ_TOCO_FLAG(allow_nudging_weights_to_use_fast_gemm_kernel,
+                 FlagRequirement::kNone);
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {

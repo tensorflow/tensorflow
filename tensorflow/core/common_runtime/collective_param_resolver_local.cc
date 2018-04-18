@@ -401,7 +401,7 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 }
 
 Status CollectiveParamResolverLocal::InitInstanceSharedParams(
-    GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
+    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
   VLOG(1) << "InitInstanceSharedParams " << ir;
   ir->shared.instance = cp->instance;
   {
@@ -443,7 +443,7 @@ Status CollectiveParamResolverLocal::InitInstanceSharedParams(
 }
 
 void CollectiveParamResolverLocal::CompleteDefaultRanking(
-    GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
+    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
     const std::vector<DeviceLocality>& localities) {
   // Establish an instance-specific default rank order for devices
   // based on localities.  This rank order should be a good ring
@@ -485,7 +485,7 @@ void CollectiveParamResolverLocal::CallbackWithStatus(
 }
 
 void CollectiveParamResolverLocal::FindInstanceRec(
-    GroupRec* gr, CollectiveParams* cp, const InstanceRecCallback& done) {
+    const GroupRec* gr, CollectiveParams* cp, const InstanceRecCallback& done) {
   InstanceRec* irec = nullptr;
   bool exit_outside_locks = false;
   {
@@ -544,7 +544,8 @@ void CollectiveParamResolverLocal::CompleteParamsAsync(
   VLOG(1) << "CompleteParams " << device << " for " << cp << ": "
           << cp->ToString();
   CompleteGroupLocal(
-      device, cp, [this, device, cp, done](const Status& s, GroupRec* gr) {
+      device, cp,
+      [this, device, cp, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
           CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
         } else {
@@ -563,8 +564,8 @@ void CollectiveParamResolverLocal::CompleteInstanceAsync(
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceLocal(
-    const string& device, GroupRec* gr, CollectiveParams* cp, bool is_source,
-    const StatusCallback& done) {
+    const string& device, const GroupRec* gr, CollectiveParams* cp,
+    bool is_source, const StatusCallback& done) {
   VLOG(1) << "CompleteInstanceLocal " << device
           << " instance_key: " << cp->instance.instance_key << " gr " << gr;
 
@@ -589,8 +590,8 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
-    const string& device, GroupRec* gr, CollectiveParams* cp, InstanceRec* ir,
-    bool is_source, const StatusCallback& done) {
+    const string& device, const GroupRec* gr, CollectiveParams* cp,
+    InstanceRec* ir, bool is_source, const StatusCallback& done) {
   // Populate the fields common across instance.
   {
     mutex_lock l(ir->out_mu);

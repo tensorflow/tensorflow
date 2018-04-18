@@ -19,8 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace interpreter {
 
 host::HostStream *AsExecutorStream(Stream *stream) {
@@ -119,5 +118,4 @@ DeviceDescription *XlaInterpreterExecutor::PopulateDeviceDescription() const {
 }
 
 }  // namespace interpreter
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

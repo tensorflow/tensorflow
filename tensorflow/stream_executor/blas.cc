@@ -17,8 +17,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/lib/strcat.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace blas {
 
 string TransposeString(Transpose t) {
@@ -95,5 +94,4 @@ std::ostream& operator<<(std::ostream& os, ComputationType ty) {
 }
 
 }  // namespace blas
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

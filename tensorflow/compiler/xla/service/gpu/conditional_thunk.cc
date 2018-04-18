@@ -42,11 +42,10 @@ Status ConditionalThunk::Initialize(const GpuExecutable& executable) {
 }
 
 Status ConditionalThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // Copy the predicate value from device.
   bool predicate;
-  perftools::gputools::DeviceMemoryBase predicate_address =
+  se::DeviceMemoryBase predicate_address =
       buffer_allocations.GetDeviceAddress(predicate_buffer_index_);
   stream->ThenMemcpy(&predicate, predicate_address, sizeof(bool));
 

@@ -28,8 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 namespace {
 // Code to turn parameters to functions on stream into strings that
@@ -5192,5 +5191,4 @@ port::Status Stream::BlockHostUntilDone() {
   return first_error;
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

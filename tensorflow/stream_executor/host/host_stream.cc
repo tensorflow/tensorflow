@@ -17,8 +17,7 @@ limitations under the License.
 // the HostExecutor implementation.
 #include "tensorflow/stream_executor/host/host_stream.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 HostStream::HostStream()
@@ -53,5 +52,4 @@ void HostStream::BlockUntilDone() {
 
 }  // namespace host
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

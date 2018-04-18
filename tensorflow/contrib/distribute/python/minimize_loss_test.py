@@ -67,7 +67,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       if is_tpu:
         dataset = dataset.batch(2)
 
-      iterator = distribution.distribute_dataset(dataset)
+      iterator = distribution.distribute_dataset(
+          dataset).make_one_shot_iterator()
 
       def run_step():
         # TODO(isaprykin): Make iterator get_next() return a list of sub-
@@ -127,7 +128,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           use_callable_loss=True,
           create_optimizer_inside_model_fn=True)
 
-      iterator = distribution.distribute_dataset(dataset)
+      iterator = distribution.distribute_dataset(
+          dataset).make_one_shot_iterator()
 
       def run_step():
         return distribution.group(
@@ -185,7 +187,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       # on each device.
       if isinstance(distribution, mirrored_strategy.MirroredStrategy):
         distribution._prefetch_on_device = False
-      iterator = distribution.distribute_dataset(dataset)
+      iterator = distribution.distribute_dataset(
+          dataset).make_one_shot_iterator()
 
       def run_step():
         return control_flow_ops.group(
@@ -260,7 +263,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       features = dataset_ops.Dataset.from_tensors([[2.], [7.]])
       labels = dataset_ops.Dataset.from_tensors([[6.], [21.]])
       dataset = dataset_ops.Dataset.zip((features, labels)).repeat()
-      iterator = distribution.distribute_dataset(dataset)
+      iterator = distribution.distribute_dataset(
+          dataset).make_one_shot_iterator()
 
       def run_step():
         return distribution.group(

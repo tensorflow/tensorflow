@@ -40,8 +40,7 @@ class SequentialThunk : public Thunk {
 
   tensorflow::Status Initialize(const GpuExecutable& executable) override;
   tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
 
  private:
   // The list of sub-thunks.

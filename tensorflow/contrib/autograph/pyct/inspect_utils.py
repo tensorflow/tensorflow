@@ -63,14 +63,23 @@ def getnamespace(f):
   return namespace
 
 
+def _get_unbound_function(m):
+  # TODO(mdan): Figure out why six.get_unbound_function fails in some cases.
+  # The failure case is for tf.keras.Model.
+  if hasattr(m, 'im_func'):
+    return m.im_func
+  return m
+
+
 def getdefiningclass(m, owner_class):
   """Resolves the class (e.g. one of the superclasses) that defined a method."""
-  m = six.get_unbound_function(m)
+  # Normalize bound functions to their respective unbound versions.
+  m = _get_unbound_function(m)
   last_defining = owner_class
   for superclass in tf_inspect.getmro(owner_class):
     if hasattr(superclass, m.__name__):
       superclass_m = getattr(superclass, m.__name__)
-      if six.get_unbound_function(superclass_m) == m:
+      if _get_unbound_function(superclass_m) == m:
         last_defining = superclass
   return last_defining
 

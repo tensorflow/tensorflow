@@ -204,7 +204,7 @@ StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::ResolveInternal(
 }
 
 void AllocationTracker::AddAllocationOrIncrementRefCount(
-    perftools::gputools::DeviceMemoryBase device_memory, int device_ordinal) {
+    se::DeviceMemoryBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   if (it == allocation_map.end()) {
@@ -215,8 +215,8 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
   }
 }
 
-Status AllocationTracker::DecrementRefCount(
-    perftools::gputools::DeviceMemoryBase device_memory, int device_ordinal) {
+Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
+                                            int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   TF_RET_CHECK(it != allocation_map.end());

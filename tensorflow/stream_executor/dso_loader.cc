@@ -37,8 +37,7 @@ limitations under the License.
 #include "cuda/cuda_config.h"
 #endif
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 string GetCudaVersion() { return TF_CUDA_VERSION; }
@@ -291,5 +290,4 @@ static std::vector<string>* CreatePrimordialRpaths() {
 }
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

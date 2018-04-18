@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 bool KernelMetadata::registers_per_thread(int *registers_per_thread) const {
   if (has_registers_per_thread_) {
@@ -103,5 +102,4 @@ void KernelBase::set_name(port::StringPiece name) {
   demangled_name_ = port::Demangle(stubless_name.data());
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

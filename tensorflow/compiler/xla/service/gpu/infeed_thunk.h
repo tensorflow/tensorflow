@@ -44,7 +44,7 @@ class InfeedThunk : public Thunk {
   InfeedThunk& operator=(const InfeedThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream) override;
 
  private:
   const std::vector<BufferAllocation::Slice> tuple_element_buffers_;

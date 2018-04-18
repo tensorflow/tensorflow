@@ -80,7 +80,7 @@ class HloRunner {
     bool run_hlo_passes = false;
   };
 
-  explicit HloRunner(::perftools::gputools::Platform* platform);
+  explicit HloRunner(se::Platform* platform);
 
   ~HloRunner();
 
@@ -149,8 +149,7 @@ class HloRunner {
   // will be used to configure the replication parameters. Replicated executions
   // should pass the device_assignment parameter.
   ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
-      int64 device, ::perftools::gputools::Stream* stream,
-      DeviceAssignment* device_assignment);
+      int64 device, se::Stream* stream, DeviceAssignment* device_assignment);
 
   std::unique_ptr<Backend> backend_;
 };

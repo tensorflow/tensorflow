@@ -5561,43 +5561,127 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
       output_dims, 0);
 }
 
+// UNOPTIMIZED COPY of StridedSlice from reference_ops.h (see comments there).
+
+// Use until std::clamp() is available from C++17.
+inline int Clamp(const int v, const int lo, const int hi) {
+  TFLITE_DCHECK(!(hi < lo));
+  if (hi < v) return hi;
+  if (v < lo) return lo;
+  return v;
+}
+
+inline int StartForAxis(int begin_mask, const std::vector<int>& start_indices,
+                        const std::vector<int>& strides,
+                        const Dims<4>& input_shape, int axis) {
+  // Begin with the specified index
+  int start = start_indices[axis];
+
+  // begin_mask override
+  if (begin_mask & 1 << axis) {
+    if (strides[axis] > 0) {
+      // Forward iteration - use the first element. These values will get
+      // clamped below (Note: We could have set them to 0 and axis_size-1, but
+      // use lowest() and max() to maintain symmetry with StopForAxis())
+      start = std::numeric_limits<int>::lowest();
+    } else {
+      // Backward iteration - use the last element.
+      start = std::numeric_limits<int>::max();
+    }
+  }
+
+  // Handle negative indices
+  int axis_size = input_shape.sizes[axis];
+  if (start < 0) {
+    start += axis_size;
+  }
+
+  // Clamping
+  start = Clamp(start, 0, axis_size - 1);
+
+  return start;
+}
+
+inline int StopForAxis(int end_mask, const std::vector<int>& stop_indices,
+                       const std::vector<int>& strides,
+                       const Dims<4>& input_shape, int axis) {
+  // Begin with the specified index
+  int stop = stop_indices[axis];
+
+  // end_mask override
+  if (end_mask & (1 << axis)) {
+    if (strides[axis] > 0) {
+      // Forward iteration - use the last element. These values will get
+      // clamped below
+      stop = std::numeric_limits<int>::max();
+    } else {
+      // Backward iteration - use the first element.
+      stop = std::numeric_limits<int>::lowest();
+    }
+  }
+
+  // Handle negative indices
+  int axis_size = input_shape.sizes[axis];
+  if (stop < 0) {
+    stop += axis_size;
+  }
+
+  // Clamping
+  // Because the end index points one past the last element, we need slightly
+  // different clamping ranges depending on the direction.
+  if (strides[axis] > 0) {
+    // Forward iteration
+    stop = Clamp(stop, 0, axis_size);
+  } else {
+    // Backward iteration
+    stop = Clamp(stop, -1, axis_size - 1);
+  }
+
+  return stop;
+}
+
+inline bool LoopCondition(int index, int stop, int stride) {
+  // True when we have reached the end of an axis and should loop.
+  return stride > 0 ? index >= stop : index <= stop;
+}
+
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask,
-                         const std::vector<int>& starts,
-                         const std::vector<int>& stops,
+                         const std::vector<int>& start_indices,
+                         const std::vector<int>& stop_indices,
                          const std::vector<int>& strides, T* output_data,
                          const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("StridedSlice");
-  const int start_b = (begin_mask & 8) ? 0 : starts[3];
-  const int stop_b = (end_mask & 8) ? input_dims.sizes[3] : stops[3];
-  const int start_h = (begin_mask & 4) ? 0 : starts[2];
-  const int stop_h = (end_mask & 4) ? input_dims.sizes[2] : stops[2];
-  const int start_w = (begin_mask & 2) ? 0 : starts[1];
-  const int stop_w = (end_mask & 2) ? input_dims.sizes[1] : stops[1];
-  const int start_d = (begin_mask & 1) ? 0 : starts[0];
-  const int stop_d = (end_mask & 1) ? input_dims.sizes[0] : stops[0];
+  TFLITE_DCHECK_EQ(start_indices.size(), 4);
+  TFLITE_DCHECK_EQ(stop_indices.size(), 4);
+  TFLITE_DCHECK_EQ(strides.size(), 4);
+  const int start_b =
+      StartForAxis(begin_mask, start_indices, strides, input_dims, 3);
+  const int stop_b =
+      StopForAxis(end_mask, stop_indices, strides, input_dims, 3);
+  const int start_h =
+      StartForAxis(begin_mask, start_indices, strides, input_dims, 2);
+  const int stop_h =
+      StopForAxis(end_mask, stop_indices, strides, input_dims, 2);
+  const int start_w =
+      StartForAxis(begin_mask, start_indices, strides, input_dims, 1);
+  const int stop_w =
+      StopForAxis(end_mask, stop_indices, strides, input_dims, 1);
+  const int start_d =
+      StartForAxis(begin_mask, start_indices, strides, input_dims, 0);
+  const int stop_d =
+      StopForAxis(end_mask, stop_indices, strides, input_dims, 0);
 
   T* out_ptr = output_data;
-  if (strides[0] == 0) {
-    for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-      for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-        for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-          const int len = stop_d - start_d;
-          memcpy(out_ptr,
-                 input_data + Offset(input_dims, start_d, in_w, in_h, in_b),
-                 len * sizeof(T));
-          out_ptr += len;
-        }
-      }
-    }
-  } else {
-    for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-      for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-        for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-          for (int in_d = start_d; in_d < stop_d; in_d += strides[0]) {
-            *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
-          }
+  for (int in_b = start_b; !LoopCondition(in_b, stop_b, strides[3]);
+       in_b += strides[3]) {
+    for (int in_h = start_h; !LoopCondition(in_h, stop_h, strides[2]);
+         in_h += strides[2]) {
+      for (int in_w = start_w; !LoopCondition(in_w, stop_w, strides[1]);
+           in_w += strides[1]) {
+        for (int in_d = start_d; !LoopCondition(in_d, stop_d, strides[0]);
+             in_d += strides[0]) {
+          *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
         }
       }
     }

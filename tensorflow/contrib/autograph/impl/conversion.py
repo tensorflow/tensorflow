@@ -154,7 +154,16 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, conversion_map)
   elif tf_inspect.isfunction(o):
-    node, name, ns = function_to_graph(o, conversion_map, arg_values, arg_types)
+    # TODO(mdan): This is not a reliable mechanism.
+    # The most reliable way is to check the source code, the AST will contain
+    # a Lambda node instead of a FunctionDef
+    if o.__name__ == '<lambda>':
+      raise NotImplementedError(
+          'lambda functions are not yet supported; declare the function'
+          ' using def instead: %s' % o)
+    else:
+      node, name, ns = function_to_graph(o, conversion_map, arg_values,
+                                         arg_types)
   elif tf_inspect.ismethod(o):
     node, name, ns = function_to_graph(o, conversion_map, arg_values, arg_types)
   else:
@@ -222,16 +231,22 @@ def _add_reserved_symbol(namespace, name, entity):
     raise ValueError('The name "%s" is reserved and may not be used.' % name)
 
 
+ag_internal = None
+
+
 def _add_self_references(namespace, api_module):
-  # Craft a module that exposes parts of the external API as well as certain
-  # internal modules.
-  ag_internal = imp.new_module('autograph')
-  ag_internal.converted_call = api_module.converted_call
-  ag_internal.utils = utils
-  # TODO(mdan): Add safeguards against name clashes.
-  # We don't want to create a submodule because we want the operators to be
-  # accessible as ag__.<operator>
-  ag_internal.__dict__.update(operators.__dict__)
+  """Adds namespace references to the module that exposes the api itself."""
+  global ag_internal
+  if ag_internal is None:
+    # Craft a module that exposes parts of the external API as well as certain
+    # internal modules.
+    ag_internal = imp.new_module('autograph')
+    ag_internal.converted_call = api_module.converted_call
+    ag_internal.utils = utils
+    # TODO(mdan): Add safeguards against name clashes.
+    # We don't want to create a submodule because we want the operators to be
+    # accessible as ag__.<operator>
+    ag_internal.__dict__.update(operators.__dict__)
 
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
 

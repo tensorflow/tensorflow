@@ -203,4 +203,5 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
+    tags = ["optonly"],
 )

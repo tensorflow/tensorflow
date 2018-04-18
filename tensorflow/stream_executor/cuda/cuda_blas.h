@@ -29,8 +29,7 @@ limitations under the License.
 
 typedef struct cublasContext *cublasHandle_t;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 
@@ -162,7 +161,6 @@ class CUDABlas : public blas::BlasSupport {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_

@@ -54,7 +54,8 @@ class StandardInputStep(Step):
 
   def __init__(self, input_dataset, distribution):
     Step.__init__(self, distribution)
-    self._distributed_input = distribution.distribute_dataset(input_dataset)
+    self._distributed_input = distribution.distribute_dataset(
+        input_dataset).make_one_shot_iterator()
 
   def inputs(self):
     return self._distributed_input.get_next()

@@ -23,26 +23,21 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 /* static */ tensorflow::mutex Compiler::platform_compiler_mutex_(
     tensorflow::LINKER_INITIALIZED);
 
-/* static */ std::map<perftools::gputools::Platform::Id,
-                      Compiler::CompilerFactory>*
+/* static */ std::map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
-  static auto* r =
-      new std::map<perftools::gputools::Platform::Id, CompilerFactory>;
+  static auto* r = new std::map<se::Platform::Id, CompilerFactory>;
   return r;
 }
 
 /* static */
-std::map<perftools::gputools::Platform::Id, std::unique_ptr<Compiler>>*
+std::map<se::Platform::Id, std::unique_ptr<Compiler>>*
 Compiler::GetPlatformCompilers() {
-  static auto* r = new std::map<perftools::gputools::Platform::Id,
-                                std::unique_ptr<Compiler>>;
+  static auto* r = new std::map<se::Platform::Id, std::unique_ptr<Compiler>>;
   return r;
 }
 

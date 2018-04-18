@@ -18,8 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 // Trait to select overloads and return types for MakeUnique.
@@ -59,8 +58,17 @@ typename MakeUniqueResult<T>::invalid MakeUnique(Args&&... /* args */) =
     delete;  // NOLINT
 
 }  // namespace port
+}  // namespace stream_executor
+
+namespace perftools {
+namespace gputools {
+
+// Temporarily pull stream_executor into perftools::gputools while we migrate
+// code to the new namespace.  TODO(jlebar): Remove this once we've completed
+// the migration.
+using namespace stream_executor;  // NOLINT[build/namespaces]
+
 }  // namespace gputools
 }  // namespace perftools
-
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_PTR_UTIL_H_

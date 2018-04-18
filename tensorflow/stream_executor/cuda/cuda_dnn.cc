@@ -59,8 +59,7 @@ NarrowT CheckedNarrowing(const WideT& wide) {
 
 }  // namespace
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 using dnn::BatchDescriptor;
 using dnn::FilterDescriptor;
@@ -159,7 +158,7 @@ static port::ThreadPool* GetCudaThreadpool() {
   return cudnn_threadpool;
 }
 
-#define PERFTOOLS_GPUTOOLS_CUDNN_WRAP(__name)                      \
+#define STREAM_EXECUTOR_CUDNN_WRAP(__name)                         \
   struct WrapperShim__##__name {                                   \
     template <typename... Args>                                    \
     cudnnStatus_t operator()(CUDAExecutor* parent, Args... args) { \
@@ -169,7 +168,7 @@ static port::ThreadPool* GetCudaThreadpool() {
     }                                                              \
   } __name;
 
-#define PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM(__name)        \
+#define STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM(__name)           \
   struct WrapperShim__##__name {                                         \
     template <typename... Args>                                          \
     cudnnStatus_t operator()(CudnnSupport* dnn, Stream* s, Args... args) \
@@ -220,7 +219,7 @@ struct WrapperShim__cudnnSetStream {
   __macro(cudnnSetFilterNdDescriptor)
 
 // clang-format on
-CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH
 
 // clang-format off
@@ -242,7 +241,7 @@ CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_WITH_STREAM(
-    PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM)
+    STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM)
 #undef CUDNN_DNN_ROUTINE_EACH_WITH_STREAM
 
 // APIs available after R3:
@@ -252,7 +251,7 @@ CUDNN_DNN_ROUTINE_EACH_WITH_STREAM(
   __macro(cudnnGetConvolutionBackwardDataAlgorithm)           \
   __macro(cudnnGetConvolutionBackwardFilterAlgorithm)         \
   __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)
-CUDNN_DNN_ROUTINE_EACH_AFTER_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH_AFTER_R3(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_AFTER_R3
 #endif
 
@@ -266,7 +265,7 @@ CUDNN_DNN_ROUTINE_EACH_AFTER_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 // clang-format on
 
 CUDNN_DNN_ROUTINE_EACH_R3_WITH_STREAM(
-    PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM)
+    STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM)
 #undef CUDNN_DNN_ROUTINE_EACH_R3_WITH_STREAM
 #endif
 
@@ -293,7 +292,7 @@ CUDNN_DNN_ROUTINE_EACH_R3_WITH_STREAM(
   __macro(cudnnGetFilterNdDescriptor)
 
 // clang-format on
-CUDNN_DNN_ROUTINE_EACH_R5(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH_R5(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R5
 
 // clang-format off
@@ -305,7 +304,7 @@ CUDNN_DNN_ROUTINE_EACH_R5(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R5_WITH_STREAM(
-    PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM)
+    STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM)
 #undef CUDNN_DNN_ROUTINE_EACH_R5_WITH_STREAM
 #endif
 
@@ -316,7 +315,7 @@ CUDNN_DNN_ROUTINE_EACH_R5_WITH_STREAM(
   __macro(cudnnSetRNNDescriptor_v6)
 
 // clang-format on
-CUDNN_DNN_ROUTINE_EACH_R6(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH_R6(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R6
 
 // clang-format off
@@ -325,7 +324,7 @@ CUDNN_DNN_ROUTINE_EACH_R6(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R6_WITH_STREAM(
-    PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM)
+    STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM)
 #undef CUDNN_DNN_ROUTINE_EACH_R6_WITH_STREAM
 #endif
 
@@ -337,7 +336,7 @@ CUDNN_DNN_ROUTINE_EACH_R6_WITH_STREAM(
   __macro(cudnnSetRNNMatrixMathType)
 
 // clang-format on
-CUDNN_DNN_ROUTINE_EACH_R7(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH_R7(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R7
 #endif
 
@@ -4728,46 +4727,39 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
 
 }  // namespace cuda
 
-namespace gpu = ::perftools::gputools;
-
 void initialize_cudnn() {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::DnnFactory>(
-              gpu::cuda::kCudaPlatformId, gpu::cuda::kCuDnnPlugin, "cuDNN",
-              [](gpu::internal::StreamExecutorInterface*
-                     parent) -> gpu::dnn::DnnSupport* {
-                gpu::cuda::CUDAExecutor* cuda_executor =
-                    dynamic_cast<gpu::cuda::CUDAExecutor*>(parent);
-                if (cuda_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the cuBLAS "
-                      << "support library with a non-CUDA StreamExecutor";
-                  return nullptr;
-                }
+  port::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
+          cuda::kCudaPlatformId, cuda::kCuDnnPlugin, "cuDNN",
+          [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+            cuda::CUDAExecutor* cuda_executor =
+                dynamic_cast<cuda::CUDAExecutor*>(parent);
+            if (cuda_executor == nullptr) {
+              LOG(ERROR)
+                  << "Attempting to initialize an instance of the cuBLAS "
+                  << "support library with a non-CUDA StreamExecutor";
+              return nullptr;
+            }
 
-                gpu::cuda::CudnnSupport* dnn =
-                    new gpu::cuda::CudnnSupport(cuda_executor);
-                if (!dnn->Init().ok()) {
-                  // Note: Init() will log a more specific error.
-                  delete dnn;
-                  return nullptr;
-                }
-                return dnn;
-              });
+            cuda::CudnnSupport* dnn = new cuda::CudnnSupport(cuda_executor);
+            if (!dnn->Init().ok()) {
+              // Note: Init() will log a more specific error.
+              delete dnn;
+              return nullptr;
+            }
+            return dnn;
+          });
 
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuDNN factory: "
                << status.error_message();
   }
 
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,
-                                                     gpu::PluginKind::kDnn,
-                                                     gpu::cuda::kCuDnnPlugin);
+  PluginRegistry::Instance()->SetDefaultFactory(
+      cuda::kCudaPlatformId, PluginKind::kDnn, cuda::kCuDnnPlugin);
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(register_cudnn,
-                            { perftools::gputools::initialize_cudnn(); });
+                            { stream_executor::initialize_cudnn(); });

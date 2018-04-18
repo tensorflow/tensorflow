@@ -25,24 +25,20 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 /* static */ tensorflow::mutex
     TransferManager::platform_transfer_manager_mutex_(
         tensorflow::LINKER_INITIALIZED);
 
-/* static */ std::map<perftools::gputools::Platform::Id,
-                      TransferManager::State>*
+/* static */ std::map<se::Platform::Id, TransferManager::State>*
 TransferManager::GetPlatformTransferManagers() {
-  static auto* r =
-      new std::map<perftools::gputools::Platform::Id, TransferManager::State>;
+  static auto* r = new std::map<se::Platform::Id, TransferManager::State>;
   return r;
 }
 
 Status TransferManager::TransferArrayToDevice(
-    perftools::gputools::StreamExecutor* executor, const Literal& literal,
-    const perftools::gputools::DeviceMemoryBase& dest) {
+    se::StreamExecutor* executor, const Literal& literal,
+    const se::DeviceMemoryBase& dest) {
   const Shape on_device_shape = HostShapeToDeviceShape(literal.shape());
   TF_RET_CHECK(ShapeUtil::IsArray(on_device_shape))
       << "On-device representation of "
@@ -61,8 +57,8 @@ Status TransferManager::TransferArrayToDevice(
 }
 
 StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
-    perftools::gputools::StreamExecutor* executor, const Shape& shape,
-    const perftools::gputools::DeviceMemoryBase& source) {
+    se::StreamExecutor* executor, const Shape& shape,
+    const se::DeviceMemoryBase& source) {
   TF_RET_CHECK(ShapeUtil::Equal(HostShapeToDeviceShape(shape), shape))
       << "Shape " << ShapeUtil::HumanString(shape)
       << " has a differently shaped representation on-device: "
@@ -112,8 +108,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
 }
 
 Status TransferManager::WriteTupleIndexTables(
-    perftools::gputools::StreamExecutor* executor,
-    const ShapedBuffer& device_buffer) {
+    se::StreamExecutor* executor, const ShapedBuffer& device_buffer) {
   VLOG(2) << "Writing tuple index tables for " << device_buffer;
 
   TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());

@@ -28,7 +28,7 @@ py_library(
 
 tf_py_test(
     name = "lookup_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["lookup_ops_test.py"],
     additional_deps = [
         ":lookup_py",

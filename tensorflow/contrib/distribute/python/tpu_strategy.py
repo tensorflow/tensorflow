@@ -32,10 +32,10 @@ from tensorflow.python.ops import control_flow_ops
 
 
 # TODO(isaprykin):  Consider whether inheriting is really appropriate.
-class TpuStrategy(one_device_strategy.OneDeviceStrategy):
+class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
   def __init__(self, master=None, iterations=None, model_dir=None):
-    super(TpuStrategy, self).__init__('/cpu:0')
+    super(TPUStrategy, self).__init__('/cpu:0')
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     kwargs.pop('run_concurrently', None)

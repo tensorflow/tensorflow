@@ -34,18 +34,25 @@ namespace tensorflow {
 namespace {
 
 template <typename T>
+const std::unordered_map<string, T>* GetSpecialNumsSingleton() {
+  static const std::unordered_map<string, T>* special_nums =
+      CHECK_NOTNULL((new const std::unordered_map<string, T>{
+          {"inf", std::numeric_limits<T>::infinity()},
+          {"+inf", std::numeric_limits<T>::infinity()},
+          {"-inf", -std::numeric_limits<T>::infinity()},
+          {"infinity", std::numeric_limits<T>::infinity()},
+          {"+infinity", std::numeric_limits<T>::infinity()},
+          {"-infinity", -std::numeric_limits<T>::infinity()},
+          {"nan", std::numeric_limits<T>::quiet_NaN()},
+          {"+nan", std::numeric_limits<T>::quiet_NaN()},
+          {"-nan", -std::numeric_limits<T>::quiet_NaN()},
+      }));
+  return special_nums;
+}
+
+template <typename T>
 T locale_independent_strtonum(const char* str, const char** endptr) {
-  static const std::unordered_map<string, T> special_nums = {
-      {"inf", std::numeric_limits<T>::infinity()},
-      {"+inf", std::numeric_limits<T>::infinity()},
-      {"-inf", -std::numeric_limits<T>::infinity()},
-      {"infinity", std::numeric_limits<T>::infinity()},
-      {"+infinity", std::numeric_limits<T>::infinity()},
-      {"-infinity", -std::numeric_limits<T>::infinity()},
-      {"nan", std::numeric_limits<T>::quiet_NaN()},
-      {"+nan", std::numeric_limits<T>::quiet_NaN()},
-      {"-nan", -std::numeric_limits<T>::quiet_NaN()},
-  };
+  auto special_nums = GetSpecialNumsSingleton<T>();
   std::stringstream s(str);
 
   // Check if str is one of the special numbers.
@@ -57,8 +64,8 @@ T locale_independent_strtonum(const char* str, const char** endptr) {
         std::tolower(special_num_str[i], std::locale::classic());
   }
 
-  auto entry = special_nums.find(special_num_str);
-  if (entry != special_nums.end()) {
+  auto entry = special_nums->find(special_num_str);
+  if (entry != special_nums->end()) {
     *endptr = str + (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
                              : s.tellg());
     return entry->second;

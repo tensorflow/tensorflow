@@ -47,5 +47,62 @@ ENTRY main {
                            "indices are not supported."));
 }
 
+TEST(GatherExpanderTest, AvoidDegenerateDims) {
+  const string hlo_text = R"(
+HloModule TensorFlowGatherV2
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[3,2] gather(operand, indices),
+      output_window_dims={0},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=1,
+      window_bounds={3, 1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, GatherExpander{}.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  HloInstruction* while_instr = nullptr;
+  for (auto* instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kWhile) {
+      ASSERT_EQ(while_instr, nullptr)
+          << "Expected exactly one while instruction in the entry computation "
+             "after gather expansion";
+      while_instr = instr;
+    }
+  }
+
+  ASSERT_NE(while_instr, nullptr)
+      << "Expected exactly one while instruction in the entry computation "
+         "after gather expansion";
+
+  // We want to avoid create while loop with shapes that have degenerate
+  // dimensions for TF gather.  In this case we expect the loop state to be of
+  // the shape (sNN[], s32[3,3]{1,0}, s32[2]{0}, s32[2,3]{1,0}).  The leading
+  // sNN is an implementation detail from WhileUtil::MakeCountedLoop so we don't
+  // check it here (though in theory the form of the while loop state is itself
+  // an implementation detail from WhileUtil::MakeCountedLoop).
+
+  const Shape& while_shape = while_instr->shape();
+  ASSERT_TRUE(ShapeUtil::IsTuple(while_shape));
+  ASSERT_EQ(ShapeUtil::TupleElementCount(while_shape), 4);
+
+  EXPECT_TRUE(ShapeUtil::SameDimensions(
+      ShapeUtil::MakeShape(S32, {3, 3}),
+      ShapeUtil::GetTupleElementShape(while_shape, 1)));
+
+  EXPECT_TRUE(ShapeUtil::SameDimensions(
+      ShapeUtil::MakeShape(S32, {2}),
+      ShapeUtil::GetTupleElementShape(while_shape, 2)));
+
+  EXPECT_TRUE(ShapeUtil::SameDimensions(
+      ShapeUtil::MakeShape(S32, {2, 3}),
+      ShapeUtil::GetTupleElementShape(while_shape, 3)));
+}
 }  // namespace
 }  // namespace xla

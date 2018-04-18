@@ -54,15 +54,14 @@ std::ostream &operator<<(std::ostream &in, const curandStatus_t &status) {
   }
 }
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuRandPlugin);
 
 namespace wrap {
 
-#define PERFTOOLS_GPUTOOLS_CURAND_WRAP(__name)                      \
+#define STREAM_EXECUTOR_CURAND_WRAP(__name)                         \
   struct WrapperShim__##__name {                                    \
     template <typename... Args>                                     \
     curandStatus_t operator()(CUDAExecutor *parent, Args... args) { \
@@ -71,15 +70,15 @@ namespace wrap {
     }                                                               \
   } __name;
 
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandCreateGenerator);
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandDestroyGenerator);
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandSetStream);
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandGenerateUniform);
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandGenerateUniformDouble);
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandSetPseudoRandomGeneratorSeed);
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandSetGeneratorOffset);
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandGenerateNormal);
-PERFTOOLS_GPUTOOLS_CURAND_WRAP(curandGenerateNormalDouble);
+STREAM_EXECUTOR_CURAND_WRAP(curandCreateGenerator);
+STREAM_EXECUTOR_CURAND_WRAP(curandDestroyGenerator);
+STREAM_EXECUTOR_CURAND_WRAP(curandSetStream);
+STREAM_EXECUTOR_CURAND_WRAP(curandGenerateUniform);
+STREAM_EXECUTOR_CURAND_WRAP(curandGenerateUniformDouble);
+STREAM_EXECUTOR_CURAND_WRAP(curandSetPseudoRandomGeneratorSeed);
+STREAM_EXECUTOR_CURAND_WRAP(curandSetGeneratorOffset);
+STREAM_EXECUTOR_CURAND_WRAP(curandGenerateNormal);
+STREAM_EXECUTOR_CURAND_WRAP(curandGenerateNormalDouble);
 
 }  // namespace wrap
 
@@ -271,42 +270,40 @@ bool CUDARng::SetSeed(Stream *stream, const uint8 *seed, uint64 seed_bytes) {
 }
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
 
-namespace gpu = ::perftools::gputools;
+void initialize_curand() {
+  port::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::RngFactory>(
+          cuda::kCudaPlatformId, cuda::kCuRandPlugin, "cuRAND",
+          [](internal::StreamExecutorInterface *parent) -> rng::RngSupport * {
+            cuda::CUDAExecutor *cuda_executor =
+                dynamic_cast<cuda::CUDAExecutor *>(parent);
+            if (cuda_executor == nullptr) {
+              LOG(ERROR)
+                  << "Attempting to initialize an instance of the cuRAND "
+                  << "support library with a non-CUDA StreamExecutor";
+              return nullptr;
+            }
 
-REGISTER_MODULE_INITIALIZER(register_curand, {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::RngFactory>(
-              gpu::cuda::kCudaPlatformId, gpu::cuda::kCuRandPlugin, "cuRAND",
-              [](gpu::internal::StreamExecutorInterface
-                     *parent) -> gpu::rng::RngSupport * {
-                gpu::cuda::CUDAExecutor *cuda_executor =
-                    dynamic_cast<gpu::cuda::CUDAExecutor *>(parent);
-                if (cuda_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the cuRAND "
-                      << "support library with a non-CUDA StreamExecutor";
-                  return nullptr;
-                }
-
-                gpu::cuda::CUDARng *rng = new gpu::cuda::CUDARng(cuda_executor);
-                if (!rng->Init()) {
-                  // Note: Init() will log a more specific error.
-                  delete rng;
-                  return nullptr;
-                }
-                return rng;
-              });
+            cuda::CUDARng *rng = new cuda::CUDARng(cuda_executor);
+            if (!rng->Init()) {
+              // Note: Init() will log a more specific error.
+              delete rng;
+              return nullptr;
+            }
+            return rng;
+          });
 
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuRAND factory: "
                << status.error_message();
   }
 
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,
-                                                     gpu::PluginKind::kRng,
-                                                     gpu::cuda::kCuRandPlugin);
-});
+  PluginRegistry::Instance()->SetDefaultFactory(
+      cuda::kCudaPlatformId, PluginKind::kRng, cuda::kCuRandPlugin);
+}
+
+}  // namespace stream_executor
+
+REGISTER_MODULE_INITIALIZER(register_curand,
+                            { stream_executor::initialize_curand(); });

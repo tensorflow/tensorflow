@@ -19,8 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/core/platform/logging.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 

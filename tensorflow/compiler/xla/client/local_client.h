@@ -167,7 +167,7 @@ class LocalClient : public Client {
   StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
   // Returns the platform that the underlying service targets.
-  perftools::gputools::Platform* platform() const;
+  se::Platform* platform() const;
 
   // Returns the number of devices on the system of the service platform
   // type. Not all devices may be supported by the service (see

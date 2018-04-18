@@ -190,6 +190,24 @@ DECLARE_GRAPH_TRANSFORMATION(Dequantize)
 DECLARE_GRAPH_TRANSFORMATION(UnpartitionEmbeddingLookup)
 DECLARE_GRAPH_TRANSFORMATION(ExperimentalShuffleFCWeights)
 
+class PropagateDefaultMinMax : public GraphTransformation {
+ public:
+  bool Run(Model* model, std::size_t op_index) override;
+  const char* Name() const override { return "PropagateDefaultMinMax"; }
+
+  bool has_any_ranges_defined() const { return !type_ranges_.empty(); }
+  void DefineTypeRange(ArrayDataType data_type, double min, double max) {
+    MinMax minmax;
+    minmax.min = min;
+    minmax.max = max;
+    type_ranges_.emplace_back(data_type, minmax);
+  }
+
+ private:
+  bool SetArrayMinMax(const string& array_name, Array* array);
+  std::vector<std::pair<ArrayDataType, MinMax>> type_ranges_;
+};
+
 class ResolveReshapeAttributes : public GraphTransformation {
  public:
   bool Run(Model* model, std::size_t op_index) override;
@@ -226,6 +244,19 @@ class ResolveConstantFakeQuant : public GraphTransformation {
 
  private:
   bool propagate_fake_quant_num_bits_ = false;
+};
+
+class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
+ public:
+  bool Run(Model* model, std::size_t op_index) override;
+  const char* Name() const override {
+    return "EnsureUint8WeightsSafeForFastInt8Kernels";
+  }
+  bool allow_nudging_weights() const { return allow_nudging_weights_; }
+  void set_allow_nudging_weights(bool val) { allow_nudging_weights_ = val; }
+
+ private:
+  bool allow_nudging_weights_ = false;
 };
 
 #undef DECLARE_GRAPH_TRANSFORMATION

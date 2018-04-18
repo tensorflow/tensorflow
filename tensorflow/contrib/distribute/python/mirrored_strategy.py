@@ -141,9 +141,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return result
 
   def distribute_dataset(self, dataset):
-    per_device_dataset = values.PerDeviceDataset(
+    return values.PerDeviceDataset(
         dataset, self._devices, self._prefetch_on_device)
-    return per_device_dataset.make_one_shot_iterator()
 
   def _broadcast(self, tensor, destinations):
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.

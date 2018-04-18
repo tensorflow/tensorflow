@@ -44,19 +44,16 @@ class InterpreterCompiler : public Compiler {
   ~InterpreterCompiler() override {}
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> hlo_module,
-      perftools::gputools::StreamExecutor* stream_exec,
+      std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> hlo_module,
-      perftools::gputools::StreamExecutor* stream_exec,
+      std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::vector<std::unique_ptr<HloModule>> hlo_modules,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
-          stream_exec,
+      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
@@ -65,7 +62,7 @@ class InterpreterCompiler : public Compiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  se::Platform::Id PlatformId() const override;
 
  private:
   Status RunHloOptimization(HloModule* hlo_module);

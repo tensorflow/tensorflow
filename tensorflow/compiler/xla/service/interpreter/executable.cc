@@ -38,8 +38,6 @@ limitations under the License.
 namespace xla {
 namespace interpreter {
 
-namespace se = ::perftools::gputools;
-
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<const HloModule> hlo_module)
     : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,

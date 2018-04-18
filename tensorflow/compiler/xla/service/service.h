@@ -53,8 +53,8 @@ namespace xla {
 class ServiceOptions {
  public:
   // Set the platform backing the service, or nullptr for the default platform.
-  ServiceOptions& set_platform(perftools::gputools::Platform* platform);
-  perftools::gputools::Platform* platform() const;
+  ServiceOptions& set_platform(se::Platform* platform);
+  se::Platform* platform() const;
 
   // Set the number of replicas to use when compiling replicated
   // programs.
@@ -66,7 +66,7 @@ class ServiceOptions {
   int intra_op_parallelism_threads() const;
 
  private:
-  perftools::gputools::Platform* platform_ = nullptr;
+  se::Platform* platform_ = nullptr;
   int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
 };
@@ -79,7 +79,7 @@ class Service : public ServiceInterface {
  public:
   // Factory method for creating a new Service.
   static StatusOr<std::unique_ptr<Service>> NewService(
-      perftools::gputools::Platform* platform = nullptr);
+      se::Platform* platform = nullptr);
   static StatusOr<std::unique_ptr<Service>> NewService(
       const ServiceOptions& options);
 
@@ -286,7 +286,7 @@ class Service : public ServiceInterface {
                               ExecuteResponse* result);
 
   // Prepare the executors for executing parallel.
-  StatusOr<std::vector<perftools::gputools::StreamExecutor*>> GetExecutors(
+  StatusOr<std::vector<se::StreamExecutor*>> GetExecutors(
       const ExecutionOptions& execution_options, int64 requests_size,
       int64 request_index) const;
 
@@ -310,8 +310,7 @@ class Service : public ServiceInterface {
   StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
   ResolveAndValidateArguments(
       tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-          stream_executors);
+      tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
 
   // Create a Hlo module config for the given program shape and arguments.
   // execution_options is optional; if not given a default is used.
@@ -329,7 +328,7 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const VersionedComputationHandle& versioned_handle,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-      perftools::gputools::StreamExecutor* executor,
+      se::StreamExecutor* executor,
       DeviceMemoryAllocator* device_allocator = nullptr);
 
   // Builds an Executable for the given HLO module proto.
@@ -338,7 +337,7 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-      perftools::gputools::StreamExecutor* executor,
+      se::StreamExecutor* executor,
       DeviceMemoryAllocator* device_allocator = nullptr);
 
   // Same as BuildExecutable() above, but builds a list of Executables for the
@@ -346,14 +345,12 @@ class Service : public ServiceInterface {
   StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
       std::vector<VersionedComputationHandle> versioned_handles,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-      Backend* backend,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
+      Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
       DeviceMemoryAllocator* device_allocator);
   StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
       const std::vector<const HloModuleProto*>& module_protos,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-      Backend* backend,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
+      Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
       DeviceMemoryAllocator* device_allocator);
 
   // Similar to BuildExecutable, but look in the compilation cache for the
@@ -362,7 +359,7 @@ class Service : public ServiceInterface {
   StatusOr<std::shared_ptr<Executable>> BuildAndCacheExecutable(
       const VersionedComputationHandle& versioned_handle,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-      perftools::gputools::StreamExecutor* executor, ExecutionProfile* profile,
+      se::StreamExecutor* executor, ExecutionProfile* profile,
       DeviceMemoryAllocator* device_allocator = nullptr);
 
   // Runs the given executable with the given arguments and register the result
@@ -411,7 +408,7 @@ class Service : public ServiceInterface {
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that
   // represents a set of physical devices for the replicas.
-  StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Replicas(
+  StatusOr<std::vector<se::StreamExecutor*>> Replicas(
       const Backend& backend, const DeviceHandle& device_handle) const;
 
   Status MaybeDumpHloModule(const HloModule& module) const;

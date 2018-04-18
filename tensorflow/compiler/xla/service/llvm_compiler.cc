@@ -23,7 +23,7 @@ limitations under the License.
 namespace xla {
 StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<std::vector<perftools::gputools::StreamExecutor*>> stream_execs,
+    std::vector<std::vector<se::StreamExecutor*>> stream_execs,
     DeviceMemoryAllocator* device_allocator) {
   // Tensorflow tries to enable the following behaviors in all its threads:
   //
