@@ -142,10 +142,8 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
 
 
 def _signal_handler(unused_signal, unused_frame):
-  input_func = six.moves.input
-
   while True:
-    response = input_func("\nSIGINT received. Quit program? (Y/n): ").strip()
+    response = six.moves.input("\nSIGINT received. Quit program? (Y/n): ").strip()
     if response in ("", "Y", "y"):
       sys.exit(0)
     elif response in ("N", "n"):
