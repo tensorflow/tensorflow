@@ -17,19 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import stateless
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
-from tensorflow.contrib.data.python.ops import random_ops
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.util import deprecation
+from google3.third_party.tensorflow.contrib import stateless
+from google3.third_party.tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
+from google3.third_party.tensorflow.contrib.data.python.ops import gen_dataset_ops
+from google3.third_party.tensorflow.contrib.data.python.ops import random_ops
+from google3.third_party.tensorflow.python.data.ops import dataset_ops
+from google3.third_party.tensorflow.python.data.ops import readers
+from google3.third_party.tensorflow.python.data.util import nest
+from google3.third_party.tensorflow.python.data.util import sparse
+from google3.third_party.tensorflow.python.framework import dtypes
+from google3.third_party.tensorflow.python.framework import ops
+from google3.third_party.tensorflow.python.ops import array_ops
+from google3.third_party.tensorflow.python.ops import math_ops
+from google3.third_party.tensorflow.python.util import deprecation
 
 
 def parallel_interleave(map_func,
@@ -200,10 +200,10 @@ def sample_from_datasets(datasets, weights=None, seed=None):
 
   Args:
     datasets: A list of @{tf.data.Dataset} objects with compatible structure.
-    weights: (Optional.) A list of `len(datasets)` floating-point values,
-      where `weights[i]` represents the probability with which an element
-      should be sampled from `datasets[i]`. Defaults to a uniform distribution
-      across `datasets`.
+    weights: (Optional.) A list of `len(datasets)` floating-point values or a
+      @{tf.data.Dataset} object, where `weights[i]` represents the probability
+      with which an element should be sampled from `datasets[i]`. Defaults to a
+      uniform distribution across `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
       @{tf.set_random_seed} for behavior.
@@ -219,24 +219,25 @@ def sample_from_datasets(datasets, weights=None, seed=None):
   """
   num_datasets = len(datasets)
   if weights is None:
-    weights = array_ops.ones(
-        [num_datasets], dtype=dtypes.float32, name="weights")
-  else:
+    weights = dataset_ops.Dataset.from_tensors([1.0] * num_datasets).repeat()
+  elif not isinstance(weights, dataset_ops.Dataset):
     weights = ops.convert_to_tensor(weights, name="weights")
     if weights.dtype not in (dtypes.float32, dtypes.float64):
       raise TypeError("`weights` must be convertible to a tensor of "
                       "`tf.float32` or `tf.float64` elements.")
     if not weights.shape.is_compatible_with([num_datasets]):
       raise ValueError("`weights` must be a vector of length `len(datasets)`.")
+    weights = dataset_ops.Dataset.from_tensors(weights).repeat()
 
   # The `stateless_multinomial()` op expects log-probabilities, as opposed to
   # weights.
-  logits = math_ops.log(weights, name="logits")
+  logits = weights.map(lambda p: math_ops.log(p, name="logits"))
 
-  def select_dataset(seed):
+  def select_dataset(logits, seed):
     return array_ops.squeeze(
         stateless.stateless_multinomial([logits], 1, seed=seed), axis=[0, 1])
 
-  selector_input = random_ops.RandomDataset(seed).batch(2).map(select_dataset)
+  selector_input = dataset_ops.Dataset.zip(
+      (logits, random_ops.RandomDataset(seed).batch(2))).map(select_dataset)
 
   return DirectedInterleaveDataset(selector_input, datasets)
