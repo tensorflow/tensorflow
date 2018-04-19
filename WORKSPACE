@@ -67,6 +67,22 @@ new_http_archive(
 )
 
 new_http_archive(
+    name = "LinaroAarch64Gcc49",
+    build_file = "compilers/linaro-gcc49-aarch64.BUILD",
+    strip_prefix = "gcc-linaro-4.9.4-2017.01-x86_64_aarch64-linux-gnu/",
+    url = "https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/aarch64-linux-gnu/gcc-linaro-4.9.4-2017.01-x86_64_aarch64-linux-gnu.tar.xz",
+    sha256 = "d1f2761b697e6b49f5db1ec0cd48d2fd98224be8cb5ef182093f691e99c923eb",
+)
+
+new_http_archive(
+    name = "LinaroAarch64Gcc72",
+    build_file = "compilers/linaro-gcc72-aarch64.BUILD",
+    strip_prefix = "gcc-linaro-7.2.1-2017.11-x86_64_aarch64-linux-gnu/",
+    url = "https://releases.linaro.org/components/toolchain/binaries/7.2-2017.11/aarch64-linux-gnu/gcc-linaro-7.2.1-2017.11-x86_64_aarch64-linux-gnu.tar.xz",
+    sha256 = "20181f828e1075f1a493947ff91e82dd578ce9f8638fbdfc39e24b62857d8f8d",
+)
+
+new_http_archive(
     name = "mobile_ssd",
     build_file = "models.BUILD",
     sha256 = "bddd81ea5c80a97adfac1c9f770e6f55cbafd7cce4d3bbe15fbeb041e6b8f3e8",

@@ -76,6 +76,18 @@ config_setting(
 )
 
 config_setting(
+    name = "rpi3-armv8",
+    define_values = {
+        "target_system": "rpi3-armv8"
+    },
+    values = {
+        "host_crosstool_top": "@bazel_tools//tools/cpp:toolchain",
+        "cpu": "armv8",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
