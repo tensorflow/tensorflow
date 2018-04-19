@@ -172,10 +172,9 @@ def get_git_version(git_base_path, git_tag_override):
              "but got '%s'") % val)
       # There might be "-" in the tag name. But we can be sure that the final
       # two "-" are those inserted by the git describe command.
-      commits_ahead_of_tag = split_val[-2]
       abbrev_commit = split_val[-1]
       val = bytes(
-          "-".join([git_tag_override, commits_ahead_of_tag, abbrev_commit]))
+          "-".join([git_tag_override, "0", abbrev_commit]))
     return val if val else unknown_label
   except subprocess.CalledProcessError:
     return unknown_label
