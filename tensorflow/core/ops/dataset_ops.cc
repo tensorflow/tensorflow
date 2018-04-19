@@ -549,6 +549,7 @@ REGISTER_OP("PrependFromQueueAndPaddedBatchDataset")
     // and that `padding_values` are all scalars.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
+      // batch_size should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
