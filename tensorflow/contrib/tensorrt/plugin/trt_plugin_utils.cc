@@ -30,7 +30,7 @@ string ExtractOpName(const void* serial_data, size_t serial_length,
   assert(serial_length >= *incremental);
 
   const char* buffer = static_cast<const char*>(serial_data) + sizeof(size_t);
-  std::string op_name(buffer, op_name_char_count);
+  string op_name(buffer, op_name_char_count);
 
   return op_name;
 }

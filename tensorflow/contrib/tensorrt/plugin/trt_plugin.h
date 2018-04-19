@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN
 
 #include <iostream>
-#include <string>
 #include <unordered_map>
 #include <vector>
+#include "tensorflow/core/platform/types.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -35,28 +35,28 @@ namespace tensorrt {
 // PluginDeserializeFunc & PluginConstructFunc through PluginFactoryTensorRT
 class PluginTensorRT : public nvinfer1::IPlugin {
  public:
-  PluginTensorRT(){};
+  PluginTensorRT() {};
   PluginTensorRT(const void* serialized_data, size_t length);
-  virtual const std::string& GetPluginName() const = 0;
+  virtual const string& GetPluginName() const = 0;
   virtual bool Finalize() = 0;
 
-  virtual bool SetAttribute(const std::string& key, const void* ptr,
+  virtual bool SetAttribute(const string& key, const void* ptr,
                             const size_t size) = 0;
-  virtual bool GetAttribute(const std::string& key, const void** ptr,
+  virtual bool GetAttribute(const string& key, const void** ptr,
                             size_t* size) const = 0;
 
   void configure(const nvinfer1::Dims* inputs, int num_inputs,
                  const nvinfer1::Dims* outputs, int num_outputs,
                  int max_batch_size) override;
 
-  virtual bool StoreAttribute(const std::string& key, const void* ptr,
+  virtual bool StoreAttribute(const string& key, const void* ptr,
                               const size_t size);
 
   virtual size_t getSerializationSize() override;
   virtual void serialize(void* buffer) override;
 
  protected:
-  std::unordered_map<std::string, std::vector<char> > attr_map_;
+  std::unordered_map<string, std::vector<char> > attr_map_;
 
   std::vector<nvinfer1::Dims> input_dim_list_;
 };

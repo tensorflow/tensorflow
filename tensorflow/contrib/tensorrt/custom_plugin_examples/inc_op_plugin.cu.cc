@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iostream>
 #include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_plugin.h"
+#include <iostream>
+#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #if GOOGLE_CUDA
@@ -23,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-const std::string IncOpPlugin::plugin_name_ = "IncPluginTRT";
+const string IncOpPlugin::plugin_name_ = "IncPluginTRT";
 
 IncOpPlugin* CreateIncPlugin() { return new IncOpPlugin(); }
 
@@ -47,7 +48,7 @@ IncOpPlugin::IncOpPlugin(const void* serialized_data, size_t length)
   SetAttribute("inc", buffer + consumed_data, sizeof(float));
 }
 
-bool IncOpPlugin::SetAttribute(const std::string& key, const void* ptr,
+bool IncOpPlugin::SetAttribute(const string& key, const void* ptr,
                                const size_t size) {
   if (strcmp(key.c_str(), "inc") == 0 && size == sizeof(float)) {
     StoreAttribute(key, ptr, size);  // save the attribute to own the data;
@@ -57,7 +58,7 @@ bool IncOpPlugin::SetAttribute(const std::string& key, const void* ptr,
   return false;
 }
 
-bool IncOpPlugin::GetAttribute(const std::string& key, const void** ptr,
+bool IncOpPlugin::GetAttribute(const string& key, const void** ptr,
                                size_t* size) const {
   const auto& iter = attr_map_.find(key);
   if (iter != attr_map_.end()) {

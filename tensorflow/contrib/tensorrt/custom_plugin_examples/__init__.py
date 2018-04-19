@@ -14,11 +14,13 @@
 # =============================================================================
 """Import custom op for plugin and register it in plugin factory registry."""
 
-from ops import gen_inc_op
-from plugin_wrap import inc_op_register
-from inc_op import *
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import,g-import-not-at-top
+from tensorflow.contrib.tensorrt.custom_plugin_examples.ops import gen_inc_op
+from tensorflow.contrib.tensorrt.custom_plugin_examples.plugin_wrap import inc_op_register
+from tensorflow.contrib.tensorrt.custom_plugin_examples import inc_op as import_inc_op_so
+
 inc_op = gen_inc_op.inc_plugin_trt
 inc_op_register()
-# pylint: enable=unused-import,wildcard-import,g-import-not-at-top

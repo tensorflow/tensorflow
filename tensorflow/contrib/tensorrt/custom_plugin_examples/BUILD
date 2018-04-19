@@ -1,3 +1,9 @@
+# Description:
+#   Example for plugin support in TensorRT(http://developer.nvidia.com/tensorrt)
+#   through TensorFlow integration. Targeting TensorRT 3.0.4
+#   APIs are meant to change while upgrading TRT.
+#   add init_py into pip package BUILD dependency to install it.
+
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load(
@@ -8,6 +14,7 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_py_wrap_cc",
     "tf_copts",
+    "tf_py_test",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -18,19 +25,16 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 tf_kernel_library(
     name = "_inc_op_plugin_kernel",
-    srcs = [
-        "inc_op_plugin.cc",
-    ],
-    hdrs = [
-    ],
     gpu_srcs = [
         "inc_op_kernel.cu.cc",
         "inc_op_kernel.h",
+        "inc_op_plugin.cu.cc",
         "inc_op_plugin.h",
     ],
-    deps = if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+    deps = [
         "//tensorflow/contrib/tensorrt:trt_plugins",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
     ]),
 )
 
@@ -38,9 +42,10 @@ tf_gen_op_libs(
     op_lib_names = [
         "inc_op",
     ],
-    deps = if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+    deps = [
         "//tensorflow/contrib/tensorrt:trt_plugins",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
     ]),
 )
 
@@ -70,9 +75,8 @@ tf_custom_op_library(
     srcs = ["ops/inc_op.cc"],
     deps = [
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
         "//tensorflow/contrib/tensorrt:trt_plugins",
-    ]),
+    ],
 )
 
 tf_custom_op_py_library(
@@ -94,6 +98,22 @@ py_library(
     deps = [
         ":inc_op",
         ":inc_op_loader",
+    ],
+)
+
+tf_py_test(
+    name = "plugin_test",
+    size = "small",
+    srcs = [
+        "plugin_test.py",
+    ],
+    additional_deps = [
+        ":init_py",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/contrib/tensorrt:init_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:tf_optimizer",
     ],
 )
 

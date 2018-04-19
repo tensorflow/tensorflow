@@ -14,10 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
-#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_plugin.h"
 
 #if GOOGLE_CUDA
-#define EIGEN_USE_GPU
 #if GOOGLE_TENSORRT
 
 namespace tensorflow {

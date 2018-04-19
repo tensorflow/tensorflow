@@ -36,7 +36,7 @@ class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
                                size_t serial_length) override;
 
   // plugin construction, PluginFactoryTensorRT owns the plugin;
-  PluginTensorRT* CreatePlugin(const std::string& op_name);
+  PluginTensorRT* CreatePlugin(const string& op_name);
 
   static PluginFactoryTensorRT* GetInstance() {
     static PluginFactoryTensorRT* factory_instance =
@@ -44,11 +44,11 @@ class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
     return factory_instance;
   }
 
-  bool RegisterPlugin(const std::string& op_name,
+  bool RegisterPlugin(const string& op_name,
                       PluginDeserializeFunc deserialize_func,
                       PluginConstructFunc construct_func);
 
-  bool IsPlugin(const std::string& op_name) {
+  bool IsPlugin(const string& op_name) {
     return plugin_registry_.find(op_name) != plugin_registry_.end();
   }
 
@@ -57,7 +57,7 @@ class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
   void DestroyPlugins();
 
  protected:
-  std::unordered_map<std::string,
+  std::unordered_map<string,
                      std::pair<PluginDeserializeFunc, PluginConstructFunc> >
       plugin_registry_;
 

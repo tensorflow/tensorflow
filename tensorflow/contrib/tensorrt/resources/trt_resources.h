@@ -82,7 +82,7 @@ class TRTWeightStore : public tensorflow::ResourceBase {
 
 class TRTEngineResource : public tensorflow::ResourceBase {
  public:
-  TRTEngineResource() : runtime_(nullptr), ctx_(nullptr){};
+  TRTEngineResource() : runtime_(nullptr), ctx_(nullptr) {};
   string DebugString() override { return string(""); }
   nvinfer1::IRuntime* runtime_;
   nvinfer1::IExecutionContext* ctx_;

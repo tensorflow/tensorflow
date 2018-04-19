@@ -17,13 +17,14 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_INC_OP
 
 #if GOOGLE_CUDA
-#define EIGEN_USE_GPU
 #if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
 
 __global__ void VecInc(float* vec, float inc, float* dest, int n);
+void IncrementKernel(const float* d_input, float inc, float* d_output,
+                     int count, cudaStream_t stream);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

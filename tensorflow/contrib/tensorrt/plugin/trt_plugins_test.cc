@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -31,18 +30,17 @@ namespace test {
 
 class StubPlugin : public PluginTensorRT {
  public:
-  static const std::string plugin_name_;
-  StubPlugin(){};
+  static const string plugin_name_;
+  StubPlugin() {};
   StubPlugin(const void* serialized_data, size_t length)
-      : PluginTensorRT(serialized_data, length){};
-  const std::string& GetPluginName() override { return plugin_name_; };
+      : PluginTensorRT(serialized_data, length) {};
+  const string& GetPluginName() override { return plugin_name_; };
   virtual bool Finalize() { return true; };
-  virtual bool SetAttribute(const std::string& key, const void* ptr,
+  virtual bool SetAttribute(const string& key, const void* ptr,
                             const size_t size) {
     return true;
   };
-  virtual bool GetAttribute(const std::string& key, const void* ptr,
-                            size_t& size) {
+  virtual bool GetAttribute(const string& key, const void* ptr, size_t& size) {
     return true;
   };
   int getNbOutputs() const override { return 1; }
@@ -59,7 +57,7 @@ class StubPlugin : public PluginTensorRT {
   }
 };
 
-const std::string StubPlugin::plugin_name_ = "StubPlugin";
+const string StubPlugin::plugin_name_ = "StubPlugin";
 
 StubPlugin* CreateStubPlugin() { return new StubPlugin(); }
 
@@ -72,8 +70,9 @@ class PluginTest : public ::testing::Test {
  public:
   bool RegisterStubPlugin() {
     if (PluginFactoryTensorRT::GetInstance()->IsPlugin(
-            StubPlugin::plugin_name_))
+            StubPlugin::plugin_name_)) {
       return true;
+    }
     return PluginFactoryTensorRT::GetInstance()->RegisterPlugin(
         StubPlugin::plugin_name_, CreateStubPluginDeserialize,
         CreateStubPlugin);
