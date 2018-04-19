@@ -254,6 +254,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kClz:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
@@ -1248,6 +1249,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -1728,6 +1730,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kAdd:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
     case HloOpcode::kComplex:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
@@ -2659,6 +2662,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleFloor(this);
     case HloOpcode::kCeil:
       return visitor->HandleCeil(this);
+    case HloOpcode::kClz:
+      return visitor->HandleClz(this);
     case HloOpcode::kLog:
       return visitor->HandleLog(this);
     case HloOpcode::kTanh:
@@ -3000,6 +3005,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCopy:
