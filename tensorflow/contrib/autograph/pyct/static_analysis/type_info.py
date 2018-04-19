@@ -199,8 +199,7 @@ class TypeInfoResolver(transformer.Base):
         target_symbol = anno.getanno(target, anno.Basic.QN)
         self.scope.setval(target_symbol, source)
       else:
-        raise ValueError(
-            'assignment target has unknown type: %s' % target_item)
+        raise ValueError('assignment target has unknown type: %s' % target)
 
   def visit_With(self, node):
     for wi in node.items:
