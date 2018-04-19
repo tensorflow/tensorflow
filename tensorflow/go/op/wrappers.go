@@ -3105,6 +3105,42 @@ func Betainc(scope *Scope, a tf.Output, b tf.Output, x tf.Output) (z tf.Output) 
 	return op.Output(0)
 }
 
+// Return a tensor with the same shape and contents as the input tensor or value.
+func Identity(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Identity",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
+//
+// This is the angle \( \theta \in [-\pi, \pi] \) such that
+// \[ x = r \cos(\theta) \]
+// and
+// \[ y = r \sin(\theta) \]
+// where \(r = \sqrt(x^2 + y^2) \).
+func Atan2(scope *Scope, y tf.Output, x tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Atan2",
+		Input: []tf.Input{
+			y, x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a dataset that passes a sliding window over `input_dataset`.
 //
 // Arguments:
@@ -25378,42 +25414,6 @@ func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ..
 			string_handle,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
-//
-// This is the angle \( \theta \in [-\pi, \pi] \) such that
-// \[ x = r \cos(\theta) \]
-// and
-// \[ y = r \sin(\theta) \]
-// where \(r = \sqrt(x^2 + y^2) \).
-func Atan2(scope *Scope, y tf.Output, x tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Atan2",
-		Input: []tf.Input{
-			y, x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Return a tensor with the same shape and contents as the input tensor or value.
-func Identity(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Identity",
-		Input: []tf.Input{
-			input,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
