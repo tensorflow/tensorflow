@@ -48,15 +48,15 @@ def model_fn(features, labels, mode):
     loss=loss,
     train_op=train)
 
-def gen_input():
-  type = random.randint(0, 2)
-  t = [random.random(), random.random(), random.random(), random.random()]
-  t[type] += random.uniform(1.0, 3.0)
-  v = [0,0,0]
-  v[type] = 1.0
-  yield (t, v)
-
 def input_fn():
+  def gen_input():
+    type = random.randint(0, 2)
+    t = [random.random(), random.random(), random.random(), random.random()]
+    t[type] += random.uniform(1.0, 3.0)
+    v = [0,0,0]
+    v[type] = 1.0
+    yield (t, v)
+
   dataset = tf.data.Dataset.from_generator(
     gen_input,
     (tf.float32, tf.float32),
