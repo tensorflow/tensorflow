@@ -10,7 +10,9 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
         "//tensorflow/contrib/eager/python:tfe",
+        "//third_party/py/numpy",
     ],
 )
 

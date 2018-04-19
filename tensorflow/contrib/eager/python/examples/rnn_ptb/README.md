@@ -20,6 +20,18 @@ Benchmarks (using synthetic data):
 
 ```
 # Using eager execution
+python rnn_ptb_test.py --benchmarks=.
+
+# Using graph execution
+python rnn_ptb_graph_test.py --benchmarks=.
+```
+
+The above uses the model definition included with the TensorFlow pip
+package. To build (and run benchmarks) from source:
+
+
+```
+# Using eager execution
 bazel run -c opt --config=cuda :rnn_ptb_test -- --benchmarks=.
 
 # Using graph execution
@@ -28,7 +40,7 @@ bazel run -c opt --config=cuda :rnn_ptb_graph_test -- --benchmarks=.
 
 (Or remove the `--config=cuda` flag for running on CPU instead of GPU).
 
-On October 31, 2017, the benchmarks demostrated slightly better performance
+On October 31, 2017, the benchmarks demonstrated slightly better performance
 (3-6%) for graph execution over eager execution for this particular model when
 using a single NVIDIA Titan X (Pascal) GPU on a host with an Intel Xeon E5-1650
 CPU @ 3.50GHz and a batch size of 32.

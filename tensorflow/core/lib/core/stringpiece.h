@@ -40,7 +40,7 @@ class StringPiece {
   typedef size_t size_type;
 
   // Create an empty slice.
-  StringPiece() : data_(""), size_(0) {}
+  StringPiece() : data_(nullptr), size_(0) {}
 
   // Create a slice that refers to d[0,n-1].
   StringPiece(const char* d, size_t n) : data_(d), size_(n) {}
@@ -50,11 +50,6 @@ class StringPiece {
 
   // Create a slice that refers to s[0,strlen(s)-1]
   StringPiece(const char* s) : data_(s), size_(strlen(s)) {}
-
-  void set(const void* data, size_t len) {
-    data_ = reinterpret_cast<const char*>(data);
-    size_ = len;
-  }
 
   // Return a pointer to the beginning of the referenced data
   const char* data() const { return data_; }
@@ -70,19 +65,13 @@ class StringPiece {
   iterator begin() const { return data_; }
   iterator end() const { return data_ + size_; }
 
-  static const size_t npos;
+  static const size_t npos = size_type(-1);
 
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
   char operator[](size_t n) const {
     assert(n < size());
     return data_[n];
-  }
-
-  // Change this slice to refer to an empty array
-  void clear() {
-    data_ = "";
-    size_ = 0;
   }
 
   // Drop the first "n" bytes from this slice.
@@ -99,11 +88,13 @@ class StringPiece {
 
   size_t find(char c, size_t pos = 0) const;
   size_t rfind(char c, size_t pos = npos) const;
+  // DEPRECATED: Use tensorflow::str_util::StrContains instead.
   bool contains(StringPiece s) const;
 
   // Checks whether StringPiece starts with x and if so advances the beginning
   // of it to past the match.  It's basically a shortcut for starts_with
   // followed by remove_prefix.
+  // DEPRECATED: Use tensorflow::str_util::ConsumePrefix instead.
   bool Consume(StringPiece x) {
     if (starts_with(x)) {
       remove_prefix(x.size_);
@@ -113,10 +104,6 @@ class StringPiece {
   }
 
   StringPiece substr(size_t pos, size_t n = npos) const;
-
-  struct Hasher {
-    size_t operator()(StringPiece arg) const;
-  };
 
   // Return a string that contains the copy of the referenced data.
   std::string ToString() const { return std::string(data_, size_); }
@@ -128,10 +115,12 @@ class StringPiece {
   int compare(StringPiece b) const;
 
   // Return true iff "x" is a prefix of "*this"
+  // DEPRECATED: Use tensorflow::str_util::StartsWith instead.
   bool starts_with(StringPiece x) const {
     return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
   }
   // Return true iff "x" is a suffix of "*this"
+  // DEPRECATED: Use tensorflow::str_util::EndsWith instead.
   bool ends_with(StringPiece x) const {
     return ((size_ >= x.size_) &&
             (memcmp(data_ + (size_ - x.size_), x.data_, x.size_) == 0));

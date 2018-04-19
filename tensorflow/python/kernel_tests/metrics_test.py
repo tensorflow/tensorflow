@@ -158,9 +158,12 @@ def _assert_nan(test_case, actual):
   test_case.assertTrue(math.isnan(actual), 'Expected NAN, got %s.' % actual)
 
 
-def _assert_local_variables(test_case, expected):
+def _assert_metric_variables(test_case, expected):
   test_case.assertEquals(
       set(expected), set(v.name for v in variables.local_variables()))
+  test_case.assertEquals(
+      set(expected),
+      set(v.name for v in ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
 
 
 def _test_values(shape):
@@ -174,7 +177,7 @@ class MeanTest(test.TestCase):
 
   def testVars(self):
     metrics.mean(array_ops.ones([4, 3]))
-    _assert_local_variables(self, ('mean/count:0', 'mean/total:0'))
+    _assert_metric_variables(self, ('mean/count:0', 'mean/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -340,8 +343,8 @@ class MeanTensorTest(test.TestCase):
 
   def testVars(self):
     metrics.mean_tensor(array_ops.ones([4, 3]))
-    _assert_local_variables(self, ('mean/total_tensor:0',
-                                   'mean/count_tensor:0'))
+    _assert_metric_variables(self,
+                             ('mean/total_tensor:0', 'mean/count_tensor:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -414,7 +417,7 @@ class MeanTensorTest(test.TestCase):
 
       self.assertAllClose([[-0.9 / 4., 3.525]], sess.run(mean), 5)
 
-  def testWeighted1d(self):
+  def testBinaryWeighted1d(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = data_flow_ops.FIFOQueue(
@@ -440,6 +443,33 @@ class MeanTensorTest(test.TestCase):
       for _ in range(4):
         sess.run(update_op)
       self.assertAllClose([[3.25, 0.5]], sess.run(mean), 5)
+
+  def testWeighted1d(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weights.
+      weights_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [[0.0025]])
+      _enqueue_vector(sess, weights_queue, [[0.005]])
+      _enqueue_vector(sess, weights_queue, [[0.01]])
+      _enqueue_vector(sess, weights_queue, [[0.0075]])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.mean_tensor(values, weights)
+
+      sess.run(variables.local_variables_initializer())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAllClose([[0.8, 3.52]], sess.run(mean), 5)
 
   def testWeighted2d_1(self):
     with self.test_session() as sess:
@@ -506,8 +536,8 @@ class AccuracyTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         name='my_accuracy')
-    _assert_local_variables(self, ('my_accuracy/count:0',
-                                   'my_accuracy/total:0'))
+    _assert_metric_variables(self,
+                             ('my_accuracy/count:0', 'my_accuracy/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -690,8 +720,8 @@ class PrecisionTest(test.TestCase):
   def testVars(self):
     metrics.precision(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('precision/false_positives/count:0',
-                                   'precision/true_positives/count:0'))
+    _assert_metric_variables(self, ('precision/false_positives/count:0',
+                                    'precision/true_positives/count:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -876,8 +906,9 @@ class RecallTest(test.TestCase):
   def testVars(self):
     metrics.recall(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('recall/false_negatives/count:0',
-                                   'recall/true_positives/count:0'))
+    _assert_metric_variables(
+        self,
+        ('recall/false_negatives/count:0', 'recall/true_positives/count:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -999,9 +1030,9 @@ class AUCTest(test.TestCase):
   def testVars(self):
     metrics.auc(predictions=array_ops.ones((10, 1)),
                 labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self,
-                            ('auc/true_positives:0', 'auc/false_negatives:0',
-                             'auc/false_positives:0', 'auc/true_negatives:0'))
+    _assert_metric_variables(self,
+                             ('auc/true_positives:0', 'auc/false_negatives:0',
+                              'auc/false_positives:0', 'auc/true_negatives:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1093,40 +1124,91 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(0.7, auc.eval(), 5)
 
-  def testAUCPRSpecialCase(self):
+  # Regarding the AUC-PR tests: note that the preferred method when
+  # calculating AUC-PR is summation_method='careful_interpolation'.
+  def testCorrectAUCPRSpecialCase(self):
     with self.test_session() as sess:
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 1, 1], shape=(1, 4))
-      auc, update_op = metrics.auc(labels, predictions, curve='PR')
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='careful_interpolation')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
+      # expected ~= 0.79726744594
+      expected = 1 - math.log(1.5) / 2
+      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
-      self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
-
-  def testAnotherAUCPRSpecialCase(self):
+  def testCorrectAnotherAUCPRSpecialCase(self):
     with self.test_session() as sess:
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
           shape=(1, 7),
           dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 1, 0, 1, 0, 1], shape=(1, 7))
-      auc, update_op = metrics.auc(labels, predictions, curve='PR')
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='careful_interpolation')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
+      # expected ~= 0.61350593198
+      expected = (2.5 - 2 * math.log(4./3) - 0.25 * math.log(7./5)) / 3
+      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
-      self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
-
-  def testThirdAUCPRSpecialCase(self):
+  def testThirdCorrectAUCPRSpecialCase(self):
     with self.test_session() as sess:
       predictions = constant_op.constant(
           [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
           shape=(1, 7),
           dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 0, 0, 1, 1, 1], shape=(1, 7))
-      auc, update_op = metrics.auc(labels, predictions, curve='PR')
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='careful_interpolation')
+
+      sess.run(variables.local_variables_initializer())
+      # expected ~= 0.90410597584
+      expected = 1 - math.log(4./3) / 3
+      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
+
+  def testIncorrectAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.1, 0.4, 0.35, 0.8], shape=(1, 4), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 1, 1], shape=(1, 4))
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='trapezoidal')
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
+
+      self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
+
+  def testAnotherIncorrectAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
+          shape=(1, 7),
+          dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 1, 0, 1, 0, 1], shape=(1, 7))
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='trapezoidal')
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
+
+      self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
+
+  def testThirdIncorrectAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
+          shape=(1, 7),
+          dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 0, 0, 1, 1, 1], shape=(1, 7))
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='trapezoidal')
 
       sess.run(variables.local_variables_initializer())
       self.assertAlmostEqual(0.90277, sess.run(update_op), delta=1e-3)
@@ -1256,11 +1338,11 @@ class SpecificityAtSensitivityTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         sensitivity=0.7)
-    _assert_local_variables(self,
-                            ('specificity_at_sensitivity/true_positives:0',
-                             'specificity_at_sensitivity/false_negatives:0',
-                             'specificity_at_sensitivity/false_positives:0',
-                             'specificity_at_sensitivity/true_negatives:0'))
+    _assert_metric_variables(self,
+                             ('specificity_at_sensitivity/true_positives:0',
+                              'specificity_at_sensitivity/false_negatives:0',
+                              'specificity_at_sensitivity/false_positives:0',
+                              'specificity_at_sensitivity/true_negatives:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1393,11 +1475,11 @@ class SensitivityAtSpecificityTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         specificity=0.7)
-    _assert_local_variables(self,
-                            ('sensitivity_at_specificity/true_positives:0',
-                             'sensitivity_at_specificity/false_negatives:0',
-                             'sensitivity_at_specificity/false_positives:0',
-                             'sensitivity_at_specificity/true_negatives:0'))
+    _assert_metric_variables(self,
+                             ('sensitivity_at_specificity/true_positives:0',
+                              'sensitivity_at_specificity/false_negatives:0',
+                              'sensitivity_at_specificity/false_positives:0',
+                              'sensitivity_at_specificity/true_negatives:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1512,9 +1594,10 @@ class PrecisionRecallThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0, 0.5, 1.0])
-    _assert_local_variables(self, (
+    _assert_metric_variables(self, (
         'precision_at_thresholds/true_positives:0',
-        'precision_at_thresholds/false_positives:0',))
+        'precision_at_thresholds/false_positives:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1796,17 +1879,17 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       self.assertAlmostEqual(expected_rec, rec.eval(), 2)
 
 
-def _test_sparse_precision_at_k(predictions,
-                                labels,
-                                k,
-                                expected,
-                                class_id=None,
-                                weights=None,
-                                test_case=None):
+def _test_precision_at_k(predictions,
+                         labels,
+                         k,
+                         expected,
+                         class_id=None,
+                         weights=None,
+                         test_case=None):
   with ops.Graph().as_default() as g, test_case.test_session(g):
     if weights is not None:
       weights = constant_op.constant(weights, dtypes_lib.float32)
-    metric, update = metrics.sparse_precision_at_k(
+    metric, update = metrics.precision_at_k(
         predictions=constant_op.constant(predictions, dtypes_lib.float32),
         labels=labels,
         k=k,
@@ -1859,17 +1942,17 @@ def _test_precision_at_top_k(
       test_case.assertEqual(expected, metric.eval())
 
 
-def _test_sparse_average_precision_at_k(predictions,
-                                        labels,
-                                        k,
-                                        expected,
-                                        weights=None,
-                                        test_case=None):
+def _test_average_precision_at_k(predictions,
+                                 labels,
+                                 k,
+                                 expected,
+                                 weights=None,
+                                 test_case=None):
   with ops.Graph().as_default() as g, test_case.test_session(g):
     if weights is not None:
       weights = constant_op.constant(weights, dtypes_lib.float32)
     predictions = constant_op.constant(predictions, dtypes_lib.float32)
-    metric, update = metrics.sparse_average_precision_at_k(
+    metric, update = metrics.average_precision_at_k(
         labels, predictions, k, weights=weights)
 
     # Fails without initialized vars.
@@ -1886,7 +1969,7 @@ def _test_sparse_average_precision_at_k(predictions,
       test_case.assertAlmostEqual(expected, metric.eval())
 
 
-class SingleLabelSparsePrecisionTest(test.TestCase):
+class SingleLabelPrecisionAtKTest(test.TestCase):
 
   def setUp(self):
     self._predictions = ((0.1, 0.3, 0.2, 0.4), (0.1, 0.2, 0.3, 0.4))
@@ -1899,18 +1982,18 @@ class SingleLabelSparsePrecisionTest(test.TestCase):
         _binary_2d_label_to_2d_sparse_value(indicator_labels), np.array(
             class_labels, dtype=np.int64), np.array(
                 [[class_id] for class_id in class_labels], dtype=np.int64))
-    self._test_sparse_precision_at_k = functools.partial(
-        _test_sparse_precision_at_k, test_case=self)
+    self._test_precision_at_k = functools.partial(
+        _test_precision_at_k, test_case=self)
     self._test_precision_at_top_k = functools.partial(
         _test_precision_at_top_k, test_case=self)
-    self._test_sparse_average_precision_at_k = functools.partial(
-        _test_sparse_average_precision_at_k, test_case=self)
+    self._test_average_precision_at_k = functools.partial(
+        _test_average_precision_at_k, test_case=self)
 
   def test_at_k1_nan(self):
     for labels in self._labels:
       # Classes 0,1,2 have 0 predictions, classes -1 and 4 are out of range.
       for class_id in (-1, 0, 1, 2, 4):
-        self._test_sparse_precision_at_k(
+        self._test_precision_at_k(
             self._predictions, labels, k=1, expected=NAN, class_id=class_id)
         self._test_precision_at_top_k(
             self._predictions_idx, labels, k=1, expected=NAN, class_id=class_id)
@@ -1918,29 +2001,29 @@ class SingleLabelSparsePrecisionTest(test.TestCase):
   def test_at_k1(self):
     for labels in self._labels:
       # Class 3: 1 label, 2 predictions, 1 correct.
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           self._predictions, labels, k=1, expected=1.0 / 2, class_id=3)
       self._test_precision_at_top_k(
           self._predictions_idx, labels, k=1, expected=1.0 / 2, class_id=3)
 
       # All classes: 2 labels, 2 predictions, 1 correct.
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           self._predictions, labels, k=1, expected=1.0 / 2)
       self._test_precision_at_top_k(
           self._predictions_idx, labels, k=1, expected=1.0 / 2)
-      self._test_sparse_average_precision_at_k(
+      self._test_average_precision_at_k(
           self._predictions, labels, k=1, expected=1.0 / 2)
 
 
-class MultiLabelSparsePrecisionTest(test.TestCase):
+class MultiLabelPrecisionAtKTest(test.TestCase):
 
   def setUp(self):
-    self._test_sparse_precision_at_k = functools.partial(
-        _test_sparse_precision_at_k, test_case=self)
+    self._test_precision_at_k = functools.partial(
+        _test_precision_at_k, test_case=self)
     self._test_precision_at_top_k = functools.partial(
         _test_precision_at_top_k, test_case=self)
-    self._test_sparse_average_precision_at_k = functools.partial(
-        _test_sparse_average_precision_at_k, test_case=self)
+    self._test_average_precision_at_k = functools.partial(
+        _test_average_precision_at_k, test_case=self)
 
   def test_average_precision(self):
     # Example 1.
@@ -1956,11 +2039,11 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
                          (precision_ex1[1] + precision_ex1[3]) / 4)
     for i in xrange(4):
       k = i + 1
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k, expected=precision_ex1[i])
       self._test_precision_at_top_k(
           (predictions_idx_ex1[:k],), labels, k=k, expected=precision_ex1[i])
-      self._test_sparse_average_precision_at_k(
+      self._test_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
 
     # Example 2.
@@ -1974,11 +2057,11 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
                          (precision_ex2[2] + precision_ex2[3]) / 4)
     for i in xrange(4):
       k = i + 1
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k, expected=precision_ex2[i])
       self._test_precision_at_top_k(
           (predictions_idx_ex2[:k],), labels, k=k, expected=precision_ex2[i])
-      self._test_sparse_average_precision_at_k(
+      self._test_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex2[i])
 
     # Both examples, we expect both precision and average precision to be the
@@ -1994,11 +2077,11 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
     for i in xrange(4):
       k = i + 1
       predictions_idx = (predictions_idx_ex1[:k], predictions_idx_ex2[:k])
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k, expected=streaming_precision[i])
       self._test_precision_at_top_k(
           predictions_idx, labels, k=k, expected=streaming_precision[i])
-      self._test_sparse_average_precision_at_k(
+      self._test_average_precision_at_k(
           predictions, labels, k, expected=streaming_average_precision[i])
 
     # Weighted examples, we expect streaming average precision to be the
@@ -2010,7 +2093,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
     ]
     for i in xrange(4):
       k = i + 1
-      self._test_sparse_average_precision_at_k(
+      self._test_average_precision_at_k(
           predictions,
           labels,
           k,
@@ -2029,11 +2112,11 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
                          (precision_ex1[1] + precision_ex1[3]) / 4)
     for i in xrange(4):
       k = i + 1
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k, expected=precision_ex1[i])
       self._test_precision_at_top_k(
           (predictions_idx_ex1[:k],), labels, k=k, expected=precision_ex1[i])
-      self._test_sparse_average_precision_at_k(
+      self._test_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
 
   def test_three_labels_at_k5_no_predictions(self):
@@ -2047,7 +2130,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
     for labels in (sparse_labels, dense_labels):
       # Classes 1,3,8 have 0 predictions, classes -1 and 10 are out of range.
       for class_id in (-1, 1, 3, 8, 10):
-        self._test_sparse_precision_at_k(
+        self._test_precision_at_k(
             predictions, labels, k=5, expected=NAN, class_id=class_id)
         self._test_precision_at_top_k(
             predictions_idx, labels, k=5, expected=NAN, class_id=class_id)
@@ -2063,7 +2146,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
     for labels in (sparse_labels, dense_labels):
       # Classes 0,4,6,9: 0 labels, >=1 prediction.
       for class_id in (0, 4, 6, 9):
-        self._test_sparse_precision_at_k(
+        self._test_precision_at_k(
             predictions, labels, k=5, expected=0.0, class_id=class_id)
         self._test_precision_at_top_k(
             predictions_idx, labels, k=5, expected=0.0, class_id=class_id)
@@ -2078,25 +2161,25 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
 
     for labels in (sparse_labels, dense_labels):
       # Class 2: 2 labels, 2 correct predictions.
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k=5, expected=2.0 / 2, class_id=2)
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=2.0 / 2, class_id=2)
 
       # Class 5: 1 label, 1 correct prediction.
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k=5, expected=1.0 / 1, class_id=5)
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=1.0 / 1, class_id=5)
 
       # Class 7: 1 label, 1 incorrect prediction.
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k=5, expected=0.0 / 1, class_id=7)
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=0.0 / 1, class_id=7)
 
       # All classes: 10 predictions, 3 correct.
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k=5, expected=3.0 / 10)
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=3.0 / 10)
@@ -2114,25 +2197,25 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
         dense_shape=[2, 4])
 
     # Class 2: 2 labels, 2 correct predictions.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, sp_labels, k=5, expected=2.0 / 2, class_id=2)
     self._test_precision_at_top_k(
         predictions_idx, sp_labels, k=5, expected=2.0 / 2, class_id=2)
 
     # Class 5: 1 label, 1 correct prediction.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, sp_labels, k=5, expected=1.0 / 1, class_id=5)
     self._test_precision_at_top_k(
         predictions_idx, sp_labels, k=5, expected=1.0 / 1, class_id=5)
 
     # Class 7: 1 label, 1 incorrect prediction.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, sp_labels, k=5, expected=0.0 / 1, class_id=7)
     self._test_precision_at_top_k(
         predictions_idx, sp_labels, k=5, expected=0.0 / 1, class_id=7)
 
     # All classes: 10 predictions, 3 correct.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, sp_labels, k=5, expected=3.0 / 10)
     self._test_precision_at_top_k(
         predictions_idx, sp_labels, k=5, expected=3.0 / 10)
@@ -2150,7 +2233,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
 
     # Classes 1,3,8 have 0 predictions, classes -1 and 10 are out of range.
     for class_id in (-1, 1, 3, 8, 10):
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k=5, expected=NAN, class_id=class_id)
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=NAN, class_id=class_id)
@@ -2168,7 +2251,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
 
     # Classes 0,4,6,9: 0 labels, >=1 prediction.
     for class_id in (0, 4, 6, 9):
-      self._test_sparse_precision_at_k(
+      self._test_precision_at_k(
           predictions, labels, k=5, expected=0.0, class_id=class_id)
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=0.0, class_id=class_id)
@@ -2185,25 +2268,25 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
          [[0, 1, 1, 0, 0, 1, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]]])
 
     # Class 2: 4 predictions, all correct.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=4.0 / 4, class_id=2)
     self._test_precision_at_top_k(
         predictions_idx, labels, k=5, expected=4.0 / 4, class_id=2)
 
     # Class 5: 2 predictions, both correct.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=2.0 / 2, class_id=5)
     self._test_precision_at_top_k(
         predictions_idx, labels, k=5, expected=2.0 / 2, class_id=5)
 
     # Class 7: 2 predictions, 1 correct.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=1.0 / 2, class_id=7)
     self._test_precision_at_top_k(
         predictions_idx, labels, k=5, expected=1.0 / 2, class_id=7)
 
     # All classes: 20 predictions, 7 correct.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=7.0 / 20)
     self._test_precision_at_top_k(
         predictions_idx, labels, k=5, expected=7.0 / 20)
@@ -2220,7 +2303,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
          [[0, 1, 1, 0, 0, 1, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]]])
 
     # Class 2: 2 predictions, both correct.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=2.0 / 2.0, class_id=2,
         weights=[[1], [0]])
     self._test_precision_at_top_k(
@@ -2228,7 +2311,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
         weights=[[1], [0]])
 
     # Class 2: 2 predictions, both correct.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=2.0 / 2.0, class_id=2,
         weights=[[0], [1]])
     self._test_precision_at_top_k(
@@ -2236,7 +2319,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
         weights=[[0], [1]])
 
     # Class 7: 1 incorrect prediction.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=0.0 / 1.0, class_id=7,
         weights=[[1], [0]])
     self._test_precision_at_top_k(
@@ -2244,7 +2327,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
         weights=[[1], [0]])
 
     # Class 7: 1 correct prediction.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=1.0 / 1.0, class_id=7,
         weights=[[0], [1]])
     self._test_precision_at_top_k(
@@ -2252,7 +2335,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
         weights=[[0], [1]])
 
     # Class 7: no predictions.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=NAN, class_id=7,
         weights=[[1, 0], [0, 1]])
     self._test_precision_at_top_k(
@@ -2260,7 +2343,7 @@ class MultiLabelSparsePrecisionTest(test.TestCase):
         weights=[[1, 0], [0, 1]])
 
     # Class 7: 2 predictions, 1 correct.
-    self._test_sparse_precision_at_k(
+    self._test_precision_at_k(
         predictions, labels, k=5, expected=1.0 / 2.0, class_id=7,
         weights=[[0, 1], [1, 0]])
     self._test_precision_at_top_k(
@@ -2299,10 +2382,43 @@ def _test_recall_at_k(predictions,
       test_case.assertEqual(expected, metric.eval())
 
 
+def _test_recall_at_top_k(
+    predictions_idx,
+    labels,
+    expected,
+    k=None,
+    class_id=None,
+    weights=None,
+    test_case=None):
+  with ops.Graph().as_default() as g, test_case.test_session(g):
+    if weights is not None:
+      weights = constant_op.constant(weights, dtypes_lib.float32)
+    metric, update = metrics.recall_at_top_k(
+        predictions_idx=constant_op.constant(predictions_idx, dtypes_lib.int32),
+        labels=labels,
+        k=k,
+        class_id=class_id,
+        weights=weights)
+
+    # Fails without initialized vars.
+    test_case.assertRaises(errors_impl.OpError, metric.eval)
+    test_case.assertRaises(errors_impl.OpError, update.eval)
+    variables.variables_initializer(variables.local_variables()).run()
+
+    # Run per-step op and assert expected values.
+    if math.isnan(expected):
+      _assert_nan(test_case, update.eval())
+      _assert_nan(test_case, metric.eval())
+    else:
+      test_case.assertEqual(expected, update.eval())
+      test_case.assertEqual(expected, metric.eval())
+
+
 class SingleLabelRecallAtKTest(test.TestCase):
 
   def setUp(self):
     self._predictions = ((0.1, 0.3, 0.2, 0.4), (0.1, 0.2, 0.3, 0.4))
+    self._predictions_idx = [[3], [3]]
     indicator_labels = ((0, 0, 0, 1), (0, 0, 1, 0))
     class_labels = (3, 2)
     # Sparse vs dense, and 1d vs 2d labels should all be handled the same.
@@ -2313,6 +2429,8 @@ class SingleLabelRecallAtKTest(test.TestCase):
                 [[class_id] for class_id in class_labels], dtype=np.int64))
     self._test_recall_at_k = functools.partial(
         _test_recall_at_k, test_case=self)
+    self._test_recall_at_top_k = functools.partial(
+        _test_recall_at_top_k, test_case=self)
 
   def test_at_k1_nan(self):
     # Classes 0,1 have 0 labels, 0 predictions, classes -1 and 4 are out of
@@ -2321,120 +2439,100 @@ class SingleLabelRecallAtKTest(test.TestCase):
       for class_id in (-1, 0, 1, 4):
         self._test_recall_at_k(
             self._predictions, labels, k=1, expected=NAN, class_id=class_id)
+        self._test_recall_at_top_k(
+            self._predictions_idx, labels, k=1, expected=NAN, class_id=class_id)
 
   def test_at_k1_no_predictions(self):
     for labels in self._labels:
       # Class 2: 0 predictions.
       self._test_recall_at_k(
           self._predictions, labels, k=1, expected=0.0, class_id=2)
+      self._test_recall_at_top_k(
+          self._predictions_idx, labels, k=1, expected=0.0, class_id=2)
 
   def test_one_label_at_k1(self):
     for labels in self._labels:
       # Class 3: 1 label, 2 predictions, 1 correct.
       self._test_recall_at_k(
           self._predictions, labels, k=1, expected=1.0 / 1, class_id=3)
+      self._test_recall_at_top_k(
+          self._predictions_idx, labels, k=1, expected=1.0 / 1, class_id=3)
 
       # All classes: 2 labels, 2 predictions, 1 correct.
       self._test_recall_at_k(self._predictions, labels, k=1, expected=1.0 / 2)
+      self._test_recall_at_top_k(
+          self._predictions_idx, labels, k=1, expected=1.0 / 2)
 
-  def test_one_label_at_k1_weighted(self):
+  def test_one_label_at_k1_weighted_class_id3(self):
     predictions = self._predictions
+    predictions_idx = self._predictions_idx
     for labels in self._labels:
       # Class 3: 1 label, 2 predictions, 1 correct.
       self._test_recall_at_k(
           predictions, labels, k=1, expected=NAN, class_id=3, weights=(0.0,))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=NAN, class_id=3,
+          weights=(0.0,))
       self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=1.0 / 1,
-          class_id=3,
+          predictions, labels, k=1, expected=1.0 / 1, class_id=3,
+          weights=(1.0,))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=1.0 / 1, class_id=3,
           weights=(1.0,))
       self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=1.0 / 1,
-          class_id=3,
+          predictions, labels, k=1, expected=1.0 / 1, class_id=3,
+          weights=(2.0,))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=1.0 / 1, class_id=3,
           weights=(2.0,))
       self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=NAN,
-          class_id=3,
-          weights=(0.0, 0.0))
-      self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=NAN,
-          class_id=3,
+          predictions, labels, k=1, expected=NAN, class_id=3,
+          weights=(0.0, 1.0))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=NAN, class_id=3,
           weights=(0.0, 1.0))
       self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=1.0 / 1,
-          class_id=3,
+          predictions, labels, k=1, expected=1.0 / 1, class_id=3,
+          weights=(1.0, 0.0))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=1.0 / 1, class_id=3,
           weights=(1.0, 0.0))
       self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(1.0, 1.0))
-      self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=2.0 / 2,
-          class_id=3,
+          predictions, labels, k=1, expected=2.0 / 2, class_id=3,
           weights=(2.0, 3.0))
-      self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=3.0 / 3,
-          class_id=3,
-          weights=(3.0, 2.0))
-      self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=0.3 / 0.3,
-          class_id=3,
-          weights=(0.3, 0.6))
-      self._test_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=0.6 / 0.6,
-          class_id=3,
-          weights=(0.6, 0.3))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=2.0 / 2, class_id=3,
+          weights=(2.0, 3.0))
 
+  def test_one_label_at_k1_weighted(self):
+    predictions = self._predictions
+    predictions_idx = self._predictions_idx
+    for labels in self._labels:
       # All classes: 2 labels, 2 predictions, 1 correct.
       self._test_recall_at_k(
           predictions, labels, k=1, expected=NAN, weights=(0.0,))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=NAN, weights=(0.0,))
       self._test_recall_at_k(
           predictions, labels, k=1, expected=1.0 / 2, weights=(1.0,))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=1.0 / 2, weights=(1.0,))
       self._test_recall_at_k(
           predictions, labels, k=1, expected=1.0 / 2, weights=(2.0,))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=1.0 / 2, weights=(2.0,))
       self._test_recall_at_k(
           predictions, labels, k=1, expected=1.0 / 1, weights=(1.0, 0.0))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=1.0 / 1, weights=(1.0, 0.0))
       self._test_recall_at_k(
           predictions, labels, k=1, expected=0.0 / 1, weights=(0.0, 1.0))
-      self._test_recall_at_k(
-          predictions, labels, k=1, expected=1.0 / 2, weights=(1.0, 1.0))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=0.0 / 1, weights=(0.0, 1.0))
       self._test_recall_at_k(
           predictions, labels, k=1, expected=2.0 / 5, weights=(2.0, 3.0))
-      self._test_recall_at_k(
-          predictions, labels, k=1, expected=3.0 / 5, weights=(3.0, 2.0))
-      self._test_recall_at_k(
-          predictions, labels, k=1, expected=0.3 / 0.9, weights=(0.3, 0.6))
-      self._test_recall_at_k(
-          predictions, labels, k=1, expected=0.6 / 0.9, weights=(0.6, 0.3))
+      self._test_recall_at_top_k(
+          predictions_idx, labels, k=1, expected=2.0 / 5, weights=(2.0, 3.0))
 
 
 class MultiLabel2dRecallAtKTest(test.TestCase):
@@ -2442,6 +2540,7 @@ class MultiLabel2dRecallAtKTest(test.TestCase):
   def setUp(self):
     self._predictions = ((0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9),
                          (0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6))
+    self._predictions_idx = ((9, 4, 6, 2, 0), (5, 7, 2, 9, 6))
     indicator_labels = ((0, 0, 1, 0, 0, 0, 0, 1, 1, 0),
                         (0, 1, 1, 0, 0, 1, 0, 0, 0, 0))
     class_labels = ((2, 7, 8), (1, 2, 5))
@@ -2451,6 +2550,8 @@ class MultiLabel2dRecallAtKTest(test.TestCase):
                         class_labels, dtype=np.int64))
     self._test_recall_at_k = functools.partial(
         _test_recall_at_k, test_case=self)
+    self._test_recall_at_top_k = functools.partial(
+        _test_recall_at_top_k, test_case=self)
 
   def test_at_k5_nan(self):
     for labels in self._labels:
@@ -2458,29 +2559,41 @@ class MultiLabel2dRecallAtKTest(test.TestCase):
       for class_id in (0, 3, 4, 6, 9, 10):
         self._test_recall_at_k(
             self._predictions, labels, k=5, expected=NAN, class_id=class_id)
+        self._test_recall_at_top_k(
+            self._predictions_idx, labels, k=5, expected=NAN, class_id=class_id)
 
   def test_at_k5_no_predictions(self):
     for labels in self._labels:
       # Class 8: 1 label, no predictions.
       self._test_recall_at_k(
           self._predictions, labels, k=5, expected=0.0 / 1, class_id=8)
+      self._test_recall_at_top_k(
+          self._predictions_idx, labels, k=5, expected=0.0 / 1, class_id=8)
 
   def test_at_k5(self):
     for labels in self._labels:
       # Class 2: 2 labels, both correct.
       self._test_recall_at_k(
           self._predictions, labels, k=5, expected=2.0 / 2, class_id=2)
+      self._test_recall_at_top_k(
+          self._predictions_idx, labels, k=5, expected=2.0 / 2, class_id=2)
 
       # Class 5: 1 label, incorrect.
       self._test_recall_at_k(
           self._predictions, labels, k=5, expected=1.0 / 1, class_id=5)
+      self._test_recall_at_top_k(
+          self._predictions_idx, labels, k=5, expected=1.0 / 1, class_id=5)
 
       # Class 7: 1 label, incorrect.
       self._test_recall_at_k(
           self._predictions, labels, k=5, expected=0.0 / 1, class_id=7)
+      self._test_recall_at_top_k(
+          self._predictions_idx, labels, k=5, expected=0.0 / 1, class_id=7)
 
       # All classes: 6 labels, 3 correct.
       self._test_recall_at_k(self._predictions, labels, k=5, expected=3.0 / 6)
+      self._test_recall_at_top_k(
+          self._predictions_idx, labels, k=5, expected=3.0 / 6)
 
   def test_at_k5_some_out_of_range(self):
     """Tests that labels outside the [0, n_classes) count in denominator."""
@@ -2494,17 +2607,25 @@ class MultiLabel2dRecallAtKTest(test.TestCase):
     # Class 2: 2 labels, both correct.
     self._test_recall_at_k(
         self._predictions, labels, k=5, expected=2.0 / 2, class_id=2)
+    self._test_recall_at_top_k(
+        self._predictions_idx, labels, k=5, expected=2.0 / 2, class_id=2)
 
     # Class 5: 1 label, incorrect.
     self._test_recall_at_k(
         self._predictions, labels, k=5, expected=1.0 / 1, class_id=5)
+    self._test_recall_at_top_k(
+        self._predictions_idx, labels, k=5, expected=1.0 / 1, class_id=5)
 
     # Class 7: 1 label, incorrect.
     self._test_recall_at_k(
         self._predictions, labels, k=5, expected=0.0 / 1, class_id=7)
+    self._test_recall_at_top_k(
+        self._predictions_idx, labels, k=5, expected=0.0 / 1, class_id=7)
 
     # All classes: 8 labels, 3 correct.
     self._test_recall_at_k(self._predictions, labels, k=5, expected=3.0 / 8)
+    self._test_recall_at_top_k(
+        self._predictions_idx, labels, k=5, expected=3.0 / 8)
 
 
 class MultiLabel3dRecallAtKTest(test.TestCase):
@@ -2514,6 +2635,8 @@ class MultiLabel3dRecallAtKTest(test.TestCase):
                           (0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6)),
                          ((0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6),
                           (0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9)))
+    self._predictions_idx = (((9, 4, 6, 2, 0), (5, 7, 2, 9, 6)),
+                             ((5, 7, 2, 9, 6), (9, 4, 6, 2, 0)))
     # Note: We don't test dense labels here, since examples have different
     # numbers of labels.
     self._labels = _binary_3d_label_to_sparse_value(((
@@ -2521,114 +2644,128 @@ class MultiLabel3dRecallAtKTest(test.TestCase):
             (0, 1, 1, 0, 0, 1, 0, 1, 0, 0), (0, 0, 1, 0, 0, 0, 0, 0, 1, 0))))
     self._test_recall_at_k = functools.partial(
         _test_recall_at_k, test_case=self)
+    self._test_recall_at_top_k = functools.partial(
+        _test_recall_at_top_k, test_case=self)
 
   def test_3d_nan(self):
     # Classes 0,3,4,6,9 have 0 labels, class 10 is out of range.
     for class_id in (0, 3, 4, 6, 9, 10):
       self._test_recall_at_k(
           self._predictions, self._labels, k=5, expected=NAN, class_id=class_id)
+      self._test_recall_at_top_k(
+          self._predictions_idx, self._labels, k=5, expected=NAN,
+          class_id=class_id)
 
   def test_3d_no_predictions(self):
     # Classes 1,8 have 0 predictions, >=1 label.
     for class_id in (1, 8):
       self._test_recall_at_k(
           self._predictions, self._labels, k=5, expected=0.0, class_id=class_id)
+      self._test_recall_at_top_k(
+          self._predictions_idx, self._labels, k=5, expected=0.0,
+          class_id=class_id)
 
   def test_3d(self):
     # Class 2: 4 labels, all correct.
     self._test_recall_at_k(
         self._predictions, self._labels, k=5, expected=4.0 / 4, class_id=2)
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=4.0 / 4,
+        class_id=2)
 
     # Class 5: 2 labels, both correct.
     self._test_recall_at_k(
         self._predictions, self._labels, k=5, expected=2.0 / 2, class_id=5)
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=2.0 / 2,
+        class_id=5)
 
     # Class 7: 2 labels, 1 incorrect.
     self._test_recall_at_k(
         self._predictions, self._labels, k=5, expected=1.0 / 2, class_id=7)
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=1.0 / 2,
+        class_id=7)
 
     # All classes: 12 labels, 7 correct.
     self._test_recall_at_k(
         self._predictions, self._labels, k=5, expected=7.0 / 12)
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=7.0 / 12)
 
   def test_3d_ignore_all(self):
     for class_id in xrange(10):
       self._test_recall_at_k(
-          self._predictions,
-          self._labels,
-          k=5,
-          expected=NAN,
-          class_id=class_id,
+          self._predictions, self._labels, k=5, expected=NAN, class_id=class_id,
           weights=[[0], [0]])
+      self._test_recall_at_top_k(
+          self._predictions_idx, self._labels, k=5, expected=NAN,
+          class_id=class_id, weights=[[0], [0]])
       self._test_recall_at_k(
-          self._predictions,
-          self._labels,
-          k=5,
-          expected=NAN,
-          class_id=class_id,
+          self._predictions, self._labels, k=5, expected=NAN, class_id=class_id,
           weights=[[0, 0], [0, 0]])
+      self._test_recall_at_top_k(
+          self._predictions_idx, self._labels, k=5, expected=NAN,
+          class_id=class_id, weights=[[0, 0], [0, 0]])
     self._test_recall_at_k(
         self._predictions, self._labels, k=5, expected=NAN, weights=[[0], [0]])
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=NAN,
+        weights=[[0], [0]])
     self._test_recall_at_k(
-        self._predictions,
-        self._labels,
-        k=5,
-        expected=NAN,
+        self._predictions, self._labels, k=5, expected=NAN,
+        weights=[[0, 0], [0, 0]])
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=NAN,
         weights=[[0, 0], [0, 0]])
 
   def test_3d_ignore_some(self):
     # Class 2: 2 labels, both correct.
     self._test_recall_at_k(
-        self._predictions,
-        self._labels,
-        k=5,
-        expected=2.0 / 2.0,
-        class_id=2,
+        self._predictions, self._labels, k=5, expected=2.0 / 2.0, class_id=2,
         weights=[[1], [0]])
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=2.0 / 2.0,
+        class_id=2, weights=[[1], [0]])
 
     # Class 2: 2 labels, both correct.
     self._test_recall_at_k(
-        self._predictions,
-        self._labels,
-        k=5,
-        expected=2.0 / 2.0,
-        class_id=2,
+        self._predictions, self._labels, k=5, expected=2.0 / 2.0, class_id=2,
         weights=[[0], [1]])
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=2.0 / 2.0,
+        class_id=2, weights=[[0], [1]])
 
     # Class 7: 1 label, correct.
     self._test_recall_at_k(
-        self._predictions,
-        self._labels,
-        k=5,
-        expected=1.0 / 1.0,
-        class_id=7,
+        self._predictions, self._labels, k=5, expected=1.0 / 1.0, class_id=7,
         weights=[[0], [1]])
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=1.0 / 1.0,
+        class_id=7, weights=[[0], [1]])
 
     # Class 7: 1 label, incorrect.
     self._test_recall_at_k(
-        self._predictions,
-        self._labels,
-        k=5,
-        expected=0.0 / 1.0,
-        class_id=7,
+        self._predictions, self._labels, k=5, expected=0.0 / 1.0, class_id=7,
         weights=[[1], [0]])
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=0.0 / 1.0,
+        class_id=7, weights=[[1], [0]])
 
     # Class 7: 2 labels, 1 correct.
     self._test_recall_at_k(
-        self._predictions,
-        self._labels,
-        k=5,
-        expected=1.0 / 2.0,
-        class_id=7,
+        self._predictions, self._labels, k=5, expected=1.0 / 2.0, class_id=7,
         weights=[[1, 0], [1, 0]])
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=1.0 / 2.0,
+        class_id=7, weights=[[1, 0], [1, 0]])
 
     # Class 7: No labels.
     self._test_recall_at_k(
-        self._predictions,
-        self._labels,
-        k=5,
-        expected=NAN,
-        class_id=7,
+        self._predictions, self._labels, k=5, expected=NAN, class_id=7,
+        weights=[[0, 1], [0, 1]])
+    self._test_recall_at_top_k(
+        self._predictions_idx, self._labels, k=5, expected=NAN, class_id=7,
         weights=[[0, 1], [0, 1]])
 
 
@@ -2640,8 +2777,8 @@ class MeanAbsoluteErrorTest(test.TestCase):
   def testVars(self):
     metrics.mean_absolute_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('mean_absolute_error/count:0',
-                                   'mean_absolute_error/total:0'))
+    _assert_metric_variables(
+        self, ('mean_absolute_error/count:0', 'mean_absolute_error/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2701,8 +2838,8 @@ class MeanRelativeErrorTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         normalizer=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('mean_relative_error/count:0',
-                                   'mean_relative_error/total:0'))
+    _assert_metric_variables(
+        self, ('mean_relative_error/count:0', 'mean_relative_error/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2784,8 +2921,8 @@ class MeanSquaredErrorTest(test.TestCase):
   def testVars(self):
     metrics.mean_squared_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('mean_squared_error/count:0',
-                                   'mean_squared_error/total:0'))
+    _assert_metric_variables(
+        self, ('mean_squared_error/count:0', 'mean_squared_error/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2960,8 +3097,9 @@ class RootMeanSquaredErrorTest(test.TestCase):
   def testVars(self):
     metrics.root_mean_squared_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('root_mean_squared_error/count:0',
-                                   'root_mean_squared_error/total:0'))
+    _assert_metric_variables(
+        self,
+        ('root_mean_squared_error/count:0', 'root_mean_squared_error/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3054,9 +3192,10 @@ class MeanCosineDistanceTest(test.TestCase):
         predictions=array_ops.ones((10, 3)),
         labels=array_ops.ones((10, 3)),
         dim=1)
-    _assert_local_variables(self, (
+    _assert_metric_variables(self, (
         'mean_cosine_distance/count:0',
-        'mean_cosine_distance/total:0',))
+        'mean_cosine_distance/total:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3191,9 +3330,10 @@ class PcntBelowThreshTest(test.TestCase):
 
   def testVars(self):
     metrics.percentage_below(values=array_ops.ones((10,)), threshold=2)
-    _assert_local_variables(self, (
+    _assert_metric_variables(self, (
         'percentage_below_threshold/count:0',
-        'percentage_below_threshold/total:0',))
+        'percentage_below_threshold/total:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3263,7 +3403,7 @@ class MeanIOUTest(test.TestCase):
         predictions=array_ops.ones([10, 1]),
         labels=array_ops.ones([10, 1]),
         num_classes=2)
-    _assert_local_variables(self, ('mean_iou/total_confusion_matrix:0',))
+    _assert_metric_variables(self, ('mean_iou/total_confusion_matrix:0',))
 
   def testMetricsCollections(self):
     my_collection_name = '__metrics__'
@@ -3507,23 +3647,23 @@ class MeanIOUTest(test.TestCase):
 
   def testMissingClassInLabels(self):
     labels = constant_op.constant([
-      [[0, 0, 1, 1, 0, 0],
-       [1, 0, 0, 0, 0, 1]],
-      [[1, 1, 1, 1, 1, 1],
-       [0, 0, 0, 0, 0, 0]]])
+        [[0, 0, 1, 1, 0, 0],
+         [1, 0, 0, 0, 0, 1]],
+        [[1, 1, 1, 1, 1, 1],
+         [0, 0, 0, 0, 0, 0]]])
     predictions = constant_op.constant([
-      [[0, 0, 2, 1, 1, 0],
-       [0, 1, 2, 2, 0, 1]],
-      [[0, 0, 2, 1, 1, 1],
-       [1, 1, 2, 0, 0, 0]]])
+        [[0, 0, 2, 1, 1, 0],
+         [0, 1, 2, 2, 0, 1]],
+        [[0, 0, 2, 1, 1, 1],
+         [1, 1, 2, 0, 0, 0]]])
     num_classes = 3
     with self.test_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
       self.assertAllEqual([[7, 4, 3], [3, 5, 2], [0, 0, 0]], update_op.eval())
       self.assertAlmostEqual(
-        1 / 3 * (7 / (7 + 3 + 7) + 5 / (5 + 4 + 5) + 0 / (0 + 5 + 0)),
-        miou.eval())
+          1 / 3 * (7 / (7 + 3 + 7) + 5 / (5 + 4 + 5) + 0 / (0 + 5 + 0)),
+          miou.eval())
 
   def testMissingClassOverallSmall(self):
     labels = constant_op.constant([0])
@@ -3537,22 +3677,22 @@ class MeanIOUTest(test.TestCase):
 
   def testMissingClassOverallLarge(self):
     labels = constant_op.constant([
-      [[0, 0, 1, 1, 0, 0],
-       [1, 0, 0, 0, 0, 1]],
-      [[1, 1, 1, 1, 1, 1],
-       [0, 0, 0, 0, 0, 0]]])
+        [[0, 0, 1, 1, 0, 0],
+         [1, 0, 0, 0, 0, 1]],
+        [[1, 1, 1, 1, 1, 1],
+         [0, 0, 0, 0, 0, 0]]])
     predictions = constant_op.constant([
-      [[0, 0, 1, 1, 0, 0],
-       [1, 1, 0, 0, 1, 1]],
-      [[0, 0, 0, 1, 1, 1],
-       [1, 1, 1, 0, 0, 0]]])
+        [[0, 0, 1, 1, 0, 0],
+         [1, 1, 0, 0, 1, 1]],
+        [[0, 0, 0, 1, 1, 1],
+         [1, 1, 1, 0, 0, 0]]])
     num_classes = 3
     with self.test_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
       self.assertAllEqual([[9, 5, 0], [3, 7, 0], [0, 0, 0]], update_op.eval())
       self.assertAlmostEqual(
-        1 / 2 * (9 / (9 + 3 + 5) + 7 / (7 + 5 + 3)), miou.eval())
+          1 / 2 * (9 / (9 + 3 + 5) + 7 / (7 + 5 + 3)), miou.eval())
 
 
 class MeanPerClassAccuracyTest(test.TestCase):
@@ -3566,7 +3706,8 @@ class MeanPerClassAccuracyTest(test.TestCase):
         predictions=array_ops.ones([10, 1]),
         labels=array_ops.ones([10, 1]),
         num_classes=2)
-    _assert_local_variables(self, ('mean_accuracy/total_confusion_matrix:0',))
+    _assert_metric_variables(self, ('mean_accuracy/count:0',
+                                    'mean_accuracy/total:0'))
 
   def testMetricsCollections(self):
     my_collection_name = '__metrics__'
@@ -3735,23 +3876,6 @@ class MeanPerClassAccuracyTest(test.TestCase):
       desired_output = np.mean([1.0 / 2.0, 2.0 / 3.0, 0.])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
-  def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
-    predictions = array_ops.concat([
-        constant_op.constant(0, shape=[5]), constant_op.constant(1, shape=[5])
-    ], 0)
-    labels = array_ops.concat([
-        constant_op.constant(0, shape=[3]), constant_op.constant(1, shape=[7])
-    ], 0)
-    num_classes = 2
-    with self.test_session() as sess:
-      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
-          labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
-      confusion_matrix = update_op.eval()
-      self.assertAllEqual([[3, 0], [2, 5]], confusion_matrix)
-      desired_mean_accuracy = np.mean([3. / 3., 5. / 7.])
-      self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
-
   def testAllCorrect(self):
     predictions = array_ops.zeros([40])
     labels = array_ops.zeros([40])
@@ -3760,7 +3884,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
-      self.assertEqual(40, update_op.eval()[0])
+      self.assertEqual(1.0, update_op.eval()[0])
       self.assertEqual(1.0, mean_accuracy.eval())
 
   def testAllWrong(self):
@@ -3771,7 +3895,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
+      self.assertAllEqual([0.0, 0.0], update_op.eval())
       self.assertEqual(0., mean_accuracy.eval())
 
   def testResultsWithSomeMissing(self):
@@ -3790,9 +3914,60 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes, weights=weights)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
-      desired_mean_accuracy = np.mean([2. / 2., 4. / 6.])
+      desired_accuracy = np.array([2. / 2., 4. / 6.], dtype=np.float32)
+      self.assertAllEqual(desired_accuracy, update_op.eval())
+      desired_mean_accuracy = np.mean(desired_accuracy)
       self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
+
+
+class FalseNegativesTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.false_negatives(
+        labels=(0, 1, 0, 1),
+        predictions=(0, 0, 1, 1))
+    _assert_metric_variables(self, ('false_negatives/count:0',))
+
+  def testUnweighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    tn, tn_update_op = metrics.false_negatives(
+        labels=labels, predictions=predictions)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(3., tn_update_op.eval())
+      self.assertAllClose(3., tn.eval())
+
+  def testWeighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    weights = constant_op.constant((1., 1.5, 2., 2.5))
+    tn, tn_update_op = metrics.false_negatives(
+        labels=labels, predictions=predictions, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(5., tn_update_op.eval())
+      self.assertAllClose(5., tn.eval())
 
 
 class FalseNegativesAtThresholdsTest(test.TestCase):
@@ -3806,7 +3981,7 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0.15, 0.5, 0.85])
-    _assert_local_variables(self, ('false_negatives/false_negatives:0',))
+    _assert_metric_variables(self, ('false_negatives/false_negatives:0',))
 
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
@@ -3844,6 +4019,56 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
       self.assertAllEqual((0.0, 8.0, 11.0), fn.eval())
 
 
+class FalsePositivesTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.false_positives(
+        labels=(0, 1, 0, 1),
+        predictions=(0, 0, 1, 1))
+    _assert_metric_variables(self, ('false_positives/count:0',))
+
+  def testUnweighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    tn, tn_update_op = metrics.false_positives(
+        labels=labels, predictions=predictions)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(7., tn_update_op.eval())
+      self.assertAllClose(7., tn.eval())
+
+  def testWeighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    weights = constant_op.constant((1., 1.5, 2., 2.5))
+    tn, tn_update_op = metrics.false_positives(
+        labels=labels, predictions=predictions, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(14., tn_update_op.eval())
+      self.assertAllClose(14., tn.eval())
+
+
 class FalsePositivesAtThresholdsTest(test.TestCase):
 
   def setUp(self):
@@ -3855,7 +4080,7 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0.15, 0.5, 0.85])
-    _assert_local_variables(self, ('false_positives/false_positives:0',))
+    _assert_metric_variables(self, ('false_positives/false_positives:0',))
 
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
@@ -3895,6 +4120,56 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
       self.assertAllEqual((125.0, 42.0, 12.0), fp.eval())
 
 
+class TrueNegativesTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.true_negatives(
+        labels=(0, 1, 0, 1),
+        predictions=(0, 0, 1, 1))
+    _assert_metric_variables(self, ('true_negatives/count:0',))
+
+  def testUnweighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    tn, tn_update_op = metrics.true_negatives(
+        labels=labels, predictions=predictions)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(3., tn_update_op.eval())
+      self.assertAllClose(3., tn.eval())
+
+  def testWeighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    weights = constant_op.constant((1., 1.5, 2., 2.5))
+    tn, tn_update_op = metrics.true_negatives(
+        labels=labels, predictions=predictions, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(4., tn_update_op.eval())
+      self.assertAllClose(4., tn.eval())
+
+
 class TrueNegativesAtThresholdsTest(test.TestCase):
 
   def setUp(self):
@@ -3906,7 +4181,7 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0.15, 0.5, 0.85])
-    _assert_local_variables(self, ('true_negatives/true_negatives:0',))
+    _assert_metric_variables(self, ('true_negatives/true_negatives:0',))
 
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
@@ -3944,6 +4219,56 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
       self.assertAllEqual((5.0, 15.0, 23.0), tn.eval())
 
 
+class TruePositivesTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.true_positives(
+        labels=(0, 1, 0, 1),
+        predictions=(0, 0, 1, 1))
+    _assert_metric_variables(self, ('true_positives/count:0',))
+
+  def testUnweighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    tn, tn_update_op = metrics.true_positives(
+        labels=labels, predictions=predictions)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(7., tn_update_op.eval())
+      self.assertAllClose(7., tn.eval())
+
+  def testWeighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    weights = constant_op.constant((1., 1.5, 2., 2.5))
+    tn, tn_update_op = metrics.true_positives(
+        labels=labels, predictions=predictions, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(12., tn_update_op.eval())
+      self.assertAllClose(12., tn.eval())
+
+
 class TruePositivesAtThresholdsTest(test.TestCase):
 
   def setUp(self):
@@ -3955,7 +4280,7 @@ class TruePositivesAtThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0.15, 0.5, 0.85])
-    _assert_local_variables(self, ('true_positives/true_positives:0',))
+    _assert_metric_variables(self, ('true_positives/true_positives:0',))
 
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),

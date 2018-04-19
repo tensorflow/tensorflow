@@ -22,7 +22,7 @@ r"""Demonstrates a regression on Boston housing data.
 
   python tensorflow/contrib/boosted_trees/examples/boston.py \
   --batch_size=404 --output_dir="/tmp/boston" --depth=4 --learning_rate=0.1 \
-  --num_eval_steps=1 --num_trees=500 --l2=4 \
+  --num_eval_steps=1 --num_trees=500 --l2=0.001 \
   --vmodule=training_ops=1
 
   When training is done, mean squared error on eval data is reported.
@@ -37,8 +37,10 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import sys
 import tensorflow as tf
+from tensorflow.contrib.boosted_trees.estimator_batch import custom_export_strategy
 from tensorflow.contrib.boosted_trees.estimator_batch.estimator import GradientBoostedDecisionTreeRegressor
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.layers.python.layers import feature_column
@@ -51,22 +53,18 @@ _BOSTON_NUM_FEATURES = 13
 def _get_tfbt(output_dir, feature_cols):
   """Configures TF Boosted Trees estimator based on flags."""
   learner_config = learner_pb2.LearnerConfig()
-
   learner_config.learning_rate_tuner.fixed.learning_rate = FLAGS.learning_rate
   learner_config.regularization.l1 = 0.0
-  # Set the regularization per instance in such a way that
-  # regularization for the full training data is equal to l2 flag.
-  learner_config.regularization.l2 = FLAGS.l2 / FLAGS.batch_size
+  learner_config.regularization.l2 = FLAGS.l2
   learner_config.constraints.max_tree_depth = FLAGS.depth
-  learner_config.growing_mode = learner_pb2.LearnerConfig.WHOLE_TREE
 
   run_config = tf.contrib.learn.RunConfig(save_checkpoints_secs=300)
 
   # Create a TF Boosted trees regression estimator.
   estimator = GradientBoostedDecisionTreeRegressor(
       learner_config=learner_config,
-      # For the WHOLE_TREE strategy, set the examples_per_layer to be equal to
-      # batch size.
+      # This should be the number of examples. For large datasets it can be
+      # larger than the batch_size.
       examples_per_layer=FLAGS.batch_size,
       feature_columns=feature_cols,
       label_dimension=1,
@@ -75,6 +73,14 @@ def _get_tfbt(output_dir, feature_cols):
       center_bias=False,
       config=run_config)
   return estimator
+
+
+def _convert_fn(dtec, sorted_feature_names, num_dense, num_sparse_float,
+                num_sparse_int, export_dir, unused_eval_result):
+  universal_format = custom_export_strategy.convert_to_universal_format(
+      dtec, sorted_feature_names, num_dense, num_sparse_float, num_sparse_int)
+  with tf.gfile.GFile(os.path.join(export_dir, "tree_proto"), "w") as f:
+    f.write(str(universal_format))
 
 
 def _make_experiment_fn(output_dir):
@@ -88,21 +94,31 @@ def _make_experiment_fn(output_dir):
       batch_size=FLAGS.batch_size,
       num_epochs=None,
       shuffle=True)
-
   eval_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={"x": x_test}, y=y_test, num_epochs=1, shuffle=False)
 
   feature_columns = [
       feature_column.real_valued_column("x", dimension=_BOSTON_NUM_FEATURES)
   ]
-
+  feature_spec = tf.contrib.layers.create_feature_spec_for_parsing(
+      feature_columns)
+  serving_input_fn = tf.contrib.learn.utils.build_parsing_serving_input_fn(
+      feature_spec)
+  # An export strategy that outputs the feature importance and also exports
+  # the internal tree representation in another format.
+  export_strategy = custom_export_strategy.make_custom_export_strategy(
+      "exports",
+      convert_fn=_convert_fn,
+      feature_columns=feature_columns,
+      export_input_fn=serving_input_fn)
   return tf.contrib.learn.Experiment(
       estimator=_get_tfbt(output_dir, feature_columns),
       train_input_fn=train_input_fn,
       eval_input_fn=eval_input_fn,
       train_steps=None,
       eval_steps=FLAGS.num_eval_steps,
-      eval_metrics=None)
+      eval_metrics=None,
+      export_strategies=[export_strategy])
 
 
 def main(unused_argv):

@@ -21,7 +21,6 @@ set(tf_c_srcs
     "${tensorflow_source_dir}/tensorflow/c/c_api_function.cc"
     "${tensorflow_source_dir}/tensorflow/c/eager/c_api.cc"
     "${tensorflow_source_dir}/tensorflow/c/eager/c_api.h"
-    "${tensorflow_source_dir}/tensorflow/c/eager/tape.cc"
     "${tensorflow_source_dir}/tensorflow/c/eager/tape.h"
     "${tensorflow_source_dir}/tensorflow/c/eager/runtime.cc"
     "${tensorflow_source_dir}/tensorflow/c/eager/runtime.h"
@@ -47,4 +46,5 @@ add_dependencies(
   tf_c_python_api
   tf_c
   tf_core_lib
+  tf_core_framework
   tf_protos_cc)

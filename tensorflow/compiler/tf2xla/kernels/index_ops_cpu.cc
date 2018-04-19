@@ -56,10 +56,10 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
         errors::InvalidArgument("dim must be < input rank (",
                                 input_shape.dims(), "), but got: ", dim));
     const int64 dim_size = input_shape.dim_size(dim);
-    OP_REQUIRES(
-        ctx, dim_size > 0,
-        errors::InvalidArgument("Reduction axis ", dim, " is empty in shape: ",
-                                input_shape.DebugString()));
+    OP_REQUIRES(ctx, dim_size > 0,
+                errors::InvalidArgument(
+                    "Reduction axis ", dim,
+                    " is empty in shape: ", input_shape.DebugString()));
 
     // The output shape is the input shape contracted along dim.
     TensorShape output_shape;
@@ -113,9 +113,11 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ArgMaxCustomCallOp);
 };
 
-REGISTER_XLA_OP(
-    Name("ArgMax").TypeConstraint("T", DT_FLOAT).Device(DEVICE_CPU_XLA_JIT),
-    ArgMaxCustomCallOp);
+REGISTER_XLA_OP(Name("ArgMax")
+                    .TypeConstraint("T", DT_FLOAT)
+                    .Device(DEVICE_CPU_XLA_JIT)
+                    .CompileTimeConstInput("dimension"),
+                ArgMaxCustomCallOp);
 
 }  // namespace
 }  // namespace tensorflow

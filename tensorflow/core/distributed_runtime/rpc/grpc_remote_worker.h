@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
-#define THIRD_PARTY_TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
+#ifndef TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
+#define TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
 
 #include <memory>
 
@@ -26,15 +26,13 @@ class CompletionQueue;
 
 namespace tensorflow {
 
-class GrpcCounter;
 class WorkerCacheLogger;
 class WorkerInterface;
 
-WorkerInterface* NewGrpcRemoteWorker(GrpcCounter* live_rpc_counter,
-                                     SharedGrpcChannelPtr channel,
+WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      WorkerCacheLogger* logger);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
+#endif  // TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_

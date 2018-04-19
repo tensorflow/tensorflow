@@ -40,7 +40,7 @@ namespace {
 
 Status GetStackShape(xla::ComputationBuilder* builder, XlaResource* resource,
                      TensorShape* stack_shape) {
-  auto shape_or_status = builder->GetShape(resource->value);
+  auto shape_or_status = builder->GetShape(resource->value());
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
@@ -63,22 +63,22 @@ Status GetStackShape(xla::ComputationBuilder* builder, XlaResource* resource,
 Status MaybeInitializeStack(xla::ComputationBuilder* builder,
                             XlaResource* resource, DataType dtype,
                             const TensorShape& elem_shape) {
-  if (resource->type != dtype) {
+  if (resource->type() != dtype) {
     return errors::InvalidArgument(
-        "Stack dtype is ", DataTypeString(resource->type), " but op has dtype ",
-        DataTypeString(dtype), ".");
+        "Stack dtype is ", DataTypeString(resource->type()),
+        " but op has dtype ", DataTypeString(dtype), ".");
   }
 
   TensorShape stack_shape;
-  stack_shape.AddDim(resource->tensor_array_size);
+  stack_shape.AddDim(resource->tensor_array_size());
   stack_shape.AppendShape(elem_shape);
 
-  if (resource->value.handle() == 0) {
+  if (!resource->initialized()) {
     // Stack has not been initialized.
-    xla::ComputationDataHandle zero = XlaHelpers::Zero(builder, resource->type);
-    resource->value =
-        builder->Tuple({builder->Broadcast(zero, stack_shape.dim_sizes()),
-                        builder->ConstantR0<int32>(0)});
+    xla::ComputationDataHandle zero =
+        XlaHelpers::Zero(builder, resource->type());
+    TF_RETURN_IF_ERROR(resource->SetTypeAndShape(dtype, elem_shape));
+    TF_RETURN_IF_ERROR(resource->SetZeroValue(builder));
   } else {
     // Checks the expected shape matches the actual shape.
     TensorShape actual_shape;
@@ -105,7 +105,9 @@ class StackOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, size >= 0,
         errors::InvalidArgument(
-            "XLA compilation requires a fixed stack size upper bound."));
+            "XLA compilation requires a fixed stack size upper bound. If "
+            "you are using tf.while_loop, set the maximum_iterations parameter "
+            "to fix this issue."));
 
     // We defer initializing the Stack resource until we see the first push.
     // Otherwise we do not know the shape of the stack elements.
@@ -115,8 +117,8 @@ class StackOp : public XlaOpKernel {
     string name = strings::StrCat("Stack: ", stack_name_);
     OP_REQUIRES_OK(
         ctx, xc.CreateResource(XlaResource::kStack, -1, std::move(name), dtype_,
-                               value, &resource));
-    resource->tensor_array_size = size;
+                               TensorShape(), value, /*tensor_array_size=*/size,
+                               /*tensor_array_gradients=*/{}, &resource));
     ctx->SetResourceOutput(0, resource);
   }
 
@@ -127,7 +129,7 @@ class StackOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackOp);
 };
 
-REGISTER_XLA_OP(Name("StackV2"), StackOp);
+REGISTER_XLA_OP(Name("StackV2").CompileTimeConstInput("max_size"), StackOp);
 
 class StackPushOp : public XlaOpKernel {
  public:
@@ -145,8 +147,8 @@ class StackPushOp : public XlaOpKernel {
     // Initializes the Stack, if the element shape was not already known.
     OP_REQUIRES_OK(ctx, MaybeInitializeStack(b, resource, dtype_, elem_shape));
 
-    xla::ComputationDataHandle ta = b->GetTupleElement(resource->value, 0);
-    xla::ComputationDataHandle index = b->GetTupleElement(resource->value, 1);
+    xla::ComputationDataHandle ta = b->GetTupleElement(resource->value(), 0);
+    xla::ComputationDataHandle index = b->GetTupleElement(resource->value(), 1);
     xla::ComputationDataHandle value = ctx->Input(1);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
@@ -160,9 +162,9 @@ class StackPushOp : public XlaOpKernel {
 
     // TODO(phawkins): We don't check the index is in bounds --- there is no
     // error mechanism in XLA.
-    resource->value =
-        b->Tuple({b->DynamicUpdateSlice(ta, update, start_indices),
-                  b->Add(index, b->ConstantR0<int32>(1))});
+    OP_REQUIRES_OK(ctx, resource->SetValue(b->Tuple(
+                            {b->DynamicUpdateSlice(ta, update, start_indices),
+                             b->Add(index, b->ConstantR0<int32>(1))})));
 
     ctx->SetOutput(0, value);
   }
@@ -187,27 +189,22 @@ class StackPopOp : public XlaOpKernel {
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
 
-    OP_REQUIRES(ctx, resource->type == dtype_,
-                errors::InvalidArgument(
-                    "Stack dtype is ", DataTypeString(resource->type),
-                    " but Op requested dtype ", DataTypeString(dtype_), "."));
-
     // There is a somewhat subtle issue here: here "uninitialized" means we have
     // not yet seen a pop in the order that we compile operators, not the order
     // that we run them. However, in practice the two orders should be the same
     // for the sole user of the stack operators (loop gradients).
-    OP_REQUIRES(ctx, resource->value.handle() != 0,
+    OP_REQUIRES(ctx, resource->initialized(),
                 errors::InvalidArgument("Stack pop on uninitialized stack"));
 
     TensorShape stack_shape;
     OP_REQUIRES_OK(ctx, GetStackShape(b, resource, &stack_shape));
 
-    xla::ComputationDataHandle state = resource->value;
+    xla::ComputationDataHandle state = resource->value();
     xla::ComputationDataHandle ta = b->GetTupleElement(state, 0);
     xla::ComputationDataHandle index = b->GetTupleElement(state, 1);
 
     index = b->Sub(index, b->ConstantR0<int32>(1));
-    resource->value = b->Tuple({ta, index});
+    OP_REQUIRES_OK(ctx, resource->SetValue(b->Tuple({ta, index})));
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
     auto start_indices =

@@ -18,11 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import shutil
+
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.platform import test
 
+try:
+  import h5py  # pylint:disable=g-import-not-at-top
+except ImportError:
+  h5py = None
 
 ALL_LOSSES = [keras.losses.mean_squared_error,
               keras.losses.mean_absolute_error,
@@ -37,6 +44,20 @@ ALL_LOSSES = [keras.losses.mean_squared_error,
               keras.losses.cosine_proximity,
               keras.losses.logcosh,
               keras.losses.categorical_hinge]
+
+
+class _MSEMAELoss(object):
+  """Loss function with internal state, for testing serialization code."""
+
+  def __init__(self, mse_fraction):
+    self.mse_fraction = mse_fraction
+
+  def __call__(self, y_true, y_pred):
+    return (self.mse_fraction * keras.losses.mse(y_true, y_pred) +
+            (1 - self.mse_fraction) * keras.losses.mae(y_true, y_pred))
+
+  def get_config(self):
+    return {'mse_fraction': self.mse_fraction}
 
 
 class KerasLossesTest(test.TestCase):
@@ -82,6 +103,39 @@ class KerasLossesTest(test.TestCase):
     expected_loss = ((0.3 - 0.2 + 1) + (0.7 - 0.1 + 1)) / 2.0
     loss = keras.backend.eval(keras.losses.categorical_hinge(y_true, y_pred))
     self.assertAllClose(expected_loss, np.mean(loss))
+
+  def test_serializing_loss_class(self):
+    orig_loss_class = _MSEMAELoss(0.3)
+    with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
+      serialized = keras.losses.serialize(orig_loss_class)
+
+    with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
+      deserialized = keras.losses.deserialize(serialized)
+    assert isinstance(deserialized, _MSEMAELoss)
+    assert deserialized.mse_fraction == 0.3
+
+  def test_serializing_model_with_loss_class(self):
+    tmpdir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, tmpdir)
+    model_filename = os.path.join(tmpdir, 'custom_loss.h5')
+
+    with self.test_session():
+      with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
+        loss = _MSEMAELoss(0.3)
+        inputs = keras.layers.Input((2,))
+        outputs = keras.layers.Dense(1, name='model_output')(inputs)
+        model = keras.models.Model(inputs, outputs)
+        model.compile(optimizer='sgd', loss={'model_output': loss})
+        model.fit(np.random.rand(256, 2), np.random.rand(256, 1))
+
+        if h5py is None:
+          return
+
+        model.save(model_filename)
+
+      with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
+        loaded_model = keras.models.load_model(model_filename)
+        loaded_model.predict(np.random.rand(128, 2))
 
 
 if __name__ == '__main__':

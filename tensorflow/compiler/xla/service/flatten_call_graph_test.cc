@@ -223,5 +223,35 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
   EXPECT_EQ(1, b_node.caller_callsites().size());
 }
 
+TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
+  auto module = CreateNewModule();
+  HloComputation* sub_computation =
+      module->AddEmbeddedComputation(MakeScalarComputation());
+
+  // Create entry computation, which is a conditional that has the same
+  // computation in the true and false branch.
+  HloComputation::Builder builder(TestName());
+  auto pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(56.0f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(12.0f)));
+  builder.AddInstruction(HloInstruction::CreateConditional(
+      kScalarShape, pred, constant1, sub_computation, constant2,
+      sub_computation));
+  module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(2, module->computation_count());
+
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  // The true and false computations must now be different.
+  EXPECT_EQ(3, module->computation_count());
+
+  const CallGraphNode& sub_node = call_graph->GetNode(sub_computation);
+  EXPECT_EQ(1, sub_node.caller_callsites().size());
+}
+
 }  // namespace
 }  // namespace xla

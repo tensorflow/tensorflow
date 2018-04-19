@@ -11,7 +11,10 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-"""Example of DNNClassifier for Iris plant dataset."""
+"""Example of DNNClassifier for Iris plant dataset.
+
+This example uses APIs in Tensorflow 1.4 or above.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

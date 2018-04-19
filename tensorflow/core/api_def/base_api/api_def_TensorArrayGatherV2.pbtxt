@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TensorArrayGatherV2"
+  visibility: SKIP
+  summary: "Deprecated. Use TensorArrayGatherV3"
+}

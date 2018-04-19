@@ -1,0 +1,40 @@
+op {
+  graph_op_name: "TensorArrayScatterV3"
+  endpoint {
+    name: "TensorArrayScatter"
+  }
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a TensorArray.
+END
+  }
+  in_arg {
+    name: "indices"
+    description: <<END
+The locations at which to write the tensor elements.
+END
+  }
+  in_arg {
+    name: "value"
+    description: <<END
+The concatenated tensor to write to the TensorArray.
+END
+  }
+  in_arg {
+    name: "flow_in"
+    description: <<END
+A float scalar that enforces proper chaining of operations.
+END
+  }
+  out_arg {
+    name: "flow_out"
+    description: <<END
+A float scalar that enforces proper chaining of operations.
+END
+  }
+  summary: "Scatter the data from the input value into specific TensorArray elements."
+  description: <<END
+`indices` must be a vector, its length must match the first dim of `value`.
+END
+}

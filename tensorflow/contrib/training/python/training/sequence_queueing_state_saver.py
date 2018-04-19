@@ -1574,8 +1574,9 @@ def _padding(sequences, num_unroll):
   if not sequences:
     return 0, {}
 
-  sequences_dict = {}
-  for key, value in sequences.items():
+  # Sort 'sequences_dict' so 'length' will have a predictable value below.
+  sequences_dict = collections.OrderedDict()
+  for key, value in sorted(sequences.items()):
     if not (isinstance(value, sparse_tensor.SparseTensor) or
             isinstance(value, sparse_tensor.SparseTensorValue)):
       sequences_dict[key] = ops.convert_to_tensor(value)

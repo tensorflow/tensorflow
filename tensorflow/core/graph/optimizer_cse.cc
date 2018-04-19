@@ -65,8 +65,8 @@ class OptimizerCSE {
 };
 
 static void FillInputs(const Node* n,
-                       gtl::InlinedVector<Node*, 4>* control_edges,
-                       gtl::InlinedVector<std::pair<Node*, int>, 4>* in) {
+                       gtl::InlinedVector<const Node*, 4>* control_edges,
+                       gtl::InlinedVector<std::pair<const Node*, int>, 4>* in) {
   DCHECK_EQ(in->size(), n->num_inputs());
   control_edges->clear();
   for (const Edge* e : n->in_edges()) {
@@ -96,8 +96,8 @@ size_t OptimizerCSE::NodeHash(const Node* n) {
 
   const int N_in = n->num_inputs();
   strings::StrAppend(&str_to_hash, N_in);
-  gtl::InlinedVector<Node*, 4> control_edges;
-  gtl::InlinedVector<std::pair<Node*, int>, 4> in(N_in);
+  gtl::InlinedVector<const Node*, 4> control_edges;
+  gtl::InlinedVector<std::pair<const Node*, int>, 4> in(N_in);
   FillInputs(n, &control_edges, &in);
   for (const auto& edge : in) {
     strings::StrAppend(&str_to_hash, edge.first->id(), edge.second);
@@ -147,10 +147,10 @@ bool OptimizerCSE::Equivalent(const Node* a, const Node* b,
   // Compare input sources
   if (a->num_inputs() != b->num_inputs()) return false;
   const int N_in = a->num_inputs();
-  gtl::InlinedVector<Node*, 4> a_control_edges;
-  gtl::InlinedVector<Node*, 4> b_control_edges;
-  gtl::InlinedVector<std::pair<Node*, int>, 4> a_in(N_in);
-  gtl::InlinedVector<std::pair<Node*, int>, 4> b_in(N_in);
+  gtl::InlinedVector<const Node*, 4> a_control_edges;
+  gtl::InlinedVector<const Node*, 4> b_control_edges;
+  gtl::InlinedVector<std::pair<const Node*, int>, 4> a_in(N_in);
+  gtl::InlinedVector<std::pair<const Node*, int>, 4> b_in(N_in);
   FillInputs(a, &a_control_edges, &a_in);
   FillInputs(b, &b_control_edges, &b_in);
   if (a_in != b_in) return false;

@@ -39,16 +39,15 @@ CompileOnlyClient::CompileAheadOfTime(
   return compiler_service_->CompileAheadOfTime(service_instances, options);
 }
 
-int64 CompileOnlyClient::PointerSizeForTriple(
-    tensorflow::StringPiece target_triple) {
-  llvm::Triple triple(llvm::Triple::normalize(
-      llvm::StringRef(target_triple.data(), target_triple.size())));
-  if (triple.isArch64Bit()) {
+int64 CompileOnlyClient::PointerSizeForTriple(tensorflow::StringPiece triple) {
+  llvm::Triple llvm_triple(
+      llvm::Triple::normalize(llvm::StringRef(triple.data(), triple.size())));
+  if (llvm_triple.isArch64Bit()) {
     return 8;
-  } else if (triple.isArch32Bit()) {
+  } else if (llvm_triple.isArch32Bit()) {
     return 4;
   } else {
-    CHECK(triple.isArch16Bit());
+    CHECK(llvm_triple.isArch16Bit());
     return 2;
   }
 }

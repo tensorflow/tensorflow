@@ -35,8 +35,8 @@ from tensorflow.python.platform import tf_logging
 
 class DepthToSpaceTest(test.TestCase):
 
-  def _testOne(self, inputs, block_size, outputs):
-    input_nhwc = math_ops.to_float(inputs)
+  def _testOne(self, inputs, block_size, outputs, dtype=dtypes.float32):
+    input_nhwc = math_ops.cast(inputs, dtype)
     with self.test_session(use_gpu=False):
       # test NHWC (default) on CPU
       x_tf = array_ops.depth_to_space(input_nhwc, block_size)
@@ -58,6 +58,12 @@ class DepthToSpaceTest(test.TestCase):
     block_size = 2
     x_out = [[[[1], [2]], [[3], [4]]]]
     self._testOne(x_np, block_size, x_out)
+
+  def testBasicFloat16(self):
+    x_np = [[[[1, 2, 3, 4]]]]
+    block_size = 2
+    x_out = [[[[1], [2]], [[3], [4]]]]
+    self._testOne(x_np, block_size, x_out, dtype=dtypes.float16)
 
   # Tests for larger input dimensions. To make sure elements are
   # correctly ordered spatially.
@@ -89,6 +95,24 @@ class DepthToSpaceTest(test.TestCase):
     x_np = [batch_input_elt(i) for i in range(batch_size)]
     x_out = [batch_output_elt(i) for i in range(batch_size)]
     self._testOne(x_np, block_size, x_out)
+
+  def testBatchSize0(self):
+    block_size = 2
+    batch_size = 0
+    input_nhwc = array_ops.ones([batch_size, 2, 3, 12])
+    x_out = array_ops.ones([batch_size, 4, 6, 3])
+
+    with self.test_session(use_gpu=False):
+      # test NHWC (default) on CPU
+      x_tf = array_ops.depth_to_space(input_nhwc, block_size)
+      self.assertAllEqual(x_tf.shape, x_out.shape)
+      x_tf.eval()
+    if test.is_gpu_available():
+      with self.test_session(use_gpu=True):
+        # test NHWC (default) on GPU
+        x_tf = array_ops.depth_to_space(input_nhwc, block_size)
+        self.assertAllEqual(x_tf.shape, x_out.shape)
+        x_tf.eval()
 
   # Tests for different width and height.
   def testNonSquare(self):
@@ -284,11 +308,16 @@ class DepthToSpaceTest(test.TestCase):
 class DepthToSpaceGradientTest(test.TestCase):
 
   # Check the gradients.
-  def _checkGrad(self, x, block_size):
+  def _checkGrad(self, x, block_size, data_format):
+    # NCHW is implemented for only GPU.
+    if data_format == "NCHW" and not test.is_gpu_available():
+      return
+
     assert 4 == x.ndim
     with self.test_session(use_gpu=True):
       tf_x = ops.convert_to_tensor(x)
-      tf_y = array_ops.depth_to_space(tf_x, block_size)
+      tf_y = array_ops.depth_to_space(tf_x, block_size, data_format=data_format)
+
       epsilon = 1e-2
       ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
           tf_x,
@@ -297,28 +326,32 @@ class DepthToSpaceGradientTest(test.TestCase):
           tf_y.get_shape().as_list(),
           x_init_value=x,
           delta=epsilon)
-
-    self.assertAllClose(x_jacob_t, x_jacob_n, rtol=1e-2, atol=epsilon)
+      self.assertAllClose(x_jacob_t, x_jacob_n, rtol=1e-2, atol=epsilon)
 
   # Tests a gradient for depth_to_space of x which is a four dimensional
   # tensor of shape [b, h, w, d * block_size * block_size].
-  def _compare(self, b, h, w, d, block_size):
+  def _compare(self, b, h, w, d, block_size, data_format):
     block_size_sq = block_size * block_size
-    x = np.random.normal(
-        0, 1, b * h * w * d * block_size_sq).astype(np.float32).reshape(
-            [b, h, w, d * block_size_sq])
+    data = np.random.normal(0, 1, b * h * w * d * block_size_sq).astype(
+        np.float32)
+    if data_format == "NHWC":
+      x = data.reshape([b, h, w, d * block_size_sq])
+    else:
+      x = data.reshape([b, d * block_size_sq, h, w])
 
-    self._checkGrad(x, block_size)
+    self._checkGrad(x, block_size, data_format)
 
   # Don't use very large numbers as dimensions here, as the result is tensor
   # with cartesian product of the dimensions.
   def testSmall(self):
     block_size = 2
-    self._compare(3, 2, 5, 3, block_size)
+    self._compare(3, 2, 5, 3, block_size, "NHWC")
+    self._compare(3, 2, 5, 3, block_size, "NCHW")
 
   def testSmall2(self):
     block_size = 3
-    self._compare(1, 2, 3, 2, block_size)
+    self._compare(1, 2, 3, 2, block_size, "NHWC")
+    self._compare(1, 2, 3, 2, block_size, "NCHW")
 
 
 if __name__ == "__main__":

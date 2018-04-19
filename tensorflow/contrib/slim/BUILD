@@ -39,6 +39,8 @@ py_test(
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/debug:debug_data",
+        "//tensorflow/python/debug:hooks",
         "//third_party/py/numpy",
     ],
 )
@@ -175,16 +177,4 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

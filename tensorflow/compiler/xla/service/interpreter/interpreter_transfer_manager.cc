@@ -26,7 +26,7 @@ namespace sei = ::perftools::gputools::interpreter;
 namespace xla {
 
 InterpreterTransferManager::InterpreterTransferManager()
-    : GenericTransferManager(sei::kInterpreterPlatformId,
+    : GenericTransferManager(sei::kXlaInterpreterPlatformId,
                              /*pointer_size=*/sizeof(void*)) {}
 
 }  // namespace xla
@@ -38,7 +38,7 @@ CreateInterpreterTransferManager() {
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
-      sei::kInterpreterPlatformId, &CreateInterpreterTransferManager);
+      sei::kXlaInterpreterPlatformId, &CreateInterpreterTransferManager);
   return true;
 }
 

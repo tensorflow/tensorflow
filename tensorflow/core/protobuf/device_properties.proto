@@ -49,3 +49,8 @@ message DeviceProperties {
   // Memory bandwidth in KB/s
   int64 bandwidth = 13;
 }
+
+message NamedDevice {
+  string name = 1;
+  DeviceProperties properties = 2;
+}

@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "Unbatch"
+  summary: "Reverses the operation of Batch for a single output Tensor."
+  description: <<END
+An instance of Unbatch either receives an empty batched_tensor, in which case it
+asynchronously waits until the values become available from a concurrently
+running instance of Unbatch with the same container and shared_name, or receives
+a non-empty batched_tensor in which case it finalizes all other concurrently
+running instances and outputs its own element from the batch.
+
+batched_tensor: The possibly transformed output of Batch. The size of the first
+ dimension should remain unchanged by the transformations for the operation to
+ work.
+batch_index: The matching batch_index obtained from Batch.
+id: The id scalar emitted by Batch.
+unbatched_tensor: The Tensor corresponding to this execution.
+timeout_micros: Maximum amount of time (in microseconds) to wait to receive the
+ batched input tensor associated with a given invocation of the op.
+container: Container to control resource sharing.
+shared_name: Instances of Unbatch with the same container and shared_name are
+ assumed to possibly belong to the same batch. If left empty, the op name will
+ be used as the shared name.
+END
+}

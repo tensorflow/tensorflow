@@ -172,7 +172,7 @@ class AdjustValueInYiqTest(test_util.TensorFlowTestCase):
           raise AssertionError('Invalid test style: %s' % (test_style))
         y_np = self._adjust_value_in_yiq_np(x_np, scale)
         y_tf = self._adjust_value_in_yiq_tf(x_np, scale)
-        self.assertAllClose(y_tf, y_np, rtol=2e-5, atol=1e-5)
+        self.assertAllClose(y_tf, y_np, rtol=2e-4, atol=1e-4)
 
   def test_invalid_shapes(self):
     x_np = np.random.rand(2, 3) * 255.
@@ -237,7 +237,7 @@ class AdjustSaturationInYiqTest(test_util.TensorFlowTestCase):
             raise AssertionError('Invalid test style: %s' % (test_style))
           y_baseline = self._adjust_saturation_in_yiq_np(x_np, scale)
           y_tf = self._adjust_saturation_in_yiq_tf(x_np, scale)
-          self.assertAllClose(y_tf, y_baseline, rtol=2e-5, atol=1e-5)
+          self.assertAllClose(y_tf, y_baseline, rtol=2e-4, atol=1e-4)
 
   def test_invalid_shapes(self):
     x_np = np.random.rand(2, 3) * 255.
@@ -291,6 +291,9 @@ class AdjustHueInYiqBenchmark(test.Benchmark):
   def benchmark_adjust_hue_in_yiqCpuAll(self):
     self._benchmark_adjust_hue_in_yiq('/cpu:0', None)
 
+  def benchmark_adjust_hue_in_yiq_gpu_all(self):
+    self._benchmark_adjust_hue_in_yiq(test.gpu_device_name(), None)
+
 
 class AdjustSaturationInYiqBenchmark(test.Benchmark):
 
@@ -332,6 +335,9 @@ class AdjustSaturationInYiqBenchmark(test.Benchmark):
 
   def benchmark_adjust_saturation_in_yiq_cpu_all(self):
     self._benchmark_adjust_saturation_in_yiq('/cpu:0', None)
+
+  def benchmark_adjust_saturation_in_yiq_gpu_all(self):
+    self._benchmark_adjust_saturation_in_yiq(test.gpu_device_name(), None)
 
 
 if __name__ == '__main__':

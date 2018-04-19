@@ -23,7 +23,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.platform import resource_loader
 
 __all__ = ["sparsemax"]
 
@@ -32,7 +31,7 @@ def sparsemax(logits, name=None):
   """Computes sparsemax activations [1].
 
   For each batch `i` and class `j` we have
-    sparsemax[i, j] = max(logits[i, j] - tau(logits[i, :]), 0)
+    $$sparsemax[i, j] = max(logits[i, j] - tau(logits[i, :]), 0)$$
 
   [1]: https://arxiv.org/abs/1602.02068
 

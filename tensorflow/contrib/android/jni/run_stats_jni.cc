@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/stat_summarizer.h"
 
-using tensorflow::StatSummarizer;
 using tensorflow::RunMetadata;
+using tensorflow::StatSummarizer;
 
 namespace {
 StatSummarizer* requireHandle(JNIEnv* env, jlong handle) {

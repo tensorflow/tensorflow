@@ -76,8 +76,7 @@ class IrArray {
           llvm::IRBuilder<>* ir_builder);
 
     // Constructs an index from the given multi-dimensional index and the shape
-    // that it indexes into. Also, computes the linear index according to
-    // "shape".
+    // that it indexes into.
     //
     // Precondition: "shape" has a layout.
     Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
@@ -130,6 +129,18 @@ class IrArray {
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
     Index SourceIndexOfTranspose(
+        const Shape& shape, const Shape& operand_shape,
+        tensorflow::gtl::ArraySlice<int64> dimension_mapping,
+        llvm::IRBuilder<>* builder) const;
+
+    // Given that "this" is the target index of a bitcast from `operand_shape`
+    // to `shape`, returns the source index.
+    Index SourceIndexOfBitcast(const Shape& shape, const Shape& operand_shape,
+                               llvm::IRBuilder<>* builder) const;
+
+    // Given that "this" is the target index of a broadcast from `operand_shape`
+    // to `shape` with the given dimension mapping, returns the source index.
+    Index SourceIndexOfBroadcast(
         const Shape& shape, const Shape& operand_shape,
         tensorflow::gtl::ArraySlice<int64> dimension_mapping,
         llvm::IRBuilder<>* builder) const;
@@ -229,9 +240,33 @@ class IrArray {
     AddMetadata(llvm::LLVMContext::MD_noalias, noalias);
   }
 
-  void AddInvariantLoad(llvm::MDNode* invariant_load) {
-    CHECK_NE(invariant_load, nullptr);
-    AddMetadata(llvm::LLVMContext::MD_invariant_load, invariant_load);
+  // Promises LLVM that the data pointed to by this IrArray never changes after
+  // it's first loaded.
+  //
+  // The temporal scope of this promise is the "whole program" from LLVM's point
+  // of view, but how this translates to HLOs differs between backends.
+  //
+  // In the single-threaded CPU backend, we emit one function that
+  // runs all the HLOs in sequence, so the whole program is the whole HLO
+  // module.
+  //
+  // In the GPU backend, we emit one GPU kernel per top-level HLO (i.e. per HLO
+  // in the entry computation).  From LLVM's perspective, launching a new kernel
+  // is like launching a new program, and so the whole program is one top-level
+  // HLO.  Since the scope of the promise is smaller than in the CPU backend, we
+  // can mark more things as invariant in the GPU backend.
+  //
+  // Marking loads as invariant is particularly helpful on GPUs because
+  // invariant loads can be lowered to PTX ld.global.nc (equivalent to CUDA's
+  // __ldg intrinsic).  These loads use a special cache, and can be
+  // significantly faster than regular loads.
+  void MarkInvariantOverWholeProgram(llvm::LLVMContext* context) {
+    if (is_invariant_) {
+      return;
+    }
+    is_invariant_ = true;
+    AddMetadata(llvm::LLVMContext::MD_invariant_load,
+                llvm::MDNode::get(*context, {}));
   }
 
   const std::map<int, llvm::MDNode*>& metadata() const { return metadata_; }
@@ -261,6 +296,8 @@ class IrArray {
   // loads/stores for this array.  They keys are the metadata kinds and the
   // values are the metadata nodes.
   std::map<int, llvm::MDNode*> metadata_;
+
+  bool is_invariant_ = false;
 };
 
 }  // namespace llvm_ir

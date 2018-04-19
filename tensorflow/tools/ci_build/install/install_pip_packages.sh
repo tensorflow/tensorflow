@@ -27,17 +27,24 @@ easy_install3 -U pip
 pip2 install wheel
 pip3 install wheel
 
+pip2 install virtualenv
+pip3 install virtualenv
+
 # Install six.
 pip2 install --upgrade six==1.10.0
 pip3 install --upgrade six==1.10.0
+
+# Install absl-py.
+pip2 install --upgrade absl-py
+pip3 install --upgrade absl-py
 
 # Install werkzeug.
 pip2 install --upgrade werkzeug==0.11.10
 pip3 install --upgrade werkzeug==0.11.10
 
 # Install bleach. html5lib will be picked up as a dependency.
-pip2 install --upgrade bleach==1.5.0
-pip3 install --upgrade bleach==1.5.0
+pip2 install --upgrade bleach==2.0.0
+pip3 install --upgrade bleach==2.0.0
 
 # Install markdown.
 pip2 install --upgrade markdown==2.6.8
@@ -90,3 +97,10 @@ pip3 install portpicker
 pip2 install grpcio
 pip3 install grpcio
 
+# Eager-to-graph execution needs astor, gast and termcolor:
+pip2 install --upgrade astor
+pip3 install --upgrade astor
+pip2 install --upgrade gast
+pip3 install --upgrade gast
+pip2 install --upgrade termcolor
+pip3 install --upgrade termcolor

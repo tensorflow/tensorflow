@@ -45,7 +45,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 namespace {
-bool IsNumBitsValid(int num_bits) { return num_bits >= 2 && num_bits <= 8; }
+bool IsNumBitsValid(int num_bits) { return num_bits >= 2 && num_bits <= 16; }
 }  // namespace
 
 // -----------------------------------------------------------------------------
@@ -65,8 +65,9 @@ class FakeQuantWithMinMaxArgsOp
                                 " >= ", max_));
     int num_bits;
     OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
-    OP_REQUIRES(context, IsNumBitsValid(num_bits),
-                InvalidArgument("num_bits must be between 2 and 8, inclusive"));
+    OP_REQUIRES(
+        context, IsNumBitsValid(num_bits),
+        InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
@@ -104,8 +105,9 @@ class FakeQuantWithMinMaxArgsGradientOp
                                 " >= ", max_));
     int num_bits;
     OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
-    OP_REQUIRES(context, IsNumBitsValid(num_bits),
-                InvalidArgument("num_bits must be between 2 and 8, inclusive"));
+    OP_REQUIRES(
+        context, IsNumBitsValid(num_bits),
+        InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
@@ -175,8 +177,9 @@ class FakeQuantWithMinMaxVarsOp : public OpKernel {
       : OpKernel::OpKernel(context) {
     int num_bits;
     OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
-    OP_REQUIRES(context, IsNumBitsValid(num_bits),
-                InvalidArgument("num_bits must be between 2 and 8, inclusive"));
+    OP_REQUIRES(
+        context, IsNumBitsValid(num_bits),
+        InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
@@ -213,8 +216,9 @@ class FakeQuantWithMinMaxVarsGradientOp : public OpKernel {
       : OpKernel::OpKernel(context) {
     int num_bits;
     OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
-    OP_REQUIRES(context, IsNumBitsValid(num_bits),
-                InvalidArgument("num_bits must be between 2 and 8, inclusive"));
+    OP_REQUIRES(
+        context, IsNumBitsValid(num_bits),
+        InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
@@ -302,8 +306,9 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
       : OpKernel::OpKernel(context) {
     int num_bits;
     OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
-    OP_REQUIRES(context, IsNumBitsValid(num_bits),
-                InvalidArgument("num_bits must be between 2 and 8, inclusive"));
+    OP_REQUIRES(
+        context, IsNumBitsValid(num_bits),
+        InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
@@ -348,8 +353,9 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
       : OpKernel::OpKernel(context) {
     int num_bits;
     OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
-    OP_REQUIRES(context, IsNumBitsValid(num_bits),
-                InvalidArgument("num_bits must be between 2 and 8, inclusive"));
+    OP_REQUIRES(
+        context, IsNumBitsValid(num_bits),
+        InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;

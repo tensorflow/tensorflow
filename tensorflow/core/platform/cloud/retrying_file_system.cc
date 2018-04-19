@@ -25,7 +25,6 @@ namespace tensorflow {
 
 namespace {
 
-
 class RetryingRandomAccessFile : public RandomAccessFile {
  public:
   RetryingRandomAccessFile(std::unique_ptr<RandomAccessFile> base_file,
@@ -202,5 +201,7 @@ Status RetryingFileSystem::DeleteRecursively(const string& dirname,
                 dirname, undeleted_files, undeleted_dirs),
       initial_delay_microseconds_);
 }
+
+void RetryingFileSystem::FlushCaches() { base_file_system_->FlushCaches(); }
 
 }  // namespace tensorflow

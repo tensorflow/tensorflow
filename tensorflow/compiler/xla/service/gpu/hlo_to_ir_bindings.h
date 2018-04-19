@@ -66,19 +66,29 @@ class HloToIrBindings {
   }
 
   llvm::Value* GetTempBufferBase() const { return temp_buffer_base_; }
+  void SetTempBufferBase(llvm::Value* v) { temp_buffer_base_ = v; }
 
   // A helper method that returns the base pointer of the IrArray containing the
   // output of "inst".at the given ShapeIndex.
   llvm::Value* GetBasePointer(const HloInstruction& hlo,
                               const ShapeIndex& shape_index = {}) const {
     auto it = base_ptrs_.find(&hlo);
-    CHECK(it != base_ptrs_.end());
+    CHECK(it != base_ptrs_.end()) << hlo.ToString();
     return it->second.element(shape_index);
   }
 
-  // Return the underlying IrArray of the output of the given instruction.
+  // Returns the IrArray which contains the output of hlo.
+  //
+  // consumer is the HLO in which this IrArray is used -- we use this to (try
+  // to) add metadata indicating that the array is invariant within consumer.
+  //
+  // To get the buffer into which hlo should write its own output, call
+  // GetIrArray(hlo, hlo).
   llvm_ir::IrArray GetIrArray(const HloInstruction& hlo,
+                              const HloInstruction& consumer,
                               const ShapeIndex& shape_index = {});
+
+  string ToString() const;
 
  private:
   // Emits IR to resolve (possibly) recursive GetTupleElement instructions.
@@ -104,7 +114,7 @@ class HloToIrBindings {
   std::unordered_map<const HloInstruction*, ShapeTree<llvm::Value*>> base_ptrs_;
 
   // The address of the memory block that contains all temporary buffers.
-  llvm::Value* temp_buffer_base_;
+  llvm::Value* temp_buffer_base_ = nullptr;
 
   llvm_ir::AliasAnalysis alias_analysis_;
 };

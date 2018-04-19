@@ -185,7 +185,7 @@ def batch_matrix_pow(matrices, powers):
                     { matmul(A, power(matmul(A, A), (p - 1) / 2)) for odd p
       power(A, 0) = I
 
-    The power(A, 0) = I case is handeled by starting with accumulator set to the
+    The power(A, 0) = I case is handled by starting with accumulator set to the
     identity matrix; matrices with zero residual powers are passed through
     unchanged.
 

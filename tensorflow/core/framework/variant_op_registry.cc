@@ -182,7 +182,7 @@ Status VariantDeviceCopy(
 // Special casing UnaryOpFn per op and per device.
 UnaryVariantOpRegistry::VariantUnaryOpFn* UnaryVariantOpRegistry::GetUnaryOpFn(
     VariantUnaryOp op, StringPiece device, StringPiece type_name) {
-  auto found = unary_op_fns.find(std::make_tuple(op, device, type_name));
+  auto found = unary_op_fns.find({op, device, type_name});
   if (found == unary_op_fns.end()) return nullptr;
   return &found->second;
 }
@@ -195,12 +195,10 @@ void UnaryVariantOpRegistry::RegisterUnaryOpFn(
   CHECK_EQ(existing, nullptr)
       << "Unary VariantUnaryOpFn for type_name: " << type_name
       << " already registered for device type: " << device;
-  unary_op_fns.insert(
-      std::pair<std::tuple<VariantUnaryOp, StringPiece, StringPiece>,
-                VariantUnaryOpFn>(
-          std::make_tuple(op, GetPersistentStringPiece(device),
-                          GetPersistentStringPiece(type_name)),
-          unary_op_fn));
+  unary_op_fns.insert(std::pair<FuncTuple<VariantUnaryOp>, VariantUnaryOpFn>(
+      {op, GetPersistentStringPiece(device),
+       GetPersistentStringPiece(type_name)},
+      unary_op_fn));
 }
 
 namespace {
@@ -229,7 +227,7 @@ REGISTER_VARIANT_ZEROS_LIKE_TYPE(bool);
 UnaryVariantOpRegistry::VariantBinaryOpFn*
 UnaryVariantOpRegistry::GetBinaryOpFn(VariantBinaryOp op, StringPiece device,
                                       StringPiece type_name) {
-  auto found = binary_op_fns.find(std::make_tuple(op, device, type_name));
+  auto found = binary_op_fns.find({op, device, type_name});
   if (found == binary_op_fns.end()) return nullptr;
   return &found->second;
 }
@@ -242,12 +240,10 @@ void UnaryVariantOpRegistry::RegisterBinaryOpFn(
   CHECK_EQ(existing, nullptr)
       << "Unary VariantBinaryOpFn for type_name: " << type_name
       << " already registered for device type: " << device;
-  binary_op_fns.insert(
-      std::pair<std::tuple<VariantBinaryOp, StringPiece, StringPiece>,
-                VariantBinaryOpFn>(
-          std::make_tuple(op, GetPersistentStringPiece(device),
-                          GetPersistentStringPiece(type_name)),
-          add_fn));
+  binary_op_fns.insert(std::pair<FuncTuple<VariantBinaryOp>, VariantBinaryOpFn>(
+      {op, GetPersistentStringPiece(device),
+       GetPersistentStringPiece(type_name)},
+      add_fn));
 }
 
 namespace {

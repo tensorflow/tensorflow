@@ -93,7 +93,8 @@ class Conv2DTest(test.TestCase):
     quantized_range = ((quantized_max - quantized_min) * range_adjust)
     range_scale = (quantized_range / number_of_steps)
     lowest_quantized = -(1 << (number_of_bits - 1))
-    result = np.array([(quantized_min + ((x - lowest_quantized) * range_scale))
+    result = np.array([(quantized_min +
+                        ((float(x) - lowest_quantized) * range_scale))
                        for x in quantized.flatten()])
     return result
 

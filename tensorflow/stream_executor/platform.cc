@@ -85,6 +85,17 @@ StreamExecutorConfig::StreamExecutorConfig(int ordinal_in)
 
 Platform::~Platform() {}
 
+bool Platform::Initialized() const { return true; }
+
+port::Status Platform::Initialize(
+    const std::map<string, string> &platform_options) {
+  if (!platform_options.empty()) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "this platform does not support custom initialization");
+  }
+  return port::Status::OK();
+}
+
 port::Status Platform::ForceExecutorShutdown() {
   return port::Status(port::error::UNIMPLEMENTED,
                       "executor shutdown is not supported on this platform");

@@ -29,7 +29,7 @@ GetCpuCastFromDouble(DataType dst_dtype) {
 #if GOOGLE_CUDA
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetGpuCastFromDouble(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, GPUDevice, double);
+  CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, double);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA

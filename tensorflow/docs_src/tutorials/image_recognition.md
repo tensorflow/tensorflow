@@ -5,7 +5,7 @@ tell apart a lion and a jaguar, read a sign, or recognize a human's face.
 But these are actually hard problems to solve with a computer: they only
 seem easy because our brains are incredibly good at understanding images.
 
-In the last few years the field of machine learning has made tremendous
+In the last few years, the field of machine learning has made tremendous
 progress on addressing these difficult problems. In particular, we've
 found that a kind of model called a deep
 [convolutional neural network](https://colah.github.io/posts/2014-07-Conv-Nets-Modular/)
@@ -42,7 +42,7 @@ For example, here are the results from [AlexNet] classifying some images:
 To compare models, we examine how often the model fails to predict the
 correct answer as one of their top 5 guesses -- termed "top-5 error rate".
 [AlexNet] achieved by setting a top-5 error rate of 15.3% on the 2012
-validation data set; [Inception (GoogLeNet)] achieved 6.67%; 
+validation data set; [Inception (GoogLeNet)] achieved 6.67%;
 [BN-Inception-v2] achieved 4.9%; [Inception-v3] reaches 3.46%.
 
 > How well do humans do on ImageNet Challenge? There's a [blog post] by
@@ -450,9 +450,7 @@ covering them.
 
 To find out more about implementing convolutional neural networks, you can jump
 to the TensorFlow @{$deep_cnn$deep convolutional networks tutorial},
-or start a bit more gently with our
-@{$beginners$ML beginner} or @{$pros$ML expert}
-MNIST starter tutorials. Finally, if you want to get up to speed on research
-in this area, you can
+or start a bit more gently with our @{$layers$MNIST starter tutorial}.
+Finally, if you want to get up to speed on research in this area, you can
 read the recent work of all the papers referenced in this tutorial.
 

@@ -60,61 +60,30 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
                               input_shape.DebugString()));
 
   DataType index_type = output_type(0);
-  xla::PrimitiveType xla_input_type;
-  OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(0), &xla_input_type));
-  xla::PrimitiveType xla_index_type;
-  OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(index_type, &xla_index_type));
 
   xla::ComputationBuilder* b = ctx->builder();
   xla::ComputationDataHandle input = ctx->Input(0);
 
-  xla::ComputationDataHandle init_value;
-  const xla::Computation* reducer;
+  xla::ComputationDataHandle output;
   if (is_min_) {
-    init_value = XlaHelpers::MaxValue(b, input_type(0));
-    reducer = ctx->GetOrCreateMin(input_type(0));
+    OP_REQUIRES_OK(ctx,
+                   XlaHelpers::ArgMin(b, ctx, input, input_shape, input_type(0),
+                                      index_type, axis, &output));
   } else {
-    init_value = XlaHelpers::MinValue(b, input_type(0));
-    reducer = ctx->GetOrCreateMax(input_type(0));
+    OP_REQUIRES_OK(ctx,
+                   XlaHelpers::ArgMax(b, ctx, input, input_shape, input_type(0),
+                                      index_type, axis, &output));
   }
-  xla::ComputationDataHandle input_max =
-      b->Reduce(input, init_value, *reducer, /*dimensions_to_reduce=*/{axis});
-  std::vector<int64> broadcast_dims(input_dims - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
-  std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
-  // Compute a mask that has 1s for elements equal to the maximum.
-  xla::ComputationDataHandle partial_mask = b->ConvertElementType(
-      b->Eq(input, input_max, broadcast_dims), xla_index_type);
-
-  // In order to make identity elements for a bitwise And, we:
-  //   Left shift the 1 to the leftmost bit, yielding 0x10...0
-  //   Arithmetic right shift the 1 back to the rightmost bit, yielding 0xFF...F
-  int32 bits_in_type =
-      xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_index_type) * 8 - 1;
-  xla::ComputationDataHandle shift_amount =
-      XlaHelpers::IntegerLiteral(b, index_type, bits_in_type);
-  xla::ComputationDataHandle full_mask = b->ShiftRightArithmetic(
-      b->ShiftLeft(partial_mask, shift_amount), shift_amount);
-
-  // And with the vector [0, 1, 2, ...] to convert each 0xFF...F into its index.
-  xla::ComputationDataHandle iota;
-  OP_REQUIRES_OK(ctx, XlaHelpers::Iota(b, index_type, axis_size, &iota));
-  xla::ComputationDataHandle product =
-      b->And(full_mask, iota, /*broadcast_dimensions=*/{axis});
-
-  // If there are multiple maximum elements, choose the one with the highest
-  // index.
-  xla::ComputationDataHandle output =
-      b->Reduce(product, XlaHelpers::MinValue(b, index_type),
-                *ctx->GetOrCreateMax(index_type),
-                /*dimensions_to_reduce=*/{axis});
 
   ctx->SetOutput(0, output);
 }
 
 XlaArgMaxOp::XlaArgMaxOp(OpKernelConstruction* ctx)
     : XlaArgMinMaxOp(ctx, /*is_min=*/false) {}
-REGISTER_XLA_OP(Name("ArgMax").Device(DEVICE_GPU_XLA_JIT), XlaArgMaxOp);
+REGISTER_XLA_OP(Name("ArgMax")
+                    .Device(DEVICE_GPU_XLA_JIT)
+                    .CompileTimeConstInput("dimension"),
+                XlaArgMaxOp);
 
 namespace {
 
@@ -124,7 +93,7 @@ class XlaArgMinOp : public XlaArgMinMaxOp {
 };
 XlaArgMinOp::XlaArgMinOp(OpKernelConstruction* ctx)
     : XlaArgMinMaxOp(ctx, /*is_min=*/true) {}
-REGISTER_XLA_OP(Name("ArgMin"), XlaArgMinOp);
+REGISTER_XLA_OP(Name("ArgMin").CompileTimeConstInput("dimension"), XlaArgMinOp);
 
 }  // namespace
 }  // namespace tensorflow

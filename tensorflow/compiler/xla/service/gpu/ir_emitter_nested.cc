@@ -16,12 +16,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
+
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -115,7 +116,8 @@ Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
 Status IrEmitterNested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
-  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo), &ir_builder_)
+  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo),
+                              &ir_builder_)
       .EmitLoop();
 }
 

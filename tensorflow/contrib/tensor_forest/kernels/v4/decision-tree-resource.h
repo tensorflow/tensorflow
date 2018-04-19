@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_TREE_RESOURCE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_TREE_RESOURCE_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_TREE_RESOURCE_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_TREE_RESOURCE_H_
 
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model.pb.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/decision_node_evaluator.h"
@@ -26,7 +26,6 @@
 namespace tensorflow {
 namespace tensorforest {
 
-
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
 class DecisionTreeResource : public ResourceBase {
  public:
@@ -35,15 +34,12 @@ class DecisionTreeResource : public ResourceBase {
 
   string DebugString() override {
     return strings::StrCat("DecisionTree[size=",
-                           decision_tree_->decision_tree().nodes_size(),
-                           "]");
+                           decision_tree_->decision_tree().nodes_size(), "]");
   }
 
   void MaybeInitialize();
 
-  const decision_trees::Model& decision_tree() const {
-    return *decision_tree_;
-  }
+  const decision_trees::Model& decision_tree() const { return *decision_tree_; }
 
   decision_trees::Model* mutable_decision_tree() {
     return decision_tree_.get();
@@ -59,9 +55,7 @@ class DecisionTreeResource : public ResourceBase {
 
   // Resets the resource and frees the proto.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() {
-    decision_tree_.reset(new decision_trees::Model());
-  }
+  void Reset() { decision_tree_.reset(new decision_trees::Model()); }
 
   mutex* get_mutex() { return &mu_; }
 
@@ -84,8 +78,7 @@ class DecisionTreeResource : public ResourceBase {
   std::vector<std::unique_ptr<DecisionNodeEvaluator>> node_evaluators_;
 };
 
-
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_TREE_RESOURCE_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_TREE_RESOURCE_H_

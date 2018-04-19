@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -28,28 +29,15 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
-// TODO(rmlarsen): Get rid of fmod2 once fmod is upstreamed to Eigen.
-template <typename T>
-struct scalar_fmod2_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
-                                                           const T& b) const {
-    return std::fmod(a, b);
-  }
-};
-template <typename T>
-struct functor_traits<scalar_fmod2_op<T>> {
-  enum {
-    Cost = 13,  // Reciprocal throughput of FPREM on Haswell.
-    PacketAccess = false,
-  };
-};
-
 template <typename T>
 struct scalar_asinh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::asinh(a);
+#else
     return std::asinh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
 template <typename T>
@@ -61,7 +49,11 @@ template <typename T>
 struct scalar_acosh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::acosh(a);
+#else
     return std::acosh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
 template <typename T>
@@ -73,7 +65,11 @@ template <typename T>
 struct scalar_atanh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::atanh(a);
+#else
     return std::atanh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
 template <typename T>
@@ -96,6 +92,35 @@ struct scalar_binary_pow_op_google {
 
 template <typename Scalar, typename Exponent>
 struct functor_traits<scalar_binary_pow_op_google<Scalar, Exponent>> {
+  enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
+};
+
+template <typename Scalar, typename Exponent>
+struct safe_scalar_binary_pow_op {
+  static_assert(std::is_integral<Scalar>::value, "Integer type expected");
+  static_assert(std::is_integral<Exponent>::value &&
+                    std::is_signed<Exponent>::value,
+                "Signed integer type expected");
+
+  bool* const error;
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE safe_scalar_binary_pow_op(bool* error)
+      : error(error) {}
+
+  EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a,
+                                             const Exponent& b) const {
+    const Exponent safe_b = tensorflow::internal::SubtleMustCopy(b);
+    if (TF_PREDICT_TRUE(safe_b >= 0)) {
+      return numext::pow(a, safe_b);
+    } else {
+      *error = true;
+      return 0;
+    }
+  }
+};
+
+template <typename Scalar, typename Exponent>
+struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
@@ -676,7 +701,9 @@ struct sub : base<T, Eigen::internal::scalar_difference_op<T>> {
 };
 
 template <typename T>
-struct mul : base<T, Eigen::internal::scalar_product_op<T>> {};
+struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
+  static const bool use_bcast_optimization = true;
+};
 
 template <typename T>
 struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
@@ -688,7 +715,7 @@ struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
 };
 
 template <typename T>
-struct fmod : base<T, Eigen::internal::scalar_fmod2_op<T>> {};
+struct fmod : base<T, Eigen::internal::scalar_fmod_op<T>> {};
 
 template <typename T>
 struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
@@ -722,6 +749,11 @@ struct floor_div_real : base<T, Eigen::internal::google_floor_div_real<T>> {};
 
 template <typename T>
 struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};
+
+template <typename T>
+struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
+  static const bool has_errors = true;
+};
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};

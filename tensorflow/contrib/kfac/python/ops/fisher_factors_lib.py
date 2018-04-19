@@ -24,23 +24,15 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
 
 _allowed_symbols = [
-    "inverse_initializer",
-    "covariance_initializer",
-    "diagonal_covariance_initializer",
-    "scope_string_from_params",
-    "scope_string_from_name",
-    "scalar_or_tensor_to_string",
-    "FisherFactor",
-    "InverseProvidingFactor",
-    "FullFactor",
-    "DiagonalFactor",
-    "NaiveDiagonalFactor",
-    "FullyConnectedDiagonalFactor",
-    "FullyConnectedKroneckerFactor",
-    "ConvInputKroneckerFactor",
-    "ConvOutputKroneckerFactor",
-    "ConvDiagonalFactor",
-    "set_global_constants",
+    "inverse_initializer", "covariance_initializer",
+    "diagonal_covariance_initializer", "scope_string_from_params",
+    "scope_string_from_name", "scalar_or_tensor_to_string", "FisherFactor",
+    "InverseProvidingFactor", "FullFactor", "DiagonalFactor",
+    "NaiveDiagonalFactor", "EmbeddingInputKroneckerFactor",
+    "FullyConnectedDiagonalFactor", "FullyConnectedKroneckerFactor",
+    "ConvInputKroneckerFactor", "ConvOutputKroneckerFactor",
+    "ConvDiagonalFactor", "set_global_constants", "maybe_colocate_with",
+    "compute_cov", "append_homog"
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

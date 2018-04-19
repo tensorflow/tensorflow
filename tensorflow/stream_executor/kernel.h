@@ -136,7 +136,7 @@ class KernelMetadata {
 // Thread-compatible.
 class KernelBase {
  public:
-  KernelBase(KernelBase &&) = default;
+  KernelBase(KernelBase &&from);
 
   // Constructs an "empty" (not-yet-loaded) kernel instance.
   //
@@ -340,8 +340,8 @@ class KernelArgIterator {
 //
 // This class exists as a way to pass kernel arguments to
 // StreamExecutorInterface::Launch. That Launch method is virtual, so it can't
-// be templated to accept any KernelArgsArray type, therfore a reference to this
-// base type is passed instead.
+// be templated to accept any KernelArgsArray type, therefore a reference to
+// this base type is passed instead.
 //
 // Performance is not a concern here because each of these methods will be
 // called at most once per kernel launch. Past performance concerns with

@@ -138,13 +138,13 @@ XLA_TEST_F(CompilationCacheTest, DifferentParameterLayouts) {
   // layouts. Use these arrays as parameters to a simple computation. If the
   // layout of the array changes then computation should be recompiled (cache
   // miss).
-  auto rowmaj_array = test_utils::CreateR2LiteralWithLayout(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, /*minor_to_major=*/{1, 0});
+  auto rowmaj_array = Literal::CreateR2WithLayout(
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({1, 0}));
   auto rowmaj_handle =
       client_->TransferToServer(*rowmaj_array).ConsumeValueOrDie();
 
-  auto colmaj_array = test_utils::CreateR2LiteralWithLayout(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, /*minor_to_major=*/{0, 1});
+  auto colmaj_array = Literal::CreateR2WithLayout(
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1}));
   auto colmaj_handle =
       client_->TransferToServer(*colmaj_array).ConsumeValueOrDie();
 

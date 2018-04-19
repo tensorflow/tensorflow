@@ -23,12 +23,14 @@ import six
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -36,6 +38,7 @@ __all__ = [
 ]
 
 
+@tf_export("train.load_checkpoint")
 def load_checkpoint(ckpt_dir_or_file):
   """Returns `CheckpointReader` for checkpoint found in `ckpt_dir_or_file`.
 
@@ -60,6 +63,7 @@ def load_checkpoint(ckpt_dir_or_file):
   return pywrap_tensorflow.NewCheckpointReader(filename)
 
 
+@tf_export("train.load_variable")
 def load_variable(ckpt_dir_or_file, name):
   """Returns the tensor value of the given variable in the checkpoint.
 
@@ -77,6 +81,7 @@ def load_variable(ckpt_dir_or_file, name):
   return reader.get_tensor(name)
 
 
+@tf_export("train.list_variables")
 def list_variables(ckpt_dir_or_file):
   """Returns list of all variables in the checkpoint.
 
@@ -95,6 +100,7 @@ def list_variables(ckpt_dir_or_file):
   return result
 
 
+@tf_export("train.init_from_checkpoint")
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """Initializes current variables with tensors loaded from given checkpoint.
 
@@ -176,7 +182,8 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   ckpt_file = _get_checkpoint_filename(ckpt_dir_or_file)
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
-  for tensor_name_in_ckpt, current_var_or_name in six.iteritems(assignment_map):
+  for tensor_name_in_ckpt, current_var_or_name in sorted(
+      six.iteritems(assignment_map)):
     var = None
     # Check if this is Variable object or list of Variable objects (in case of
     # partitioned variables).
@@ -233,7 +240,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
           if "/part_" in var_name:
             var_name = var_name[:var_name.index("/part_")]
           scope_variables.add(var_name)
-      for var_name in scope_variables:
+      for var_name in sorted(scope_variables):
         # Lookup name with specified prefix and suffix from current variable.
         # If tensor_name given is '/' (root), don't use it for full name.
         full_tensor_name = var_name[len(scopes):]
@@ -241,6 +248,9 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
           full_tensor_name = full_tensor_name[1:]
         if tensor_name_in_ckpt != "/":
           full_tensor_name = tensor_name_in_ckpt + full_tensor_name
+        # Remove trailing '/', if any, in the full_tensor_name
+        if full_tensor_name.endswith("/"):
+          full_tensor_name = full_tensor_name[:-1]
         if full_tensor_name not in variable_map:
           raise ValueError(
               "Tensor %s (%s in %s) is not found in %s checkpoint" % (
@@ -280,10 +290,20 @@ def _set_checkpoint_initializer(variable,
     name: Name of the operation.
   """
   base_type = variable.dtype.base_dtype
-  with ops.colocate_with(variable):
+  # Do not colocate with variable since RestoreV2 op only runs on CPU and
+  # colocation will force variable (and other ops that colocate with variable)
+  # to be on CPU as well. It is okay to place the variable's initializer op on
+  # CPU since it will only be run once at the start.
+  with ops.device(variable.device), ops.device("/cpu:0"):
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
-    variable._initializer_op = state_ops.assign(variable, restore_op)  # pylint:disable=protected-access
+    if isinstance(variable, resource_variable_ops.ResourceVariable):
+      init_op = variable.assign(restore_op, read_value=False)
+    else:
+      init_op = state_ops.assign(variable, restore_op)
+    variable._initializer_op = init_op  # pylint:disable=protected-access
+    restore_op.set_shape(variable.shape)
+    variable._initial_value = restore_op  # pylint:disable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

@@ -24,5 +24,5 @@ REGISTER3(UnaryOp, GPU, "IsInf", functor::isinf, float, Eigen::half, double);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "IsInf", functor::isinf, float, double);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -39,13 +39,14 @@ const char* const kStampTokenName = "stamp_token";
 const char* const kNextStampTokenName = "next_stamp_token";
 
 struct PartitionKey {
-  PartitionKey() : partition_id(-1), feature_id(-1) {}
+  PartitionKey() : partition_id(-1), feature_id(-1), dimension(-1) {}
 
-  PartitionKey(int32 p, int64 f) : partition_id(p), feature_id(f) {}
+  PartitionKey(int32 p, int64 f, int32 d)
+      : partition_id(p), feature_id(f), dimension(d) {}
 
   bool operator==(const PartitionKey& other) const {
-    return (feature_id == other.feature_id) &&
-           (partition_id == other.partition_id);
+    return (partition_id == other.partition_id) &&
+           (dimension == other.dimension) && (feature_id == other.feature_id);
   }
 
   // Compare for PartitionKey.
@@ -54,7 +55,11 @@ struct PartitionKey {
       if (a.partition_id < b.partition_id) {
         return true;
       }
-      if ((a.partition_id == b.partition_id) && (a.feature_id < b.feature_id)) {
+      if ((a.partition_id == b.partition_id) && (a.dimension < b.dimension)) {
+        return true;
+      }
+      if ((a.partition_id == b.partition_id) && (a.dimension == b.dimension) &&
+          (a.feature_id < b.feature_id)) {
         return true;
       }
       return false;
@@ -64,8 +69,11 @@ struct PartitionKey {
   // Tree partition defined by traversing the tree to the leaf.
   int32 partition_id;
 
-  // Feature Id within the feature column.
+  // Feature column id.
   int64 feature_id;
+
+  // Dimension within feature column.
+  int32 dimension;
 };
 
 template <typename GradientType, typename HessianType>
@@ -126,36 +134,36 @@ void SerializeScalarAccumulatorToOutput(
     OpKernelContext* context) {
   int64 num_slots = accumulator_resource.values().size();
   Tensor* partition_ids_t = nullptr;
-  OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_partition_ids", TensorShape({num_slots}),
-                               &partition_ids_t));
+  OP_REQUIRES_OK(context, context->allocate_output("output_partition_ids",
+                                                   TensorShape({num_slots}),
+                                                   &partition_ids_t));
   auto partition_ids = partition_ids_t->vec<int32>();
 
+  // Feature ids tensor has ids of feature columns and their dimensions.
   Tensor* feature_ids_t = nullptr;
-  OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_feature_ids", TensorShape({num_slots}),
-                               &feature_ids_t));
-  auto feature_ids = feature_ids_t->vec<int64>();
+  OP_REQUIRES_OK(context, context->allocate_output("output_feature_ids",
+                                                   TensorShape({num_slots, 2}),
+                                                   &feature_ids_t));
+  auto feature_ids = feature_ids_t->matrix<int64>();
 
   Tensor* gradients_t = nullptr;
   OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_gradients", TensorShape({num_slots}),
-                               &gradients_t));
+      context, context->allocate_output(
+                   "output_gradients", TensorShape({num_slots}), &gradients_t));
   auto gradients = gradients_t->vec<float>();
 
   Tensor* hessians_t = nullptr;
-  OP_REQUIRES_OK(context,
-                 context->allocate_output(
-                     "output_hessians", TensorShape({num_slots}), &hessians_t));
+  OP_REQUIRES_OK(
+      context, context->allocate_output("output_hessians",
+                                        TensorShape({num_slots}), &hessians_t));
   auto hessians = hessians_t->vec<float>();
 
   int i = 0;
   for (const auto& iter : accumulator_resource.values()) {
     partition_ids(i) = iter.first.partition_id;
-    feature_ids(i) = iter.first.feature_id;
+    feature_ids(i, 0) = iter.first.feature_id;
+    feature_ids(i, 1) = iter.first.dimension;
+
     gradients(i) = iter.second.first;
     hessians(i) = iter.second.second;
     ++i;
@@ -167,18 +175,16 @@ void SerializeTensorAccumulatorToOutput(
     OpKernelContext* context) {
   int64 num_slots = accumulator_resource.values().size();
   Tensor* partition_ids_t = nullptr;
-  OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_partition_ids", TensorShape({num_slots}),
-                               &partition_ids_t));
+  OP_REQUIRES_OK(context, context->allocate_output("output_partition_ids",
+                                                   TensorShape({num_slots}),
+                                                   &partition_ids_t));
   auto partition_ids = partition_ids_t->vec<int32>();
 
   Tensor* feature_ids_t = nullptr;
-  OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_feature_ids", TensorShape({num_slots}),
-                               &feature_ids_t));
-  auto feature_ids = feature_ids_t->vec<int64>();
+  OP_REQUIRES_OK(context, context->allocate_output("output_feature_ids",
+                                                   TensorShape({num_slots, 2}),
+                                                   &feature_ids_t));
+  auto feature_ids = feature_ids_t->matrix<int64>();
 
   TensorShape gradient_shape = accumulator_resource.gradient_shape();
   int64 num_gradient_elements = gradient_shape.num_elements();
@@ -193,15 +199,16 @@ void SerializeTensorAccumulatorToOutput(
   int64 num_hessian_elements = hessian_shape.num_elements();
   hessian_shape.InsertDim(0, num_slots);
   Tensor* hessians_t = nullptr;
-  OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_hessians", hessian_shape, &hessians_t));
+  OP_REQUIRES_OK(context, context->allocate_output("output_hessians",
+                                                   hessian_shape, &hessians_t));
   auto hessians = hessians_t->flat_outer_dims<float>();
 
   int i = 0;
   for (const auto& iter : accumulator_resource.values()) {
     partition_ids(i) = iter.first.partition_id;
-    feature_ids(i) = iter.first.feature_id;
+    feature_ids(i, 0) = iter.first.feature_id;
+    feature_ids(i, 1) = iter.first.dimension;
+
     for (int j = 0; j < num_gradient_elements; ++j) {
       gradients(i, j) = iter.second.first[j];
     }
@@ -220,14 +227,16 @@ void AddToScalarAccumulator(
                                         1);
   const TensorShape& partition_ids_shape = partition_ids_t.shape();
   const auto& partition_ids = partition_ids_t.vec<int32>();
-  const auto& feature_ids = feature_ids_t.vec<int64>();
+  const auto& feature_ids_and_dimensions = feature_ids_t.matrix<int64>();
   const auto& gradients = gradients_t.vec<float>();
   const auto& hessians = hessians_t.vec<float>();
 
   int64 num_updates = partition_ids_shape.dim_size(0);
   auto stats_map = accumulator_resource->mutable_values();
   for (int64 i = 0; i < num_updates; ++i) {
-    const auto key = PartitionKey(partition_ids(i), feature_ids(i));
+    const auto key =
+        PartitionKey(partition_ids(i), feature_ids_and_dimensions(i, 0),
+                     feature_ids_and_dimensions(i, 1));
     auto itr = stats_map->find(key);
     if (itr != stats_map->end()) {
       itr->second.first += gradients(i);
@@ -263,7 +272,7 @@ void AddToTensorAccumulator(
 
   const TensorShape& partition_ids_shape = partition_ids_t.shape();
   const auto& partition_ids = partition_ids_t.vec<int32>();
-  const auto& feature_ids = feature_ids_t.vec<int64>();
+  const auto& feature_ids_and_dimensions = feature_ids_t.matrix<int64>();
   TensorShape gradients_shape = gradients_t.shape();
   const auto& gradients = gradients_t.flat_outer_dims<float>();
   TensorShape hessians_shape = hessians_t.shape();
@@ -288,7 +297,9 @@ void AddToTensorAccumulator(
   int64 num_updates = partition_ids_shape.dim_size(0);
   auto stats_map = accumulator_resource->mutable_values();
   for (int64 i = 0; i < num_updates; ++i) {
-    const auto key = PartitionKey(partition_ids(i), feature_ids(i));
+    const auto key =
+        PartitionKey(partition_ids(i), feature_ids_and_dimensions(i, 0),
+                     feature_ids_and_dimensions(i, 1));
     auto itr = stats_map->find(key);
     if (itr == stats_map->end()) {
       std::vector<float> new_gradients(gradients_shape.num_elements());

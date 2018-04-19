@@ -52,21 +52,34 @@ class XlaCompilationCache : public ResourceBase {
   // Compiles a function into a XlaCompiler::CompilationResult that can be used
   // to execute an XLA Computation. Compilation results are cached.
   // `function` is the name of a Tensorflow function to compile.
-  // `num_constant_args` is the number of compile-time constant arguments to
-  // `function`. `variable_args` is a snapshot of the current values of the
+  // `constant_args` is a map of tensorflow argument number to its constant
+  //  value.
+  // `variable_args` is a snapshot of the current values of the
   // resource variable arguments to `function`; uninitialized variables are
   // represented by an absent OptionalTensor.
   // The result of compilation is written to `*compilation_result`, which must
   // be non-null. If `executable` is non-null, also builds an
-  // xla::LocalExecutable and sets `executable to point to it. The resulting
+  // xla::LocalExecutable and sets `executable` to point to it. The resulting
   // executable pointer may be null if the computation has no non-constant
   // outputs.
   Status Compile(const XlaCompiler::Options& options,
-                 const NameAttrList& function, int num_constant_args,
-                 const std::vector<OptionalTensor>& variable_args,
+                 const NameAttrList& function,
+                 const std::map<int, Tensor>& constant_args,
+                 const std::map<int, OptionalTensor>& variable_args,
                  OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** compilation_result,
-                 xla::LocalExecutable** executable);
+                 xla::LocalExecutable** executable,
+                 const XlaCompiler::CompileOptions* compile_options);
+
+  // As above, but calls XlaCompiler::CompileSingleOp instead of
+  // XlaCompiler::CompileFunction.
+  Status CompileSingleOp(
+      const XlaCompiler::Options& options,
+      const std::map<int, Tensor>& constant_args,
+      const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+      const XlaCompiler::CompilationResult** compilation_result,
+      xla::LocalExecutable** executable,
+      const XlaCompiler::CompileOptions* compile_options);
 
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
@@ -74,6 +87,17 @@ class XlaCompilationCache : public ResourceBase {
   string DebugString() override;
 
  private:
+  // Common implementation of Compile and CompileSingleOp.
+  Status CompileImpl(const XlaCompiler::Options& options,
+                     const NameAttrList& function,
+                     const std::map<int, Tensor>& constant_args,
+                     const std::map<int, OptionalTensor>& variable_args,
+                     OpKernelContext* ctx,
+                     const XlaCompiler::CompilationResult** compilation_result,
+                     xla::LocalExecutable** executable,
+                     const XlaCompiler::CompileOptions* compile_options,
+                     bool compile_single_op);
+
   // Takes `result` which has been compiled from a Tensorflow subgraph to a
   // XLA computation already, and generates an XLA LocalExecutable `executable`.
   Status BuildExecutable(const XlaCompiler::Options& options,
@@ -103,8 +127,9 @@ class XlaCompilationCache : public ResourceBase {
   static string SignatureDebugString(const Signature& sig);
 
   // Builds the signature for a compilation.
-  Status BuildSignature(const NameAttrList& function, int num_constant_args,
-                        const std::vector<OptionalTensor>& variable_args,
+  Status BuildSignature(const NameAttrList& function,
+                        const std::map<int, Tensor>& constant_args,
+                        const std::map<int, OptionalTensor>& variable_args,
                         OpKernelContext* ctx, Signature* signature);
 
   // The value associated with a cache entry.

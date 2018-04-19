@@ -1,8 +1,8 @@
-FROM nvidia/cuda:8.0-cudnn6-devel-ubuntu14.04
+FROM nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04
 
 LABEL maintainer="Jan Prach <jendap@google.com>"
 
-# In the Ubuntu 14.04 images, cudnn is placed in system paths. Move them to
+# In the Ubuntu 16.04 images, cudnn is placed in system paths. Move them to
 # /usr/local/cuda
 RUN cp -P /usr/include/cudnn.h /usr/local/cuda/include
 RUN cp -P /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64

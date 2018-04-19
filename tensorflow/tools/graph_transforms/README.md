@@ -95,9 +95,9 @@ transforms to modify the graph with. The transforms are given as a list of
 names, and can each have arguments themselves. These transforms define the
 pipeline of modifications that are applied in order to produce the output.
 Sometimes you need some transforms to happen before others, and the ordering
-within the list lets you specify which happen first. 
-Note that the optimization 
-`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control 
+within the list lets you specify which happen first.
+Note that the optimization
+`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control
 flow operations, such as `tf.cond`, `tf.map_fn`, and `tf.while`.
 
 ## Inspecting Graphs
@@ -638,6 +638,13 @@ loading a graph on a different system than the model was trained on, since some
 specified devices may not be available. In order to work with graphs like these,
 you can run this transform to wipe the slate clean and delete the device
 specifier from all ops.
+
+### remove_control_dependencies
+
+Args: None \
+Prerequisites: None
+
+Removes all control dependencies from the graph.
 
 ### remove_nodes
 

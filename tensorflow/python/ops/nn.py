@@ -74,6 +74,7 @@ See the @{$python/nn} guide.
 @@softmax
 @@log_softmax
 @@softmax_cross_entropy_with_logits
+@@softmax_cross_entropy_with_logits_v2
 @@sparse_softmax_cross_entropy_with_logits
 @@weighted_cross_entropy_with_logits
 @@embedding_lookup
@@ -97,6 +98,7 @@ See the @{$python/nn} guide.
 @@fixed_unigram_candidate_sampler
 @@compute_accidental_hits
 @@quantized_conv2d
+@@quantized_relu
 @@quantized_relu_x
 @@quantized_max_pool
 @@quantized_avg_pool
@@ -125,8 +127,6 @@ from tensorflow.python.ops.nn_impl import *
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
-from tensorflow.python.ops.rnn import *
-from tensorflow.python.ops import rnn_cell
 # pylint: enable=wildcard-import,unused-import
 
 

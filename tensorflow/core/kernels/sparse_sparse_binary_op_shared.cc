@@ -132,14 +132,16 @@ class SparseSparseBinaryOpShared : public OpKernel {
 
     // Validations.
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(a_indices_t->shape()) &&
-                 TensorShapeUtils::IsMatrix(b_indices_t->shape()),
+        ctx,
+        TensorShapeUtils::IsMatrix(a_indices_t->shape()) &&
+            TensorShapeUtils::IsMatrix(b_indices_t->shape()),
         errors::InvalidArgument("Inputs a_indices and b_indices should be "
                                 "matrices but received shapes: ",
                                 a_indices_t->shape().DebugString(), ", ",
                                 b_indices_t->shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(a_values_t->shape()) &&
-                         TensorShapeUtils::IsVector(b_values_t->shape()),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsVector(a_values_t->shape()) &&
+                    TensorShapeUtils::IsVector(b_values_t->shape()),
                 errors::InvalidArgument(
                     "Inputs a_values and b_values should be vectors "
                     "but received shapes: ",
@@ -157,8 +159,9 @@ class SparseSparseBinaryOpShared : public OpKernel {
                                 " non-empty input values, got ",
                                 a_values.size(), " and ", b_values.size()));
 
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(a_shape_t->shape()) &&
-                         TensorShapeUtils::IsVector(b_shape_t->shape()),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsVector(a_shape_t->shape()) &&
+                    TensorShapeUtils::IsVector(b_shape_t->shape()),
                 errors::InvalidArgument(
                     "Input shapes should be a vector but received shapes ",
                     a_shape_t->shape().DebugString(), " and ",

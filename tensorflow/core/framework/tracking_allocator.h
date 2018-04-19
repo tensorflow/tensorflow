@@ -64,10 +64,11 @@ class TrackingAllocator : public Allocator {
                     const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
-  int64 AllocationId(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
 
   // If the underlying allocator tracks allocation sizes, this returns
   // a tuple where the first value is the total number of bytes
@@ -85,6 +86,8 @@ class TrackingAllocator : public Allocator {
   // deallocated. After this call completes and all allocated pointers
   // have been deallocated the wrapper will delete itself.
   gtl::InlinedVector<AllocRecord, 4> GetRecordsAndUnRef();
+  // Returns a copy of allocation records collected so far.
+  gtl::InlinedVector<AllocRecord, 4> GetCurrentRecords();
 
  protected:
   ~TrackingAllocator() override {}
@@ -122,7 +125,7 @@ class TrackingAllocator : public Allocator {
     size_t allocated_size;
     int64 allocation_id;
   };
-  std::unordered_map<void*, Chunk> in_use_ GUARDED_BY(mu_);
+  std::unordered_map<const void*, Chunk> in_use_ GUARDED_BY(mu_);
   int64 next_allocation_id_ GUARDED_BY(mu_);
 };
 

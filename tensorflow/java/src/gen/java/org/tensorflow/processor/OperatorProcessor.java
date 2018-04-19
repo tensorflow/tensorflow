@@ -77,7 +77,7 @@ public final class OperatorProcessor extends AbstractProcessor {
     TypeElement annotation = annotations.iterator().next();
     Set<? extends Element> annotated = roundEnv.getElementsAnnotatedWith(annotation);
 
-    // If there are no annotated elements, claim the annotion but do nothing.
+    // If there are no annotated elements, claim the annotation but do nothing.
     if (annotated.size() == 0) {
       return true;
     }

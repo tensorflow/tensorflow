@@ -61,6 +61,7 @@ tf_custom_op_py_library(
         "python/layers/normalization.py",
         "python/layers/optimizers.py",
         "python/layers/regularizers.py",
+        "python/layers/rev_block_lib.py",
         "python/layers/summaries.py",
         "python/layers/target_column.py",
         "python/layers/utils.py",
@@ -187,6 +188,7 @@ py_test(
     size = "small",
     srcs = ["python/layers/normalization_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":layers_py",
         "//tensorflow/contrib/framework:framework_py",
@@ -352,6 +354,7 @@ py_test(
     size = "small",
     srcs = ["python/ops/sparse_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":layers_py",
         "//tensorflow/python:array_ops",
@@ -376,14 +379,16 @@ py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_test(
+    name = "rev_block_lib_test",
+    size = "small",
+    srcs = ["python/layers/rev_block_lib_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
 )

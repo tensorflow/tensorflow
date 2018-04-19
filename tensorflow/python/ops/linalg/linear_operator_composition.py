@@ -25,10 +25,12 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorComposition"]
 
 
+@tf_export("linalg.LinearOperatorComposition")
 class LinearOperatorComposition(linear_operator.LinearOperator):
   """Composes one or more `LinearOperators`.
 
@@ -132,8 +134,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.  Default is the individual
         operators names joined with `_o_`.

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
 
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
 
 namespace tensorflow {
@@ -38,6 +39,7 @@ class GdrWorker : public GrpcWorker {
 
  private:
   RemoteMemoryManager* remote_memory_manager_;  // Not owned
+  RecentRequestIds recv_tensor_recent_request_ids_;
 };
 
 }  // namespace tensorflow

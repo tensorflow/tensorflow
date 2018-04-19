@@ -66,6 +66,28 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
     }
   }
 
+  // If the common ancestor is a conditional instruction, even though the true
+  // and false computations are not really ordered per-se, we define the true
+  // computation to be ordered before the false one.
+  // This ensures that buffers can still be shared among the two computations
+  // as they will forcibly have disjoint liveness.
+  if (a_ancestor == b_ancestor &&
+      a_ancestor->opcode() == HloOpcode::kConditional) {
+    const HloComputation* true_computation = a_ancestor->true_computation();
+    const HloComputation* false_computation = a_ancestor->false_computation();
+    if (call_graph_->InstructionIsNestedIn(a, true_computation) &&
+        call_graph_->InstructionIsNestedIn(b, false_computation)) {
+      return true;
+    }
+    // If 'b' is the conditional ancestor, and 'a' is within the true or false
+    // computations, 'a' executes before 'b'.
+    if (b == a_ancestor &&
+        (call_graph_->InstructionIsNestedIn(a, true_computation) ||
+         call_graph_->InstructionIsNestedIn(a, false_computation))) {
+      return true;
+    }
+  }
+
   return ExecutesBeforeInSameComputation(a_ancestor, b_ancestor);
 }
 
@@ -118,7 +140,18 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
            b.defining_instruction()->while_condition()))) {
     return true;
   }
-
+  // If 'b' is a conditional phi and 'a' is in the true or false computation,
+  // then 'a' executes before 'b'.
+  if (b.is_phi() &&
+      b.defining_instruction()->opcode() == HloOpcode::kConditional &&
+      (call_graph_->InstructionIsNestedIn(
+           a.defining_instruction(),
+           b.defining_instruction()->true_computation()) ||
+       call_graph_->InstructionIsNestedIn(
+           a.defining_instruction(),
+           b.defining_instruction()->false_computation()))) {
+    return true;
+  }
   return ExecutesBefore(a.defining_instruction(), b.defining_instruction());
 }
 
@@ -173,6 +206,35 @@ bool HloOrdering::UseIsBeforeValueDefinition(
       return true;
     }
   }
+
+  // The use at a call occurs before values that are defined in the called
+  // computation.
+  if (use.instruction->opcode() == HloOpcode::kCall) {
+    const HloInstruction* call = use.instruction;
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           call->to_apply())) {
+      VLOG(4) << "  use is call " << use.instruction->name()
+              << " and def is in called computation";
+      return true;
+    }
+  }
+
+  if (use.instruction->opcode() == HloOpcode::kConditional) {
+    const HloInstruction* conditional = use.instruction;
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           conditional->true_computation())) {
+      VLOG(4) << "  use is conditional " << use.instruction->name()
+              << " and def is in TRUE computation";
+      return true;
+    }
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           conditional->false_computation())) {
+      VLOG(4) << "  use is conditional " << use.instruction->name()
+              << " and def is in FALSE computation";
+      return true;
+    }
+  }
+
   VLOG(4) << "  use is not before value";
   return false;
 }
@@ -183,35 +245,17 @@ bool HloOrdering::LiveRangeStrictlyBefore(
   VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
           << ", b = " << b.ToShortString() << ")";
   if (!IsDefinedBefore(a, b)) {
-    VLOG(4) << "a not defined before b";
+    VLOG(4) << a << " not defined before " << b;
     return false;
   }
-
-  // Live-out values from the module can never have ranges strictly before any
-  // other value.
-  if (a.live_out_of_module()) {
-    VLOG(4) << "a is live out of module";
-    return false;
-  }
-
-  // Live-out values of computations can never have ranges strictly before any
-  // other value in the computation (including values nested in
-  // subcomputations).
-  if (a.live_out_of_computation() &&
-      call_graph_->InstructionIsNestedIn(b.defining_instruction(),
-                                         a.defining_instruction()->parent())) {
-    VLOG(4) << "a is live out of computation containing b";
-    return false;
-  }
-
   // All uses of 'a' must be before 'b' is defined.
   for (const HloUse& use : a.uses()) {
     if (!UseIsBeforeValueDefinition(use, b, dataflow)) {
-      VLOG(4) << "use of a (" << use << ") not before b is defined";
+      VLOG(4) << "use of " << a << " (" << use << ") not before " << b
+              << " is defined";
       return false;
     }
   }
-
   return true;
 }
 
@@ -253,7 +297,7 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
 string PredecessorHloOrdering::ToStringHelper(const string& name) const {
   std::vector<string> pieces;
   pieces.push_back(name);
-  for (auto* computation : module_->computations()) {
+  for (auto* computation : module_->MakeNonfusionComputations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s:",
                                                  computation->name().c_str()));
     const auto all = computation->MakeInstructionPostOrder();

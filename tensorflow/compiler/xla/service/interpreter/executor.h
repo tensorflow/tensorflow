@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declares the InterpreterExecutor class, which is a CPU-only implementation of
-// the StreamExecutor interface. For now, this is used for testing and to
+// Declares the XlaInterpreterExecutor class, which is a CPU-only implementation
+// of the StreamExecutor interface. For now, this is used for testing and to
 // examine the performance of host-based StreamExecutor code.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
@@ -50,10 +50,10 @@ namespace interpreter {
 
 using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
 
-class InterpreterExecutor : public internal::StreamExecutorInterface {
+class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit InterpreterExecutor(const PluginConfig &plugin_config);
-  ~InterpreterExecutor() override;
+  explicit XlaInterpreterExecutor(const PluginConfig &plugin_config);
+  ~XlaInterpreterExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
     return port::Status::OK();
@@ -157,7 +157,7 @@ class InterpreterExecutor : public internal::StreamExecutorInterface {
   bool StartTimer(Stream *stream, Timer *timer) override;
   bool StopTimer(Stream *stream, Timer *timer) override;
 
-  bool BlockHostUntilDone(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return 1; }
 

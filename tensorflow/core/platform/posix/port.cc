@@ -17,13 +17,19 @@ limitations under the License.
 #include "jemalloc/jemalloc.h"
 #endif
 
+#ifdef TENSORFLOW_USE_ABSL
+#include "absl/base/internal/sysinfo.h"
+#endif
+
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
+
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
+#include <sys/sysinfo.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,7 +38,8 @@ limitations under the License.
 #ifdef TF_USE_SNAPPY
 #include "snappy.h"
 #endif
-#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
+#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__) || \
+    defined(__HAIKU__)
 #include <thread>
 #endif
 
@@ -56,7 +63,8 @@ int NumSchedulableCPUs() {
   }
   perror("sched_getaffinity");
 #endif
-#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
+#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__) || \
+    defined(__HAIKU__)
   unsigned int count = std::thread::hardware_concurrency();
   if (count > 0) return static_cast<int>(count);
 #endif
@@ -157,8 +165,22 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-  // TODO(yuefengz): implement it for this platform.
+#ifdef TENSORFLOW_USE_ABSL
+  return absl::base_internal::NominalCPUFrequency();
+#else
   return 1.0;
+#endif
+}
+
+int64 AvailableRam() {
+#if defined(__linux__) && !defined(__ANDROID__)
+  struct sysinfo info;
+  int err = sysinfo(&info);
+  if (err == 0) {
+    return info.freeram;
+  }
+#endif
+  return INT64_MAX;
 }
 
 }  // namespace port

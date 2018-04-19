@@ -12,12 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_EAGER_PYTHON_EAGER_OP_GEN_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_EAGER_PYTHON_EAGER_OP_GEN_H_
+#ifndef TENSORFLOW_PYTHON_EAGER_PYTHON_EAGER_OP_GEN_H_
+#define TENSORFLOW_PYTHON_EAGER_PYTHON_EAGER_OP_GEN_H_
 
 #include <string>
 #include <vector>
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -26,7 +27,7 @@ namespace tensorflow {
 // in the output. Prints the output to stdout.
 // Optional fourth argument is the name of the original C++ source file
 // where the ops' REGISTER_OP() calls reside.
-void PrintEagerPythonOps(const OpList& ops,
+void PrintEagerPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                          const std::vector<string>& hidden_ops,
                          bool require_shapes,
                          const string& source_file_name = "");
@@ -39,4 +40,4 @@ string GetEagerPythonWrappers(const char* op_list_buf, size_t op_list_len);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_EAGER_PYTHON_EAGER_OP_GEN_H_
+#endif  // TENSORFLOW_PYTHON_EAGER_PYTHON_EAGER_OP_GEN_H_

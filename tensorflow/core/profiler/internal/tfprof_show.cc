@@ -25,19 +25,19 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const GraphNodeProto& TFShow::Show(const Options& opts) {
+const GraphNodeProto& TFShow::Show(const string& prefix, const Options& opts) {
   if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else {
     const ShowNode* ret = ShowInternal(opts, nullptr);
     if (opts.output_type == kOutput[1]) {
-      printf("%s", ret->formatted_str.c_str());
+      printf("%s", (prefix + ret->formatted_str).c_str());
       fflush(stdout);
     } else if (opts.output_type == kOutput[2]) {
       Status s = WriteStringToFile(Env::Default(),
                                    opts.output_options.at(kFileOpts[0]),
-                                   ret->formatted_str);
+                                   prefix + ret->formatted_str);
       if (!s.ok()) {
         fprintf(stderr, "%s\n", s.ToString().c_str());
       }

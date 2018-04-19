@@ -104,6 +104,9 @@ class StreamExecutor {
   // platform, false is returned.
   bool GetKernel(const MultiKernelLoaderSpec &spec, KernelBase *kernel);
 
+  // Releases any state associated with the previously loaded kernel.
+  void UnloadKernel(const KernelBase *kernel);
+
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
@@ -346,9 +349,13 @@ class StreamExecutor {
   // platform that underlies this interface.
   bool SupportsDnn() const;
 
-  // Get the list of supported algorithms for the forward convolution opeartion.
+  // Returns the list of supported algorithms for the forward convolution
+  // operation.
   bool GetConvolveAlgorithms(bool with_winograd_nonfused,
                              std::vector<dnn::AlgorithmDesc> *out_algorithms);
+
+  // Returns the list of supported algorithms for rnn operation.
+  bool GetRnnAlgorithms(std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on data.
   bool GetConvolveBackwardDataAlgorithms(
@@ -369,8 +376,9 @@ class StreamExecutor {
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size,
       dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
-      dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout,
-      uint64 seed, ScratchAllocator *state_allocator);
+      dnn::RnnMode rnn_mode, dnn::DataType data_type,
+      const dnn::AlgorithmConfig &algorithm_config, float dropout, uint64 seed,
+      ScratchAllocator *state_allocator);
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
@@ -478,7 +486,7 @@ class StreamExecutor {
   // Causes the host code to synchronously wait for operations entrained onto
   // stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
-  bool BlockHostUntilDone(Stream *stream);
+  port::Status BlockHostUntilDone(Stream *stream);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // an opaque void* representing that allocation. In the case of failure,

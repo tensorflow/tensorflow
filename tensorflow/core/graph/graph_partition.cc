@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -117,14 +118,14 @@ DataType EdgeType(const Edge* e) {
   }
 }
 
-// Return true iff we need to add a same device send/recv for 'edge'.
+// Return true iff we need to add the same device send/recv for 'edge'.
 bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
   if (edge->IsControlEdge()) {
     return false;
   }
 
-  Node* src = edge->src();
-  Node* dst = edge->dst();
+  const Node* src = edge->src();
+  const Node* dst = edge->dst();
   if (src->assigned_device_name() == dst->assigned_device_name()) {
     int src_port = edge->src_output();
     int dst_port = edge->dst_input();
@@ -141,7 +142,7 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
 
 // Return true iff (dst, dst_input) is specified on host memory.
 bool IsDstInputOnHost(const Edge* edge, const GraphInfo& info) {
-  Node* dst = edge->dst();
+  const Node* dst = edge->dst();
   int dst_port = edge->dst_input();
   if (info.device_types[dst->id()] != DEVICE_CPU) {
     if (edge->IsControlEdge()) return false;
@@ -372,7 +373,7 @@ string ControlLoopName(const string& name) {
 
 bool IsControlLoop(const Node* node) {
   const string& name = node->name();
-  return StringPiece(name).starts_with("_cloop");
+  return str_util::StartsWith(name, "_cloop");
 }
 
 // An enter node for control flow.
@@ -1116,7 +1117,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         // before the data is available.
         AddInput(real_recv, send->name(), Graph::kControlSlot);
       } else if (control_flow_edge != nullptr) {
-        // Redirect control edge to the real recv since this is not a same
+        // Redirect control edge to the real recv since this is not the same
         // device send/recv.
         --num_control_flow_edges;
         AddInput(real_recv, control_flow_edge->src()->name(),
@@ -1152,7 +1153,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     // Add control edges from 'ref_control_inputs' to 'ref_recvs'.
     // NOTE(yuanbyu): Adding these control edges should not introduce
     // deadlocks. 'dst' has implicit "read" nodes that, when we split
-    // across devices, are made explicit; Retargettig the dependencies
+    // across devices, are made explicit; Retargeting the dependencies
     // to 'dst' to those nodes would not introduce cycles if there isn't
     // one before the transformation.
     // NOTE(yuanbyu): This may impact performance because it defers the

@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "StatsAggregatorSummary"
+  summary: "Produces a summary of any statistics recorded by the given statistics manager."
+}

@@ -46,6 +46,15 @@ typedef struct {
   int32 tf_xla_max_cluster_size;  // Maximum number of operators in an XLA
                                   // compilation.
   bool tf_xla_clustering_debug;   // Dump graphs during XLA compilation.
+  bool tf_xla_cpu_global_jit;     // Enables global JIT compilation for CPU
+                                  // via SessionOptions.
+  int64 tf_xla_clustering_fuel;   // "Compiler fuel" for clustering.  Only this
+                                  // many ops will be marked as eligible for
+                                  // clustering.
+  bool tf_xla_fusion_only;  // This flag is effective only when global_jit_level
+                            // is set to ON* and overrides its behavior. If
+                            // true, enable fusion of element-wise operations
+                            // only using XLA.
 } MarkForCompilationPassFlags;
 
 // Return a pointer to the MarkForCompilationPassFlags struct;

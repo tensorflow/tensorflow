@@ -528,8 +528,8 @@ void Master::ListDevices(const ListDevicesRequest* req,
       auto session = FindMasterSession(req->session_handle());
       if (session == nullptr) {
         done(errors::InvalidArgument(
-             "Session ", req->session_handle(),
-             " is not found. Possibly, this master has restarted."));
+            "Session ", req->session_handle(),
+            " is not found. Possibly, this master has restarted."));
         return;
       }
       core::ScopedUnref ref(session);
@@ -609,6 +609,57 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
     }
     done(s);
   });
+}
+
+void Master::MakeCallable(const MakeCallableRequest* req,
+                          MakeCallableResponse* resp, MyClosure done) {
+  auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
+
+  SchedClosure(std::bind(
+      [this, session, req, resp](MyClosure done) {
+        Status s = session->MakeCallable(*req, resp);
+        session->Unref();
+        done(s);
+      },
+      std::move(done)));
+}
+
+void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
+                         RunCallableResponse* resp, MyClosure done) {
+  auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
+
+  SchedClosure(std::bind(
+      [this, session, opts, req, resp](MyClosure done) {
+        Status s = session->RunCallable(opts, *req, resp);
+        session->Unref();
+        done(s);
+      },
+      std::move(done)));
+}
+
+void Master::ReleaseCallable(const ReleaseCallableRequest* req,
+                             ReleaseCallableResponse* resp, MyClosure done) {
+  auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
+
+  SchedClosure(std::bind(
+      [this, session, req, resp](MyClosure done) {
+        Status s = session->ReleaseCallable(*req, resp);
+        session->Unref();
+        done(s);
+      },
+      std::move(done)));
 }
 
 }  // end namespace tensorflow

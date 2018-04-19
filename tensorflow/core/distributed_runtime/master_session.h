@@ -89,6 +89,15 @@ class MasterSession : public core::RefCounted {
 
   Status ListDevices(ListDevicesResponse* resp) const;
 
+  Status MakeCallable(const MakeCallableRequest& req,
+                      MakeCallableResponse* resp);
+
+  Status RunCallable(CallOptions* opts, const RunCallableRequest& req,
+                     RunCallableResponse* resp);
+
+  Status ReleaseCallable(const ReleaseCallableRequest& req,
+                         ReleaseCallableResponse* resp);
+
   // Close this session and delete "*this". Returns OK if all known
   // states are cleanup successfully.
   //
@@ -140,12 +149,15 @@ class MasterSession : public core::RefCounted {
   typedef std::unordered_map<uint64, ReffedClientGraph*> RCGMap;
   RCGMap run_graphs_ GUARDED_BY(mu_);
   RCGMap partial_run_graphs_ GUARDED_BY(mu_);
+  int64 next_callable_handle_ GUARDED_BY(mu_) = 0;
+  RCGMap callables_ GUARDED_BY(mu_);
 
   struct PerStepState {
     bool collect_costs = false;
     bool collect_timeline = false;
     bool collect_rpcs = false;
     bool collect_partition_graphs = false;
+    bool report_tensor_allocations_upon_oom = false;
     Microseconds start_micros = Microseconds(0);
     Microseconds end_micros = Microseconds(0);
     std::vector<StepStats> step_stats;  // per partition
@@ -200,15 +212,32 @@ class MasterSession : public core::RefCounted {
   // workers.
   Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
 
-  Status StartStep(const BuildGraphOptions& opts, int64* count,
-                   ReffedClientGraph** graph, bool is_partial);
+  // TODO(b/36574172): Always use Create/DeleteWorkerSession.
+  bool should_delete_worker_sessions_ = false;
+  Status DeleteWorkerSessions();
+
+  Status StartStep(const BuildGraphOptions& opts, bool is_partial,
+                   ReffedClientGraph** out_rcg, int64* out_count);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
                       RCGMap* rcg_map) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void FillPerStepState(MasterSession::ReffedClientGraph* rcg,
+                        const RunOptions& run_options, uint64 step_id,
+                        int64 count, PerStepState* out_pss,
+                        std::unique_ptr<ProfileHandler>* out_ph);
   Status DoRunWithLocalExecution(CallOptions* opts,
                                  const RunStepRequestWrapper& req,
                                  MutableRunStepResponseWrapper* resp);
   Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
                       MutableRunStepResponseWrapper* resp);
+  Status DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
+                       const RunCallableRequest& req,
+                       RunCallableResponse* resp);
+  Status PostRunCleanup(MasterSession::ReffedClientGraph* rcg, uint64 step_id,
+                        const RunOptions& run_options, PerStepState* pss,
+                        const std::unique_ptr<ProfileHandler>& ph,
+                        const Status& run_status,
+                        RunMetadata* out_run_metadata);
+
   void MarkRunCompletion();
   void UpdateLastAccessTime();
 

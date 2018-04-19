@@ -35,5 +35,9 @@ limitations under the License.
  *   <li>Graph execution: Using a Session to execute the graphs and find the best label for an
  *       image.
  * </ul>
+ *
+ * <p>Additional examples can be found in the <a
+ * href="https://github.com/tensorflow/models/tree/master/samples/languages/java">tensorflow/models</a>
+ * GitHub repository.
  */
 package org.tensorflow;

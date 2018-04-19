@@ -39,8 +39,8 @@ class ConvolutionDimensionNumbersTest : public ClientLibraryTestBase {};
 // Tests the convolution operation with invalid input dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
   auto dimension_numbers_status =
-      ComputationBuilder::CreateConvDimensionNumbers(0, 2, 0, 2, 2, 3, 0, 1, 2,
-                                                     3);
+      ComputationBuilder::CreateConvDimensionNumbers(0, 2, 2, 3, 0, 1, 2, 3, 0,
+                                                     1, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
               ::testing::HasSubstr("input are not unique"));
@@ -49,11 +49,21 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
 // Tests the convolution operation with invalid weight dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidWeightDimensionNumbers) {
   auto dimension_numbers_status =
-      ComputationBuilder::CreateConvDimensionNumbers(0, 1, 0, 1, 2, 3, 2, 3, 2,
-                                                     3);
+      ComputationBuilder::CreateConvDimensionNumbers(0, 1, 2, 3, 0, 1, 2, 3, 0,
+                                                     2, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
               ::testing::HasSubstr("weight are not unique"));
+}
+
+// Tests the convolution operation with invalid output dimension numbers.
+TEST_F(ConvolutionDimensionNumbersTest, InvalidOutputDimensionNumbers) {
+  auto dimension_numbers_status =
+      ComputationBuilder::CreateConvDimensionNumbers(0, 1, 2, 3, 0, 2, 2, 3, 0,
+                                                     1, 2, 3);
+  ASSERT_FALSE(dimension_numbers_status.ok());
+  ASSERT_THAT(dimension_numbers_status.status().error_message(),
+              ::testing::HasSubstr("output are not unique"));
 }
 
 XLA_TEST_F(ConvolutionDimensionNumbersTest,

@@ -14,9 +14,9 @@ cc_library(
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_compilation_cache",
         "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/jit:xla_launch_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -40,18 +40,4 @@ cc_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

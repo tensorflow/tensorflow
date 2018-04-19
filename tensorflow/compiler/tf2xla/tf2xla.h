@@ -30,13 +30,9 @@ namespace tensorflow {
 //
 // The computation is built in the context of the given `client`, which may
 // subsequently be used to compile or execute the computation.
-//
-// If `requires_runtime_context` is filled with true, this indicates the last
-// argument of the computation is XlaLocalRuntimeContext*.
 Status ConvertGraphDefToXla(const GraphDef& graph_def,
                             const tf2xla::Config& config, xla::Client* client,
-                            xla::Computation* computation,
-                            bool* requires_runtime_context);
+                            xla::Computation* computation);
 
 }  // namespace tensorflow
 

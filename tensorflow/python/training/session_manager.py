@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_mod
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _maybe_name(obj):
@@ -44,6 +45,7 @@ def _maybe_name(obj):
     return "<no name for %s>" % type(obj)
 
 
+@tf_export("train.SessionManager")
 class SessionManager(object):
   """Training helper that restores from checkpoint and creates session.
 
@@ -227,10 +229,14 @@ class SessionManager(object):
     up to `max_wait_secs`, for recovery to succeed.
 
     If the model cannot be recovered successfully then it is initialized by
-    either running the provided `init_op`, or calling the provided `init_fn`.
-    The local_init_op is also run after init_op and init_fn, regardless of
+    running the `init_op` and calling `init_fn` if they are provided.
+    The `local_init_op` is also run after init_op and init_fn, regardless of
     whether the model was recovered successfully, but only if
-    ready_for_local_init_op passes.
+    `ready_for_local_init_op` passes.
+
+    If the model is recovered from a checkpoint it is assumed that all
+    global variables have been initialized, in particular neither `init_op`
+    nor `init_fn` will be executed.
 
     It is an error if the model cannot be recovered and no `init_op`
     or `init_fn` or `local_init_op` are passed.
@@ -480,7 +486,9 @@ class SessionManager(object):
     if self._local_init_op is not None:
       is_ready_for_local_init, msg = self._model_ready_for_local_init(sess)
       if is_ready_for_local_init:
+        logging.info("Running local_init_op.")
         sess.run(self._local_init_op)
+        logging.info("Done running local_init_op.")
         return True, None
       else:
         return False, msg

@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
+load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
 cc_library(
     name = "gtest",
@@ -113,6 +114,12 @@ cc_library(
 )
 
 cc_library(
+    name = "base",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
@@ -121,10 +128,15 @@ cc_library(
         "//tensorflow/core:protos_cc",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
-        "@fft2d//:fft2d",
+        "@fft2d",
         "@highwayhash//:sip_hash",
         "@png_archive//:png",
     ],
+)
+
+cc_library(
+    name = "stacktrace",
+    srcs = [],
 )
 
 cc_library(
@@ -139,7 +151,7 @@ cc_library(
     name = "jpeg",
     copts = tf_copts(),
     deps = [
-        "@jpeg//:jpeg",
+        "@jpeg",
     ],
 )
 
@@ -157,6 +169,13 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library(
+    name = "test_lite_main",
+    testonly = 1,
+    linkstatic = 1,
+    deps = [],
 )
 
 cc_library(
@@ -194,17 +213,16 @@ cc_library(
 
 cc_library(
     name = "sycl",
-    data = [
+    data = if_ccpp([
         "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
-    ],
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-rpath,../local_config_sycl/sycl/lib",
-        ],
-    }),
-    deps = [
-        "@local_config_sycl//sycl:syclrt",
-    ],
+    ]),
+    linkopts = if_ccpp([
+        "-Wl,-rpath,../local_config_sycl/sycl/lib",
+    ]),
+    deps = if_ccpp(
+        ["@local_config_sycl//sycl:syclrt"],
+        ["@local_config_sycl//sycl:sycl_headers"],
+    ),
 )
 
 filegroup(
@@ -217,16 +235,4 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

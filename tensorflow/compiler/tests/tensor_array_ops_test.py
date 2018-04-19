@@ -330,8 +330,7 @@ class TensorArrayTest(xla_test.XLATestCase):
     # Find two different floating point types, create an array of
     # the first type, but try to read the other type.
     if len(self.float_types) > 1:
-      dtype1 = self.float_types[0]
-      dtype2 = self.float_types[1]
+      dtype1, dtype2 = list(self.float_types)[:2]
       with self.test_session(), self.test_scope():
         ta = tensor_array_ops.TensorArray(
             dtype=dtype1, tensor_array_name="foo", size=3)
@@ -339,7 +338,7 @@ class TensorArrayTest(xla_test.XLATestCase):
         w0 = ta.write(0, [[4.0, 5.0]])
 
         # Test reading wrong datatype.
-        r0_bad = gen_data_flow_ops._tensor_array_read_v3(
+        r0_bad = gen_data_flow_ops.tensor_array_read_v3(
             handle=w0.handle, index=0, dtype=dtype2, flow_in=w0.flow)
         with self.assertRaisesOpError("TensorArray dtype is "):
           r0_bad.eval()

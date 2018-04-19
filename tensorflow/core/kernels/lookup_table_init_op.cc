@@ -82,8 +82,8 @@ class InitializeTableOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, table->Initialize(iter));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 
@@ -144,8 +144,8 @@ class InitializeTableFromTextFileOp : public OpKernel {
                             vocab_filename, vocab_size_, delimiter_, key_index_,
                             value_index_, ctx->env(), table));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 

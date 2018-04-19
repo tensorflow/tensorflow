@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "StringToNumber"
+  out_arg {
+    name: "output"
+    description: <<END
+A Tensor of the same shape as the input `string_tensor`.
+END
+  }
+  attr {
+    name: "out_type"
+    description: <<END
+The numeric type to interpret each string in `string_tensor` as.
+END
+  }
+  summary: "Converts each string in the input Tensor to the specified numeric type."
+  description: <<END
+(Note that int32 overflow results in an error while float overflow
+results in a rounded value.)
+END
+}

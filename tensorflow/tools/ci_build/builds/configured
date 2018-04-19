@@ -32,15 +32,6 @@ COMMAND=("$@")
 
 export CI_BUILD_PYTHON="${CI_BUILD_PYTHON:-python}"
 export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which ${CI_BUILD_PYTHON})}"
-if [ "${CONTAINER_TYPE}" == "gpu" ]; then
-  export TF_NEED_CUDA=1
-elif [ "${CONTAINER_TYPE}" == "gpu_clang" ]; then
-  export TF_NEED_CUDA=1
-  export TF_CUDA_CLANG=1
-  export CLANG_CUDA_COMPILER_PATH="/usr/local/bin/clang"
-else
-  export TF_NEED_CUDA=0
-fi
 
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 yes "" | $PYTHON_BIN_PATH configure.py

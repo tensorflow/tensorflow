@@ -10,6 +10,6 @@ tf_module {
   }
   member_method {
     name: "preprocess_input"
-    argspec: "args=[\'x\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'x\', \'data_format\', \'mode\'], varargs=None, keywords=None, defaults=[\'None\', \'caffe\'], "
   }
 }

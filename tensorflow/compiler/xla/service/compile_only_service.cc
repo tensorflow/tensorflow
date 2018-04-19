@@ -72,8 +72,7 @@ CompileOnlyService::CompileAheadOfTime(
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
 
-    // TODO(b/63773457): Track DebugOptions in AotCompilationOptions.
-    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+    const DebugOptions& debug_options = options.debug_options();
 
     // Dump computation proto state if flag is set.
     const string& directory_path = debug_options.xla_dump_computations_to();
@@ -101,12 +100,13 @@ CompileOnlyService::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(*program_shape, instance.argument_layouts,
-                           &execution_options));
+                           &execution_options, user_computation));
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(
                             versioned_handle, *module_config,
                             /*include_unreachable_instructions=*/true));
+    TF_RETURN_IF_ERROR(MaybeDumpHloModule(*hlo_module));
     hlo_modules.push_back(std::move(hlo_module));
   }
 

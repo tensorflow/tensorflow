@@ -566,7 +566,7 @@ def GetInceptionFwdTest(input_size, filter_size, stride, padding,
   return Test
 
 
-def CalculateCovolvedOutputDim(input_dim, filter_dim, stride, padding_type):
+def CalculateConvolvedOutputDim(input_dim, filter_dim, stride, padding_type):
   """Calculates the size of an output dimension of a strided convolution.
 
   Given the sizes of the corresponding dimension of the input and filter shapes,
@@ -658,6 +658,36 @@ def SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,
 
 class FusedConvInt8Tests(test.TestCase):
   _test_params = [
+      {
+          "batch_size": 1,
+          "input_channels": 4,
+          "output_channels": 4,
+          "input_height": 8,
+          "input_width": 8,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 2,
+          "horizontal_stride": 2,
+          "conv_input_scale": 0.002,
+          "side_input_scale": 0.0,
+          "bias_scale": 1,
+          "padding_type": "SAME"
+      },
+      {
+          "batch_size": 1,
+          "input_channels": 4,
+          "output_channels": 4,
+          "input_height": 6,
+          "input_width": 6,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 2,
+          "horizontal_stride": 2,
+          "conv_input_scale": 0.002,
+          "side_input_scale": 0.0,
+          "bias_scale": 1,
+          "padding_type": "SAME"
+      },
       {
           "batch_size": 2,
           "input_channels": 8,
@@ -797,10 +827,10 @@ class FusedConvInt8Tests(test.TestCase):
             maxval=1.0,
             dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
 
-    output_height = CalculateCovolvedOutputDim(input_height, filter_height,
-                                               vertical_stride, padding_type)
-    output_width = CalculateCovolvedOutputDim(input_width, filter_width,
-                                              horizontal_stride, padding_type)
+    output_height = CalculateConvolvedOutputDim(input_height, filter_height,
+                                                vertical_stride, padding_type)
+    output_width = CalculateConvolvedOutputDim(input_width, filter_width,
+                                               horizontal_stride, padding_type)
     print("output_height=", output_height, ", output_width=", output_width)
 
     side_input, _, _ = gen_array_ops.quantize_v2(

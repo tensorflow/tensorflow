@@ -47,8 +47,9 @@ class LazyAdamOptimizer(adam.AdamOptimizer):
   """
 
   def _apply_sparse(self, grad, var):
-    beta1_power = math_ops.cast(self._beta1_power, var.dtype.base_dtype)
-    beta2_power = math_ops.cast(self._beta2_power, var.dtype.base_dtype)
+    beta1_power, beta2_power = self._get_beta_accumulators()
+    beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
+    beta2_power = math_ops.cast(beta2_power, var.dtype.base_dtype)
     lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
     beta1_t = math_ops.cast(self._beta1_t, var.dtype.base_dtype)
     beta2_t = math_ops.cast(self._beta2_t, var.dtype.base_dtype)

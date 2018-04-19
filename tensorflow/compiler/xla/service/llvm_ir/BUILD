@@ -48,10 +48,13 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
+        "@llvm//:transform_utils",
     ],
 )
 
@@ -155,16 +158,14 @@ cc_library(
     ],
 )
 
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_library(
+    name = "kernel_support_library",
+    srcs = ["kernel_support_library.cc"],
+    hdrs = ["kernel_support_library.h"],
+    deps = [
+        ":llvm_loop",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+    ],
 )

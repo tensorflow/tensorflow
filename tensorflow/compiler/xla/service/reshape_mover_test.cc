@@ -560,5 +560,95 @@ TEST_F(ReshapeMoverTest, MultiplePasses) {
       op::Reshape(op::Add(param2, op::Reshape(op::Add(param0, param1)))));
 }
 
+TEST_F(ReshapeMoverTest, SinkTransposeAcrossBroadcastScalar) {
+  const string hlo_string = R"(
+    HloModule TransposeMulInversedTransposeModule
+    ENTRY TransposeMulInversedTranspose {
+      src0 = f32[20,8]{1,0} parameter(0)
+      transpose0 = f32[8,20]{1,0} transpose(src0), dimensions={1,0}
+      src1 = f32[] parameter(1)
+      broadcast0 = f32[8,20]{1,0} broadcast(src1), dimensions={}
+      ROOT multiply0 = f32[8,20]{1,0} multiply(transpose0, broadcast0)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(module().entry_computation()->root_instruction(),
+              op::Transpose(op::Multiply()));
+}
+
+TEST_F(ReshapeMoverTest, ReshapeWithUsersOutsideCandidatesNotSink) {
+  const string hlo_string = R"(
+    HloModule ReshapeWithUsersOutsideCandidates
+    ENTRY ReshapeWithMultipleUsers {
+      param0 = f32[20,8]{1,0} parameter(0)
+      reshape0 = f32[8,20]{1,0} reshape(param0)
+      param1 = f32[] parameter(1)
+      broadcast0 = f32[8,20]{1,0} broadcast(param1), dimensions={}
+      param2 = f32[20,8]{1,0} parameter(2)
+      reshape1 = f32[8,20]{1,0} reshape(param2)
+      param3 = f32[20,8]{1,0} parameter(3)
+      reshape2 = f32[8,20]{1,0} reshape(param3)
+      param4 = f32[8,20]{1,0} parameter(4)
+      add0 = f32[8,20]{1,0} add(reshape0, broadcast0)
+      add1 = f32[8,20]{1,0} add(reshape0, reshape1)
+      add2 = f32[8,20]{1,0} add(reshape1, param4)
+      ROOT tuple = (f32[8,20]{1,0},f32[8,20]{1,0},
+        f32[8,20]{1,0}) tuple(add0, add1, add2)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink1) {
+  const string hlo_string = R"(
+    HloModule ReshapeNoUsersOutsideCandidates1
+    ENTRY ReshapeWithMultipleUsers1 {
+      param0 = f32[20,8]{1,0} parameter(0)
+      reshape0 = f32[8,20]{1,0} reshape(param0)
+      param1 = f32[] parameter(1)
+      broadcast0 = f32[8,20]{1,0} broadcast(param1), dimensions={}
+      param2 = f32[20,8]{1,0} parameter(2)
+      reshape1 = f32[8,20]{1,0} reshape(param2)
+      param3 = f32[20,8]{1,0} parameter(3)
+      reshape2 = f32[8,20]{1,0} reshape(param3)
+      add0 = f32[8,20]{1,0} add(reshape0, broadcast0)
+      add1 = f32[8,20]{1,0} add(reshape0, reshape1)
+      add2 = f32[8,20]{1,0} add(reshape1, reshape2)
+      ROOT tuple = (f32[8,20]{1,0},f32[8,20]{1,0},
+        f32[8,20]{1,0}) tuple(add0, add1, add2)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module().entry_computation()->root_instruction(),
+              op::Tuple(op::Reshape(), op::Reshape(), op::Reshape()));
+}
+
+TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink2) {
+  const string hlo_string = R"(
+    HloModule ReshapeNoUsersOutsideCandidates2
+    ENTRY ReshapeWithMultipleUsers2 {
+      param0 = f32[20,8]{1,0} parameter(0)
+      reshape0 = f32[8,20]{1,0} reshape(param0)
+      ROOT add0 = f32[8,20]{1,0} add(reshape0, reshape0)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module().entry_computation()->root_instruction(),
+              op::Reshape(op::Add()));
+}
+
 }  // namespace
 }  // namespace xla

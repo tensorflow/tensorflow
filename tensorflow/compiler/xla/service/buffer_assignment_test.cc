@@ -37,13 +37,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
-
 namespace {
+
+using ::testing::UnorderedElementsAre;
 
 // DFS visitor that collects the instructions referenced by a computation
 // without descending into nested computations, i.e., only from the operands.
@@ -85,7 +87,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, MakeUnique<DependencyHloOrdering>(module),
+               module, xla::MakeUnique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
@@ -94,10 +96,26 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, MakeUnique<DependencyHloOrdering>(module),
+               module, xla::MakeUnique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; }, false,
                std::move(colorer))
+        .ConsumeValueOrDie();
+  }
+
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
+      HloModule* module,
+      tensorflow::gtl::ArraySlice<const HloInstruction*> instruction_sequence,
+      int64 alignment = 1) {
+    SequentialHloOrdering::HloModuleSequence module_sequence;
+    module_sequence[module->entry_computation()] =
+        std::vector<const HloInstruction*>(instruction_sequence.begin(),
+                                           instruction_sequence.end());
+    return BufferAssigner::Run(
+               module,
+               xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
   }
 
@@ -163,6 +181,15 @@ class BufferAssignmentTest : public HloTestBase {
     auto addv = builder.AddInstruction(HloInstruction::CreateBinary(
         constv->shape(), HloOpcode::kAdd, indexv, constv));
     builder.AddInstruction(HloInstruction::CreateTuple({addc, addv}));
+    return builder.Build();
+  }
+
+  std::unique_ptr<HloComputation> BuildR0F32UnaryOpComputation(
+      HloOpcode opcode, const string& name) {
+    auto builder = HloComputation::Builder(name);
+    auto param =
+        builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+    builder.AddInstruction(HloInstruction::CreateUnary(r0f32_, opcode, param));
     return builder.Build();
   }
 
@@ -605,7 +632,7 @@ TEST_F(BufferAssignmentTest, TrivialMap) {
   BufferAllocation map_buffer = GetAssignedOutputAllocation(*buffers, map);
   EXPECT_NE(param0_buffer.index(), map_buffer.index());
 
-  // The final computation node of the map is an add of an f32 parm and a
+  // The final computation node of the map is an add of an f32 param and a
   // constant.
   EXPECT_EQ(HloOpcode::kAdd, inner_last->opcode());
   const BufferAllocation& inner_add_buffer =
@@ -738,6 +765,56 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
   LOG(INFO) << "LogicalBuffer count " << buffers->Allocations().size()
             << " for " << level0.size() + levelc.size() + levelb.size()
             << " instructions; total buffer size " << size0 + sizec + sizeb;
+}
+
+TEST_F(BufferAssignmentTest, ExampleConditional) {
+  auto module = CreateNewModule();
+  auto true_computation = module->AddEmbeddedComputation(
+      BuildR0F32UnaryOpComputation(HloOpcode::kCeil, "Ceil"));
+  auto false_computation = module->AddEmbeddedComputation(
+      BuildR0F32UnaryOpComputation(HloOpcode::kFloor, "Floor"));
+
+  auto builder = HloComputation::Builder(TestName());
+  auto pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  auto const1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(56.4f)));
+  auto const2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(12.4f)));
+  auto conditional = builder.AddInstruction(HloInstruction::CreateConditional(
+      r0f32_, pred, const1, true_computation, const2, false_computation));
+  module->AddEntryComputation(builder.Build());
+
+  const std::vector<const HloInstruction*> conditional_instrs =
+      GetInstructions(conditional);
+  const std::vector<const HloInstruction*> true_instrs =
+      GetInstructions(true_computation->root_instruction());
+  const std::vector<const HloInstruction*> false_instrs =
+      GetInstructions(false_computation->root_instruction());
+  EXPECT_EQ(4, conditional_instrs.size());
+  EXPECT_EQ(2, true_instrs.size());
+  EXPECT_EQ(2, false_instrs.size());
+
+  auto buffers = RunBufferAssignment(module.get());
+  ValidateBuffers(conditional_instrs, *buffers);
+  ValidateBuffers(true_instrs, *buffers);
+  ValidateBuffers(false_instrs, *buffers);
+
+  EXPECT_FALSE(BuffersDistinct(conditional_instrs, true_instrs, *buffers))
+      << "Should be reuse between conditional and true computation.";
+  EXPECT_FALSE(BuffersDistinct(conditional_instrs, false_instrs, *buffers))
+      << "Should be reuse between conditional and false computation.";
+  EXPECT_FALSE(BuffersDistinct(true_instrs, false_instrs, *buffers))
+      << "Should be reuse between true and false computations.";
+
+  const BufferAllocation& conditional_buffer =
+      GetTopLevelAllocation(*buffers, conditional);
+  const BufferAllocation& true_buffer =
+      GetTopLevelAllocation(*buffers, true_computation->root_instruction());
+  const BufferAllocation& false_buffer =
+      GetTopLevelAllocation(*buffers, false_computation->root_instruction());
+  EXPECT_EQ(conditional_buffer.size(), true_buffer.size());
+  EXPECT_EQ(conditional_buffer.size(), false_buffer.size());
 }
 
 TEST_F(BufferAssignmentTest, UnaryOpReuseChain) {
@@ -1311,7 +1388,7 @@ TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
   auto element_slices = assignment->GetAllSlices(select, /*index=*/{0});
   EXPECT_EQ(2, element_slices.size());
   EXPECT_THAT(element_slices,
-              ::testing::UnorderedElementsAre(
+              UnorderedElementsAre(
                   assignment->GetUniqueSlice(tuple_param0, /*index=*/{0})
                       .ConsumeValueOrDie(),
                   assignment->GetUniqueSlice(tuple_param1, /*index=*/{0})
@@ -1360,10 +1437,13 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
       HloInstruction::CreateParameter(1, shape_3x4, "param_b"));
   auto param_c = builder.AddInstruction(
       HloInstruction::CreateParameter(2, shape_4x4, "param_c"));
-  auto dot_ab = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape_2x4, HloOpcode::kDot, param_a, param_b));
-  auto dot_bc = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape_3x4, HloOpcode::kDot, param_b, param_c));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot_ab = builder.AddInstruction(
+      HloInstruction::CreateDot(shape_2x4, param_a, param_b, dot_dnums));
+  auto dot_bc = builder.AddInstruction(
+      HloInstruction::CreateDot(shape_3x4, param_b, param_c, dot_dnums));
   builder.AddInstruction(
       HloInstruction::CreateConcatenate(shape_5x4, {dot_ab, dot_bc}, 1));
 
@@ -1411,6 +1491,98 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   }
 }
 
+TEST_F(BufferAssignmentTest, TrivialPeakBuffers) {
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, ""));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, ""));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  // Trivially, the set of peak memory logical buffer(s) of an allocation with a
+  // single logical buffer should be exactly the logical buffer in that
+  // allocation.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  int64 peak_size;
+  std::vector<const LogicalBuffer*> peak_buffers;
+
+  std::tie(peak_size, peak_buffers) =
+      mul_buffer.ComputePeakMemoryLogicalBuffers();
+  EXPECT_EQ(peak_size, ShapeUtil::ByteSizeOf(f32vec100_));
+  ASSERT_EQ(peak_buffers.size(), 1);
+  EXPECT_EQ(peak_buffers[0]->instruction(), mul);
+}
+
+TEST_F(BufferAssignmentTest, PeakBuffers) {
+  // Compute the peak liveness buffers of the following sequence:
+  //
+  //   %param = ...
+  //   %log = log(%param)
+  //   %rev = reverse(%log)
+  //   %neg = neg(%param)
+  //   %concat = concat(%rev, %neg)
+  //   ROOT %root = slice(concat)
+  //
+  // In the temporary block, the set of live buffers at peak memory use should
+  // be {%rev, %neg, %concat}. This occurs right at the concat itself.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, ""));
+  auto log = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kLog, param));
+  auto rev = builder.AddInstruction(
+      HloInstruction::CreateReverse(f32vec100_, log, {0}));
+  auto neg = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
+  const Shape concat_shape = ShapeUtil::MakeShape(F32, {200});
+  auto concat = builder.AddInstruction(
+      HloInstruction::CreateConcatenate(concat_shape, {rev, neg}, 0));
+  // Make the root tiny so no interior nodes can share its buffer.
+  auto root = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {1}), concat, {0}, {1}, {1}));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignmentWithInstructionSequence(
+      module.get(), {param, log, rev, neg, concat, root});
+
+  // The temporary buffer should hold the 4 interior instructions.
+  const BufferAllocation& buffer = GetTopLevelAllocation(*buffers, concat);
+  EXPECT_FALSE(buffer.IsInputOrOutput());
+  EXPECT_TRUE(buffer.IsPreallocatedTempBuffer());
+  ASSERT_EQ(buffer.assigned_buffers().size(), 4);
+
+  int64 peak_size;
+  std::vector<const LogicalBuffer*> peak_buffers;
+  std::tie(peak_size, peak_buffers) = buffer.ComputePeakMemoryLogicalBuffers();
+
+  // The peak live set should be concat and its inputs.
+  EXPECT_EQ(peak_size, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(F32, {400})));
+  ASSERT_EQ(peak_buffers.size(), 3);
+  std::vector<const HloInstruction*> peak_instructions;
+  for (const LogicalBuffer* logical_buffer : peak_buffers) {
+    peak_instructions.push_back(logical_buffer->instruction());
+  }
+  EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
+}
+
 class WhileBufferAssignmentTest : public HloTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
@@ -1448,7 +1620,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
     auto sequence =
         CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
-               module, MakeUnique<SequentialHloOrdering>(module, sequence),
+               module, xla::MakeUnique<SequentialHloOrdering>(module, sequence),
                ByteSizeOf,
                [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
@@ -1469,7 +1641,7 @@ static void RunCopyInsertion(HloModule* module) {
 }
 
 TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -1525,8 +1697,194 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
             assignment->GetUniqueSlice(while1, {1}).ConsumeValueOrDie());
 }
 
+// Tests that two colocated buffer sets are not merged if an entry parameter
+// buffer belongs to either of the colocation sets (b/73267882).
+//
+// %param --> %while.0 --> %mul --> %while.1 --> %broadcast
+//
+// %while.0 body just forwards the init value, so the loop carried variable
+// remains the constant, whereas %while.1 changes the loop carried variable.
+TEST_F(WhileBufferAssignmentTest, ColocatedBufferWithEntryParameter) {
+  const Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+
+  const char* module_str = R"(
+HloModule test_module
+
+%cond.v0 {
+  %param = s32[] parameter(0)
+  ROOT %constant = pred[] constant(true)
+}
+
+%cond.v1 {
+  %param.0 = s32[] parameter(0)
+  ROOT %constant.0 = pred[] constant(true)
+}
+
+%body.v0 {
+  ROOT %param.1 = s32[] parameter(0)
+}
+
+%body.v1 {
+  %param.2 = s32[] parameter(0)
+  ROOT add = s32[] add(%param.2, %param.2)
+}
+
+ENTRY %test_module {
+  %param.3 = s32[] parameter(0)
+  %while.0 = s32[] while(%param.3), condition=%cond.v0, body=%body.v0
+  %mul = s32[] multiply(%while.0, %while.0)
+  %while.1 = s32[] while(%mul), condition=%cond.v1, body=%body.v1
+  ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[] %while.1), dimensions={}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(module_str));
+
+  // Run CopyInsertion and check if the graph constructed above doesn't need
+  // any copies inserted for BufferAssignment to run.
+  int64 instruction_count = module->instruction_count();
+  CopyInsertion copy_insertion;
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  ASSERT_EQ(instruction_count, module->instruction_count());
+
+  // Get the instructions in the module.
+  const HloInstruction* bcast = module->entry_computation()->root_instruction();
+  const HloInstruction* param =
+      module->entry_computation()->parameter_instruction(0);
+  ASSERT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
+  const HloInstruction* while1 = bcast->operand(0);
+  ASSERT_EQ(while1->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while0 = while1->operand(0)->operand(0);
+  ASSERT_EQ(while0->opcode(), HloOpcode::kWhile);
+
+  // Run buffer assignment.
+  auto assignment = RunBufferAssignment(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_param,
+                          assignment->GetUniqueSlice(param, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
+                          assignment->GetUniqueSlice(while0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while1,
+                          assignment->GetUniqueSlice(while1, {}));
+
+  // The parameter slice is part of the while0's colocation set (init value),
+  // but not merged into the while1's colocation set.
+  EXPECT_EQ(slice_param, slice_while0);
+  EXPECT_NE(slice_param, slice_while1);
+}
+
+// Tests that the colocated buffers for while instructions are properly assigned
+// during buffer assignment such that the result tuple elements are not assigned
+// to the same buffer.
+//
+// %infeed --> %while.0 --> %while.1 --+
+//                                     +-- %tuple
+//   %zero -->   %add   --> %while.2 --+
+//
+// Execution Order:
+// %infeed -> %while.0 -> %while.1 -> %zero -> %add -> %while.2 -> %tuple
+//
+// The HLO computation used in this test requires specific ordering to expose
+// the bug (b/72496031). During buffer assignment, the visitation order of
+// colocated buffers is %while.2 -> while.0 -> while.1, and the buffer
+// assignment was coalescing the colocated buffers for all 3 while instructions,
+// therefore assigning the same buffer to the two result tuple elements.
+TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
+  const Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+
+  // Builds a condition computation: x -> x < 4
+  auto build_cond = [&]() {
+    auto builder = HloComputation::Builder("cond");
+    auto const4 = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<int>(4)));
+    auto param =
+        builder.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "x"));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param, const4));
+    return builder.Build();
+  };
+
+  // Builds a body computation: x -> x + 9
+  auto build_body = [&]() {
+    auto builder = HloComputation::Builder("body");
+    auto const9 = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<int>(9)));
+    auto param =
+        builder.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "x"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(r0s32, HloOpcode::kAdd, param, const9));
+    return builder.Build();
+  };
+
+  // Build the entry computation as described in the comment above.
+  auto module = xla::MakeUnique<HloModule>(TestName());
+  auto builder = HloComputation::Builder("entry");
+
+  auto infeed = builder.AddInstruction(HloInstruction::CreateInfeed(r0s32, ""));
+  auto cond0 = module->AddEmbeddedComputation(build_cond());
+  auto body0 = module->AddEmbeddedComputation(build_body());
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(r0s32, cond0, body0, infeed));
+
+  auto cond1 = module->AddEmbeddedComputation(build_cond());
+  auto body1 = module->AddEmbeddedComputation(build_body());
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(r0s32, cond1, body1, while0));
+
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(0)));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0s32, HloOpcode::kAdd, zero, zero));
+  auto cond2 = module->AddEmbeddedComputation(build_cond());
+  auto body2 = module->AddEmbeddedComputation(build_body());
+  auto while2 = builder.AddInstruction(
+      HloInstruction::CreateWhile(r0s32, cond2, body2, add));
+
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({while2, while1}));
+  module->AddEntryComputation(builder.Build());
+
+  // Run CopyInsertion and check if the graph constructed above doesn't need
+  // any copies inserted for BufferAssignment to run.
+  int64 instruction_count = module->instruction_count();
+  CopyInsertion copy_insertion;
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  ASSERT_EQ(instruction_count, module->instruction_count());
+
+  // Create a sequential order among all the instructions in the entry
+  // computation, since the issue this test stresses depends on the order the
+  // nodes are traversed during BufferAssignment.
+  SequentialHloOrdering::HloModuleSequence sequence;
+  sequence[module->entry_computation()] = {infeed, while0, while1, zero,
+                                           add,    while2, tuple};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto assignment,
+      BufferAssigner::Run(
+          module.get(),
+          xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
+          backend().compiler()->BufferSizeBytesFunction(),
+          [](LogicalBuffer::Color) { return 1; }));
+
+  // The result tuple elements must be assigned with different buffers.
+  TF_ASSERT_OK_AND_ASSIGN(auto slice0, assignment->GetUniqueSlice(tuple, {0}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice1, assignment->GetUniqueSlice(tuple, {1}));
+  EXPECT_NE(slice0, slice1);
+
+  // while0 and while1 result buffers must be equal to slice1.
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
+                          assignment->GetUniqueSlice(while0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while1,
+                          assignment->GetUniqueSlice(while1, {}));
+  EXPECT_EQ(slice1, slice_while0);
+  EXPECT_EQ(slice1, slice_while1);
+
+  // while2 result buffer must be equal to slice0.
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while2,
+                          assignment->GetUniqueSlice(while2, {}));
+  EXPECT_EQ(slice0, slice_while2);
+}
+
 TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -1537,8 +1895,6 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
   auto zero = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0)));
   auto output0 = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
-  auto output1 = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
 
   auto cond0 =
@@ -1556,10 +1912,8 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
   auto body1 =
       module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
 
-  auto tuple1 = builder.AddInstruction(
-      HloInstruction::CreateTuple({input0, weights0, output1}));
   auto while1 = builder.AddInstruction(
-      HloInstruction::CreateWhile(loop_state_shape_, cond1, body1, tuple1));
+      HloInstruction::CreateWhile(loop_state_shape_, cond1, body1, while0));
 
   module->AddEntryComputation(builder.Build());
   RunCopyInsertion(module.get());
@@ -1575,7 +1929,7 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
 }
 
 TEST_F(BufferAssignmentTest, TwoCalls) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   Shape r0f32 = ShapeUtil::MakeShape(xla::F32, {});
   HloComputation* sub_computation;
   {
@@ -1640,7 +1994,7 @@ static bool IsPostOrderTraversal(
 }
 
 TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder(TestName());
 
   auto zero = builder.AddInstruction(
@@ -1676,17 +2030,22 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto while1 = builder.AddInstruction(
       HloInstruction::CreateWhile(loop_state_shape_, cond, body, tuple1));
 
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while0, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while1, 1));
   auto root_add = builder.AddInstruction(HloInstruction::CreateBinary(
-      while0->shape(), HloOpcode::kAdd, while0, while1));
-  module->AddEntryComputation(builder.Build());
+      while0->shape(), HloOpcode::kAdd, gte0, gte1));
 
-  RunCopyInsertion(module.get());
+  module->AddEntryComputation(builder.Build());
 
   {
     FlattenCallGraph flatten;
     TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
   }
+
+  RunCopyInsertion(module.get());
 
   auto sequence =
       CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
@@ -1694,78 +2053,27 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   // To trigger b/38494731, we want a specific Hlo sequence for the
   // root computation, so we overwrite that entry with a manually
   // crafted sequence.
-  std::vector<const HloInstruction*> sequence_for_buffer_assigment = {
-      input1,   weights1, one,     output1, tuple1, while1,  input0,
-      weights0, zero,     output0, tuple0,  while0, root_add};
+  sequence[module->entry_computation()] = {
+      input1, weights1, one,     output1, while1->operand(0), while1,
+      input0, weights0, zero,    output0, while0->operand(0), while0,
+      gte0,   gte1,     root_add};
 
   // If this ASSERT_TRUE fails, we constructed a bogus sequence above
   // and this test itself is buggy.
-  ASSERT_TRUE(IsPostOrderTraversal(sequence_for_buffer_assigment));
-
-  sequence[module->entry_computation()] =
-      std::move(sequence_for_buffer_assigment);
+  ASSERT_TRUE(IsPostOrderTraversal(sequence[module->entry_computation()]));
 
   auto assignment =
       BufferAssigner::Run(
           module.get(),
-          MakeUnique<SequentialHloOrdering>(module.get(), sequence), ByteSizeOf,
-          [](LogicalBuffer::Color) { return 1; })
+          xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
+          ByteSizeOf, [](LogicalBuffer::Color) { return 1; })
           .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }
 
-// Test buffer assignment for while nodes with multiple uses.
-// TODO(b/37245345): Fix buffer assignment for this case.
-TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
-  auto module = MakeUnique<HloModule>(TestName());
-  auto builder = HloComputation::Builder(TestName());
-
-  auto input0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, data_shape_, "input0"));
-  auto weights0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, data_shape_, "weights0"));
-
-  auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0)));
-  auto output0 = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
-
-  auto cond0 =
-      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
-  auto body0 =
-      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
-
-  auto tuple0 = builder.AddInstruction(
-      HloInstruction::CreateTuple({input0, weights0, output0}));
-  auto while0 = builder.AddInstruction(
-      HloInstruction::CreateWhile(loop_state_shape_, cond0, body0, tuple0));
-  auto while1 = builder.AddInstruction(
-      HloInstruction::CreateWhile(loop_state_shape_, cond0, body0, while0));
-
-  auto get0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(data_shape_, while0, 2));
-  auto get1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(data_shape_, while1, 2));
-  builder.AddInstruction(
-      HloInstruction::CreateBinary(data_shape_, HloOpcode::kAdd, get0, get1));
-  module->AddEntryComputation(builder.Build());
-
-  RunCopyInsertion(module.get());
-
-  {
-    FlattenCallGraph flatten;
-    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
-    EXPECT_TRUE(result);
-  }
-
-  auto assignment = RunBufferAssignment(module.get());
-
-  EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
-}
-
 TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(

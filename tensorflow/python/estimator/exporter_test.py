@@ -69,7 +69,8 @@ class LatestExporterTest(test.TestCase):
         _serving_input_receiver_fn,
         assets_extra={"from/path": "to/path"},
         as_text=False,
-        checkpoint_path="checkpoint_path")
+        checkpoint_path="checkpoint_path",
+        strip_default_attrs=True)
 
   def test_only_the_last_export_is_saved(self):
 
@@ -102,7 +103,8 @@ class LatestExporterTest(test.TestCase):
         _serving_input_receiver_fn,
         assets_extra={"from/path": "to/path"},
         as_text=False,
-        checkpoint_path="checkpoint_path")
+        checkpoint_path="checkpoint_path",
+        strip_default_attrs=True)
 
   def test_garbage_collect_exports(self):
     export_dir_base = tempfile.mkdtemp() + "export/"

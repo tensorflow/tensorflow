@@ -19,192 +19,102 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import dataset_ops
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
-from tensorflow.python.ops import array_ops
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.platform import test
 
 
-class SequenceDatasetTest(test.TestCase):
+class SequenceDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
 
-  def testRepeatTensorDataset(self):
-    """Test a dataset that repeats its input multiple times."""
-    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
-    # This placeholder can be fed when dataset-definition subgraph
-    # runs (i.e. `init_op` below) to configure the number of
-    # repetitions used in a particular iterator.
-    count_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
-
-    iterator = (dataset_ops.Dataset.from_tensors(components)
-                .repeat(count_placeholder).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    self.assertEqual([c.shape for c in components],
-                     [t.shape for t in get_next])
-
-    with self.test_session() as sess:
-      # Test a finite repetition.
-      sess.run(init_op, feed_dict={count_placeholder: 3})
-      for _ in range(3):
-        results = sess.run(get_next)
-        for component, result_component in zip(components, results):
-          self.assertAllEqual(component, result_component)
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Test a different finite repetition.
-      sess.run(init_op, feed_dict={count_placeholder: 7})
-      for _ in range(7):
-        results = sess.run(get_next)
-        for component, result_component in zip(components, results):
-          self.assertAllEqual(component, result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Test an empty repetition.
-      sess.run(init_op, feed_dict={count_placeholder: 0})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Test an infinite repetition.
-      # NOTE(mrry): There's not a good way to test that the sequence
-      # actually is infinite.
-      sess.run(init_op, feed_dict={count_placeholder: -1})
-      for _ in range(17):
-        results = sess.run(get_next)
-        for component, result_component in zip(components, results):
-          self.assertAllEqual(component, result_component)
-
-  def testTakeTensorDataset(self):
+  def _build_skip_dataset(self, count):
     components = (np.arange(10),)
-    count_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
+    return dataset_ops.Dataset.from_tensor_slices(components).skip(count)
 
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components)
-                .take(count_placeholder).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+  def testSkipFewerThanInputs(self):
+    count = 4
+    num_outputs = 10 - count
+    self.run_core_tests(lambda: self._build_skip_dataset(count),
+                        lambda: self._build_skip_dataset(count + 2),
+                        num_outputs)
 
-    self.assertEqual([c.shape[1:] for c in components],
-                     [t.shape for t in get_next])
+  def testSkipVarious(self):
+    # Skip more than inputs
+    self.run_core_tests(lambda: self._build_skip_dataset(20), None, 0)
+    # Skip exactly the input size
+    self.run_core_tests(lambda: self._build_skip_dataset(10), None, 0)
+    self.run_core_tests(lambda: self._build_skip_dataset(-1), None, 0)
+    # Skip nothing
+    self.run_core_tests(lambda: self._build_skip_dataset(0), None, 10)
 
-    with self.test_session() as sess:
-      # Take fewer than input size
-      sess.run(init_op, feed_dict={count_placeholder: 4})
-      for i in range(4):
-        results = sess.run(get_next)
-        self.assertAllEqual(results, components[0][i:i+1])
+  def testInvalidSkip(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Shape must be rank 0 but is rank 1'):
+      self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), None, 0)
 
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Take more than input size
-      sess.run(init_op, feed_dict={count_placeholder: 25})
-      for i in range(10):
-        results = sess.run(get_next)
-        self.assertAllEqual(results, components[0][i:i+1])
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Take all of input
-      sess.run(init_op, feed_dict={count_placeholder: -1})
-      for i in range(10):
-        results = sess.run(get_next)
-        self.assertAllEqual(results, components[0][i:i+1])
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Take nothing
-      sess.run(init_op, feed_dict={count_placeholder: 0})
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testSkipTensorDataset(self):
+  def _build_take_dataset(self, count):
     components = (np.arange(10),)
-    count_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
+    return dataset_ops.Dataset.from_tensor_slices(components).take(count)
 
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components)
-                .skip(count_placeholder).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+  def testTakeFewerThanInputs(self):
+    count = 4
+    self.run_core_tests(
+        lambda: self._build_take_dataset(count),
+        lambda: self._build_take_dataset(count + 2),
+        count,
+    )
 
-    self.assertEqual([c.shape[1:] for c in components],
-                     [t.shape for t in get_next])
+  def testTakeVarious(self):
+    # Take more than inputs
+    self.run_core_tests(lambda: self._build_take_dataset(20), None, 10)
+    # Take exactly the input size
+    self.run_core_tests(lambda: self._build_take_dataset(10), None, 10)
+    # Take all
+    self.run_core_tests(lambda: self._build_take_dataset(-1), None, 10)
+    # Take nothing
+    self.run_core_tests(lambda: self._build_take_dataset(0), None, 0)
 
-    with self.test_session() as sess:
-      # Skip fewer than input size, we should skip
-      # the first 4 elements and then read the rest.
-      sess.run(init_op, feed_dict={count_placeholder: 4})
-      for i in range(4, 10):
-        results = sess.run(get_next)
-        self.assertAllEqual(results, components[0][i:i+1])
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  def testInvalidTake(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Shape must be rank 0 but is rank 1'):
+      self.run_core_tests(lambda: self._build_take_dataset([1, 2]), None, 0)
 
-      # Skip more than input size: get nothing.
-      sess.run(init_op, feed_dict={count_placeholder: 25})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  def _build_repeat_dataset(self, count, take_count=3):
+    components = (np.arange(10),)
+    return dataset_ops.Dataset.from_tensor_slices(components).take(
+        take_count).repeat(count)
 
-      # Skip exactly input size.
-      sess.run(init_op, feed_dict={count_placeholder: 10})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  def testFiniteRepeat(self):
+    count = 10
+    self.run_core_tests(lambda: self._build_repeat_dataset(count),
+                        lambda: self._build_repeat_dataset(count + 2),
+                        3 * count)
 
-      # Set -1 for 'count': skip the entire dataset.
-      sess.run(init_op, feed_dict={count_placeholder: -1})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  def testEmptyRepeat(self):
+    self.run_core_tests(lambda: self._build_repeat_dataset(0), None, 0)
 
-      # Skip nothing
-      sess.run(init_op, feed_dict={count_placeholder: 0})
-      for i in range(0, 10):
-        results = sess.run(get_next)
-        self.assertAllEqual(results, components[0][i:i+1])
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  def testInfiniteRepeat(self):
+    self.verify_unused_iterator(
+        lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
+    self.verify_init_before_restore(
+        lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
+    self.verify_multiple_breaks(
+        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
+    self.verify_reset_restored_iterator(
+        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
+    self.verify_restore_in_modified_graph(
+        lambda: self._build_repeat_dataset(-1),
+        lambda: self._build_repeat_dataset(2),
+        20,
+        verify_exhausted=False)
+    # Test repeat empty dataset
+    self.run_core_tests(lambda: self._build_repeat_dataset(-1, 0), None, 0)
 
-  def testRepeatRepeatTensorDataset(self):
-    """Test the composition of repeat datasets."""
-    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
-    inner_count = array_ops.placeholder(dtypes.int64, shape=[])
-    outer_count = array_ops.placeholder(dtypes.int64, shape=[])
-
-    iterator = (dataset_ops.Dataset.from_tensors(components).repeat(inner_count)
-                .repeat(outer_count).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    self.assertEqual([c.shape for c in components],
-                     [t.shape for t in get_next])
-
-    with self.test_session() as sess:
-      sess.run(init_op, feed_dict={inner_count: 7, outer_count: 14})
-      for _ in range(7 * 14):
-        results = sess.run(get_next)
-        for component, result_component in zip(components, results):
-          self.assertAllEqual(component, result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testRepeatEmptyDataset(self):
-    """Test that repeating an empty dataset does not hang."""
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10).skip(10)
-                .repeat(-1).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op)
-      with self.assertRaisesRegexp(
-          errors.OutOfRangeError,
-          "Attempted to repeat an empty dataset infinitely."):
-        sess.run(get_next)
+  def testInvalidRepeat(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      self.run_core_tests(lambda: self._build_repeat_dataset([1, 2], 0),
+                          None, 0)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ class ResizeAreaOpTest : public OpsTestBase {
     bool is_ref = IsRefType(input_types_[inputs_.size()]);
     Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
                                DataTypeToEnum<float>::v(), shape);
-    input->flat<float>().setZero();
+    input->flat<float>().setRandom();
     tensors_.push_back(input);
     if (is_ref) {
       CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),

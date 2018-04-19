@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
-    perftools::gputools::Platform* platform,
+    const perftools::gputools::Platform* platform,
     tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
         stream_executors)
     : DeviceMemoryAllocator(platform),

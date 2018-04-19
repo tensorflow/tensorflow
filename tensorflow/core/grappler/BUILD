@@ -3,24 +3,15 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "op_types",
     srcs = ["op_types.cc"],
     hdrs = ["op_types.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -43,6 +34,7 @@ tf_cc_test(
     srcs = ["utils_test.cc"],
     deps = [
         ":utils",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -63,6 +55,31 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "graph_view",
+    srcs = ["graph_view.cc"],
+    hdrs = ["graph_view.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_view_test",
+    srcs = ["graph_view_test.cc"],
+    deps = [
+        ":graph_view",
+        ":grappler_item",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
@@ -130,6 +147,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )

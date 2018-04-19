@@ -17,12 +17,44 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
+namespace {
+
+bool IsAllowed(char character) {
+  auto c = static_cast<unsigned char>(character);
+  return (isalnum(c) != 0) || c == '_' || c == '.' || c == '-';
+}
+
+}  // namespace
+
+NameUniquer::NameUniquer(const string& separator) {
+  CHECK(std::all_of(separator.begin(), separator.end(), IsAllowed))
+      << "separator should comprises allowed characters only";
+  separator_ = separator;
+}
+
+/*static*/ string NameUniquer::GetSanitizedName(const string& name) {
+  string result = name;
+  CHECK(!result.empty()) << "name should not be empty";
+  char c = static_cast<unsigned char>(result[0]);
+  if (!isalpha(c) && c != '_') {
+    result[0] = '_';
+  }
+  for (int i = 1; i < result.length(); i++) {
+    if (!IsAllowed(result[i])) {
+      result[i] = '_';
+    }
+  }
+  return result;
+}
+
 string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
   string root = prefix.empty() ? "name" : prefix.ToString();
+  root = GetSanitizedName(root);
 
   // Strip away numeric suffix (if any). Only recognize separator if it is in
   // the middle of the name.

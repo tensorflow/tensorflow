@@ -24,21 +24,21 @@
 namespace tensorflow {
 namespace {
 
-using tensorflow::tensorforest::GrowStats;
-using tensorflow::tensorforest::TestableInputTarget;
-using tensorflow::tensorforest::FertileSlot;
+using tensorflow::decision_trees::BinaryNode;
+using tensorflow::decision_trees::FeatureId;
+using tensorflow::decision_trees::InequalityTest;
 using tensorflow::tensorforest::DenseClassificationGrowStats;
-using tensorflow::tensorforest::SparseClassificationGrowStats;
+using tensorflow::tensorforest::FertileSlot;
 using tensorflow::tensorforest::FixedSizeClassStats;
 using tensorflow::tensorforest::FixedSizeSparseClassificationGrowStats;
+using tensorflow::tensorforest::GrowStats;
 using tensorflow::tensorforest::LeastSquaresRegressionGrowStats;
-using tensorflow::tensorforest::TensorForestParams;
+using tensorflow::tensorforest::SparseClassificationGrowStats;
 using tensorflow::tensorforest::SPLIT_FINISH_BASIC;
 using tensorflow::tensorforest::SPLIT_FINISH_DOMINATE_HOEFFDING;
 using tensorflow::tensorforest::SPLIT_PRUNE_HOEFFDING;
-using tensorflow::decision_trees::BinaryNode;
-using tensorflow::decision_trees::InequalityTest;
-using tensorflow::decision_trees::FeatureId;
+using tensorflow::tensorforest::TensorForestParams;
+using tensorflow::tensorforest::TestableInputTarget;
 
 BinaryNode MakeSplit(const string& feat, float val) {
   BinaryNode split;
@@ -52,8 +52,7 @@ BinaryNode MakeSplit(const string& feat, float val) {
   return split;
 }
 
-void RunBatch(GrowStats* stats,
-              const TestableInputTarget* target) {
+void RunBatch(GrowStats* stats, const TestableInputTarget* target) {
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
       new tensorflow::tensorforest::TestableDataSet(
           {1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, 2));
@@ -102,18 +101,10 @@ class TestableRunningStats : public DenseClassificationGrowStats {
   TestableRunningStats(const TensorForestParams& params, int32 depth)
       : DenseClassificationGrowStats(params, depth) {}
 
-  float test_left_sum(int split) {
-    return get_left_gini()->sum(split);
-  }
-  float test_left_square(int split) {
-    return get_left_gini()->square(split);
-  }
-  float test_right_sum(int split) {
-    return get_right_gini()->sum(split);
-  }
-  float test_right_square(int split) {
-    return get_right_gini()->square(split);
-  }
+  float test_left_sum(int split) { return get_left_gini()->sum(split); }
+  float test_left_square(int split) { return get_left_gini()->square(split); }
+  float test_right_sum(int split) { return get_right_gini()->sum(split); }
+  float test_right_square(int split) { return get_right_gini()->square(split); }
 };
 
 TEST(GrowStatsDenseClassificationTest, BasicRunningStats) {
@@ -166,9 +157,7 @@ class TestableFinishEarly : public DenseClassificationGrowStats {
   int num_times_called_;
 
  protected:
-  void CheckFinishEarlyHoeffding() override {
-    ++num_times_called_;
-  }
+  void CheckFinishEarlyHoeffding() override { ++num_times_called_; }
 };
 
 TEST(GrowStatsDenseClassificationTest, TestFinishEarly) {
@@ -212,7 +201,6 @@ TEST(GrowStatsDenseClassificationTest, TestFinishEarly) {
   ASSERT_EQ(stat->num_times_called_, 9);
 }
 
-
 TEST(GrowStatsDenseClassificationTest, TestCheckPruneHoeffding) {
   TensorForestParams params;
   params.set_num_outputs(2);
@@ -224,7 +212,8 @@ TEST(GrowStatsDenseClassificationTest, TestCheckPruneHoeffding) {
   finish->set_type(SPLIT_FINISH_BASIC);
   finish->mutable_check_every_steps()->set_constant_value(100);
   params.mutable_pruning_type()->set_type(SPLIT_PRUNE_HOEFFDING);
-  params.mutable_pruning_type()->mutable_prune_every_samples()
+  params.mutable_pruning_type()
+      ->mutable_prune_every_samples()
       ->set_constant_value(1);
 
   // On each iteration, we add two examples, one of class 0 and one
@@ -234,8 +223,8 @@ TEST(GrowStatsDenseClassificationTest, TestCheckPruneHoeffding) {
   std::vector<float> weights = {1, 1};
   TestableInputTarget target(labels, weights, 1);
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
-      new tensorflow::tensorforest::TestableDataSet(
-          {-1.0, -1.0, 1.0, -1.0}, 2));
+      new tensorflow::tensorforest::TestableDataSet({-1.0, -1.0, 1.0, -1.0},
+                                                    2));
 
   DenseClassificationGrowStats stats(params, 1);
   stats.Initialize();

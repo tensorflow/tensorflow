@@ -139,9 +139,7 @@ class GraphExecutionState {
 
   // The graph returned by BuildGraph may contain only the pruned
   // graph, whereas some clients may want access to the full graph.
-  const Graph* full_graph() {
-    return graph_;
-  }
+  const Graph* full_graph() { return graph_; }
 
   // Returns the node with the given name, or null if it does not exist.
   const Node* get_node_by_name(const string& name) const {
@@ -178,6 +176,11 @@ class GraphExecutionState {
                                                             // ctor.
   void SaveStatefulNodes(Graph* graph);
   void RestoreStatefulNodes(Graph* graph);
+
+  // Extract the subset of the graph that needs to be run, adding feed/fetch
+  // ops as needed.
+  Status PruneGraph(const BuildGraphOptions& options, Graph* graph,
+                    subgraph::RewriteGraphMetadata* out_rewrite_metadata);
 
   Status OptimizeGraph(const BuildGraphOptions& options,
                        std::unique_ptr<Graph>* optimized_graph);

@@ -47,6 +47,10 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "ISOLATE_SESSION_STATE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "LOG_DEVICE_PLACEMENT_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }

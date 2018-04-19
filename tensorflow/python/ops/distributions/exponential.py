@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import gamma
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
 ]
 
 
+@tf_export("distributions.Exponential")
 class Exponential(gamma.Gamma):
   """Exponential distribution.
 

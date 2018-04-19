@@ -25,12 +25,12 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 // Forward declarations of the functor specializations for GPU.
-#define DECLARE_GPU_SPECS_INDEX(T, Index)                             \
-  template <>                                                         \
-  int64 GatherFunctor<GPUDevice, T, Index>::operator()(               \
+#define DECLARE_GPU_SPECS_INDEX(T, Index)                               \
+  template <>                                                           \
+  int64 GatherFunctor<GPUDevice, T, Index>::operator()(                 \
       OpKernelContext* ctx, typename TTypes<T, 3>::ConstTensor Tparams, \
-      typename TTypes<Index>::ConstFlat Tindices,                     \
-      typename TTypes<T, 3>::Tensor Tout);                            \
+      typename TTypes<Index>::ConstFlat Tindices,                       \
+      typename TTypes<T, 3>::Tensor Tout);                              \
   extern template struct GatherFunctor<GPUDevice, T, Index>;
 
 #define DECLARE_GPU_SPECS(T)         \

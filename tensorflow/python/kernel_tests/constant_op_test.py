@@ -30,6 +30,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import logging_ops
@@ -44,7 +45,8 @@ class ConstantTest(test.TestCase):
     np_ans = np.array(x)
     with self.test_session(use_gpu=False):
       tf_ans = ops.convert_to_tensor(x).eval()
-    if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+    dtype = dtypes_lib.as_dtype(np_ans.dtype)
+    if dtype.is_floating or dtype.is_complex:
       self.assertAllClose(np_ans, tf_ans)
     else:
       self.assertAllEqual(np_ans, tf_ans)
@@ -53,7 +55,8 @@ class ConstantTest(test.TestCase):
     np_ans = np.array(x)
     with self.test_session(use_gpu=True):
       tf_ans = ops.convert_to_tensor(x).eval()
-    if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+    dtype = dtypes_lib.as_dtype(np_ans.dtype)
+    if dtype.is_floating or dtype.is_complex:
       self.assertAllClose(np_ans, tf_ans)
     else:
       self.assertAllEqual(np_ans, tf_ans)
@@ -61,6 +64,24 @@ class ConstantTest(test.TestCase):
   def _testAll(self, x):
     self._testCpu(x)
     self._testGpu(x)
+
+  def testInvalidDType(self):
+    # Test case for GitHub issue 18474
+    with self.assertRaises(TypeError):
+      constant_op.constant(dtypes_lib.string, "[,]")
+
+  def testBFloat16(self):
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(bfloat16))
+    self._testAll(
+        np.random.normal(size=30).reshape([2, 3, 5]).astype(bfloat16))
+    self._testAll(np.empty((2, 0, 5)).astype(bfloat16))
+
+  def testHalf(self):
+    self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float16))
+    self._testAll(
+        np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float16))
+    self._testAll(np.empty((2, 0, 5)).astype(np.float16))
 
   def testFloat(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float32))
@@ -164,6 +185,11 @@ class ConstantTest(test.TestCase):
           np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float32),
           shape=[2, 3, 5])
     self.assertEqual(c.get_shape(), [2, 3, 5])
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerMemory(self):
+    """Tests PyObject refs are managed correctly when executing eagerly."""
+    constant_op.constant([[1.]])
 
   def testImplicitShapeNumPy(self):
     with ops.Graph().as_default():
@@ -439,18 +465,19 @@ class ZerosLikeTest(test.TestCase):
 
   def testZerosLikeCPU(self):
     for dtype in [
-        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
-        dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
-        dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64,
-        dtypes_lib.string
+        dtypes_lib.half, dtypes_lib.float32, dtypes_lib.float64,
+        dtypes_lib.int8, dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.uint16,
+        dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.bool,
+        dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.string
     ]:
       self._compareZeros(dtype, fully_defined_shape=False, use_gpu=False)
       self._compareZeros(dtype, fully_defined_shape=True, use_gpu=False)
 
   def testZerosLikeGPU(self):
     for dtype in [
-        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
-        dtypes_lib.bool, dtypes_lib.int64, dtypes_lib.string
+        dtypes_lib.half, dtypes_lib.float32, dtypes_lib.float64,
+        dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.complex64,
+        dtypes_lib.complex128, dtypes_lib.bool
     ]:
       self._compareZeros(dtype, fully_defined_shape=False, use_gpu=True)
       self._compareZeros(dtype, fully_defined_shape=True, use_gpu=True)
@@ -573,9 +600,10 @@ class OnesLikeTest(test.TestCase):
 
   def testOnesLike(self):
     for dtype in [
-        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
-        dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
-        dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64
+        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int8,
+        dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.uint16, dtypes_lib.int32,
+        dtypes_lib.int64, dtypes_lib.bool, dtypes_lib.complex64,
+        dtypes_lib.complex128
     ]:
       numpy_dtype = dtype.as_numpy_dtype
       with self.test_session():
@@ -630,12 +658,12 @@ class FillTest(test.TestCase):
     self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex64(self):
-    np_ans = np.array([[0.15] * 3] * 2).astype(np.complex64)
-    self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
+    np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex64)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex128(self):
-    np_ans = np.array([[0.15] * 3] * 2).astype(np.complex128)
-    self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
+    np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex128)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillString(self):
     np_ans = np.array([[b"yolo"] * 3] * 2)
@@ -858,7 +886,7 @@ versions {
 class PlaceholderWithDefaultTest(test.TestCase):
 
   def testFullShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([[2, 2], [2, 2]], shape=[2, 2])
       a = array_ops.identity(p)
       self.assertAllEqual([[2, 2], [2, 2]], a.eval())
@@ -869,7 +897,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
         a.eval(feed_dict={p: [[6, 6, 6], [6, 6, 6]]})
 
   def testPartialShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([1, 2, 3], shape=[None])
       a = array_ops.identity(p)
       self.assertAllEqual([1, 2, 3], a.eval())
@@ -879,7 +907,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
         a.eval(feed_dict={p: [[2, 2], [2, 2]]})
 
   def testNoShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([17], shape=None)
       a = array_ops.identity(p)
       self.assertAllEqual([17], a.eval())
@@ -888,11 +916,12 @@ class PlaceholderWithDefaultTest(test.TestCase):
           [[3, 3], [3, 3]], a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
 
   def testGradient(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       x = array_ops.placeholder(dtypes_lib.float32, [5, 7])
       y = array_ops.placeholder_with_default(x, None)
       err = gradient_checker.compute_gradient_error(x, [5, 7], y, [5, 7])
       self.assertLess(err, 1e-3)
+
 
 if __name__ == "__main__":
   test.main()

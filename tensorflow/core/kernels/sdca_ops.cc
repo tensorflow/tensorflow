@@ -57,11 +57,11 @@ namespace tensorflow {
 
 namespace {
 
-using sdca::Regularizations;
 using sdca::Example;
 using sdca::Examples;
 using sdca::ExampleStatistics;
 using sdca::ModelWeights;
+using sdca::Regularizations;
 
 struct ComputeOptions {
   explicit ComputeOptions(OpKernelConstruction* const context) {
@@ -76,10 +76,11 @@ struct ComputeOptions {
     } else if (loss_type == "smooth_hinge_loss") {
       loss_updater.reset(new SmoothHingeLossUpdater);
     } else {
-      OP_REQUIRES(context, false, errors::InvalidArgument(
-                                      "Unsupported loss type: ", loss_type));
+      OP_REQUIRES(
+          context, false,
+          errors::InvalidArgument("Unsupported loss type: ", loss_type));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("adaptative", &adaptative));
+    OP_REQUIRES_OK(context, context->GetAttr("adaptative", &adaptive));
     OP_REQUIRES_OK(
         context, context->GetAttr("num_sparse_features", &num_sparse_features));
     OP_REQUIRES_OK(context, context->GetAttr("num_sparse_features_with_values",
@@ -90,9 +91,10 @@ struct ComputeOptions {
         context, num_sparse_features + num_dense_features > 0,
         errors::InvalidArgument("Requires at least one feature to train."));
 
-    OP_REQUIRES(context, static_cast<int64>(num_sparse_features) +
-                                 static_cast<int64>(num_dense_features) <=
-                             std::numeric_limits<int>::max(),
+    OP_REQUIRES(context,
+                static_cast<int64>(num_sparse_features) +
+                        static_cast<int64>(num_dense_features) <=
+                    std::numeric_limits<int>::max(),
                 errors::InvalidArgument(
                     strings::Printf("Too many feature groups: %lld > %d",
                                     static_cast<int64>(num_sparse_features) +
@@ -111,7 +113,7 @@ struct ComputeOptions {
   int num_dense_features = 0;
   int num_inner_iterations = 0;
   int num_loss_partitions = 0;
-  bool adaptative = false;
+  bool adaptive = true;
   Regularizations regularizations;
 };
 
@@ -145,14 +147,15 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
   OP_REQUIRES_OK(context, context->set_output("out_example_state_data",
                                               mutable_example_state_data_t));
 
-  if (options.adaptative) {
+  if (options.adaptive) {
     OP_REQUIRES_OK(context,
-                   examples.SampleAdaptativeProbabilities(
+                   examples.SampleAdaptiveProbabilities(
                        options.num_loss_partitions, options.regularizations,
                        model_weights, example_state_data, options.loss_updater,
                        /*num_weight_vectors =*/1));
+  } else {
+    examples.RandomShuffle();
   }
-
   mutex mu;
   Status train_step_status GUARDED_BY(mu);
   std::atomic<std::int64_t> atomic_index(-1);
@@ -160,8 +163,7 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
     for (int id = static_cast<int>(begin); id < end; ++id) {
-      const int64 example_index =
-          examples.sampled_index(++atomic_index, options.adaptative);
+      const int64 example_index = examples.sampled_index(++atomic_index);
       const Example& example = examples.example(example_index);
       const float dual = example_state_data(example_index, 0);
       const float example_weight = example.example_weight();

@@ -297,20 +297,133 @@ void PrintHelp() {
       "See https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/"
       "g3doc/command_line.md for command line tool tutorial.\n");
   printf(
-      "profiler --profile_path=<ProfileProto binary file> # required\nor:\n"
-      "profiler --graph_path=<GraphDef proto file>  # required\n"
-      "         --run_meta_patn=<RunMetadata proto file>  # optional\n"
-      "         --run_log_path=<OpLogProto proto file>  # optional\n\n");
+      "profiler --profile_path=<ProfileProto binary file> # required\n"
+      "\nOr:\n\n"
+      "profiler --graph_path=<GraphDef proto file>  "
+      "# Contains model graph info (no needed for eager execution)\n"
+      "         --run_meta_path=<RunMetadata proto file>  "
+      "# Contains runtime info. Optional.\n"
+      "         --run_log_path=<OpLogProto proto file>  "
+      "# Contains extra source code, flops, custom type info. Optional\n\n");
   printf(
-      "\nCommands:\n"
+      "\nTo skip interactive mode, append one of the following commands:\n"
       "  scope: Organize profiles based on name scopes.\n"
       "  graph: Organize profiles based on graph node input/output.\n"
       "  op: Organize profiles based on operation type.\n"
       "  code: Organize profiles based on python codes (need op_log_path).\n"
-      "  advise: Auto-profile and advise.\n"
+      "  advise: Auto-profile and advise. (experimental)\n"
       "  set: Set options that will be default for follow up commands.\n"
       "  help: Show helps.\n");
   fflush(stdout);
+}
+
+static const char* const kTotalMicrosHelp =
+    "total execution time: Sum of accelerator execution time and cpu execution "
+    "time.";
+static const char* const kAccMicrosHelp =
+    "accelerator execution time: Time spent executing on the accelerator. "
+    "This is normally measured by the actual hardware library.";
+static const char* const kCPUHelp =
+    "cpu execution time: The time from the start to the end of the operation. "
+    "It's the sum of actual cpu run time plus the time that it spends waiting "
+    "if part of computation is launched asynchronously.";
+static const char* const kBytes =
+    "requested bytes: The memory requested by the operation, accumulatively.";
+static const char* const kPeakBytes =
+    "peak bytes: The peak amount of memory that the operation is holding at "
+    "some point.";
+static const char* const kResidualBytes =
+    "residual bytes: The memory not de-allocated after the operation finishes.";
+static const char* const kOutputBytes =
+    "output bytes: The memory that is output from the operation (not "
+    "necessarilty allocated by the operation)";
+static const char* const kOccurrence =
+    "occurrence: The number of times it occurs";
+static const char* const kInputShapes =
+    "input shape: The shape of input tensors";
+static const char* const kDevice = "device: which device is placed on.";
+static const char* const kFloatOps =
+    "flops: Number of float operations. Note: Please read the implementation "
+    "for the math behind it.";
+static const char* const kParams =
+    "param: Number of parameters (in the Variable).";
+static const char* const kTensorValue = "tensor_value: Not supported now.";
+static const char* const kOpTypes =
+    "op_types: The attributes of the operation, includes the Kernel name "
+    "device placed on and user-defined strings.";
+
+static const char* const kScope =
+    "scope: The nodes in the model graph are organized by their names, which "
+    "is hierarchical like filesystem.";
+static const char* const kCode =
+    "code: When python trace is available, the nodes are python lines and "
+    "their are organized by the python call stack.";
+static const char* const kOp =
+    "op: The nodes are operation kernel type, such as MatMul, Conv2D. Graph "
+    "nodes belonging to the same type are aggregated together.";
+static const char* const kAdvise =
+    "advise: Automatically profile and discover issues. (Experimental)";
+static const char* const kSet =
+    "set: Set a value for an option for future use.";
+static const char* const kHelp = "help: Print helping messages.";
+
+string QueryDoc(const string& cmd, const Options& opts) {
+  string cmd_help = "";
+  if (cmd == kCmds[0]) {
+    cmd_help = kScope;
+  } else if (cmd == kCmds[1]) {
+    cmd_help = kScope;
+  } else if (cmd == kCmds[2]) {
+    cmd_help = kCode;
+  } else if (cmd == kCmds[3]) {
+    cmd_help = kOp;
+  } else if (cmd == kCmds[4]) {
+    cmd_help = kAdvise;
+  } else if (cmd == kCmds[5]) {
+    cmd_help = kSet;
+  } else if (cmd == kCmds[6]) {
+    cmd_help = kHelp;
+  } else {
+    cmd_help = "Unknown command: " + cmd;
+  }
+
+  std::vector<string> helps;
+  for (const string& s : opts.select) {
+    if (s == kShown[0]) {
+      helps.push_back(kBytes);
+    } else if (s == kShown[1]) {
+      helps.push_back(strings::StrCat(kTotalMicrosHelp, "\n", kCPUHelp, "\n",
+                                      kAccMicrosHelp));
+    } else if (s == kShown[2]) {
+      helps.push_back(kParams);
+    } else if (s == kShown[3]) {
+      helps.push_back(kFloatOps);
+    } else if (s == kShown[4]) {
+      helps.push_back(kTensorValue);
+    } else if (s == kShown[5]) {
+      helps.push_back(kDevice);
+    } else if (s == kShown[6]) {
+      helps.push_back(kOpTypes);
+    } else if (s == kShown[7]) {
+      helps.push_back(kOccurrence);
+    } else if (s == kShown[8]) {
+      helps.push_back(kInputShapes);
+    } else if (s == kShown[9]) {
+      helps.push_back(kAccMicrosHelp);
+    } else if (s == kShown[10]) {
+      helps.push_back(kCPUHelp);
+    } else if (s == kShown[11]) {
+      helps.push_back(kPeakBytes);
+    } else if (s == kShown[12]) {
+      helps.push_back(kResidualBytes);
+    } else if (s == kShown[13]) {
+      helps.push_back(kOutputBytes);
+    } else {
+      helps.push_back("Unknown select: " + s);
+    }
+  }
+  return strings::StrCat("\nDoc:\n", cmd_help, "\n",
+                         str_util::Join(helps, "\n"), "\n\n");
 }
 
 }  // namespace tfprof

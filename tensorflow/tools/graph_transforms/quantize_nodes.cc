@@ -183,22 +183,6 @@ Status ExtractRangeFromParams(const TransformFuncContext& context,
   return Status::OK();
 }
 
-bool AreAttrsEqual(const NodeDef* current_node, const NodeDef* other_node) {
-  if (current_node->attr_size() != other_node->attr_size()) {
-    return false;
-  }
-  string current_serialized;
-  string other_serialized;
-  for (const auto& attr : other_node->attr()) {
-    auto iter = current_node->attr().find(attr.first);
-    if (iter == current_node->attr().end()) return false;
-    iter->second.SerializeToString(&current_serialized);
-    attr.second.SerializeToString(&other_serialized);
-    if (current_serialized != other_serialized) return false;
-  }
-  return true;
-}
-
 }  // namespace
 
 // Analyzes all the nodes in the graph to figure out which ones are duplicates
@@ -759,6 +743,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
           NodeDef reshape_dims;
           reshape_dims.set_op("Const");
           reshape_dims.set_name(unique_input_name + "/reshape_dims");
+          AddNodeInput("^" + NodeNameFromInput(input_name), &reshape_dims);
           SetNodeAttr("dtype", DT_INT32, &reshape_dims);
           Tensor reshape_dims_tensor(DT_INT32, {1});
           reshape_dims_tensor.flat<int32>()(0) = -1;
@@ -768,6 +753,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
           NodeDef reduction_dims;
           reduction_dims.set_op("Const");
           reduction_dims.set_name(unique_input_name + "/reduction_dims");
+          AddNodeInput("^" + NodeNameFromInput(input_name), &reduction_dims);
           SetNodeAttr("dtype", DT_INT32, &reduction_dims);
           Tensor reduction_dims_tensor(DT_INT32, {1});
           reduction_dims_tensor.flat<int32>()(0) = 0;

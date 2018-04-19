@@ -30,7 +30,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 
-
 __all__ = [
     "Cauchy",
 ]
@@ -44,16 +43,17 @@ class Cauchy(distribution.Distribution):
   The probability density function (pdf) is,
 
   ```none
-  pdf(x; loc, scale) = 1 / (pi * scale * (1 + ((x - loc) / scale)**2))
+  pdf(x; loc, scale) = 1 / (pi scale (1 + z**2))
+  z = (x - loc) / scale
   ```
   where `loc` is the location, and `scale` is the scale.
 
   The Cauchy distribution is a member of the [location-scale family](
   https://en.wikipedia.org/wiki/Location-scale_family), i.e.
+  `Y ~ Cauchy(loc, scale)` is equivalent to,
 
   ```none
   X ~ Cauchy(loc=0, scale=1)
-  Y ~ Cauchy(loc=loc, scale=scale)
   Y = loc + scale * X
   ```
 
@@ -62,14 +62,16 @@ class Cauchy(distribution.Distribution):
   Examples of initialization of one or a batch of distributions.
 
   ```python
+  tfd = tf.contrib.distributions
+
   # Define a single scalar Cauchy distribution.
-  dist = Cauchy(loc=0., scale=3.)
+  dist = tfd.Cauchy(loc=0., scale=3.)
 
   # Evaluate the cdf at 1, returning a scalar.
   dist.cdf(1.)
 
   # Define a batch of two scalar valued Cauchy distributions.
-  dist = Cauchy(loc=[1, 2.], scale=[11, 22.])
+  dist = tfd.Cauchy(loc=[1, 2.], scale=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
@@ -77,18 +79,17 @@ class Cauchy(distribution.Distribution):
 
   # Get 3 samples, returning a 3 x 2 tensor.
   dist.sample([3])
-  ```
 
-  Arguments are broadcast when possible.
-
-  ```python
+  # Arguments are broadcast when possible.
   # Define a batch of two scalar valued Cauchy distributions.
   # Both have median 1, but different scales.
-  dist = tf.contrib.distributions.Cauchy(loc=1., scale=[11, 22.])
+  dist = tfd.Cauchy(loc=1., scale=[11, 22.])
+
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
-  dist.prob(3.0)
+  dist.prob(3.)
   ```
+
   """
 
   def __init__(self,
@@ -97,7 +98,7 @@ class Cauchy(distribution.Distribution):
                validate_args=False,
                allow_nan_stats=True,
                name="Cauchy"):
-    """Construct Cauchy distributions with loc and and scale `loc` and `scale`.
+    """Construct Cauchy distributions.
 
     The parameters `loc` and `scale` must be shaped in a way that supports
     broadcasting (e.g. `loc + scale` is a valid operation).
@@ -121,8 +122,8 @@ class Cauchy(distribution.Distribution):
     """
     parameters = locals()
     with ops.name_scope(name, values=[loc, scale]):
-      with ops.control_dependencies([check_ops.assert_positive(scale)] if
-                                    validate_args else []):
+      with ops.control_dependencies([check_ops.assert_positive(scale)]
+                                    if validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
         check_ops.assert_same_float_dtype([self._loc, self._scale])
@@ -138,8 +139,8 @@ class Cauchy(distribution.Distribution):
   @staticmethod
   def _param_shapes(sample_shape):
     return dict(
-        zip(("loc", "scale"), ([ops.convert_to_tensor(
-            sample_shape, dtype=dtypes.int32)] * 2)))
+        zip(("loc", "scale"),
+            ([ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def loc(self):
@@ -153,13 +154,10 @@ class Cauchy(distribution.Distribution):
 
   def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
-        array_ops.shape(self.loc),
-        array_ops.shape(self.scale))
+        array_ops.shape(self.loc), array_ops.shape(self.scale))
 
   def _batch_shape(self):
-    return array_ops.broadcast_static_shape(
-        self.loc.shape,
-        self.scale.shape)
+    return array_ops.broadcast_static_shape(self.loc.shape, self.scale.shape)
 
   def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)

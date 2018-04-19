@@ -36,11 +36,10 @@ perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
 
 namespace functor {
 template <typename T>
-void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx,
-                                     bool transa, bool transb, uint64 m,
-                                     uint64 n, uint64 k, T alpha, const T* a,
-                                     int lda, const T* b, int ldb, T beta, T* c,
-                                     int ldc) {
+void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx, bool transa,
+                                     bool transb, uint64 m, uint64 n, uint64 k,
+                                     T alpha, const T* a, int lda, const T* b,
+                                     int ldb, T beta, T* c, int ldc) {
 #if GOOGLE_CUDA
   perftools::gputools::blas::Transpose trans[] = {
       perftools::gputools::blas::Transpose::kNoTranspose,

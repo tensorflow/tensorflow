@@ -24,17 +24,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetCpuCastFromBfloat(DataType dst_dtype) {
-  if (dst_dtype == DT_FLOAT) {
-    return [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
-      int64 N = out->NumElements();
-      auto worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
-      auto work = [&inp, &out](int64 start, int64 end) {
-        BFloat16ToFloat(inp.flat<bfloat16>().data() + start,
-                        out->flat<float>().data() + start, end - start);
-      };
-      Shard(worker_threads->num_threads, worker_threads->workers, N, 2, work);
-    };
-  }
+  CURRY_TYPES3(CAST_CASE, CPUDevice, bfloat16);
   return nullptr;
 }
 

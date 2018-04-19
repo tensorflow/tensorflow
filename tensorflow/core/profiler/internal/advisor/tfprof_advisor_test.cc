@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
 
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -53,10 +54,13 @@ class TFProfAdvisorTest : public ::testing::Test {
     NodeExecStats node_stat;
     node_stat.set_all_start_micros(start_miros);
     node_stat.set_op_end_rel_micros(end_rel_micros);
-    node->AddStepStat(step, "/job:localhost/replica:0/task:0/device:GPU:0", node_stat);
-    node->AddStepStat(step, "/job:localhost/replica:0/task:0/device:GPU:0:stream:all",
+    node->AddStepStat(step, "/job:localhost/replica:0/task:0/device:GPU:0",
                       node_stat);
-    node->AddStepStat(step, "/job:localhost/replica:0/task:0/device:GPU:0:stream:0",
+    node->AddStepStat(step,
+                      "/job:localhost/replica:0/task:0/device:GPU:0:stream:all",
+                      node_stat);
+    node->AddStepStat(step,
+                      "/job:localhost/replica:0/task:0/device:GPU:0:stream:0",
                       node_stat);
     return node;
   }
@@ -79,8 +83,8 @@ TEST_F(TFProfAdvisorTest, OperationChecker) {
   (*options.mutable_checkers())[kCheckers[1]];
   AdviceProto advice = advisor_->Advise(options);
   EXPECT_EQ(advice.checkers().at(kCheckers[1]).reports_size(), 1);
-  EXPECT_TRUE(StringPiece(advice.checkers().at(kCheckers[1]).reports(0))
-                  .contains("NCHW"));
+  EXPECT_TRUE(str_util::StrContains(
+      advice.checkers().at(kCheckers[1]).reports(0), "NCHW"));
 }
 
 TEST_F(TFProfAdvisorTest, UtilizationChecker) {
@@ -88,16 +92,17 @@ TEST_F(TFProfAdvisorTest, UtilizationChecker) {
   (*options.mutable_checkers())[kCheckers[0]];
   AdviceProto advice = advisor_->Advise(options);
   EXPECT_EQ(advice.checkers().at(kCheckers[0]).reports_size(), 1);
-  EXPECT_TRUE(StringPiece(advice.checkers().at(kCheckers[0]).reports(0))
-                  .contains("low utilization"));
+  EXPECT_TRUE(str_util::StrContains(
+      advice.checkers().at(kCheckers[0]).reports(0), "low utilization"));
 }
 
 TEST_F(TFProfAdvisorTest, ExpensiveOperationChecker) {
   AdvisorOptionsProto options;
   (*options.mutable_checkers())[kCheckers[2]];
   AdviceProto advice = advisor_->Advise(options);
-  EXPECT_TRUE(StringPiece(advice.checkers().at(kCheckers[2]).reports(0))
-                  .contains("top 1 operation type: Conv2D"));
+  EXPECT_TRUE(
+      str_util::StrContains(advice.checkers().at(kCheckers[2]).reports(0),
+                            "top 1 operation type: Conv2D"));
 }
 
 }  // namespace tfprof

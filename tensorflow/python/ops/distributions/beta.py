@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -45,6 +46,7 @@ _beta_sample_note = """Note: `x` must have dtype `self.dtype` and be in
 `[0, 1].` It must have a shape compatible with `self.batch_shape()`."""
 
 
+@tf_export("distributions.Beta")
 class Beta(distribution.Distribution):
   """Beta distribution.
 
@@ -302,12 +304,11 @@ class Beta(distribution.Distribution):
     if not self.validate_args:
       return x
     return control_flow_ops.with_dependencies([
-        check_ops.assert_positive(
-            x,
-            message="sample must be positive"),
+        check_ops.assert_positive(x, message="sample must be positive"),
         check_ops.assert_less(
-            x, array_ops.ones([], self.dtype),
-            message="sample must be no larger than `1`."),
+            x,
+            array_ops.ones([], self.dtype),
+            message="sample must be less than `1`."),
     ], x)
 
 

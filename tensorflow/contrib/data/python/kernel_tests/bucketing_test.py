@@ -17,10 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import grouping
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -40,8 +43,7 @@ class GroupByWindowTest(test.TestCase):
         dataset_ops.Dataset.from_tensor_slices(components).map(lambda x: x * x)
         .apply(
             grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
-                                     4))
-        .make_initializable_iterator())
+                                     4)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -52,7 +54,8 @@ class GroupByWindowTest(test.TestCase):
         while True:
           result = sess.run(get_next)
           self.assertTrue(
-              all(x % 2 == 0 for x in result) or all(x % 2 == 1)
+              all(x % 2 == 0
+                  for x in result) or all(x % 2 == 1)
               for x in result)
           counts.append(result.shape[0])
 
@@ -101,6 +104,21 @@ class GroupByWindowTest(test.TestCase):
       self.assertAllEqual([0, 0, 0], sess.run(get_next))
       self.assertAllEqual([1], sess.run(get_next))
 
+  def testEmpty(self):
+    iterator = (
+        dataset_ops.Dataset.range(4).apply(
+            grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Window size must be greater than zero, but got 0."):
+        print(sess.run(get_next))
+
   def testReduceFuncError(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
 
@@ -115,8 +133,8 @@ class GroupByWindowTest(test.TestCase):
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: (x, ops.convert_to_tensor([x * x]))).apply(
-            grouping.group_by_window(lambda x, _: x % 2, reduce_func, 32))
-        .make_initializable_iterator())
+            grouping.group_by_window(lambda x, _: x % 2, reduce_func,
+                                     32)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -135,7 +153,8 @@ class GroupByWindowTest(test.TestCase):
           window.padded_batch(
               4, padded_shapes=tensor_shape.TensorShape([None])),
           window.padded_batch(
-              4, padded_shapes=ops.convert_to_tensor([(key + 1) * 10])),))
+              4, padded_shapes=ops.convert_to_tensor([(key + 1) * 10])),
+      ))
 
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
@@ -160,6 +179,34 @@ class GroupByWindowTest(test.TestCase):
       self.assertEqual(len(components), sum(counts))
 
 
+class GroupByWindowSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_dataset(self, components):
+    return dataset_ops.Dataset.from_tensor_slices(components).repeat(-1).apply(
+        grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4), 4))
+
+  def testCoreGroupByWindow(self):
+    components = np.array(
+        [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
+    self.verify_unused_iterator(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    self.verify_init_before_restore(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    self.verify_multiple_breaks(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    self.verify_reset_restored_iterator(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    self.verify_restore_in_empty_graph(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    diff_components = np.array([0, 0, 0, 1, 1, 1], dtype=np.int64)
+    self.verify_restore_in_modified_graph(
+        lambda: self._build_dataset(components),
+        lambda: self._build_dataset(diff_components),
+        12,
+        verify_exhausted=False)
+
+
 # NOTE(mrry): These tests are based on the tests in bucket_ops_test.py.
 # Currently, they use a constant batch size, though should be made to use a
 # different batch size per key.
@@ -171,9 +218,10 @@ class BucketTest(test.TestCase):
     # dynamically and does not rely on static shape information about
     # the arguments.
     return dataset_ops.Dataset.zip(
-        (dataset_ops.Dataset.from_tensors(bucket), window.padded_batch(
-            32, (tensor_shape.TensorShape([]), tensor_shape.TensorShape([None]),
-                 tensor_shape.TensorShape([3])))))
+        (dataset_ops.Dataset.from_tensors(bucket),
+         window.padded_batch(
+             32, (tensor_shape.TensorShape([]), tensor_shape.TensorShape(
+                 [None]), tensor_shape.TensorShape([3])))))
 
   def testSingleBucket(self):
 
@@ -278,12 +326,13 @@ class BucketTest(test.TestCase):
 
     def _dynamic_pad_fn(bucket, window, _):
       return dataset_ops.Dataset.zip(
-          (dataset_ops.Dataset.from_tensors(bucket), window.padded_batch(
-              32, {
-                  "x": tensor_shape.TensorShape([]),
-                  "y": tensor_shape.TensorShape([None]),
-                  "z": tensor_shape.TensorShape([3])
-              })))
+          (dataset_ops.Dataset.from_tensors(bucket),
+           window.padded_batch(
+               32, {
+                   "x": tensor_shape.TensorShape([]),
+                   "y": tensor_shape.TensorShape([None]),
+                   "z": tensor_shape.TensorShape([3])
+               })))
 
     input_dataset = (
         dataset_ops.Dataset.from_tensor_slices(math_ops.range(128)).map(_map_fn)
@@ -345,6 +394,119 @@ class BucketTest(test.TestCase):
           batches += 1
 
       self.assertEqual(batches, 15)
+
+
+class BucketBySequenceLength(test.TestCase):
+
+  def testBucket(self):
+
+    boundaries = [10, 20, 30]
+    batch_sizes = [10, 8, 4, 2]
+    lengths = [8, 13, 25, 35]
+
+    def element_gen():
+      # Produce 1 batch for each bucket
+      elements = []
+      for batch_size, length in zip(batch_sizes, lengths):
+        for _ in range(batch_size):
+          elements.append([1] * length)
+      random.shuffle(elements)
+      for el in elements:
+        yield (el,)
+
+    element_len = lambda el: array_ops.shape(el)[0]
+    dataset = dataset_ops.Dataset.from_generator(
+        element_gen, (dtypes.int64,), ([None],)).apply(
+            grouping.bucket_by_sequence_length(
+                element_len, boundaries, batch_sizes))
+    batch, = dataset.make_one_shot_iterator().get_next()
+
+    with self.test_session() as sess:
+      batches = []
+      for _ in range(4):
+        batches.append(sess.run(batch))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(batch)
+    batch_sizes_val = []
+    lengths_val = []
+    for batch in batches:
+      batch_size = batch.shape[0]
+      length = batch.shape[1]
+      batch_sizes_val.append(batch_size)
+      lengths_val.append(length)
+    self.assertEqual(sum(batch_sizes_val), sum(batch_sizes))
+    self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
+    self.assertEqual(sorted(lengths), sorted(lengths_val))
+
+  def testPadToBoundary(self):
+
+    boundaries = [10, 20, 30]
+    batch_sizes = [10, 8, 4, 2]
+    lengths = [8, 13, 25]
+
+    def element_gen():
+      # Produce 1 batch for each bucket
+      elements = []
+      for batch_size, length in zip(batch_sizes[:-1], lengths):
+        for _ in range(batch_size):
+          elements.append([1] * length)
+      random.shuffle(elements)
+      for el in elements:
+        yield (el,)
+      for _ in range(batch_sizes[-1]):
+        el = [1] * (boundaries[-1] + 5)
+        yield (el,)
+
+    element_len = lambda el: array_ops.shape(el)[0]
+    dataset = dataset_ops.Dataset.from_generator(
+        element_gen, (dtypes.int64,), ([None],)).apply(
+            grouping.bucket_by_sequence_length(
+                element_len, boundaries, batch_sizes,
+                pad_to_bucket_boundary=True))
+    batch, = dataset.make_one_shot_iterator().get_next()
+
+    with self.test_session() as sess:
+      batches = []
+      for _ in range(3):
+        batches.append(sess.run(batch))
+      with self.assertRaisesOpError("bucket_boundaries"):
+        sess.run(batch)
+    batch_sizes_val = []
+    lengths_val = []
+    for batch in batches:
+      batch_size = batch.shape[0]
+      length = batch.shape[1]
+      batch_sizes_val.append(batch_size)
+      lengths_val.append(length)
+    batch_sizes = batch_sizes[:-1]
+    self.assertEqual(sum(batch_sizes_val), sum(batch_sizes))
+    self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
+    self.assertEqual(sorted(boundaries), sorted(lengths_val))
+
+  def testTupleElements(self):
+
+    def elements_gen():
+      text = [[1, 2, 3], [3, 4, 5, 6, 7], [1, 2], [8, 9, 0, 2, 3]]
+      label = [1, 2, 1, 2]
+      for x, y in zip(text, label):
+        yield (x, y)
+
+    def element_length_fn(x, y):
+      del y
+      return array_ops.shape(x)[0]
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator=elements_gen,
+        output_shapes=(tensor_shape.TensorShape([None]),
+                       tensor_shape.TensorShape([])),
+        output_types=(dtypes.int32, dtypes.int32))
+    dataset = dataset.apply(grouping.bucket_by_sequence_length(
+        element_length_func=element_length_fn,
+        bucket_batch_sizes=[2, 2, 2],
+        bucket_boundaries=[0, 8]))
+    shapes = dataset.output_shapes
+    self.assertEqual([None, None], shapes[0].as_list())
+    self.assertEqual([None], shapes[1].as_list())
 
 
 if __name__ == "__main__":

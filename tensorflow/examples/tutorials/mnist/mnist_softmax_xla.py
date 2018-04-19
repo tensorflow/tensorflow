@@ -32,7 +32,7 @@ FLAGS = None
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+  mnist = input_data.read_data_sets(FLAGS.data_dir)
 
   # Create the model
   x = tf.placeholder(tf.float32, [None, 784])
@@ -41,7 +41,7 @@ def main(_):
   y = tf.matmul(x, w) + b
 
   # Define loss and optimizer
-  y_ = tf.placeholder(tf.float32, [None, 10])
+  y_ = tf.placeholder(tf.int64, [None])
 
   # The raw formulation of cross-entropy,
   #
@@ -50,10 +50,9 @@ def main(_):
   #
   # can be numerically unstable.
   #
-  # So here we use tf.nn.softmax_cross_entropy_with_logits on the raw
-  # outputs of 'y', and then average across the batch.
-  cross_entropy = tf.reduce_mean(
-      tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
+  # So here we use tf.losses.sparse_softmax_cross_entropy on the raw
+  # logit outputs of 'y', and then average across the batch.
+  cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=y_, logits=y)
   train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 
   config = tf.ConfigProto()
@@ -86,7 +85,7 @@ def main(_):
       sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 
   # Test trained model
-  correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
+  correct_prediction = tf.equal(tf.argmax(y, 1), y_)
   accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
   print(sess.run(accuracy,
                  feed_dict={x: mnist.test.images,

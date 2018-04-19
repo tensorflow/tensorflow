@@ -30,6 +30,9 @@ class ServiceExecutableRunOptions {
   using StreamBorrower =
       std::function<StatusOr<Pool<perftools::gputools::Stream>::SmartPtr>(int)>;
 
+  ServiceExecutableRunOptions()
+      : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
+
   explicit ServiceExecutableRunOptions(
       ExecutableRunOptions run_options, StreamBorrower borrow_stream = nullptr,
       tensorflow::thread::ThreadPool* xla_intra_op_thread_pool = nullptr)

@@ -93,10 +93,6 @@ class LocalClientTestBase : public ::testing::Test {
   std::unique_ptr<Literal> ShapedBufferToLiteral(
       const ShapedBuffer& shaped_buffer);
 
-  // Helper for converting a ShapedBuffer into a literal.
-  void CopyShapedBufferToLiteral(const ShapedBuffer& shaped_buffer,
-                                 ShapeIndex* index, Literal* literal);
-
   // Execute the given computation on the local client. With and without
   // options.
   StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteLocally(

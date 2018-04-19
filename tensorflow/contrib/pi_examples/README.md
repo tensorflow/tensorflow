@@ -13,7 +13,7 @@ sudo apt-get install -y libjpeg-dev
 ```
 
  - To download the example model you'll need, run these commands:
- 
+
 ```bash
 curl https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015_stripped.zip \
 -o /tmp/inception_dec_2015_stripped.zip

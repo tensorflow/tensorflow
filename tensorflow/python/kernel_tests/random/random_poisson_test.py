@@ -24,10 +24,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+
+# All supported dtypes for random_poisson().
+_SUPPORTED_DTYPES = (dtypes.float16, dtypes.float32, dtypes.float64,
+                     dtypes.int32, dtypes.int64)
 
 
 class RandomPoissonTest(test.TestCase):
@@ -57,7 +60,7 @@ class RandomPoissonTest(test.TestCase):
     # we want to tolerate. Since the z-test approximates a unit normal
     # distribution, it should almost definitely never exceed 6.
     z_limit = 6.0
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+    for dt in _SUPPORTED_DTYPES:
       # Test when lam < 10 and when lam >= 10
       for stride in 0, 4, 10:
         for lam in (3., 20):
@@ -102,7 +105,7 @@ class RandomPoissonTest(test.TestCase):
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+    for dt in _SUPPORTED_DTYPES:
       results = {}
       for use_gpu in [False, True]:
         sampler = self._Sampler(1000, 1.0, dt, use_gpu=use_gpu, seed=12345)
@@ -183,19 +186,11 @@ class RandomPoissonTest(test.TestCase):
 
   def testDTypeCombinationsV2(self):
     """Tests random_poisson_v2() for all supported dtype combinations."""
-    # All supported dtypes by random_poisson_v2().
-    supported_dtypes = [
-        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-        dtypes.int64
-    ]
-
     with self.test_session():
-      for lam_dt in supported_dtypes:
-        for out_dt in supported_dtypes:
-          # TODO(dhananjayn): Change this to use random_poisson() after
-          # switching it to RandomPoissonV2.
-          gen_random_ops.random_poisson_v2(
-              [10], constant_op.constant([1], dtype=lam_dt),
+      for lam_dt in _SUPPORTED_DTYPES:
+        for out_dt in _SUPPORTED_DTYPES:
+          random_ops.random_poisson(
+              constant_op.constant([1], dtype=lam_dt), [10],
               dtype=out_dt).eval()
 
 

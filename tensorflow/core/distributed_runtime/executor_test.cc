@@ -57,7 +57,7 @@ class ExecutorTest : public ::testing::Test {
   }
 
   // Resets executor_ with a new executor based on a graph 'gdef'.
-  void Create(const Graph* graph) {
+  void Create(std::unique_ptr<const Graph> graph) {
     const int version = graph->versions().producer();
     LocalExecutorParams params;
     params.device = device_;
@@ -69,7 +69,7 @@ class ExecutorTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     delete exec_;
-    TF_CHECK_OK(NewLocalExecutor(params, graph, &exec_));
+    TF_CHECK_OK(NewLocalExecutor(params, std::move(graph), &exec_));
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
     rendez_ = NewLocalRendezvous();
   }
@@ -144,12 +144,12 @@ Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
-  Graph* g = new Graph(OpRegistry::Global());
-  auto in0 = test::graph::Recv(g, "a", "float", ALICE, 1, BOB);
-  auto in1 = test::graph::Recv(g, "b", "float", ALICE, 1, BOB);
-  auto tmp = test::graph::Add(g, in0, in1);
-  test::graph::Send(g, tmp, "c", BOB, 1, ALICE);
-  Create(g);
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
+  auto in1 = test::graph::Recv(g.get(), "b", "float", ALICE, 1, BOB);
+  auto tmp = test::graph::Add(g.get(), in0, in1);
+  test::graph::Send(g.get(), tmp, "c", BOB, 1, ALICE);
+  Create(std::move(g));
   Rendezvous::Args args;
   TF_ASSERT_OK(rendez_->Send(Key(ALICE, kIncarnation, BOB, "a"), args, V(1.0),
                              false));  // in0 = 1.0
@@ -172,15 +172,15 @@ TEST_F(ExecutorTest, SelfAdd) {
   //
   // b <- v10
   // All nodes are executed by one thread.
-  Graph* g = new Graph(OpRegistry::Global());
-  auto v = test::graph::Recv(g, "a", "float", ALICE, 1, BOB);
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto v = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   const int N = 10;
   for (int i = 1; i <= N; ++i) {
-    v = test::graph::Add(g, v, v);
+    v = test::graph::Add(g.get(), v, v);
   }
   // out <- v10
-  test::graph::Send(g, v, "b", BOB, 1, ALICE);
-  Create(g);
+  test::graph::Send(g.get(), v, "b", BOB, 1, ALICE);
+  Create(std::move(g));
   Rendezvous::Args args;
   // a = 1.0
   TF_ASSERT_OK(
@@ -229,9 +229,9 @@ void BuildTree(int N, Graph* g) {
 }
 
 TEST_F(ExecutorTest, RandomTree) {
-  Graph* g = new Graph(OpRegistry::Global());
-  BuildTree(4096, g);
-  Create(g);
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  BuildTree(4096, g.get());
+  Create(std::move(g));
   Rendezvous::Args args;
   TF_ASSERT_OK(
       rendez_->Send(Key(ALICE, kIncarnation, BOB, "a"), args, V(1.0), false));
@@ -262,9 +262,9 @@ void BuildConcurrentAddAssign(Graph* g) {
 
 #ifndef THREAD_SANITIZER
 TEST_F(ExecutorTest, ConcurrentAddAssign) {
-  Graph* g = new Graph(OpRegistry::Global());
-  BuildConcurrentAddAssign(g);
-  Create(g);
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  BuildConcurrentAddAssign(g.get());
+  Create(std::move(g));
   for (int iters = 0; iters < 16; ++iters) {
     Rendezvous* rendez = NewLocalRendezvous();
     TF_ASSERT_OK(Run(rendez));
@@ -281,12 +281,12 @@ TEST_F(ExecutorTest, ConcurrentAddAssign) {
 #endif
 
 TEST_F(ExecutorTest, SimpleSwitchLive) {
-  Graph* g = new Graph(OpRegistry::Global());
-  auto in0 = test::graph::Recv(g, "a", "float", ALICE, 1, BOB);
-  auto in1 = test::graph::Constant(g, VB(false));
-  auto tmp = test::graph::Switch(g, in0, in1);
-  test::graph::Send(g, tmp, "c", BOB, 1, ALICE);
-  Create(g);
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
+  auto in1 = test::graph::Constant(g.get(), VB(false));
+  auto tmp = test::graph::Switch(g.get(), in0, in1);
+  test::graph::Send(g.get(), tmp, "c", BOB, 1, ALICE);
+  Create(std::move(g));
   Rendezvous::Args args;
   TF_ASSERT_OK(rendez_->Send(Key(ALICE, kIncarnation, BOB, "a"), args, V(1.0),
                              false));  // in0 = 1.0
@@ -300,12 +300,12 @@ TEST_F(ExecutorTest, SimpleSwitchLive) {
 }
 
 TEST_F(ExecutorTest, SimpleSwitchDead) {
-  Graph* g = new Graph(OpRegistry::Global());
-  auto in0 = test::graph::Recv(g, "a", "float", ALICE, 1, BOB);
-  auto in1 = test::graph::Constant(g, VB(true));
-  auto tmp = test::graph::Switch(g, in0, in1);
-  test::graph::Send(g, tmp, "c", BOB, 1, ALICE);
-  Create(g);
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
+  auto in1 = test::graph::Constant(g.get(), VB(true));
+  auto tmp = test::graph::Switch(g.get(), in0, in1);
+  test::graph::Send(g.get(), tmp, "c", BOB, 1, ALICE);
+  Create(std::move(g));
   Rendezvous::Args args;
   TF_ASSERT_OK(rendez_->Send(Key(ALICE, kIncarnation, BOB, "a"), args, V(1.0),
                              false));  // in0 = 1.0
@@ -319,16 +319,16 @@ TEST_F(ExecutorTest, SimpleSwitchDead) {
 
 TEST_F(ExecutorTest, Abort) {
   // e = a + b + c + d
-  Graph* g = new Graph(OpRegistry::Global());
-  auto in0 = test::graph::Recv(g, "a", "float", ALICE, 1, BOB);
-  auto in1 = test::graph::Recv(g, "b", "float", ALICE, 1, BOB);
-  auto in2 = test::graph::Recv(g, "c", "float", ALICE, 1, BOB);
-  auto in3 = test::graph::Recv(g, "d", "float", ALICE, 1, BOB);
-  auto add0 = test::graph::Add(g, in0, in1);
-  auto add1 = test::graph::Add(g, in2, in3);
-  auto add2 = test::graph::Add(g, add0, add1);
-  test::graph::Send(g, add2, "e", BOB, 1, ALICE);
-  Create(g);
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
+  auto in1 = test::graph::Recv(g.get(), "b", "float", ALICE, 1, BOB);
+  auto in2 = test::graph::Recv(g.get(), "c", "float", ALICE, 1, BOB);
+  auto in3 = test::graph::Recv(g.get(), "d", "float", ALICE, 1, BOB);
+  auto add0 = test::graph::Add(g.get(), in0, in1);
+  auto add1 = test::graph::Add(g.get(), in2, in3);
+  auto add2 = test::graph::Add(g.get(), add0, add1);
+  test::graph::Send(g.get(), add2, "e", BOB, 1, ALICE);
+  Create(std::move(g));
 
   // Needs 4 inputs (recv). One of them is aborted.
   rendez_->Ref();
@@ -371,17 +371,17 @@ TEST_F(ExecutorTest, Abort) {
 }
 
 TEST_F(ExecutorTest, RecvInvalidDtype) {
-  Graph* g = new Graph(OpRegistry::Global());
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   // An input vector of type float of size 1.
-  auto one = test::graph::Recv(g, "one", "float", ALICE, 1, BOB);
+  auto one = test::graph::Recv(g.get(), "one", "float", ALICE, 1, BOB);
   // A floating point variable vector of size 1.
-  auto var = test::graph::Var(g, DT_FLOAT, TensorShape({1}));
+  auto var = test::graph::Var(g.get(), DT_FLOAT, TensorShape({1}));
   // Initialize the variable with input.
-  auto init = test::graph::Assign(g, var, one);
+  auto init = test::graph::Assign(g.get(), var, one);
   // Output
-  auto* two = test::graph::Send(g, var, "two", BOB, 1, ALICE);
+  auto* two = test::graph::Send(g.get(), var, "two", BOB, 1, ALICE);
   g->AddControlEdge(init, two);  // Ensures run after init.
-  Create(g);
+  Create(std::move(g));
   Rendezvous* rendez = NewLocalRendezvous();
   // Send a double instead of float.
   TF_ASSERT_OK(rendez->Send(Key(ALICE, 1, BOB, "one"), Rendezvous::Args(),
@@ -396,11 +396,11 @@ TEST_F(ExecutorTest, RecvInvalidDtype) {
 }
 
 TEST_F(ExecutorTest, RecvInvalidRefDtype) {
-  Graph* g = new Graph(OpRegistry::Global());
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   // A var that always produces as invalid dtype.
-  auto var = test::graph::InvalidRefType(g, DT_FLOAT, DT_DOUBLE);
-  test::graph::Send(g, var, "out", BOB, 1, ALICE);
-  Create(g);
+  auto var = test::graph::InvalidRefType(g.get(), DT_FLOAT, DT_DOUBLE);
+  test::graph::Send(g.get(), var, "out", BOB, 1, ALICE);
+  Create(std::move(g));
   Rendezvous* rendez = NewLocalRendezvous();
   EXPECT_TRUE(errors::IsInternal(Run(rendez)));
   Tensor output;

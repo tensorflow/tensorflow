@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_I_REMOTE_GRAPH_EXECUTOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_I_REMOTE_GRAPH_EXECUTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_I_REMOTE_GRAPH_EXECUTOR_H_
+#define TENSORFLOW_CORE_KERNELS_I_REMOTE_GRAPH_EXECUTOR_H_
 
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -72,4 +72,4 @@ class IRemoteFusedGraphExecutor {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_I_REMOTE_GRAPH_EXECUTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_I_REMOTE_GRAPH_EXECUTOR_H_

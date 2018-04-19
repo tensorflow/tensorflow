@@ -33,7 +33,7 @@ def cgls(operator, rhs, tol=1e-6, max_iter=20, name="cgls"):
   r"""Conjugate gradient least squares solver.
 
   Solves a linear least squares problem \\(||A x - rhs||_2\\) for a single
-  righ-hand side, using an iterative, matrix-free algorithm where the action of
+  right-hand side, using an iterative, matrix-free algorithm where the action of
   the matrix A is represented by `operator`. The CGLS algorithm implicitly
   applies the symmetric conjugate gradient algorithm to the normal equations
   \\(A^* A x = A^* rhs\\). The iteration terminates when either

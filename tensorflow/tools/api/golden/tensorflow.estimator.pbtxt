@@ -1,6 +1,22 @@
 path: "tensorflow.estimator"
 tf_module {
   member {
+    name: "BaselineClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BaselineRegressor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BoostedTreesClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BoostedTreesRegressor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DNNClassifier"
     mtype: "<type \'type\'>"
   }
@@ -58,6 +74,14 @@ tf_module {
   }
   member {
     name: "TrainSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "VocabInfo"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "WarmStartSettings"
     mtype: "<type \'type\'>"
   }
   member {

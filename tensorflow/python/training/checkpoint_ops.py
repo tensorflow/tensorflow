@@ -36,6 +36,7 @@ def _load_and_remap_matrix(ckpt_path,
                            num_rows_to_load,
                            new_col_vocab_size,
                            initializer,
+                           old_row_vocab_size=-1,
                            old_row_vocab_file=None,
                            new_row_vocab_file=None,
                            old_col_vocab_file=None,
@@ -75,6 +76,12 @@ def _load_and_remap_matrix(ckpt_path,
     initializer: Callable initializer function that accepts a 1-D tensor as the
       arg to specify the shape of the returned tensor. Used to initialize
       missing values.
+    old_row_vocab_size: The number of entries to consider in the old vocabulary.
+      With the default value of -1, the entire old row vocabulary file will be
+      used.  Otherwise, only the first `old_row_vocab_size` entries will be
+      considered for remapping.Must be smaller than the length of
+      `old_row_vocab_file`.  NOTE: we do not provide an equivalent
+      `old_col_vocab_size` for classes.
     old_row_vocab_file: A scalar `Tensor` of type `string` containing the
       path to the old row vocabulary file. Can be None, which represents no
       remapping on the row axis.
@@ -142,11 +149,12 @@ def _load_and_remap_matrix(ckpt_path,
   num_rows_present = num_rows_to_load
   if remap_rows:
     row_remapping, num_rows_present = (
-        gen_checkpoint_ops._generate_vocab_remapping(  # pylint: disable=protected-access
+        gen_checkpoint_ops.generate_vocab_remapping(
             new_vocab_file=new_row_vocab_file,
             old_vocab_file=old_row_vocab_file,
             new_vocab_offset=new_row_vocab_offset,
-            num_new_vocab=num_rows_to_load))
+            num_new_vocab=num_rows_to_load,
+            old_vocab_size=old_row_vocab_size))
   else:
     # Even when the rows are not being reordered, we still need to generate a
     # remapping to account for initializing partitioned Variables (when
@@ -160,7 +168,7 @@ def _load_and_remap_matrix(ckpt_path,
   num_cols_present = new_col_vocab_size
   if remap_cols:
     col_remapping, num_cols_present = (
-        gen_checkpoint_ops._generate_vocab_remapping(  # pylint: disable=protected-access
+        gen_checkpoint_ops.generate_vocab_remapping(
             new_vocab_file=new_col_vocab_file,
             old_vocab_file=old_col_vocab_file,
             new_vocab_offset=0,  # Offset is unused for cols (no partitioning).
@@ -170,7 +178,7 @@ def _load_and_remap_matrix(ckpt_path,
       num_rows_to_load * new_col_vocab_size -
       num_rows_present * num_cols_present, 1
   ])
-  return_tensor = gen_checkpoint_ops._load_and_remap_matrix(  # pylint: disable=protected-access
+  return_tensor = gen_checkpoint_ops.load_and_remap_matrix(
       ckpt_path=ckpt_path,
       old_tensor_name=old_tensor_name,
       row_remapping=row_remapping,
@@ -199,6 +207,7 @@ def _load_and_remap_matrix_initializer(ckpt_path,
                                        old_tensor_name,
                                        new_row_vocab_size,
                                        new_col_vocab_size,
+                                       old_row_vocab_size=-1,
                                        old_row_vocab_file=None,
                                        new_row_vocab_file=None,
                                        old_col_vocab_file=None,
@@ -280,6 +289,12 @@ def _load_and_remap_matrix_initializer(ckpt_path,
       `new_col_vocab_file`. If no column remapping is needed (no column vocab
       provided), this should be equal to the number of columns in the old
       matrix.
+    old_row_vocab_size: The number of entries to consider in the old vocabulary.
+      With the default value of -1, the entire old row vocabulary file will be
+      used.  Otherwise, only the first `old_row_vocab_size` entries will be
+      considered for remapping.Must be smaller than the length of
+      `old_row_vocab_file`.  NOTE: we do not provide an equivalent
+      `old_col_vocab_size` for classes.
     old_row_vocab_file: A scalar `Tensor` of type `string` containing the
       path to the old row vocabulary file. Can be None, which represents no
       remapping on the row axis.
@@ -372,6 +387,15 @@ def _load_and_remap_matrix_initializer(ckpt_path,
                                  max(0, offset + shape[0] - new_row_vocab_size))
     num_rows_to_load = shape[0] - row_oov_buckets_to_use
 
+    # We may be operating on an OOV-only partition, in which case we newly
+    # initialize all rows of this partition.
+    if offset > new_row_vocab_size:
+      if shape[0] != row_oov_buckets_to_use:
+        raise ValueError(
+            "Partitioned variable offset is greater than new vocab size and "
+            "not operating on OOV-only partition.")
+      return initializer(shape)
+
     return _load_and_remap_matrix(
         ckpt_path=ckpt_path,
         old_tensor_name=old_tensor_name,
@@ -379,6 +403,7 @@ def _load_and_remap_matrix_initializer(ckpt_path,
         num_rows_to_load=num_rows_to_load,
         new_col_vocab_size=new_col_vocab_size,
         initializer=initializer,
+        old_row_vocab_size=old_row_vocab_size,
         old_row_vocab_file=old_row_vocab_file,
         new_row_vocab_file=new_row_vocab_file,
         old_col_vocab_file=old_col_vocab_file,
@@ -396,6 +421,7 @@ def _load_embedding_initializer(ckpt_path,
                                 embedding_dim,
                                 old_vocab_file,
                                 new_vocab_file,
+                                old_vocab_size=-1,
                                 num_oov_buckets=0,
                                 initializer=None,
                                 max_rows_in_memory=-1):
@@ -419,6 +445,11 @@ def _load_embedding_initializer(ckpt_path,
       path to the old vocabulary file.
     new_vocab_file: A scalar `Tensor` of type `string` containing the
       path to the new vocabulary file.
+    old_vocab_size: The number of entries to consider in the old vocabulary.
+      With the default value of -1, the entire old row vocabulary file will be
+      used.  Otherwise, only the first `old_vocab_size` entries will be
+      considered for remapping.Must be smaller than the length of
+      `old_row_vocab_file`.
     num_oov_buckets: `int` specifying the number of out-of-vocabulary
       buckets to use. Must be >= 0.
     initializer: Initializer function that accepts a 1-D tensor as the arg to
@@ -443,6 +474,7 @@ def _load_embedding_initializer(ckpt_path,
       old_tensor_name=embedding_tensor_name,
       new_row_vocab_size=new_vocab_size,
       new_col_vocab_size=embedding_dim,
+      old_row_vocab_size=old_vocab_size,
       old_row_vocab_file=old_vocab_file,
       new_row_vocab_file=new_vocab_file,
       old_col_vocab_file=None,

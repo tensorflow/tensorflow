@@ -23,11 +23,37 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 
+/* static */ mutex MultiPlatformManager::platforms_mutex_{LINKER_INITIALIZED};
+
+/* static */ port::StatusOr<Platform*> MultiPlatformManager::LookupByNameLocked(
+    const string& target) {
+  PlatformMap* platform_map = GetPlatformMap();
+  auto it = platform_map->find(port::Lowercase(target));
+  if (it == platform_map->end()) {
+    return port::Status(
+        port::error::NOT_FOUND,
+        "could not find registered platform with name: \"" + target + "\"");
+  }
+  return it->second;
+}
+
+/* static */ port::StatusOr<Platform*> MultiPlatformManager::LookupByIdLocked(
+    const Platform::Id& id) {
+  PlatformIdMap* platform_map = GetPlatformByIdMap();
+  auto it = platform_map->find(id);
+  if (it == platform_map->end()) {
+    return port::Status(
+        port::error::NOT_FOUND,
+        port::Printf("could not find registered platform with id: 0x%p", id));
+  }
+  return it->second;
+}
+
 /* static */ port::Status MultiPlatformManager::RegisterPlatform(
     std::unique_ptr<Platform> platform) {
   CHECK(platform != nullptr);
   string key = port::Lowercase(platform->Name());
-  mutex_lock lock(GetPlatformsMutex());
+  mutex_lock lock(platforms_mutex_);
   if (GetPlatformMap()->find(key) != GetPlatformMap()->end()) {
     return port::Status(port::error::INTERNAL,
                         "platform is already registered with name: \"" +
@@ -45,33 +71,63 @@ namespace gputools {
 
 /* static */ port::StatusOr<Platform*> MultiPlatformManager::PlatformWithName(
     const string& target) {
-  mutex_lock lock(GetPlatformsMutex());
-  auto it = GetPlatformMap()->find(port::Lowercase(target));
+  mutex_lock lock(platforms_mutex_);
 
-  if (it == GetPlatformMap()->end()) {
-    return port::Status(
-        port::error::NOT_FOUND,
-        "could not find registered platform with name: \"" + target + "\"");
+  SE_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
+  if (!platform->Initialized()) {
+    SE_RETURN_IF_ERROR(platform->Initialize({}));
   }
 
-  return it->second;
+  return platform;
 }
 
 /* static */ port::StatusOr<Platform*> MultiPlatformManager::PlatformWithId(
     const Platform::Id& id) {
-  mutex_lock lock(GetPlatformsMutex());
-  auto it = GetPlatformByIdMap()->find(id);
-  if (it == GetPlatformByIdMap()->end()) {
-    return port::Status(
-        port::error::NOT_FOUND,
-        port::Printf("could not find registered platform with id: 0x%p", id));
+  mutex_lock lock(platforms_mutex_);
+
+  SE_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
+  if (!platform->Initialized()) {
+    SE_RETURN_IF_ERROR(platform->Initialize({}));
   }
 
-  return it->second;
+  return platform;
+}
+
+/* static */ port::StatusOr<Platform*>
+MultiPlatformManager::InitializePlatformWithName(
+    const string& target, const std::map<string, string>& options) {
+  mutex_lock lock(platforms_mutex_);
+
+  SE_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
+  if (platform->Initialized()) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "platform \"" + target + "\" is already initialized");
+  }
+
+  SE_RETURN_IF_ERROR(platform->Initialize(options));
+
+  return platform;
+}
+
+/* static */ port::StatusOr<Platform*>
+MultiPlatformManager::InitializePlatformWithId(
+    const Platform::Id& id, const std::map<string, string>& options) {
+  mutex_lock lock(platforms_mutex_);
+
+  SE_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
+  if (platform->Initialized()) {
+    return port::Status(
+        port::error::FAILED_PRECONDITION,
+        port::Printf("platform with id 0x%p is already initialized", id));
+  }
+
+  SE_RETURN_IF_ERROR(platform->Initialize(options));
+
+  return platform;
 }
 
 /* static */ void MultiPlatformManager::ClearPlatformRegistry() {
-  mutex_lock lock(GetPlatformsMutex());
+  mutex_lock lock(platforms_mutex_);
   GetPlatformMap()->clear();
   GetPlatformByIdMap()->clear();
 }

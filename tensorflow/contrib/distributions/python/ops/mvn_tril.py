@@ -76,12 +76,13 @@ class MultivariateNormalTriL(
   ```
 
   Trainable (batch) lower-triangular matrices can be created with
-  `ds.matrix_diag_transform()` and/or `ds.fill_triangular()`
+  `tf.contrib.distributions.matrix_diag_transform()` and/or
+  `tf.contrib.distributions.fill_triangular()`
 
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]
@@ -92,7 +93,7 @@ class MultivariateNormalTriL(
   # ==> [[ 0.6,  0. ,  0. ],
   #      [ 0.2,  0.5,  0. ],
   #      [ 0.1, -0.3,  0.4]])
-  mvn = ds.MultivariateNormalTriL(
+  mvn = tfd.MultivariateNormalTriL(
       loc=mu,
       scale_tril=scale)
 
@@ -112,7 +113,7 @@ class MultivariateNormalTriL(
   mu = [[1., 2, 3],
         [11, 22, 33]]              # shape: [2, 3]
   tril = ...  # shape: [2, 3, 3], lower triangular, non-zero diagonal.
-  mvn = ds.MultivariateNormalTriL(
+  mvn = tfd.MultivariateNormalTriL(
       loc=mu,
       scale_tril=tril)
 
@@ -124,9 +125,9 @@ class MultivariateNormalTriL(
   # Instantiate a "learnable" MVN.
   dims = 4
   with tf.variable_scope("model"):
-    mvn = ds.MultivariateNormalTriL(
+    mvn = tfd.MultivariateNormalTriL(
         loc=tf.get_variable(shape=[dims], dtype=tf.float32, name="mu"),
-        scale_tril=ds.fill_triangular(
+        scale_tril=tfd.fill_triangular(
             tf.get_variable(shape=[dims * (dims + 1) / 2],
                             dtype=tf.float32, name="chol_Sigma")))
   ```

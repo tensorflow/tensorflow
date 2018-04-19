@@ -258,7 +258,7 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
 #else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
-                           Eigen::type2index<1> >
+                           Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
@@ -431,7 +431,7 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
           Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
 #else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
-                           Eigen::type2index<1> >
+                           Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
@@ -833,7 +833,7 @@ TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
+    TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 

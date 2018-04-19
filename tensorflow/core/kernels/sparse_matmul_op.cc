@@ -159,8 +159,8 @@ struct SparseSlice {
 
 template <typename T>
 template <bool Transpose>
-void SparseSlice<T>::Initialize(const typename SparseSlice<T>::ConstMatrixMap& mat,
-                                int col_offset) {
+void SparseSlice<T>::Initialize(
+    const typename SparseSlice<T>::ConstMatrixMap& mat, int col_offset) {
   const int mat_rows = Transpose ? mat.dimension(1) : mat.dimension(0);
   const int mat_cols = Transpose ? mat.dimension(0) : mat.dimension(1);
   DCHECK_LE(num_rows, mat_rows);
@@ -278,9 +278,9 @@ ALWAYS_INLINE float ConvertBfloat16ToFloat(const bfloat16* src) {
   float out = 0;
   auto tmp = reinterpret_cast<bfloat16*>(&out);
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    tmp[0] = *src;
+  tmp[0] = *src;
 #else
-    tmp[1] = *src;
+  tmp[1] = *src;
 #endif
   return out;
 }
@@ -970,9 +970,9 @@ class SparseMatMulOp : public OpKernel {
     const int k2 = transpose_b_ ? b.dim_size(1) : b.dim_size(0);
 
     OP_REQUIRES(ctx, k == k2,
-                errors::InvalidArgument("Matrix size incompatible: a: ",
-                                        a.shape().DebugString(), ", b: ",
-                                        b.shape().DebugString()));
+                errors::InvalidArgument(
+                    "Matrix size incompatible: a: ", a.shape().DebugString(),
+                    ", b: ", b.shape().DebugString()));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({m, n}), &output));
 
@@ -1224,8 +1224,9 @@ ALWAYS_INLINE void CopyAndMayBeInterleave(void* dst, const void* src,
 
 template <typename TL, typename TR>
 inline BlockingCounter* SparseMatMul<TL, TR>::ShuffleMatrix(
-    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int slice_row_start,
-    int slice_num_rows, int slice_col_start, int slice_num_cols, const int N,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& mat,
+    int slice_row_start, int slice_num_rows, int slice_col_start,
+    int slice_num_cols, const int N,
     const DeviceBase::CpuWorkerThreads* thread_pool, MatrixR* buffer) {
   DCHECK_EQ(N % 2, 0);
   DCHECK_LE(kNumOperands * sizeof(float) / sizeof(TR), N);
@@ -1306,8 +1307,9 @@ inline std::unique_ptr<BlockingCounter> SparseMatMul<TL, TR>::CreateDenseSlices(
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::ComputeBlockSizes(
     const typename SparseMatMul<TL, TR>::ConstMatrixMapL& left,
-    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right, bool transpose_left,
-    int num_threads, int* KR, int* NR, int* KL, int* JB, int* IB) {
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right,
+    bool transpose_left, int num_threads, int* KR, int* NR, int* KL, int* JB,
+    int* IB) {
   // Heuristics for calculating block sizes
   // Assume two hyperthreads per core.
   const int est_num_cores = std::max(1, (num_threads + 1) / 2);

@@ -7,18 +7,18 @@ licenses(["notice"])
 exports_files(["LICENSE.TXT"])
 
 load(
-    "@%ws%//third_party/llvm:llvm.bzl",
+    "@org_tensorflow//third_party/llvm:llvm.bzl",
     "gentbl",
     "expand_cmake_vars",
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
 load(
-    "@%ws%//third_party:common.bzl",
+    "@org_tensorflow//third_party:common.bzl",
     "template_rule",
 )
 
-package(default_visibility = ["@%ws%//tensorflow/compiler/xla:internal"])
+package(default_visibility = ["//visibility:public"])
 
 llvm_host_triple = "x86_64-unknown-linux_gnu"
 
@@ -145,11 +145,11 @@ darwin_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 all_cmake_vars = select({
-    "@%ws%//tensorflow:darwin": cmake_var_string(
+    "@org_tensorflow//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
     ),
-    "@%ws%//tensorflow:linux_ppc64le": cmake_var_string(
+    "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
         cmake_vars +
         llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
         linux_cmake_vars,
@@ -162,13 +162,6 @@ all_cmake_vars = select({
 })
 
 # Performs CMake variable substitutions on configuration header files.
-expand_cmake_vars(
-    name = "datatypes_gen",
-    src = "include/llvm/Support/DataTypes.h.cmake",
-    cmake_vars = all_cmake_vars,
-    dst = "include/llvm/Support/DataTypes.h",
-)
-
 expand_cmake_vars(
     name = "config_gen",
     src = "include/llvm/Config/config.h.cmake",
@@ -305,9 +298,7 @@ cc_binary(
     srcs = glob([
         "utils/TableGen/*.cpp",
         "utils/TableGen/*.h",
-    ]) + [
-        "lib/Target/X86/Disassembler/X86DisassemblerDecoderCommon.h",
-    ],
+    ]),
     linkopts = [
         "-lm",
         "-ldl",
@@ -671,6 +662,28 @@ cc_library(
 )
 
 cc_library(
+    name = "aggressive_inst_combine",
+    srcs = glob([
+        "lib/Transforms/AggressiveInstCombine/*.c",
+        "lib/Transforms/AggressiveInstCombine/*.cpp",
+        "lib/Transforms/AggressiveInstCombine/*.inc",
+        "lib/Transforms/AggressiveInstCombine/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/AggressiveInstCombine/*.h",
+        "include/llvm/Transforms/AggressiveInstCombine/*.def",
+        "include/llvm/Transforms/AggressiveInstCombine/*.inc",
+    ]),
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
     name = "analysis",
     srcs = glob([
         "lib/Analysis/*.c",
@@ -1002,6 +1015,7 @@ cc_library(
     deps = [
         ":arm_desc",
         ":arm_info",
+        ":arm_utils",
         ":config",
         ":mc_disassembler",
         ":support",
@@ -1405,6 +1419,7 @@ cc_library(
         "include/llvm/Transforms/IPO/*.inc",
     ]),
     deps = [
+        ":aggressive_inst_combine",
         ":analysis",
         ":bit_reader",
         ":bit_writer",
@@ -1931,6 +1946,7 @@ cc_library(
         "include/llvm/Transforms/IPO/SCCP.h",
     ]),
     deps = [
+        ":aggressive_inst_combine",
         ":analysis",
         ":config",
         ":core",
@@ -1989,9 +2005,7 @@ cc_library(
         "include/llvm/Support/WasmRelocs/*.def",
     ]) + [
         "include/llvm/BinaryFormat/MachO.def",
-        "include/llvm/Support/DataTypes.h",
         "include/llvm/Support/VCSRevision.h",
-        "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],
     deps = [
         ":config",
@@ -2038,6 +2052,7 @@ cc_library(
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
         "include/llvm/CodeGen/*.def",
+        "include/llvm/CodeGen/*.inc",
     ]),
     deps = [
         ":analysis",

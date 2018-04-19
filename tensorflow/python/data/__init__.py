@@ -18,9 +18,9 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
 @@Dataset
 @@Iterator
-@@TFRecordDataset
 @@FixedLengthRecordDataset
 @@TextLineDataset
+@@TFRecordDataset
 """
 
 from __future__ import absolute_import

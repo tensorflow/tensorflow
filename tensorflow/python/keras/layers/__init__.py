@@ -30,6 +30,7 @@ from tensorflow.python.keras._impl.keras.layers.advanced_activations import Leak
 from tensorflow.python.keras._impl.keras.layers.advanced_activations import PReLU
 from tensorflow.python.keras._impl.keras.layers.advanced_activations import ELU
 from tensorflow.python.keras._impl.keras.layers.advanced_activations import ThresholdedReLU
+from tensorflow.python.keras._impl.keras.layers.advanced_activations import Softmax
 
 # Convolution layers.
 from tensorflow.python.keras._impl.keras.layers.convolutional import Conv1D
@@ -37,6 +38,7 @@ from tensorflow.python.keras._impl.keras.layers.convolutional import Conv2D
 from tensorflow.python.keras._impl.keras.layers.convolutional import Conv3D
 from tensorflow.python.keras._impl.keras.layers.convolutional import Conv2DTranspose
 from tensorflow.python.keras._impl.keras.layers.convolutional import Conv3DTranspose
+from tensorflow.python.keras._impl.keras.layers.convolutional import SeparableConv1D
 from tensorflow.python.keras._impl.keras.layers.convolutional import SeparableConv2D
 
 # Convolution layer aliases.
@@ -45,7 +47,9 @@ from tensorflow.python.keras._impl.keras.layers.convolutional import Convolution
 from tensorflow.python.keras._impl.keras.layers.convolutional import Convolution3D
 from tensorflow.python.keras._impl.keras.layers.convolutional import Convolution2DTranspose
 from tensorflow.python.keras._impl.keras.layers.convolutional import Convolution3DTranspose
+from tensorflow.python.keras._impl.keras.layers.convolutional import SeparableConvolution1D
 from tensorflow.python.keras._impl.keras.layers.convolutional import SeparableConvolution2D
+from tensorflow.python.keras._impl.keras.layers.convolutional import DepthwiseConv2D
 
 # Image processing layers.
 from tensorflow.python.keras._impl.keras.layers.convolutional import UpSampling1D
@@ -134,6 +138,11 @@ from tensorflow.python.keras._impl.keras.layers.pooling import GlobalMaxPool2D
 from tensorflow.python.keras._impl.keras.layers.pooling import GlobalMaxPool3D
 
 # Recurrent layers.
+from tensorflow.python.keras._impl.keras.layers.recurrent import RNN
+from tensorflow.python.keras._impl.keras.layers.recurrent import StackedRNNCells
+from tensorflow.python.keras._impl.keras.layers.recurrent import SimpleRNNCell
+from tensorflow.python.keras._impl.keras.layers.recurrent import GRUCell
+from tensorflow.python.keras._impl.keras.layers.recurrent import LSTMCell
 from tensorflow.python.keras._impl.keras.layers.recurrent import SimpleRNN
 from tensorflow.python.keras._impl.keras.layers.recurrent import GRU
 from tensorflow.python.keras._impl.keras.layers.recurrent import LSTM

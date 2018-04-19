@@ -59,8 +59,13 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "namespaces may precede the class name, separated by double-colons.  "
        "The class will be generated in the given namespace(s), or if no "
        "namespaces are given, within the global namespace."},
-      {"out_object", &flags->out_object, "Output object file name."},
+      {"out_function_object", &flags->out_function_object,
+       "Output object file containing the generated function for the "
+       "TensorFlow model."},
       {"out_header", &flags->out_header, "Output header file name."},
+      {"out_metadata_object", &flags->out_metadata_object,
+       "Output object file name containing optional metadata for the generated "
+       "function."},
       {"out_session_module", &flags->out_session_module,
        "Output session module proto."},
       {"gen_name_to_index", &flags->gen_name_to_index,

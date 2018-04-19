@@ -34,7 +34,11 @@ tf_module {
   }
   member_method {
     name: "load_img"
-    argspec: "args=[\'path\', \'grayscale\', \'target_size\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'path\', \'grayscale\', \'target_size\', \'interpolation\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'nearest\'], "
+  }
+  member_method {
+    name: "random_brightness"
+    argspec: "args=[\'x\', \'brightness_range\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "random_channel_shift"

@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Tan"
+  summary: "Computes tan of x element-wise."
+}

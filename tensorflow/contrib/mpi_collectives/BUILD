@@ -6,20 +6,9 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_mpi_lib_defines",
     "tf_proto_library_cc",
 )
 
@@ -33,23 +22,95 @@ tf_proto_library_cc(
     ],
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+cc_library(
+    name = "mpi_defines",
+    defines = tf_additional_mpi_lib_defines(),
+)
+
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_custom_op_py_library",
+    "tf_custom_op_library",
+    "tf_gen_op_wrapper_py",
+    "tf_gen_op_libs",
+    "tf_kernel_library",
+    "tf_py_test",
+)
 
 tf_custom_op_library(
-    name = "mpi_collectives.so",
+    name = "python/ops/_mpi_ops.so",
     srcs = [
-        "mpi_ops.cc",
-        "ring.cc",
-        "ring.h",
+        "kernels/mpi_ops.cc",
+        "kernels/ring.cc",
+        "kernels/ring.h",
+        "ops/mpi_ops.cc",
     ],
     gpu_srcs = [
-        "ring.cu.cc",
-        "ring.h",
+        "kernels/ring.cu.cc",
+        "kernels/ring.h",
     ],
     deps = [
+        ":mpi_defines",
         ":mpi_message_proto_cc",
         "//third_party/mpi",
+    ],
+)
+
+tf_kernel_library(
+    name = "mpi_ops_kernels",
+    srcs = [
+        "kernels/mpi_ops.cc",
+        "kernels/ring.cc",
+    ],
+    hdrs = [
+        "kernels/ring.h",
+    ],
+    gpu_srcs = [
+        "kernels/ring.cu.cc",
+    ],
+    deps = [
+        ":mpi_defines",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:stream_executor",
+    ],
+    # TODO: Include?    alwayslink = 1,
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["mpi_ops"],
+)
+
+tf_gen_op_wrapper_py(
+    name = "mpi_ops",
+    deps = [":mpi_ops_op_lib"],
+)
+
+tf_custom_op_py_library(
+    name = "mpi_collectives_py",
+    srcs = [
+        "__init__.py",
+        "python/ops/mpi_ops.py",
+    ],
+    dso = [
+        ":python/ops/_mpi_ops.so",
+    ],
+    kernels = [
+        ":mpi_ops_kernels",
+        ":mpi_ops_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":mpi_ops",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:device",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -61,20 +122,7 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [
-        ":mpi_collectives.so",
+        ":python/ops/_mpi_ops.so",
     ],
     tags = ["manual"],
-)
-
-py_library(
-    name = "mpi_ops_py",
-    srcs = [
-        "__init__.py",
-        "mpi_ops.py",
-    ],
-    data = [
-        ":mpi_collectives.so",
-    ],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
 )

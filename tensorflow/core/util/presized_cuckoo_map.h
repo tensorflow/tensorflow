@@ -67,7 +67,7 @@ inline uint64 multiply_high_u64(uint64 x, uint64 y) {
   return prod_hi + (prod_mid1 >> 32) + (prod_mid2 >> 32) + carry;
 #endif
 }
-}
+}  // namespace presized_cuckoo_map
 
 template <class value>
 class PresizedCuckooMap {

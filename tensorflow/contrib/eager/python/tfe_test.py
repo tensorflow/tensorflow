@@ -47,7 +47,8 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testVariableError(self):
     with self.assertRaisesRegexp(
-        RuntimeError, r'Variable not supported in Eager mode'):
+        RuntimeError,
+        r'Variable not supported when eager execution is enabled'):
       variables.Variable(initial_value=1.0)
 
   def testGradients(self):
@@ -101,10 +102,6 @@ class TFETest(test_util.TensorFlowTestCase):
   def testListDevices(self):
     # Expect at least one device.
     self.assertTrue(tfe.list_devices())
-
-  def testNumGPUs(self):
-    devices = tfe.list_devices()
-    self.assertEqual(len(devices) - 1, tfe.num_gpus())
 
   def testAddCheckNumericsOpsRaisesError(self):
     with self.assertRaisesRegexp(

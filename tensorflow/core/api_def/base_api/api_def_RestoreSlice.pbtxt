@@ -1,0 +1,52 @@
+op {
+  graph_op_name: "RestoreSlice"
+  in_arg {
+    name: "file_pattern"
+    description: <<END
+Must have a single element. The pattern of the files from
+which we read the tensor.
+END
+  }
+  in_arg {
+    name: "tensor_name"
+    description: <<END
+Must have a single element. The name of the tensor to be
+restored.
+END
+  }
+  in_arg {
+    name: "shape_and_slice"
+    description: <<END
+Scalar. The shapes and slice specifications to use when
+restoring a tensors.
+END
+  }
+  out_arg {
+    name: "tensor"
+    description: <<END
+The restored tensor.
+END
+  }
+  attr {
+    name: "dt"
+    description: <<END
+The type of the tensor to be restored.
+END
+  }
+  attr {
+    name: "preferred_shard"
+    description: <<END
+Index of file to open first if multiple files match
+`file_pattern`. See the documentation for `Restore`.
+END
+  }
+  summary: "Restores a tensor from checkpoint files."
+  description: <<END
+This is like `Restore` except that restored tensor can be listed as filling
+only a slice of a larger tensor.  `shape_and_slice` specifies the shape of the
+larger tensor and the slice that the restored tensor covers.
+
+The `shape_and_slice` input has the same format as the
+elements of the `shapes_and_slices` input of the `SaveSlices` op.
+END
+}

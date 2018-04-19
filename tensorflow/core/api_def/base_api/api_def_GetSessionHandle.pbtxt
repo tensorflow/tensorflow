@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "GetSessionHandle"
+  in_arg {
+    name: "value"
+    description: <<END
+The tensor to be stored.
+END
+  }
+  out_arg {
+    name: "handle"
+    description: <<END
+The handle for the tensor stored in the session state, represented
+as a string.
+END
+  }
+  summary: "Store the input tensor in the state of the current session."
+}

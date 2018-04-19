@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 
 TEST(MklUtilTest, MklDnnTfShape) {
   auto cpu_engine = engine(engine::cpu, 0);
@@ -54,7 +54,6 @@ TEST(MklUtilTest, MklDnnTfShape) {
   EXPECT_NE(b_tf_shape_nchw, b_mkldnn_tf_shape);
 }
 
-
 TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   // Let's create 2D tensor of shape {3, 4} with 3 being innermost dimension
   // first (case 1) and then it being outermost dimension (case 2).
@@ -85,7 +84,7 @@ TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   EXPECT_EQ(b_md2.data.format, mkldnn_blocked);
 }
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 }  // namespace
 }  // namespace tensorflow
 

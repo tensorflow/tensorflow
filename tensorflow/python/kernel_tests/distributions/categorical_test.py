@@ -100,6 +100,10 @@ class CategoricalTest(test.TestCase):
     self.assertEqual(
         dist.logits.dtype, dist.log_prob(np.array(
             0, dtype=np.int64)).dtype)
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      dist = make_categorical([], 5, dtype=dtype)
+      self.assertEqual(dist.dtype, dtype)
+      self.assertEqual(dist.dtype, dist.sample(5).dtype)
 
   def testUnknownShape(self):
     with self.test_session():
