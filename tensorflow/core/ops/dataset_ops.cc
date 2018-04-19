@@ -412,7 +412,8 @@ REGISTER_OP("FixedLengthRecordDataset")
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
-      // header_bytes, record_bytes, footer_bytes, buffer_size should be scalars.
+      // header_bytes, record_bytes, footer_bytes, buffer_size should be
+      // scalars.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
