@@ -7564,22 +7564,6 @@ func ResourceSparseApplyFtrlV2(scope *Scope, var_ tf.Output, accum tf.Output, li
 	return scope.AddOperation(opspec)
 }
 
-// Associates the given iterator with the given statistics aggregator.
-//
-// Returns the created operation.
-func IteratorSetStatsAggregator(scope *Scope, iterator_handle tf.Output, stats_aggregator_handle tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IteratorSetStatsAggregator",
-		Input: []tf.Input{
-			iterator_handle, stats_aggregator_handle,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // DataFormatVecPermuteAttr is an optional argument to DataFormatVecPermute.
 type DataFormatVecPermuteAttr func(optionalAttr)
 
@@ -24288,6 +24272,63 @@ func LatencyStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Output, o
 	return op.Output(0)
 }
 
+// MapSizeAttr is an optional argument to MapSize.
+type MapSizeAttr func(optionalAttr)
+
+// MapSizeCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapSizeCapacity(value int64) MapSizeAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// MapSizeMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapSizeMemoryLimit(value int64) MapSizeAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// MapSizeContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func MapSizeContainer(value string) MapSizeAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MapSizeSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func MapSizeSharedName(value string) MapSizeAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op returns the number of elements in the underlying container.
+func MapSize(scope *Scope, dtypes []tf.DataType, optional ...MapSizeAttr) (size tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MapSize",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Convert JSON-encoded Example records to binary protocol buffer strings.
 //
 // This op translates a tensor containing Example records, encoded using
@@ -28126,63 +28167,6 @@ func MapUnstage(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.Data
 		return
 	}
 	return values
-}
-
-// MapSizeAttr is an optional argument to MapSize.
-type MapSizeAttr func(optionalAttr)
-
-// MapSizeCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapSizeCapacity(value int64) MapSizeAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// MapSizeMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapSizeMemoryLimit(value int64) MapSizeAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// MapSizeContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func MapSizeContainer(value string) MapSizeAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MapSizeSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func MapSizeSharedName(value string) MapSizeAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op returns the number of elements in the underlying container.
-func MapSize(scope *Scope, dtypes []tf.DataType, optional ...MapSizeAttr) (size tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MapSize",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // MapIncompleteSizeAttr is an optional argument to MapIncompleteSize.
