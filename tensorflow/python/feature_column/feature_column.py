@@ -409,58 +409,19 @@ def linear_model(features,
     ValueError: if an item in `feature_columns` is neither a `_DenseColumn`
       nor `_CategoricalColumn`.
   """
-  feature_columns = _clean_feature_columns(feature_columns)
-  for column in feature_columns:
-    if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
-      raise ValueError('Items of feature_columns must be either a _DenseColumn '
-                       'or _CategoricalColumn. Given: {}'.format(column))
-  weight_collections = list(weight_collections or [])
-  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
-  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
-  with variable_scope.variable_scope(
-      None, default_name='linear_model', values=features.values()):
-    weighted_sums = []
-    ordered_columns = []
-    builder = _LazyBuilder(features)
-    for column in sorted(feature_columns, key=lambda x: x.name):
-      with variable_scope.variable_scope(
-          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
-        ordered_columns.append(column)
-        weighted_sum = _create_weighted_sum(
-            column=column,
-            builder=builder,
-            units=units,
-            sparse_combiner=sparse_combiner,
-            weight_collections=weight_collections,
-            trainable=trainable)
-        weighted_sums.append(weighted_sum)
-        if cols_to_vars is not None:
-          # Retrieve the variables created.
-          cols_to_vars[column] = ops.get_collection(
-              ops.GraphKeys.GLOBAL_VARIABLES,
-              scope=variable_scope.get_variable_scope().name)
-    _verify_static_batch_size_equality(weighted_sums, ordered_columns)
-    predictions_no_bias = math_ops.add_n(
-        weighted_sums, name='weighted_sum_no_bias')
-    bias = variable_scope.get_variable(
-        'bias_weights',
-        shape=[units],
-        initializer=init_ops.zeros_initializer(),
-        trainable=trainable,
-        collections=weight_collections)
-    predictions = nn_ops.bias_add(
-        predictions_no_bias, bias, name='weighted_sum')
-    if cols_to_vars is not None:
-      # Add the bias to cols_to_vars as well, converting the Variable or
-      # PartitionedVariable to a list of Variable's.
-      if (isinstance(bias, variables.Variable) or
-          resource_variable_ops.is_resource_variable(bias)):
-        cols_to_vars['bias'] = [bias]
-      else:  # Must be a PartitionedVariable.
-        cols_to_vars['bias'] = list(bias)
-    return predictions
+  linear_model_layer = _LinearModel(
+      feature_columns=feature_columns,
+      units=units,
+      sparse_combiner=sparse_combiner,
+      weight_collections=weight_collections,
+      trainable=trainable,
+      name='linear_model')
+  retval = linear_model_layer(features)  # pylint: disable=not-callable
+  if cols_to_vars is None:
+    return retval
+  for k, v in linear_model_layer.cols_to_vars().items():
+    cols_to_vars[k] = v
+  return retval
 
 
 def _add_to_collections(var, weight_collections):
@@ -551,8 +512,22 @@ class _BiasLayer(base.Layer):
     return self._bias_variable
 
 
+def _get_expanded_variable_list(variable):
+  if (isinstance(variable, variables.Variable) or
+      resource_variable_ops.is_resource_variable(variable)):
+    return [variable]  # Single variable case.
+  else:  # Must be a PartitionedVariable, so convert into a list.
+    return list(variable)
+
+
+def _strip_leading_slashes(name):
+  return name.rsplit('/', 1)[-1]
+
+
 class _LinearModel(training.Model):
   """Creates a linear model using feature columns.
+
+  See `linear_model` for details.
   """
 
   def __init__(self,
@@ -573,7 +548,10 @@ class _LinearModel(training.Model):
     for column in sorted(self._feature_columns, key=lambda x: x.name):
       with variable_scope.variable_scope(
           None, default_name=column._var_scope_name) as vs:  # pylint: disable=protected-access
-        column_name = vs.name
+        # Having the fully expressed variable scope name ends up doubly
+        # expressing the outer scope (scope with which this method was called)
+        # in the name of the variable that would get created.
+        column_name = _strip_leading_slashes(vs.name)
       column_layer = _FCLinearWrapper(column, units, sparse_combiner,
                                       self._weight_collections, trainable,
                                       column_name, **kwargs)
@@ -585,6 +563,15 @@ class _LinearModel(training.Model):
         weight_collections=self._weight_collections,
         name='bias_layer',
         **kwargs)
+    self._cols_to_vars = {}
+
+  def cols_to_vars(self):
+    """Returns a dict mapping _FeatureColumns to variables.
+
+    See `linear_model` for more information.
+    This is not populated till `call` is called i.e. layer is built.
+    """
+    return self._cols_to_vars
 
   def call(self, features):
     with variable_scope.variable_scope(self.name):
@@ -597,15 +584,24 @@ class _LinearModel(training.Model):
       ordered_columns = []
       builder = _LazyBuilder(features)
       for layer in sorted(self._column_layers.values(), key=lambda x: x.name):
-        ordered_columns.append(layer._feature_column)  # pylint: disable=protected-access
+        column = layer._feature_column  # pylint: disable=protected-access
+        ordered_columns.append(column)
         weighted_sum = layer(builder)
         weighted_sums.append(weighted_sum)
+        self._cols_to_vars[column] = ops.get_collection(
+            ops.GraphKeys.GLOBAL_VARIABLES, scope=layer.scope_name)
 
       _verify_static_batch_size_equality(weighted_sums, ordered_columns)
       predictions_no_bias = math_ops.add_n(
           weighted_sums, name='weighted_sum_no_bias')
       predictions = nn_ops.bias_add(
-          predictions_no_bias, self._bias_layer(builder), name='weighted_sum')  # pylint: disable=not-callable
+          predictions_no_bias,
+          self._bias_layer(  # pylint: disable=not-callable
+              builder,
+              scope=variable_scope.get_variable_scope()),  # pylint: disable=not-callable
+          name='weighted_sum')
+      bias = self._bias_layer.variables[0]
+      self._cols_to_vars['bias'] = _get_expanded_variable_list(bias)
     return predictions
 
   def _add_layers(self, layers):

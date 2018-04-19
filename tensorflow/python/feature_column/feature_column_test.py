@@ -345,7 +345,7 @@ class NumericColumnTest(test.TestCase):
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
       predictions = get_keras_linear_model_predictions(features, [price])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
         self.assertAllClose([0.], bias.eval())
@@ -584,7 +584,7 @@ class BucketizedColumnTest(test.TestCase):
       features = {'price': [[-1.], [1.], [5.], [6.]]}
       predictions = get_keras_linear_model_predictions(features,
                                                        [bucketized_price])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       bucketized_price_var = get_linear_model_column_var(bucketized_price)
       with _initialized_session() as sess:
         self.assertAllClose([0.], bias.eval())
@@ -610,7 +610,7 @@ class BucketizedColumnTest(test.TestCase):
       features = {'price': [[-1., 1.], [5., 6.]]}
       predictions = get_keras_linear_model_predictions(features,
                                                        [bucketized_price])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       bucketized_price_var = get_linear_model_column_var(bucketized_price)
       with _initialized_session() as sess:
         self.assertAllClose([0.], bias.eval())
@@ -849,7 +849,7 @@ class HashedCategoricalColumnTest(test.TestCase):
                   values=('marlo', 'skywalker', 'omar'),
                   dense_shape=(2, 2))
       }, (wire_column,))
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_var = get_linear_model_column_var(wire_column)
       with _initialized_session():
         self.assertAllClose((0.,), bias.eval())
@@ -1171,7 +1171,7 @@ class CrossedColumnTest(test.TestCase):
                   values=['cA', 'cB', 'cC'],
                   dense_shape=(2, 2)),
       }, (crossed,))
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       crossed_var = get_linear_model_column_var(crossed)
       with _initialized_session() as sess:
         self.assertAllClose((0.,), bias.eval())
@@ -1254,18 +1254,13 @@ def get_linear_model_column_var(column):
                             'linear_model/' + column.name)[0]
 
 
-def get_keras_linear_model_bias():
-  with variable_scope.variable_scope('linear_model', reuse=True):
-    with variable_scope.variable_scope('bias_layer', reuse=True):
-      return variable_scope.get_variable('bias_weights')
-
-
 def get_keras_linear_model_predictions(features,
                                        feature_columns,
                                        units=1,
                                        sparse_combiner='sum',
                                        weight_collections=None,
-                                       trainable=True):
+                                       trainable=True,
+                                       cols_to_vars=None):
   keras_linear_model = _LinearModel(
       feature_columns,
       units,
@@ -1273,7 +1268,12 @@ def get_keras_linear_model_predictions(features,
       weight_collections,
       trainable,
       name='linear_model')
-  return keras_linear_model(features)  # pylint: disable=not-callable
+  retval = keras_linear_model(features)  # pylint: disable=not-callable
+  if cols_to_vars is None:
+    return retval
+  for k, v in keras_linear_model.cols_to_vars().items():
+    cols_to_vars[k] = v
+  return retval
 
 
 @test_util.with_c_api
@@ -1977,7 +1977,7 @@ class _LinearModelTest(test.TestCase):
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
       predictions = get_keras_linear_model_predictions(features, [price])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
         self.assertAllClose([0.], bias.eval())
@@ -1994,7 +1994,7 @@ class _LinearModelTest(test.TestCase):
           dense_shape=[2, 2])
       features = {'wire_cast': wire_tensor}
       predictions = get_keras_linear_model_predictions(features, [wire_cast])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       with _initialized_session() as sess:
         self.assertAllClose([0.], bias.eval())
@@ -2014,7 +2014,7 @@ class _LinearModelTest(test.TestCase):
       features = {'wire_cast': wire_tensor, 'price': [[1.], [5.]]}
       predictions = get_keras_linear_model_predictions(features,
                                                        [wire_cast, price])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
@@ -2072,7 +2072,7 @@ class _LinearModelTest(test.TestCase):
       features = {dense_and_sparse_column.name: sp_tensor}
       predictions = get_keras_linear_model_predictions(
           features, [dense_and_sparse_column])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       dense_and_sparse_column_var = get_linear_model_column_var(
           dense_and_sparse_column)
       with _initialized_session() as sess:
@@ -2088,7 +2088,7 @@ class _LinearModelTest(test.TestCase):
       features = {'price': [[1.], [5.]]}
       predictions = get_keras_linear_model_predictions(
           features, [price], units=3)
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
         self.assertAllClose(np.zeros((3,)), bias.eval())
@@ -2108,7 +2108,7 @@ class _LinearModelTest(test.TestCase):
       features = {'wire_cast': wire_tensor}
       predictions = get_keras_linear_model_predictions(
           features, [wire_cast], units=3)
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       with _initialized_session() as sess:
         self.assertAllClose(np.zeros((3,)), bias.eval())
@@ -2163,7 +2163,7 @@ class _LinearModelTest(test.TestCase):
       features = {'wire_cast': wire_tensor}
       predictions = get_keras_linear_model_predictions(
           features, [wire_cast], sparse_combiner='mean')
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       with _initialized_session() as sess:
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
@@ -2176,7 +2176,7 @@ class _LinearModelTest(test.TestCase):
       features = {'price': [[1., 2.], [5., 6.]]}
       predictions = get_keras_linear_model_predictions(
           features, [price], units=3)
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
         self.assertAllClose(np.zeros((3,)), bias.eval())
@@ -2206,7 +2206,7 @@ class _LinearModelTest(test.TestCase):
     with ops.Graph().as_default():
       features = {'price': [[[1., 2.]], [[5., 6.]]]}
       predictions = get_keras_linear_model_predictions(features, [price])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
         self.assertAllClose([0.], bias.eval())
@@ -2222,7 +2222,7 @@ class _LinearModelTest(test.TestCase):
       features = {'price1': [[1., 2.], [5., 6.]], 'price2': [[3.], [4.]]}
       predictions = get_keras_linear_model_predictions(features,
                                                        [price1, price2])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price1_var = get_linear_model_column_var(price1)
       price2_var = get_linear_model_column_var(price2)
       with _initialized_session() as sess:
@@ -2235,6 +2235,45 @@ class _LinearModelTest(test.TestCase):
         sess.run(bias.assign([7.]))
         self.assertAllClose([[3217.], [4657.]], predictions.eval())
 
+  def test_fills_cols_to_vars(self):
+    price1 = fc.numeric_column('price1', shape=2)
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {'price1': [[1., 2.], [5., 6.]], 'price2': [[3.], [4.]]}
+      cols_to_vars = {}
+      get_keras_linear_model_predictions(
+          features, [price1, price2], cols_to_vars=cols_to_vars)
+      bias = get_linear_model_bias()
+      price1_var = get_linear_model_column_var(price1)
+      price2_var = get_linear_model_column_var(price2)
+      self.assertAllEqual(cols_to_vars['bias'], [bias])
+      self.assertAllEqual(cols_to_vars[price1], [price1_var])
+      self.assertAllEqual(cols_to_vars[price2], [price2_var])
+
+  def test_fills_cols_to_vars_partitioned_variables(self):
+    price1 = fc.numeric_column('price1', shape=2)
+    price2 = fc.numeric_column('price2', shape=3)
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[1., 2.], [6., 7.]],
+          'price2': [[3., 4., 5.], [8., 9., 10.]]
+      }
+      cols_to_vars = {}
+      with variable_scope.variable_scope(
+          'linear',
+          partitioner=partitioned_variables.fixed_size_partitioner(2, axis=0)):
+        get_keras_linear_model_predictions(
+            features, [price1, price2], cols_to_vars=cols_to_vars)
+      with _initialized_session():
+        self.assertEqual([0.], cols_to_vars['bias'][0].eval())
+        # Partitioning shards the [2, 1] price1 var into 2 [1, 1] Variables.
+        self.assertAllEqual([[0.]], cols_to_vars[price1][0].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price1][1].eval())
+        # Partitioning shards the [3, 1] price2 var into a [2, 1] Variable and
+        # a [1, 1] Variable.
+        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price2][1].eval())
+
   def test_dense_collection(self):
     price = fc.numeric_column('price')
     with ops.Graph().as_default() as g:
@@ -2242,7 +2281,7 @@ class _LinearModelTest(test.TestCase):
       get_keras_linear_model_predictions(
           features, [price], weight_collections=['my-vars'])
       my_vars = g.get_collection('my-vars')
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       self.assertIn(bias, my_vars)
       self.assertIn(price_var, my_vars)
@@ -2256,7 +2295,7 @@ class _LinearModelTest(test.TestCase):
       get_keras_linear_model_predictions(
           features, [wire_cast], weight_collections=['my-vars'])
       my_vars = g.get_collection('my-vars')
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       self.assertIn(bias, my_vars)
       self.assertIn(wire_cast_var, my_vars)
@@ -2266,7 +2305,7 @@ class _LinearModelTest(test.TestCase):
     with ops.Graph().as_default() as g:
       features = {'price': [[1.], [5.]]}
       get_keras_linear_model_predictions(features, [price])
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       trainable_vars = g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       self.assertIn(bias, trainable_vars)
@@ -2280,7 +2319,7 @@ class _LinearModelTest(test.TestCase):
       features = {'wire_cast': wire_tensor}
       get_keras_linear_model_predictions(features, [wire_cast])
       trainable_vars = g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       self.assertIn(bias, trainable_vars)
       self.assertIn(wire_cast_var, trainable_vars)
@@ -2427,7 +2466,7 @@ class _LinearModelTest(test.TestCase):
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
 
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_buckets_var = get_linear_model_column_var(price_buckets)
       body_style_var = get_linear_model_column_var(body_style)
 
@@ -2470,7 +2509,7 @@ class _LinearModelTest(test.TestCase):
     net = get_keras_linear_model_predictions(features,
                                              [price_buckets, body_style])
     with _initialized_session() as sess:
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       price_buckets_var = get_linear_model_column_var(price_buckets)
       body_style_var = get_linear_model_column_var(body_style)
 
@@ -2509,7 +2548,7 @@ class _LinearModelTest(test.TestCase):
 
     net = get_keras_linear_model_predictions(
         features, [price_buckets, body_style, country])
-    bias = get_keras_linear_model_bias()
+    bias = get_linear_model_bias()
     price_buckets_var = get_linear_model_column_var(price_buckets)
     body_style_var = get_linear_model_column_var(body_style)
     with _initialized_session() as sess:
@@ -3688,7 +3727,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
                   values=('marlo', 'skywalker', 'omar'),
                   dense_shape=(2, 2))
       }, (wire_column,))
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_var = get_linear_model_column_var(wire_column)
       with _initialized_session():
         self.assertAllClose((0.,), bias.eval())
@@ -4080,7 +4119,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
                   values=('marlo', 'skywalker', 'omar'),
                   dense_shape=(2, 2))
       }, (wire_column,))
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       wire_var = get_linear_model_column_var(wire_column)
       with _initialized_session():
         self.assertAllClose((0.,), bias.eval())
@@ -4326,7 +4365,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
                   values=(0, 2, 1),
                   dense_shape=(2, 2))
       }, (column,))
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       weight_var = get_linear_model_column_var(column)
       with _initialized_session():
         self.assertAllClose((0.,), bias.eval())
@@ -5108,7 +5147,7 @@ class EmbeddingColumnTest(test.TestCase):
           categorical_column.name: sparse_input
       }, (embedding_column,))
       expected_var_names = (
-          'linear_model/bias_layer/bias_weights:0',
+          'linear_model/bias_weights:0',
           'linear_model/aaa_embedding/weights:0',
           'linear_model/aaa_embedding/embedding_weights:0',
       )
@@ -5120,7 +5159,7 @@ class EmbeddingColumnTest(test.TestCase):
           for v in ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       }
       self.assertItemsEqual(expected_var_names, trainable_vars.keys())
-      bias = trainable_vars['linear_model/bias_layer/bias_weights:0']
+      bias = trainable_vars['linear_model/bias_weights:0']
       embedding_weights = trainable_vars[
           'linear_model/aaa_embedding/embedding_weights:0']
       linear_weights = trainable_vars['linear_model/aaa_embedding/weights:0']
@@ -5757,7 +5796,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
       # Linear weights do not follow the column name. But this is a rare use
       # case, and fixing it would add too much complexity to the code.
       expected_var_names = (
-          'linear_model/bias_layer/bias_weights:0',
+          'linear_model/bias_weights:0',
           'linear_model/aaa_bbb_shared_embedding/weights:0',
           'linear_model/aaa_bbb_shared_embedding/embedding_weights:0',
           'linear_model/aaa_bbb_shared_embedding_1/weights:0',
@@ -5770,7 +5809,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
           for v in ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       }
       self.assertItemsEqual(expected_var_names, trainable_vars.keys())
-      bias = trainable_vars['linear_model/bias_layer/bias_weights:0']
+      bias = trainable_vars['linear_model/bias_weights:0']
       embedding_weights = trainable_vars[
           'linear_model/aaa_bbb_shared_embedding/embedding_weights:0']
       linear_weights_a = trainable_vars[
@@ -6105,7 +6144,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
                   values=(.5, 1., .1),
                   dense_shape=(2, 2))
       }, (column,))
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       weight_var = get_linear_model_column_var(column)
       with _initialized_session():
         self.assertAllClose((0.,), bias.eval())
@@ -6172,7 +6211,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
                   dense_shape=(2, 2)),
           'values': ((.5,), (1.,), (.1,))
       }, (column,))
-      bias = get_keras_linear_model_bias()
+      bias = get_linear_model_bias()
       weight_var = get_linear_model_column_var(column)
       with _initialized_session():
         self.assertAllClose((0.,), bias.eval())
