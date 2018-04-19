@@ -216,6 +216,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
+        "noasan",  # times out
         "optonly",
     ],
     deps = [

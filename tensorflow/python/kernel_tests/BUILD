@@ -1190,6 +1190,9 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
+    tags = [
+        "noasan",  # times out
+    ],
 )
 
 cuda_py_test(
