@@ -353,7 +353,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
 
  private:
   string session_handle_;
-  bool create_worker_session_called_;
+  bool create_worker_session_called_ = false;
   string graph_handle_;
   int64 step_id_;
   ExecutorOpts exec_opts_;
