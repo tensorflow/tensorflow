@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -634,12 +636,20 @@ class Model(Network):
     This is a purely internal method, subject to refactoring at any time.
 
     Args:
-      x: An array or list of arrays, to be used as input data. If the model
-       has known, named inputs, this could also be a dict mapping input names
-       to the corresponding array.
-      y: An array or list of arrays, to be used as target data. If the model
-       has known, named outputs, this could also be a dict mapping output names
-       to the corresponding array.
+      x: Input data. It could be:
+        - A Numpy array (or array-like), or a list of arrays
+          (in case the model has multiple inputs).
+        - A TensorFlow tensor, or a list of tensors
+          (in case the model has multiple inputs).
+        - A dict mapping input names to the corresponding array/tensors,
+          if the model has named inputs.
+        - A `tf.data` dataset iterator.
+      y: Target data. Like the input data `x`,
+        it could be either Numpy array(s) or TensorFlow tensor(s).
+        It should be consistent with `x` (you cannot have Numpy inputs and
+        tensor targets, or inversely). If `x` is a dataset iterator,
+        `y` should not be specified
+        (since targets will be obtained from the iterator).
       sample_weight: An optional sample-weight array passed by the user to
         weight the importance of each sample in `x`.
       class_weight: An optional class-weight array by the user to
@@ -659,6 +669,31 @@ class Model(Network):
       RuntimeError: If the model was never compiled.
     """
     # First, we build/compile the model on the fly if necessary.
+    if isinstance(x, dataset_ops.Dataset):
+      raise ValueError('You passed a `Dataset` instance to your model (%s), '
+                       'which is not supported. Instead, pass an `Iterator`, '
+                       'which you can obtain e.g. via '
+                       '`dataset.make_one_shot_iterator()` (the exact method '
+                       'to use will depend on your specific dataset).' % x)
+    if isinstance(x, iterator_ops.Iterator):
+      if y is not None:
+        raise ValueError('You passed a dataset iterator (%s) as input `x` to '
+                         'your model. In that case, you should not specify '
+                         'a target (`y`) argument, since the dataset iterator '
+                         'generates both input data and target data. '
+                         'Received: %s' % (x, y))
+      if not context.executing_eagerly():
+        x, y = x.get_next()
+        # TODO(fchollet): handle case of `get_next` not returning 2 tensors?
+      else:
+        # TODO(psv): implement this. The way to support it will be to typecheck
+        # for `iterator` before `_standardize_user_data` is called and redirect
+        # to new training/eval functions in `training_eager.py`. The model
+        # may need to get built using the specs of the data from the first batch
+        # drawn from the iterator.
+        raise ValueError('Dataset iterators are not supported '
+                         'with eager execution yet.')
+
     all_inputs = []
     if not self.built:
       # We need to use `x` to set the model inputs.
@@ -1016,22 +1051,26 @@ class Model(Network):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
     Arguments:
-        x: Numpy array of training data (if the model has a single input),
-            or list of Numpy arrays (if the model has multiple inputs).
-            If input layers in the model are named, you can also pass a
-            dictionary mapping input names to Numpy arrays.
-            `x` can be `None` (default) if feeding from
-            TensorFlow data tensors.
-        y: Numpy array of target (label) data
-            (if the model has a single output),
-            or list of Numpy arrays (if the model has multiple outputs).
-            If output layers in the model are named, you can also pass a
-            dictionary mapping output names to Numpy arrays.
-            `y` can be `None` (default) if feeding from
-            TensorFlow data tensors.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset iterator.
+        y: Target data. Like the input data `x`,
+          it could be either Numpy array(s) or TensorFlow tensor(s).
+          It should be consistent with `x` (you cannot have Numpy inputs and
+          tensor targets, or inversely). If `x` is a dataset iterator,
+          `y` should not be specified
+          (since targets will be obtained from the iterator).
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
+            Do not specify the `batch_size` is your data is in the
+            form of symbolic tensors or dataset iterators (since they generate
+            batches).
         epochs: Integer. Number of epochs to train the model.
             An epoch is an iteration over the entire `x` and `y`
             data provided.
@@ -1053,11 +1092,14 @@ class Model(Network):
             on this data at the end of each epoch.
             The validation data is selected from the last samples
             in the `x` and `y` data provided, before shuffling.
-        validation_data: tuple `(x_val, y_val)` or tuple
-            `(x_val, y_val, val_sample_weights)` on which to evaluate
+        validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
             The model will not be trained on this data.
             `validation_data` will override `validation_split`.
+            `validation_data` could be:
+              - tuple `(x_val, y_val)` of Numpy arrays or tensors
+              - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
+              - dataset iterator
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch').
             'batch' is a special option for dealing with the
@@ -1134,17 +1176,22 @@ class Model(Network):
         batch_size=batch_size)
     # Prepare validation data.
     if validation_data:
-      if len(validation_data) == 2:
+      if isinstance(validation_data, iterator_ops.Iterator):
+        val_x = validation_data
+        val_y = None
+        val_sample_weight = None
+      elif len(validation_data) == 2:
         val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
         val_sample_weight = None
       elif len(validation_data) == 3:
         val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
       else:
         raise ValueError(
-            'When passing validation_data, '
-            'it must contain 2 (x_val, y_val) '
-            'or 3 (x_val, y_val, val_sample_weights) '
-            'items, however it contains %d items' % len(validation_data))
+            'When passing a `validation_data` argument, '
+            'it must contain either 2 items (x_val, y_val), '
+            'or 3 items (x_val, y_val, val_sample_weights), '
+            'or alternatively it could be a dataset iterator. However we '
+            'received `validation_data=%s`' % validation_data)
 
       val_x, val_y, val_sample_weights = self._standardize_user_data(
           val_x,
@@ -1218,22 +1265,26 @@ class Model(Network):
     Computation is done in batches.
 
     Arguments:
-        x: Numpy array of test data (if the model has a single input),
-            or list of Numpy arrays (if the model has multiple inputs).
-            If input layers in the model are named, you can also pass a
-            dictionary mapping input names to Numpy arrays.
-            `x` can be `None` (default) if feeding from
-            TensorFlow data tensors.
-        y: Numpy array of target (label) data
-            (if the model has a single output),
-            or list of Numpy arrays (if the model has multiple outputs).
-            If output layers in the model are named, you can also pass a
-            dictionary mapping output names to Numpy arrays.
-            `y` can be `None` (default) if feeding from
-            TensorFlow data tensors.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset iterator.
+        y: Target data. Like the input data `x`,
+          it could be either Numpy array(s) or TensorFlow tensor(s).
+          It should be consistent with `x` (you cannot have Numpy inputs and
+          tensor targets, or inversely). If `x` is a dataset iterator,
+          `y` should not be specified
+          (since targets will be obtained from the iterator).
         batch_size: Integer or `None`.
-            Number of samples per evaluation step.
+            Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
+            Do not specify the `batch_size` is your data is in the
+            form of symbolic tensors or dataset iterators (since they generate
+            batches).
         verbose: 0 or 1. Verbosity mode.
             0 = silent, 1 = progress bar.
         sample_weight: Optional Numpy array of weights for
@@ -1291,9 +1342,13 @@ class Model(Network):
     Computation is done in batches.
 
     Arguments:
-        x: The input data, as a Numpy array
-            (or list of Numpy arrays if the model has multiple outputs).
-        batch_size: Integer. If unspecified, it will default to 32.
+        x: Input samples, as Numpy array(s) or tensor(s).
+        batch_size: Integer or `None`.
+            Number of samples per gradient update.
+            If unspecified, `batch_size` will default to 32.
+            Do not specify the `batch_size` is your data is in the
+            form of symbolic tensors or dataset iterators (since they generate
+            batches).
         verbose: Verbosity mode, 0 or 1.
         steps: Total number of steps (batches of samples)
             before declaring the prediction round finished.
@@ -1324,20 +1379,24 @@ class Model(Network):
       return training_arrays.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
 
-  def train_on_batch(self, x, y, sample_weight=None, class_weight=None):
+  def train_on_batch(self, x, y=None, sample_weight=None, class_weight=None):
     """Runs a single gradient update on a single batch of data.
 
     Arguments:
-        x: Numpy array of training data,
-            or list of Numpy arrays if the model has multiple inputs.
-            If all inputs in the model are named,
-            you can also pass a dictionary
-            mapping input names to Numpy arrays.
-        y: Numpy array of target data,
-            or list of Numpy arrays if the model has multiple outputs.
-            If all outputs in the model are named,
-            you can also pass a dictionary
-            mapping output names to Numpy arrays.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset iterator.
+        y: Target data. Like the input data `x`,
+          it could be either Numpy array(s) or TensorFlow tensor(s).
+          It should be consistent with `x` (you cannot have Numpy inputs and
+          tensor targets, or inversely). If `x` is a dataset iterator,
+          `y` should not be specified
+          (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
             weights to apply to the model's loss for each sample.
             In the case of temporal data, you can pass a 2D array
@@ -1384,20 +1443,24 @@ class Model(Network):
       return outputs[0]
     return outputs
 
-  def test_on_batch(self, x, y, sample_weight=None):
+  def test_on_batch(self, x, y=None, sample_weight=None):
     """Test the model on a single batch of samples.
 
     Arguments:
-        x: Numpy array of test data,
-            or list of Numpy arrays if the model has multiple inputs.
-            If all inputs in the model are named,
-            you can also pass a dictionary
-            mapping input names to Numpy arrays.
-        y: Numpy array of target data,
-            or list of Numpy arrays if the model has multiple outputs.
-            If all outputs in the model are named,
-            you can also pass a dictionary
-            mapping output names to Numpy arrays.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset iterator.
+        y: Target data. Like the input data `x`,
+          it could be either Numpy array(s) or TensorFlow tensor(s).
+          It should be consistent with `x` (you cannot have Numpy inputs and
+          tensor targets, or inversely). If `x` is a dataset iterator,
+          `y` should not be specified
+          (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
             weights to apply to the model's loss for each sample.
             In the case of temporal data, you can pass a 2D array
@@ -1437,7 +1500,7 @@ class Model(Network):
     """Returns predictions for a single batch of samples.
 
     Arguments:
-        x: Input samples, as a Numpy array.
+        x: Input samples, as Numpy array(s) or tensor(s).
 
     Returns:
         Numpy array(s) of predictions.
