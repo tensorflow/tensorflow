@@ -1269,10 +1269,8 @@ def get_keras_linear_model_predictions(features,
       trainable,
       name='linear_model')
   retval = keras_linear_model(features)  # pylint: disable=not-callable
-  if cols_to_vars is None:
-    return retval
-  for k, v in keras_linear_model.cols_to_vars().items():
-    cols_to_vars[k] = v
+  if cols_to_vars is not None:
+    cols_to_vars.update(keras_linear_model.cols_to_vars())
   return retval
 
 

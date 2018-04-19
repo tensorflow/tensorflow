@@ -417,10 +417,8 @@ def linear_model(features,
       trainable=trainable,
       name='linear_model')
   retval = linear_model_layer(features)  # pylint: disable=not-callable
-  if cols_to_vars is None:
-    return retval
-  for k, v in linear_model_layer.cols_to_vars().items():
-    cols_to_vars[k] = v
+  if cols_to_vars is not None:
+    cols_to_vars.update(linear_model_layer.cols_to_vars())
   return retval
 
 
