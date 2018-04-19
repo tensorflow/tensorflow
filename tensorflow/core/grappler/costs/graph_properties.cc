@@ -395,8 +395,11 @@ class TopoQueue {
 // unknown shape/dimension of a given node.
 class SymbolicShapeRefiner {
  public:
-  explicit SymbolicShapeRefiner(const GraphDef& graph)
-      : function_library_(OpRegistry::Global(), graph.library()) {
+  explicit SymbolicShapeRefiner(
+      const GraphDef& graph,
+      const std::unordered_map<string, std::unordered_set<int>>& fed_ports)
+      : function_library_(OpRegistry::Global(), graph.library()),
+        fed_ports_(fed_ports) {
     graph_def_version_ = graph.versions().producer();
     node_to_context_.reserve(graph.node_size());
   }
@@ -704,6 +707,9 @@ class SymbolicShapeRefiner {
     std::vector<ShapeHandle> input_tensors_as_shapes;
 
     NodeContext& node_ctx = node_to_context_[node];
+    TF_RETURN_IF_ERROR(
+        function_library_.LookUp(node->type_string(), &node_ctx.op_data));
+
     node_ctx.inference_context.reset(new InferenceContext(
         graph_def_version_, &node->def(), node->op_def(), input_shapes,
         input_tensors, input_tensors_as_shapes,
@@ -716,6 +722,7 @@ class SymbolicShapeRefiner {
   }
 
   struct NodeContext {
+    const OpRegistrationData* op_data;
     std::unique_ptr<InferenceContext> inference_context;
     std::vector<ShapeHandle> output_tensors_as_shapes;
   };
@@ -723,65 +730,80 @@ class SymbolicShapeRefiner {
   Status InferShapes(const Node* node, NodeContext* c) {
     InferenceContext* ic = c->inference_context.get();
 
-    // Propagate shape tensors
-    if (node->type_string() == "Shape") {
-      c->output_tensors_as_shapes.resize(1);
-      c->output_tensors_as_shapes[0] = c->inference_context->input(0);
-    } else if (node->type_string() == "ShapeN") {
-      c->output_tensors_as_shapes.resize(c->inference_context->num_inputs());
-      for (int i = 0; i < c->inference_context->num_inputs(); ++i) {
-        c->output_tensors_as_shapes[i] = c->inference_context->input(i);
-      }
-    } else if (node->type_string() == "ConcatV2") {
-      bool valid = true;
-      ShapeHandle result;
-      for (int i = 0; i < ic->num_inputs() - 1; ++i) {
-        ShapeHandle input = ic->input_tensors_as_shapes()[i];
-        if (!ic->RankKnown(input)) {
-          valid = false;
-          break;
-        } else if (i == 0) {
-          result = input;
-        } else {
-          TF_RETURN_IF_ERROR(ic->Concatenate(result, input, &result));
+    auto it = fed_ports_.find(node->name());
+    const bool is_fed = it != fed_ports_.end();
+
+    // Propagate shape tensors unless the node is fed.
+    // TODO(bsteiner) We should still propagate the shapes to the ports that
+    // aren't fed in the case of a ShapeN node.
+    if (!is_fed) {
+      if (node->type_string() == "Shape") {
+        c->output_tensors_as_shapes.resize(1);
+        c->output_tensors_as_shapes[0] = c->inference_context->input(0);
+      } else if (node->type_string() == "ShapeN") {
+        c->output_tensors_as_shapes.resize(c->inference_context->num_inputs());
+        for (int i = 0; i < c->inference_context->num_inputs(); ++i) {
+          c->output_tensors_as_shapes[i] = c->inference_context->input(i);
         }
-      }
-      if (valid) {
-        c->output_tensors_as_shapes.resize(1);
-        c->output_tensors_as_shapes[0] = result;
-      }
-    } else if (node->type_string() == "Slice") {
-      ShapeHandle input = ic->input_tensors_as_shapes()[0];
-      bool valid = ic->RankKnown(input);
-      const Tensor* slice_offset = ic->input_tensor(1);
-      valid &= slice_offset != nullptr && slice_offset->NumElements() == 1;
-      const Tensor* slice_size = ic->input_tensor(2);
-      valid &= slice_size != nullptr && slice_size->NumElements() == 1;
-      if (valid) {
-        int64 start = slice_offset->dtype() == DT_INT32
-                          ? slice_offset->flat<int32>()(0)
-                          : slice_offset->flat<int64>()(0);
-        int64 end = start + (slice_size->dtype() == DT_INT32
-                                 ? slice_size->flat<int32>()(0)
-                                 : slice_size->flat<int64>()(0));
+      } else if (node->type_string() == "ConcatV2") {
+        bool valid = true;
         ShapeHandle result;
-        TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
-        c->output_tensors_as_shapes.resize(1);
-        c->output_tensors_as_shapes[0] = result;
+        for (int i = 0; i < ic->num_inputs() - 1; ++i) {
+          ShapeHandle input = ic->input_tensors_as_shapes()[i];
+          if (!ic->RankKnown(input)) {
+            valid = false;
+            break;
+          } else if (i == 0) {
+            result = input;
+          } else {
+            TF_RETURN_IF_ERROR(ic->Concatenate(result, input, &result));
+          }
+        }
+        if (valid) {
+          c->output_tensors_as_shapes.resize(1);
+          c->output_tensors_as_shapes[0] = result;
+        }
+      } else if (node->type_string() == "Slice") {
+        ShapeHandle input = ic->input_tensors_as_shapes()[0];
+        bool valid = ic->RankKnown(input);
+        const Tensor* slice_offset = ic->input_tensor(1);
+        valid &= slice_offset != nullptr && slice_offset->NumElements() == 1;
+        const Tensor* slice_size = ic->input_tensor(2);
+        valid &= slice_size != nullptr && slice_size->NumElements() == 1;
+        if (valid) {
+          int64 start = slice_offset->dtype() == DT_INT32
+                            ? slice_offset->flat<int32>()(0)
+                            : slice_offset->flat<int64>()(0);
+          int64 end = start + (slice_size->dtype() == DT_INT32
+                                   ? slice_size->flat<int32>()(0)
+                                   : slice_size->flat<int64>()(0));
+          ShapeHandle result;
+          TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+          c->output_tensors_as_shapes.resize(1);
+          c->output_tensors_as_shapes[0] = result;
+        }
       }
     }
 
     // Infer the shapes of output tensors.
-    const OpRegistrationData* op_reg_data;
-    Status s = function_library_.default_registry()->LookUp(node->type_string(),
-                                                            &op_reg_data);
-    if (!s.ok() || op_reg_data->shape_inference_fn == nullptr) {
+    if (!c->op_data || c->op_data->shape_inference_fn == nullptr) {
       // There is nothing more we can infer, annotate outputs with unknown
       // shapes
       return c->inference_context->Run(shape_inference::UnknownShape);
     }
 
-    return c->inference_context->Run(op_reg_data->shape_inference_fn);
+    TF_RETURN_IF_ERROR(
+        c->inference_context->Run(c->op_data->shape_inference_fn));
+
+    Status status = Status::OK();
+    if (is_fed) {
+      // It is possible to feed node output ports with tensors of any shape: as
+      // a result, the shape of a fed port is completely unknown.
+      for (const int output_port : it->second) {
+        status.Update(SetUnknownShape(node, output_port));
+      }
+    }
+    return status;
   }
 
   NodeContext* GetNodeContext(const Node* node) {
@@ -797,6 +819,7 @@ class SymbolicShapeRefiner {
   std::unordered_map<ShapeId, ShapeHandle, HashShapeId> unknown_shapes_;
   std::unordered_map<DimId, DimensionHandle, HashDimId> unknown_dims_;
   FunctionLibraryDefinition function_library_;
+  const std::unordered_map<string, std::unordered_set<int>>& fed_ports_;
 };
 
 // Keep track of shapes and dimensions in a graph.
@@ -983,23 +1006,6 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
   return Status::OK();
 }
 
-Status GraphProperties::OverwriteFedPorts(
-    SymbolicShapeRefiner* shape_refiner,
-    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
-    const Node* node, bool* new_shapes) const {
-  auto it = fed_ports.find(node->name());
-  Status status;
-  if (it != fed_ports.end()) {
-    // It is possible to feed node output ports with tensors of any shape: as a
-    // result, the shape of a fed port is completely unknown.
-    for (const int output_port : it->second) {
-      status.Update(shape_refiner->SetUnknownShape(node, output_port));
-    }
-    *new_shapes = true;
-  }
-  return status;
-}
-
 // Manually propagate the input shape for Enter nodes and update any Merge node
 // outputs.
 Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
@@ -1032,7 +1038,6 @@ Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
 
 Status GraphProperties::UpdateShapes(
     SymbolicShapeRefiner* shape_refiner, bool relax,
-    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
     const Node* n, bool* new_shapes) const {
   if (n->IsEnter()) {
     // The Enter shape function always forwards an UnknownShape, so do the right
@@ -1053,9 +1058,7 @@ Status GraphProperties::UpdateShapes(
       }
     }
   }
-  // Nodes can be fed with any shape. The TensorFlow shape inference code can't
-  // handle this properly, so overwrite its behavior here.
-  return OverwriteFedPorts(shape_refiner, fed_ports, n, new_shapes);
+  return Status::OK();
 }
 
 // Propagates the shapes in the transitive fan-out of <new_shapes>.
@@ -1063,7 +1066,6 @@ Status GraphProperties::PropagateShapes(
     SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
     const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
         resources,
-    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
     int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
   // incorrect shape functions. The algoritm should converge in at most
@@ -1087,8 +1089,7 @@ Status GraphProperties::PropagateShapes(
            num_loop_iterations++ < max_loop_iterations) {
       const Node* n = new_shapes->pop();
       bool updated = false;
-      TF_RETURN_IF_ERROR(
-          UpdateShapes(shape_refiner, relax, fed_ports, n, &updated));
+      TF_RETURN_IF_ERROR(UpdateShapes(shape_refiner, relax, n, &updated));
       if (updated) {
         for (const Edge* e : n->out_edges()) {
           if (!e->IsControlEdge()) {
@@ -1243,7 +1244,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
     }
   }
 
-  SymbolicShapeRefiner refiner(item_.graph);
+  SymbolicShapeRefiner refiner(item_.graph, fed_ports);
 
   // We propagate shapes through the graph in two phases. In the first phase, we
   // exclusively merge shapes but we do not propagate shapes through the
@@ -1267,8 +1268,8 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
       new_shapes.push(node);
     }
     // Propagate shapes normally.
-    TF_RETURN_IF_ERROR(PropagateShapes(&refiner, relax, &new_shapes, resources,
-                                       fed_ports, num_loops));
+    TF_RETURN_IF_ERROR(
+        PropagateShapes(&refiner, relax, &new_shapes, resources, num_loops));
   }
 
   // Track shapes globally across the graph.
