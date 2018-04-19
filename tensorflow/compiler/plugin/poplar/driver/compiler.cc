@@ -265,11 +265,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   const poplar::Device& dev = poplarExecutor->GetPoplarDevice();
 
   poplar::Graph* graph = new poplar::Graph(dev);
-  graph->addCodelets(GetPathToGraphProgFile());
-  popconv::addCodelets(*graph);
-  popnn::addCodelets(*graph);
-  popops::addCodelets(*graph);
-  poprand::addCodelets(*graph);
+  {
+    std::lock_guard <std::mutex> g(static_mu_);
+    graph->addCodelets(GetPathToGraphProgFile());
+    popconv::addCodelets(*graph);
+    popnn::addCodelets(*graph);
+    popops::addCodelets(*graph);
+    poprand::addCodelets(*graph);
+  }
 
   CompilerResources resources(module->config().seed() + 1,
                               poplarExecutor->GetRandomGenMode());
@@ -419,6 +422,8 @@ HloCostAnalysis::ShapeSizeFunction
 PoplarCompiler::ShapeSizeBytesFunction() const {
   return PoplarExecutable::ShapeSizeBytes;
 }
+
+std::mutex PoplarCompiler::static_mu_;
 
 }  // namespace poplarplugin
 }  // namespace xla

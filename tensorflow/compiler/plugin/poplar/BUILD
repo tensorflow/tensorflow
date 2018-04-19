@@ -210,7 +210,7 @@ tf_cc_test(
     deps = [
         ":poplar_lib",
         "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
     ],
 )
 

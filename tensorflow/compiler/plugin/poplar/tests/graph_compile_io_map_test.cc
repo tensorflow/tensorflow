@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
@@ -30,8 +30,13 @@ namespace poplarplugin {
  * which input tensors are also outputs.  This test checks that this map is
  * correct */
 
-class GraphCompileIoMapTest : public HloTestBase {
+class GraphCompileIoMapTest : public ClientLibraryTestBase {
 public:
+ public:
+  explicit GraphCompileIoMapTest(se::Platform* platform = nullptr)
+  : ClientLibraryTestBase(platform) {
+      mutable_debug_options()->add_xla_disable_hlo_passes("tuple-simplifier");
+  }
   const sep::OutputMap& GetMap(PoplarExecutable* e) {
     return e->output_map_;
   }
@@ -231,7 +236,7 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
   EXPECT_EQ(2, GetMap(e).at(3));
 }
 
-TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
+TEST_F(GraphCompileIoMapTest, DISABLED_GetTupleFromTuple) {
   Shape image_shape = ShapeUtil::MakeShape(S32, {2, 2});
 
   auto builder = HloComputation::Builder(TestName());

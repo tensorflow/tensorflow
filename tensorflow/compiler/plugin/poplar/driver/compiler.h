@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_H_
 
 #include <memory>
+#include <mutex>
 
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -63,6 +64,8 @@ class PoplarCompiler : public Compiler {
   perftools::gputools::Platform::Id PlatformId() const override;
 
  private:
+
+  static std::mutex static_mu_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarCompiler);
 };
