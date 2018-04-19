@@ -75,7 +75,7 @@ REGISTER_OP("GrowTreeV4")
     .Attr("params: string")
     .Input("tree_handle: resource")
     .Input("stats_handle: resource")
-    .Input("finshed_nodes: int32")
+    .Input("finished_nodes: int32")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .Doc(R"doc(
 Grows the tree for finished nodes and allocates waiting nodes.
