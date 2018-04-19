@@ -21,7 +21,6 @@ from __future__ import print_function
 import os
 import tempfile
 
-from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
@@ -31,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
+from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import training_util
 
 

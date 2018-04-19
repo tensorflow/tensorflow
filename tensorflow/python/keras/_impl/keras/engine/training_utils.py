@@ -61,22 +61,21 @@ def check_num_samples(ins,
   Raises:
       ValueError: In case of invalid arguments.
   """
-  if steps is not None:
-    num_samples = None
-    if batch_size is not None:
-      raise ValueError(
-          'If ' + steps_name + ' is set, the `batch_size` must be None.')
-  if has_symbolic_tensors(ins) and steps is None:
-    raise ValueError('If your data is in the form of symbolic tensors, '
-                     'you should specify the `' + steps_name + '` argument '
-                     '(instead of the `batch_size` argument).')
-  if ins and hasattr(ins[0], 'shape'):
-    num_samples = int(ins[0].shape[0])
-  elif steps is None:
+  if steps is not None and batch_size is not None:
     raise ValueError(
-        'Either the input data should have '
-        'a defined shape, or ' + steps_name + ' should be specified.')
-  return num_samples
+        'If ' + steps_name + ' is set, the `batch_size` must be None.')
+
+  if not ins or has_symbolic_tensors(ins):
+    if steps is None:
+      raise ValueError('If your data is in the form of symbolic tensors, '
+                       'you should specify the `' + steps_name + '` argument '
+                       '(instead of the `batch_size` argument, '
+                       'because symbolic tensors are expected to produce '
+                       'batches of input data).')
+    return None
+  if hasattr(ins[0], 'shape'):
+    return int(ins[0].shape[0])
+  return None  # Edge case where ins == [static_learning_phase]
 
 
 def standardize_single_array(x):

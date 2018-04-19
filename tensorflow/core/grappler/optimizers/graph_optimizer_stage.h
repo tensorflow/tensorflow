@@ -239,6 +239,14 @@ class GraphOptimizerStagePipeline {
 
   std::size_t NumStages() { return stages_.size(); }
 
+  std::vector<string> StageNames() {
+    std::vector<string> names;
+    for (const auto& stage : stages_) {
+      names.push_back(stage->stage_name());
+    }
+    return names;
+  }
+
  private:
   std::vector<std::unique_ptr<GraphOptimizerStage<Result>>> stages_;
   std::function<bool(const Result&)> break_predicate_;

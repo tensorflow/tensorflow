@@ -185,7 +185,7 @@ const void* MemmappedFileSystem::GetMemoryWithOffset(uint64 offset) const {
   return reinterpret_cast<const uint8*>(mapped_memory_->data()) + offset;
 }
 
-#if defined(COMPILER_MSVC)
+#if defined(_MSC_VER)
 constexpr char* MemmappedFileSystem::kMemmappedPackagePrefix;
 constexpr char* MemmappedFileSystem::kMemmappedPackageDefaultGraphDef;
 #else

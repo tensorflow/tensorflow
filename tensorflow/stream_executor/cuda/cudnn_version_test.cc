@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cudnn_version.h"
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace perftools {

@@ -43,7 +43,6 @@ class PowerTransform(bijector.Bijector):
 
   def __init__(self,
                power=0.,
-               event_ndims=0,
                validate_args=False,
                name="power_transform"):
     """Instantiates the `PowerTransform` bijector.
@@ -51,8 +50,6 @@ class PowerTransform(bijector.Bijector):
     Args:
       power: Python `float` scalar indicating the transform power, i.e.,
         `Y = g(X) = (1 + X * c)**(1 / c)` where `c` is the `power`.
-      event_ndims: Python scalar indicating the number of dimensions associated
-        with a particular draw from the distribution.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
@@ -70,7 +67,7 @@ class PowerTransform(bijector.Bijector):
       raise ValueError("`power` must be a non-negative TF constant.")
     self._power = power
     super(PowerTransform, self).__init__(
-        event_ndims=event_ndims,
+        forward_min_event_ndims=0,
         validate_args=validate_args,
         name=name)
 
@@ -97,18 +94,13 @@ class PowerTransform(bijector.Bijector):
 
   def _inverse_log_det_jacobian(self, y):
     y = self._maybe_assert_valid_y(y)
-    event_dims = self._event_dims_tensor(y)
-    return (self.power - 1.) * math_ops.reduce_sum(
-        math_ops.log(y), axis=event_dims)
+    return (self.power - 1.) * math_ops.log(y)
 
   def _forward_log_det_jacobian(self, x):
     x = self._maybe_assert_valid_x(x)
-    event_dims = self._event_dims_tensor(x)
     if self.power == 0.:
-      return math_ops.reduce_sum(x, axis=event_dims)
-    return (1. / self.power - 1.) * math_ops.reduce_sum(
-        math_ops.log1p(x * self.power),
-        axis=event_dims)
+      return x
+    return (1. / self.power - 1.) * math_ops.log1p(x * self.power)
 
   def _maybe_assert_valid_x(self, x):
     if not self.validate_args or self.power == 0.:

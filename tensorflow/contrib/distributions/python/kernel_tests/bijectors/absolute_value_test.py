@@ -18,11 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 # pylint: disable=g-importing-member
 from tensorflow.contrib.distributions.python.ops.bijectors.absolute_value import AbsoluteValue
-from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -35,50 +32,38 @@ class AbsoluteValueTest(test.TestCase):
 
   def testBijectorVersusNumpyRewriteOfBasicFunctionsEventNdims0(self):
     with self.test_session() as sess:
-      bijector = AbsoluteValue(event_ndims=0, validate_args=True)
+      bijector = AbsoluteValue(validate_args=True)
       self.assertEqual("absolute_value", bijector.name)
       x = array_ops.constant([[0., 1., -1], [0., -5., 3.]])  # Shape [2, 3]
       y = math_ops.abs(x)
 
       y_ = y.eval()
-      zeros = np.zeros((2, 3))
 
       self.assertAllClose(y_, bijector.forward(x).eval())
       self.assertAllClose((-y_, y_), sess.run(bijector.inverse(y)))
-      self.assertAllClose((zeros, zeros),
-                          sess.run(bijector.inverse_log_det_jacobian(y)))
+      self.assertAllClose((0., 0.),
+                          sess.run(bijector.inverse_log_det_jacobian(
+                              y, event_ndims=0)))
 
       # Run things twice to make sure there are no issues in caching the tuples
       # returned by .inverse*
       self.assertAllClose(y_, bijector.forward(x).eval())
       self.assertAllClose((-y_, y_), sess.run(bijector.inverse(y)))
-      self.assertAllClose((zeros, zeros),
-                          sess.run(bijector.inverse_log_det_jacobian(y)))
-
-  def testEventNdimsMustBeZeroOrRaiseStatic(self):
-    with self.test_session():
-      with self.assertRaisesRegexp(ValueError, "event_ndims.*was not 0"):
-        AbsoluteValue(event_ndims=1)
-
-  def testEventNdimsMustBeZeroOrRaiseDynamic(self):
-    with self.test_session() as sess:
-      event_ndims = array_ops.placeholder(dtypes.int32)
-      abs_bijector = AbsoluteValue(event_ndims=event_ndims, validate_args=True)
-      with self.assertRaisesOpError("event_ndims was not 0"):
-        sess.run(abs_bijector.inverse_log_det_jacobian([1.]),
-                 feed_dict={event_ndims: 1})
+      self.assertAllClose((0., 0.),
+                          sess.run(bijector.inverse_log_det_jacobian(
+                              y, event_ndims=0)))
 
   def testNegativeYRaisesForInverseIfValidateArgs(self):
     with self.test_session() as sess:
-      bijector = AbsoluteValue(event_ndims=0, validate_args=True)
+      bijector = AbsoluteValue(validate_args=True)
       with self.assertRaisesOpError("y was negative"):
         sess.run(bijector.inverse(-1.))
 
   def testNegativeYRaisesForILDJIfValidateArgs(self):
     with self.test_session() as sess:
-      bijector = AbsoluteValue(event_ndims=0, validate_args=True)
+      bijector = AbsoluteValue(validate_args=True)
       with self.assertRaisesOpError("y was negative"):
-        sess.run(bijector.inverse_log_det_jacobian(-1.))
+        sess.run(bijector.inverse_log_det_jacobian(-1., event_ndims=0))
 
 
 if __name__ == "__main__":

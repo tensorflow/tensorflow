@@ -315,7 +315,7 @@ class HParams(object):
 
   Hyperparameters have type, which is inferred from the type of their value
   passed at construction type.   The currently supported types are: integer,
-  float, string, and list of integer, float, or string.
+  float, boolean, string, and list of integer, float, boolean, or string.
 
   You can override hyperparameter values by calling the
   [`parse()`](#HParams.parse) method, passing a string of comma separated

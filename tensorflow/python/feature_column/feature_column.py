@@ -161,7 +161,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.util.tf_export import tf_export
 
 
 def _internal_input_layer(features,

@@ -16,10 +16,10 @@ limitations under the License.
 %include "tensorflow/python/platform/base.i"
 
 %{
-#include "tensorflow/python/framework/python_op_gen.h"
+#include "tensorflow/python/eager/python_eager_op_gen.h"
 %}
 
-// Input typemap for GetPythonWrappers.
+// Input typemap for GetEagerPythonWrappers.
 // Accepts a python object of 'bytes' type, and converts it to
 // a const char* pointer and size_t length. The default typemap
 // going from python bytes to const char* tries to decode the
@@ -37,5 +37,5 @@ limitations under the License.
 
 
 %ignoreall;
-%unignore tensorflow::GetPythonWrappers;
-%include "tensorflow/python/framework/python_op_gen.h"
+%unignore tensorflow::GetEagerPythonWrappers;
+%include "tensorflow/python/eager/python_eager_op_gen.h"

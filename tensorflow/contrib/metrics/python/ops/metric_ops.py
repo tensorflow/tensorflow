@@ -62,6 +62,7 @@ def _safe_div(numerator, denominator, name):
       0,
       name=name)
 
+
 @deprecated(None, 'Please switch to tf.metrics.true_positives. Note that the '
             'order of the labels and predictions arguments has been switched.')
 def streaming_true_positives(predictions,
@@ -106,6 +107,7 @@ def streaming_true_positives(predictions,
       metrics_collections=metrics_collections,
       updates_collections=updates_collections,
       name=name)
+
 
 @deprecated(None, 'Please switch to tf.metrics.true_negatives. Note that the '
             'order of the labels and predictions arguments has been switched.')
@@ -152,6 +154,7 @@ def streaming_true_negatives(predictions,
       updates_collections=updates_collections,
       name=name)
 
+
 @deprecated(None, 'Please switch to tf.metrics.false_positives. Note that the '
             'order of the labels and predictions arguments has been switched.')
 def streaming_false_positives(predictions,
@@ -197,6 +200,7 @@ def streaming_false_positives(predictions,
       updates_collections=updates_collections,
       name=name)
 
+
 @deprecated(None, 'Please switch to tf.metrics.false_negatives. Note that the '
             'order of the labels and predictions arguments has been switched.')
 def streaming_false_negatives(predictions,
@@ -240,6 +244,7 @@ def streaming_false_negatives(predictions,
       metrics_collections=metrics_collections,
       updates_collections=updates_collections,
       name=name)
+
 
 @deprecated(None, 'Please switch to tf.metrics.mean')
 def streaming_mean(values,
@@ -289,6 +294,7 @@ def streaming_mean(values,
       metrics_collections=metrics_collections,
       updates_collections=updates_collections,
       name=name)
+
 
 @deprecated(None, 'Please switch to tf.metrics.mean_tensor')
 def streaming_mean_tensor(values,
@@ -345,7 +351,7 @@ def streaming_mean_tensor(values,
 
 
 @deprecated(None, 'Please switch to tf.metrics.accuracy. Note that the order '
-                  'of the labels and predictions arguments has been switched.')
+            'of the labels and predictions arguments has been switched.')
 def streaming_accuracy(predictions,
                        labels,
                        weights=None,
@@ -402,8 +408,9 @@ def streaming_accuracy(predictions,
       updates_collections=updates_collections,
       name=name)
 
+
 @deprecated(None, 'Please switch to tf.metrics.precision. Note that the order '
-                  'of the labels and predictions arguments has been switched.')
+            'of the labels and predictions arguments has been switched.')
 def streaming_precision(predictions,
                         labels,
                         weights=None,
@@ -459,8 +466,9 @@ def streaming_precision(predictions,
       updates_collections=updates_collections,
       name=name)
 
+
 @deprecated(None, 'Please switch to tf.metrics.recall. Note that the order '
-                  'of the labels and predictions arguments has been switched.')
+            'of the labels and predictions arguments has been switched.')
 def streaming_recall(predictions,
                      labels,
                      weights=None,
@@ -981,7 +989,7 @@ def streaming_curve_points(labels=None,
 
 
 @deprecated(None, 'Please switch to tf.metrics.auc. Note that the order of '
-                  'the labels and predictions arguments has been switched.')
+            'the labels and predictions arguments has been switched.')
 def streaming_auc(predictions,
                   labels,
                   weights=None,
@@ -2711,7 +2719,9 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       name=name)
 
 
-@deprecated(None, 'Please switch to tf.metrics.mean.')
+@deprecated(None,
+            'Please switch to tf.metrics.mean_absolute_error. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_mean_absolute_error(predictions,
                                   labels,
                                   weights=None,
@@ -2830,7 +2840,9 @@ def streaming_mean_relative_error(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None,
+            'Please switch to tf.metrics.mean_squared_error. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_mean_squared_error(predictions,
                                  labels,
                                  weights=None,
@@ -2888,7 +2900,10 @@ def streaming_mean_squared_error(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(
+    None,
+    'Please switch to tf.metrics.root_mean_squared_error. Note that the '
+    'order of the labels and predictions arguments has been switched.')
 def streaming_root_mean_squared_error(predictions,
                                       labels,
                                       weights=None,
@@ -3228,7 +3243,7 @@ def streaming_mean_cosine_distance(predictions,
   radial_diffs = math_ops.reduce_sum(
       radial_diffs, reduction_indices=[
           dim,
-      ], keep_dims=True)
+      ], keepdims=True)
   mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,
                                             name or 'mean_cosine_distance')
   mean_distance = math_ops.subtract(1.0, mean_distance)

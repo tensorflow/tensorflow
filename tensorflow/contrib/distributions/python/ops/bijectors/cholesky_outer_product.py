@@ -80,7 +80,7 @@ class CholeskyOuterProduct(bijector.Bijector):
     self._graph_parents = []
     self._name = name
     super(CholeskyOuterProduct, self).__init__(
-        event_ndims=2,
+        forward_min_event_ndims=2,
         validate_args=validate_args,
         name=name)
 

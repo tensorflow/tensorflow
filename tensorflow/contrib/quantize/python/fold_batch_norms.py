@@ -545,7 +545,7 @@ def _GetBatchNormParams(graph, context, has_scaling):
         gamma_tensor = graph.get_tensor_by_name(op.name + ':0')
 
   if not has_scaling:
-    gamma_tensor = array_ops.ones(batch_mean_tensor.shape)
+    gamma_tensor = array_ops.ones(moving_mean_tensor.shape)
 
   return _BatchNormMatch(
       layer_op=None,

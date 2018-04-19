@@ -133,18 +133,18 @@ class Scope(object):
   def mark_param(self, name):
     self.params.add(name)
 
-  def mark_creation(self, name):
+  def mark_creation(self, name, writes_create_symbol=False):
     if name.is_composite():
       parent = name.parent
       if self.has(parent):
-        # This is considered mutation of the parent, not creation.
-        # TODO(mdan): Is that really so?
-        return
+        if not writes_create_symbol:
+          return
       else:
         raise ValueError('Unknown symbol "%s".' % parent)
     self.created.add(name)
 
   def mark_write(self, name):
+    """Marks the given symbol as modified in the current scope."""
     self.modified.add(name)
     if self.isolated:
       self.mark_creation(name)
@@ -162,23 +162,45 @@ class Scope(object):
       self.parent.mark_returned(name)
 
 
-class ActivityAnalizer(transformer.Base):
+class ActivityAnalyzer(transformer.Base):
   """Annotates nodes with local scope information. See Scope."""
 
   def __init__(self, context, parent_scope):
-    super(ActivityAnalizer, self).__init__(context)
+    super(ActivityAnalyzer, self).__init__(context)
     self.scope = Scope(parent_scope)
     self._in_return_statement = False
 
-  def _track_symbol(self, node):
-    # This can happen when we have an attribute (or subscript) on a function
-    # call.  Example: a().b
+  @property
+  def _in_constructor(self):
+    innermost = self.enclosing_entities[-1]
+    if len(self.enclosing_entities) > 1:
+      parent = self.enclosing_entities[-2]
+      return isinstance(parent, gast.ClassDef) and innermost.name == '__init__'
+    return False
+
+  def _node_sets_self_attribute(self, node):
+    if anno.hasanno(node, anno.Basic.QN):
+      qn = anno.getanno(node, anno.Basic.QN)
+      # TODO(mdan): The 'self' argument is not guaranteed to be called 'self'.
+      if qn.has_attr and qn.parent.qn == ('self',):
+        return True
+
+  def _track_symbol(self,
+                    node,
+                    composite_writes_alter_parent=False,
+                    writes_create_symbol=False):
+    # A QN may be missing when we have an attribute (or subscript) on a function
+    # call. Example: a().b
     if not anno.hasanno(node, anno.Basic.QN):
       return
     qn = anno.getanno(node, anno.Basic.QN)
 
     if isinstance(node.ctx, gast.Store):
       self.scope.mark_write(qn)
+      if qn.is_composite and composite_writes_alter_parent:
+        self.scope.mark_write(qn.parent)
+      if writes_create_symbol:
+        self.scope.mark_creation(qn, writes_create_symbol=True)
     elif isinstance(node.ctx, gast.Load):
       self.scope.mark_read(qn)
     elif isinstance(node.ctx, gast.Param):
@@ -207,7 +229,18 @@ class ActivityAnalizer(transformer.Base):
 
   def visit_Attribute(self, node):
     self.generic_visit(node)
-    self._track_symbol(node)
+    if self._in_constructor and self._node_sets_self_attribute(node):
+      self._track_symbol(
+          node, composite_writes_alter_parent=True, writes_create_symbol=True)
+    else:
+      self._track_symbol(node)
+    return node
+
+  def visit_Subscript(self, node):
+    self.generic_visit(node)
+    # Subscript writes (e.g. a[b] = "value") are considered to modify
+    # both the element itself (a[b]) and its parent (a).
+    self._track_symbol(node, composite_writes_alter_parent=True)
     return node
 
   def visit_Print(self, node):
@@ -323,4 +356,4 @@ class ActivityAnalizer(transformer.Base):
 
 
 def resolve(node, context, parent_scope=None):
-  return ActivityAnalizer(context, parent_scope).visit(node)
+  return ActivityAnalyzer(context, parent_scope).visit(node)

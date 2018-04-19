@@ -36,6 +36,9 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import momentum
+from tensorflow.python.training import saver
+from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
@@ -228,16 +231,40 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testScatterMin(self):
-    handle = resource_variable_ops.var_handle_op(
-        dtype=dtypes.int32, shape=[1, 1])
-    self.evaluate(
-        resource_variable_ops.assign_variable_op(
-            handle, constant_op.constant([[6]], dtype=dtypes.int32)))
-    self.evaluate(
-        resource_variable_ops.resource_scatter_min(
-            handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
-    read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-    self.assertEqual(self.evaluate(read), [[3]])
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[6]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_min(handle, [0],
+                                                     constant_op.constant(
+                                                         [[3]],
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[3]])
+
+  def testMetagraph(self):
+    with ops.Graph().as_default():
+      with variable_scope.variable_scope("foo", use_resource=True):
+        a = variable_scope.get_variable("a", initializer=10.0)
+
+      momentum.MomentumOptimizer(
+          learning_rate=0.001, momentum=0.1).minimize(
+              a,
+              colocate_gradients_with_ops=True,
+              global_step=training_util.get_or_create_global_step())
+
+      graph = ops.get_default_graph()
+      meta_graph_def = saver.export_meta_graph(graph=graph)
+
+    with ops.Graph().as_default():
+      saver.import_meta_graph(meta_graph_def, import_scope="")
+      meta_graph_two = saver.export_meta_graph(graph=graph)
+    self.assertEqual(meta_graph_def, meta_graph_two)
 
   @test_util.run_in_graph_and_eager_modes()
   def testScatterMax(self):

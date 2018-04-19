@@ -1,0 +1,21 @@
+primitive {
+  fixed32_value: 4294967295
+  uint32_value: 4294967295
+}
+shape: 1
+sizes: 1
+sizes: 1
+field {
+  name: "fixed32_value"
+  dtype: DT_INT64
+  expected {
+    int64_value: 4294967295
+  }
+}
+field {
+  name: "uint32_value"
+  dtype: DT_INT64
+  expected {
+    int64_value: 4294967295
+  }
+}

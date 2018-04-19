@@ -148,7 +148,7 @@ class Conv(Layer):
     if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis].value
+    input_dim = int(input_shape[channel_axis])
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
     self.kernel = self.add_variable(name='kernel',
@@ -705,6 +705,7 @@ class Conv2DTranspose(Conv2D):
         **kwargs)
 
   def build(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
     if len(input_shape) != 4:
       raise ValueError('Inputs should have rank 4. Received input shape: ' +
                        str(input_shape))
@@ -712,10 +713,10 @@ class Conv2DTranspose(Conv2D):
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis] is None:
+    if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis]
+    input_dim = int(input_shape[channel_axis])
     self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
@@ -945,6 +946,7 @@ class Conv3DTranspose(Conv3D):
         **kwargs)
 
   def build(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
     if len(input_shape) != 5:
       raise ValueError('Inputs should have rank 5, received input shape:',
                        str(input_shape))
@@ -952,10 +954,10 @@ class Conv3DTranspose(Conv3D):
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis] is None:
+    if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined, found None: ' + str(input_shape))
-    input_dim = input_shape[channel_axis]
+    input_dim = int(input_shape[channel_axis])
     kernel_shape = self.kernel_size + (self.filters, input_dim)
     self.input_spec = InputSpec(ndim=5, axes={channel_axis: input_dim})
 
@@ -1212,7 +1214,7 @@ class SeparableConv(Conv):
     if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis].value
+    input_dim = int(input_shape[channel_axis])
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
     depthwise_kernel_shape = self.kernel_size + (input_dim,

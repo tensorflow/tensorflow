@@ -47,7 +47,8 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
     bool found_output_as_rnn_state_array = false;
     for (const auto& rnn_state : model->flags.rnn_states()) {
       if (output == rnn_state.state_array()) {
-        CHECK(op->type == OperatorType::kFill);
+        CHECK(op->type == OperatorType::kFill ||
+              op->type == OperatorType::kTensorFlowIdentity);
         found_output_as_rnn_state_array = true;
         break;
       }

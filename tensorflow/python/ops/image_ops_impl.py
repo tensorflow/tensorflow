@@ -269,17 +269,7 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'random_flip_up_down', [image]) as scope:
-    image = ops.convert_to_tensor(image, name='image')
-    image = _Assert3DImage(image)
-    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
-    mirror_cond = math_ops.less(uniform_random, .5)
-    result = control_flow_ops.cond(
-        mirror_cond,
-        lambda: array_ops.reverse(image, [0]),
-        lambda: image,
-        name=scope)
-    return fix_image_flip_shape(image, result)
+  return _random_flip(image, 0, seed, 'random_flip_up_down')
 
 
 @tf_export('image.random_flip_left_right')
@@ -301,14 +291,34 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'random_flip_left_right', [image]) as scope:
+  return _random_flip(image, 1, seed, 'random_flip_left_right')
+
+
+def _random_flip(image, flip_index, seed, scope_name):
+  """Randomly (50% chance) flip an image along axis `flip_index`.
+    Args:
+      image: A 3-D tensor of shape `[height, width, channels].`
+      flip_index: The dimension along which to flip the image.
+                  Vertical: 0, Horizontal: 1
+      seed: A Python integer. Used to create a random seed. See
+        @{tf.set_random_seed}
+        for behavior.
+      scope_name: Name of the scope in which the ops are added.
+
+    Returns:
+      A 3-D tensor of the same type and shape as `image`.
+
+    Raises:
+      ValueError: if the shape of `image` not supported.
+  """
+  with ops.name_scope(None, scope_name, [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = _Assert3DImage(image)
     uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
     mirror_cond = math_ops.less(uniform_random, .5)
     result = control_flow_ops.cond(
         mirror_cond,
-        lambda: array_ops.reverse(image, [1]),
+        lambda: array_ops.reverse(image, [flip_index]),
         lambda: image,
         name=scope)
     return fix_image_flip_shape(image, result)
@@ -332,16 +342,7 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'flip_left_right', [image]):
-    image = ops.convert_to_tensor(image, name='image')
-    image = _AssertAtLeast3DImage(image)
-    shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
-      return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
-    elif shape.ndims == 4:
-      return array_ops.reverse(image, [2])
-    else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+  return _flip(image, 1, 'flip_left_right')
 
 
 @tf_export('image.flip_up_down')
@@ -362,14 +363,35 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'flip_up_down', [image]):
+  return _flip(image, 0, 'flip_up_down')
+
+
+def _flip(image, flip_index, scope_name):
+  """Flip an image either horizontally or vertically.
+
+  Outputs the contents of `image` flipped along the dimension `flip_index`.
+
+  See also `reverse()`.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
+    flip_index: 0 For vertical, 1 for horizontal.
+
+  Returns:
+    A tensor of the same type and shape as `image`.
+
+  Raises:
+    ValueError: if the shape of `image` not supported.
+  """
+  with ops.name_scope(None, scope_name, [image]):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
     if shape.ndims == 3 or shape.ndims is None:
-      return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
+      return fix_image_flip_shape(image, array_ops.reverse(image, [flip_index]))
     elif shape.ndims == 4:
-      return array_ops.reverse(image, [1])
+      return array_ops.reverse(image, [flip_index+1])
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 

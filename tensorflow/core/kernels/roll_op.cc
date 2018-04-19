@@ -254,8 +254,11 @@ class RollOp : public OpKernel {
     // total modulo sum of shifts for each dimension
     gtl::InlinedVector<int, 4> shift_mod_sum(num_dims, 0);
     for (int i = 0; i < num_shifts; i++) {
-      const int axis = axis_flat(i);
-      OP_REQUIRES(context, axis < num_dims,
+      int axis = axis_flat(i);
+      if (axis < 0) {
+        axis += num_dims;
+      }
+      OP_REQUIRES(context, 0 <= axis && axis < num_dims,
                   errors::InvalidArgument("axis ", axis, " is out of range"));
       const int ds = std::max<int>(static_cast<int>(input.dim_size(axis)), 1);
       const int sum = shift_mod_sum[axis] + static_cast<int>(shift_flat(i));

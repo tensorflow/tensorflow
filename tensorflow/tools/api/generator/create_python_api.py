@@ -160,7 +160,7 @@ def get_api_init_text():
   # we want to traverse over TensorFlow Python modules.
   for module in sys.modules.values():
     # Only look at tensorflow modules.
-    if (not module or not hasattr(module, "__name__") or
+    if (not module or not hasattr(module, '__name__') or
         'tensorflow.' not in module.__name__):
       continue
     # Do not generate __init__.py files for contrib modules for now.
