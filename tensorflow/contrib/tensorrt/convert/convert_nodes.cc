@@ -241,9 +241,9 @@ class TFAttrs {
     return attrs_.at(key);
   }
   template <typename T>
-  T get(string key) const;
+  T get(const string& key) const;
   template <typename T>
-  T get(string key, const T& default_value) const {
+  T get(const string& key, const T& default_value) const {
     return attrs_.count(key) ? this->get<T>(key) : default_value;
   }
 
@@ -261,29 +261,29 @@ class TFAttrs {
 };
 
 template <>
-string TFAttrs::get<string>(string key) const {
+string TFAttrs::get<string>(const string& key) const {
   return this->at(key)->s();
 }
 
 template <>
-std::vector<int> TFAttrs::get<std::vector<int>>(string key) const {
+std::vector<int> TFAttrs::get<std::vector<int>>(const string& key) const {
   auto attr = this->at(key)->list().i();
   return std::vector<int>(attr.begin(), attr.end());
 }
 
 template <>
-std::vector<float> TFAttrs::get<std::vector<float>>(string key) const {
+std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
   auto attr = this->at(key)->list().f();
   return std::vector<float>(attr.begin(), attr.end());
 }
 
 template <>
-std::vector<string> TFAttrs::get<std::vector<string>>(string key) const {
+std::vector<string> TFAttrs::get<std::vector<string>>(const string& key) const {
   auto attr = this->at(key)->list().s();
   return std::vector<string>(attr.begin(), attr.end());
 }
 template <>
-nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(string key) const {
+nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(const string& key) const {
   auto values = this->get<std::vector<int>>(key);
   nvinfer1::Dims dims;
   dims.nbDims = values.size();
@@ -293,24 +293,24 @@ nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(string key) const {
 }
 
 template <>
-nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(string key) const {
+nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
   nvinfer1::DataType trt_dtype(nvinfer1::DataType::kFLOAT);
   TF_CHECK_OK(ConvertDType(this->at(key)->type(), &trt_dtype));
   return trt_dtype;
 }
 
 template <>
-tensorflow::DataType TFAttrs::get<tensorflow::DataType>(string key) const {
+tensorflow::DataType TFAttrs::get<tensorflow::DataType>(const string& key) const {
   return this->at(key)->type();
 }
 
 template <>
-float TFAttrs::get<float>(string key) const {
+float TFAttrs::get<float>(const string& key) const {
   return this->at(key)->f();
 }
 
 template <>
-bool TFAttrs::get<bool>(string key) const {
+bool TFAttrs::get<bool>(const string& key) const {
   return this->at(key)->b();
 }
 

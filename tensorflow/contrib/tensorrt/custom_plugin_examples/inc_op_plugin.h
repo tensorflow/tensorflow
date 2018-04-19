@@ -18,10 +18,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstring>
-#include <iostream>
-#include <string>
-#include <unordered_map>
-#include <vector>
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
 
 #if GOOGLE_CUDA
@@ -33,14 +29,14 @@ namespace tensorrt {
 
 class IncOpPlugin : public PluginTensorRT {
  public:
-  static const std::string plugin_name_;
-  IncOpPlugin(){};
+  static const string plugin_name_;
+  IncOpPlugin() {};
   IncOpPlugin(const void* serialized_data, size_t length);
-  const std::string& GetPluginName() const override { return plugin_name_; };
+  const string& GetPluginName() const override { return plugin_name_; };
   bool Finalize() override { return true; };
-  bool SetAttribute(const std::string& key, const void* ptr,
+  bool SetAttribute(const string& key, const void* ptr,
                     const size_t size) override;
-  bool GetAttribute(const std::string& key, const void** ptr,
+  bool GetAttribute(const string& key, const void** ptr,
                     size_t* size) const override;
 
   int getNbOutputs() const override { return 1; }
@@ -56,7 +52,7 @@ class IncOpPlugin : public PluginTensorRT {
   void configure(const nvinfer1::Dims* inputs, int num_inputs,
                  const nvinfer1::Dims* outputs, int num_outputs,
                  int max_batch_size) override {
-    assert(nb_inputs == 1);
+    assert(num_inputs == 1);
     PluginTensorRT::configure(inputs, num_inputs, outputs, num_outputs,
                               max_batch_size);
   }
@@ -95,8 +91,6 @@ class IncOpPlugin : public PluginTensorRT {
 IncOpPlugin* CreateIncPlugin();
 IncOpPlugin* CreateIncPluginDeserialize(const void*, size_t);
 bool RegisterIncOpPlugin();
-void IncrementKernel(const float* d_input, float inc, float* d_output,
-                     int count, cudaStream_t stream);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

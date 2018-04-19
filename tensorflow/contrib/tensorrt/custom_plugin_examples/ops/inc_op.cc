@@ -19,7 +19,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
-using namespace tensorflow;
+namespace tensorflow {
 
 REGISTER_OP("IncPluginTRT")
     .Attr("inc: list(float)")
@@ -29,6 +29,8 @@ REGISTER_OP("IncPluginTRT")
       c->set_output(0, c->input(0));
       return Status::OK();
     });
+
+} // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
 #endif  // GOOGLE_TENSORRT

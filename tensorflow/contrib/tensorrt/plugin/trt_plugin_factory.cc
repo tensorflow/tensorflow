@@ -26,7 +26,7 @@ PluginTensorRT* PluginFactoryTensorRT::createPlugin(const char* layer_name,
                                                     size_t serial_length) {
   size_t parsed_byte = 0;
   // extract op_name from serial_data
-  std::string encoded_op_name =
+  string encoded_op_name =
       ExtractOpName(serial_data, serial_length, &parsed_byte);
 
   if (!IsPlugin(encoded_op_name)) {
@@ -41,8 +41,7 @@ PluginTensorRT* PluginFactoryTensorRT::createPlugin(const char* layer_name,
   return plugin_ptr;
 }
 
-PluginTensorRT* PluginFactoryTensorRT::CreatePlugin(
-    const std::string& op_name) {
+PluginTensorRT* PluginFactoryTensorRT::CreatePlugin(const string& op_name) {
   if (!IsPlugin(op_name)) return nullptr;
 
   std::lock_guard<std::mutex> lock(instance_m_);
@@ -53,7 +52,7 @@ PluginTensorRT* PluginFactoryTensorRT::CreatePlugin(
 }
 
 bool PluginFactoryTensorRT::RegisterPlugin(
-    const std::string& op_name, PluginDeserializeFunc deserialize_func,
+    const string& op_name, PluginDeserializeFunc deserialize_func,
     PluginConstructFunc construct_func) {
   if (IsPlugin(op_name)) return false;
 

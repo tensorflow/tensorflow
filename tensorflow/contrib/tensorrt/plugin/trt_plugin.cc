@@ -25,7 +25,6 @@ namespace tensorflow {
 namespace tensorrt {
 
 PluginTensorRT::PluginTensorRT(const void* serialized_data, size_t length) {
-  // sanity check.
   const char* buffer = static_cast<const char*>(serialized_data);
   size_t op_name_char_count = *reinterpret_cast<const size_t*>(buffer);
   buffer += sizeof(size_t);
@@ -91,7 +90,7 @@ void PluginTensorRT::serialize(void* serialized_data) {
   }
 }
 
-bool PluginTensorRT::StoreAttribute(const std::string& key, const void* ptr,
+bool PluginTensorRT::StoreAttribute(const string& key, const void* ptr,
                                     const size_t size) {
   if (attr_map_.count(key) != 0) return false;
 
