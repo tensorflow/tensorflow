@@ -13107,6 +13107,112 @@ func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, padd
 	return op.Output(0)
 }
 
+// Returns a list of tensors with the same shapes and contents as the input
+//
+// tensors.
+//
+// This op can be used to override the gradient for complicated functions. For
+// example, suppose y = f(x) and we wish to apply a custom function g for backprop
+// such that dx = g(dy). In Python,
+//
+// ```python
+// with tf.get_default_graph().gradient_override_map(
+//     {'IdentityN': 'OverrideGradientWithG'}):
+//   y, _ = identity_n([f(x), x])
+//
+// @tf.RegisterGradient('OverrideGradientWithG')
+// def ApplyG(op, dy, _):
+//   return [None, g(dy)]  # Do not backprop to f(x).
+// ```
+func IdentityN(scope *Scope, input []tf.Output) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IdentityN",
+		Input: []tf.Input{
+			tf.OutputList(input),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("IdentityN", err)
+		return
+	}
+	return output
+}
+
+// ResourceApplyCenteredRMSPropAttr is an optional argument to ResourceApplyCenteredRMSProp.
+type ResourceApplyCenteredRMSPropAttr func(optionalAttr)
+
+// ResourceApplyCenteredRMSPropUseLocking sets the optional use_locking attribute to value.
+//
+// value: If `True`, updating of the var, mg, ms, and mom tensors is
+// protected by a lock; otherwise the behavior is undefined, but may exhibit less
+// contention.
+// If not specified, defaults to false
+func ResourceApplyCenteredRMSPropUseLocking(value bool) ResourceApplyCenteredRMSPropAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Update '*var' according to the centered RMSProp algorithm.
+//
+// The centered RMSProp algorithm uses an estimate of the centered second moment
+// (i.e., the variance) for normalization, as opposed to regular RMSProp, which
+// uses the (uncentered) second moment. This often helps with training, but is
+// slightly more expensive in terms of computation and memory.
+//
+// Note that in dense implementation of this algorithm, mg, ms, and mom will
+// update even if the grad is zero, but in this sparse implementation, mg, ms,
+// and mom will not update in iterations during which the grad is zero.
+//
+// mean_square = decay * mean_square + (1-decay) * gradient ** 2
+// mean_grad = decay * mean_grad + (1-decay) * gradient
+//
+// Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
+//
+// mg <- rho * mg_{t-1} + (1-rho) * grad
+// ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+// mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)
+// var <- var - mom
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	mg: Should be from a Variable().
+//	ms: Should be from a Variable().
+//	mom: Should be from a Variable().
+//	lr: Scaling factor. Must be a scalar.
+//	rho: Decay rate. Must be a scalar.
+//
+//	epsilon: Ridge term. Must be a scalar.
+//	grad: The gradient.
+//
+// Returns the created operation.
+func ResourceApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Output, ms tf.Output, mom tf.Output, lr tf.Output, rho tf.Output, momentum tf.Output, epsilon tf.Output, grad tf.Output, optional ...ResourceApplyCenteredRMSPropAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyCenteredRMSProp",
+		Input: []tf.Input{
+			var_, mg, ms, mom, lr, rho, momentum, epsilon, grad,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Adds `bias` to `value`.
 //
 // This is a deprecated version of BiasAdd and will be soon removed.
@@ -23165,112 +23271,6 @@ func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// ResourceApplyCenteredRMSPropAttr is an optional argument to ResourceApplyCenteredRMSProp.
-type ResourceApplyCenteredRMSPropAttr func(optionalAttr)
-
-// ResourceApplyCenteredRMSPropUseLocking sets the optional use_locking attribute to value.
-//
-// value: If `True`, updating of the var, mg, ms, and mom tensors is
-// protected by a lock; otherwise the behavior is undefined, but may exhibit less
-// contention.
-// If not specified, defaults to false
-func ResourceApplyCenteredRMSPropUseLocking(value bool) ResourceApplyCenteredRMSPropAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Update '*var' according to the centered RMSProp algorithm.
-//
-// The centered RMSProp algorithm uses an estimate of the centered second moment
-// (i.e., the variance) for normalization, as opposed to regular RMSProp, which
-// uses the (uncentered) second moment. This often helps with training, but is
-// slightly more expensive in terms of computation and memory.
-//
-// Note that in dense implementation of this algorithm, mg, ms, and mom will
-// update even if the grad is zero, but in this sparse implementation, mg, ms,
-// and mom will not update in iterations during which the grad is zero.
-//
-// mean_square = decay * mean_square + (1-decay) * gradient ** 2
-// mean_grad = decay * mean_grad + (1-decay) * gradient
-//
-// Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
-//
-// mg <- rho * mg_{t-1} + (1-rho) * grad
-// ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-// mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)
-// var <- var - mom
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	mg: Should be from a Variable().
-//	ms: Should be from a Variable().
-//	mom: Should be from a Variable().
-//	lr: Scaling factor. Must be a scalar.
-//	rho: Decay rate. Must be a scalar.
-//
-//	epsilon: Ridge term. Must be a scalar.
-//	grad: The gradient.
-//
-// Returns the created operation.
-func ResourceApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Output, ms tf.Output, mom tf.Output, lr tf.Output, rho tf.Output, momentum tf.Output, epsilon tf.Output, grad tf.Output, optional ...ResourceApplyCenteredRMSPropAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyCenteredRMSProp",
-		Input: []tf.Input{
-			var_, mg, ms, mom, lr, rho, momentum, epsilon, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Returns a list of tensors with the same shapes and contents as the input
-//
-// tensors.
-//
-// This op can be used to override the gradient for complicated functions. For
-// example, suppose y = f(x) and we wish to apply a custom function g for backprop
-// such that dx = g(dy). In Python,
-//
-// ```python
-// with tf.get_default_graph().gradient_override_map(
-//     {'IdentityN': 'OverrideGradientWithG'}):
-//   y, _ = identity_n([f(x), x])
-//
-// @tf.RegisterGradient('OverrideGradientWithG')
-// def ApplyG(op, dy, _):
-//   return [None, g(dy)]  # Do not backprop to f(x).
-// ```
-func IdentityN(scope *Scope, input []tf.Output) (output []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IdentityN",
-		Input: []tf.Input{
-			tf.OutputList(input),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		scope.UpdateErr("IdentityN", err)
-		return
-	}
-	return output
 }
 
 // Computes the gradient of the sigmoid of `x` wrt its input.
