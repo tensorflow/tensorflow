@@ -335,12 +335,12 @@ REGISTER_OP("RangeDataset")
     .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-    shape_inference::ShapeHandle unused;
-    // start, stop, and step should be scalars.
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-    return shape_inference::ScalarShape(c);
+      shape_inference::ShapeHandle unused;
+      // start, stop, and step should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::ScalarShape(c);
     });
 
 REGISTER_OP("RandomDataset")
