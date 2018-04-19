@@ -89,15 +89,13 @@ struct bfloat16 {
       : bfloat16(static_cast<float>(val)) {}
 
   B16_DEVICE_FUNC explicit operator float() const {
-    float result;
+    float result = 0;
 
     uint16_t* q = reinterpret_cast<uint16_t*>(&result);
 
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     q[0] = value;
-    q[1] = 0;
 #else
-    q[0] = 0;
     q[1] = value;
 #endif
     return result;
