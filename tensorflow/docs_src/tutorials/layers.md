@@ -613,9 +613,9 @@ following to `main()`:
 
 ```python
 # Set up logging for predictions
-  tensors_to_log = {"probabilities": "softmax_tensor"}
-  logging_hook = tf.train.LoggingTensorHook(
-      tensors=tensors_to_log, every_n_iter=50)
+tensors_to_log = {"probabilities": "softmax_tensor"}
+logging_hook = tf.train.LoggingTensorHook(
+    tensors=tensors_to_log, every_n_iter=50)
 ```
 
 We store a dict of the tensors we want to log in `tensors_to_log`. Each key is a
