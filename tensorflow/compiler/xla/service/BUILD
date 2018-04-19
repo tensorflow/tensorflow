@@ -699,6 +699,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_transfer_manager",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:stream_executor_impl",
     ],
 )
 
