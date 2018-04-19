@@ -37,6 +37,7 @@ namespace xla {
     case HloOpcode::kBitcast:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kBroadcastDimOne:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kComplex:
@@ -142,7 +143,8 @@ bool InstructionFusion::EffectivelyUnary(HloInstruction* hlo) {
       });
   return std::count_if(hlo->operands().begin(), hlo->operands().end(),
                        [output_rank](HloInstruction* operand) {
-                         if (operand->opcode() == HloOpcode::kBroadcast) {
+                         if (operand->opcode() == HloOpcode::kBroadcast ||
+                             operand->opcode() == HloOpcode::kBroadcastDimOne) {
                            return false;
                          }
                          if (operand->opcode() == HloOpcode::kConstant &&
@@ -247,7 +249,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     auto reachability = computation->ComputeReachability();
 
     auto cheap_to_duplicate = [this](HloInstruction* producer) {
-      if (producer->opcode() == HloOpcode::kBroadcast) {
+      if (producer->opcode() == HloOpcode::kBroadcast ||
+          producer->opcode() == HloOpcode::kBroadcastDimOne) {
         return true;
       }
       if (producer->opcode() == HloOpcode::kConstant &&

@@ -312,7 +312,7 @@ tf_cc_test(
         "src/gen/cc/source_writer_test.cc",
     ],
     data = [
-        "src/gen/resources/test.snippet.java",
+        "src/gen/resources/test.java.snippet",
     ],
     deps = [
         ":java_op_gen_lib",
@@ -386,16 +386,4 @@ genrule(
     outs = ["libtensorflow_jni.dylib"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -590,7 +590,13 @@ void Execute_MatMul_CPU_Runtime_Error(bool async) {
   TFE_TensorHandle* m1 = TestMatrixTensorHandle();
   TFE_TensorHandle* m2 = TestMatrixTensorHandle3X2();
   TFE_Op* matmul = MatMulOp(ctx, m1, m2);
+  TFE_OpSetDevice(matmul, "/job:localhost/replica:0/task:0/device:CPU:0",
+                  status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_Op* matmul2 = MatMulOp(ctx, m1, m1);
+  TFE_OpSetDevice(matmul2, "/job:localhost/replica:0/task:0/device:CPU:0",
+                  status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_TensorHandle* retvals[1] = {nullptr};
   int num_retvals = 1;
   TFE_Execute(matmul, &retvals[0], &num_retvals, status);
@@ -688,19 +694,19 @@ TEST(CAPI, Execute_Min_CPU) {
   TFE_DeleteOp(minOp);
   TFE_DeleteTensorHandle(input);
   TFE_DeleteTensorHandle(axis);
-  TFE_DeleteContext(ctx, status);
-  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   ASSERT_EQ(1, num_retvals);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
-  TFE_DeleteTensorHandle(retvals[0]);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteTensorHandle(retvals[0]);
   float output[2] = {0};
   EXPECT_EQ(sizeof(output), TF_TensorByteSize(t));
   memcpy(&output[0], TF_TensorData(t), TF_TensorByteSize(t));
   TF_DeleteTensor(t);
   EXPECT_EQ(1, output[0]);
   EXPECT_EQ(3, output[1]);
+  TFE_DeleteContext(ctx, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
 }
 

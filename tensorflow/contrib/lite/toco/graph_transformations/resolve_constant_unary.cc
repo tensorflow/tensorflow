@@ -51,6 +51,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   // Test for unary ops of types that we know how to resolve.
   switch (unary_op->type) {
     case OperatorType::kCast:
+    case OperatorType::kLog:
     case OperatorType::kNeg:
     case OperatorType::kTensorFlowRsqrt:
     case OperatorType::kTensorFlowSqrt:
@@ -218,6 +219,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     }
     output_float_data[0] = max;
   } else if (unary_op->type == OperatorType::kNeg ||
+             unary_op->type == OperatorType::kLog ||
              unary_op->type == OperatorType::kTensorFlowRsqrt ||
              unary_op->type == OperatorType::kTensorFlowSqrt ||
              unary_op->type == OperatorType::kTensorFlowSquare) {
@@ -231,6 +233,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       float outval = 0.f;
       if (unary_op->type == OperatorType::kNeg) {
         outval = -val;
+      } else if (unary_op->type == OperatorType::kLog) {
+        outval = std::log(val);
       } else if (unary_op->type == OperatorType::kTensorFlowRsqrt) {
         outval = 1.0f / std::sqrt(val);
       } else if (unary_op->type == OperatorType::kTensorFlowSqrt) {

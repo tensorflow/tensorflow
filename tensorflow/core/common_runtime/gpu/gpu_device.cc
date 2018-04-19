@@ -257,6 +257,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
                                                          physical_device_desc)),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
+      scoped_allocator_mgr_(new ScopedAllocatorMgr(name)),
       tf_gpu_id_(tf_gpu_id),
       sync_every_op_(sync_every_op),
       max_streams_(max_streams) {

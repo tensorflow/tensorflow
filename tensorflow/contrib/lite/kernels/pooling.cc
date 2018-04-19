@@ -94,9 +94,9 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   int outHeight =
       computeOutSize(height, params->filter_height, params->stride_height);
 
-  data->padding.height = ComputePadding(params->stride_height, height,
+  data->padding.height = ComputePadding(params->stride_height, 1, height,
                                         params->filter_height, outHeight);
-  data->padding.width = ComputePadding(params->stride_width, width,
+  data->padding.width = ComputePadding(params->stride_width, 1, width,
                                        params->filter_width, outWidth);
 
   if (input->type == kTfLiteUInt8) {

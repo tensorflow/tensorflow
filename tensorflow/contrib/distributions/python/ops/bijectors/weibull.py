@@ -50,7 +50,6 @@ class Weibull(bijector.Bijector):
   def __init__(self,
                scale=1.,
                concentration=1.,
-               event_ndims=0,
                validate_args=False,
                name="weibull"):
     """Instantiates the `Weibull` bijector.
@@ -62,8 +61,6 @@ class Weibull(bijector.Bijector):
       concentration: Positive Float-type `Tensor` that is the same dtype and is
         broadcastable with `scale`.
         This is `k` in `Y = g(X) = 1 - exp((-x / l) ** k)`.
-      event_ndims: Python scalar indicating the number of dimensions associated
-        with a particular draw from the distribution.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
@@ -89,7 +86,7 @@ class Weibull(bijector.Bijector):
         ], self._concentration)
 
     super(Weibull, self).__init__(
-        event_ndims=event_ndims,
+        forward_min_event_ndims=0,
         validate_args=validate_args,
         name=name)
 
@@ -113,22 +110,18 @@ class Weibull(bijector.Bijector):
 
   def _inverse_log_det_jacobian(self, y):
     y = self._maybe_assert_valid_y(y)
-    event_dims = self._event_dims_tensor(y)
-    return math_ops.reduce_sum(
+    return (
         -math_ops.log1p(-y) +
         (1 / self.concentration - 1) * math_ops.log(-math_ops.log1p(-y)) +
-        math_ops.log(self.scale / self.concentration),
-        axis=event_dims)
+        math_ops.log(self.scale / self.concentration))
 
   def _forward_log_det_jacobian(self, x):
     x = self._maybe_assert_valid_x(x)
-    event_dims = self._event_dims_tensor(x)
-    return math_ops.reduce_sum(
+    return (
         -(x / self.scale) ** self.concentration +
         (self.concentration - 1) * math_ops.log(x) +
         math_ops.log(self.concentration) +
-        -self.concentration * math_ops.log(self.scale),
-        axis=event_dims)
+        -self.concentration * math_ops.log(self.scale))
 
   def _maybe_assert_valid_x(self, x):
     if not self.validate_args:

@@ -22,9 +22,11 @@ import copy
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import losses
+from tensorflow.python.ops import math_ops
 
 
 def check_num_samples(ins,
@@ -59,18 +61,31 @@ def check_num_samples(ins,
   Raises:
       ValueError: In case of invalid arguments.
   """
-  if steps is not None:
-    num_samples = None
-    if batch_size is not None:
-      raise ValueError(
-          'If ' + steps_name + ' is set, the `batch_size` must be None.')
-  elif ins and hasattr(ins[0], 'shape'):
-    num_samples = ins[0].shape[0]
-  else:
+  if steps is not None and batch_size is not None:
     raise ValueError(
-        'Either the input data should have '
-        'a defined shape, or ' + steps_name + ' should be specified.')
-  return num_samples
+        'If ' + steps_name + ' is set, the `batch_size` must be None.')
+
+  if not ins or has_symbolic_tensors(ins):
+    if steps is None:
+      raise ValueError('If your data is in the form of symbolic tensors, '
+                       'you should specify the `' + steps_name + '` argument '
+                       '(instead of the `batch_size` argument, '
+                       'because symbolic tensors are expected to produce '
+                       'batches of input data).')
+    return None
+  if hasattr(ins[0], 'shape'):
+    return int(ins[0].shape[0])
+  return None  # Edge case where ins == [static_learning_phase]
+
+
+def standardize_single_array(x):
+  if x is None:
+    return None
+  elif tensor_util.is_tensor(x):
+    return x
+  elif x.ndim == 1:
+    x = np.expand_dims(x, 1)
+  return x
 
 
 def standardize_input_data(data,
@@ -130,9 +145,7 @@ def standardize_input_data(data,
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
     data = [data]
-  data = [
-      np.expand_dims(x, 1) if x is not None and x.ndim == 1 else x for x in data
-  ]
+  data = [standardize_single_array(x) for x in data]
 
   if len(data) != len(names):
     if data and hasattr(data[0], 'shape'):
@@ -158,7 +171,7 @@ def standardize_input_data(data,
   # Check shapes compatibility.
   if shapes:
     for i in range(len(names)):
-      if shapes[i] is not None:
+      if shapes[i] is not None and not tensor_util.is_tensor(data[i]):
         data_shape = data[i].shape
         shape = shapes[i]
         if data[i].ndim != len(shape):
@@ -245,12 +258,13 @@ def check_array_lengths(inputs, targets, weights=None):
   """
 
   def set_of_lengths(x):
-    # return a set with the variation between
+    # Returns a set with the variation between
     # different shapes, with None => 0
     if x is None:
       return {}
     else:
-      return set([y.shape[0] for y in x if y is not None])
+      return set([y.shape[0] for y in x
+                  if y is not None and not tensor_util.is_tensor(y)])
 
   set_x = set_of_lengths(inputs)
   set_y = set_of_lengths(targets)
@@ -422,7 +436,7 @@ def weighted_masked_objective(fn):
     score_array = fn(y_true, y_pred)
     if mask is not None:
       # Cast the mask to floatX to avoid float64 upcasting in theano
-      mask = K.cast(mask, K.floatx())
+      mask = math_ops.cast(mask, K.floatx())
       # mask should have the same shape as score_array
       score_array *= mask
       #  the loss per batch should be proportional
@@ -436,7 +450,8 @@ def weighted_masked_objective(fn):
       weight_ndim = K.ndim(weights)
       score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
       score_array *= weights
-      score_array /= K.mean(K.cast(K.not_equal(weights, 0), K.floatx()))
+      score_array /= K.mean(
+          math_ops.cast(math_ops.not_equal(weights, 0), K.floatx()))
     return K.mean(score_array)
 
   return weighted
@@ -532,3 +547,8 @@ def standardize_weights(y,
     return weights
   else:
     return None
+
+
+def has_symbolic_tensors(ls):
+  return (any(tensor_util.is_tensor(v) for v in ls)
+          and not context.executing_eagerly())

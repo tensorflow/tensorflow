@@ -26,7 +26,7 @@ from tensorflow.python.platform import test
 
 class EmbeddingTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def test_embedding(self):
     testing_utils.layer_test(
         keras.layers.Embedding,

@@ -52,7 +52,7 @@ class OneHotCategorical(distribution.Distribution):
 
   #### Examples
 
-  Creates a 3-class distiribution, with the 2nd class, the most likely to be
+  Creates a 3-class distribution, with the 2nd class, the most likely to be
   drawn from.
 
   ```python
@@ -60,7 +60,7 @@ class OneHotCategorical(distribution.Distribution):
   dist = OneHotCategorical(probs=p)
   ```
 
-  Creates a 3-class distiribution, with the 2nd class the most likely to be
+  Creates a 3-class distribution, with the 2nd class the most likely to be
   drawn from, using logits.
 
   ```python

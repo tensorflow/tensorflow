@@ -47,13 +47,13 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import optimizer as optimizer_lib
@@ -682,7 +682,7 @@ class BaseLinearRegressorTrainingTest(object):
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
         if global_step is not None:
-          return state_ops.assign_add(global_step, 1).op
+          return distribute_lib.increment_var(global_step)
         return control_flow_ops.no_op()
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
@@ -690,7 +690,7 @@ class BaseLinearRegressorTrainingTest(object):
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
         if global_step is not None:
-          return state_ops.assign_add(global_step, 1).op
+          return distribute_lib.increment_var(global_step)
         return control_flow_ops.no_op()
 
     mock_optimizer = test.mock.NonCallableMock(
@@ -905,13 +905,13 @@ class BaseLinearClassifierTrainingTest(object):
       # Verify loss. We can't check the value directly, so we add an assert op.
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
           loss,
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
 
     mock_optimizer = test.mock.NonCallableMock(
         spec=optimizer_lib.Optimizer,

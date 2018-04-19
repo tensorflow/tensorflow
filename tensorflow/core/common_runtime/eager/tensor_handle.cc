@@ -47,7 +47,7 @@ namespace tensorflow {
 bool TensorHandle::IsReady() {
   if (node_id == 0) return true;
   mutex_lock l(ctx_mutex_);
-  return ctx_ == nullptr;
+  return is_ready_;
 }
 
 Status TensorHandle::WaitReady() {
@@ -55,7 +55,7 @@ Status TensorHandle::WaitReady() {
   EagerExecutor* executor = nullptr;
   {
     mutex_lock l(ctx_mutex_);
-    if (ctx_ == nullptr) return Status::OK();
+    if (is_ready_) return Status::OK();
     executor = ctx_->Executor();
   }
   return executor->WaitFor(node_id);
@@ -97,9 +97,10 @@ void TensorHandle::SetTensorAndDevice(const tensorflow::Tensor& tensor,
                                       tensorflow::Device* device,
                                       tensorflow::Device* op_device) {
   mutex_lock l(ctx_mutex_);
-  DCHECK(node_id > 0 && ctx_) << "SetTensorAndDevice should be only called  "
-                              << "on non-ready handles.";
-  ctx_ = nullptr;
+  DCHECK(node_id > 0 && !is_ready_)
+      << "SetTensorAndDevice should be only called  "
+      << "on non-ready handles.";
+  is_ready_ = true;
   tensor_ = tensor;
   device_ = device;
   op_device_ = op_device;
@@ -122,7 +123,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   const bool both_on_cpu = src_cpu && dst_cpu;
   if (is_same_device || both_on_cpu) {
     dstd = dst_cpu ? nullptr : dstd;
-    *output = new tensorflow::TensorHandle(*src, dstd, dstd);
+    *output = new tensorflow::TensorHandle(*src, dstd, dstd, ctx);
     return tensorflow::Status::OK();
   }
   if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
@@ -139,7 +140,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     dstd = dst_cpu ? nullptr : dstd;
-    *output = new tensorflow::TensorHandle(dst, dstd, dstd);
+    *output = new tensorflow::TensorHandle(dst, dstd, dstd, ctx);
     return tensorflow::Status::OK();
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
@@ -170,7 +171,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   n.WaitForNotification();
   if (status.ok()) {
     dstd = dst_cpu ? nullptr : dstd;
-    *output = new tensorflow::TensorHandle(dst, dstd, dstd);
+    *output = new tensorflow::TensorHandle(dst, dstd, dstd, ctx);
   }
   return status;
 }

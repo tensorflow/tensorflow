@@ -374,11 +374,11 @@ class KMeansClustering(estimator.Estimator):
               than `num_clusters`, a TensorFlow runtime error occurs.
       distance_metric: The distance metric used for clustering. One of:
         * `KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE`: Euclidean distance
-             between vectors `u` and `v` is defined as `||u - v||_2` which is
-             the square root of the sum of the absolute squares of the elements'
-             difference.
+             between vectors `u` and `v` is defined as `\\(||u - v||_2\\)`
+             which is the square root of the sum of the absolute squares of
+             the elements' difference.
         * `KMeansClustering.COSINE_DISTANCE`: Cosine distance between vectors
-             `u` and `v` is defined as `1 - (u . v) / (||u||_2 ||v||_2)`.
+             `u` and `v` is defined as `\\(1 - (u . v) / (||u||_2 ||v||_2)\\)`.
       random_seed: Python integer. Seed for PRNG used to initialize centers.
       use_mini_batch: A boolean specifying whether to use the mini-batch k-means
         algorithm. See explanation above.

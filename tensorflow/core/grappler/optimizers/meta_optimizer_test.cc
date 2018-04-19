@@ -36,7 +36,10 @@ class TestOptimizer : public CustomGraphOptimizer {
   TestOptimizer() {}
   string name() const override { return "test_optimizer"; }
 
-  Status Init() override { return Status::OK(); }
+  Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
+                  nullptr) override {
+    return Status::OK();
+  }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
@@ -70,6 +73,20 @@ TEST(MetaOptimizerTest, RunsCustomOptimizer) {
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   EXPECT_TRUE(TestOptimizer::IsOptimized());
+}
+
+TEST(MetaOptimizerTest, RunOptimizersTwice) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  RewriterConfig rewriter_config;
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+
+  MetaOptimizer optimizer(nullptr, rewriter_config);
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
 }
 
 }  // namespace

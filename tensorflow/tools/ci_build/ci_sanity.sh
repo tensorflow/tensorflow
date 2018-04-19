@@ -431,7 +431,8 @@ cmd_status(){
 # out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/java/demo/app/src/main/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/java/demo/app/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/examples/android/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/schema/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 

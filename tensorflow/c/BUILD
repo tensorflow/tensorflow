@@ -34,6 +34,8 @@ filegroup(
         exclude = [
             "c_api_experimental.cc",
             "c_api_experimental.h",
+            "python_api.cc",
+            "python_api.h",
             "*test*",
         ],
     ),
@@ -120,6 +122,7 @@ tf_cuda_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_platform",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -281,20 +284,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        # TODO(b/74620627): remove when _USE_C_SHAPES is removed
+        "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

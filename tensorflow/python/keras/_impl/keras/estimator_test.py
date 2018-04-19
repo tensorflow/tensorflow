@@ -27,10 +27,12 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator.inputs import numpy_io
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.applications import mobilenet
+from tensorflow.python.keras._impl.keras.optimizers import SGD
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
@@ -443,8 +445,9 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     model = simple_functional_model()
     model.compile(
         loss='categorical_crossentropy', optimizer='adam', metrics=['acc'])
-    est_keras = keras.estimator.model_to_estimator(
-        keras_model=model, config=self._config)
+    with self.test_session():
+      est_keras = keras.estimator.model_to_estimator(
+          keras_model=model, config=self._config)
 
     with self.test_session():
       with self.assertRaises(ValueError):
@@ -497,20 +500,42 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
             model_dir=tempfile.mkdtemp(dir=self._base_dir))
 
   def test_gpu_config(self):
+    with ops.Graph().as_default():
+      keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+      keras_model.compile(
+          loss='categorical_crossentropy',
+          optimizer='rmsprop',
+          metrics=['mse', keras.metrics.categorical_accuracy])
+
+      gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.3)
+      sess_config = config_pb2.ConfigProto(gpu_options=gpu_options)
+      self._config._session_config = sess_config
+      keras.estimator.model_to_estimator(
+          keras_model=keras_model, config=self._config)
+      self.assertEqual(
+          keras.backend.get_session()
+          ._config.gpu_options.per_process_gpu_memory_fraction,
+          gpu_options.per_process_gpu_memory_fraction)
+
+  def test_pretrained_weights(self):
     keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
     keras_model.compile(
         loss='categorical_crossentropy',
-        optimizer='rmsprop',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
         metrics=['mse', keras.metrics.categorical_accuracy])
-
-    gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.3)
-    sess_config = config_pb2.ConfigProto(gpu_options=gpu_options)
-    self._config._session_config = sess_config
-    keras.estimator.model_to_estimator(
-        keras_model=keras_model, config=self._config)
-    self.assertEqual(keras.backend.get_session()
-                     ._config.gpu_options.per_process_gpu_memory_fraction,
-                     gpu_options.per_process_gpu_memory_fraction)
+    with self.test_session():
+      keras_model.train_on_batch(
+          np.random.random((10,) + _INPUT_SIZE),
+          np.random.random((10, _NUM_CLASS)))
+      weights = keras_model.get_weights()
+      keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+      keras_model.set_weights(weights)
+      keras_model.compile(
+          loss='categorical_crossentropy',
+          optimizer=SGD(lr=0.0001, momentum=0.9),
+          metrics=['mse', keras.metrics.categorical_accuracy])
+      keras.estimator.model_to_estimator(
+          keras_model=keras_model, config=self._config)
 
 
 if __name__ == '__main__':

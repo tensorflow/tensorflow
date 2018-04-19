@@ -58,8 +58,7 @@ def assert_close(
   if data is None:
     data = [
         message,
-        "Condition x ~= y did not hold element-wise: x = ", x.name, x, "y = ",
-        y.name, y
+        "Condition x ~= y did not hold element-wise: x = ", x, "y = ", y
     ]
 
   if x.dtype.is_integer:
@@ -95,7 +94,7 @@ def assert_integer_form(
     x = ops.convert_to_tensor(x, name="x")
     if x.dtype.is_integer:
       return control_flow_ops.no_op()
-    message = message or "{} has non-integer components".format(x.op.name)
+    message = message or "{} has non-integer components".format(x)
     if int_dtype is None:
       try:
         int_dtype = {
@@ -123,13 +122,13 @@ def embed_check_nonnegative_integer_form(
     x = ops.convert_to_tensor(x, name="x")
     assertions = [
         check_ops.assert_non_negative(
-            x, message="'{}' must be non-negative.".format(x.op.name)),
+            x, message="'{}' must be non-negative.".format(x)),
     ]
     if not x.dtype.is_integer:
       assertions += [
           assert_integer_form(
               x, message="'{}' cannot contain fractional components.".format(
-                  x.op.name)),
+                  x)),
       ]
     return control_flow_ops.with_dependencies(assertions, x)
 
@@ -434,7 +433,7 @@ def embed_check_integer_casting_closed(
         and not _is_integer_like_by_dtype(target_dtype)):
       raise TypeError("At least one of {}.dtype ({}) and target_dtype ({}) "
                       "must be integer-type.".format(
-                          x.op.name, x.dtype.name, target_dtype.name))
+                          x, x.dtype.name, target_dtype.name))
 
     assertions = []
     if assert_nonnegative:
@@ -683,7 +682,7 @@ def pick_vector(cond,
     cond = ops.convert_to_tensor(cond, name="cond")
     if cond.dtype != dtypes.bool:
       raise TypeError("%s.dtype=%s which is not %s" %
-                      (cond.name, cond.dtype, dtypes.bool))
+                      (cond, cond.dtype, dtypes.bool))
     cond_value_static = tensor_util.constant_value(cond)
     if cond_value_static is not None:
       return true_vector if cond_value_static else false_vector
@@ -692,8 +691,8 @@ def pick_vector(cond,
     if true_vector.dtype != false_vector.dtype:
       raise TypeError(
           "%s.dtype=%s does not match %s.dtype=%s"
-          % (true_vector.name, true_vector.dtype,
-             false_vector.name, false_vector.dtype))
+          % (true_vector, true_vector.dtype,
+             false_vector, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(
         array_ops.concat([true_vector, false_vector], 0),

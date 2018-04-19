@@ -98,6 +98,8 @@ from tensorflow.python.summary import summary
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
+# Import boosted trees ops to make sure the ops are registered (but unused).
+from tensorflow.python.ops import gen_boosted_trees_ops as _gen_boosted_trees_ops
 
 # Import cudnn rnn ops to make sure their ops are registered.
 from tensorflow.python.ops import gen_cudnn_rnn_ops as _
@@ -146,6 +148,19 @@ from tensorflow.python.ops import tensor_array_ops
 # Eager execution
 from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.framework.ops import enable_eager_execution
+
+# Necessary for the symbols in this module to be taken into account by
+# the namespace management system (API decorators).
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
+
+# Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
+# (due to a circular dependency issue: rnn depends on layers).
+nn.dynamic_rnn = rnn.dynamic_rnn
+nn.static_rnn = rnn.static_rnn
+nn.raw_rnn = rnn.raw_rnn
+nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
+nn.rnn_cell = rnn_cell
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through

@@ -325,7 +325,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
   # Also, what about the gradient registry of these functions? Those need to be
   # addressed as well.
   for f in tmp_graph._functions.values():  # pylint: disable=protected-access
-    function._register(f._c_func)  # pylint: disable=protected-access
+    function._register(f._c_func.func)  # pylint: disable=protected-access
   initializer_function = function.GraphModeFunction(
       initialization_name,
       placeholder_inputs,

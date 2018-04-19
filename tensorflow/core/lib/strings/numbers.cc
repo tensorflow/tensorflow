@@ -23,6 +23,7 @@ limitations under the License.
 #include <locale>
 #include <unordered_map>
 
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -203,7 +204,7 @@ bool safe_strto64(StringPiece str, int64* value) {
 
   int64 vlimit = kint64max;
   int sign = 1;
-  if (str.Consume("-")) {
+  if (str_util::ConsumePrefix(&str, "-")) {
     sign = -1;
     // Different limit for positive and negative integers.
     vlimit = kint64min;
@@ -265,7 +266,7 @@ bool safe_strto32(StringPiece str, int32* value) {
 
   int64 vmax = kint32max;
   int sign = 1;
-  if (str.Consume("-")) {
+  if (str_util::ConsumePrefix(&str, "-")) {
     sign = -1;
     // Different max for positive and negative integers.
     ++vmax;

@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -53,8 +54,8 @@ Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
-void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
+void HasError(const Status& s, StringPiece substr) {
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -240,7 +241,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsInvalidArgument(status2));
     EXPECT_TRUE(
-        StringPiece(status2.error_message()).contains("remote execution."));
+        str_util::StrContains(status2.error_message(), "remote execution."));
 
     return status;
   }
@@ -310,7 +311,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsInvalidArgument(status2));
     EXPECT_TRUE(
-        StringPiece(status2.error_message()).contains("remote execution."));
+        str_util::StrContains(status2.error_message(), "remote execution."));
 
     return status;
   }

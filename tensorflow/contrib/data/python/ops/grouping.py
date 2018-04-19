@@ -108,7 +108,7 @@ def bucket_by_sequence_length(element_length_func,
   fraction of padding in a batch which increases training step efficiency.
 
   Args:
-    element_length_func: function from element in `Dataset` to `tf.int64`,
+    element_length_func: function from element in `Dataset` to `tf.int32`,
       determines the length of the element, which will determine the bucket it
       goes into.
     bucket_boundaries: `list<int>`, upper length boundaries of the buckets.

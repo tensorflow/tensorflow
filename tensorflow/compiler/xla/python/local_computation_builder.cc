@@ -521,6 +521,17 @@ ComputationDataHandle LocalComputationBuilder::Conditional(
                               false_computation.computation());
 }
 
+StatusOr<bool> LocalComputationBuilder::IsConstant(
+    const ComputationDataHandle& operand, int64 num_parameters) {
+  return builder_.IsConstant(operand, num_parameters);
+}
+
+StatusOr<std::unique_ptr<Literal>> LocalComputationBuilder::ComputeConstant(
+    const ComputationDataHandle& operand, const Layout* output_layout,
+    tensorflow::gtl::ArraySlice<Literal> parameters) {
+  return builder_.ComputeConstant(operand, output_layout, parameters);
+}
+
 #define _FORWARD(method_name, return_sig, args_sig, args)    \
   return_sig LocalComputationBuilder::method_name args_sig { \
     return builder_.method_name args;                        \

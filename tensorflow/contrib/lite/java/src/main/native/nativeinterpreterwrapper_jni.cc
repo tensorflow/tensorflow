@@ -315,6 +315,16 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
   interpreter->UseNNAPI(static_cast<bool>(state));
 }
 
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong handle,
+                                                           jint num_threads) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return;
+  interpreter->SetNumThreads(static_cast<int>(num_threads));
+}
+
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
     JNIEnv* env, jclass clazz, jint size) {

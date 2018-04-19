@@ -13,18 +13,6 @@ load(
     "tf_kernel_library",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_cc_test(
     name = "graph_transferer_test",
     size = "small",
@@ -82,6 +70,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
     ],
 )
 

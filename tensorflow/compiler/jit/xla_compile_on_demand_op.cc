@@ -51,12 +51,10 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   int64 num_resource_args = variables.size();
 
   xla::LocalClient* client = metadata.client();
-  XlaTensorInfoManager* tensor_info_manager = &metadata.tensor_info_manager();
 
   // Builds an XLA allocator for the device.
-  XlaAllocator xla_allocator(client->platform(), ctx);
   XlaComputationLaunchContext launch_context(
-      num_resource_args, client, &xla_allocator, tensor_info_manager);
+      num_resource_args, client, client->backend().memory_allocator(), true);
 
   launch_context.PopulateInputs(ctx, result, variables);
 
@@ -67,7 +65,7 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   VLOG(2) << "Executing computation.";
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
-  run_options.set_allocator(&xla_allocator);
+  run_options.set_allocator(client->backend().memory_allocator());
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
 
   auto run_result = executable->Run(launch_context.arguments(), run_options);
@@ -106,16 +104,13 @@ Status XlaCompileOnDemandOp::Compile(
     OpKernelContext* ctx, const XlaDevice::Metadata& metadata,
     const XlaCompiler::CompilationResult** result,
     xla::LocalExecutable** executable) {
-  XlaTensorInfoManager* tensor_info_manager = &metadata.tensor_info_manager();
-
   std::map<int, Tensor> constant_arguments;
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& device_tensor = ctx->input(i);
-    if (const XlaTensorInfo* tensor_info =
-            tensor_info_manager->GetTensorInfo(device_tensor)) {
-      if (tensor_info->has_host_tensor() &&
+    if (const XlaTensor* xla_tensor = XlaTensor::FromTensor(&device_tensor)) {
+      if (xla_tensor->has_host_tensor() &&
           ShouldArgumentBeConstant(&ctx->op_kernel(), i)) {
-        constant_arguments[i] = tensor_info->host_tensor();
+        constant_arguments[i] = xla_tensor->host_tensor();
       }
     }
     if (constant_arguments.count(i) == 0 &&
@@ -123,8 +118,10 @@ Status XlaCompileOnDemandOp::Compile(
       // Slow path; the argument is not available as a host constant so we must
       // fetch it synchronously.
       Tensor host_tensor;
+      AllocatorAttributes attrs;
+      attrs.set_on_host(true);
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          device_tensor.dtype(), device_tensor.shape(), &host_tensor));
+          device_tensor.dtype(), device_tensor.shape(), &host_tensor, attrs));
       Notification n;
       ctx->op_device_context()->CopyDeviceTensorToCPU(
           &device_tensor, "ConstantArgument",

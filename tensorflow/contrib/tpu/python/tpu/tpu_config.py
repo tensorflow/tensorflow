@@ -35,8 +35,14 @@ _TF_CONFIG_ENV = run_config_lib._TF_CONFIG_ENV
 _SERVICE_KEY = run_config_lib._SERVICE_KEY
 _TPU_WORKER_JOB_NAME = 'tpu_worker_job_name'
 _NUM_CORES_PER_HOST = 8
-
 # pylint: enable=protected-access
+
+
+class InputPipelineConfig(object):
+  r"""Please see the definition of these values in TPUConfig."""
+  PER_SHARD_V1 = 1
+  PER_HOST_V1 = 2
+  PER_HOST_V2 = 3
 
 
 # TODO(b/72511246) Provide a simplified api to configure model parallelism.
@@ -68,13 +74,16 @@ class TPUConfig(
       partitioned across 4 cores which span two cores in both x and y
       coordinates.  Please refer to @{tf.contrib.tpu.Topology} for the
       geometry of a TPU mesh.
-    per_host_input_for_training: If `True`, `input_fn` is invoked Per-Host
-      rather than Per-Core. With Per-Host input pipeline deployment, `input_fn`
-      is invoked once on each host. With Per-Core input pipeline deployment, it
-      is invoked once for each core. To be precise, with a global batch size
-      `train_batch_size` in `TPUEstimator` constructor, the batch size for each
-      shard is `train_batch_size` // #hosts. With Per-Core input pipeline
-      deployment, the shard batch size is `train_batch_size` // #cores.
+    per_host_input_for_training: If `True`, `PER_HOST_V1`, or `PER_HOST_V2`,
+      `input_fn` is invoked per-host rather than per-core. With per-host input
+      pipeline configuration, `input_fn` is invoked once on each host. With the
+      per-core input pipeline configuration, it is invoked once for each core.
+      With a global batch size `train_batch_size` in `TPUEstimator` constructor,
+      the batch size for each shard is `train_batch_size` // #hosts in the
+      `True` or `PER_HOST_V1` mode. In `PER_HOST_V2` mode, it is
+      `train_batch_size` // #cores. With the per-core input pipeline
+      configuration, the shard batch size is also `train_batch_size` // #cores.
+      Note: per_host_input_for_training==PER_SHARD_V1 only supports mode.TRAIN.
     tpu_job_name: The name of the TPU job. Typically, this name is auto-inferred
       within TPUEstimator, however when using ClusterSpec propagation in more
       esoteric cluster configurations, you may need to specify the job name as a
@@ -116,6 +125,13 @@ class TPUConfig(
       if any(computation_shape_array < 1) or any(computation_shape_array > 2):
         raise ValueError('computation_shape elements can only be 1 or 2; got '
                          'computation_shape={}'.format(computation_shape))
+
+    # per_host_input_for_training may be True, False, or integer in [1..3].
+    # Map legacy values (True, False) to numeric values.
+    if per_host_input_for_training is False:
+      per_host_input_for_training = InputPipelineConfig.PER_SHARD_V1
+    elif per_host_input_for_training is True:
+      per_host_input_for_training = InputPipelineConfig.PER_HOST_V1
 
     # Check initial_infeed_sleep_secs.
     if initial_infeed_sleep_secs:

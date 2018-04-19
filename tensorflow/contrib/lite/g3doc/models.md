@@ -1,7 +1,13 @@
 # List of Hosted Models
 
-*   [Inception V3 2015](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_2015_2017_11_10.zip)
-*   [Inception V3 Slim 2016](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_slim_2016_android_2017_11_10.zip)
+*   [NASNet large](https://storage.googleapis.com/download.tensorflow.org/models/tflite/nasnet_large_2018_03_27.zip)
+*   [NASNet mobile](https://storage.googleapis.com/download.tensorflow.org/models/tflite/nasnet_mobile_2018_03_27.zip)
+*   [ResNet v2 101](https://storage.googleapis.com/download.tensorflow.org/models/tflite/resnet_v2_101_2018_03_27.zip)
+*   [ResNet v2 50](https://storage.googleapis.com/download.tensorflow.org/models/tflite/resnet_v2_50_2018_03_27.zip)
+*   [Inception ResNet v2](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_resnet_v2_2018_03_27.zip)
+*   [Inception v4](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v4_2018_03_27.zip)
+*   [Inception v3 2015](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_2015_2017_11_10.zip)
+*   [Inception v3 Slim 2016](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_slim_2016_android_2017_11_10.zip)
 *   [Mobilenet 0.25 128 Float](https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_0.25_128_float_2017_11_08.zip)
 *   [Mobilenet 0.25 160 Float](https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_0.25_160_float_2017_11_08.zip)
 *   [Mobilenet 0.25 192 Float](https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_0.25_192_float_2017_11_08.zip)

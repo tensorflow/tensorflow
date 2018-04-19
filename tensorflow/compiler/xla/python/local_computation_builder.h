@@ -268,6 +268,13 @@ class LocalComputationBuilder {
                                     const ComputationDataHandle& false_operand,
                                     const LocalComputation& false_computation);
 
+  StatusOr<bool> IsConstant(const ComputationDataHandle& operand,
+                            int64 num_parameters);
+
+  StatusOr<std::unique_ptr<Literal> > ComputeConstant(
+      const ComputationDataHandle& operand, const Layout* output_layout,
+      tensorflow::gtl::ArraySlice<Literal> parameters);
+
 #define _FORWARD(method_name, return_sig, args_sig) \
   return_sig method_name args_sig;
 

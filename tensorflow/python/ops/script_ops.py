@@ -334,7 +334,11 @@ def py_func(func, inp, Tout, stateful=True, name=None):
     result = func(*[x.numpy() for x in inp])
     result = nest.flatten(result)
 
-    return [x if x is None else ops.convert_to_tensor(x) for x in result]
+    result = [x if x is None else ops.convert_to_tensor(x) for x in result]
+    if len(result) == 1:
+      # Mimic the automatic unwrapping in graph-mode py_func
+      result, = result
+    return result
 
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)

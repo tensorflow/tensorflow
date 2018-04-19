@@ -122,6 +122,9 @@ xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
 xla::ComputationDataHandle XlaHelpers::Epsilon(xla::ComputationBuilder* b,
                                                DataType data_type) {
   switch (data_type) {
+    case DT_HALF:
+      return b->ConstantR0<Eigen::half>(
+          static_cast<Eigen::half>(Eigen::NumTraits<Eigen::half>::epsilon()));
     case DT_BFLOAT16:
       return b->ConstantR0<bfloat16>(bfloat16::epsilon());
     case DT_FLOAT:

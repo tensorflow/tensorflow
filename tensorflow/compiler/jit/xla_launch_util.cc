@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -52,60 +54,66 @@ std::map<int, OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
   return snapshot;
 }
 
-XlaAllocator::XlaAllocator(const gpu::Platform* platform,
-                           OpKernelContext* op_context)
-    : xla::DeviceMemoryAllocator(platform), op_context_(op_context) {}
+XlaAllocator::XlaAllocator(const gpu::Platform* platform, Allocator* wrapped)
+    : xla::DeviceMemoryAllocator(platform), wrapped_(wrapped) {}
 
-XlaAllocator::~XlaAllocator() { CHECK(allocated_.empty()); }
+XlaAllocator::~XlaAllocator() {}
 
 xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
-  void* data = op_context_->device()->GetAllocator({})->AllocateRaw(
-      Allocator::kAllocatorAlignment, size);
-  allocated_.insert(data);
-  return gpu::DeviceMemoryBase(data, size);
+  void* data = wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size);
+  if (data == nullptr) {
+    return errors::ResourceExhausted("Out of memory while trying to allocate ",
+                                     size, " bytes.");
+  } else {
+    return gpu::DeviceMemoryBase(data, size);
+  }
 }
-
-void XlaAllocator::Release(void* ptr) { allocated_.erase(ptr); }
 
 Status XlaAllocator::Deallocate(int device_ordinal,
                                 gpu::DeviceMemoryBase* mem) {
-  if (allocated_.count(mem->opaque())) {
-    op_context_->device()->GetAllocator({})->DeallocateRaw(mem->opaque());
-    allocated_.erase(mem->opaque());
-  }
+  wrapped_->DeallocateRaw(mem->opaque());
   return Status::OK();
 }
 
 namespace {
-// Return the 'index''th subtree of the given ShapedBuffer as a ShapedBuffer.
-xla::ShapedBuffer ExtractSubShapedBuffer(const xla::ShapedBuffer& shaped_buffer,
-                                         int index) {
+// Return the 'index''th subtree of the given ShapedBuffer as a
+// ScopedShapedBuffer. The returned ScopedShapedBuffer takes ownership of the
+// subtree, and sets the input's buffer pointers to nullptr for the subtree.
+std::unique_ptr<xla::ScopedShapedBuffer> ExtractSubShapedBuffer(
+    xla::ShapedBuffer* shaped_buffer, int index,
+    xla::DeviceMemoryAllocator* allocator) {
   xla::Shape on_host_shape = xla::ShapeUtil::GetTupleElementShape(
-      shaped_buffer.on_host_shape(), index);
+      shaped_buffer->on_host_shape(), index);
   xla::Shape on_device_shape = xla::ShapeUtil::GetTupleElementShape(
-      shaped_buffer.on_device_shape(), index);
+      shaped_buffer->on_device_shape(), index);
 
   xla::ShapedBuffer sub_shaped_buffer(on_host_shape, on_device_shape,
-                                      shaped_buffer.platform(),
-                                      shaped_buffer.device_ordinal());
+                                      shaped_buffer->platform(),
+                                      shaped_buffer->device_ordinal());
 
-  auto& shape_tree = shaped_buffer.buffers();
+  auto& shape_tree = shaped_buffer->buffers();
   auto& sub_shape_tree = sub_shaped_buffer.buffers();
   sub_shape_tree.CopySubtreeFrom(shape_tree,
                                  /*source_base_index=*/{index},
                                  /*target_base_index=*/{});
-  return sub_shaped_buffer;
+  for (auto& index_to_buffer : shape_tree) {
+    if (!index_to_buffer.first.empty() && index_to_buffer.first[0] == index) {
+      index_to_buffer.second = gpu::DeviceMemoryBase(nullptr, 0);
+    }
+  }
+  return xla::ScopedShapedBuffer::MakeScoped(&sub_shaped_buffer, allocator)
+      .ValueOrDie();
 }
 }  // namespace
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
     int64 num_resource_args, xla::LocalClient* client,
-    XlaAllocator* xla_allocator, XlaTensorInfoManager* tensor_info_manager)
+    xla::DeviceMemoryAllocator* xla_allocator, bool allocate_xla_tensors)
     : num_resource_args_(num_resource_args),
       client_(client),
       xla_allocator_(xla_allocator),
-      tensor_info_manager_(tensor_info_manager) {}
+      allocate_xla_tensors_(allocate_xla_tensors) {}
 
 void XlaComputationLaunchContext::PopulateInputs(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
@@ -130,20 +138,17 @@ void XlaComputationLaunchContext::PopulateInputs(
     const xla::Shape on_device_shape =
         client_->backend().transfer_manager()->HostShapeToDeviceShape(shape);
     if (xla::ShapeUtil::IsTuple(on_device_shape)) {
-      CHECK(tensor_info_manager_);
-      const XlaTensorInfo* tensor_info =
-          tensor_info_manager_->GetTensorInfo(*t);
-      CHECK(tensor_info && tensor_info->has_shaped_buffer());
+      const XlaTensor* xla_tensor = XlaTensor::FromTensor(t);
+      CHECK(xla_tensor && xla_tensor->has_shaped_buffer());
       arg_ptrs_[i] =
-          const_cast<xla::ShapedBuffer*>(&tensor_info->shaped_buffer());
+          const_cast<xla::ShapedBuffer*>(&xla_tensor->shaped_buffer());
     } else {
       CHECK(xla::ShapeUtil::Equal(shape, on_device_shape))
           << "On-device shape "
           << xla::ShapeUtil::HumanStringWithLayout(on_device_shape)
           << " not the same as on-host shape "
           << xla::ShapeUtil::HumanStringWithLayout(shape);
-      gpu::DeviceMemoryBase dmem = gpu::DeviceMemoryBase(
-          const_cast<char*>(t->tensor_data().data()), t->tensor_data().size());
+      gpu::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
       arg_buffers_[i] = xla::MakeUnique<xla::ShapedBuffer>(
           /*on_host_shape=*/shape, /*on_device_shape=*/shape,
           client_->platform(), client_->default_device_ordinal());
@@ -162,17 +167,15 @@ void XlaComputationLaunchContext::PopulateOutputs(
   // Computation output should always be a tuple.
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "Result tuple shape: " << output->on_host_shape().DebugString();
+    VLOG(2) << "Result tuple shape (on device): "
+            << output->on_device_shape().DebugString();
   }
   CHECK_EQ(ctx->num_outputs(), kernel->outputs.size());
 
   // Copy XLA results to the OpOutputList.
   int output_num = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
-    AllocatorAttributes alloc_attrs = ctx->output_alloc_attr(i);
     Allocator* allocator = ctx->device()->GetAllocator({});
-    if (tensor_info_manager_ && !alloc_attrs.on_host()) {
-      allocator = tensor_info_manager_;
-    }
     if (kernel->outputs[i].is_constant) {
       // Output is a constant.
       const Tensor& const_tensor = kernel->outputs[i].constant_value;
@@ -180,49 +183,63 @@ void XlaComputationLaunchContext::PopulateOutputs(
       const size_t total_bytes = const_tensor.TotalBytes();
       if (stream && total_bytes > 0) {
         // Copy host -> device. (Empty tensors don't have backing buffers.)
+        // Manually allocate memory using an XlaTensorBuffer so we can allocate
+        // as much memory as the device requires (as given by
+        // GetByteSizeRequirement). This avoids XlaTransferManager having to
+        // reallocate the device buffer later.
         VLOG(1) << "Constant output tensor on device";
 
-        TF_CHECK_OK(
-            ctx->allocate_output(i, const_tensor.shape(), &output_tensor));
+        OP_REQUIRES_OK(
+            ctx, ctx->allocate_output(i, const_tensor.shape(), &output_tensor));
+        if (XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor)) {
+          OP_REQUIRES_OK(ctx, xla_tensor->AllocateShapedBuffer(
+                                  const_tensor.dtype(), const_tensor.shape(),
+                                  client_, stream->parent()->device_ordinal()));
+        }
 
-        const void* src_ptr = DMAHelper::base(&const_tensor);
-        void* dst_ptr = DMAHelper::base(output_tensor);
-        gpu::DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
-        // Memcpying asynchronously is safe for the GPU, but the CPU uses a
-        // shared allocator so hold a reference to the copied-to buffer until
-        // complete.
-        TensorReference ref(*output_tensor);
-        stream->ThenMemcpy(&gpu_dst_ptr, src_ptr, total_bytes);
-        stream->ThenDoHostCallback([ref] { ref.Unref(); });
+        Device* device = dynamic_cast<Device*>(ctx->device());
+        OP_REQUIRES(ctx, device != nullptr,
+                    errors::Internal("DeviceBase was not a Device."));
+        ctx->op_device_context()->CopyCPUTensorToDevice(
+            &const_tensor, device, output_tensor,
+            [&](Status status) { TF_CHECK_OK(status); });
+
+        if (device->device_type() == DEVICE_GPU) {
+          // The GPUDeviceContext enqueues the host->device transfer in a
+          // separate stream from the main compute stream. We must ensure the
+          // compute stream is synchronized with the host->device transfer
+          // stream now otherwise we will create a race condition.
+          auto* gpu_device_context =
+              static_cast<GPUDeviceContext*>(ctx->op_device_context());
+          gpu_device_context->stream()->ThenWaitFor(
+              gpu_device_context->host_to_device_stream());
+        }
       } else {
         // No copy required.
         ctx->set_output(i, const_tensor);
         output_tensor = ctx->mutable_output(i);
       }
-      if (tensor_info_manager_) {
-        XlaTensorInfo* tensor_info =
-            tensor_info_manager_->GetOrCreateTensorInfo(*output_tensor);
-        tensor_info->set_host_tensor(const_tensor);
+      if (XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor)) {
+        xla_tensor->set_host_tensor(const_tensor);
       }
     } else {
       const TensorShape& shape = kernel->outputs[i].shape;
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString();
 
       gpu::DeviceMemoryBase buffer = output->buffer({output_num});
-      Tensor output_tensor = XlaTensorBuffer::MakeTensor(
-          ctx->expected_output_dtype(i), shape, buffer, allocator);
-      xla_allocator_->Release(buffer.opaque());
-
-      xla::Shape output_shape = xla::ShapeUtil::GetTupleElementShape(
-          output->on_device_shape(), output_num);
-      if (xla::ShapeUtil::IsTuple(output_shape)) {
-        CHECK(tensor_info_manager_);
-        XlaTensorInfo* tensor_info =
-            tensor_info_manager_->GetOrCreateTensorInfo(output_tensor);
-        tensor_info->set_shaped_buffer(
-            ExtractSubShapedBuffer(*output, output_num));
+      if (allocate_xla_tensors_) {
+        Tensor* output_tensor;
+        OP_REQUIRES_OK(ctx, ctx->allocate_output(i, shape, &output_tensor));
+        XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
+        CHECK(xla_tensor);
+        xla_tensor->set_shaped_buffer(
+            ExtractSubShapedBuffer(output.get(), output_num, xla_allocator_));
+      } else {
+        Tensor output_tensor = XlaTensorBuffer::MakeTensor(
+            ctx->expected_output_dtype(i), shape, buffer, allocator);
+        output->set_buffer(gpu::DeviceMemoryBase(nullptr, 0), {output_num});
+        ctx->set_output(i, output_tensor);
       }
-      ctx->set_output(i, output_tensor);
       ++output_num;
     }
 
@@ -235,9 +252,6 @@ void XlaComputationLaunchContext::PopulateOutputs(
   VLOG(2) << "Applying variable updates";
   for (int i = 0; i < kernel->resource_updates.size(); ++i) {
     Allocator* allocator = ctx->device()->GetAllocator({});
-    if (tensor_info_manager_) {
-      allocator = tensor_info_manager_;
-    }
     const XlaCompiler::ResourceUpdate& write = kernel->resource_updates[i];
     OP_REQUIRES(ctx,
                 write.input_index >= 0 && write.input_index < ctx->num_inputs(),
@@ -260,18 +274,21 @@ void XlaComputationLaunchContext::PopulateOutputs(
     mutex_lock ml(*variable->mu());
     OP_REQUIRES(ctx, variable->tensor()->dtype() == write.type,
                 errors::Internal("Mismatched type in variable write"));
-    *variable->tensor() =
-        XlaTensorBuffer::MakeTensor(write.type, write.shape, buffer, allocator);
-    xla_allocator_->Release(buffer.opaque());
 
-    xla::Shape output_shape = xla::ShapeUtil::GetTupleElementShape(
-        output->on_device_shape(), output_num);
-    if (xla::ShapeUtil::IsTuple(output_shape)) {
-      CHECK(tensor_info_manager_);
-      XlaTensorInfo* tensor_info =
-          tensor_info_manager_->GetOrCreateTensorInfo(*variable->tensor());
-      tensor_info->set_shaped_buffer(
-          ExtractSubShapedBuffer(*output, output_num));
+    if (allocate_xla_tensors_) {
+      Tensor output_tensor;
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(write.type, write.shape, &output_tensor));
+      XlaTensor* xla_tensor = XlaTensor::FromTensor(&output_tensor);
+      CHECK(xla_tensor);
+      xla_tensor->set_shaped_buffer(
+          ExtractSubShapedBuffer(output.get(), output_num, xla_allocator_));
+      *variable->tensor() = output_tensor;
+    } else {
+      Tensor output_tensor = XlaTensorBuffer::MakeTensor(
+          write.type, write.shape, buffer, allocator);
+      output->set_buffer(gpu::DeviceMemoryBase(nullptr, 0), {output_num});
+      *variable->tensor() = output_tensor;
     }
     ++output_num;
   }

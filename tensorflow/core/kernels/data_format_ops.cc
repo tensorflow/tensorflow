@@ -37,25 +37,37 @@ class DataFormatDimMapOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(
-        context, src_format == "NHWC",
-        errors::InvalidArgument(strings::StrCat(
-            "Current implementation doesn't support source data format ",
-            src_format)));
-    OP_REQUIRES(context, dst_format == "NCHW",
+    OP_REQUIRES(context, src_format.size() == 4,
                 errors::InvalidArgument(strings::StrCat(
-                    "Current implementation doesn't support dst data format ",
-                    dst_format)));
+                    "Source format must of length 4, received src_format = ",
+                    src_format)));
+    OP_REQUIRES(
+        context, dst_format.size() == 4,
+        errors::InvalidArgument(strings::StrCat(
+            "Destination format must of length 4, received dst_format = ",
+            dst_format)));
+    dst_idx_ = Tensor(DT_INT32, {static_cast<int64>(src_format.size())});
+    for (int i = 0; i < src_format.size(); ++i) {
+      for (int j = 0; j < dst_format.size(); ++j) {
+        if (dst_format[j] == src_format[i]) {
+          dst_idx_.vec<int>()(i) = j;
+          break;
+        }
+      }
+    }
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    Tensor* output = nullptr;
+    Tensor* output;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
     functor::DataFormatDimMap<Device, T>()(context->eigen_device<Device>(),
-                                           input.flat<T>(), output->flat<T>());
+                                           input.flat<T>(), output->flat<T>(),
+                                           dst_idx_.vec<int>());
   }
+
+  Tensor dst_idx_;
 };
 
 template <typename Device, typename T>
@@ -147,11 +159,11 @@ TF_CALL_int64(REGISTER_KERNEL);
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                \
-  template <>                                              \
-  void DataFormatDimMap<GPUDevice, T>::operator()(         \
-      const GPUDevice& d, typename TTypes<T>::ConstFlat x, \
-      typename TTypes<T>::Flat y);                         \
+#define DECLARE_GPU_SPEC(T)                                    \
+  template <>                                                  \
+  void DataFormatDimMap<GPUDevice, T>::operator()(             \
+      const GPUDevice& d, typename TTypes<T>::ConstFlat x,     \
+      typename TTypes<T>::Flat y, const TTypes<int>::Vec dst); \
   extern template struct DataFormatDimMap<GPUDevice, T>;
 #define DECLARE_GPU_SPECS(T) DECLARE_GPU_SPEC(T);
 TF_CALL_int32(DECLARE_GPU_SPECS);

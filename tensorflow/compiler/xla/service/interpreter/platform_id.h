@@ -22,7 +22,7 @@ namespace perftools {
 namespace gputools {
 namespace interpreter {
 
-extern const Platform::Id kInterpreterPlatformId;
+extern const Platform::Id kXlaInterpreterPlatformId;
 
 }  // namespace interpreter
 }  // namespace gputools

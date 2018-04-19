@@ -247,6 +247,53 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       self.assertTrue(not op.name.startswith('name_scope/name_scope/'),
                       'Broken op: %s' % op.name)
 
+  def testWithNullNameScope(self):
+    self._RunTestOverParameters(self._TestWithNullNameScope)
+
+  def _TestWithNullNameScope(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      with graph.name_scope(None):
+        batch_size, height, width, depth = 5, 128, 128, 32
+        input1 = array_ops.zeros((batch_size, height, width, depth))
+        _ = conv2d(
+            input1,
+            32, [5, 5],
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=None,
+            scope='test')
+
+        quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+        # Passes if Quantize() does not crash.
+
+  def testWithNonMatchingNameScope(self):
+    self._RunTestOverParameters(self._testWithNonMatchingNameScope)
+
+  def _testWithNonMatchingNameScope(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      with graph.name_scope('name_scope'):
+        batch_size, height, width, depth = 5, 128, 128, 3
+        input1 = array_ops.zeros((batch_size, height, width, depth))
+        _ = conv2d(
+            input1,
+            32, [5, 5],
+            stride=2,
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=None,
+            scope='test')
+
+    op_names_before_quantize = set([op.name for op in graph.get_operations()])
+    quantize.Quantize(
+        graph, is_training, weight_bits=8, activation_bits=8,
+        scope='NonExisting/')
+    op_names_after_quantize = set([op.name for op in graph.get_operations()])
+
+    # No ops should be inserted or removed.
+    self.assertEqual(op_names_before_quantize, op_names_after_quantize)
+
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.
 

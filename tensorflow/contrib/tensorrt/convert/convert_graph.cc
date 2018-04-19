@@ -405,7 +405,13 @@ tensorflow::Status ConvertGraphDefToTensorRT(
                          max_mem_per_engine, static_graph_properties,
                          &output_edge_map, precision_mode);
     if (precision_mode == INT8MODE) {
-      TF_RETURN_IF_ERROR(GetCalibNode(&p));
+      tensorflow::Status status = GetCalibNode(&p);
+      if (status != tensorflow::Status::OK()) {
+        LOG(WARNING) << "subgraph conversion error for subgraph_index:" << count
+                     << " due to: \"" << status.ToString()
+                     << "\" SKIPPING......( " << subgraph_node_names.size()
+                     << " nodes)";
+      }
     } else {
       tensorflow::Status status = ConvertSubGraphToTensorRT(&p);
       if (status != tensorflow::Status::OK()) {
@@ -414,8 +420,8 @@ tensorflow::Status ConvertGraphDefToTensorRT(
                      << "\" SKIPPING......( " << subgraph_node_names.size()
                      << " nodes)";
       }
-      count++;
     }
+    count++;
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();

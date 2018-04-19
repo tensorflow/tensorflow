@@ -142,6 +142,8 @@ cuda_py_test(
         ":tape",
         ":test",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
@@ -396,21 +398,6 @@ py_test(
         "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 py_library(

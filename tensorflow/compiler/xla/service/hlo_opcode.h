@@ -54,6 +54,7 @@ namespace xla {
   V(kBitcast, "bitcast")                                     \
   V(kBitcastConvert, "bitcast-convert")                      \
   V(kBroadcast, "broadcast")                                 \
+  V(kBroadcastDimOne, "broadcast-dim-one")                   \
   V(kCall, "call", kHloOpcodeIsVariadic)                     \
   V(kCeil, "ceil")                                           \
   V(kClamp, "clamp")                                         \

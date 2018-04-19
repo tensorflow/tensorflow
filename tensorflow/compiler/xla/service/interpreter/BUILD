@@ -120,14 +120,3 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-)

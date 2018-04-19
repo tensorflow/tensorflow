@@ -228,6 +228,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_STRIDED_SLICE(reference_ops, int64_t);
       }
       break;
+    case kTfLiteUInt8:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, uint8_t);
+      }
+      break;
     default:
       context->ReportError(context,
                            "Type is currently not supported "

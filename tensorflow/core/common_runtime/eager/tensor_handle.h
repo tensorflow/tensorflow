@@ -49,13 +49,14 @@ namespace tensorflow {
 // (unrelated to python TensorHandle).
 class TensorHandle : public core::RefCounted {
  public:
-  TensorHandle(const Tensor& t, Device* d, Device* op_device)
+  TensorHandle(const Tensor& t, Device* d, Device* op_device, EagerContext* ctx)
       : dtype(t.dtype()),
         node_id(0),
         tensor_(t),
         device_(d),
         op_device_(op_device),
-        ctx_(nullptr) {}
+        ctx_(ctx),
+        is_ready_(true) {}
 
   TensorHandle(uint64 node_id, DataType dtype, EagerContext* ctx)
       : dtype(dtype),
@@ -63,7 +64,8 @@ class TensorHandle : public core::RefCounted {
         tensor_(dtype),
         device_(nullptr),
         op_device_(nullptr),
-        ctx_(ctx) {
+        ctx_(ctx),
+        is_ready_(ctx == nullptr) {
     DCHECK_GT(node_id, 0);
   }
 
@@ -87,6 +89,12 @@ class TensorHandle : public core::RefCounted {
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       TensorHandle** output);
+
+  // Warning: can return nullptr for CPU tensors.
+  EagerContext* Context() {
+    mutex_lock ml(ctx_mutex_);
+    return ctx_;
+  }
 
   // dtype for the handle. It must be the same as t.dtype() once the handle is
   // ready.
@@ -126,6 +134,7 @@ class TensorHandle : public core::RefCounted {
   // typically true when the handle was produced during async execution.
   // `ctx` object is not owned and should outlive this handle.
   EagerContext* ctx_ GUARDED_BY(ctx_mutex_);
+  bool is_ready_ GUARDED_BY(ctx_mutex_);
 };
 
 }  // namespace tensorflow

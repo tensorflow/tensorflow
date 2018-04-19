@@ -8,18 +8,6 @@ load(
     "tf_cuda_tests_tags",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 config_setting(
     name = "xsmm",
     licenses = ["notice"],

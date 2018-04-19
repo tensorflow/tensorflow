@@ -28,8 +28,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
@@ -577,6 +579,74 @@ class PaddedBatchDatasetSerializationTest(
     seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
     self.run_core_tests(lambda: build_dataset(seq_lens1),
                         lambda: build_dataset(seq_lens2), 8)
+
+
+class RestructuredDatasetTest(test.TestCase):
+
+  def test_assert_element_shape(self):
+
+    def create_unknown_shape_dataset(x):
+      return script_ops.py_func(lambda _: (np.ones(2, dtype=np.float32),
+                                           np.zeros((3, 4), dtype=np.int32)),
+                                [x],
+                                [dtypes.float32, dtypes.int32])
+
+    dataset = dataset_ops.Dataset.range(5).map(create_unknown_shape_dataset)
+    unknown_shapes = (tensor_shape.TensorShape(None),
+                      tensor_shape.TensorShape(None))
+    self.assertEqual(unknown_shapes, dataset.output_shapes)
+
+    expected_shapes = (tensor_shape.TensorShape(2),
+                       tensor_shape.TensorShape((3, 4)))
+    result = dataset.apply(batching.assert_element_shape(expected_shapes))
+    self.assertEqual(expected_shapes, result.output_shapes)
+
+    iterator = result.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for _ in range(5):
+        sess.run(get_next)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def test_assert_wrong_element_shape(self):
+
+    def create_dataset(_):
+      return (array_ops.ones(2, dtype=dtypes.float32),
+              array_ops.zeros((3, 4), dtype=dtypes.int32))
+
+    dataset = dataset_ops.Dataset.range(3).map(create_dataset)
+    wrong_shapes = (tensor_shape.TensorShape(2),
+                    tensor_shape.TensorShape((3, 10)))
+    with self.assertRaises(ValueError):
+      dataset.apply(batching.assert_element_shape(wrong_shapes))
+
+  def test_assert_wrong_element_shape_on_unknown_shape_dataset(self):
+
+    def create_unknown_shape_dataset(x):
+      return script_ops.py_func(lambda _: (np.ones(2, dtype=np.float32),
+                                           np.zeros((3, 4), dtype=np.int32)),
+                                [x],
+                                [dtypes.float32, dtypes.int32])
+
+    dataset = dataset_ops.Dataset.range(3).map(create_unknown_shape_dataset)
+    unknown_shapes = (tensor_shape.TensorShape(None),
+                      tensor_shape.TensorShape(None))
+    self.assertEqual(unknown_shapes, dataset.output_shapes)
+
+    wrong_shapes = (tensor_shape.TensorShape(2),
+                    tensor_shape.TensorShape((3, 10)))
+    iterator = (
+        dataset.apply(batching.assert_element_shape(wrong_shapes))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(get_next)
 
 
 if __name__ == "__main__":

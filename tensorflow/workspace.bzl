@@ -2,6 +2,7 @@
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
+load("//third_party:nccl/nccl_configure.bzl", "nccl_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
@@ -13,6 +14,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
+     "def_file_filter_configure")
 
 
 # Sanitize a dependency so that it works correctly from code that includes
@@ -29,9 +32,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   cc_download_clang_toolchain(name="local_config_download_clang")
   cuda_configure(name="local_config_cuda")
   tensorrt_configure(name="local_config_tensorrt")
+  nccl_configure(name="local_config_nccl")
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
+
+  # For windows bazel build
+  # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
+  def_file_filter_configure(name = "local_config_def_file_filter")
 
   # Point //external/local_config_arm_compiler to //external/arm_compiler
   arm_compiler_configure(
@@ -42,7 +50,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_linux",
       urls = [
-          "https://mirror.bazel.build/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
           "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
       ],
       sha256 = "feacc3d82565c1231470359b42c696236fae873704e0b013436afba5fd4fd30f",
@@ -52,7 +60,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_windows",
       urls = [
-          "https://mirror.bazel.build/intel/mkl-dnn/releases/download/v0.12/mklml_win_2018.0.1.20171227.zip",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.12/mklml_win_2018.0.1.20171227.zip",
           "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_win_2018.0.1.20171227.zip"
       ],
       sha256 = "24bae8d7b22b431a654acadea43f2243c46ae6b1e5a73a4a936825f31d284ee4",
@@ -62,7 +70,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_darwin",
       urls = [
-          "https://mirror.bazel.build/intel/mkl-dnn/releases/download/v0.12/mklml_mac_2018.0.1.20171227.tgz",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.12/mklml_mac_2018.0.1.20171227.tgz",
           "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_mac_2018.0.1.20171227.tgz"
       ],
       sha256 = "0e954ec6fd3dc5e37f64c4043f6b5613dd687558da3df1028b3b7c29ff5cf77f",
@@ -99,11 +107,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/2355b229ea4c.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/2355b229ea4c.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/6913f0cf7d06.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/6913f0cf7d06.tar.gz",
       ],
-      sha256 = "0cadb31a35b514bf2dfd6b5d38205da94ef326ec6908fc3fd7c269948467214f",
-      strip_prefix = "eigen-eigen-2355b229ea4c",
+      sha256 = "791b836cacd03e20bae5bdd25f1c4a5505a0a9975ba94a61eb4e2631fbd1d53a",
+      strip_prefix = "eigen-eigen-6913f0cf7d06",
       build_file = clean_dep("//third_party:eigen.BUILD"),
       patch_file = clean_dep("//third_party:eigen_fix_cuda_compilation.patch")
   )
@@ -159,11 +167,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "gemmlowp",
       urls = [
-          "https://mirror.bazel.build/github.com/google/gemmlowp/archive/7c7c744640ddc3d0af18fb245b4d23228813a71b.zip",
-          "https://github.com/google/gemmlowp/archive/7c7c744640ddc3d0af18fb245b4d23228813a71b.zip",
+          # TODO (yongtang): uncomment once mirror.bazel.build is propagated.
+          # "https://mirror.bazel.build/github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",
+          "https://github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",
       ],
-      sha256 = "b852cc90259a7357c8a323f108f2cec6e85979fc3b18b5590b99e0130044b2cf",
-      strip_prefix = "gemmlowp-7c7c744640ddc3d0af18fb245b4d23228813a71b",
+      sha256 = "b87faa7294dfcc5d678f22a59d2c01ca94ea1e2a3b488c38a95a67889ed0a658",
+      strip_prefix = "gemmlowp-38ebac7b059e84692f53e5938f97a9943c120d98",
   )
 
   tf_http_archive(
@@ -202,33 +211,33 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "jpeg",
       urls = [
-          "https://mirror.bazel.build/github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
-          "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
+          "https://mirror.bazel.build/github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.3.tar.gz",
+          "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.3.tar.gz",
       ],
-      sha256 = "c15a9607892113946379ccea3ca8b85018301b200754f209453ab21674268e77",
-      strip_prefix = "libjpeg-turbo-1.5.1",
+      sha256 = "1a17020f859cb12711175a67eab5c71fc1904e04b587046218e36106e07eabde",
+      strip_prefix = "libjpeg-turbo-1.5.3",
       build_file = clean_dep("//third_party/jpeg:jpeg.BUILD"),
   )
 
   tf_http_archive(
       name = "png_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.2.53.tar.gz",
-          "https://github.com/glennrp/libpng/archive/v1.2.53.tar.gz",
+          "https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.6.34.tar.gz",
+          "https://github.com/glennrp/libpng/archive/v1.6.34.tar.gz",
       ],
-      sha256 = "716c59c7dfc808a4c368f8ada526932be72b2fcea11dd85dc9d88b1df1dfe9c2",
-      strip_prefix = "libpng-1.2.53",
+      sha256 = "e45ce5f68b1d80e2cb9a2b601605b374bdf51e1798ef1c2c2bd62131dfcf9eef",
+      strip_prefix = "libpng-1.6.34",
       build_file = clean_dep("//third_party:png.BUILD"),
   )
 
   tf_http_archive(
       name = "org_sqlite",
       urls = [
-          "https://mirror.bazel.build/www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
-          "http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
+          "https://mirror.bazel.build/www.sqlite.org/2018/sqlite-amalgamation-3230100.zip",
+          "https://www.sqlite.org/2018/sqlite-amalgamation-3230100.zip",
       ],
-      sha256 = "208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4",
-      strip_prefix = "sqlite-amalgamation-3200000",
+      sha256 = "4239a1f69e5721d07d9a374eb84d594225229e54be4ee628da2995f4315d8dfc",
+      strip_prefix = "sqlite-amalgamation-3230100",
       build_file = clean_dep("//third_party:sqlite.BUILD"),
   )
 
@@ -307,18 +316,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "backports.weakref-1.0rc1/src",
       build_file = clean_dep("//third_party:backports_weakref.BUILD"),
   )
-
-  tf_http_archive(
-      name = "com_github_andreif_codegen",
-      urls = [
-          "https://mirror.bazel.build/github.com/andreif/codegen/archive/1.0.tar.gz",
-          "https://github.com/andreif/codegen/archive/1.0.tar.gz",
-      ],
-      sha256 = "2dadd04a2802de27e0fe5a19b76538f6da9d39ff244036afa00c1bba754de5ee",
-      strip_prefix = "codegen-1.0",
-      build_file = clean_dep("//third_party:codegen.BUILD"),
-  )
-
+  
   filegroup_external(
       name = "org_python_license",
       licenses = ["notice"],  # Python 2.0
@@ -430,12 +428,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/575bda39755b98d1f7099406bb57a6e3b2074874.tar.gz",
-          "https://github.com/grpc/grpc/archive/575bda39755b98d1f7099406bb57a6e3b2074874.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/d184fa229d75d336aedea0041bd59cb93e7e267f.tar.gz",
+          "https://github.com/grpc/grpc/archive/d184fa229d75d336aedea0041bd59cb93e7e267f.tar.gz",
       ],
-      sha256 = "f08a5c8e265191b39cc74915b1bc1fd380d86cd0176c92b7cce30b6ac50514ad",
-      strip_prefix = "grpc-575bda39755b98d1f7099406bb57a6e3b2074874",
+      sha256 = "895b31310e718a61f7335759a778c068a6edde1c089883598a0830cbb7075673",
+      strip_prefix = "grpc-d184fa229d75d336aedea0041bd59cb93e7e267f",
   )
+
 
   tf_http_archive(
       name = "linenoise",
@@ -453,11 +452,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/1c3cdea2f181d8e14ee184466c5fb237f1b4cda8.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/1c3cdea2f181d8e14ee184466c5fb237f1b4cda8.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/3210e64b499a31193051208f2f8922dadfc4bb6f.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/3210e64b499a31193051208f2f8922dadfc4bb6f.tar.gz",
       ],
-      sha256 = "1efbb9b05af88368be984d2f6526061d4a857181ef10f8841889a3a46869bb01",
-      strip_prefix = "llvm-1c3cdea2f181d8e14ee184466c5fb237f1b4cda8",
+      sha256 = "017d7db029cc175634d75416c326770139c76590575ed44a3794c11ab160c955",
+      strip_prefix = "llvm-3210e64b499a31193051208f2f8922dadfc4bb6f",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
@@ -496,11 +495,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "zlib_archive",
       urls = [
-          "https://mirror.bazel.build/zlib.net/zlib-1.2.8.tar.gz",
-          "http://zlib.net/fossils/zlib-1.2.8.tar.gz",
+          "https://mirror.bazel.build/zlib.net/zlib-1.2.11.tar.gz",
+          "https://zlib.net/zlib-1.2.11.tar.gz",
       ],
-      sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
-      strip_prefix = "zlib-1.2.8",
+      sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
+      strip_prefix = "zlib-1.2.11",
       build_file = clean_dep("//third_party:zlib.BUILD"),
   )
 
@@ -517,11 +516,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "snappy",
       urls = [
-          "https://mirror.bazel.build/github.com/google/snappy/archive/1.1.4.tar.gz",
-          "https://github.com/google/snappy/archive/1.1.4.tar.gz",
+          "https://mirror.bazel.build/github.com/google/snappy/archive/1.1.7.tar.gz",
+          "https://github.com/google/snappy/archive/1.1.7.tar.gz",
       ],
-      sha256 = "2f7504c73d85bac842e893340333be8cb8561710642fc9562fccdd9d2c3fcc94",
-      strip_prefix = "snappy-1.1.4",
+      sha256 = "3dfa02e873ff51a11ee02b9ca391807f0c8ea0529a4924afa645fbf97163f9d4",
+      strip_prefix = "snappy-1.1.7",
       build_file = clean_dep("//third_party:snappy.BUILD"),
   )
 
@@ -533,7 +532,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "2ca86fb6179ecbff789cc67c836139c1bbc0324ed8c04643405a30bf26325176",
       strip_prefix = "nccl-03d856977ecbaac87e598c0c4bafca96761b9ac7",
-      build_file = clean_dep("//third_party:nccl.BUILD"),
+      build_file = clean_dep("//third_party:nccl/nccl_archive.BUILD"),
   )
 
   tf_http_archive(
@@ -706,6 +705,26 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   tf_http_archive(
+      name = "tflite_mobilenet_ssd",
+      sha256 = "767057f2837a46d97882734b03428e8dd640b93236052b312b2f0e45613c1cf0",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_ssd_tflite_v1.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_ssd_tflite_v1.zip",
+      ],
+      build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+  )
+
+  tf_http_archive(
+      name = "tflite_conv_actions_frozen",
+      sha256 = "d947b38cba389b5e2d0bfc3ea6cc49c784e187b41a071387b3742d1acac7691e",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/conv_actions_tflite.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/conv_actions_tflite.zip",
+      ],
+      build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+  )
+
+  tf_http_archive(
       name = "tflite_smartreply",
       sha256 = "8980151b85a87a9c1a3bb1ed4748119e4a85abd3cb5744d83da4d4bd0fbeef7c",
       urls = [
@@ -733,6 +752,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.bind(
       name = "grpc_cpp_plugin",
       actual = "@grpc//:grpc_cpp_plugin",
+  )
+  native.bind(
+      name = "grpc_python_plugin",
+      actual = "@grpc//:grpc_python_plugin",
   )
 
   # gRPC has three empty C++ functions which it wants the user to define

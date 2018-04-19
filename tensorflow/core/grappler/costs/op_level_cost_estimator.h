@@ -82,6 +82,13 @@ class OpLevelCostEstimator {
     int64 sy;         // Stride y.
     Padding padding;  // SAME or VALID.
   };
+  enum ConvolutionFormat {
+    UNKNOWN_CONVOLUTION_FORMAT,
+    NHWC,
+    NCHW,
+    NCHW_VECT_C,
+    NCHW_VECT_W,
+  };
   int64 CountConv2DOperations(const OpInfo& op_features,
                               bool* found_unknown_shapes) const;
   int64 CountConv2DOperations(const OpInfo& op_features,
@@ -138,6 +145,7 @@ class OpLevelCostEstimator {
   Costs PredictCwiseOp(const OpContext& op_context) const;
   Costs PredictConv2DBackpropInput(const OpContext& op_context) const;
   Costs PredictConv2DBackpropFilter(const OpContext& op_context) const;
+  Costs PredictFusedConv2DBiasActivation(const OpContext& op_context) const;
   Costs PredictMatMul(const OpContext& op_context) const;
   Costs PredictNoOp(const OpContext& op_context) const;
   Costs PredictIdentity(const OpContext& op_context) const;
@@ -145,6 +153,16 @@ class OpLevelCostEstimator {
   Costs PredictBatchMatMul(const OpContext& op_context) const;
   Costs PredictMetadata(const OpContext& op_context) const;
   Costs PredictGatherOrSlice(const OpContext& op_context) const;
+  Costs PredictMaxPool(const OpContext& op_context) const;
+  Costs PredictMaxPoolGrad(const OpContext& op_context) const;
+  Costs PredictAvgPool(const OpContext& op_context) const;
+  Costs PredictAvgPoolGrad(const OpContext& op_context) const;
+  Costs PredictFusedBatchNorm(const OpContext& op_context) const;
+  Costs PredictFusedBatchNormGrad(const OpContext& op_context) const;
+
+  // Generic cost prediction method for fused operations.
+  Costs PredictFusedOp(const OpContext& op_context,
+                       const std::vector<OpContext>& fused_op_contexts) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -156,10 +174,35 @@ class OpLevelCostEstimator {
     }
   }
 
+  // For convolution and its grad ops.
   static ConvolutionDimensions ConvolutionDimensionsFromInputs(
       const TensorShapeProto& original_image_shape,
-      const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
+      const TensorShapeProto& original_filter_shape, const OpInfo& op_info,
       bool* found_unknown_shapes);
+
+  // For Pooling, FusedBatchNorm, and their grad ops.
+  static ConvolutionDimensions OpDimensionsFromInputs(
+      const TensorShapeProto& original_image_shape, const OpInfo& op_info,
+      bool* found_unknown_shapes);
+
+  // Helper to construct child operation contexts for the component operations
+  // of fused ops.
+  static OpContext FusedChildContext(
+      const OpContext& parent, const string& op_name,
+      const OpInfo::TensorProperties& output,
+      const std::vector<OpInfo::TensorProperties>& inputs);
+
+  // Helper to construct tensor shapes.
+  static OpInfo::TensorProperties DescribeTensor(
+      DataType type, const std::vector<int64>& dims);
+
+  // Returns the Conv2D format for this operation.
+  static ConvolutionFormat GetConvolutionFormat(const OpContext& op_context);
+
+  // This method calculates the execution time depending on whether IO can
+  // overlap with computation. It assumes the memory and the compute times have
+  // already been calculated.
+  void CombineCostsAndUpdateExecutionTime(Costs* costs) const;
 
  protected:
   std::map<string, int> elementwise_ops_;

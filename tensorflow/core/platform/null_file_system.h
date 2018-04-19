@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 
 namespace tensorflow {
 
@@ -63,6 +64,11 @@ class NullFileSystem : public FileSystem {
 
   Status GetChildren(const string& dir, std::vector<string>* result) override {
     return errors::Unimplemented("GetChildren unimplemented");
+  }
+
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override {
+    return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
   }
 
   Status DeleteFile(const string& fname) override {

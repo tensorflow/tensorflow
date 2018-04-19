@@ -22,7 +22,7 @@ from __future__ import print_function
 
 import grpc
 
-from third_party.tensorflow.contrib.tpu.profiler import tpu_profiler_analysis_pb2 as third__party_dot_tensorflow_dot_contrib_dot_tpu_dot_profiler_dot_tpu__profiler__analysis__pb2
+from tensorflow.contrib.tpu.profiler import tpu_profiler_analysis_pb2 as third__party_dot_tensorflow_dot_contrib_dot_tpu_dot_profiler_dot_tpu__profiler__analysis__pb2
 
 
 class TPUProfileAnalysisStub(object):

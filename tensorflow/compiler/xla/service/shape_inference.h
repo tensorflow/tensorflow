@@ -85,6 +85,9 @@ class ShapeInference {
       tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
   static StatusOr<Shape> InferVariadicOpShape(
       HloOpcode opcode,
+      tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
+  static StatusOr<Shape> InferVariadicOpShape(
+      HloOpcode opcode,
       tensorflow::gtl::ArraySlice<const HloInstruction*> operands);
 
   // Infers the shape produced by applying the given mapping computation shape

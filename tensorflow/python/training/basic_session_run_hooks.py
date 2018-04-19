@@ -859,6 +859,7 @@ class ProfilerHook(session_run_hook.SessionRunHook):
           showing the sizes and lifetimes of tensors.
     """
     self._output_file = os.path.join(output_dir, "timeline-{}.json")
+    self._file_writer = SummaryWriterCache.get(output_dir)
     self._show_dataflow = show_dataflow
     self._show_memory = show_memory
     self._timer = SecondOrStepTimer(
@@ -889,6 +890,8 @@ class ProfilerHook(session_run_hook.SessionRunHook):
       self._save(global_step,
                  self._output_file.format(global_step),
                  run_values.run_metadata.step_stats)
+      self._file_writer.add_run_metadata(run_values.run_metadata,
+                                         "step_%d" % global_step)
 
     self._next_step = global_step + 1
 

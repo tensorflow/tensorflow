@@ -25,6 +25,7 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/eager/python:checkpointable_utils",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -122,16 +123,4 @@ cuda_py_test(
         "notsan",
         "requires_cudnn5",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

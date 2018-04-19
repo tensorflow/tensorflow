@@ -11,17 +11,9 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_protos_grappler",
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
 )
 
 cc_library(
@@ -120,6 +112,7 @@ tf_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
     shard_count = 5,
+    tags = ["noasan"],
     deps = [
         ":constant_folding",
         "//tensorflow/cc:cc_ops",
@@ -263,6 +256,7 @@ cc_library(
         ":constant_folding",
         ":graph_optimizer",
         ":graph_optimizer_stage",
+        ":symbolic_shapes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -272,6 +266,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
+        "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
 
@@ -284,6 +279,11 @@ tf_cuda_cc_test(
         ":constant_folding",
         ":model_pruner",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -362,9 +362,11 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
 
@@ -373,6 +375,7 @@ tf_kernel_library(
     srcs = [
         "gpu_swapping_kernels.cc",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -385,6 +388,7 @@ cc_library(
     srcs = [
         "gpu_swapping_ops.cc",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -418,10 +422,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",
-    ] + if_cuda([
-        ":gpu_swapping_kernels",
-        ":gpu_swapping_ops",
-    ]),
+    ],
 )
 
 tf_cuda_only_cc_test(
@@ -429,6 +430,8 @@ tf_cuda_only_cc_test(
     srcs = ["memory_optimizer_test.cc"],
     tags = ["no_cuda_on_cpu_tap"],  # Do not re-enable again without actually testing.
     deps = [
+        ":gpu_swapping_kernels",
+        ":gpu_swapping_ops",
         ":memory_optimizer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:ops",
@@ -481,9 +484,13 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/costs:virtual_placer",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
 
@@ -512,6 +519,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:colocation",
         "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
@@ -534,11 +542,28 @@ tf_cuda_cc_test(
     ],
 )
 
+# This rule is header-only unless the build is static (--config=monolithic). Its
+# implementation is included directly in the framework shared object.
 cc_library(
     name = "custom_graph_optimizer_registry",
-    srcs = ["custom_graph_optimizer_registry.cc"],
     hdrs = ["custom_graph_optimizer_registry.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        ":custom_graph_optimizer",
+        "//tensorflow/core:lib",
+    ] + if_static(
+        [":custom_graph_optimizer_registry_impl"],
+    ),
+)
+
+# This rule contains static variables for the optimizer registry. Do not depend
+# on it directly; use :custom_graph_optimizer_registry, and link against
+# libtensorflow_framework.so for the registry symbols.
+cc_library(
+    name = "custom_graph_optimizer_registry_impl",
+    srcs = ["custom_graph_optimizer_registry.cc"],
+    hdrs = ["custom_graph_optimizer_registry.h"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":custom_graph_optimizer",
         "//tensorflow/core:lib",
@@ -630,7 +655,10 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:graph_optimizer",
     ],
@@ -646,6 +674,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:grappler_test",
     ],

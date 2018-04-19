@@ -33,6 +33,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.framework.python import ops as contrib_framework_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.layers import base
@@ -246,9 +247,7 @@ class RevBlock(base.Layer):
     f_vars_idxs = [[] for _ in range(self.num_layers)]
     g_vars_idxs = [[] for _ in range(self.num_layers)]
 
-    for i, t in enumerate(variables):
-      ref = _underlying_variable_ref(t)
-
+    for i, ref in enumerate(variables):
       # Use the name to identify the layer number and function (f or g)
       regex = LAYER_RE.match(ref.name)
       layer_no = int(regex.group(1))
@@ -603,6 +602,7 @@ def _fn_with_custom_grad_internal(fn, inputs, grad_fn, use_global_vars=False):
     """Custom grad fn applying grad_fn for identity Defun."""
     fn_inputs, fn_vars, fn_outputs = nest.pack_sequence_as(
         defun_inputs, list(op.inputs))
+    fn_vars = [_underlying_variable_ref(v) for v in fn_vars]
     dys = list(dys)
     assert len(fn_outputs) == len(outputs)
     assert len(fn_outputs) == len(dys)
@@ -660,7 +660,9 @@ def _force_data_dependency(first_compute, then_compute):
     if x.get_shape().ndims is None:
       raise ValueError("Rank of Tensor %s must be known" % x)
     ndims = x.get_shape().ndims
-    return array_ops.reshape(array_ops.slice(x, [0] * ndims, [1] * ndims), [])
+    begin = framework_ops.convert_to_tensor([0] * ndims, dtype=dtypes.int32)
+    size = framework_ops.convert_to_tensor([1] * ndims, dtype=dtypes.int32)
+    return array_ops.reshape(array_ops.slice(x, begin, size), [])
 
   first_compute_sum = math_ops.add_n(
       [_first_element(x) for x in first_compute if x is not None])

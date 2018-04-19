@@ -502,11 +502,11 @@ namespace {
 StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   tensorflow::str_util::RemoveLeadingWhitespace(s);
 
-  if (s->Consume("(")) {  // Tuple.
+  if (tensorflow::str_util::ConsumePrefix(s, "(")) {  // Tuple.
     std::vector<Shape> shapes;
     bool must_end = false;
     while (true) {
-      if (s->Consume(")")) {
+      if (tensorflow::str_util::ConsumePrefix(s, ")")) {
         break;
       } else if (must_end) {
         return InvalidArgument("Expected end of tuple; got: \"%s\"",
@@ -515,7 +515,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
       tensorflow::str_util::RemoveLeadingWhitespace(s);
-      must_end = !s->Consume(",");
+      must_end = !tensorflow::str_util::ConsumePrefix(s, ",");
     }
     return ShapeUtil::MakeTupleShape(shapes);
   }
@@ -822,6 +822,18 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   Shape new_shape = original;
   new_shape.set_element_type(type);
   return new_shape;
+}
+
+/* static */ bool ShapeUtil::IndexIsValid(const Shape& shape,
+                                          ShapeIndexView index) {
+  const Shape* subshape = &shape;
+  for (auto i : index) {
+    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size()) {
+      return false;
+    }
+    subshape = &subshape->tuple_shapes(i);
+  }
+  return true;
 }
 
 /* static */ const Shape& ShapeUtil::GetSubshape(const Shape& shape,

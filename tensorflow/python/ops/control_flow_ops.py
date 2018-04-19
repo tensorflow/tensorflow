@@ -833,6 +833,9 @@ class GradLoopState(object):
     if outer_grad_state:
       outer_forward_ctxt = outer_grad_state.forward_context
     else:
+      if not hasattr(forward_ctxt, 'outer_context'):
+        raise ValueError("Failed to call gradients on a while loop without"
+                         "properly serializing graph via MetaGraphDef")
       outer_forward_ctxt = forward_ctxt.outer_context
 
     # Add the forward loop counter.
@@ -1594,6 +1597,16 @@ class ControlFlowContext(object):
     graph = ops.get_default_graph()
     last_context = self._context_stack.pop()
     graph._set_control_flow_context(last_context)
+
+  def EnterGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.EnterGradientColocation(op, gradient_uid)
+
+  def ExitGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.ExitGradientColocation(op, gradient_uid)
 
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
@@ -3181,12 +3194,18 @@ def while_loop(cond,
         body = lambda i, lv: (i + 1, orig_body(*lv))
 
     if context.executing_eagerly():
+      try_to_pack = len(loop_vars) == 1
+      packed = False  # whether the body result was packed into a 1-item tuple
+
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
+        if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
+          packed = True
+          loop_vars = (loop_vars,)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:
-        return loop_vars
+        return loop_vars[0] if packed else loop_vars
 
     if shape_invariants is not None:
       if maximum_iterations is not None:

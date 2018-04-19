@@ -295,12 +295,13 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
 /* static */
 StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
-    const HloModuleProto& module) {
+    const HloModuleProto& module, const DebugOptions& debug_options) {
   TF_RET_CHECK(module.has_program_shape())
       << "No program shape found in the proto";
   const auto& program_shape = module.program_shape();
 
   HloModuleConfig module_config(program_shape);
+  module_config.set_debug_options(debug_options);
 
   // The module config is constructed with default layouts regardless of what is
   // passed in via the ProgramShape. Set the layouts to the appropriate values.

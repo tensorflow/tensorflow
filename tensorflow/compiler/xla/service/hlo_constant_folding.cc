@@ -69,7 +69,8 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       // Broadcasts dramatically increase the size of constants, which is often
       // detrimental to performance and memory capacity, so do not fold
       // broadcasts.
-      if (instruction->opcode() == HloOpcode::kBroadcast) {
+      if (instruction->opcode() == HloOpcode::kBroadcast ||
+          instruction->opcode() == HloOpcode::kBroadcastDimOne) {
         continue;
       }
 

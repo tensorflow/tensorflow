@@ -38,7 +38,7 @@ namespace xla {
 
 StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
     tensorflow::StringPiece path) {
-  CHECK(!path.ends_with(".gz"))
+  CHECK(!tensorflow::str_util::EndsWith(path, ".gz"))
       << "TextLiteralReader no longer supports reading .gz files";
   std::unique_ptr<tensorflow::RandomAccessFile> file;
   Status s =
@@ -115,7 +115,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
     tensorflow::StringPiece value_string = pieces[1];
     tensorflow::str_util::RemoveWhitespaceContext(&coordinates_string);
     tensorflow::str_util::RemoveWhitespaceContext(&value_string);
-    if (!coordinates_string.Consume("(")) {
+    if (!tensorflow::str_util::ConsumePrefix(&coordinates_string, "(")) {
       return InvalidArgument(
           "expected '(' at the beginning of coordinates: \"%s\"", line.c_str());
     }

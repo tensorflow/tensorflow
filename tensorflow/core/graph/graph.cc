@@ -567,6 +567,11 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
         inputs[edge->dst_input()] = edge;
       }
     }
+    // Sort the control inputs for more predictable serialization.
+    std::sort(inputs.begin() + node->num_inputs(), inputs.end(),
+              [](const Edge* a, const Edge* b) -> bool {
+                return a->src()->name() < b->src()->name();
+              });
     node_def->clear_input();
     node_def->mutable_input()->Reserve(inputs.size());
 

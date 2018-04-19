@@ -60,15 +60,3 @@ cuda_py_tests(
     ],
     tags = ["noasan"],  # times out b/63678675
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

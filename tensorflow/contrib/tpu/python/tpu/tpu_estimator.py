@@ -30,7 +30,6 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib.summary import summary_ops as contrib_summary
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
@@ -38,6 +37,8 @@ from tensorflow.contrib.tpu.python.tpu import tpu_context
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
+from tensorflow.contrib.training.python.training import hparam
+from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -53,7 +54,9 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import summary_ops_v2 as contrib_summary
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -73,6 +76,8 @@ _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
+_TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
+_TPU_TRAIN_OP = '_tpu_train_op'
 
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
@@ -83,6 +88,13 @@ _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 # tf.while_loop (This can be disabled by returning features and labels
 # explicitly).
 _WRAP_INPUT_FN_INTO_WHILE_LOOP = False
+
+
+ops.register_proto_function(
+    '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR),
+    proto_type=variable_pb2.VariableDef,
+    to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
+    from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
 
 
 def _create_global_step(graph):
@@ -740,6 +752,61 @@ def generate_per_host_enqueue_ops_fn_for_host(
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
 
+def generate_per_host_v2_enqueue_ops_fn_for_host(
+    ctx, input_fn, inputs_structure_recorder, device, host_id):
+  """Generates infeed enqueue ops for per-host input_fn on a single host."""
+  del host_id  # unused
+  captured_infeed_queue = _CapturedObject()
+  hooks = []
+
+  with ops.device(device):
+    inputs = _Inputs.from_input_fn(input_fn())
+
+    is_dataset = inputs.is_dataset
+    if not is_dataset:
+      raise TypeError('`input_fn` must return a `Dataset` for the PER_HOST_V2 '
+                      'input pipeline configuration.')
+    if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
+      # TODO(b/XXX): Add predict support for PER_HOST_V2
+      raise TypeError('Most PREDICT not yet supported in PER_HOST_V2 mode.')
+
+    hooks.append(inputs.dataset_initializer_hook())
+
+  def enqueue_ops_fn():
+    """Generates the per_host enqueue ops."""
+    control_deps = []
+    per_host_sharded_inputs = []
+    num_replicas_per_host = ctx.num_of_replicas_per_host
+    with ops.device(device):
+      if not inputs.is_dataset:
+        raise TypeError('`input_fn` must return a `Dataset` for this mode.')
+      for _ in range(num_replicas_per_host):
+        # Use control dependencies to ensure a deterministic ordering.
+        with ops.control_dependencies(control_deps):
+          features, labels = inputs.features_and_labels()  # Calls get_next()
+
+        inputs_structure_recorder.validate_and_record_structure(
+            features, labels)
+        flattened_inputs = (
+            inputs_structure_recorder.flatten_features_and_labels(
+                features, labels))
+
+        control_deps.extend(flattened_inputs)
+        per_host_sharded_inputs.append(flattened_inputs)
+
+    infeed_queue = tpu_feed.InfeedQueue(
+        number_of_tuple_elements=len(per_host_sharded_inputs[0]))
+    captured_infeed_queue.capture(infeed_queue)
+    infeed_queue.set_configuration_from_sharded_input_tensors(
+        per_host_sharded_inputs)
+
+    per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
+        per_host_sharded_inputs, tpu_ordinal_function=ctx.tpu_ordinal_function)
+    return per_host_enqueue_ops
+
+  return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
+
+
 class _InputPipeline(object):
   """`_InputPipeline` handles invoking `input_fn` and piping to infeed queue.
 
@@ -975,10 +1042,17 @@ class _InputPipeline(object):
         host_device = tpu_host_placement_fn(host_id=host_id)
         with ops.device(host_device):
           with ops.name_scope('input_pipeline_task%d' % (host_id)):
-            enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
-                generate_per_host_enqueue_ops_fn_for_host(
-                    self._ctx, self._input_fn, self._inputs_structure_recorder,
-                    self._batch_axis, host_device, host_id))
+            if self._ctx.is_input_per_host_with_iterators():
+              enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
+                  generate_per_host_v2_enqueue_ops_fn_for_host(
+                      self._ctx, self._input_fn,
+                      self._inputs_structure_recorder, host_device, host_id))
+            else:
+              enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
+                  generate_per_host_enqueue_ops_fn_for_host(
+                      self._ctx, self._input_fn,
+                      self._inputs_structure_recorder, self._batch_axis,
+                      host_device, host_id))
             all_hooks.extend(hooks)
 
             # NOTE(xiejw): We dispatch here based on the return type of the
@@ -1235,7 +1309,10 @@ class _ModelFnWrapper(object):
       batch_size_for_model_fn = self._ctx.batch_size_for_model_fn
 
     if batch_size_for_model_fn is not None:
-      params[_BATCH_SIZE_KEY] = batch_size_for_model_fn
+      if isinstance(params, hparam.HParams):
+        params.add_hparam(_BATCH_SIZE_KEY, batch_size_for_model_fn)
+      else:
+        params[_BATCH_SIZE_KEY] = batch_size_for_model_fn
 
     estimator_spec = self._model_fn(features=features, **kwargs)
     if (self._ctx.is_running_on_cpu(is_export_mode) and
@@ -1724,7 +1801,7 @@ class TPUEstimator(estimator_lib.Estimator):
         labels to match up with the corresponding images. If None is supplied,
         and per_host_input_for_training is True, batches will be sharded based
         on the major dimension. If tpu_config.per_host_input_for_training is
-        False, batch_axis is ignored.
+        False or `PER_HOST_V2`, batch_axis is ignored.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -1744,7 +1821,8 @@ class TPUEstimator(estimator_lib.Estimator):
         raise ValueError('`train_batch_size` cannot be `None`')
       util_lib.check_positive_integer(train_batch_size, 'train_batch_size')
 
-      if (not config.tpu_config.per_host_input_for_training and
+      if (config.tpu_config.per_host_input_for_training is
+          tpu_config.InputPipelineConfig.PER_SHARD_V1 and
           config.tpu_config.computation_shape):
         raise ValueError(
             'Model parallelism only supports per host input for training. '
@@ -1873,7 +1951,10 @@ class TPUEstimator(estimator_lib.Estimator):
       # input_fn for use_tpu=True/False.
       batch_size_for_input_fn = ctx.batch_size_for_input_fn
       if batch_size_for_input_fn is not None:
-        kwargs['params'][_BATCH_SIZE_KEY] = batch_size_for_input_fn
+        if isinstance(kwargs['params'], hparam.HParams):
+          kwargs['params'].add_hparam(_BATCH_SIZE_KEY, batch_size_for_input_fn)
+        else:
+          kwargs['params'][_BATCH_SIZE_KEY] = batch_size_for_input_fn
 
       # For export_savedmodel, input_fn is never passed to Estimator. So,
       # `is_export_mode` must be False.
@@ -1943,6 +2024,13 @@ class TPUEstimator(estimator_lib.Estimator):
         enqueue_ops, dequeue_fn, input_hooks, run_infeed_loop_on_coordinator = (
             input_holders.generate_infeed_enqueue_ops_and_dequeue_fn())
 
+        graph = ops.get_default_graph()
+        for enqueue_op in enqueue_ops:
+          if isinstance(enqueue_op, list):
+            graph.get_collection_ref(_TPU_ENQUEUE_OPS).extend(enqueue_op)
+          else:
+            graph.add_to_collection(_TPU_ENQUEUE_OPS, enqueue_op)
+
         if mode == model_fn_lib.ModeKeys.TRAIN:
           loss, host_call, scaffold = (
               _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
@@ -1956,7 +2044,8 @@ class TPUEstimator(estimator_lib.Estimator):
                   host_ops,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator)),
-              ExamplesPerSecondHook(ctx.global_batch_size),
+              ExamplesPerSecondHook(ctx.global_batch_size,
+                                    output_dir=self.model_dir),
               InstallSignalHandlerHook(),
               training.LoggingTensorHook(
                   {
@@ -1972,11 +2061,14 @@ class TPUEstimator(estimator_lib.Estimator):
           # Validate the TPU training graph to catch basic errors
           _validate_tpu_training_graph()
 
+          train_op = control_flow_ops.group(*update_ops)
+          graph.add_to_collection(_TPU_TRAIN_OP, train_op)
+
           return model_fn_lib.EstimatorSpec(
               mode,
               loss=loss,
               training_hooks=hooks,
-              train_op=control_flow_ops.group(*update_ops),
+              train_op=train_op,
               scaffold=scaffold)
 
         if mode == model_fn_lib.ModeKeys.EVAL:
@@ -2362,6 +2454,10 @@ class _Inputs(object):
   def features_and_labels(self):
     """Gets `features` and `labels`."""
     if self.is_dataset:
+      if self._iterator is None:
+        raise RuntimeError('Internal error: Must call dataset_initializer_hook '
+                           'before calling features_and_labels(). Please file '
+                           'a bug!')
       return _Inputs._parse_inputs(self._iterator.get_next())
 
     return (self._features, self._labels)

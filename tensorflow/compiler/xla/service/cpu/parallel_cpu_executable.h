@@ -83,12 +83,6 @@ class ParallelCpuExecutable : public Executable {
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
   }
 
-  const Status EqualOrFail(const Executable& executable) {
-    // TODO(b/62952745) Implement equality test on CPU parallel executable.
-    return Unimplemented(
-        "Equality test on CPU parallel executable is not implemented.");
-  }
-
  private:
   // Allocate buffers required for execution and assign them to the elements of
   // "buffers". "buffers" should be sized to the number of buffers in buffer

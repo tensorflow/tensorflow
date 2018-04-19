@@ -153,8 +153,9 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
                        options.num_loss_partitions, options.regularizations,
                        model_weights, example_state_data, options.loss_updater,
                        /*num_weight_vectors =*/1));
+  } else {
+    examples.RandomShuffle();
   }
-
   mutex mu;
   Status train_step_status GUARDED_BY(mu);
   std::atomic<std::int64_t> atomic_index(-1);
@@ -162,8 +163,7 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
     for (int id = static_cast<int>(begin); id < end; ++id) {
-      const int64 example_index =
-          examples.sampled_index(++atomic_index, options.adaptive);
+      const int64 example_index = examples.sampled_index(++atomic_index);
       const Example& example = examples.example(example_index);
       const float dual = example_state_data(example_index, 0);
       const float example_weight = example.example_weight();

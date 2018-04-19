@@ -44,13 +44,13 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer as optimizer_lib
@@ -196,7 +196,7 @@ def mock_optimizer(testcase, hidden_units, expected_loss=None):
     testcase.assertEquals(0, loss.shape.ndims)
     if expected_loss is None:
       if global_step is not None:
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
       return control_flow_ops.no_op()
     assert_loss = assert_close(
         math_ops.to_float(expected_loss, name='expected'),
@@ -204,7 +204,7 @@ def mock_optimizer(testcase, hidden_units, expected_loss=None):
         name='assert_loss')
     with ops.control_dependencies((assert_loss,)):
       if global_step is not None:
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
       return control_flow_ops.no_op()
 
   optimizer_mock = test.mock.NonCallableMagicMock(

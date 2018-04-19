@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -39,7 +40,8 @@ class XlaBuilderTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(XlaComputation computation, b->Build());
     const HloModuleProto& proto = computation.proto();
     TF_ASSIGN_OR_RETURN(const auto& config,
-                        HloModule::CreateModuleConfigFromProto(proto));
+                        HloModule::CreateModuleConfigFromProto(
+                            proto, legacy_flags::GetDebugOptionsFromFlags()));
     return HloModule::CreateFromProto(proto, config);
   }
 

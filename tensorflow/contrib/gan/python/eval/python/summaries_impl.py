@@ -31,6 +31,7 @@ __all__ = [
     'add_image_comparison_summaries',
     'add_gan_model_summaries',
     'add_regularization_loss_summaries',
+    'add_cyclegan_image_summaries',
 ]
 
 
@@ -51,14 +52,9 @@ def add_gan_model_image_summaries(gan_model, grid_size=4, model_summaries=True):
     ValueError: If real and generated data aren't images.
   """
   if isinstance(gan_model, namedtuples.CycleGANModel):
-    saved_params = locals()
-    saved_params.pop('gan_model', None)
-    with ops.name_scope('cyclegan_x2y_image_summaries'):
-      add_gan_model_image_summaries(gan_model.model_x2y, **saved_params)
-    with ops.name_scope('cyclegan_y2x_image_summaries'):
-      add_gan_model_image_summaries(gan_model.model_y2x, **saved_params)
-    return
-
+    raise ValueError(
+        '`add_gan_model_image_summaries` does not take CycleGANModels. Please '
+        'use `add_cyclegan_image_summaries` instead.')
   _assert_is_image(gan_model.real_data)
   _assert_is_image(gan_model.generated_data)
 
@@ -89,6 +85,49 @@ def add_gan_model_image_summaries(gan_model, grid_size=4, model_summaries=True):
     add_gan_model_summaries(gan_model)
 
 
+def add_cyclegan_image_summaries(cyclegan_model):
+  """Adds image summaries for CycleGAN.
+
+  There are two summaries, one for each generator. The first image is the
+  generator input, the second is the generator output, and the third is G(F(x)).
+
+  Args:
+    cyclegan_model: A CycleGANModel tuple.
+
+  Raises:
+    ValueError: If `cyclegan_model` isn't a CycleGANModel.
+    ValueError: If generated data, generator inputs, and reconstructions aren't
+      images.
+    ValueError: If the generator input, generated data, and reconstructions
+      aren't all the same size.
+  """
+  if not isinstance(cyclegan_model, namedtuples.CycleGANModel):
+    raise ValueError('`cyclegan_model` was not a CycleGANModel. Instead, was '
+                     '%s' % type(cyclegan_model))
+
+  _assert_is_image(cyclegan_model.model_x2y.generator_inputs)
+  _assert_is_image(cyclegan_model.model_x2y.generated_data)
+  _assert_is_image(cyclegan_model.reconstructed_x)
+  _assert_is_image(cyclegan_model.model_y2x.generator_inputs)
+  _assert_is_image(cyclegan_model.model_y2x.generated_data)
+  _assert_is_image(cyclegan_model.reconstructed_y)
+
+  def _add_comparison_summary(gan_model, reconstructions):
+    image_list = (array_ops.unstack(gan_model.generator_inputs[:1]) +
+                  array_ops.unstack(gan_model.generated_data[:1]) +
+                  array_ops.unstack(reconstructions[:1]))
+    summary.image(
+        'image_comparison', eval_utils.image_reshaper(
+            image_list, num_cols=len(image_list)), max_outputs=1)
+
+  with ops.name_scope('x2y_image_comparison_summaries'):
+    _add_comparison_summary(
+        cyclegan_model.model_x2y, cyclegan_model.reconstructed_x)
+  with ops.name_scope('y2x_image_comparison_summaries'):
+    _add_comparison_summary(
+        cyclegan_model.model_y2x, cyclegan_model.reconstructed_y)
+
+
 def add_image_comparison_summaries(gan_model, num_comparisons=2,
                                    display_diffs=False):
   """Adds image summaries to compare triplets of images.
@@ -109,15 +148,6 @@ def add_image_comparison_summaries(gan_model, num_comparisons=2,
     ValueError: If the generator input, real, and generated data aren't all the
       same size.
   """
-  if isinstance(gan_model, namedtuples.CycleGANModel):
-    saved_params = locals()
-    saved_params.pop('gan_model', None)
-    with ops.name_scope('cyclegan_x2y_image_comparison_summaries'):
-      add_image_comparison_summaries(gan_model.model_x2y, **saved_params)
-    with ops.name_scope('cyclegan_y2x_image_comparison_summaries'):
-      add_image_comparison_summaries(gan_model.model_y2x, **saved_params)
-    return
-
   _assert_is_image(gan_model.generator_inputs)
   _assert_is_image(gan_model.generated_data)
   _assert_is_image(gan_model.real_data)

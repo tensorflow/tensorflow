@@ -166,7 +166,8 @@ class Uniform(distribution.Distribution):
     return self.low + self.range() * samples
 
   def _prob(self, x):
-    broadcasted_x = x * array_ops.ones(self.batch_shape_tensor())
+    broadcasted_x = x * array_ops.ones(
+        self.batch_shape_tensor(), dtype=x.dtype)
     return array_ops.where(
         math_ops.is_nan(broadcasted_x),
         broadcasted_x,

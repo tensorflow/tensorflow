@@ -92,6 +92,8 @@ class InitializableLookupTable : public LookupInterface {
   //
   // Then the iterator is exhausted, valid returns false and status returns
   // Status::OutOfRange.
+  //
+  // This class is Thread-unsafe.
   class InitTableIterator {
    public:
     InitTableIterator() {}

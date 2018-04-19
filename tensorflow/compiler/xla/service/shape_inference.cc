@@ -1070,6 +1070,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (const HloInstruction* operand : operands) {
     operand_shapes.push_back(&operand->shape());
   }
+  return InferVariadicOpShape(opcode, operand_shapes);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferVariadicOpShape(
+    HloOpcode opcode,
+    tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
   return InferVariadicOpShape(OpcodeToVariadicOperation(opcode),
                               operand_shapes);
 }

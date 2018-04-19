@@ -37,7 +37,7 @@ py_library(
     srcs = ["parser.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_andreif_codegen"],
+    deps = ["@astor_archive//:astor"],
 )
 
 py_test(
@@ -141,15 +141,4 @@ py_test(
         ":py_guide_parser",
         "//tensorflow/python:client_testlib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

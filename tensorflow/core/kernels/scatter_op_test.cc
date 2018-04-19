@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -170,7 +171,7 @@ TEST_F(ScatterUpdateOpTest, Error_IndexOutOfRange) {
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("indices[2] = 99 is not in [0, 5)"))
+      str_util::StrContains(s.ToString(), "indices[2] = 99 is not in [0, 5)"))
       << s;
 }
 
@@ -183,8 +184,9 @@ TEST_F(ScatterUpdateOpTest, Error_WrongDimsIndices) {
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Must have updates.shape = indices.shape + "
+  EXPECT_TRUE(
+      str_util::StrContains(s.ToString(),
+                            "Must have updates.shape = indices.shape + "
                             "params.shape[1:] or updates.shape = [], got "))
       << s;
 }
@@ -200,8 +202,9 @@ TEST_F(ScatterUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
       TensorShape({3, 4}),
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Must have updates.shape = indices.shape + "
+  EXPECT_TRUE(
+      str_util::StrContains(s.ToString(),
+                            "Must have updates.shape = indices.shape + "
                             "params.shape[1:] or updates.shape = [], got "))
 
       << s;
@@ -217,8 +220,9 @@ TEST_F(ScatterUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   AddInputFromArray<float>(TensorShape({2, 3}),
                            {100, 101, 102, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Must have updates.shape = indices.shape + "
+  EXPECT_TRUE(
+      str_util::StrContains(s.ToString(),
+                            "Must have updates.shape = indices.shape + "
                             "params.shape[1:] or updates.shape = [], got "))
       << s;
 }

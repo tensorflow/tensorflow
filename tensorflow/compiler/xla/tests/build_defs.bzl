@@ -137,7 +137,8 @@ def xla_test(name,
       backend_deps += ["//tensorflow/compiler/xla/tests:test_macros_gpu"]
       this_backend_tags += ["requires-gpu-sm35"]
     elif backend in plugins:
-      backend_deps = plugins[backend]["deps"]
+      backend_deps = []
+      backend_deps += plugins[backend]["deps"]
       this_backend_copts += plugins[backend]["copts"]
       this_backend_tags += plugins[backend]["tags"]
       this_backend_args += plugins[backend]["args"]
