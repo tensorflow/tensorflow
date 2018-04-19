@@ -113,11 +113,13 @@ StatusOr<std::unique_ptr<Literal>> HloTestBase::Execute(
   return test_runner_.Execute(std::move(module), arguments);
 }
 
-StatusOr<std::unique_ptr<Literal>> HloTestBase::ExecuteNoHloPasses(
+std::unique_ptr<Literal> HloTestBase::ExecuteNoHloPasses(
     std::unique_ptr<HloModule> module,
     tensorflow::gtl::ArraySlice<Literal*> arguments) {
-  return test_runner_.Execute(std::move(module), arguments,
-                              /*run_hlo_passes=*/false);
+  return test_runner_
+      .Execute(std::move(module), arguments,
+               /*run_hlo_passes=*/false)
+      .ValueOrDie();
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
