@@ -57,25 +57,18 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
 
-      def tpu_dataset_fn():
-        return dataset_fn().batch(2)
       # TODO(isaprykin):  Eliminate `is_tpu`. Probably add a
       # `DistributionStrategy.create_monitor` so that each DistributionStrategy
       # could influence its training loop. That method would return an instance
       # of Monitor.  TPUMonitor would execute tpu.initialize_system() and
       # tpu.shutdown_system().
       iterator = distribution.distribute_dataset(
-          tpu_dataset_fn if is_tpu else dataset_fn).make_one_shot_iterator()
+          dataset_fn).make_one_shot_iterator()
 
       def run_step():
-        # TODO(isaprykin): Make iterator get_next() return a list of sub-
-        # batches for each iteration. Pass iterator.get_next() and not iterator
-        # to call_for_each_tower.
         return distribution.group(
             distribution.call_for_each_tower(
-                model_fn,
-                iterator.get_next() if not is_tpu else iterator,
-                run_concurrently=layer.built))
+                model_fn, iterator.get_next(), run_concurrently=layer.built))
 
       if not context.executing_eagerly():
         with self.test_session() as sess:

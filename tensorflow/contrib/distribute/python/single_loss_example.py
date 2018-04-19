@@ -54,7 +54,7 @@ def minimize_loss_example(optimizer_fn,
   """Example of non-distribution-aware legacy code."""
 
   def dataset_fn():
-    return dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+    return dataset_ops.Dataset.from_tensors([[1.]]).repeat().batch(2)
 
   # An Optimizer instance is created either outside or inside model_fn.
   outer_optimizer = None
@@ -63,10 +63,11 @@ def minimize_loss_example(optimizer_fn,
 
   layer = core.Dense(1, use_bias=use_bias)
 
-  def model_fn(x):
+  def model_fn(xs):
     """A very simple model written by the user."""
 
     def loss_fn():
+      x = math_ops.reduce_mean(xs, keepdims=True)
       y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
       return y * y
 

@@ -570,6 +570,39 @@ class PerDeviceDataset(object):
         dataset_iterator, self._devices, self._prefetch_on_device)
 
 
+class MultiIterator(object):
+  """Iterator that returns results of multiple get_next()s."""
+
+  def __init__(self, dataset_iterator, iterations):
+    self._dataset_iterator = dataset_iterator
+    self._iterations = iterations
+
+  def get_next(self, name=None):
+    return [
+        self._dataset_iterator.get_next(name=name)
+        for _ in range(self._iterations)
+    ]
+
+  @property
+  def initializer(self):
+    return self._dataset_iterator.initializer
+
+
+class PerIterationDataset(object):
+
+  def __init__(self, dataset, iterations):
+    self._dataset = dataset
+    self._iterations = iterations
+
+  def make_one_shot_iterator(self):
+    iterator = self._dataset.make_one_shot_iterator()
+    return MultiIterator(iterator, self._iterations)
+
+  def make_initializable_iterator(self):
+    iterator = self._dataset.make_initializable_iterator()
+    return MultiIterator(iterator, self._iterations)
+
+
 class MapOutput(object):
   """Map can result in multiple outputs per device."""
 
