@@ -212,7 +212,7 @@ class TrainingTest(test.TestCase):
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
     loss_weights = [1., 0.5]
-    metrics = ['mae']
+    metrics = ['acc', 'mae']
     model.compile(
         optimizer,
         loss,
@@ -231,20 +231,20 @@ class TrainingTest(test.TestCase):
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=0)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.evaluate(
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=1)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.evaluate(
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=2)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.test_on_batch([input_a_np, input_b_np],
                               [output_d_np, output_e_np])
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
 
     # Test evaluate with dictionary inputs
     model.evaluate(
@@ -625,7 +625,6 @@ class LossWeightingTest(test.TestCase):
       bad_w_np = np.random.random((10, 2, 2))
       model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
 
-
 class CorrectnessTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes()
@@ -648,7 +647,6 @@ class CorrectnessTest(test.TestCase):
     history = model.fit(x, y, epochs=1, batch_size=10)
     self.assertEqual(
         np.around(history.history['loss'][-1], decimals=4), 0.6173)
-
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

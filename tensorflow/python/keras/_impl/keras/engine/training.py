@@ -276,6 +276,8 @@ class Model(Network):
           self.metrics_names.append(self.output_names[i] + '_loss')
       self.nested_metrics = training_utils.collect_metrics(metrics,
                                                            self.output_names)
+      with K.name_scope('metrics'):
+        training_utils.populate_metric_names(self)
       self._feed_sample_weight_modes = []
       for i in range(len(self.outputs)):
         self._feed_sample_weight_modes.append(None)
@@ -462,7 +464,6 @@ class Model(Network):
         output_weighted_metrics = nested_weighted_metrics[i]
 
         def handle_metrics(metrics, weights=None):
-          metric_name_prefix = 'weighted_' if weights is not None else ''
 
           for metric in metrics:
             if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
@@ -489,39 +490,19 @@ class Model(Network):
                   metric_fn = metrics_module.categorical_accuracy
                 elif metric in ('crossentropy', 'ce'):
                   metric_fn = metrics_module.categorical_crossentropy
-              if metric in ('accuracy', 'acc'):
-                suffix = 'acc'
-              elif metric in ('crossentropy', 'ce'):
-                suffix = 'ce'
               weighted_metric_fn = training_utils.weighted_masked_objective(
                   metric_fn)
-              metric_name = metric_name_prefix + suffix
             else:
               metric_fn = metrics_module.get(metric)
               weighted_metric_fn = training_utils.weighted_masked_objective(
                   metric_fn)
-              # Get metric name as string
-              if hasattr(metric_fn, 'name'):
-                metric_name = metric_fn.name
-              else:
-                metric_name = metric_fn.__name__
-              metric_name = metric_name_prefix + metric_name
-
+            metric_name = training_utils.get_base_metric_name(
+                metric, weighted=weights is not None)
             with K.name_scope(metric_name):
               metric_result = weighted_metric_fn(
                   y_true, y_pred, weights=weights, mask=masks[i])
 
-            # Append to self.metrics_names, self.metric_tensors,
-            # self.stateful_metric_names
-            if len(self.output_names) > 1:
-              metric_name = '%s_%s' % (self.output_names[i], metric_name)
-            # Dedupe name
-            j = 1
-            base_metric_name = metric_name
-            while metric_name in self.metrics_names:
-              metric_name = '%s_%d' % (base_metric_name, j)
-              j += 1
-            self.metrics_names.append(metric_name)
+            training_utils.add_metric_name(self, metric_name, i)
             self.metrics_tensors.append(metric_result)
 
             # Keep track of state updates created by
