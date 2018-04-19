@@ -681,6 +681,37 @@ class UnbatchDatasetSerializationTest(
         num_outputs)
 
 
+class MapAndBatchDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def testSerializationCore(self):
+    range_size = 11
+    num_repeats = 2
+    batch_size = 5
+    total_outputs = range_size * num_repeats
+    num_outputs_drop_remainder = total_outputs // batch_size
+    num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
+    num_parallel_batches = 2
+
+    def build_ds(range_start, drop_remainder=False):
+
+      def _map_fn(x):
+        return math_ops.square(x)
+
+      return dataset_ops.Dataset.range(
+          range_start, range_start + range_size).repeat(num_repeats).apply(
+              batching.map_and_batch(
+                  map_func=_map_fn,
+                  batch_size=batch_size,
+                  num_parallel_batches=num_parallel_batches,
+                  drop_remainder=drop_remainder))
+
+    self.run_core_tests(lambda: build_ds(10), lambda: build_ds(15),
+                        num_outputs_keep_remainder)
+    self.run_core_tests(lambda: build_ds(10, True), lambda: build_ds(15, True),
+                        num_outputs_drop_remainder)
+
+
 class PaddedBatchDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
