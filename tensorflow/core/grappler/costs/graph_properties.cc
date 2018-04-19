@@ -670,6 +670,29 @@ class SymbolicShapeRefiner {
     return true;
   }
 
+  Status AddNode(const Node* node) {
+    // Create the inference context for this node.
+    std::vector<ShapeHandle> input_shapes(node->num_inputs());
+    std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
+        input_handle_shapes_and_types(node->num_inputs());
+    std::vector<const Tensor*> input_tensors(node->num_inputs(), nullptr);
+    std::vector<ShapeHandle> input_tensors_as_shapes;
+
+    NodeContext& node_ctx = node_to_context_[node];
+    TF_RETURN_IF_ERROR(
+        function_library_.LookUp(node->type_string(), &node_ctx.op_data));
+
+    node_ctx.inference_context.reset(new InferenceContext(
+        graph_def_version_, &node->def(), node->op_def(), input_shapes,
+        input_tensors, input_tensors_as_shapes,
+        std::move(input_handle_shapes_and_types)));
+    const Status s = node_ctx.inference_context->construction_status();
+    if (!s.ok()) {
+      node_ctx.inference_context.reset(nullptr);
+    }
+    return s;
+  }
+
  private:
   // Return the one ShapeHandle used to denote a fully unknown shape for a node
   // output.
@@ -696,29 +719,6 @@ class SymbolicShapeRefiner {
     DimensionHandle dim = c->UnknownDim();
     unknown_dims_[id] = dim;
     return dim;
-  }
-
-  Status AddNode(const Node* node) {
-    // Create the inference context for this node.
-    std::vector<ShapeHandle> input_shapes(node->num_inputs());
-    std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
-        input_handle_shapes_and_types(node->num_inputs());
-    std::vector<const Tensor*> input_tensors(node->num_inputs(), nullptr);
-    std::vector<ShapeHandle> input_tensors_as_shapes;
-
-    NodeContext& node_ctx = node_to_context_[node];
-    TF_RETURN_IF_ERROR(
-        function_library_.LookUp(node->type_string(), &node_ctx.op_data));
-
-    node_ctx.inference_context.reset(new InferenceContext(
-        graph_def_version_, &node->def(), node->op_def(), input_shapes,
-        input_tensors, input_tensors_as_shapes,
-        std::move(input_handle_shapes_and_types)));
-    const Status s = node_ctx.inference_context->construction_status();
-    if (!s.ok()) {
-      node_ctx.inference_context.reset(nullptr);
-    }
-    return s;
   }
 
   struct NodeContext {
@@ -929,37 +929,16 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
                                         bool* new_shapes) const {
   InferenceContext* c = shape_refiner->GetContext(node);
   if (!c) {
-    // The shape refiner can't handle loops. Therefore we first need to remove
-    // all edges
-    std::vector<Edge> edges;
-    std::vector<const Edge*> edge_ptrs;
-    for (const Edge* edge : node->in_edges()) {
-      if (!edge->IsControlEdge()) {
-        edges.push_back(*edge);
-        edge_ptrs.push_back(edge);
-      }
-    }
-    for (const Edge* edge : edge_ptrs) {
-      if (!edge->IsControlEdge()) {
-        graph_->RemoveEdge(edge);
-      }
-    }
     // Now we can run shape inference
-    TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(node, relax, new_shapes));
-    // And add all the edges back
-    for (const Edge& edge : edges) {
-      graph_->AddEdge(edge.src(), edge.src_output(), edge.dst(),
-                      edge.dst_input());
-    }
-
-    c = shape_refiner->GetContext(node);
+    TF_RETURN_IF_ERROR(shape_refiner->AddNode(node));
+    c = CHECK_NOTNULL(shape_refiner->GetContext(node));
     *new_shapes = true;
-    CHECK_NE(c, nullptr);
-  }
 
-  ShapeHandle out1;
-  TF_RETURN_IF_ERROR(c->WithRank(c->output(1), 0, &out1));
-  c->set_output(1, out1);
+    // Infer the shape of the second output once and for all since it never
+    // changes.
+    ShapeHandle out1 = c->Scalar();
+    c->set_output(1, out1);
+  }
 
   ShapeHandle out;
   bool out_initialized = false;
@@ -981,11 +960,7 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
       continue;
     }
     ShapeHandle input = in->output(e->src_output());
-    if (relax) {
-      c->RelaxInput(e->dst_input(), input);
-    } else {
-      c->MergeInput(e->dst_input(), input);
-    }
+    c->SetInput(e->dst_input(), input);
     if (!out_initialized) {
       out_initialized = true;
       out = input;
@@ -998,7 +973,7 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
     }
   }
 
-  if (!shape_refiner->EquivalentShapes(out, c->output(0))) {
+  if (*new_shapes || !shape_refiner->EquivalentShapes(out, c->output(0))) {
     c->set_output(0, out);
     *new_shapes = true;
   }
