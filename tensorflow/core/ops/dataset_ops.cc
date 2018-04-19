@@ -201,7 +201,7 @@ REGISTER_OP("PrefetchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-       // buffer_size should be a scalar.
+      // buffer_size should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
@@ -290,7 +290,7 @@ REGISTER_OP("BatchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-       // batch_size should be a scalar.
+      // batch_size should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
@@ -305,7 +305,7 @@ REGISTER_OP("SlideDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-       // window_size and stride should be scalars.
+      // window_size and stride should be scalars.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       return shape_inference::ScalarShape(c);
@@ -341,9 +341,9 @@ REGISTER_OP("DenseToSparseBatchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-       // batch_size should be a scalar.
+      // batch_size should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-       // row_shape should be a 1-D vector.
+      // row_shape should be a 1-D vector.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       return shape_inference::ScalarShape(c);
     });
