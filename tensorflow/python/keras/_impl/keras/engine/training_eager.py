@@ -158,8 +158,6 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
       if len(model.outputs) > 1:
         loss_metrics.append(backend.mean(output_loss))
 
-
-
       loss_weight = model.loss_weights_list[i]
       if total_loss is None:
         total_loss = loss_weight * output_loss

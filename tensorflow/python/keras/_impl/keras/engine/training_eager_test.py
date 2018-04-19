@@ -624,7 +624,6 @@ class LossWeightingTest(test.TestCase):
       bad_w_np = np.random.random((10, 2, 2))
       model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
 
-
 class CorrectnessTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes()
