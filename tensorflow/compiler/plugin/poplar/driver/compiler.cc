@@ -264,9 +264,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   const poplar::Device& dev = poplarExecutor->GetPoplarDevice();
 
-  poplar::Graph* graph = new poplar::Graph(dev);
+  poplar::Graph* graph;
   {
     std::lock_guard <std::mutex> g(static_mu_);
+    graph = new poplar::Graph(dev);
     graph->addCodelets(GetPathToGraphProgFile());
     popconv::addCodelets(*graph);
     popnn::addCodelets(*graph);
