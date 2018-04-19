@@ -652,7 +652,7 @@ def cosine_distance(predictions,
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `weights` is `None`.
   """
-  axis = deprecation.deprecated_argument_lookup(
+  axis = deprecated_argument_lookup(
       "axis", axis, "dim", dim)
   if axis is None:
     raise ValueError("You must specify 'axis'.")
