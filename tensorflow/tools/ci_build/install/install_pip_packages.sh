@@ -19,11 +19,11 @@ set -e
 # We don't apt-get install so that we can install a newer version of pip.
 # Only needed for Ubuntu 14.04 ,and not needed for Ubuntu 16.04 / Debian 8,9
 if $(cat /etc/*-release | grep -q 14.04); then
-  easy_install -U pip
-  easy_install3 -U pip
+  easy_install -U pip==9.0.3
+  easy_install3 -U pip==9.0.3
 else
-  pip2 install --upgrade pip
-  pip3 install --upgrade pip
+  pip2 install --upgrade pip==9.0.3
+  pip3 install --upgrade pip==9.0.3
 fi
 
 # Install pip packages from whl files to avoid the time-consuming process of
