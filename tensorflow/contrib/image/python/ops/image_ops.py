@@ -212,7 +212,11 @@ def translations_to_projective_transforms(translations, name=None):
         axis=1)
 
 
-def transform(images, transforms, interpolation="NEAREST", name=None):
+def transform(images,
+              transforms,
+              output_shape=None,
+              interpolation="NEAREST",
+              name=None):
   """Applies the given transform(s) to the image(s).
 
   Args:
@@ -228,7 +232,10 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
        where `k = c0 x + c1 y + 1`. The transforms are *inverted* compared to
        the transform mapping input points to output points. Note that gradients
        are not backpropagated into transformation parameters.
+    output_shape: Output dimesion after the transform, [height, width].
+       If None, output is the same size as input image.
     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
+    name: The name of the op.
 
   Returns:
     Image(s) with the same type and shape as `images`, with the given
@@ -255,6 +262,14 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
     else:
       raise TypeError("Images should have rank between 2 and 4.")
 
+    if output_shape is None:
+      output_shape = images.get_shape()[1:3]
+    elif len(output_shape) != 2:
+      raise TypeError(
+          "output_shape must either be None or a vector of 2 elements.")
+    output_shape = ops.convert_to_tensor(
+        output_shape, name="output_shape", dtype=dtypes.int32)
+
     if len(transform_or_transforms.get_shape()) == 1:
       transforms = transform_or_transforms[None]
     elif transform_or_transforms.get_shape().ndims is None:
@@ -265,7 +280,7 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
     else:
       raise TypeError("Transforms should have rank 1 or 2.")
     output = gen_image_ops.image_projective_transform(
-        images, transforms, interpolation=interpolation.upper())
+        images, transforms, output_shape, interpolation=interpolation.upper())
     if len(image_or_images.get_shape()) == 2:
       return output[0, :, :, 0]
     elif len(image_or_images.get_shape()) == 3:
@@ -375,14 +390,6 @@ def _image_projective_transform_grad(op, grad):
 
   if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
     raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-  if len(image_or_images.get_shape()) == 2:
-    images = image_or_images[None, :, :, None]
-  elif len(image_or_images.get_shape()) == 3:
-    images = image_or_images[None, :, :, :]
-  elif len(image_or_images.get_shape()) == 4:
-    images = image_or_images
-  else:
-    raise TypeError("Images should have rank between 2 and 4")
   if len(transform_or_transforms.get_shape()) == 1:
     transforms = transform_or_transforms[None]
   elif len(transform_or_transforms.get_shape()) == 2:
@@ -395,13 +402,11 @@ def _image_projective_transform_grad(op, grad):
   inverse = linalg_ops.matrix_inverse(transforms)
   transforms = matrices_to_flat_transforms(inverse)
   output = gen_image_ops.image_projective_transform(
-      grad, transforms, interpolation=interpolation)
-  if len(image_or_images.get_shape()) == 2:
-    return [output[0, :, :, 0], None]
-  elif len(image_or_images.get_shape()) == 3:
-    return [output[0, :, :, :], None]
-  else:
-    return [output, None]
+      images=grad,
+      transforms=transforms,
+      output_shape=image_or_images.get_shape()[1:3],
+      interpolation=interpolation)
+  return [output, None, None]
 
 
 def bipartite_match(distance_mat,
