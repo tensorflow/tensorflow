@@ -188,8 +188,6 @@ T ConvertOperator(Operator* o, OperatorType type) {
 }
 
 void CheckIsReadyForQuantization(const Model& model);
-void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
-                                 double default_ranges_max);
 
 bool ReshapeIsEquivalentToTranspose(const Model& model,
                                     const TensorFlowReshapeOperator* op,

@@ -184,7 +184,7 @@ class TypeInfoResolver(transformer.Base):
     # Multiple targets mean multiple assignment.
     for target in targets:
       # Tuple target means unpacking.
-      if isinstance(target, gast.Tuple):
+      if isinstance(target, (gast.Tuple, gast.List)):
         for i, target_item in enumerate(target.elts):
           # Two cases here:
           #   1. Static unpacking, e.g. a, b = c, d

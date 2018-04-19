@@ -42,7 +42,8 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
       model_fn, dataset, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
 
-      iterator = distribution.distribute_dataset(dataset)
+      iterator = distribution.distribute_dataset(
+          dataset).make_one_shot_iterator()
 
       def run_step():
         return control_flow_ops.group(distribution.unwrap(

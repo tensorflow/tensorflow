@@ -41,6 +41,7 @@ struct InputArgExpansion {
   // different data types
   string input_name;                 // name of the function input argument
   DataType data_type;                // input data type
+  bool is_ref;                       // if true, inputs are required to be refs
   std::vector<string> placeholders;  // names of placeholder nodes in the
                                      // function body
 };
@@ -55,6 +56,7 @@ struct OutputArgExpansion {
   // different data types
   string output_name;                  // name of the function output argument
   DataType data_type;                  // output data type
+  bool is_ref;                         // if true, outputs are refs
   std::vector<string> output_tensors;  // names of output tensor from the
                                        // function body nodes
 };
@@ -136,6 +138,7 @@ class GrapplerFunctionItem : public GrapplerItem {
       const string& func_name, const AttrValueMap& func_attr,
       const std::vector<InputArgExpansion>& input_arg_expansions,
       const std::vector<OutputArgExpansion>& output_arg_expansions,
+      const std::vector<string>& keep_nodes, bool is_stateful,
       GraphDef&& function_body);
 
   bool IsInputPlaceholder(const string& node_name) const;
@@ -152,6 +155,8 @@ class GrapplerFunctionItem : public GrapplerItem {
   const GraphDef& function_body() const;
   GraphDef& mutable_function_body();
 
+  bool is_stateful() const;
+
   GrapplerFunctionItem& SwapFunctionBody(GraphDef&& other);
 
  private:
@@ -162,10 +167,24 @@ class GrapplerFunctionItem : public GrapplerItem {
   std::vector<OutputArgExpansion> output_arg_expansions_;
 
   std::set<string> input_arg_placeholders_;
+
+  bool is_stateful_;
 };
 
 // Return all output tensors referenced by item output args.
 std::vector<string> OutputTensors(const GrapplerFunctionItem& item);
+
+// Check if function input/output types are fully defined only at instantiation
+// time (parametrized by it's instantiation node).
+bool HasParametrizedType(const FunctionDef& func);
+
+// Check if a function body is parametrized by it's instantiation node. Function
+// body is parametrized, if it has at least one node with a 'placeholder'
+// attribute.
+bool HasParametrizedBody(const FunctionDef& func);
+
+// Check if function has parametrized type or body.
+bool IsParametrized(const FunctionDef& func);
 
 // Make a GrapplerFunctionItem from the function definition and attributes.
 // Return error if the given function def cannot be converted.

@@ -76,8 +76,7 @@ class HloTestBase : public ::testing::Test {
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
-  HloTestBase(::perftools::gputools::Platform* test_platform,
-              ::perftools::gputools::Platform* reference_platform);
+  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform);
 
   ~HloTestBase() override {}
 

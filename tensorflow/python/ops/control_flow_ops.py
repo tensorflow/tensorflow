@@ -2379,7 +2379,15 @@ class WhileContext(ControlFlowContext):
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
     result = val
-    if val.name not in self._values:
+    new_value = val.name not in self._values
+    # Don't treat ops in this context as new values. Usually all known values
+    # are in self._values, except when we're importing a while loop inside this
+    # WhileContext. Since there's a cycle in this case, `val` may be part of the
+    # imported while loop but not yet processed by this context and added to
+    # self._values in _AddOpInternal. We only want to process external input
+    # tensors to the while loop here.
+    new_value &= val.op._control_flow_context is not self  # pylint: disable=protected-access
+    if new_value:
       self._values.add(val.name)
 
       # If we are in a grad context and val is from its forward context,

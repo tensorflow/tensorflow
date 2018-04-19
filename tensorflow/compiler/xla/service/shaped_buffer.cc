@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 using ::tensorflow::strings::Appendf;
@@ -146,7 +144,7 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
 
 std::unique_ptr<ShapedBuffer> ScopedShapedBuffer::release() {
   auto shaped_buffer = MakeUnique<ShapedBuffer>(std::move(*this));
-  buffers_ = ShapeTree<perftools::gputools::DeviceMemoryBase>();
+  buffers_ = ShapeTree<se::DeviceMemoryBase>();
   return shaped_buffer;
 }
 

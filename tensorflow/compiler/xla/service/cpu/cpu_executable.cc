@@ -45,8 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace cpu {
 
@@ -75,7 +73,7 @@ CpuExecutable::CpuExecutable(
 
 Status CpuExecutable::AllocateBuffers(
     DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* buffers) {
+    std::vector<se::DeviceMemoryBase>* buffers) {
   CHECK_EQ(buffers->size(), assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
           << " allocations for module " << module().name();
@@ -247,8 +245,7 @@ static Status DeallocateTempBuffers(
 
 StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-        allocated_buffers,
+    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> allocated_buffers,
     std::vector<bool>* buffers_in_result) {
   se::Stream* stream = run_options->stream();
   auto result_buffer = MakeUnique<ShapedBuffer>(
@@ -322,7 +319,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteAsyncOnStream(
         "supported on CPU.");
   }
 
-  auto* host_stream = dynamic_cast<perftools::gputools::host::HostStream*>(
+  auto* host_stream = dynamic_cast<se::host::HostStream*>(
       run_options->stream()->implementation());
   se::Stream* stream = run_options->stream();
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();

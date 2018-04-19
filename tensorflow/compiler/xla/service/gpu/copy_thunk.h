@@ -40,8 +40,7 @@ class HostToDeviceCopyThunk : public Thunk {
   HostToDeviceCopyThunk& operator=(const HostToDeviceCopyThunk&) = delete;
 
   tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
 
  private:
   const void* source_address_;
@@ -64,8 +63,7 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
 
  private:
   const BufferAllocation::Slice source_buffer_;
