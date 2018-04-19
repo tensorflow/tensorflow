@@ -513,7 +513,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
