@@ -43,15 +43,17 @@ class FakeDevice : public Device {
 class SessionMgrTest : public ::testing::Test {
  protected:
   SessionMgrTest()
-      : device_(FakeDevice::MakeCPU(
-            "/job:mnist/replica:0/task:0/device:fakecpu:0")),
-        mgr_(&env_, "/job:mnist/replica:0/task:0",
+      : mgr_(&env_, "/job:mnist/replica:0/task:0",
              std::unique_ptr<WorkerCacheInterface>(), factory_) {
-    TF_CHECK_OK(mgr_.WorkerSessionForSession("", &legacy_session_));
-    env_.local_devices = {device_.get()};
+    Device* device =
+        FakeDevice::MakeCPU("/job:mnist/replica:0/task:0/device:fakecpu:0")
+            .release();
+    env_.local_devices = {device};
+    device_mgr_.reset(new DeviceMgr(env_.local_devices));
+    env_.device_mgr = device_mgr_.get();
   }
 
-  std::unique_ptr<Device> device_;
+  std::unique_ptr<DeviceMgr> device_mgr_;
   WorkerEnv env_;
   SessionMgr::WorkerCacheFactory factory_ =
       [](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
@@ -59,7 +61,6 @@ class SessionMgrTest : public ::testing::Test {
         return Status::OK();
       };
   SessionMgr mgr_;
-  std::shared_ptr<WorkerSession> legacy_session_;
 };
 
 TEST_F(SessionMgrTest, CreateSessionSimple) {
@@ -84,25 +85,25 @@ TEST_F(SessionMgrTest, CreateSessionIsolateSessionState) {
   TF_EXPECT_OK(mgr_.CreateSession("handle_1", server_def, false));
   std::shared_ptr<WorkerSession> session_1;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession("handle_1", &session_1));
-  std::vector<Device*> devices_1 = session_1->device_mgr->ListDevices();
+  std::vector<Device*> devices_1 = session_1->device_mgr()->ListDevices();
   EXPECT_EQ(1, devices_1.size());
 
   TF_EXPECT_OK(mgr_.CreateSession("handle_2", server_def, false));
   std::shared_ptr<WorkerSession> session_2;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession("handle_2", &session_2));
-  std::vector<Device*> devices_2 = session_2->device_mgr->ListDevices();
+  std::vector<Device*> devices_2 = session_2->device_mgr()->ListDevices();
   EXPECT_EQ(1, devices_2.size());
 
   TF_EXPECT_OK(mgr_.CreateSession("handle_3", server_def, true));
   std::shared_ptr<WorkerSession> session_3;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession("handle_3", &session_3));
-  std::vector<Device*> devices_3 = session_3->device_mgr->ListDevices();
+  std::vector<Device*> devices_3 = session_3->device_mgr()->ListDevices();
   EXPECT_EQ(1, devices_3.size());
 
   TF_EXPECT_OK(mgr_.CreateSession("handle_4", server_def, true));
   std::shared_ptr<WorkerSession> session_4;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession("handle_4", &session_4));
-  std::vector<Device*> devices_4 = session_4->device_mgr->ListDevices();
+  std::vector<Device*> devices_4 = session_4->device_mgr()->ListDevices();
   EXPECT_EQ(1, devices_4.size());
 
   EXPECT_EQ(devices_1[0]->resource_manager(), devices_2[0]->resource_manager());

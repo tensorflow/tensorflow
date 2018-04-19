@@ -65,7 +65,7 @@ class SessionMgr {
   void ClearLogs();
 
  private:
-  const WorkerEnv* const worker_env_;  // Not owned.
+  WorkerEnv* const worker_env_;  // Not owned.
 
   // A note about destruction:
   // We must delete graph_mgr before device_mgr, due to shared
