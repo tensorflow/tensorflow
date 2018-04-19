@@ -409,7 +409,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def _testTwoThreadsNoContentionWithRaces(self, sloppy=False):
     """Tests where all the workers race in producing elements.
 
-    Note: this is in contrast with the prevous test which carefully sequences
+    Note: this is in contrast with the previous test which carefully sequences
     the execution of the map functions.
 
     Args:
@@ -495,7 +495,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def _testTwoThreadsNoContentionWithRacesAndBlocking(self, sloppy=False):
     """Tests where all the workers race in producing elements.
 
-    Note: this is in contrast with the prevous test which carefully sequences
+    Note: this is in contrast with the previous test which carefully sequences
     the execution of the map functions.
 
 
