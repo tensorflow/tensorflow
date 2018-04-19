@@ -2132,14 +2132,7 @@ int GetNumGPUs(const Cluster& cluster) {
   int num_gpus = 0;
   for (const auto& device : devices) {
     if (device.second.type() == "GPU") {
-      if (device.second.environment().find("architecture") !=
-          device.second.environment().end()) {
-        const string arch = device.second.environment().at("architecture");
-        // TODO(yaozhang): Enable for Volta GPUs (compute capability version 7).
-        if (arch < "7") {
-          num_gpus++;
-        }
-      }
+      num_gpus++;
     }
   }
   return num_gpus;
