@@ -876,7 +876,7 @@ class RNNCellTest(test.TestCase):
   def testConv1DLSTMCell(self):
     with self.test_session() as sess:
       shape = [2, 1]
-      filter_size = [3]
+      filter_size = tuple([3])
       num_features = 1
       expected_state_c = np.array(
           [[[1.4375670191], [1.4375670191]], [[2.7542609292], [2.7542609292]]],
