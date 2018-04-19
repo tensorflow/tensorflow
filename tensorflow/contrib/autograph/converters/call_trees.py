@@ -245,8 +245,6 @@ class CallTreeTransformer(transformer.Base):
     new_call.keywords = node.keywords
     return new_call
 
-  # pylint:disable=invalid-name
-
   def visit_Expr(self, node):
     if isinstance(node.value, gast.Call):
       if anno.hasanno(node.value.func, 'live_val'):
@@ -294,14 +292,16 @@ class CallTreeTransformer(transformer.Base):
         raise NotImplementedError(
             'py_func with return values (unknown function)')
     else:
-      if self.context.recursive:
+      if ast_util.matches(node, 'super(_)'):
+        # super() calls are preserved. The class conversion mechanism will
+        # ensure that they return the correct value.
+        pass
+      elif self.context.recursive:
         node = self._insert_dynamic_conversion(node)
       else:
         # Unresolved functions are allowed in non-recursive mode.
         pass
     return node
-
-  # pylint:enable=invalid-name
 
 
 def transform(node, context, uncompiled_modules, nocompile_decorators):
