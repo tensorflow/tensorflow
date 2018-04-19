@@ -53,6 +53,12 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.trainable, False)
 
   @test_util.run_in_graph_and_eager_modes()
+  def testInt64Layer(self):
+    layer = base_layers.Layer(name='my_layer', dtype='int64')
+    layer.add_variable('my_var', [2, 2])
+    self.assertEqual(layer.name, 'my_layer')
+
+  @test_util.run_in_graph_and_eager_modes()
   def testAddWeight(self):
     layer = base_layers.Layer(name='my_layer')
 

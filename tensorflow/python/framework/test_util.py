@@ -990,6 +990,8 @@ class TensorFlowTestCase(googletest.TestCase):
       config.graph_options.optimizer_options.opt_level = -1
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.arithmetic_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
     if graph is None:
@@ -1380,7 +1382,9 @@ class TensorFlowTestCase(googletest.TestCase):
                      " %s" % (a.shape, b.shape, msg))
     same = (a == b)
 
-    if a.dtype == np.float32 or a.dtype == np.float64:
+    if (a.dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
     if not np.all(same):
       # Prints more details than np.testing.assert_array_equal.

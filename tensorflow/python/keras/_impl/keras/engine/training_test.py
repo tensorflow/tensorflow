@@ -23,10 +23,12 @@ import unittest
 
 import numpy as np
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 try:
@@ -1131,6 +1133,21 @@ class TestTrainingWithDataTensors(test.TestCase):
       inputs = keras.backend.zeros(shape=(10, 3))
       targets = keras.backend.zeros(shape=(10, 4))
 
+      model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
+      model.evaluate(inputs, targets, steps=2, verbose=0)
+      model.predict(inputs, steps=2)
+      model.train_on_batch(inputs, targets)
+      model.test_on_batch(inputs, targets)
+      model.fit(inputs, targets,
+                epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=(inputs, targets), validation_steps=2)
+
+      # Test with dynamic shape
+      inputs = array_ops.placeholder_with_default(
+          np.zeros((2, 3)), shape=tensor_shape.TensorShape([None, 3]))
+      targets = array_ops.placeholder_with_default(
+          np.zeros((2, 4)), shape=tensor_shape.TensorShape([None, 4]))
+      self.assertEqual(inputs.shape[0].value, None)
       model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
       model.evaluate(inputs, targets, steps=2, verbose=0)
       model.predict(inputs, steps=2)

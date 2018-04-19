@@ -19,6 +19,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
+std::shared_ptr<TRTResourceManager>
+tensorflow::tensorrt::TRTResourceManager::instance() {
+  static std::shared_ptr<TRTResourceManager> instance_(new TRTResourceManager);
+  return instance_;
+}
+
 std::shared_ptr<tensorflow::ResourceMgr>
 tensorflow::tensorrt::TRTResourceManager::getManager(const string& op_name) {
   // mutex is held for lookup only. Most instantiations where mutex will be held

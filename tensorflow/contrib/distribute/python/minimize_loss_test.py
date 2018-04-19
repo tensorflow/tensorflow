@@ -25,6 +25,7 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python.single_loss_example import batchnorm_example
 from tensorflow.contrib.distribute.python.single_loss_example import minimize_loss_example
+from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -42,24 +43,46 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       combinations.times(
           combinations.distributions_and_v1_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
-          + combinations.combine(mode=["eager"], use_callable_loss=[True])))
-  def testTrainNetwork(self, distribution, optimizer_fn,
-                       use_callable_loss=True):
+          + combinations.combine(mode=["eager"], use_callable_loss=[True]),
+          combinations.combine(is_tpu=[False])) +
+      combinations.combine(
+          distribution=[combinations.tpu_strategy],
+          optimizer_fn=[combinations.adam_optimizer_v1_fn],
+          mode=["graph"],
+          use_callable_loss=[False],
+          is_tpu=[True]))
+  def testTrainNetwork(self, distribution, optimizer_fn, use_callable_loss,
+                       is_tpu):
     with distribution.scope():
       model_fn, dataset, layer = minimize_loss_example(
           optimizer_fn,
           use_bias=True,
           use_callable_loss=use_callable_loss)
 
+      # TODO(isaprykin):  Eliminate `is_tpu`. Probably add a
+      # `DistributionStrategy.create_monitor` so that each DistributionStrategy
+      # could influence its training loop. That method would return an instance
+      # of Monitor.  TPUMonitor would execute tpu.initialize_system() and
+      # tpu.shutdown_system().
+      if is_tpu:
+        dataset = dataset.batch(2)
+
       iterator = distribution.distribute_dataset(dataset)
 
       def run_step():
+        # TODO(isaprykin): Make iterator get_next() return a list of sub-
+        # batches for each iteration. Pass iterator.get_next() and not iterator
+        # to call_for_each_tower.
         return distribution.group(
             distribution.call_for_each_tower(
-                model_fn, iterator.get_next(), run_concurrently=layer.built))
+                model_fn,
+                iterator.get_next() if not is_tpu else iterator,
+                run_concurrently=layer.built))
 
       if not context.executing_eagerly():
         with self.test_session() as sess:
+          if is_tpu:
+            sess.run(tpu.initialize_system())
           run_step = sess.make_callable(run_step())
         self.evaluate(variables_lib.global_variables_initializer())
 
@@ -69,6 +92,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
         weights.append(self.evaluate(distribution.fetch(layer.kernel)))
         biases.append(self.evaluate(distribution.fetch(layer.bias)))
+
+      if is_tpu:
+        with self.test_session() as sess:
+          sess.run(tpu.shutdown_system())
 
       error = abs(numpy.add(numpy.squeeze(weights), numpy.squeeze(biases)) - 1)
       is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))

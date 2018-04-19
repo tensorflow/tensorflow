@@ -166,7 +166,7 @@ class RealNVP(bijector_lib.Bijector):
     self._input_depth = None
     self._shift_and_log_scale_fn = shift_and_log_scale_fn
     super(RealNVP, self).__init__(
-        event_ndims=1,
+        forward_min_event_ndims=1,
         is_constant_jacobian=is_constant_jacobian,
         validate_args=validate_args,
         name=name)
@@ -224,7 +224,7 @@ class RealNVP(bijector_lib.Bijector):
     _, log_scale = self._shift_and_log_scale_fn(
         x0, self._input_depth - self._num_masked)
     if log_scale is None:
-      return constant_op.constant(0., dtype=x.dtype, name="ildj")
+      return constant_op.constant(0., dtype=x.dtype, name="fldj")
     return math_ops.reduce_sum(log_scale, axis=-1)
 
 

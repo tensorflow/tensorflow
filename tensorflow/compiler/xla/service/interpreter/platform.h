@@ -27,10 +27,10 @@ namespace perftools {
 namespace gputools {
 namespace interpreter {
 
-class InterpreterPlatform : public Platform {
+class XlaInterpreterPlatform : public Platform {
  public:
-  InterpreterPlatform();
-  ~InterpreterPlatform() override;
+  XlaInterpreterPlatform();
+  ~XlaInterpreterPlatform() override;
 
   Platform::Id id() const override;
 
@@ -60,7 +60,7 @@ class InterpreterPlatform : public Platform {
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(InterpreterPlatform);
+  SE_DISALLOW_COPY_AND_ASSIGN(XlaInterpreterPlatform);
 };
 
 }  // namespace interpreter

@@ -1042,7 +1042,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           vocabulary_list=tuple(self._label_vocabulary),
           name='class_id_lookup').lookup(labels)
     labels = math_ops.to_float(labels)
-    labels = _assert_range(labels, 2)
+    labels = _assert_range(labels, n_classes=2)
     if self._loss_fn:
       unweighted_loss = _call_loss_fn(
           loss_fn=self._loss_fn, labels=labels, logits=logits,
@@ -1450,12 +1450,12 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
 
 def _assert_range(labels, n_classes, message=None):
   with ops.name_scope(None, 'assert_range', (labels,)):
-    assert_less = check_ops.assert_less(
+    assert_less = check_ops.assert_less_equal(
         labels,
-        ops.convert_to_tensor(n_classes, dtype=labels.dtype),
-        message=message or 'Label IDs must < n_classes')
+        ops.convert_to_tensor(n_classes - 1, dtype=labels.dtype),
+        message=message or 'Labels must <= n_classes - 1')
     assert_greater = check_ops.assert_non_negative(
-        labels, message=message or 'Label IDs must >= 0')
+        labels, message=message or 'Labels must >= 0')
     with ops.control_dependencies((assert_less, assert_greater)):
       return array_ops.identity(labels)
 

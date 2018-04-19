@@ -198,7 +198,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:function",
         "//tensorflow/python:functional_ops",

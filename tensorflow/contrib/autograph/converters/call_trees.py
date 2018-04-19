@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-import types
 
 import gast
 
@@ -114,7 +113,7 @@ class CallTreeTransformer(transformer.Base):
   def _function_is_compilable(self, target_entity):
     """Determines whether an entity can be compiled at all."""
     # TODO(mdan): This is just a placeholder. Implement.
-    return not isinstance(target_entity, types.BuiltinFunctionType)
+    return not inspect_utils.isbuiltin(target_entity)
 
   def _should_compile(self, node, fqn):
     """Determines whether an entity should be compiled in the context."""
@@ -199,7 +198,7 @@ class CallTreeTransformer(transformer.Base):
   def _wrap_to_py_func_no_return(self, node):
     # TODO(mdan): Properly handle varargs, etc.
     template = """
-      autograph_utils.wrap_py_func(func, None, (args,), kwargs, True)
+      ag__.utils.wrap_py_func(func, None, (args,), kwargs, True)
     """
     return templates.replace(
         template,
@@ -210,7 +209,7 @@ class CallTreeTransformer(transformer.Base):
   def _wrap_to_py_func_single_return(self, node, dtype):
     # TODO(mdan): Properly handle varargs, etc.
     template = """
-      autograph_utils.wrap_py_func(func, dtype, (args,), kwargs, False)
+      ag__.utils.wrap_py_func(func, dtype, (args,), kwargs, False)
     """
     return templates.replace_as_expression(
         template,
@@ -238,7 +237,7 @@ class CallTreeTransformer(transformer.Base):
     # Before we could convert all the time though, we'd need a reasonable
     # caching mechanism.
     template = """
-      autograph_api.converted_call(func, True, False, {}, args)
+      ag__.converted_call(func, True, False, {}, args)
     """
     call_expr = templates.replace(template, func=node.func, args=node.args)
     new_call = call_expr[0].value

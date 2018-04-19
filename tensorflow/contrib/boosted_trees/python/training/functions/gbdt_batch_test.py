@@ -27,8 +27,10 @@ from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
 from tensorflow.contrib.boosted_trees.python.utils import losses
 
+from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
+
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -99,7 +101,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           array_ops.zeros([2], dtypes.int64))
       (fc_names, dense_floats, sparse_float_indices, sparse_float_values,
        sparse_float_shapes, sparse_int_indices, sparse_int_values,
-       sparse_int_shapes) = (gbdt_batch.extract_features(features, None))
+       sparse_int_shapes) = (
+           gbdt_batch.extract_features(features, None, use_core_columns=False))
       self.assertEqual(len(fc_names), 3)
       self.assertAllEqual(fc_names,
                           ["dense_float", "sparse_float", "sparse_int"])
@@ -148,8 +151,9 @@ class GbdtTest(test_util.TensorFlowTestCase):
               "sparse_categorical", hash_bucket_size=1000000))
       (fc_names, dense_floats, sparse_float_indices, sparse_float_values,
        sparse_float_shapes, sparse_int_indices, sparse_int_values,
-       sparse_int_shapes) = (gbdt_batch.extract_features(
-           features, feature_columns))
+       sparse_int_shapes) = (
+           gbdt_batch.extract_features(
+               features, feature_columns, use_core_columns=False))
       self.assertEqual(len(fc_names), 3)
       self.assertAllEqual(fc_names,
                           ["dense_float", "sparse_float", "sparse_categorical"])
@@ -168,6 +172,41 @@ class GbdtTest(test_util.TensorFlowTestCase):
                           features["sparse_float"].values.eval())
       self.assertAllEqual(sparse_float_shapes[0].eval(),
                           features["sparse_float"].dense_shape.eval())
+      self.assertAllEqual(sparse_int_indices[0].eval(),
+                          features["sparse_categorical"].indices.eval())
+      self.assertAllEqual(sparse_int_values[0].eval(), [397263, 397263])
+      self.assertAllEqual(sparse_int_shapes[0].eval(),
+                          features["sparse_categorical"].dense_shape.eval())
+
+  def testExtractFeaturesFromCoreFeatureColumns(self):
+    """Tests feature extraction when using core columns."""
+    with self.test_session():
+      features = {}
+      # Sparse float column does not exist in core, so only dense numeric and
+      # categorical.
+      features["dense_float"] = array_ops.zeros([2, 1], dtypes.float32)
+      features["sparse_categorical"] = sparse_tensor.SparseTensor(
+          array_ops.zeros([2, 2], dtypes.int64),
+          array_ops.zeros([2], dtypes.string), array_ops.zeros([2],
+                                                               dtypes.int64))
+
+      feature_columns = set()
+      feature_columns.add(core_feature_column.numeric_column("dense_float"))
+      feature_columns.add(
+          core_feature_column.categorical_column_with_hash_bucket(
+              "sparse_categorical", hash_bucket_size=1000000))
+      (fc_names, dense_floats, _, _, _, sparse_int_indices, sparse_int_values,
+       sparse_int_shapes) = (
+           gbdt_batch.extract_features(
+               features, feature_columns, use_core_columns=True))
+      self.assertEqual(len(fc_names), 2)
+      self.assertAllEqual(fc_names, ["dense_float", "sparse_categorical"])
+      self.assertEqual(len(dense_floats), 1)
+      self.assertEqual(len(sparse_int_indices), 1)
+      self.assertEqual(len(sparse_int_values), 1)
+      self.assertEqual(len(sparse_int_shapes), 1)
+      self.assertAllEqual(dense_floats[0].eval(),
+                          features["dense_float"].eval())
       self.assertAllEqual(sparse_int_indices[0].eval(),
                           features["sparse_categorical"].indices.eval())
       self.assertAllEqual(sparse_int_values[0].eval(), [397263, 397263])

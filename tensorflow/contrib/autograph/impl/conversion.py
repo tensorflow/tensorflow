@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import imp
+
 import gast
 
+from tensorflow.contrib.autograph import operators
 from tensorflow.contrib.autograph import utils
 from tensorflow.contrib.autograph.converters import asserts
 from tensorflow.contrib.autograph.converters import break_statements
@@ -138,20 +141,22 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
         parameters.
 
   Returns:
-    A tuple (ast, new_name):
+    A tuple (ast, new_name, namespace):
         * ast: An AST representing an entity with interface equivalent to `o`,
             but which when executed it creates TF a graph.
         * new_name: The symbol name under which the new entity can be found.
+        * namespace: A dict mapping all symbols visible to the converted entity,
+            keyed by their symbol name.
 
   Raises:
     ValueError: if the entity type is not supported.
   """
   if tf_inspect.isclass(o):
-    node, new_name = class_to_graph(o, conversion_map)
+    node, name, ns = class_to_graph(o, conversion_map)
   elif tf_inspect.isfunction(o):
-    node, new_name = function_to_graph(o, conversion_map, arg_values, arg_types)
+    node, name, ns = function_to_graph(o, conversion_map, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
-    node, new_name = function_to_graph(o, conversion_map, arg_values, arg_types)
+    node, name, ns = function_to_graph(o, conversion_map, arg_values, arg_types)
   else:
     raise ValueError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
@@ -174,7 +179,7 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
         continue
       entity_to_graph(candidate, conversion_map, {}, {})
 
-  return node, new_name
+  return node, name, ns
 
 
 def class_to_graph(c, conversion_map):
@@ -185,17 +190,18 @@ def class_to_graph(c, conversion_map):
   if not members:
     raise ValueError('Cannot convert %s: it has no member methods.' % c)
 
-  class_namespace = None
+  class_namespace = {}
   for _, m in members:
-    node, _ = function_to_graph(
+    node, _, namespace = function_to_graph(
         m,
         conversion_map=conversion_map,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
         owner_type=c)
-    # TODO(mdan): Do not assume all members have the same view of globals.
     if class_namespace is None:
-      class_namespace = inspect_utils.getnamespace(m)
+      class_namespace = namespace
+    else:
+      class_namespace.update(namespace)
     converted_members[m] = node
   namer = conversion_map.new_namer(class_namespace)
   class_name = namer.compiled_class_name(c.__name__, c)
@@ -206,25 +212,28 @@ def class_to_graph(c, conversion_map):
       body=list(converted_members.values()),
       decorator_list=[])
 
-  return node, class_name
+  return node, class_name, class_namespace
+
+
+def _add_reserved_symbol(namespace, name, entity):
+  if name not in namespace:
+    namespace[name] = entity
+  elif namespace[name] != entity:
+    raise ValueError('The name "%s" is reserved and may not be used.' % name)
 
 
 def _add_self_references(namespace, api_module):
-  """Self refs are only required for analysis and are not used directly."""
-  # Manually add the utils namespace which may be used from generated code.
-  if 'autograph_util' not in namespace:
-    namespace['autograph_utils'] = utils
-  elif namespace['autograph_utils'] != utils:
-    raise ValueError(
-        'The module name "autograph_utils" is reserved and may not be used.')
+  # Craft a module that exposes parts of the external API as well as certain
+  # internal modules.
+  ag_internal = imp.new_module('autograph')
+  ag_internal.converted_call = api_module.converted_call
+  ag_internal.utils = utils
+  # TODO(mdan): Add safeguards against name clashes.
+  # We don't want to create a submodule because we want the operators to be
+  # accessible as ag__.<operator>
+  ag_internal.__dict__.update(operators.__dict__)
 
-  # We also make reference to the api module for dynamic conversion, but
-  # to avoid circular references we don't import it here.
-  if 'autograph_api' not in namespace:
-    namespace['autograph_api'] = api_module
-  elif namespace['autograph_api'] != api_module:
-    raise ValueError(
-        'The module name "autograph_api" is reserved and may not be used.')
+  _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
 def function_to_graph(f, conversion_map, arg_values, arg_types,
@@ -261,7 +270,7 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
   # TODO(mdan): Use this at compilation.
   conversion_map.additional_imports.update(deps)
 
-  return node, new_name
+  return node, new_name, namespace
 
 
 def _static_analysis_pass(node, ctx):
@@ -310,6 +319,8 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = ifexp.transform(node, ctx)
   node, deps = decorators.transform(node, nocompile_decorators)
   node = break_statements.transform(node, ctx)
+  node = _static_analysis_pass(node, ctx)
+
   node = asserts.transform(node, ctx)
 
   # Note: sequencing continue canonicalization before for loop one avoids

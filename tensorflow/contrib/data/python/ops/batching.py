@@ -370,9 +370,10 @@ def assert_element_shape(expected_shapes):
   def _check_shape(*elements):
     flatten_tensors = nest.flatten(elements)
     flatten_shapes = nest.flatten(expected_shapes)
-    checked_tensors = [with_shape(shape, tensor)
-                       for shape, tensor in zip(flatten_shapes,
-                                                flatten_tensors)]
+    checked_tensors = [
+        with_shape(shape, tensor)
+        for shape, tensor in zip(flatten_shapes, flatten_tensors)
+    ]
     return nest.pack_sequence_as(elements, checked_tensors)
 
   def _apply_fn(dataset):

@@ -42,6 +42,7 @@ _SESSION_CONFIG_ERR = 'session_config must be instance of ConfigProto'
 _KEEP_CKPT_MAX_ERR = 'keep_checkpoint_max should be >= 0'
 _KEEP_CKPT_HOURS_ERR = 'keep_checkpoint_every_n_hours should be > 0'
 _TF_RANDOM_SEED_ERR = 'tf_random_seed must be integer'
+_DEVICE_FN_ERR = 'device_fn must be callable with exactly one argument "op".'
 _ONE_CHIEF_ERR = 'The "cluster" in TF_CONFIG must have only one "chief" node.'
 _ONE_MASTER_ERR = 'The "cluster" in TF_CONFIG must have only one "master" node.'
 _INVALID_TASK_TYPE_FOR_EVAL_MASTER = (
@@ -83,6 +84,7 @@ class RunConfigTest(test.TestCase):
     self.assertEqual(5, config.keep_checkpoint_max)
     self.assertEqual(10000, config.keep_checkpoint_every_n_hours)
     self.assertIsNone(config.service)
+    self.assertIsNone(config.device_fn)
 
   def test_model_dir(self):
     empty_config = run_config_lib.RunConfig()
@@ -93,6 +95,7 @@ class RunConfigTest(test.TestCase):
 
   def test_replace_with_allowed_properties(self):
     session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    device_fn = lambda op: "/cpu:0"
 
     config = run_config_lib.RunConfig().replace(
         tf_random_seed=11,
@@ -100,13 +103,15 @@ class RunConfigTest(test.TestCase):
         save_checkpoints_secs=14,
         session_config=session_config,
         keep_checkpoint_max=16,
-        keep_checkpoint_every_n_hours=17)
+        keep_checkpoint_every_n_hours=17,
+        device_fn=device_fn)
     self.assertEqual(11, config.tf_random_seed)
     self.assertEqual(12, config.save_summary_steps)
     self.assertEqual(14, config.save_checkpoints_secs)
     self.assertEqual(session_config, config.session_config)
     self.assertEqual(16, config.keep_checkpoint_max)
     self.assertEqual(17, config.keep_checkpoint_every_n_hours)
+    self.assertEqual(device_fn, config.device_fn)
 
   def test_replace_none_value(self):
     config = run_config_lib.RunConfig().replace(
@@ -117,7 +122,8 @@ class RunConfigTest(test.TestCase):
         save_checkpoints_steps=None,
         session_config=None,
         keep_checkpoint_max=None,
-        keep_checkpoint_every_n_hours=None)
+        keep_checkpoint_every_n_hours=None,
+        device_fn=None)
     self.assertIsNone(config.tf_random_seed)
     self.assertIsNone(config.model_dir)
     self.assertIsNone(config.save_summary_steps)
@@ -126,6 +132,7 @@ class RunConfigTest(test.TestCase):
     self.assertIsNone(config.session_config)
     self.assertIsNone(config.keep_checkpoint_max)
     self.assertIsNone(config.keep_checkpoint_every_n_hours)
+    self.assertIsNone(config.device_fn)
 
   def test_replace_with_disallowallowed_properties(self):
     config = run_config_lib.RunConfig()
@@ -166,9 +173,12 @@ class RunConfigTest(test.TestCase):
       config.replace(keep_checkpoint_every_n_hours=0)
     with self.assertRaisesRegexp(ValueError, _TF_RANDOM_SEED_ERR):
       config.replace(tf_random_seed=1.0)
+    with self.assertRaisesRegexp(ValueError, _DEVICE_FN_ERR):
+      config.replace(device_fn=lambda x, y: 0)
 
   def test_init_with_allowed_properties(self):
     session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    device_fn = lambda op: "/cpu:0"
 
     config = run_config_lib.RunConfig(
         tf_random_seed=11,
@@ -176,13 +186,15 @@ class RunConfigTest(test.TestCase):
         save_checkpoints_secs=14,
         session_config=session_config,
         keep_checkpoint_max=16,
-        keep_checkpoint_every_n_hours=17)
+        keep_checkpoint_every_n_hours=17,
+        device_fn=device_fn)
     self.assertEqual(11, config.tf_random_seed)
     self.assertEqual(12, config.save_summary_steps)
     self.assertEqual(14, config.save_checkpoints_secs)
     self.assertEqual(session_config, config.session_config)
     self.assertEqual(16, config.keep_checkpoint_max)
     self.assertEqual(17, config.keep_checkpoint_every_n_hours)
+    self.assertEqual(device_fn, config.device_fn)
 
   def test_init_none_value(self):
     config = run_config_lib.RunConfig(
@@ -193,7 +205,8 @@ class RunConfigTest(test.TestCase):
         save_checkpoints_steps=None,
         session_config=None,
         keep_checkpoint_max=None,
-        keep_checkpoint_every_n_hours=None)
+        keep_checkpoint_every_n_hours=None,
+        device_fn=None)
     self.assertIsNone(config.tf_random_seed)
     self.assertIsNone(config.model_dir)
     self.assertIsNone(config.save_summary_steps)
@@ -202,6 +215,7 @@ class RunConfigTest(test.TestCase):
     self.assertIsNone(config.session_config)
     self.assertIsNone(config.keep_checkpoint_max)
     self.assertIsNone(config.keep_checkpoint_every_n_hours)
+    self.assertIsNone(config.device_fn)
 
   def test_init_invalid_values(self):
     with self.assertRaisesRegexp(ValueError, _MODEL_DIR_ERR):
@@ -220,6 +234,8 @@ class RunConfigTest(test.TestCase):
       run_config_lib.RunConfig(keep_checkpoint_every_n_hours=0)
     with self.assertRaisesRegexp(ValueError, _TF_RANDOM_SEED_ERR):
       run_config_lib.RunConfig(tf_random_seed=1.0)
+    with self.assertRaisesRegexp(ValueError, _DEVICE_FN_ERR):
+      run_config_lib.RunConfig(device_fn=lambda x: "/cpu:0")
 
 
 class RunConfigDistributedSettingTest(test.TestCase):

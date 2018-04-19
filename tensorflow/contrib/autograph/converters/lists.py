@@ -45,7 +45,7 @@ class ListTransformer(transformer.Base):
     if not anno.hasanno(node, 'element_type'):
       raise NotImplementedError(
           'type inference for empty lists is not yet supported; '
-          'use utils.set_element_type(<list>, <dtype>) to continue')
+          'use set_element_type(<list>, <dtype>) to continue')
     dtype = anno.getanno(node, 'element_type')
     if not isinstance(dtype, dtypes.DType):
       # TODO(mdan): Allow non-TF dtypes?
@@ -74,7 +74,7 @@ class ListTransformer(transformer.Base):
 
       if qn.qn[-1] == 'append' and (len(call_node.args) == 1):
         template = """
-          target = autograph_utils.dynamic_list_append(target, element)
+          target = ag__.utils.dynamic_list_append(target, element)
         """
         node = templates.replace(
             template,

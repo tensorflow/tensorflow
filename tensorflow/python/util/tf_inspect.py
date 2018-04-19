@@ -17,21 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect as _inspect
-import six
 from collections import namedtuple
+import inspect as _inspect
 
 from tensorflow.python.util import tf_decorator
 
 ArgSpec = _inspect.ArgSpec
 
 
-if six.PY3:
-  FullArgSpec = _inspect.FullArgSpec
+if hasattr(_inspect, 'FullArgSpec'):
+  FullArgSpec = _inspect.FullArgSpec  # pylint: disable=invalid-name
 else:
-  FullArgSpec = namedtuple(
-      'FullArgSpec', ['args', 'varargs', 'varkw', 'defaults',
-                      'kwonlyargs', 'kwonlydefaults', 'annotations'])
+  FullArgSpec = namedtuple('FullArgSpec', [
+      'args', 'varargs', 'varkw', 'defaults', 'kwonlyargs', 'kwonlydefaults',
+      'annotations'
+  ])
 
 
 def currentframe():
@@ -70,8 +70,20 @@ def getfullargspec(obj):  # pylint: disable=redefined-builtin
     callable is not decorated, `inspect.getfullargspec()` will be called
     directly on the callable.
   """
-  if six.PY2:
+  if hasattr(_inspect, 'getfullargspec'):
+    spec_fn = _inspect.getfullargspec
+  else:
     def spec_fn(target):
+      """Spec function that adding default value from FullArgSpec.
+
+      It is used when getfullargspec is not available (eg in PY2).
+
+      Args:
+        target: the target object to inspect.
+      Returns:
+        The full argument specs with empty kwonlyargs, kwonlydefaults and
+        annotations.
+      """
       argspecs = _inspect.getargspec(target)
       fullargspecs = FullArgSpec(
           args=argspecs.args,
@@ -82,8 +94,6 @@ def getfullargspec(obj):  # pylint: disable=redefined-builtin
           kwonlydefaults=None,
           annotations={})
       return fullargspecs
-  else:
-    spec_fn = _inspect.getfullargspec
 
   decorators, target = tf_decorator.unwrap(obj)
   return next((d.decorator_argspec for d in decorators
