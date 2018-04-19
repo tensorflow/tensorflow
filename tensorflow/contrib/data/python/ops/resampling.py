@@ -110,7 +110,6 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
         .filter(lambda _1, p, _2: random_ops.random_uniform([], seed=seed) < p))
     return filtered_ds.map(lambda class_value, _, data: (class_value, data))
 
-
   return _apply_fn
 
 
