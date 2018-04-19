@@ -432,4 +432,13 @@ cc_library(
     ),
 )
 
+cc_test(
+    name = "batch_to_space_nd_test",
+    srcs = ["batch_to_space_nd_test.cc"],
+    deps = [
+        ":optimized_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])

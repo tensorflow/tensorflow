@@ -1,0 +1,32 @@
+primitive {
+  double_value: 23.5
+  double_value: 123.0
+  bool_value: true
+}
+primitive {
+  double_value: 3.1
+  bool_value: false
+}
+shape: 2
+sizes: 2
+sizes: 1
+sizes: 1
+sizes: 1
+field {
+  name: "double_value"
+  dtype: DT_DOUBLE
+  expected {
+    double_value: 23.5
+    double_value: 123.0
+    double_value: 3.1
+    double_value: 0.0
+  }
+}
+field {
+  name: "bool_value"
+  dtype: DT_BOOL
+  expected {
+    bool_value: true
+    bool_value: false
+  }
+}

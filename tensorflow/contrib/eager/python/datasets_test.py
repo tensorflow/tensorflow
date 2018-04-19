@@ -27,7 +27,6 @@ from tensorflow.contrib import lookup
 from tensorflow.contrib.data.python.ops import prefetching_ops
 from tensorflow.contrib.data.python.ops import threadpool
 from tensorflow.contrib.data.python.ops import unique
-from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
 from tensorflow.python.eager import test
@@ -38,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.training import checkpointable_utils
 
 
 class IteratorTest(test.TestCase):

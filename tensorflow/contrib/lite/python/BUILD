@@ -97,6 +97,19 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "create_custom_op",
+    srcs = ["create_custom_op.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "@absl_py//absl/flags",
+    ],
+)
+
 py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],

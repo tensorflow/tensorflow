@@ -299,6 +299,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # so instead of breaking compatibility with that assumption, we
     # just manually initialize this field:
     self._train_distribute = None
+    self._device_fn = None
 
     gpu_options = config_pb2.GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)

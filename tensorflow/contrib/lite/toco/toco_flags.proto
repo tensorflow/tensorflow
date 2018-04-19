@@ -37,7 +37,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 14.
+// Next ID to use: 15.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -141,4 +141,13 @@ message TocoFlags {
   // Disables transformations that fuse subgraphs such as known LSTMs (not all
   // LSTMs are identified).
   optional bool debug_disable_recurrent_cell_fusion = 13;
+
+  // Uses the FakeQuantWithMinMaxArgs.num_bits attribute to adjust quantized
+  // array data types throughout the graph. The graph must be properly annotated
+  // with FakeQuant* ops on at least the edges and may contain additional ops on
+  // the interior of the graph to widen/narrow as desired.
+  //
+  // Input and output array data types may change because of this propagation
+  // and users must be sure to query the final data_type values.
+  optional bool propagate_fake_quant_num_bits = 14;
 }

@@ -21,11 +21,24 @@ py_library(
     srcs = [
         "__init__.py",
         "control_flow.py",
+        "data_structures.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/contrib/autograph/utils",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
+    name = "data_structures_test",
+    srcs = ["data_structures_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

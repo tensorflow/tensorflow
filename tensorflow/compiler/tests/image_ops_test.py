@@ -65,7 +65,8 @@ class RGBToHSVTest(XLATestCase):
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1)
       self.assertAllClose(batch2, join2)
-      self.assertAllCloseAccordingToType(batch2, inp, bfloat16_atol=0.03)
+      self.assertAllCloseAccordingToType(
+          batch2, inp, bfloat16_atol=0.03, half_rtol=0.02)
 
   def testRGBToHSVRoundTrip(self):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]

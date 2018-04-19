@@ -66,7 +66,7 @@ class SoftmaxCentered(bijector.Bijector):
     self._graph_parents = []
     self._name = name
     super(SoftmaxCentered, self).__init__(
-        event_ndims=1,
+        forward_min_event_ndims=1,
         validate_args=validate_args,
         name=name)
 
@@ -105,8 +105,6 @@ class SoftmaxCentered(bijector.Bijector):
       y.shape.assert_is_compatible_with(shape)
       y.set_shape(shape)
 
-    # Since we only support event_ndims in [0, 1] and we do padding, we always
-    # reduce over the last dimension, i.e., dim=-1 (which is the default).
     return nn_ops.softmax(y)
 
   def _inverse(self, y):
@@ -162,8 +160,6 @@ class SoftmaxCentered(bijector.Bijector):
     #   -log_normalization + reduce_sum(logits - log_normalization)
     log_normalization = nn_ops.softplus(
         math_ops.reduce_logsumexp(x, axis=-1, keep_dims=True))
-    fldj = (-log_normalization +
-            math_ops.reduce_sum(x - log_normalization,
-                                axis=-1,
-                                keep_dims=True))
-    return array_ops.squeeze(fldj, squeeze_dims=-1)
+    return array_ops.squeeze(
+        (-log_normalization + math_ops.reduce_sum(
+            x - log_normalization, axis=-1, keepdims=True)), axis=-1)

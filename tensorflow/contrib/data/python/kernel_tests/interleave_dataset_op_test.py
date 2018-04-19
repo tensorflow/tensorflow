@@ -30,6 +30,7 @@ from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -90,6 +91,76 @@ class InterleaveDatasetSerializationTest(
     def _build_dataset():
       return dataset_ops.Dataset.range(10).map(_map_fn).interleave(
           _interleave_fn, cycle_length=1)
+
+    self.run_core_tests(_build_dataset, None, 20)
+
+
+class ParallelInterleaveDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def setUp(self):
+    self.input_values = np.array([4, 5, 6], dtype=np.int64)
+    self.num_repeats = 2
+    self.num_outputs = np.sum(self.input_values) * 2
+
+  def _build_ds(self, cycle_length, block_length, sloppy=False):
+    return (dataset_ops.Dataset.from_tensor_slices(
+        self.input_values).repeat(self.num_repeats).apply(
+            interleave_ops.parallel_interleave(
+                lambda x: dataset_ops.Dataset.range(10 * x, 11 * x),
+                cycle_length, block_length, sloppy)))
+
+  def testSerializationCore(self):
+    # cycle_length > 1, block_length > 1
+    cycle_length = 2
+    block_length = 3
+    self.run_core_tests(
+        lambda: self._build_ds(cycle_length, block_length),
+        lambda: self._build_ds(cycle_length * 2, block_length * 1),
+        self.num_outputs)
+    # cycle_length = 1
+    cycle_length = 1
+    block_length = 3
+    self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
+                        None, self.num_outputs)
+    # block_length = 1
+    cycle_length = 2
+    block_length = 1
+    self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
+                        None, self.num_outputs)
+
+  def testSerializationWithSloppy(self):
+    break_points = self.gen_break_points(self.num_outputs, 10)
+    expected_outputs = np.repeat(
+        np.concatenate([np.arange(10 * x, 11 * x) for x in self.input_values]),
+        self.num_repeats).tolist()
+
+    def run_test(cycle_length, block_length):
+      actual = self.gen_outputs(
+          lambda: self._build_ds(cycle_length, block_length, True),
+          break_points, self.num_outputs)
+      self.assertSequenceEqual(sorted(actual), expected_outputs)
+
+    # cycle_length > 1, block_length > 1
+    run_test(2, 3)
+    # cycle_length = 1
+    run_test(1, 3)
+    # block_length = 1
+    run_test(2, 1)
+
+  def testSparseCore(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
+
+    def _interleave_fn(x):
+      return dataset_ops.Dataset.from_tensor_slices(
+          sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
+
+    def _build_dataset():
+      return dataset_ops.Dataset.range(10).map(_map_fn).apply(
+          interleave_ops.parallel_interleave(_interleave_fn, 1))
 
     self.run_core_tests(_build_dataset, None, 20)
 
@@ -338,7 +409,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def _testTwoThreadsNoContentionWithRaces(self, sloppy=False):
     """Tests where all the workers race in producing elements.
 
-    Note: this is in contrast with the prevous test which carefully sequences
+    Note: this is in contrast with the previous test which carefully sequences
     the execution of the map functions.
 
     Args:
@@ -424,7 +495,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def _testTwoThreadsNoContentionWithRacesAndBlocking(self, sloppy=False):
     """Tests where all the workers race in producing elements.
 
-    Note: this is in contrast with the prevous test which carefully sequences
+    Note: this is in contrast with the previous test which carefully sequences
     the execution of the map functions.
 
 
@@ -834,6 +905,108 @@ class ParallelInterleaveDatasetTest(test.TestCase):
                            (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
+
+
+class DirectedInterleaveDatasetTest(test.TestCase):
+
+  def testBasic(self):
+    selector_dataset = dataset_ops.Dataset.range(10).repeat(100)
+    input_datasets = [
+        dataset_ops.Dataset.from_tensors(i).repeat(100) for i in range(10)
+    ]
+    dataset = interleave_ops.DirectedInterleaveDataset(selector_dataset,
+                                                       input_datasets)
+    iterator = dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(iterator.initializer)
+      for _ in range(100):
+        for i in range(10):
+          self.assertEqual(i, sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def _normalize(self, vec):
+    batched = (len(vec.shape) == 2)
+    return vec / vec.sum(axis=1, keepdims=True) if batched else vec / vec.sum()
+
+  def _chi2(self, expected, actual):
+    actual = np.asarray(actual)
+    expected = np.asarray(expected)
+    diff = actual - expected
+    chi2 = np.sum(diff * diff / expected, axis=0)
+    return chi2
+
+  def testSampleFromDatasets(self):
+    random_seed.set_random_seed(1618)
+    num_samples = 10000
+    rand_probs = self._normalize(np.random.random_sample((10,)))
+    rand_probs2 = self._normalize(np.random.random_sample((15,)))
+
+    for probs in [[.5, .5], [.85, .05, .1], rand_probs, rand_probs2]:
+      probs = np.asarray(probs)
+
+      # Create a dataset that samples each integer in `[0, probs.shape[0])`
+      # with probability given by `probs[i]`.
+      dataset = interleave_ops.sample_from_datasets([
+          dataset_ops.Dataset.from_tensors(i).repeat(None)
+          for i in range(probs.shape[0])
+      ], probs)
+      dataset = dataset.take(num_samples)
+      iterator = dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
+
+      with self.test_session() as sess:
+        freqs = np.zeros_like(probs)
+        for _ in range(num_samples):
+          freqs[sess.run(next_element)] += 1
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(next_element)
+
+      # Use chi-squared test to assert that the observed distribution
+      # matches the expected distribution. Based on the implementation
+      # in "tensorflow/python/kernel_tests/multinomial_op_test.py".
+      self.assertLess(self._chi2(probs, freqs / num_samples), 1e-3)
+
+  def testErrors(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r"vector of length `len\(datasets\)`"):
+      interleave_ops.sample_from_datasets(
+          [dataset_ops.Dataset.range(10),
+           dataset_ops.Dataset.range(20)],
+          weights=[0.25, 0.25, 0.25, 0.25])
+
+    with self.assertRaisesRegexp(TypeError, "`tf.float32` or `tf.float64`"):
+      interleave_ops.sample_from_datasets(
+          [dataset_ops.Dataset.range(10),
+           dataset_ops.Dataset.range(20)],
+          weights=[1, 1])
+
+    with self.assertRaisesRegexp(TypeError, "must have the same type"):
+      interleave_ops.sample_from_datasets([
+          dataset_ops.Dataset.from_tensors(0),
+          dataset_ops.Dataset.from_tensors(0.0)
+      ])
+
+
+class SampleFromDatasetsSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_dataset(self, probs, num_samples):
+    dataset = interleave_ops.sample_from_datasets(
+        [
+            dataset_ops.Dataset.from_tensors(i).repeat(None)
+            for i in range(len(probs))
+        ],
+        probs,
+        seed=1813)
+    return dataset.take(num_samples)
+
+  def testSerializationCore(self):
+    self.run_core_tests(
+        lambda: self._build_dataset([0.5, 0.5], 100),
+        lambda: self._build_dataset([0.25, 0.25, 0.25, 0.25], 1000), 100)
 
 
 if __name__ == "__main__":

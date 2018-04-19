@@ -112,6 +112,7 @@ tf_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
     shard_count = 5,
+    tags = ["noasan"],
     deps = [
         ":constant_folding",
         "//tensorflow/cc:cc_ops",
@@ -483,10 +484,13 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:virtual_placer",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
 

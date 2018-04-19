@@ -38,11 +38,14 @@ class FunctionInliningContext {
  public:
   explicit FunctionInliningContext(const GrapplerItem& item,
                                    RewriterConfig::Toggle opt_level)
-      : library_(&item.graph.library()),
-        opt_level_(opt_level),
-        functions_(InliningCandidates(item)) {}
+      : opt_level_(opt_level),
+        functions_(InliningCandidates(item)),
+        function_library_(FunctionLibraryDefinition(OpRegistry::Global(),
+                                                    item.graph.library())) {}
 
-  const FunctionDefLibrary& Library() const { return *library_; }
+  const FunctionLibraryDefinition& FunctionLibrary() const {
+    return function_library_;
+  }
 
   bool HasInlinedFunctions() const { return !functions_.empty(); }
 
@@ -78,9 +81,9 @@ class FunctionInliningContext {
     return functions;
   }
 
-  const FunctionDefLibrary* library_;
   RewriterConfig::Toggle opt_level_;
   std::unordered_map<string, const FunctionDef*> functions_;
+  FunctionLibraryDefinition function_library_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionInliningContext);
 };
@@ -150,11 +153,14 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
   const std::unordered_map<string, AttrValue> func_attr(
       func_node.attr().begin(), func_node.attr().end());
 
-  std::unique_ptr<GrapplerItem> item =
-      GrapplerItemFromFunctionDef(func, func_attr, ctx.Library());
-  if (!item) {
+  GrapplerFunctionItem item;
+  Status item_status =
+      MakeGrapplerFunctionItem(func, func_attr, ctx.FunctionLibrary(), &item);
+
+  if (!item_status.ok()) {
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
-                                   " instantiated by ", func_node.name());
+                                   " instantiated by ", func_node.name(),
+                                   ". Error: ", item_status.error_message());
   }
 
   std::unordered_map<string, int> input_nodes;
@@ -168,7 +174,7 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
   TF_RETURN_IF_ERROR(
       HookInlinedFunctionInputs(func_node, func, func_attr, func_inputs));
 
-  for (NodeDef& func_body_node : *item->graph.mutable_node()) {
+  for (NodeDef& func_body_node : *item.mutable_function_body().mutable_node()) {
     if (input_nodes.find(func_body_node.name()) != input_nodes.end()) {
       CHECK_EQ(0, func_body_node.input_size());
       // Turn input placeholders into identity nodes
@@ -217,8 +223,9 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
 
   // Hook inlined function outputs to IdentityN node
   NodeDef* func_outputs = optimized_graph->add_node();
+  std::vector<string> fetch = OutputTensors(item);
   TF_RETURN_IF_ERROR(HookInlinedFunctionOutputs(func_node, func, func_attr,
-                                                item->fetch, func_outputs));
+                                                fetch, func_outputs));
 
   return Status::OK();
 }

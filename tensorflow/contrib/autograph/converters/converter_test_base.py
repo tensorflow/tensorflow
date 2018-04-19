@@ -76,9 +76,10 @@ class TestCase(test.TestCase):
     try:
       result, source = compiler.ast_to_object(node)
       result.tf = self.make_fake_mod('fake_tf', *symbols)
-      result.autograph_utils = utils
-      result.autograph_api = self.make_fake_mod('fake_api', converted_call)
-      result.__dict__['__ops'] = operators
+      fake_ag = self.make_fake_mod('fake_ag', converted_call)
+      fake_ag.__dict__.update(operators.__dict__)
+      fake_ag.__dict__['utils'] = utils
+      result.__dict__['ag__'] = fake_ag
       yield result
     except Exception:  # pylint:disable=broad-except
       if source is None:

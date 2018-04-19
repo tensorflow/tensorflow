@@ -109,23 +109,12 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) {
 }
 
 bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
-  if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
+  if (!fetch_nodes_known_ ||
+      nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  if (!fetch_nodes_known_ || NumNonControlOutputs(node, *node_map_) > 0) {
-    // The output values of this node may be needed.
-    return false;
-  }
-  if (IsMerge(node) || IsSwitch(node)) {
-    return false;
-  }
-  if (ModifiesFrameInfo(node)) {
-    return false;
-  }
-  if (!IsFreeOfSideEffect(node)) {
-    return false;
-  }
-  if (node.op() == "ControlTrigger") {
+  if (IsMerge(node) || IsSwitch(node) || ModifiesFrameInfo(node) ||
+      !IsFreeOfSideEffect(node)) {
     return false;
   }
   if (node.op().rfind("Submodel", 0) == 0) {
@@ -136,16 +125,21 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
   if (!status.ok() || op_def->output_arg_size() == 0) {
     return false;
   }
-
+  const std::unordered_set<string> do_not_rewrite_ops{
+      "Assert",      "CheckNumerics",         "_Retval",
+      "_Arg",        "_ParallelConcatUpdate", "_TPUExecute",
+      "_TPUCompile", "ControlTrigger"};
+  if (do_not_rewrite_ops.find(node.op()) != do_not_rewrite_ops.end()) {
+    return false;
+  }
   if (!SafeToRemoveIdentity(node)) {
     return false;
   }
-
-  const std::unordered_set<string> do_not_rewrite_ops{
-      "Assert",     "CheckNumerics",         "_Retval",
-      "_Arg",       "_ParallelConcatUpdate", "_TPUExecute",
-      "_TPUCompile"};
-  return do_not_rewrite_ops.find(node.op()) == do_not_rewrite_ops.end();
+  if (NumNonControlOutputs(node, *node_map_) > 0) {
+    // The output values of this node may be needed.
+    return false;
+  }
+  return true;
 }
 
 void DependencyOptimizer::OptimizeNode(int node_idx,
@@ -164,7 +158,8 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       bool data_connection = false;
       for (int i = fanout->input_size() - 1; i >= 0; --i) {
         int pos;
-        string input_name = ParseNodeName(fanout->input(i), &pos);
+        StringPiece input_name =
+            ParseNodeNameAsStringPiece(fanout->input(i), &pos);
         if (input_name == node_name) {
           if (pos < 0) {
             fanout->mutable_input()->SwapElements(i, fanout->input_size() - 1);
@@ -358,8 +353,8 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
           for (int j = 0; j < consumer->input_size(); ++j) {
             const string& old_input = consumer->input(j);
             int old_input_pos;
-            string old_input_node_name =
-                ParseNodeName(old_input, &old_input_pos);
+            StringPiece old_input_node_name =
+                ParseNodeNameAsStringPiece(old_input, &old_input_pos);
             if (old_input_node_name == node_name) {
               if (old_input_pos >= 0) {
                 // Regular input
