@@ -139,8 +139,9 @@ def numpy_input_fn(x,
     TypeError: `x` is not a dict or array, or if `shuffle` is not bool.
   """
   if not isinstance(shuffle, bool):
-    raise TypeError('shuffle must be explicitly set as boolean; '
-                    'got {}'.format(shuffle))
+    raise ValueError('shuffle must be provided and explicitly set as boolean '
+                     '(it is recommended to set it as True for training); '
+                     'got {}'.format(shuffle))
 
   def input_fn():
     """Numpy input function."""
