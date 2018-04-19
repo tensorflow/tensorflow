@@ -347,20 +347,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
   }
 
-  const char *vertex_graph = getenv("TF_POPLAR_VERTEX_GRAPH_FILENAME");
-  if (vertex_graph != NULL) {
-    std::ofstream stream;
-    stream.open(vertex_graph);
-    graph->outputVertexGraph(stream, progs);
-  }
-
-  const char *compute_graph = getenv("TF_POPLAR_COMPUTE_GRAPH_FILENAME");
-  if (compute_graph != NULL) {
-    std::ofstream stream;
-    stream.open(compute_graph);
-    graph->outputComputeGraph(stream, progs);
-  }
-
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
   std::unique_ptr<HloProfilePrinterData> profile_printer;
   if (module->config().hlo_profiling_enabled()) {
