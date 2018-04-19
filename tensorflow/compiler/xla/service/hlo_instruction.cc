@@ -1678,14 +1678,35 @@ Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
 }
 
 Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
-  auto succ_it = std::find(control_successors_.begin(),
-                           control_successors_.end(), instruction);
-  TF_RET_CHECK(succ_it != control_successors_.end());
-  control_successors_.erase(succ_it);
-  auto pred_it = std::find(instruction->control_predecessors_.begin(),
-                           instruction->control_predecessors_.end(), this);
-  TF_RET_CHECK(pred_it != instruction->control_predecessors_.end());
-  instruction->control_predecessors_.erase(pred_it);
+  TF_RET_CHECK(instruction->parent() == parent());
+  TF_RETURN_IF_ERROR(EraseElementFromVector(&control_successors_, instruction));
+  TF_RETURN_IF_ERROR(
+      EraseElementFromVector(&instruction->control_predecessors_, this));
+  return Status::OK();
+}
+
+Status HloInstruction::DropAllControlDeps() {
+  for (auto* ctrl_succ : control_successors_) {
+    TF_RETURN_IF_ERROR(
+        EraseElementFromVector(&ctrl_succ->control_predecessors_, this));
+  }
+  for (auto* ctrl_pred : control_predecessors_) {
+    TF_RETURN_IF_ERROR(
+        EraseElementFromVector(&ctrl_pred->control_successors_, this));
+  }
+  control_successors_.clear();
+  control_predecessors_.clear();
+  return Status::OK();
+}
+
+Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
+  for (auto* ctrl_pred : inst->control_predecessors()) {
+    TF_RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(this));
+  }
+
+  for (auto* ctrl_succ : inst->control_successors()) {
+    TF_RETURN_IF_ERROR(this->AddControlDependencyTo(ctrl_succ));
+  }
 
   return Status::OK();
 }
