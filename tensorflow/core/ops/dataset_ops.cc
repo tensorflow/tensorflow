@@ -551,4 +551,10 @@ REGISTER_OP("EnqueueInQueueDataset")
     // reading from queue handle (is that even possible?).
     .SetShapeFn(shape_inference::NoOutputs);
 
+REGISTER_OP("DatasetToTFRecord")
+    .Input("input_dataset: variant")
+    .Input("filename: string")
+    .Input("compression_type: string")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 }  // namespace tensorflow

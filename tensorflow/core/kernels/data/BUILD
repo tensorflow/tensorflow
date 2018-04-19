@@ -576,6 +576,20 @@ tf_kernel_library(
         ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
         ":unbatch_dataset_op",
+        ":writer_ops",
         ":zip_dataset_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "writer_ops",
+    srcs = ["writer_ops.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )

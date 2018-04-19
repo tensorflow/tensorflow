@@ -516,3 +516,23 @@ tf_py_test(
         "//third_party/py/numpy",
     ],
 )
+
+tf_py_test(
+    name = "writer_ops_test",
+    size = "small",
+    srcs = ["writer_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/data/python/ops:writers",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:readers",
+    ],
+)
