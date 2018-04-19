@@ -41,6 +41,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 import six
 
@@ -139,12 +140,12 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   specified by arguments `value` and (optionally) `shape` (see examples
   below).
 
-  The argument `value` can be a constant value, or a list of values of type
-  `dtype`. If `value` is a list, then the length of the list must be less
-  than or equal to the number of elements implied by the `shape` argument (if
-  specified). In the case where the list length is less than the number of
-  elements specified by `shape`, the last element in the list will be used
-  to fill the remaining entries.
+  The argument `value` can be a constant value, or a sequence of values of type
+  `dtype`. If `value` is a sequence, then the length of the sequence must be
+  less than or equal to the number of elements implied by the `shape` argument
+  (if specified). In the case where the sequence length is less than the number
+  of elements specified by `shape`, the last element in the sequence will be
+  used to fill the remaining entries.
 
   The argument `shape` is optional. If present, it specifies the dimensions of
   the resulting tensor. If not present, the shape of `value` is used.
@@ -155,8 +156,8 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   For example:
 
   ```python
-  # Constant 1-D Tensor populated with value list.
-  tensor = tf.constant([1, 2, 3, 4, 5, 6, 7]) => [1 2 3 4 5 6 7]
+  # Constant 1-D Tensor populated with value sequence.
+  tensor = tf.constant((1, 2, 3, 4, 5, 6, 7,)) => [1 2 3 4 5 6 7]
 
   # Constant 2-D tensor populated with scalar value -1.
   tensor = tf.constant(-1.0, shape=[2, 3]) => [[-1. -1. -1.]
@@ -164,7 +165,7 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   ```
 
   Args:
-    value:          A constant value (or list) of output type `dtype`.
+    value:          A constant value (or sequence) of output type `dtype`.
 
     dtype:          The type of the elements of the resulting tensor.
 
@@ -236,7 +237,7 @@ def _constant_tensor_conversion_function(v, dtype=None, name=None,
 
 
 ops.register_tensor_conversion_function(
-    (list, tuple), _constant_tensor_conversion_function, 100)
+    collections.Sequence, _constant_tensor_conversion_function, 100)
 ops.register_tensor_conversion_function(
     np.ndarray, _constant_tensor_conversion_function, 100)
 ops.register_tensor_conversion_function(
