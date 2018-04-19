@@ -392,7 +392,6 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
       adjust_computation(hlo->fused_instructions_computation(), hlo->shape());
       break;
     case HloOpcode::kWhile:
-      adjust_computation(hlo->while_condition(), hlo->shape());
       adjust_computation(hlo->while_body(), hlo->shape());
       break;
     default:
