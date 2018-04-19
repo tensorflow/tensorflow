@@ -1256,7 +1256,8 @@ def _dict_to_str(dictionary):
     A `str` representing the `dictionary`.
   """
   return ', '.join('%s = %s' % (k, v)
-                   for k, v in sorted(six.iteritems(dictionary)))
+                   for k, v in sorted(six.iteritems(dictionary))
+                   if not isinstance(v, six.binary_type))
 
 
 def _write_dict_to_summary(output_dir,
