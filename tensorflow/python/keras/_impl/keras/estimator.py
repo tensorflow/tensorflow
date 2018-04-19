@@ -56,6 +56,7 @@ def _cast_tensor_to_floatx(x):
   else:
     return math_ops.cast(x, K.floatx())
 
+
 def _convert_tensor(x):
   """Create or cast tensor if needed."""
   if not tensor_util.is_tensor(x):
