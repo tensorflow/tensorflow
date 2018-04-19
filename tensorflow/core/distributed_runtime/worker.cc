@@ -49,7 +49,8 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
   done(s);
 }
 
-void Worker::DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
+void Worker::DeleteWorkerSessionAsync(CallOptions* opts,
+                                      const DeleteWorkerSessionRequest* request,
                                       DeleteWorkerSessionResponse* response,
                                       StatusCallback done) {
   Status s = env_->session_mgr->DeleteSession(request->session_handle());

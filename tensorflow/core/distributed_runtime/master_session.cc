@@ -1273,6 +1273,8 @@ Status MasterSession::DeleteWorkerSessions() {
     // The worker referenced by name. (Not owned.)
     WorkerInterface* worker = nullptr;
 
+    CallOptions call_opts;
+
     // Request and responses used for a given worker.
     DeleteWorkerSessionRequest request;
     DeleteWorkerSessionResponse response;
@@ -1296,6 +1298,9 @@ Status MasterSession::DeleteWorkerSessions() {
     workers[i].name = &worker_names[i];
     workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
+    // Since the worker may have gone away, set a timeout to avoid blocking the
+    // session-close operation.
+    workers[i].call_opts.SetTimeout(10000);
   }
 
   for (size_t i = 0; i < worker_names.size(); ++i) {
@@ -1303,8 +1308,8 @@ Status MasterSession::DeleteWorkerSessions() {
       workers[i].status = s;
       done.DecrementCount();
     };
-    workers[i].worker->DeleteWorkerSessionAsync(&workers[i].request,
-                                                &workers[i].response, cb);
+    workers[i].worker->DeleteWorkerSessionAsync(
+        &workers[i].call_opts, &workers[i].request, &workers[i].response, cb);
   }
 
   done.Wait();
