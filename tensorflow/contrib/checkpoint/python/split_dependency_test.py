@@ -18,7 +18,7 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.contrib.eager.python import checkpointable_utils as contrib_checkpointable_utils
+from tensorflow.contrib.checkpoint.python import split_dependency
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -47,7 +47,7 @@ class SaveTensorSlicesAsDeps(checkpointable.CheckpointableBase):
 
   def __init__(self):
     self.combined = resource_variable_ops.ResourceVariable([0., 0., 0., 0.])
-    split_dependencies = contrib_checkpointable_utils.split_dependency(
+    split_dependencies = split_dependency.split_dependency(
         component_names=("first_half", "second_half"),
         component_dtypes=(self.combined.dtype,) * 2,
         fill_save_buffer_fn=_split_variable_closure(
