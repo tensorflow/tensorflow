@@ -1853,6 +1853,34 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  // Enable CLZ only for int32 and uint32.
+  template <
+      typename NativeT,
+      typename std::enable_if<
+          (std::is_floating_point<NativeT>::value ||
+           std::is_integral<NativeT>::value || is_complex_t<NativeT>::value) &&
+          !(std::is_same<NativeT, uint32>::value ||
+            std::is_same<NativeT, int32>::value)>::type* = nullptr>
+  Status HandleClz(HloInstruction* clz) {
+    return InvalidArgument("Unsupported type for Clz");
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, uint32>::value ||
+                std::is_same<NativeT, int32>::value>::type* = nullptr>
+  Status HandleClz(HloInstruction* clz) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[clz],
+                        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
+                          return 31 - tensorflow::Log2Floor(elem_operand);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleClz(HloInstruction* clz) override {
+    return HandleClz<ElementwiseT>(clz);
+  }
+
   template <typename NativeT, typename std::enable_if<std::is_floating_point<
                                   NativeT>::value>::type* = nullptr>
   Status HandleSin(HloInstruction* sin) {

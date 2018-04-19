@@ -24,8 +24,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Utility class to allow Platform objects to manage cached StreamExecutors.
 // Thread-safe.
@@ -76,7 +75,6 @@ class ExecutorCache {
   SE_DISALLOW_COPY_AND_ASSIGN(ExecutorCache);
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_EXECUTOR_CACHE_H_

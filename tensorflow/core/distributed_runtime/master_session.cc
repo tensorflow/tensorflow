@@ -431,6 +431,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     const Part& part = partitions_[i];
     Call* c = &calls[i];
     c->req.set_session_handle(session_handle_);
+    c->req.set_create_worker_session_called(!should_deregister_);
     c->req.mutable_graph_def()->Swap(&graph_partitions[part.name]);
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     *c->req.mutable_debug_options() =
@@ -587,6 +588,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
       c->req->set_is_last_partial_run(is_last_partial_run);
     }
     c->req->set_session_handle(session_handle_);
+    c->req->set_create_worker_session_called(!should_deregister_);
     c->req->set_graph_handle(part.graph_handle);
     c->req->set_step_id(step_id);
     *c->req->mutable_exec_opts() = exec_opts;
@@ -1003,6 +1005,7 @@ void MasterSession::ReffedClientGraph::DeregisterPartitions() {
     if (!part.graph_handle.empty()) {
       Call* c = new Call;
       c->req.set_session_handle(session_handle_);
+      c->req.set_create_worker_session_called(!should_deregister_);
       c->req.set_graph_handle(part.graph_handle);
       // NOTE(mrry): We must capture `worker_cache_` since `this`
       // could be deleted before the callback is called.
@@ -1270,6 +1273,8 @@ Status MasterSession::DeleteWorkerSessions() {
     // The worker referenced by name. (Not owned.)
     WorkerInterface* worker = nullptr;
 
+    CallOptions call_opts;
+
     // Request and responses used for a given worker.
     DeleteWorkerSessionRequest request;
     DeleteWorkerSessionResponse response;
@@ -1293,6 +1298,9 @@ Status MasterSession::DeleteWorkerSessions() {
     workers[i].name = &worker_names[i];
     workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
+    // Since the worker may have gone away, set a timeout to avoid blocking the
+    // session-close operation.
+    workers[i].call_opts.SetTimeout(10000);
   }
 
   for (size_t i = 0; i < worker_names.size(); ++i) {
@@ -1300,8 +1308,8 @@ Status MasterSession::DeleteWorkerSessions() {
       workers[i].status = s;
       done.DecrementCount();
     };
-    workers[i].worker->DeleteWorkerSessionAsync(&workers[i].request,
-                                                &workers[i].response, cb);
+    workers[i].worker->DeleteWorkerSessionAsync(
+        &workers[i].call_opts, &workers[i].request, &workers[i].response, cb);
   }
 
   done.Wait();

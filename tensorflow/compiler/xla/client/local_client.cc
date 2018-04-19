@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-namespace se = ::perftools::gputools;
-
 using xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {

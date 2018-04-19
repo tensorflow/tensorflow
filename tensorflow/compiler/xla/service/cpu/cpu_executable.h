@@ -90,17 +90,16 @@ class CpuExecutable : public Executable {
   // assignment. Each vector element corresponds to a particular Index. If
   // a vector element already contains a non-null DeviceMemoryBase, then no
   // buffer is assigned for this element.
-  Status AllocateBuffers(
-      DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-      std::vector<perftools::gputools::DeviceMemoryBase>* buffers);
+  Status AllocateBuffers(DeviceMemoryAllocator* memory_allocator,
+                         int device_ordinal,
+                         std::vector<se::DeviceMemoryBase>* buffers);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
   Status ExecuteComputeFunction(
       const ExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
+      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
       HloExecutionProfile* hlo_execution_profile);
 
   // Create a ShapedBuffer for holding the result of the computation. The
@@ -111,8 +110,7 @@ class CpuExecutable : public Executable {
   // the returned ShapedBuffer).
   StatusOr<std::unique_ptr<ShapedBuffer>> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          allocated_buffers,
+      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> allocated_buffers,
       std::vector<bool>* buffers_in_result);
 
   // Returns the points-to set of the root instruction of the entry

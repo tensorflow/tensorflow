@@ -8,6 +8,7 @@ py_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_xla",

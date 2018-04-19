@@ -145,6 +145,7 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
 
   RegisterGraphRequest req;
   req.set_session_handle(worker_session_->session_name);
+  req.set_create_worker_session_called(create_worker_session_called_);
   *req.mutable_graph_def() = gdef;
   req.mutable_graph_options()
       ->mutable_optimizer_options()
@@ -182,6 +183,7 @@ void ClusterFunctionLibraryRuntime::Run(
 
   RunGraphRequest* req = new RunGraphRequest;
   req->set_session_handle(worker_session_->session_name);
+  req->set_create_worker_session_called(create_worker_session_called_);
   req->set_graph_handle(function_data->graph_handle);
   // Borrowed from master_session.cc
   const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);

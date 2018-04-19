@@ -36,8 +36,8 @@ namespace tensorflow {
 Status XlaGather(const xla::ComputationDataHandle& input,
                  const TensorShape& input_shape,
                  const xla::ComputationDataHandle& indices,
-                 TensorShape indices_shape, int64 axis, bool indices_are_nd,
-                 DataType dtype, DataType index_type,
+                 const TensorShape& indices_shape, int64 axis,
+                 bool indices_are_nd, DataType dtype, DataType index_type,
                  xla::ComputationBuilder* builder,
                  xla::ComputationDataHandle* gather_output);
 

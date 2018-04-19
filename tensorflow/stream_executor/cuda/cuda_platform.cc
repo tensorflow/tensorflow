@@ -24,8 +24,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 namespace {
 
@@ -41,16 +40,16 @@ const DeviceOptions GetDeviceOptionsFromEnv() {
       std::getenv("TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE");
 
   if (gpu_schedule_string == nullptr) {
-    return perftools::gputools::DeviceOptions::Default();
+    return DeviceOptions::Default();
   }
 
   unsigned device_flags = 0;
   if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
-    device_flags = perftools::gputools::DeviceOptions::kScheduleSpin;
+    device_flags = DeviceOptions::kScheduleSpin;
   } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
-    device_flags = perftools::gputools::DeviceOptions::kScheduleYield;
+    device_flags = DeviceOptions::kScheduleYield;
   } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
-    device_flags = perftools::gputools::DeviceOptions::kScheduleBlockingSync;
+    device_flags = DeviceOptions::kScheduleBlockingSync;
   } else {
     LOG(QFATAL) << "Unknown option for environment variable "
                    "TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE "
@@ -59,7 +58,7 @@ const DeviceOptions GetDeviceOptionsFromEnv() {
                 << ", " << kScheduleYieldString << "}";
   }
 
-  return perftools::gputools::DeviceOptions(device_flags);
+  return DeviceOptions(device_flags);
 }
 
 }  // namespace
@@ -202,11 +201,10 @@ static void InitializeCudaPlatform() {
   SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(cuda_platform,
-                            perftools::gputools::InitializeCudaPlatform());
+                            stream_executor::InitializeCudaPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 // Note that module initialization sequencing is not supported in the

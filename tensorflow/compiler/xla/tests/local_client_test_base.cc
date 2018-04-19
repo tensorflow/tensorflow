@@ -35,8 +35,9 @@ namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-StatusOr<perftools::gputools::DeviceMemoryBase> TestAllocator::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure) {
+StatusOr<se::DeviceMemoryBase> TestAllocator::Allocate(int device_ordinal,
+                                                       uint64 size,
+                                                       bool retry_on_failure) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);
@@ -46,8 +47,8 @@ StatusOr<perftools::gputools::DeviceMemoryBase> TestAllocator::Allocate(
   return StreamExecutorMemoryAllocator::Allocate(device_ordinal, size);
 }
 
-tensorflow::Status TestAllocator::Deallocate(
-    int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) {
+tensorflow::Status TestAllocator::Deallocate(int device_ordinal,
+                                             se::DeviceMemoryBase* mem) {
   VLOG(2) << "Deallocate(" << device_ordinal << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);
@@ -88,7 +89,7 @@ int64 TestAllocator::deallocation_count(int device_ordinal) const {
 }
 
 /* static */ TestAllocator* LocalClientTestBase::GetOrCreateAllocator(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
   tensorflow::mutex_lock lock(mu);
 
@@ -115,8 +116,7 @@ struct LocalClientTestBase::EigenThreadPoolWrapper {
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
-LocalClientTestBase::LocalClientTestBase(
-    perftools::gputools::Platform* platform)
+LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
     : local_client_(
           ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
       thread_pool_wrapper_(new EigenThreadPoolWrapper()) {

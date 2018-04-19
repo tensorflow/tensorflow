@@ -125,7 +125,7 @@ def configure(src_base_path, gen_path, debug=False):
       try:
         # In python 3.5, symlink function exists even on Windows. But requires
         # Windows Admin privileges, otherwise an OSError will be thrown.
-        if hasattr(os, 'symlink'):
+        if hasattr(os, "symlink"):
           os.symlink(src, os.path.join(gen_path, target))
         else:
           shutil.copy2(src, os.path.join(gen_path, target))
@@ -173,7 +173,7 @@ def get_git_version(git_base_path, git_tag_override):
       split_val[0] = git_tag_override
       val = bytes("-".join(split_val))
     return val if val else unknown_label
-  except subprocess.CalledProcessError:
+  except (subprocess.CalledProcessError, OSError):
     return unknown_label
 
 

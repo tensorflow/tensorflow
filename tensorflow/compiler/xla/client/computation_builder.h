@@ -657,6 +657,9 @@ class ComputationBuilder {
   // Enqueues a negate instruction onto the computation.
   ComputationDataHandle Neg(const ComputationDataHandle& operand);
 
+  // Enqueues a count-leading-zeros instruction onto the computation.
+  ComputationDataHandle Clz(const ComputationDataHandle& operand);
+
   // Enqueues a transpose instruction onto the computation.
   ComputationDataHandle Transpose(
       const ComputationDataHandle& operand,
