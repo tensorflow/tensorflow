@@ -200,10 +200,11 @@ def sample_from_datasets(datasets, weights=None, seed=None):
 
   Args:
     datasets: A list of @{tf.data.Dataset} objects with compatible structure.
-    weights: (Optional.) A list of `len(datasets)` floating-point values or a
-      @{tf.data.Dataset} object, where `weights[i]` represents the probability
-      with which an element should be sampled from `datasets[i]`. Defaults to a
-      uniform distribution across `datasets`.
+    weights: (Optional.) A list of `len(datasets)` floating-point values where
+      `weights[i]` represents the probability with which an element should be
+      sampled from `datasets[i]`, or a @{tf.data.Dataset} object where each
+      element is such a list. Defaults to a uniform distribution across
+      `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
       @{tf.set_random_seed} for behavior.
