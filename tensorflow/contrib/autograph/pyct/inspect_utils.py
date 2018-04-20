@@ -22,10 +22,23 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import types
 
 import six
 
 from tensorflow.python.util import tf_inspect
+
+
+def isbuiltin(f):
+  # Note these return false for isinstance(f, types.BuiltinFunctionType) so we
+  # need to specifically check for them.
+  if f in (range, int, float):
+    return True
+  if isinstance(f, types.BuiltinFunctionType):
+    return True
+  if tf_inspect.isbuiltin(f):
+    return True
+  return False
 
 
 def getnamespace(f):

@@ -253,15 +253,14 @@ NodeDef* GetTailOfValuePreservingChain(
     const NodeDef& node, const NodeMap& node_map,
     const std::unordered_set<string>& nodes_to_preserve) {
   auto is_value_preserving_non_branching = [&](const NodeDef& node) {
-    return IsValuePreserving(node) &&
-           NumNonControlOutputs(node, node_map) == 1 &&
-           nodes_to_preserve.count(node.name()) == 0;
+    return nodes_to_preserve.find(node.name()) == nodes_to_preserve.end() &&
+           IsValuePreserving(node) && NumNonControlOutputs(node, node_map) == 1;
   };
   return GetTailOfChain(node, node_map, /*follow_control_input=*/false,
                         is_value_preserving_non_branching);
 }
 
-// Graph optimizer context extension specific to ArithmeticOptimizer
+// Graph optimizer context extension specific to ArithmeticOptimizer.
 struct ArithmeticOptimizerContext {
   explicit ArithmeticOptimizerContext(SetVector<NodeDef*>* nodes_to_simplify)
       : nodes_to_simplify(nodes_to_simplify) {}
@@ -366,27 +365,37 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
 
   // Check if input can become a part of current optimized nodes group.
   virtual bool IsAbsorbableByOptimizedNodesGroup(
-      const OptimizedNodesGroup& group, const string& input) const = 0;
+      const OptimizedNodesGroup& group, const NodeDef& node) const = 0;
 
   Status AbsorbInputByOptimizedNodesGroup(const string& input,
                                           OptimizedNodesGroup* group) const {
-    NodeDef* node;
-    TF_RETURN_IF_ERROR(GetInputNode(input, &node));
+    std::deque<const string*> input_tensors;
+    input_tensors.push_front(&input);
 
-    if (IsAbsorbableByOptimizedNodesGroup(*group, input)) {
-      for (int i = 0; i < node->input_size(); ++i) {
-        const string& input_i = node->input(i);
-        if (!IsControlInput(input)) {
-          TF_RETURN_IF_ERROR(AbsorbInputByOptimizedNodesGroup(input_i, group));
+    while (!input_tensors.empty()) {
+      const string* input_tensor = input_tensors.front();
+      input_tensors.pop_front();
+
+      // Get a node for the input tensor.
+      NodeDef* input_node;
+      TF_RETURN_IF_ERROR(GetInputNode(*input_tensor, &input_node));
+
+      if (IsAbsorbableByOptimizedNodesGroup(*group, *input_node)) {
+        group->optimized_nodes.push_back(input_node);
+        for (int i = input_node->input_size() - 1; i >= 0; --i) {
+          const string& absorbed_node_input = input_node->input(i);
+          // TODO(ezhulenev): support control inputs
+          if (IsControlInput(absorbed_node_input)) continue;
+          input_tensors.push_front(&absorbed_node_input);
         }
+      } else {
+        // If input node can't be absorbed, add it to OptimizedNodesGroup input.
+        OpInfo::TensorProperties properties;
+        TF_RETURN_IF_ERROR(GetTensorProperties(*input_tensor, &properties));
+        group->inputs.emplace_back(*input_tensor, properties.shape());
       }
-      group->optimized_nodes.push_back(node);
-    } else {
-      // If node can't be absorbed, add it to OptimizedNodesGroup input
-      OpInfo::TensorProperties properties;
-      TF_RETURN_IF_ERROR(GetTensorProperties(input, &properties));
-      group->inputs.emplace_back(input, properties.shape());
     }
+
     return Status::OK();
   }
 
@@ -402,9 +411,9 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
     group->optimized_nodes.reserve(root_node->input_size());
     for (int i = 0; i < root_node->input_size(); ++i) {
       const string& input_i = root_node->input(i);
-      if (!IsControlInput(input_i)) {
-        TF_RETURN_IF_ERROR(AbsorbInputByOptimizedNodesGroup(input_i, group));
-      }
+      // TODO(ezhulenev): add support for control inputs
+      if (IsControlInput(input_i)) continue;
+      TF_RETURN_IF_ERROR(AbsorbInputByOptimizedNodesGroup(input_i, group));
     }
 
     return Status::OK();
@@ -454,6 +463,11 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
 
   void AddToOptimizedNodes(const NodeDef* node) {
     optimized_nodes_.insert(node->name());
+  }
+
+  void AddAllMembersToOptimizedNodes(const OptimizedNodesGroup& group) {
+    AddToOptimizedNodes(group.root_node);
+    for (const NodeDef* opt : group.optimized_nodes) AddToOptimizedNodes(opt);
   }
 
   bool IsOnTheSameDevice(const OptimizedNodesGroup& group,
@@ -511,7 +525,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
   // Check if a node can become a root of AddOpsGroup
   bool IsSupported(const NodeDef* node) const override {
-    if (!CanOptimize(node)) return false;
+    if (!CanOptimize(*node)) return false;
 
     // shape must be symbolically defined and all inputs compatible with it
     OpInfo::TensorProperties properties;
@@ -523,59 +537,69 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
  protected:
   // Check if a node can be absorbed by current OptimizedNodesGroup
   bool IsAbsorbableByOptimizedNodesGroup(const OptimizedNodesGroup& group,
-                                         const string& input) const override {
-    NodeDef* node;
-    Status node_status = GetInputNode(input, &node);
-    if (!node_status.ok() || !CanOptimize(node)) return false;
+                                         const NodeDef& node) const override {
+    if (!CanOptimize(node)) return false;
 
-    if (!IsOnTheSameDevice(group, *node)) {
+    if (!IsOnTheSameDevice(group, node)) {
       return false;
     }
     // with a single output data consumer (presumably if we reach this node from
     // previously absorbed or a root node, it means that this node is not used
     // as an input to any other op, outside of the group)
-    if (NumNonControlDataOutputs(*node, *ctx_.node_map) != 1) {
+    if (NumNonControlDataOutputs(node, *ctx_.node_map) != 1) {
       return false;
     }
     // All input shapes must be broadcastable to the node shape
     OpInfo::TensorProperties properties;
-    Status has_properties = GetTensorProperties(input, &properties);
+    Status has_properties = GetTensorProperties(node.name(), &properties);
     return has_properties.ok() &&
-           HasAllInputsBroadcastableToShape(*node, properties);
+           HasAllInputsBroadcastableToShape(node, properties);
   }
 
   // Node requirements both for a root node and an absorbed node
-  bool CanOptimize(const NodeDef* node) const {
+  bool CanOptimize(const NodeDef& node) const {
     // TODO(ezhulenev): check if AccumulateNV2 can be supported too
-    if (!IsAdd(*node) && !IsAddN(*node)) {
+    if (!IsAdd(node) && !IsAddN(node)) {
       return false;
     }
-    if (IsInPreserveSet(*node) || IsAlreadyOptimized(*node)) {
-      return false;
-    }
-    // it must not be created by this stage at any of previous optimization runs
-    if (str_util::StrContains(node->name(), stage_name_)) {
+    if (IsInPreserveSet(node) || IsAlreadyOptimized(node)) {
       return false;
     }
     // TODO(ezhulenev): relax this condition for root node
-    return !(IsDrivenByControlDependency(*node) ||
-             DrivesControlDependency(*node));
+    return !(IsDrivenByControlDependency(node) ||
+             DrivesControlDependency(node));
   }
 
   // Rewrite a group of add ops into a single AddN if all input shapes are
   // symbolically equal. If not, create AddN for equal shapes first, and then
   // build an Add tree, minimizing the cost of broadcasts.
   string RewriteOptimizedNodesGroup(const OptimizedNodesGroup& group) override {
-    // all new nodes will be placed under the scope of a root node
+    VLOG(2) << "Collapse Add/AddN: root=" << group.root_node->name()
+            << " op=" << group.root_node->op()
+            << " num_optimized_nodes=" << group.optimized_nodes.size()
+            << " num_inputs=" << group.inputs.size();
+
+    // Do not optimize any of the nodes that are part of this group.
+    AddAllMembersToOptimizedNodes(group);
+
+    // All new nodes will be placed under the scope of a root node.
     auto root_scope_and_name = ParseNodeScopeAndName(group.root_node->name());
 
-    // Find what shapes are present in the inputs of absorbed nodes
+    // Find what shapes are present in the inputs of absorbed nodes.
     std::unordered_map<string, std::vector<InputAndShape>> shape_sig_to_inputs;
     for (const auto& input : group.inputs) {
       shape_sig_to_inputs[ShapeSignature(input.shape)].push_back(input);
     }
 
-    // Collect all the shapes from representative elements
+    using SigKV = decltype(shape_sig_to_inputs)::value_type;
+    VLOG(3) << "Add/AddN group has " << shape_sig_to_inputs.size()
+            << " unique shapes: "
+            << str_util::Join(shape_sig_to_inputs, ", ",
+                              [](string* out, SigKV p) {
+                                strings::StrAppend(out, p.first);
+                              });
+
+    // Collect all the shapes from representative elements.
     std::vector<TensorShapeProto> shapes;
     shapes.reserve(shape_sig_to_inputs.size());
     for (const auto& el : shape_sig_to_inputs)
@@ -937,6 +961,7 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
 
   bool IsSupported(const NodeDef* node) const override {
     if (!IsBinaryAssociative(*node)) return false;
+    if (IsAlreadyOptimized(*node)) return false;
 
     // has a symbolically defined shape with broadcastable inputs
     OpInfo::TensorProperties properties;
@@ -956,33 +981,29 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
 
   // Check if a node can be absorbed by current OptimizedNodesGroup
   bool IsAbsorbableByOptimizedNodesGroup(const OptimizedNodesGroup& group,
-                                         const string& input) const override {
-    NodeDef* node;
-    Status node_status = GetInputNode(input, &node);
-    if (!node_status.ok()) return false;
-
-    if (!IsSameOp(group, *node)) {
+                                         const NodeDef& node) const override {
+    if (!IsSameOp(group, node)) {
       return false;
     }
-    if (IsInPreserveSet(*node) || IsAlreadyOptimized(*node)) {
+    if (IsInPreserveSet(node) || IsAlreadyOptimized(node)) {
       return false;
     }
-    if (IsDrivenByControlDependency(*node) || DrivesControlDependency(*node)) {
+    if (IsDrivenByControlDependency(node) || DrivesControlDependency(node)) {
       return false;
     }
-    if (!IsOnTheSameDevice(group, *node)) {
+    if (!IsOnTheSameDevice(group, node)) {
       return false;
     }
     // Optimized nodes updated in place, and that would break the graph, if the
     // node has multiple output consumers
-    if (NumNonControlOutputs(*node, *ctx_.node_map) != 1) {
+    if (NumNonControlOutputs(node, *ctx_.node_map) != 1) {
       return false;
     }
     // All input shapes must be broadcastable to the node shape
     OpInfo::TensorProperties properties;
-    Status has_properties = GetTensorProperties(input, &properties);
+    Status has_properties = GetTensorProperties(node.name(), &properties);
     return has_properties.ok() &&
-           HasAllInputsBroadcastableToShape(*node, properties);
+           HasAllInputsBroadcastableToShape(node, properties);
   }
 
   std::size_t CountUniqueShapes(const std::vector<InputAndShape>& inputs) {
@@ -994,7 +1015,15 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
   }
 
   string RewriteOptimizedNodesGroup(const OptimizedNodesGroup& group) override {
+    VLOG(2) << "Minimize broadcast: root=" << group.root_node->name()
+            << " op=" << group.root_node->op()
+            << " num_optimized_nodes=" << group.optimized_nodes.size();
+
+    // Do not optimize any of the nodes that are part of this group.
+    AddAllMembersToOptimizedNodes(group);
+
     if (CountUniqueShapes(group.inputs) <= 1) {
+      VLOG(3) << "Skip min-bcast group with single unique shape";
       // nothing to optimize when all shapes are the same
       return group.root_node->name();
     }
@@ -1034,8 +1063,8 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
       NodeDef* node;
       if (!optimized_nodes.empty()) {
         // re-purpose optimized nodes to build a new tree
-        node = optimized_nodes.front();
-        optimized_nodes.pop_front();
+        node = optimized_nodes.back();
+        optimized_nodes.pop_back();
       } else {
         // or use root node if none optimized nodes left
         node = group.root_node;
@@ -1101,9 +1130,6 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
       // Add updated node to optimization queue
       AddToOptimizationQueue(node);
     }
-
-    // Do not add updated node to any other group
-    AddToOptimizedNodes(node);
 
     TensorShapeProto shape;  // shape is not important at this point
     return InputAndShape(node->name(), shape);
@@ -1783,13 +1809,22 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
 
   if (node->op() == "Mul" && node->input(0) == node->input(1) &&
       !OptimizedNodeExists(*node, "square")) {
-    NodeDef* new_square_node = AddNode(*node, "square", /*copy_node=*/true);
-    new_square_node->set_op("Square");
-    for (int i = 1; i < new_square_node->input_size(); ++i) {
-      new_square_node->set_input(i - 1, new_square_node->input(i));
+    const DataType type = GetDataTypeFromAttr(*node, "T");
+    bool is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
+    string dontcare;
+    string device;
+    bool is_on_cpu =
+        DeviceNameUtils::SplitDeviceName(node->device(), &dontcare, &device) &&
+        str_util::StrContains(device, DEVICE_CPU);
+    if (!is_complex || is_on_cpu) {
+      NodeDef* new_square_node = AddNode(*node, "square", /*copy_node=*/true);
+      new_square_node->set_op("Square");
+      for (int i = 1; i < new_square_node->input_size(); ++i) {
+        new_square_node->set_input(i - 1, new_square_node->input(i));
+      }
+      new_square_node->mutable_input()->RemoveLast();
+      return new_square_node->name();
     }
-    new_square_node->mutable_input()->RemoveLast();
-    return new_square_node->name();
   }
 
   if (IsAggregate(*node) && NumNonControlInputs(*node) > 0) {
@@ -1961,8 +1996,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
 
-  VLOG(1) << "Simplify arithmetic ops using " << pipeline.NumStages()
-          << " arithmetic optimization stages";
+  VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
+          << str_util::Join(pipeline.StageNames(), ", ");
 
   while (!nodes_to_simplify.Empty()) {
     NodeDef* node = nodes_to_simplify.PopBack();
@@ -2023,12 +2058,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
 Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
                                      const GrapplerItem& item,
                                      GraphDef* optimized_graph) {
-  GrapplerItem optimized_item(item);
-  optimized_graph_ = &optimized_item.graph;
-
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
+  *optimized_graph = item.graph;
+  optimized_graph_ = optimized_graph;
   node_map_.reset(new NodeMap(optimized_graph_));
 
   DedupComputations();
@@ -2037,8 +2071,9 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   // optimize larger subgraphs starting from the roots with more inputs.
   TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
 
-  // Shapes are only needed in aggressive mode.
-  graph_properties_.reset(new GraphProperties(item));
+  GrapplerItem optimized_item(item, optimized_graph);
+  optimized_graph_ = &optimized_item.graph;
+  graph_properties_.reset(new GraphProperties(optimized_item));
   const Status status = graph_properties_->InferStatically(false);
   const bool can_use_shapes = status.ok();
   if (!can_use_shapes) {

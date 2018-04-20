@@ -164,6 +164,26 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       TF_RETURN_IF_ERROR(opt->Init());
       optimizers.push_back(std::move(opt));
     }
+
+    // Append custom configurable optimizers.
+    std::vector<tensorflow::RewriterConfig_CustomGraphOptimizer>
+        custom_configurable_optimizers;
+    for (const auto& optimizer : cfg_.custom_optimizers()) {
+      if (available_optimizers.find(optimizer.name()) !=
+          available_optimizers.end()) {
+        optimizers.push_back(NewOptimizer(optimizer.name()));
+      } else {
+        custom_configurable_optimizers.push_back(optimizer);
+      }
+    }
+    // Now initialize and configure the custom optimizers.
+    for (const auto& optimizer : custom_configurable_optimizers) {
+      std::unique_ptr<CustomGraphOptimizer> opt =
+          CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer.name());
+      if (opt == nullptr) continue;
+      TF_RETURN_IF_ERROR(opt->Init(&optimizer));
+      optimizers.push_back(std::move(opt));
+    }
   }
 
   if (optimizers.empty()) {
@@ -178,45 +198,41 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       cfg_.meta_optimizer_iterations() == RewriterConfig::DEFAULT_NUM_ITERS
           ? 1
           : cfg_.meta_optimizer_iterations();
+  GrapplerItem optimized_item = item;
+  optimized_graph->Swap(&optimized_item.graph);
   for (int iteration = 0; iteration < num_iterations; ++iteration) {
     VLOG(1) << "Starting optimization iteration " << iteration + 1;
     for (const auto& optimizer : optimizers) {
+      // Invariant: optimized_graph contains the most recently optimized
+      // version of the graph.
       if (iteration > 0 && run_once_optimizers.count(optimizer->name())) {
         continue;
       }
-      if (!already_optimized) {
-        Status status = optimizer->Optimize(cluster, item, optimized_graph);
-        string result;
-        if (!status.ok()) {
-          VLOG(1) << "Not able to apply optimizer " << optimizer->name()
-                  << ". Return status: " << status.ToString();
-          result = status.ToString();
-        } else {
-          already_optimized = true;
-          result = strings::StrCat(
-              "OK. ", PrintSizesBeforeAfter(item.graph, *optimized_graph));
-        }
-        result_.push_back(std::make_pair(optimizer->name(), result));
-        VLOG(1) << "Optimizer " << optimizer->name()
-                << " return status: " << result;
+      uint64 start_us = Env::Default()->NowMicros();
+      // This swaps the current optimized_graph into optimized item and
+      // resets optimized_graph to an empty graph.
+      optimized_graph->Swap(&optimized_item.graph);
+      *optimized_graph = GraphDef();
+      Status status =
+          optimizer->Optimize(cluster, optimized_item, optimized_graph);
+
+      uint64 end_us = Env::Default()->NowMicros();
+      float duration_ms = (end_us - start_us) / 1000.0f;
+      string result;
+      if (!status.ok()) {
+        VLOG(1) << "Not able to apply optimizer " << optimizer->name() << ": "
+                << status.ToString();
+        optimized_graph->Swap(&optimized_item.graph);
+        result = status.ToString();
       } else {
-        GrapplerItem optimized_item(item, std::move(*optimized_graph));
-        Status status =
-            optimizer->Optimize(cluster, optimized_item, optimized_graph);
-        string result;
-        if (!status.ok()) {
-          VLOG(1) << "Not able to apply optimizer " << optimizer->name() << ": "
-                  << status.ToString();
-          optimized_graph->Swap(&optimized_item.graph);
-          result = status.ToString();
-        } else {
-          result = strings::StrCat(
-              optimizer->name(), ": ",
-              PrintSizesBeforeAfter(optimized_item.graph, *optimized_graph));
-        }
-        result_.push_back(std::make_pair(optimizer->name(), result));
-        VLOG(1) << result;
+        already_optimized = true;
+        result = strings::StrCat(
+            optimizer->name(), ": ",
+            PrintSizesBeforeAfter(optimized_item.graph, *optimized_graph),
+            ", time = ", duration_ms, "ms.");
       }
+      result_.emplace_back(optimizer->name(), result);
+      VLOG(1) << result;
     }
   }
 
@@ -230,10 +246,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
               item.graph.library().gradient_size());
     DCHECK_EQ(optimized_graph->versions().producer(),
               item.graph.versions().producer());
-  } else {
-    *optimized_graph = item.graph;
   }
-
   return Status::OK();
 }
 
@@ -260,7 +273,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
-         !cfg.optimizers().empty();
+         !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,

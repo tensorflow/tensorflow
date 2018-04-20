@@ -1203,6 +1203,142 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                  output_activation_max, output_data, output_dims, gemm_context);
 }
 
+inline void ExperimentalShuffledFullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims,
+    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
+    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    int16* output_data, const Dims<4>& output_dims,
+    gemmlowp::GemmContext* gemm_context) {
+  gemmlowp::ScopedProfilingLabel label(
+      "ExperimentalShuffledFullyConnected/8bit");
+  (void)gemm_context;  // only used in optimized code.
+  TFLITE_DCHECK_EQ(output_activation_min, -32768);
+  TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  // TODO(benoitjacob): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                      ArraySize(output_dims, 3);
+  const int output_depth = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  const int accum_depth = ArraySize(weights_dims, 0);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
+  // The experimental shuffling is an optimization for matrix*vector product.
+  // We aren't interested in supporting non-matrix*vector-product cases, i.e.
+  // batches>1.
+  TFLITE_DCHECK_EQ(batches, 1);
+  // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+  // so that just reinterpreting them as int8 values is equivalent to
+  // subtracting 128 from them, thus implementing for free the subtraction of
+  // the zero_point value 128.
+  const int8* shuffled_weights_ptr =
+      reinterpret_cast<const int8*>(shuffled_weights_data);
+#if defined USE_NEON
+  // We'll only need to xor signbit to the input activation values, as
+  // that xor-ing is pre-built into the shuffled weights values.
+  const uint8x16_t signbit = vdupq_n_u8(0x80);
+  const int right_shift = output_shift > 0 ? output_shift : 0;
+  const int left_shift = output_shift > 0 ? 0 : -output_shift;
+  for (int c = 0; c < output_depth; c += 4) {
+    // Accumulation loop.
+    int32x4_t row_accum0 = vdupq_n_s32(0);
+    int32x4_t row_accum1 = vdupq_n_s32(0);
+    int32x4_t row_accum2 = vdupq_n_s32(0);
+    int32x4_t row_accum3 = vdupq_n_s32(0);
+    for (int d = 0; d < accum_depth; d += 16) {
+      int8x16_t weights0 = vld1q_s8(shuffled_weights_ptr + 0);
+      int8x16_t weights1 = vld1q_s8(shuffled_weights_ptr + 16);
+      int8x16_t weights2 = vld1q_s8(shuffled_weights_ptr + 32);
+      int8x16_t weights3 = vld1q_s8(shuffled_weights_ptr + 48);
+      shuffled_weights_ptr += 64;
+      int8x16_t input =
+          vreinterpretq_s8_u8(veorq_u8(signbit, vld1q_u8(input_data + d)));
+      int16x8_t local_accum0 =
+          vmull_s8(vget_low_s8(weights0), vget_low_s8(input));
+      int16x8_t local_accum1 =
+          vmull_s8(vget_low_s8(weights1), vget_low_s8(input));
+      int16x8_t local_accum2 =
+          vmull_s8(vget_low_s8(weights2), vget_low_s8(input));
+      int16x8_t local_accum3 =
+          vmull_s8(vget_low_s8(weights3), vget_low_s8(input));
+      local_accum0 =
+          vmlal_s8(local_accum0, vget_high_s8(weights0), vget_high_s8(input));
+      local_accum1 =
+          vmlal_s8(local_accum1, vget_high_s8(weights1), vget_high_s8(input));
+      local_accum2 =
+          vmlal_s8(local_accum2, vget_high_s8(weights2), vget_high_s8(input));
+      local_accum3 =
+          vmlal_s8(local_accum3, vget_high_s8(weights3), vget_high_s8(input));
+      row_accum0 = vpadalq_s16(row_accum0, local_accum0);
+      row_accum1 = vpadalq_s16(row_accum1, local_accum1);
+      row_accum2 = vpadalq_s16(row_accum2, local_accum2);
+      row_accum3 = vpadalq_s16(row_accum3, local_accum3);
+    }
+    // Horizontally reduce accumulators
+    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
+        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
+    pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(row_accum0), vget_high_s32(row_accum0));
+    pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(row_accum1), vget_high_s32(row_accum1));
+    pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(row_accum2), vget_high_s32(row_accum2));
+    pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(row_accum3), vget_high_s32(row_accum3));
+    const int32x2_t reduced_lo =
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+    const int32x2_t reduced_hi =
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+    // Add bias values.
+    int32x4_t bias_vec = vld1q_s32(bias_data + c);
+    reduced = vaddq_s32(reduced, bias_vec);
+    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
+    // Multiply by the fixed-point multiplier.
+    reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+    // Rounding-shift-right.
+    using gemmlowp::RoundingDivideByPOT;
+    reduced = RoundingDivideByPOT(reduced, right_shift);
+    // Narrow values down to 16 bit signed.
+    const int16x4_t res16 = vqmovn_s32(reduced);
+    vst1_s16(output_data + c, res16);
+  }
+#else
+  for (int c = 0; c < output_depth; c += 4) {
+    // Internal accumulation.
+    // Initialize accumulator with the bias-value.
+    int32 accum[4] = {0};
+    // Accumulation loop.
+    for (int d = 0; d < accum_depth; d += 16) {
+      for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 16; j++) {
+          int8 input_val = input_data[d + j] - 128;
+          int8 weights_val = *shuffled_weights_ptr++;
+          accum[i] += weights_val * input_val;
+        }
+      }
+    }
+    for (int i = 0; i < 4; i++) {
+      // Add bias value
+      int acc = accum[i] + bias_data[c + i];
+      // Down-scale the final int32 accumulator to the scale used by our
+      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
+      // multiplier and shift here have been pre-computed offline
+      // (e.g. by toco).
+      acc =
+          MultiplyByQuantizedMultiplier(acc, output_multiplier, -output_shift);
+      // Saturate, cast to int16, and store to output array.
+      acc = std::max(acc, output_activation_min);
+      acc = std::min(acc, output_activation_max);
+      output_data[c + i] = acc;
+    }
+  }
+#endif
+}
+
 template <typename T>
 inline void ExtractPatchIntoBufferColumn(
     const Dims<4>& input_dims, int w, int h, int b, int kheight, int kwidth,
@@ -5212,6 +5348,7 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
                            const int32* paddings_data,
                            const Dims<4>& paddings_dims, T* output_data,
                            const Dims<4>& output_dims) {
+  // Unoptimized - Straight copy from reference ops.
   gemmlowp::ScopedProfilingLabel label("SpaceToBatchND");
 
   const int output_batch_size = ArraySize(output_dims, 3);
@@ -5253,29 +5390,76 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
+// Helper methods for BatchToSpaceND.
+// `spatial_index_dim` specifies post-crop offset index in this spatial
+// dimension, i.e. spatial offset introduced by flattening batch to spatial
+// dimension minus the crop size at beginning. `block_shape_dim` is the block
+// size in current dimension. `input_dim` and `output_dim` are input and output
+// size of BatchToSpaceND operation in current dimension.
+// Output start index is inclusive and end index is exclusive.
+inline void GetIndexRange(int spatial_index_dim, int block_shape_dim,
+                          int input_dim, int output_dim, int* start_index,
+                          int* end_index) {
+  // (*start_index) * block_shape_dim is effectively rounded up to the next
+  // multiple of block_shape_dim by the integer division.
+  *start_index =
+      std::max(0, (-spatial_index_dim + block_shape_dim - 1) / block_shape_dim);
+  // Similarly, (*end_index) * block_shape_dim is rounded up too (note that
+  // end_index is exclusive).
+  *end_index = std::min(
+      input_dim,
+      (output_dim - spatial_index_dim + block_shape_dim - 1) / block_shape_dim);
+}
+
 template <typename T>
 inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
                            const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims, T* output_data,
-                           const Dims<4>& output_dims) {
+                           const Dims<4>& block_shape_dims,
+                           const int32* crops_data, const Dims<4>& crops_dims,
+                           T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
 
   const int output_batch_size = ArraySize(output_dims, 3);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   const int input_batch_size = ArraySize(input_dims, 3);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int depth = ArraySize(input_dims, 0);
   const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
+  const int crops_top = crops_data[0];
+  const int crops_left = crops_data[2];
 
   for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      for (int in_w = 0; in_w < input_width; ++in_w) {
-        int out_batch = in_batch % output_batch_size;
-        int out_w = in_w * block_shape_width +
-                    (in_batch / output_batch_size) % block_shape_width;
-        int out_h = in_h * block_shape_height +
-                    (in_batch / output_batch_size) / block_shape_width;
+    const int out_batch = in_batch % output_batch_size;
+    const int spatial_offset = in_batch / output_batch_size;
+
+    int in_h_start = 0;
+    int in_h_end = 0;
+    // GetIndexRange ensures start and end indices are in [0, output_height).
+    GetIndexRange(spatial_offset / block_shape_width - crops_top,
+                  block_shape_height, input_height, output_height, &in_h_start,
+                  &in_h_end);
+
+    for (int in_h = in_h_start; in_h < in_h_end; ++in_h) {
+      const int out_h = in_h * block_shape_height +
+                        spatial_offset / block_shape_width - crops_top;
+      TFLITE_DCHECK_GE(out_h, 0);
+      TFLITE_DCHECK_LT(out_h, output_height);
+
+      int in_w_start = 0;
+      int in_w_end = 0;
+      // GetIndexRange ensures start and end indices are in [0, output_width).
+      GetIndexRange(spatial_offset % block_shape_width - crops_left,
+                    block_shape_width, input_width, output_width, &in_w_start,
+                    &in_w_end);
+
+      for (int in_w = in_w_start; in_w < in_w_end; ++in_w) {
+        const int out_w = in_w * block_shape_width +
+                          spatial_offset % block_shape_width - crops_left;
+        TFLITE_DCHECK_GE(out_w, 0);
+        TFLITE_DCHECK_LT(out_w, output_width);
         T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_batch);
         const T* in = input_data + Offset(input_dims, 0, in_w, in_h, in_batch);
         memcpy(out, in, depth * sizeof(T));

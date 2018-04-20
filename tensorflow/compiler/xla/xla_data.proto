@@ -355,17 +355,19 @@ message WindowDimension {
   // positions of the window in this dimension.
   int64 stride = 2;
 
-  // If positive, means the amount of padding with zeroes to add to the base
-  // area at the low end of this dimension; if negative, its negative means the
-  // number of elements removed from the low end of this dimension. For example,
-  // in the horizontal dimension of a rectangle, this would be the number of
-  // zeroes to pad on the left, given that indices increase when going right.
+  // If positive, means the amount of padding to add to the base area at the low
+  // end of this dimension; if negative, its negative means the number of
+  // elements removed from the low end of this dimension. For example, in the
+  // horizontal dimension of a rectangle, this would be the number of padding
+  // values to pad on the left, given that indices increase when going right.
+  // The actual padding value depends upon the context. Convolution pads with
+  // zeros. ReduceWindow and SelectAndScatter pads with the reduce function's
+  // init value.
   int64 padding_low = 3;
 
-  // As padding_low, but on the high end of this dimension. For
-  // example, in the horizontal dimension of a rectangle, this would
-  // be the number of zeroes to pad on the right, given that indices
-  // increase when going right.
+  // As padding_low, but on the high end of this dimension. For example, in the
+  // horizontal dimension of a rectangle, this would be the number of values to
+  // pad on the right, given that indices increase when going right.
   int64 padding_high = 4;
 
   // Dilation factor of the sliding window in this dimension. A dilation factor

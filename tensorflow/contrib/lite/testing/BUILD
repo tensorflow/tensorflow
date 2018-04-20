@@ -34,6 +34,7 @@ gen_zipped_test_files(
         "global_batch_norm.zip",
         "l2_pool.zip",
         "l2norm.zip",
+        "less.zip",
         "local_response_norm.zip",
         "log_softmax.zip",
         "max_pool.zip",
@@ -161,6 +162,9 @@ cc_test(
     size = "small",
     srcs = ["tflite_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":tflite_driver",
         "@com_google_googletest//:gtest_main",

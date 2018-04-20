@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/interpreter.h"
+
 #include <cassert>
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+
 #include "tensorflow/contrib/lite/arena_planner.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#include "tensorflow/contrib/lite/profiling/profiler.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/util.h"
 
@@ -245,11 +248,8 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : subgraph.output_tensors) {
           TfLiteTensor* tensor = &tensors_[tensor_index];
-          TF_LITE_ENSURE_EQ(&context_, tensor->delegate, nullptr);
-          TF_LITE_ENSURE_EQ(&context_, tensor->buffer_handle,
-                            kTfLiteNullBufferHandle);
-          // buffer_handle will be filled in delegate's `Prepare`
-          // function.
+          TF_LITE_ENSURE(&context_, tensor->delegate == nullptr ||
+                                        tensor->delegate == delegate);
           tensor->delegate = delegate;
         }
 
@@ -337,9 +337,13 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteInt64:
       *bytes = sizeof(int64_t) * count;
       break;
+    case kTfLiteBool:
+      *bytes = sizeof(bool) * count;
+      break;
     default:
-      ReportError(&context_,
-                  "Only float32, int32, int64, uint8 supported currently.");
+      ReportError(
+          &context_,
+          "Only float32, int32, int64, uint8, bool supported currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -543,6 +547,7 @@ TfLiteStatus Interpreter::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
+    SCOPED_OPERATOR_PROFILE(profiler_, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
     // need to be copied from Delegate buffer to raw memory, which is often not
@@ -563,6 +568,12 @@ TfLiteStatus Interpreter::Invoke() {
     EnsureTensorsVectorCapacity();
     if (OpInvoke(registration, &node) == kTfLiteError) {
       status = kTfLiteError;
+    }
+  }
+
+  if (!allow_buffer_handle_output_) {
+    for (int tensor_index : outputs_) {
+      EnsureTensorDataIsReadable(tensor_index);
     }
   }
 

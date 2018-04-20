@@ -126,6 +126,11 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.debug_disable_recurrent_cell_fusion.default_value(),
            "If true, disable fusion of known identifiable cell subgraphs into "
            "cells. This includes, for example, specific forms of LSTM cell."),
+      Flag("propagate_fake_quant_num_bits",
+           parsed_flags.propagate_fake_quant_num_bits.bind(),
+           parsed_flags.propagate_fake_quant_num_bits.default_value(),
+           "If true, use FakeQuant* operator num_bits attributes to adjust "
+           "array data_types."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -211,6 +216,8 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(reorder_across_fake_quant, FlagRequirement::kNone);
   READ_TOCO_FLAG(allow_custom_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(drop_control_dependency, FlagRequirement::kNone);
+  READ_TOCO_FLAG(debug_disable_recurrent_cell_fusion, FlagRequirement::kNone);
+  READ_TOCO_FLAG(propagate_fake_quant_num_bits, FlagRequirement::kNone);
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {

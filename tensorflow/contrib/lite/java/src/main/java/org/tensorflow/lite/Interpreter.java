@@ -212,6 +212,13 @@ public final class Interpreter implements AutoCloseable {
     }
   }
 
+  public void setNumThreads(int num_threads) {
+    if (wrapper == null) {
+      throw new IllegalStateException("The interpreter has already been closed.");
+    }
+    wrapper.setNumThreads(num_threads);
+  }
+
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {

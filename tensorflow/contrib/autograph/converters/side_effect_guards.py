@@ -160,8 +160,8 @@ class SideEffectGuardTransformer(transformer.Base):
               [alias_map.get(s, s).ast() for s in guarded_args], None)
 
         template = """
-          with autograph_utils.control_dependency_on_returns(call):
-            aliased_guarded_args = autograph_utils.alias_tensors(guarded_args)
+          with ag__.utils.control_dependency_on_returns(call):
+            aliased_guarded_args = ag__.utils.alias_tensors(guarded_args)
         """
         control_deps_guard = templates.replace(
             template,
@@ -172,7 +172,7 @@ class SideEffectGuardTransformer(transformer.Base):
         alias_map = {}
 
         template = """
-          with autograph_utils.control_dependency_on_returns(call):
+          with ag__.utils.control_dependency_on_returns(call):
             pass
         """
         control_deps_guard = templates.replace(template, call=node.value)[-1]

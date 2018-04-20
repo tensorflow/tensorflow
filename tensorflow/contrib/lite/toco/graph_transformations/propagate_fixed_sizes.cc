@@ -1060,16 +1060,14 @@ void ProcessBatchToSpaceNDOperator(Model* model, BatchToSpaceNDOperator* op) {
   }
   QCHECK(crops_array.data_type == ArrayDataType::kInt32);
   const auto& crops_data = crops_array.GetBuffer<ArrayDataType::kInt32>().data;
-  // We don't support crops now.
-  QCHECK_EQ(crops_data[0], 0);
-  QCHECK_EQ(crops_data[1], 0);
-  QCHECK_EQ(crops_data[2], 0);
-  QCHECK_EQ(crops_data[3], 0);
-
+  const int crops_top = crops_data[0];
+  const int crops_bottom = crops_data[1];
+  const int crops_left = crops_data[2];
+  const int crops_right = crops_data[3];
+  const int output_height =
+      input_height * block_height - crops_top - crops_bottom;
+  const int output_width = input_width * block_width - crops_left - crops_right;
   QCHECK_EQ(input_shape.dims(0) % (block_height * block_width), 0);
-
-  int output_height = input_height * block_height;
-  int output_width = input_width * block_width;
 
   model->GetArray(op->outputs[0])
       .copy_shape(Shape({input_shape.dims(0) / (block_height * block_width),

@@ -33,6 +33,7 @@ enum TensorType : byte {
   UINT8 = 3,
   INT64 = 4,
   STRING = 5,
+  BOOL = 6,
 }
 
 // Parameters for converting a quantized tensor back to float. Given a
@@ -134,6 +135,7 @@ enum BuiltinOperator : byte {
   MAXIMUM = 55,
   ARG_MAX = 56,
   MINIMUM = 57,
+  LESS = 58,
 }
 
 // Options for the builtin operators.
@@ -178,6 +180,7 @@ union BuiltinOptions {
   DequantizeOptions,
   MaximumMinimumOptions,
   ArgMaxOptions,
+  LessOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -196,6 +199,8 @@ table Conv2DOptions {
   stride_w:int;
   stride_h:int;
   fused_activation_function:ActivationFunctionType;
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table Pool2DOptions {
@@ -396,6 +401,9 @@ table MaximumMinimumOptions {
 
 table ArgMaxOptions {
   output_type : TensorType;
+}
+
+table LessOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

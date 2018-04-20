@@ -96,5 +96,10 @@ message ProfileResponse {
 
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;
-  // next-field: 7
+
+  // When we write profiling data directly to repository directory, we need a
+  // way to figure out whether the captured trace is empty (due to idle TPU).
+  bool empty_trace = 7;
+
+  // next-field: 8
 }

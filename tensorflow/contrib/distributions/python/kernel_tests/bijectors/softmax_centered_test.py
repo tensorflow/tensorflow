@@ -44,12 +44,12 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
       self.assertAllClose(x, softmax.inverse(y).eval())
       self.assertAllClose(
           -np.sum(np.log(y), axis=1),
-          softmax.inverse_log_det_jacobian(y).eval(),
+          softmax.inverse_log_det_jacobian(y, event_ndims=1).eval(),
           atol=0.,
           rtol=1e-7)
       self.assertAllClose(
-          -softmax.inverse_log_det_jacobian(y).eval(),
-          softmax.forward_log_det_jacobian(x).eval(),
+          -softmax.inverse_log_det_jacobian(y, event_ndims=1).eval(),
+          softmax.forward_log_det_jacobian(x, event_ndims=1).eval(),
           atol=0.,
           rtol=1e-7)
 
@@ -67,14 +67,14 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
           feed_dict={y: real_y}))
       self.assertAllClose(
           -np.sum(np.log(real_y), axis=1),
-          softmax.inverse_log_det_jacobian(y).eval(
+          softmax.inverse_log_det_jacobian(y, event_ndims=1).eval(
               feed_dict={y: real_y}),
           atol=0.,
           rtol=1e-7)
       self.assertAllClose(
-          -softmax.inverse_log_det_jacobian(y).eval(
+          -softmax.inverse_log_det_jacobian(y, event_ndims=1).eval(
               feed_dict={y: real_y}),
-          softmax.forward_log_det_jacobian(x).eval(
+          softmax.forward_log_det_jacobian(x, event_ndims=1).eval(
               feed_dict={x: real_x}),
           atol=0.,
           rtol=1e-7)
@@ -104,7 +104,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
       y = np.array([y_0, y_1, y_2])
       y /= y.sum(axis=0)
       y = y.T  # y.shape = [5, 3]
-      assert_bijective_and_finite(softmax, x, y)
+      assert_bijective_and_finite(softmax, x, y, event_ndims=1)
 
 
 if __name__ == "__main__":

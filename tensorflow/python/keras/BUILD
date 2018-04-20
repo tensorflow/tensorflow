@@ -205,6 +205,7 @@ py_library(
     deps = [
         ":engine",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:logging_ops",

@@ -475,6 +475,22 @@ REGISTER_KERNEL_BUILDER(
 
 #endif  // GOOGLE_CUDA
 
+#define REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(T)               \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListPushBackBatch<CPUDevice, T>)
+
+TF_CALL_ALL_TYPES(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(quint8);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint8);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(quint16);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint16);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint32);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(bfloat16);
+
+#undef REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU
+
 #define REGISTER_TENSOR_LIST_STACK_CPU(T)                         \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \
                               .TypeConstraint<T>("element_dtype") \

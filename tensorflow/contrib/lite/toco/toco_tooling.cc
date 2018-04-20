@@ -66,6 +66,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new RemoveTensorFlowIdentity);
   transformations->Add(new RemoveTrivialConcatenation);
   transformations->Add(new RemoveTrivialConcatenationInput);
+  transformations->Add(new RemoveTrivialFakeQuant);
   transformations->Add(new RemoveTrivialSlice);
   transformations->Add(new RemoveUnusedOp);
   transformations->Add(new EnsureBiasVectors);
@@ -83,6 +84,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantGather);
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
+  transformations->Add(new ResolveConstantReshape);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
@@ -108,7 +110,6 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveMeanAttributes);
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
-  transformations->Add(new ResolveConstantFakeQuant);
   transformations->Add(new UnpartitionEmbeddingLookup);
 }
 
@@ -232,6 +233,12 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   MakeGeneralGraphTransformationsSet(&transformations);
   auto* remove_trivial_reshape = new RemoveTrivialReshape;
   transformations.Add(remove_trivial_reshape);
+  auto* resolve_constant_fake_quant = new ResolveConstantFakeQuant;
+  if (quantize_output) {
+    resolve_constant_fake_quant->set_propagate_fake_quant_num_bits(
+        toco_flags.propagate_fake_quant_num_bits());
+  }
+  transformations.Add(resolve_constant_fake_quant);
   if (SupportsFusedActivationFunction(output_format)) {
     transformations.Add(new FuseActivationFunctions);
   } else {
@@ -263,9 +270,21 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
 
+  // Fix any issues with IO edges. This must happen after any transform that
+  // may modify the structure of the edges.
+  FixEdgeArrays(model);
+
   if (quantize_output) {
+    if (toco_flags.propagate_fake_quant_num_bits()) {
+      RunGraphTransformations(model,
+                              "fake quant propagation graph transformations",
+                              {new PropagateFakeQuantNumBits});
+    }
     RunGraphTransformations(model, "pre-quantization graph transformations",
-                            {new HardcodeMinMax, new DropFakeQuant});
+                            {
+                                new HardcodeMinMax,
+                                new DropFakeQuant,
+                            });
   }
 
   if (quantize_output) {
@@ -279,10 +298,13 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
           {new HardcodeMinMax});
     }
     CheckIsReadyForQuantization(*model);
-    RunGraphTransformations(
-        model, "quantization graph transformations",
-        {new Quantize, new RemoveTrivialQuantizedActivationFunc,
-         new RemoveFinalDequantizeOp});
+    RunGraphTransformations(model, "quantization graph transformations",
+                            {
+                                new RemoveTrivialQuantizedActivationFunc,
+                                new RemoveTrivialQuantizedMinMax,
+                                new Quantize,
+                                new RemoveFinalDequantizeOp,
+                            });
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
     // Dequantize creates FakeQuant nodes. We may want to discard
@@ -298,10 +320,6 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   if (output_format == TENSORFLOW_GRAPHDEF) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
-
-  // Fix any issues with IO edges. This must happen after any transform that
-  // may modify the structure of the edges.
-  FixEdgeArrays(model);
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 

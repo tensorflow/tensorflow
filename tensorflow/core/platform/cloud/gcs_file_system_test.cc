@@ -198,6 +198,54 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
   EXPECT_EQ("0123", result);
 }
 
+TEST(GcsFileSystemTest, NewRandomAccessFile_CheckpointFile_WithBlockCache) {
+  // Our underlying file in this test changes as new data comes in
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/checkpoint\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-8\n"
+           "Timeouts: 5 1 20\n",
+           "012345678"),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/checkpoint\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-8\n"
+           "Timeouts: 5 1 20\n",
+           "abcdefghi")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      9 /* block size */, 18 /* max bytes */, 0 /* max staleness */,
+      0 /* stat cache max age */, 0 /* stat cache max entries */,
+      0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, 0 /* initial retry delay */,
+      kTestTimeoutConfig, nullptr /* gcs additional header */);
+
+  char scratch[100];
+  StringPiece result;
+  {
+    // We are instantiating this in an enclosed scope to make sure after the
+    // unique ptr goes out of scope, we can still access result.
+    std::unique_ptr<RandomAccessFile> file;
+    TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/checkpoint", &file));
+
+    // Read the first chunk. The cache will be populated with the first block of
+    // 9 bytes.
+    scratch[5] = 'x';
+    TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+    EXPECT_EQ("0123", result);
+    EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
+
+    // The second chunk should not be in cache so we make a new request
+    // As the checkpoint file should not be cached
+    TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+    EXPECT_EQ("abcd", result);
+    EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
+  }
+}
+
 TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_Flush) {
   // Our underlying file in this test is a 15 byte file with contents
   // "0123456789abcde".

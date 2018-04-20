@@ -38,6 +38,7 @@ py_library(
     deps = [
         ":saved_model_utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:parsing_ops",

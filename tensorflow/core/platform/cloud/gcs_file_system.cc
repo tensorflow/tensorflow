@@ -301,6 +301,14 @@ class GcsRandomAccessFile : public RandomAccessFile {
     TF_RETURN_IF_ERROR(file_block_cache_->Read(filename_, offset, n, scratch,
                                                &bytes_transferred));
     *result = StringPiece(scratch, bytes_transferred);
+    string checkpoint_ending = "/checkpoint";
+    // Check if the file is the checkpoint file as we should not be caching
+    // that. As it's contents are updated and used for iterating checkpoints.
+    if (std::equal(checkpoint_ending.rbegin(), checkpoint_ending.rend(),
+                   filename_.rbegin())) {
+      // Remove the checkpoint file from the cache
+      file_block_cache_->RemoveFile(filename_);
+    }
     if (bytes_transferred < n) {
       // This is not an error per se. The RandomAccessFile interface expects
       // that Read returns OutOfRange if fewer bytes were read than requested.

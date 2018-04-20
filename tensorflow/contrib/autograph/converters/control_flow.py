@@ -78,7 +78,7 @@ class ControlFlowTransformer(transformer.Base):
   def _create_cond_expr(self, results, test, body_name, orelse_name):
     if results is not None:
       template = """
-        results = autograph_utils.run_cond(test, body_name, orelse_name)
+        results = ag__.utils.run_cond(test, body_name, orelse_name)
       """
       return templates.replace(
           template,
@@ -88,7 +88,7 @@ class ControlFlowTransformer(transformer.Base):
           orelse_name=orelse_name)
     else:
       template = """
-        autograph_utils.run_cond(test, body_name, orelse_name)
+        ag__.utils.run_cond(test, body_name, orelse_name)
       """
       return templates.replace(
           template, test=test, body_name=body_name, orelse_name=orelse_name)
@@ -207,7 +207,7 @@ class ControlFlowTransformer(transformer.Base):
       def body_name(state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = __ops.while_loop(
+      state_ast_tuple = ag__.while_loop(
           test_name, body_name, (state,), (extra_deps,))
     """
     node = templates.replace(
@@ -264,7 +264,7 @@ class ControlFlowTransformer(transformer.Base):
       def body_name(iterate, state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = __ops.for_loop(
+      state_ast_tuple = ag__.for_loop(
           iterated, extra_cond_name, body_name, (state,))
     """
     node = templates.replace(
