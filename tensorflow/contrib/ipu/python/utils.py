@@ -70,5 +70,22 @@ def extract_all_strings_from_event_trace(events):
   result = ""
   for e in events:
     evt = IpuTraceEvent.FromString(e)
-    result = result + evt.data_str
+
+    result = result + ("-" * 70) + "\n==> Event @" + str(evt.timestamp) + ": "
+
+    if evt.type == IpuTraceEvent.COMPILE:
+      evt_str = "Compile\n" + evt.data_str
+    elif evt.type == IpuTraceEvent.HOST_TO_DEVICE_TRANSFER:
+      evt_str = "Host->Device\nHandle = " + evt.data_str
+    elif evt.type == IpuTraceEvent.DEVICE_TO_HOST_TRANSFER:
+      evt_str = "Device->Host\nHandle = " + evt.data_str
+    elif evt.type == IpuTraceEvent.LOAD_ENGINE:
+      evt_str = "Load engine"
+    elif evt.type == IpuTraceEvent.EXECUTE:
+      evt_str = "Execute\n" + evt.data_str
+    else:
+      evt_str = "Unknown event"
+
+    result = result + evt_str + '\n'
+
   return result
