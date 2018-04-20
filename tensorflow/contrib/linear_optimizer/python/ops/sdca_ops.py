@@ -168,6 +168,10 @@ class SdcaModel(object):
     # of workers
     return self._options.get('num_loss_partitions', 1)
 
+  def _adaptive(self):
+    # Perform adaptive sampling.
+    return self._options.get('adaptive', True)
+
   def _num_table_shards(self):
     # Number of hash table shards.
     # Return 1 if not specified or if the value is 'None'
@@ -344,7 +348,8 @@ class SdcaModel(object):
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
           num_loss_partitions=self._num_loss_partitions(),
-          num_inner_iterations=1)
+          num_inner_iterations=1,
+          adaptative=self._adaptive())
       # pylint: enable=protected-access
 
       with ops.control_dependencies([esu]):

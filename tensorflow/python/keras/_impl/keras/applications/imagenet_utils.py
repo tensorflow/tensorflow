@@ -22,8 +22,10 @@ import json
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
@@ -151,11 +153,11 @@ def _preprocess_symbolic_input(x, data_format, mode):
     std = None
 
   if _IMAGENET_MEAN is None:
-    _IMAGENET_MEAN = K.constant(-np.array(mean))
+    _IMAGENET_MEAN = constant_op.constant(-np.array(mean), dtype=K.floatx())
 
   # Zero-center by mean pixel
   if K.dtype(x) != K.dtype(_IMAGENET_MEAN):
-    x = K.bias_add(x, K.cast(_IMAGENET_MEAN, K.dtype(x)), data_format)
+    x = K.bias_add(x, math_ops.cast(_IMAGENET_MEAN, K.dtype(x)), data_format)
   else:
     x = K.bias_add(x, _IMAGENET_MEAN, data_format)
   if std is not None:
@@ -234,7 +236,8 @@ def decode_predictions(preds, top=5):
         CLASS_INDEX_PATH,
         cache_subdir='models',
         file_hash='c2c37ea517e94d9795004a39431a14cb')
-    CLASS_INDEX = json.load(open(fpath))
+    with open(fpath) as f:
+      CLASS_INDEX = json.load(f)
   results = []
   for pred in preds:
     top_indices = pred.argsort()[-top:][::-1]

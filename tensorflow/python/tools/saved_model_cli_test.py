@@ -61,83 +61,84 @@ class SavedModelCLITestCase(test.TestCase):
     exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
 signature_def['classify_x2_to_y3']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x2:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['scores'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y3:0
-Method name is: tensorflow/serving/classify
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x2:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['scores'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y3:0
+  Method name is: tensorflow/serving/classify
 
 signature_def['classify_x_to_y']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_STRING
-    shape: unknown_rank
-    name: tf_example:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['scores'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/classify
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_STRING
+        shape: unknown_rank
+        name: tf_example:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['scores'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/classify
 
 signature_def['regress_x2_to_y3']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x2:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['outputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y3:0
-Method name is: tensorflow/serving/regress
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x2:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['outputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y3:0
+  Method name is: tensorflow/serving/regress
 
 signature_def['regress_x_to_y']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_STRING
-    shape: unknown_rank
-    name: tf_example:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['outputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/regress
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_STRING
+        shape: unknown_rank
+        name: tf_example:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['outputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/regress
 
 signature_def['regress_x_to_y2']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_STRING
-    shape: unknown_rank
-    name: tf_example:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['outputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y2:0
-Method name is: tensorflow/serving/regress
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_STRING
+        shape: unknown_rank
+        name: tf_example:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['outputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y2:0
+  Method name is: tensorflow/serving/regress
 
 signature_def['serving_default']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['x'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['y'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/predict"""
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['x'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['y'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/predict"""
     # pylint: enable=line-too-long
+    self.maxDiff = None # Produce a useful error msg if the comparison fails
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
@@ -193,11 +194,11 @@ Method name is: tensorflow/serving/predict"""
     output = out.getvalue().strip()
     expected_output = (
         'The given SavedModel SignatureDef contains the following input(s):\n'
-        'inputs[\'x\'] tensor_info:\n'
-        '    dtype: DT_FLOAT\n    shape: (-1, 1)\n    name: x:0\n'
+        '  inputs[\'x\'] tensor_info:\n'
+        '      dtype: DT_FLOAT\n      shape: (-1, 1)\n      name: x:0\n'
         'The given SavedModel SignatureDef contains the following output(s):\n'
-        'outputs[\'y\'] tensor_info:\n'
-        '    dtype: DT_FLOAT\n    shape: (-1, 1)\n    name: y:0\n'
+        '  outputs[\'y\'] tensor_info:\n'
+        '      dtype: DT_FLOAT\n      shape: (-1, 1)\n      name: y:0\n'
         'Method name is: tensorflow/serving/predict')
     self.assertEqual(output, expected_output)
     self.assertEqual(err.getvalue().strip(), '')
@@ -523,6 +524,28 @@ Method name is: tensorflow/serving/predict"""
     y_actual = np.load(os.path.join(output_dir, 'y.npy'))
     y_expected = np.array([[2.5], [3.0]])
     self.assertAllClose(y_expected, y_actual)
+
+  def testScanCommand(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args(['scan', '--dir', base_path])
+    with captured_output() as (out, _):
+      saved_model_cli.scan(args)
+    output = out.getvalue().strip()
+    self.assertTrue('does not contain blacklisted ops' in output)
+
+  def testScanCommandFoundBlacklistedOp(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args(
+        ['scan', '--dir', base_path, '--tag_set', 'serve'])
+    op_blacklist = saved_model_cli._OP_BLACKLIST
+    saved_model_cli._OP_BLACKLIST = set(['VariableV2'])
+    with captured_output() as (out, _):
+      saved_model_cli.scan(args)
+    saved_model_cli._OP_BLACKLIST = op_blacklist
+    output = out.getvalue().strip()
+    self.assertTrue('\'VariableV2\'' in output)
 
 
 if __name__ == '__main__':

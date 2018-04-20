@@ -25,6 +25,7 @@ limitations under the License.
 #endif
 
 #include <Windows.h>
+#include <shlwapi.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
@@ -149,18 +150,23 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-#ifdef TENSORFLOW_USE_ABSL
-  return absl::base_internal::NominalCPUFrequency();
-#else
+  DWORD data;
+  DWORD data_size = sizeof(data);
+  #pragma comment(lib, "shlwapi.lib")  // For SHGetValue().
+  if (SUCCEEDED(
+          SHGetValueA(HKEY_LOCAL_MACHINE,
+                      "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                      "~MHz", nullptr, &data, &data_size))) {
+    return data * 1e6;  // Value is MHz.
+  }
   return 1.0;
-#endif
 }
 
 int64 AvailableRam() {
   MEMORYSTATUSEX statex;
   statex.dwLength = sizeof(statex);
   if (GlobalMemoryStatusEx(&statex)) {
-    return statex.ullAvailPhys / 1024;
+    return statex.ullAvailPhys;
   }
   return INT64_MAX;
 }

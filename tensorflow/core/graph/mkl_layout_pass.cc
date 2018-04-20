@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(intel): Improve error handling in this file; instead of CHECK failing
+// all over the place, we should log an error and execute the original graph.
 #ifdef INTEL_MKL
 
 #include <algorithm>
@@ -1030,8 +1032,7 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
   TensorProto proto;
   proto.set_dtype(dt);
   uint8 zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           8);
+  proto.set_tensor_content(string(reinterpret_cast<const char*>(zero), 8));
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -1144,7 +1145,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     // For that let's first find filter node that is 2nd input (slot 1)
     // of BackpropInput.
     Node* filter_node = nullptr;
-    old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx, &filter_node);
+    TF_CHECK_OK(old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx,
+                                     &filter_node));
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
@@ -1323,8 +1325,7 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   TensorProto proto;
   proto.set_dtype(dt);
   float zero[1] = {0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           4);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 4));
   TensorShape dummy_shape({1});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -1829,7 +1830,7 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* succ,
 
     // Create node.
     Node* new_node;
-    nb.Finalize(&**g, &new_node);
+    TF_CHECK_OK(nb.Finalize(&**g, &new_node));
     CHECK_NOTNULL(new_node);
 
     // Set the Mkl layer label for this op.
@@ -2491,10 +2492,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
-                      CopyAttrsLRN, AlwaysRewrite});
+                      CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.lrn_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
-                      CopyAttrsLRN, AlwaysRewrite});
+                      CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool),
                       CopyAttrsPooling, NonDepthBatchWisePoolRewrite});
@@ -2864,6 +2865,28 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return false;
   }
 
+  // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized 
+  // path. The unoptimized path is slow. Thus we dont rewrite the node 
+  // and use default Eigen. But for depth_radius=2, MKL DNN optimized 
+  // path is taken, i.e., eigen node is rewritten by MKl DNN node.
+  static bool LrnRewrite(const Node* n) {
+    CHECK_NOTNULL(n);
+
+    int depth_radius;
+    CHECK_EQ(GetNodeAttr(n->def(), "depth_radius", &depth_radius).ok(), true);
+
+    // if the depth_radius of LRN is not 2, don't rewrite the node by MKL DNN
+    // and use eigen node instead 
+    if (depth_radius == 2) {
+      return true;
+    }
+    VLOG(1) << "LrnRewrite: The model sets depth_radius as not 2 which"
+            << "case is not optimized by Intel MKL, thus using Eigen op"
+            << "for LRN " ; 
+
+    return false;
+  }
+
   static bool AddNRewrite(const Node* n) {
     CHECK_NOTNULL(n);
 
@@ -3080,8 +3103,7 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
   TensorProto proto;
   proto.set_dtype(dt);
   uint8 zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           8);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 8));
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -3196,7 +3218,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     // For that let's first find filter node that is 2nd input (slot 1)
     // of BackpropInput.
     Node* filter_node = nullptr;
-    old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx, &filter_node);
+    TF_CHECK_OK(old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx,
+                                     &filter_node));
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
@@ -3376,8 +3399,7 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   TensorProto proto;
   proto.set_dtype(dt);
   float zero[1] = {0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           4);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 4));
   TensorShape dummy_shape({1});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -3527,11 +3549,13 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   string data_format;
   string padding;
   std::vector<int32> strides;
+  std::vector<int32> dilations;
   bool use_cudnn_on_gpu;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
   TF_CHECK_OK(
@@ -3540,6 +3564,7 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
   nb->Attr("padding", padding);
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
@@ -3777,12 +3802,14 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   DataType T_pred, T_succ;
   string padding;
   std::vector<int32> strides;
+  std::vector<int32> dilations;
   string data_format_pred, data_format_succ;
   bool use_cudnn_on_gnu;
   TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
@@ -3848,7 +3875,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
   // Create node.
   Node* new_node;
-  nb.Finalize(&**g, &new_node);
+  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
@@ -3959,7 +3986,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
 
   // Create node.
   Node* new_node;
-  nb.Finalize(&**g, &new_node);
+  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
   // Incoming data edges from BiasAddGrad node and Conv2DBackpropFilter node to

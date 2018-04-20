@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 
 #include <vector>
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -50,7 +51,8 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_OP("HostConst")
     .Output("output: dtype")
     .Attr("value: tensor")
-    .Attr("dtype: type");
+    .Attr("dtype: type")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 namespace test {
 namespace graph {

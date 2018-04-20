@@ -60,7 +60,9 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
   for (int i = 0; i < passthru_op->inputs.size(); i++) {
     if (!model->GetArray(passthru_op->inputs[i]).buffer) {
       count_nonconstant_input_arrays++;
-      main_input_array_index = i;
+      if (count_nonconstant_input_arrays == 1) {
+        main_input_array_index = i;
+      }
     }
   }
 
@@ -80,22 +82,13 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
 
   if (IsDiscardableArray(*model, output_name)) {
     transformation->AddMessageF(
-        "Removing %s, keeping its non-constant input array",
-        LogName(*passthru_op));
-    for (const string& input : passthru_op->inputs) {
-      if (IsDiscardableArray(*model, input) && input != main_input_name &&
-          CountOpsWithInput(*model, input) == 1) {
-      }
-    }
+        "Removing %s, keeping its non-constant input array %s and removing %s",
+        LogName(*passthru_op), main_input_name, output_name);
     RerouteEdges(output_name, main_input_name, model);
   } else if (IsDiscardableArray(*model, main_input_name)) {
-    transformation->AddMessageF("Removing %s, keeping its output array",
-                                LogName(*passthru_op));
-    for (const string& input : passthru_op->inputs) {
-      if (IsDiscardableArray(*model, input) &&
-          (input == main_input_name || CountOpsWithInput(*model, input) == 1)) {
-      }
-    }
+    transformation->AddMessageF(
+        "Removing %s, keeping its output array %s and removing input %s",
+        LogName(*passthru_op), output_name, main_input_name);
     RerouteEdges(main_input_name, output_name, model);
   } else {
     transformation->AddMessageF(
@@ -111,6 +104,16 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
   // Remove any array that is no longer used.
   for (const string& removal_candidate : removal_candidates) {
     bool is_referenced = false;
+    for (const auto& array : model->flags.input_arrays()) {
+      if (array.name() == removal_candidate) {
+        is_referenced = true;
+      }
+    }
+    for (const auto& array_name : model->flags.output_arrays()) {
+      if (array_name == removal_candidate) {
+        is_referenced = true;
+      }
+    }
     for (const auto& op : model->operators) {
       for (const string& input : op->inputs) {
         if (input == removal_candidate) {

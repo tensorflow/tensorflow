@@ -27,7 +27,11 @@ from tensorflow.contrib.timeseries.python.timeseries import input_pipeline
 from tensorflow.contrib.timeseries.python.timeseries import test_utils
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import TrainEvalFeatures
 
+from tensorflow.core.example import example_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.lib.io import tf_record
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator as coordinator_lib
@@ -50,6 +54,21 @@ def _make_csv_time_series(num_features, num_samples, test_tmpdir):
        for i in range(num_samples)],
       test_tmpdir=test_tmpdir)
   return filename
+
+
+def _make_tfexample_series(num_features, num_samples, test_tmpdir):
+  _, data_file = tempfile.mkstemp(dir=test_tmpdir)
+  with tf_record.TFRecordWriter(data_file) as writer:
+    for i in range(num_samples):
+      example = example_pb2.Example()
+      times = example.features.feature[TrainEvalFeatures.TIMES]
+      times.int64_list.value.append(i)
+      values = example.features.feature[TrainEvalFeatures.VALUES]
+      values.float_list.value.extend(
+          [float(i) * 2. + feature_number
+           for feature_number in range(num_features)])
+      writer.write(example.SerializeToString())
+  return data_file
 
 
 def _make_numpy_time_series(num_features, num_samples):
@@ -105,6 +124,19 @@ class RandomWindowInputFnTests(test.TestCase):
     filename = _make_csv_time_series(num_features=1, num_samples=50,
                                      test_tmpdir=self.get_temp_dir())
     time_series_reader = input_pipeline.CSVReader([filename])
+    self._test_out_of_order(time_series_reader, discard_out_of_order=False)
+
+  def test_tfexample_sort_out_of_order(self):
+    filename = _make_tfexample_series(
+        num_features=1, num_samples=50,
+        test_tmpdir=self.get_temp_dir())
+    time_series_reader = input_pipeline.TFExampleReader(
+        [filename],
+        features={
+            TrainEvalFeatures.TIMES: parsing_ops.FixedLenFeature(
+                shape=[], dtype=dtypes.int64),
+            TrainEvalFeatures.VALUES: parsing_ops.FixedLenFeature(
+                shape=[1], dtype=dtypes.float32)})
     self._test_out_of_order(time_series_reader, discard_out_of_order=False)
 
   def test_numpy_sort_out_of_order(self):
@@ -183,6 +215,20 @@ class RandomWindowInputFnTests(test.TestCase):
     self._test_multivariate(time_series_reader=time_series_reader,
                             num_features=2)
 
+  def test_tfexample_multivariate(self):
+    filename = _make_tfexample_series(
+        num_features=2, num_samples=50,
+        test_tmpdir=self.get_temp_dir())
+    time_series_reader = input_pipeline.TFExampleReader(
+        [filename],
+        features={
+            TrainEvalFeatures.TIMES: parsing_ops.FixedLenFeature(
+                shape=[], dtype=dtypes.int64),
+            TrainEvalFeatures.VALUES: parsing_ops.FixedLenFeature(
+                shape=[2], dtype=dtypes.float32)})
+    self._test_multivariate(time_series_reader=time_series_reader,
+                            num_features=2)
+
   def test_numpy_multivariate(self):
     data = _make_numpy_time_series(num_features=3, num_samples=50)
     time_series_reader = input_pipeline.NumpyReader(data)
@@ -247,6 +293,20 @@ class WholeDatasetInputFnTests(test.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self._whole_dataset_input_fn_test_template(
           time_series_reader=time_series_reader, num_features=1, num_samples=50)
+
+  def test_tfexample(self):
+    filename = _make_tfexample_series(
+        num_features=4, num_samples=100,
+        test_tmpdir=self.get_temp_dir())
+    time_series_reader = input_pipeline.TFExampleReader(
+        [filename],
+        features={
+            TrainEvalFeatures.TIMES: parsing_ops.FixedLenFeature(
+                shape=[], dtype=dtypes.int64),
+            TrainEvalFeatures.VALUES: parsing_ops.FixedLenFeature(
+                shape=[4], dtype=dtypes.float32)})
+    self._whole_dataset_input_fn_test_template(
+        time_series_reader=time_series_reader, num_features=4, num_samples=100)
 
   def test_numpy(self):
     data = _make_numpy_time_series(num_features=4, num_samples=100)

@@ -40,7 +40,7 @@ END
   attr {
     name: "num_bits"
     description: <<END
-The bitwidth of the quantization; between 2 and 8, inclusive.
+The bitwidth of the quantization; between 2 and 16, inclusive.
 END
   }
   attr {

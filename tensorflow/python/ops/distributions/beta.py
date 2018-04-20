@@ -304,11 +304,10 @@ class Beta(distribution.Distribution):
     if not self.validate_args:
       return x
     return control_flow_ops.with_dependencies([
-        check_ops.assert_positive(
-            x,
-            message="sample must be positive"),
+        check_ops.assert_positive(x, message="sample must be positive"),
         check_ops.assert_less(
-            x, array_ops.ones([], self.dtype),
+            x,
+            array_ops.ones([], self.dtype),
             message="sample must be less than `1`."),
     ], x)
 

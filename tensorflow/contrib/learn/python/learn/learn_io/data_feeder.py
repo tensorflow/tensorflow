@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Implementations of different data feeders to provide data for TF trainer."""
+"""Implementations of different data feeders to provide data for TF trainer (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 # TODO(ipolosukhin): Replace this module with feed-dict queue runners & queues.
 
@@ -31,6 +36,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 # pylint: disable=g-multiple-import,g-bad-import-order
 from .pandas_io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, extract_pandas_labels
@@ -101,6 +107,7 @@ def _is_iterable(x):
   return hasattr(x, 'next') or hasattr(x, '__next__')
 
 
+@deprecated(None, 'Please use tensorflow/transform or tf.data.')
 def setup_train_data_feeder(x,
                             y,
                             n_classes,
@@ -188,6 +195,7 @@ def _batch_data(x, batch_size=None):
     yield np.matrix(chunk)
 
 
+@deprecated(None, 'Please use tensorflow/transform or tf.data.')
 def setup_predict_data_feeder(x, batch_size=None):
   """Returns an iterable for feeding into predict step.
 
@@ -219,6 +227,7 @@ def setup_predict_data_feeder(x, batch_size=None):
   return [x]
 
 
+@deprecated(None, 'Please use tensorflow/transform or tf.data.')
 def setup_processor_data_feeder(x):
   """Sets up processor iterable.
 
@@ -233,6 +242,7 @@ def setup_processor_data_feeder(x):
   return x
 
 
+@deprecated(None, 'Please convert numpy dtypes explicitly.')
 def check_array(array, dtype):
   """Checks array on dtype and converts it if different.
 
@@ -275,8 +285,14 @@ def _check_dtype(dtype):
 
 
 class DataFeeder(object):
-  """Data feeder is an example class to sample data for TF trainer."""
+  """Data feeder is an example class to sample data for TF trainer.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'Please use tensorflow/transform or tf.data.')
   def __init__(self,
                x,
                y,
@@ -563,6 +579,10 @@ class DataFeeder(object):
 class StreamingDataFeeder(DataFeeder):
   """Data feeder for TF trainer that reads data from iterator.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Streaming data feeder allows to read data as it comes it from disk or
   somewhere else. It's custom to have this iterators rotate infinetly over
   the dataset, to allow control of how much to learn on the trainer side.
@@ -771,11 +791,16 @@ class StreamingDataFeeder(DataFeeder):
 class DaskDataFeeder(object):
   """Data feeder for that reads data from dask.Series and dask.DataFrame.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Numpy arrays can be serialized to disk and it's possible to do random seeks
   into them. DaskDataFeeder will remove requirement to have full dataset in the
   memory and still do random seeks for sampling of batches.
   """
 
+  @deprecated(None, 'Please feed input to tf.data to support dask.')
   def __init__(self,
                x,
                y,

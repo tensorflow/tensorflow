@@ -25,6 +25,7 @@ import time
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradients_impl
@@ -39,11 +40,10 @@ from tensorflow.python.platform import test
 def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
   """Fused kernel for batch normalization."""
   # _batch_norm_with_global_normalization is deprecated in v9
-  ops.get_default_graph().graph_def_versions.producer = 8
+  test_util.set_producer_version(ops.get_default_graph(), 8)
   # pylint: disable=protected-access
-  return gen_nn_ops._batch_norm_with_global_normalization(tensor, mean,
-                                                          variance, beta, gamma,
-                                                          0.001, scale)
+  return gen_nn_ops._batch_norm_with_global_normalization(
+      tensor, mean, variance, beta, gamma, 0.001, scale)
   # pylint: enable=protected-access
 
 

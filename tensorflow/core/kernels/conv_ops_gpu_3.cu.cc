@@ -1039,9 +1039,11 @@ template struct functor::SwapDimension0And2InTensor3<GPUDevice, double2,
                                                      /*conjugate=*/true>;
 
 // For 2d ops.
+template struct functor::TransformFilter<GPUDevice, double, int, 4>;
 template struct functor::TransformFilter<GPUDevice, float, int, 4>;
 template struct functor::TransformFilter<GPUDevice, Eigen::half, int, 4>;
 
+template struct functor::ReverseTransformFilter<GPUDevice, double, 4>;
 template struct functor::ReverseTransformFilter<GPUDevice, float, 4>;
 template struct functor::ReverseTransformFilter<GPUDevice, Eigen::half, 4>;
 
@@ -1054,6 +1056,7 @@ template struct functor::NCHWToNHWC<GPUDevice, float, 4>;
 template struct functor::NCHWToNHWC<GPUDevice, Eigen::half, 4>;
 
 template struct functor::PadInput<GPUDevice, int, int, 4>;
+template struct functor::PadInput<GPUDevice, double, int, 4>;
 template struct functor::PadInput<GPUDevice, float, int, 4>;
 template struct functor::PadInput<GPUDevice, Eigen::half, int, 4>;
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -316,6 +317,19 @@ void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
   }
   gpu_visitors_[bus_id].push_back(visitor);
 #endif  // GOOGLE_CUDA
+}
+
+void ProcessState::TestOnlyReset() {
+  mutex_lock lock(mu_);
+  gpu_device_enabled_ = false;
+  gpu_visitors_.clear();
+  mem_desc_map_.clear();
+  gtl::STLDeleteElements(&cpu_allocators_);
+  gtl::STLDeleteElements(&gpu_allocators_);
+  gtl::STLDeleteElements(&cuda_host_allocators_);
+  gtl::STLDeleteElements(&cpu_al_);
+  gtl::STLDeleteElements(&gpu_al_);
+  gtl::STLDeleteElements(&cuda_al_);
 }
 
 }  // namespace tensorflow

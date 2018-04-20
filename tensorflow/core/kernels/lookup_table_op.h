@@ -125,19 +125,21 @@ namespace lookup {
 // integral types. However non-integer variables are not allowed and therefore
 // the local copy is unnecessary.
 template <typename T>
-T SubtleMustCopyUnlessStringOrFloat(const T& value) {
+T SubtleMustCopyIfIntegral(const T& value) {
   return internal::SubtleMustCopy(value);
 }
 
-inline const string& SubtleMustCopyUnlessStringOrFloat(const string& value) {
+inline const string& SubtleMustCopyIfIntegral(const string& value) {
   return value;
 }
 
-inline const float SubtleMustCopyUnlessStringOrFloat(const float value) {
+inline const float SubtleMustCopyIfIntegral(const float value) { return value; }
+
+inline const double SubtleMustCopyIfIntegral(const double value) {
   return value;
 }
 
-inline const double SubtleMustCopyUnlessStringOrFloat(const double value) {
+inline const Variant& SubtleMustCopyIfIntegral(const Variant& value) {
   return value;
 }
 
@@ -191,6 +193,11 @@ class HashTable : public InitializableLookupTable {
     return Status::OK();
   };
 
+  Status DoLazyPrepare(std::function<int64(void)> unused) override {
+    constexpr size_t kUnusedSize = 0;
+    return DoPrepare(kUnusedSize);
+  }
+
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
     if (!table_) {
       return errors::FailedPrecondition("HashTable is not prepared.");
@@ -199,8 +206,8 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
     for (int64 i = 0; i < key_values.size(); ++i) {
-      const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
-      const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
+      const K key = SubtleMustCopyIfIntegral(key_values(i));
+      const V value = SubtleMustCopyIfIntegral(value_values(i));
       const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
       if (previous_value != value) {
         return errors::FailedPrecondition(
@@ -219,8 +226,7 @@ class HashTable : public InitializableLookupTable {
 
     for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
-          *table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
-          default_val);
+          *table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
     return Status::OK();
   }

@@ -35,7 +35,10 @@ limitations under the License.
 namespace xla {
 
 StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
-  auto evaluator = MakeUnique<HloEvaluator>();
+  // Limit the constant folding to 0 iterations to skip folding loops. This
+  // retains the behavior from before while loop support in HloEvaluator and may
+  // be revised.
+  auto evaluator = MakeUnique<HloEvaluator>(/*max_loop_iterations=*/0);
 
   XLA_VLOG_LINES(2,
                  "HloConstantFolding::Run(), before:\n" + module->ToString());
@@ -66,7 +69,8 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       // Broadcasts dramatically increase the size of constants, which is often
       // detrimental to performance and memory capacity, so do not fold
       // broadcasts.
-      if (instruction->opcode() == HloOpcode::kBroadcast) {
+      if (instruction->opcode() == HloOpcode::kBroadcast ||
+          instruction->opcode() == HloOpcode::kBroadcastDimOne) {
         continue;
       }
 

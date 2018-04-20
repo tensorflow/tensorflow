@@ -66,7 +66,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   This distribution is an Affine transformation of iid
   [Student's t-distributions](
   https://en.wikipedia.org/wiki/Student%27s_t-distribution)
-  and should not be confused with the [Multivate Student's t-distribution](
+  and should not be confused with the [Multivariate Student's t-distribution](
   https://en.wikipedia.org/wiki/Multivariate_t-distribution). The
   traditional Multivariate Student's t-distribution is type of
   [elliptical distribution](

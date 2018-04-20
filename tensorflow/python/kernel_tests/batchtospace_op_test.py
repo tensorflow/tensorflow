@@ -44,7 +44,7 @@ class CppOpImpl(object):
 
   @staticmethod
   def batch_to_space(*args, **kwargs):
-    return gen_array_ops._batch_to_space(*args, **kwargs)
+    return gen_array_ops.batch_to_space(*args, **kwargs)
 
 
 class BatchToSpaceDepthToSpace(test.TestCase, PythonOpImpl):

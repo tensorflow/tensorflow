@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Base Estimator class."""
+"""Base Estimator class (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -138,6 +143,7 @@ def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
   return df.input_builder, df.get_feed_dict_fn()
 
 
+@deprecated(None, 'Please specify feature columns explicitly.')
 def infer_real_valued_columns_from_input_fn(input_fn):
   """Creates `FeatureColumn` objects for inputs defined by `input_fn`.
 
@@ -158,6 +164,7 @@ def infer_real_valued_columns_from_input_fn(input_fn):
     return layers.infer_real_valued_columns(features)
 
 
+@deprecated(None, 'Please specify feature columns explicitly.')
 def infer_real_valued_columns_from_input(x):
   """Creates `FeatureColumn` objects for inputs defined by input `x`.
 
@@ -389,6 +396,10 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
                     trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Users should not instantiate or subclass this class. Instead, use an
   `Estimator`.
   """
@@ -399,6 +410,8 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
   # TODO(wicke): Remove this once launcher takes over config functionality
   _Config = run_config.RunConfig  # pylint: disable=invalid-name
 
+  @deprecated(None, 'Please replace uses of any Estimator from tf.contrib.learn'
+              ' with an Estimator from tf.estimator.*')
   def __init__(self, model_dir=None, config=None):
     """Initializes a BaseEstimator instance.
 
@@ -456,6 +469,20 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
   def config(self):
     # TODO(wicke): make RunConfig immutable, and then return it without a copy.
     return copy.deepcopy(self._config)
+
+  @property
+  def model_fn(self):
+    """Returns the model_fn which is bound to self.params.
+
+    Returns:
+      The model_fn with the following signature:
+        `def model_fn(features, labels, mode, metrics)`
+    """
+
+    def public_model_fn(features, labels, mode, config):
+      return self._call_model_fn(features, labels, mode, config=config)
+
+    return public_model_fn
 
   @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS,
                    ('x', None), ('y', None), ('batch_size', None))
@@ -890,8 +917,8 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
       if feed_fn:
         hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
       if steps == 0:
-        logging.warning('evaluation steps are 0. If `input_fn` does not raise'
-                        'OutOfRangeError`, the evaluation will never stop.'
+        logging.warning('evaluation steps are 0. If `input_fn` does not raise '
+                        '`OutOfRangeError`, the evaluation will never stop. '
                         'Use steps=None if intended.')
       if steps:
         hooks.append(
@@ -1074,6 +1101,10 @@ def _identity_feature_engineering_fn(features, labels):
 
 class Estimator(BaseEstimator):
   """Estimator class is the basic TensorFlow model trainer/evaluator.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
   """
 
   def __init__(self,
@@ -1162,7 +1193,7 @@ class Estimator(BaseEstimator):
     self._feature_engineering_fn = (
         feature_engineering_fn or _identity_feature_engineering_fn)
 
-  def _call_model_fn(self, features, labels, mode, metrics=None):
+  def _call_model_fn(self, features, labels, mode, metrics=None, config=None):
     """Calls model function with support of 2, 3 or 4 arguments.
 
     Args:
@@ -1170,6 +1201,7 @@ class Estimator(BaseEstimator):
       labels: labels dict.
       mode: ModeKeys
       metrics: Dict of metrics.
+      config: RunConfig.
 
     Returns:
       A `ModelFnOps` object. If model_fn returns a tuple, wraps them up in a
@@ -1186,7 +1218,10 @@ class Estimator(BaseEstimator):
     if 'params' in model_fn_args:
       kwargs['params'] = self.params
     if 'config' in model_fn_args:
-      kwargs['config'] = self.config
+      if config:
+        kwargs['config'] = config
+      else:
+        kwargs['config'] = self.config
     if 'model_dir' in model_fn_args:
       kwargs['model_dir'] = self.model_dir
     model_fn_results = self._model_fn(features, labels, **kwargs)
@@ -1458,8 +1493,14 @@ class Estimator(BaseEstimator):
 # For time of deprecation x,y from Estimator allow direct access.
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
-  """Scikit learn wrapper for TensorFlow Learn Estimator."""
+  """Scikit learn wrapper for TensorFlow Learn Estimator.
+  
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
 
+  @deprecated(None, 'Please switch to the Estimator interface.')
   def __init__(self, estimator):
     self._estimator = estimator
 

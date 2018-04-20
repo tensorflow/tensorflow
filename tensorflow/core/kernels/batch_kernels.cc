@@ -146,7 +146,7 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
     suffix_dim_size *= input.shape().dim_size(i);
   }
   auto input_reshaped =
-      input.shaped<T, 3>({1, input.shape().dim_size(0), suffix_dim_size});
+      input.shaped<T, 2>({input.shape().dim_size(0), suffix_dim_size});
 
   int64 position = 0;
   for (const int64 size : sizes) {
@@ -155,13 +155,13 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
     Tensor output;
     TF_RETURN_IF_ERROR(
         context->allocate_temp(input.dtype(), output_shape, &output));
-    auto output_shaped = output.shaped<T, 3>({1, size, suffix_dim_size});
+    auto output_shaped = output.shaped<T, 2>({size, suffix_dim_size});
 
-    Eigen::DSizes<Eigen::DenseIndex, 3> slice_indices{0, position, 0};
-    Eigen::DSizes<Eigen::DenseIndex, 3> slice_sizes{1, size, suffix_dim_size};
-    functor::Split<CPUDevice, T>()(context->eigen_device<CPUDevice>(),
-                                   output_shaped, input_reshaped, slice_indices,
-                                   slice_sizes);
+    Eigen::DSizes<Eigen::DenseIndex, 2> slice_indices{position, 0};
+    Eigen::DSizes<Eigen::DenseIndex, 2> slice_sizes{size, suffix_dim_size};
+    functor::Split<CPUDevice, T, 2>()(context->eigen_device<CPUDevice>(),
+                                      output_shaped, input_reshaped,
+                                      slice_indices, slice_sizes);
 
     outputs->emplace_back(output);
 

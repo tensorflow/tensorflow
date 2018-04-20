@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <jni.h>
 #include <stdio.h>
+#include <time.h>
 #include <vector>
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/interpreter.h"
@@ -28,6 +29,9 @@ limitations under the License.
 namespace tflite {
 // This is to be provided at link-time by a library.
 extern std::unique_ptr<OpResolver> CreateOpResolver();
+extern timespec getCurrentTime();
+extern jlong timespec_diff_nanoseconds(struct timespec* start,
+                                       struct timespec* stop);
 }  // namespace tflite
 
 #ifdef __cplusplus
@@ -57,7 +61,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JZ)
+ *  Signature: (JZ)V
  */
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
@@ -65,6 +69,16 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
                                                            jlong handle,
                                                            jboolean state);
 
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JI)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong handle,
+                                                           jint num_threads);
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
@@ -95,30 +109,33 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJ)J
+ *  Signature: (JJI)J
  */
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
-    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle);
+    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
+    jint num_threads);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJ[Ljava/lang/Object;[I[I[Ljava/lang/Object;)[J
+ *  Signature:
+ * (JJ[Ljava/lang/Object;[I[I[Ljava/lang/Object;Ljava/lang/Object;Z)[J
  */
 JNIEXPORT jlongArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jobjectArray sizes, jintArray data_types, jintArray nums_of_bytes,
-    jobjectArray values);
+    jobjectArray values, jobject wrapper, jboolean memory_allocated);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
  *  Signature: (JII)[I
  *
- * It gets input dimensions if num_bytes matches number of bytes required by
- * the input, else returns null and throws IllegalArgumentException.
+ * Gets input dimensions. If num_bytes is non-negative, it will check whether
+ * num_bytes matches num of bytes required by the input, and return null and
+ * throw IllegalArgumentException if not.
  */
 JNIEXPORT jintArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
@@ -127,11 +144,23 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJI[I)
+ *  Signature: (JI)I
  *
- * It resizes dimensions of a input.
+ * Gets output dimensions.
  */
-JNIEXPORT void JNICALL
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JJI[I)Z
+ *
+ * It returns true if resizing input tensor to different dimensions, else return
+ * false.
+ */
+JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jint input_idx, jintArray dims);

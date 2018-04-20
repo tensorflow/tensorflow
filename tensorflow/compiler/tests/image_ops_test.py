@@ -65,7 +65,8 @@ class RGBToHSVTest(XLATestCase):
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1)
       self.assertAllClose(batch2, join2)
-      self.assertAllCloseAccordingToType(batch2, inp, bfloat16_atol=0.03)
+      self.assertAllCloseAccordingToType(
+          batch2, inp, bfloat16_atol=0.03, half_rtol=0.02)
 
   def testRGBToHSVRoundTrip(self):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
@@ -426,7 +427,7 @@ class ResizeBilinearTest(XLATestCase):
     with self.test_session() as sess, self.test_scope():
       dtype = dtype or np.float32
       grads = array_ops.placeholder(np.float32)
-      resized = gen_image_ops._resize_bilinear_grad(
+      resized = gen_image_ops.resize_bilinear_grad(
           grads,
           np.zeros([1, input_shape[0], input_shape[1], 1], dtype=dtype),
           align_corners=True)

@@ -47,7 +47,8 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testVariableError(self):
     with self.assertRaisesRegexp(
-        RuntimeError, r'Variable not supported in Eager mode'):
+        RuntimeError,
+        r'Variable not supported when eager execution is enabled'):
       variables.Variable(initial_value=1.0)
 
   def testGradients(self):

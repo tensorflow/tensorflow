@@ -31,17 +31,32 @@ namespace {
 
 void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
                       int kheight, int stride_width, int stride_height,
+                      int dilation_width_factor, int dilation_height_factor,
                       PaddingType padding_type, Shape* output_shape,
                       FixedPadding* fixed_padding) {
   const int input_width = input_shape.dims(2);
   const int input_height = input_shape.dims(1);
   const int batch = input_shape.dims(0);
 
+  CHECK_GE(input_width, 1);
+  CHECK_GE(input_height, 1);
+  CHECK_GE(batch, 1);
+  CHECK_GE(kwidth, 1);
+  CHECK_GE(kheight, 1);
+  CHECK_GE(stride_width, 1);
+  CHECK_GE(stride_height, 1);
+  CHECK_GE(dilation_width_factor, 1);
+  CHECK_GE(dilation_height_factor, 1);
+
+  int dilated_kwidth = dilation_width_factor * (kwidth - 1) + 1;
+  int dilated_kheight = dilation_height_factor * (kheight - 1) + 1;
+
   int output_height = 0;
   int output_width = 0;
   if (padding_type == PaddingType::kValid) {
-    output_height = (input_height + stride_height - kheight) / stride_height;
-    output_width = (input_width + stride_width - kwidth) / stride_width;
+    output_height =
+        (input_height + stride_height - dilated_kheight) / stride_height;
+    output_width = (input_width + stride_width - dilated_kwidth) / stride_width;
   } else if (padding_type == PaddingType::kSame) {
     output_height = (input_height + stride_height - 1) / stride_height;
     output_width = (input_width + stride_width - 1) / stride_width;
@@ -49,10 +64,12 @@ void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
     LOG(FATAL) << "Only supporting SAME or VALID padding";
   }
 
-  fixed_padding->height = std::max(
-      0, ((output_height - 1) * stride_height + kheight - input_height) / 2);
+  fixed_padding->height = std::max(0, ((output_height - 1) * stride_height +
+                                       dilated_kheight - input_height) /
+                                          2);
   fixed_padding->width = std::max(
-      0, ((output_width - 1) * stride_width + kwidth - input_width) / 2);
+      0,
+      ((output_width - 1) * stride_width + dilated_kwidth - input_width) / 2);
 
   // Actually had to debug a situation where those were negative due to bad
   // propagation of placeholder -1 sizes in TensorFlowReshape.
@@ -166,7 +183,8 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   ComputeConvSizes(input_shape, output_depth, kwidth, kheight, op->stride_width,
-                   op->stride_height, op->padding.type,
+                   op->stride_height, op->dilation_width_factor,
+                   op->dilation_height_factor, op->padding.type,
                    output_array.mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
   CHECK_EQ(output_array.shape().dimensions_count(), 4);
@@ -180,6 +198,116 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
                                   output_shape.dims(2),
                                   input_depth * kheight * kwidth});
   }
+}
+
+void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
+  // TransposeConv is unique in that it is specifically given the output shape
+  // as a 1D array on it's 1st input. Theoretically then, resolving the output
+  // shape is as easy as waiting for this input to be resolved. However, we also
+  // have to calculate the padding which requires the weights shape. So, we
+  // might as well calculate the output shape and ensure it matches the
+  // specified one
+
+  // Check if we have already run.
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    return;
+  }
+
+  // SPECIFIED OUTPUT SHAPE
+  // The below is the specified, or prescribed output shape, _given_ to the
+  // operator as an input.
+  auto& specified_output_shape_array =
+      model->GetArray(op->inputs[TransposeConvOperator::OUTPUT_SHAPE]);
+  if (!specified_output_shape_array.has_shape() ||
+      !specified_output_shape_array.buffer) {
+    // Yield until the specified output shape is resolved as a constant
+    return;
+  }
+
+  CHECK(specified_output_shape_array.data_type == ArrayDataType::kInt32)
+      << "TransposeConv input_dims must be int32";
+
+  CHECK(specified_output_shape_array.shape().dimensions_count() == 1 &&
+        specified_output_shape_array.shape().dims(0) == 4)
+      << "TransposeConv requires a 1D, 4 element array on it's 0th input "
+         "specifying the output shape. \""
+      << op->inputs[TransposeConvOperator::OUTPUT_SHAPE] << "\" had shape "
+      << toco::ShapeToString(specified_output_shape_array.shape());
+
+  // COMPUTE PADDING
+  // We require the weights shape to calculate padding.
+  const auto& weights_array =
+      model->GetArray(op->inputs[TransposeConvOperator::WEIGHTS]);
+  if (!weights_array.has_shape()) {
+    // Yield until weights dims have been resolved.
+    return;
+  }
+  const auto& weights_shape = weights_array.shape();
+  CHECK_EQ(weights_shape.dimensions_count(), 4)
+      << "TransposeConv weights must have 4 input dimensions. Input weights \""
+      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
+      << toco::ShapeToString(weights_shape) << ".";
+
+  CHECK(weights_shape.dims(0) == 1 && weights_shape.dims(3) == 1)
+      << "TransposeConv weights dimensions must begin and end with 1. Input "
+         "weights \""
+      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
+      << toco::ShapeToString(weights_shape) << ".";
+
+  // Compute padding
+  const int kheight = weights_shape.dims(1);
+  const int kwidth = weights_shape.dims(2);
+  op->padding.GetOrCreateFixedPadding();
+  if (op->padding.type == PaddingType::kValid) {
+    op->padding.fixed->height = 0;
+    op->padding.fixed->width = 0;
+  } else if (op->padding.type == PaddingType::kSame) {
+    op->padding.fixed->height = (kheight - 1) / 2;
+    op->padding.fixed->width = (kwidth - 1) / 2;
+  } else {
+    LOG(FATAL) << "TransposeConv only supports SAME or VALID padding";
+  }
+
+  // VALIDATE OUTPUT SHAPE
+  // Compute the output shape from the input and weights shapes to verify it
+  // agrees with the specified output shape.
+  const auto& input_array =
+      model->GetArray(op->inputs[TransposeConvOperator::DATA_INPUT]);
+  if (!input_array.has_shape()) {
+    // Yield until input dims have been resolved.
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  CHECK_EQ(input_shape.dimensions_count(), 4)
+      << "TransposeConv input shape must have 4 dimensions. Input \""
+      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
+      << toco::ShapeToString(weights_shape) << ".";
+
+  // Compute output shape
+  const int input_width = input_shape.dims(2);
+  const int input_height = input_shape.dims(1);
+  int output_height = op->stride_height * (input_height - 1);
+  int output_width = op->stride_width * (input_width - 1);
+  if (op->padding.type == PaddingType::kValid) {
+    output_height += kheight;
+    output_width += kwidth;
+  } else if (op->padding.type == PaddingType::kSame) {
+    output_height += 1;
+    output_width += 1;
+  }
+
+  CHECK(specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data ==
+        std::vector<int32>({input_shape.dims(0), output_height, output_width,
+                            weights_shape.dims(3)}))
+      << "Specified output shape: " << ShapeToString(output_array.shape())
+      << ", does not agree with shape computed from input data and weights: ["
+      << input_shape.dims(0) << ", " << output_height << ", " << output_width
+      << ", " << weights_shape.dims(3) << "].";
+
+  // SUCCESS: Set the op's output shape according to the specified output shape.
+  *(output_array.mutable_shape()->mutable_dims()) =
+      specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
 }
 
 void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
@@ -222,7 +350,7 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   ComputeConvSizes(input_shape, output_depth, kwidth, kheight, op->stride_width,
-                   op->stride_height, op->padding.type,
+                   op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -274,8 +402,7 @@ void ProcessSpaceToDepthOperator(Model* model, SpaceToDepthOperator* op) {
                          depth * block_size * block_size}));
 }
 
-void ProcessFillOperator(Model* model, FillOperator* op) {
-  CHECK_EQ(op->inputs.size(), 2);
+void ProcessOpWithShapeInput(Model* model, Operator* op) {
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
@@ -697,7 +824,7 @@ void ProcessAveragePoolOperator(Model* model, AveragePoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -714,7 +841,7 @@ void ProcessMaxPoolOperator(Model* model, MaxPoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -733,7 +860,7 @@ void ProcessL2PoolOperator(Model* model, L2PoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -933,16 +1060,14 @@ void ProcessBatchToSpaceNDOperator(Model* model, BatchToSpaceNDOperator* op) {
   }
   QCHECK(crops_array.data_type == ArrayDataType::kInt32);
   const auto& crops_data = crops_array.GetBuffer<ArrayDataType::kInt32>().data;
-  // We don't support crops now.
-  QCHECK_EQ(crops_data[0], 0);
-  QCHECK_EQ(crops_data[1], 0);
-  QCHECK_EQ(crops_data[2], 0);
-  QCHECK_EQ(crops_data[3], 0);
-
+  const int crops_top = crops_data[0];
+  const int crops_bottom = crops_data[1];
+  const int crops_left = crops_data[2];
+  const int crops_right = crops_data[3];
+  const int output_height =
+      input_height * block_height - crops_top - crops_bottom;
+  const int output_width = input_width * block_width - crops_left - crops_right;
   QCHECK_EQ(input_shape.dims(0) % (block_height * block_width), 0);
-
-  int output_height = input_height * block_height;
-  int output_width = input_width * block_width;
 
   model->GetArray(op->outputs[0])
       .copy_shape(Shape({input_shape.dims(0) / (block_height * block_width),
@@ -1292,7 +1417,7 @@ void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
   std::vector<int32> const& perm =
       perm_array.GetBuffer<ArrayDataType::kInt32>().data;
   CHECK_EQ(perm.size(), input_shape.dimensions_count())
-      << "Transpose permutation input " << op->inputs[0]
+      << "Transpose permutation input " << op->inputs[1]
       << " must be same length as input dimensions";
   std::vector<int>* output_dims = output_array.mutable_shape()->mutable_dims();
   for (int i = 0; i < perm.size(); i++) {
@@ -1349,8 +1474,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
+    case OperatorType::kPRelu:
     case OperatorType::kSoftmax:
     case OperatorType::kLogSoftmax:
+    case OperatorType::kLog:
     case OperatorType::kLogistic:
     case OperatorType::kTanh:
     case OperatorType::kLocalResponseNormalization:
@@ -1394,8 +1521,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessConvOperator(model, static_cast<ConvOperator*>(op));
       break;
     case OperatorType::kTransposeConv:
-      // Unimplemented, hopefully another graph transformation will drop it or
-      // rewrite it.
+      ProcessTransposeConvOperator(model,
+                                   static_cast<TransposeConvOperator*>(op));
       break;
     case OperatorType::kDepthwiseConv:
       ProcessDepthwiseConvOperator(model,
@@ -1410,7 +1537,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
                                   static_cast<SpaceToDepthOperator*>(op));
       break;
     case OperatorType::kFill:
-      ProcessFillOperator(model, static_cast<FillOperator*>(op));
+      CHECK_EQ(op->inputs.size(), 2);
+      ProcessOpWithShapeInput(model, op);
       break;
     case OperatorType::kFullyConnected:
       ProcessFullyConnectedOperator(model,
@@ -1533,6 +1661,16 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       break;
     case OperatorType::kTranspose:
       ProcessTransposeOperator(model, static_cast<TransposeOperator*>(op));
+      break;
+    case OperatorType::kDynamicPartition:
+    case OperatorType::kDynamicStitch:
+      // DynamicPartition/DynamicStitch are currently only supported for
+      // transforms that remove them, so we avoid propagating shapes through
+      // them and let things settle once they've been removed.
+      break;
+    case OperatorType::kRandomUniform:
+      CHECK_EQ(op->inputs.size(), 1);
+      ProcessOpWithShapeInput(model, op);
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

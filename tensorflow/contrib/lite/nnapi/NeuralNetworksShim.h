@@ -22,7 +22,7 @@ limitations under the License.
 
 // helpers
 
-#define NNAPI_LOG(format, ...) printf(format "\n", __VA_ARGS__);
+#define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
 #define LOAD_FUNCTION(name) \
   static name##_fn fn = reinterpret_cast<name##_fn>(loadFunction(#name));
 #define EXECUTE_FUNCTION(...) \
@@ -569,7 +569,7 @@ enum {
   ANEURALNETWORKS_LOGISTIC = 14,
 
   /**
-   * Projects an input to a bit vector via locality senstive hashing.
+   * Projects an input to a bit vector via locality sensitive hashing.
    *
    * Inputs:
    * * 0: Hash functions. Dim.size == 2, DataType: Float.

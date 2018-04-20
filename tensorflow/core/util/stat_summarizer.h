@@ -186,7 +186,7 @@ class StatSummarizer {
   void Reset();
 
   // Returns number of runs.
-  int num_runs() const { return run_total_us_.count(); }
+  int num_runs() const { return static_cast<int>(run_total_us_.count()); }
 
   // Returns stats of total microseconds spent by all nodes in each run.
   const Stat<int64>& run_total_us() const { return run_total_us_; }

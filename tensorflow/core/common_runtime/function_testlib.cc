@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_testlib.h"
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,7 +40,9 @@ class FindDeviceOpKernel : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("FindDeviceOp").Device(tensorflow::DEVICE_CPU),
                         FindDeviceOpKernel);
-REGISTER_OP("FindDeviceOp").Output("device_name: string");
+REGISTER_OP("FindDeviceOp")
+    .Output("device_name: string")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 FunctionDef FindDevice() {
   return FDH::Define(
@@ -53,6 +56,59 @@ FunctionDef FindDevice() {
       {},
       // Nodes
       {{{"device_name"}, "FindDeviceOp", {}, {}}});
+}
+
+void BlockingOpState::AwaitState(int awaiting_state) {
+  mutex_lock ml(mu_);
+  while (state_ != awaiting_state) {
+    cv_.wait(ml);
+  }
+}
+
+void BlockingOpState::MoveToState(int expected_current, int next) {
+  mutex_lock ml(mu_);
+  CHECK_EQ(expected_current, state_);
+  state_ = next;
+  cv_.notify_all();
+}
+
+BlockingOpState* blocking_op_state = nullptr;
+
+// BlockingOp blocks on the global <blocking_op_state's> state,
+// and also updates it when it is unblocked and finishing computation.
+class BlockingOp : public OpKernel {
+ public:
+  explicit BlockingOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    blocking_op_state->MoveToState(0, 1);
+    blocking_op_state->AwaitState(2);
+    blocking_op_state->MoveToState(2, 3);
+
+    Tensor* out = nullptr;
+    const Tensor& in = ctx->input(0);
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in.shape(), &out));
+    out->flat<float>() = in.flat<float>();
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
+REGISTER_OP("BlockingOp")
+    .Input("x: float")
+    .Output("y: float")
+    .Doc("")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+FunctionDef BlockingOpFn() {
+  return FDH::Define(
+      // Name
+      "BlockingOpFn",
+      // Args
+      {"x: float"},
+      // Return values
+      {"y: float"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"y"}, "BlockingOp", {"x"}, {}}});
 }
 
 // TODO(phawkins): replace with C++ API for calling functions, when that exists.

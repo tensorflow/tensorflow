@@ -101,6 +101,10 @@ tf_module {
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "image_gradients"
+    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_jpeg"
     argspec: "args=[\'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -115,6 +119,10 @@ tf_module {
   member_method {
     name: "per_image_standardization"
     argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "psnr"
+    argspec: "args=[\'a\', \'b\', \'max_val\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "random_brightness"
@@ -187,6 +195,18 @@ tf_module {
   member_method {
     name: "sample_distorted_bounding_box"
     argspec: "args=[\'image_size\', \'bounding_boxes\', \'seed\', \'seed2\', \'min_object_covered\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0.1\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "sobel_edges"
+    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ssim"
+    argspec: "args=[\'img1\', \'img2\', \'max_val\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ssim_multiscale"
+    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'power_factors\'], varargs=None, keywords=None, defaults=[\'(0.0448, 0.2856, 0.3001, 0.2363, 0.1333)\'], "
   }
   member_method {
     name: "total_variation"

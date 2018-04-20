@@ -22,7 +22,6 @@ limitations under the License.
 // IWYU pragma: friend third_party/tensorflow/core/platform/tracing.h
 
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/tracing.h"
 

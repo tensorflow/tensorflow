@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
@@ -35,6 +36,7 @@ TEST(ThreadPool, Empty) {
 }
 
 TEST(ThreadPool, DoWork) {
+  Context outer_context(ContextKind::kThread);
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
     fprintf(stderr, "Testing with %d threads\n", num_threads);
     const int kWorkItems = 15;
@@ -45,7 +47,9 @@ TEST(ThreadPool, DoWork) {
     {
       ThreadPool pool(Env::Default(), "test", num_threads);
       for (int i = 0; i < kWorkItems; i++) {
-        pool.Schedule([&work, i]() {
+        pool.Schedule([&outer_context, &work, i]() {
+          Context inner_context(ContextKind::kThread);
+          ASSERT_EQ(outer_context, inner_context);
           ASSERT_FALSE(work[i]);
           work[i] = true;
         });
@@ -58,6 +62,7 @@ TEST(ThreadPool, DoWork) {
 }
 
 TEST(ThreadPool, ParallelFor) {
+  Context outer_context(ContextKind::kThread);
   // Make ParallelFor use as many threads as possible.
   int64 kHugeCost = 1 << 30;
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
@@ -68,12 +73,15 @@ TEST(ThreadPool, ParallelFor) {
     for (int i = 0; i < kWorkItems; i++) {
       work[i] = false;
     }
-    pool.ParallelFor(kWorkItems, kHugeCost, [&work](int64 begin, int64 end) {
-      for (int64 i = begin; i < end; ++i) {
-        ASSERT_FALSE(work[i]);
-        work[i] = true;
-      }
-    });
+    pool.ParallelFor(kWorkItems, kHugeCost,
+                     [&outer_context, &work](int64 begin, int64 end) {
+                       Context inner_context(ContextKind::kThread);
+                       ASSERT_EQ(outer_context, inner_context);
+                       for (int64 i = begin; i < end; ++i) {
+                         ASSERT_FALSE(work[i]);
+                         work[i] = true;
+                       }
+                     });
     for (int i = 0; i < kWorkItems; i++) {
       ASSERT_TRUE(work[i]);
     }
@@ -166,6 +174,41 @@ static void BM_Parallel(int iters) {
   }
 }
 BENCHMARK(BM_Parallel);
+
+static void BM_ParallelFor(int iters, int total, int cost_per_unit) {
+  ThreadPool pool(Env::Default(), "test", kNumThreads);
+  // Decrement count concurrently until 0.
+  std::atomic_int_fast32_t count(iters);
+  mutex done_lock;
+  condition_variable done;
+  bool done_flag = false;
+  for (int i = 0; i < iters; ++i) {
+    pool.ParallelFor(
+        total, cost_per_unit,
+        [&count, &done_lock, &done, &done_flag](int64 begin, int64 end) {
+          for (int64 i = begin; i < end; ++i) {
+            if (count.fetch_sub(1) == 1) {
+              mutex_lock l(done_lock);
+              done_flag = true;
+              done.notify_all();
+            }
+          }
+        });
+  }
+  mutex_lock l(done_lock);
+  if (!done_flag) {
+    done.wait(l);
+  }
+}
+BENCHMARK(BM_ParallelFor)
+    ->ArgPair(1 << 10, 1)
+    ->ArgPair(1 << 20, 1)
+    ->ArgPair(1 << 10, 1 << 10)
+    ->ArgPair(1 << 20, 1 << 10)
+    ->ArgPair(1 << 10, 1 << 20)
+    ->ArgPair(1 << 20, 1 << 20)
+    ->ArgPair(1 << 10, 1 << 30)
+    ->ArgPair(1 << 20, 1 << 30);
 
 }  // namespace thread
 }  // namespace tensorflow

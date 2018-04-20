@@ -247,7 +247,7 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
     #
     # collections.OrderedDict([
     #     ((0, 0, 0), 2),
-    #     ((0, 0, 1), 3),
+    #     ((0, 1, 0), 3),
     # ])
   ```
 

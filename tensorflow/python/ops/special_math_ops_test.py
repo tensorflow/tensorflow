@@ -192,6 +192,9 @@ class EinsumTest(test.TestCase):
       'abc,cba',
       'dba,ead,cad->bce',
       'aef,fbc,dca->bde',
+      'iJ,Jk->ik',
+      'iJ,Ki->JK',
+      'iJk,Jklm->Jk'
   ]
 
   long_cases = [
@@ -208,6 +211,8 @@ class EinsumTest(test.TestCase):
       'ijk ijk',
       'ij.jk->ik',
       'ij...,jk...->ik...',
+      'ij,k ->kji',
+      'ij,k-> kji',
 
       # axis in output that does not exist
       'ij,jk->im',

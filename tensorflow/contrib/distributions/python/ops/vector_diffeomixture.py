@@ -181,7 +181,7 @@ def quadrature_scheme_softmaxnormal_quantiles(
       edges = array_ops.reshape(edges, shape=array_ops.concat([
           [-1], array_ops.ones([batch_ndims], dtype=dtypes.int32)], axis=0))
       quantiles = dist.quantile(edges)
-      quantiles = SoftmaxCentered(event_ndims=1).forward(quantiles)
+      quantiles = SoftmaxCentered().forward(quantiles)
       # Cyclically permute left by one.
       perm = array_ops.concat([
           math_ops.range(1, 1 + batch_ndims), [0]], axis=0)
@@ -248,11 +248,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   The default quadrature scheme chooses `z_{N, n}` as `N` midpoints of
   the quantiles of `p(z)` (generalized quantiles if `K > 2`).
 
-  See [1] for more details.
-
-  [1]. "Quadrature Compound: An approximating family of distributions"
-       Joshua Dillon, Ian Langmore, arXiv preprints
-       https://arxiv.org/abs/1801.03080
+  See [Dillon and Langmore (2018)][1] for more details.
 
   #### About `Vector` distributions in TensorFlow.
 
@@ -313,6 +309,13 @@ class VectorDiffeomixture(distribution_lib.Distribution):
             is_positive_definite=True),
       ],
       validate_args=True)
+  ```
+
+  #### References
+
+  [1]: Joshua Dillon and Ian Langmore. Quadrature Compound: An approximating
+       family of distributions. _arXiv preprint arXiv:1801.03080_, 2018.
+       https://arxiv.org/abs/1801.03080
   """
 
   def __init__(self,
@@ -424,7 +427,6 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       self._endpoint_affine = [
           AffineLinearOperator(shift=loc_,
                                scale=scale_,
-                               event_ndims=1,
                                validate_args=validate_args,
                                name="endpoint_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(loc, scale))]
@@ -464,7 +466,6 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       self._interpolated_affine = [
           AffineLinearOperator(shift=loc_,
                                scale=scale_,
-                               event_ndims=1,
                                validate_args=validate_args,
                                name="interpolated_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(
@@ -618,9 +619,11 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     log_prob = math_ops.reduce_sum(self.distribution.log_prob(y), axis=-2)
     # Because the affine transformation has a constant Jacobian, it is the case
     # that `affine.fldj(x) = -affine.ildj(x)`. This is not true in general.
-    fldj = array_ops.stack(
-        [aff.forward_log_det_jacobian(x) for aff in self.interpolated_affine],
-        axis=-1)
+    fldj = array_ops.stack([
+        aff.forward_log_det_jacobian(
+            x,
+            event_ndims=array_ops.rank(self.event_shape_tensor())
+        ) for aff in self.interpolated_affine], axis=-1)
     return math_ops.reduce_logsumexp(
         self.mixture_distribution.logits - fldj + log_prob, axis=-1)
 

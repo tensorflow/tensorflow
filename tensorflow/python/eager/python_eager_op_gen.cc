@@ -117,7 +117,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
                    const string& function_name)
       : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name) {
     op_name_ = function_name_;
-    op_name_.Consume("_");
+    str_util::ConsumePrefix(&op_name_, "_");
   }
   ~GenEagerPythonOp() override {}
 
@@ -366,8 +366,8 @@ string GenEagerPythonOp::Code() {
 void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
   // Handle graph-mode case
   strings::StrAppend(&result_,
-                     "  _ctx = _context.context()\n"
-                     "  if _ctx.in_graph_mode():\n",
+                     "  _ctx = _context._context\n"
+                     "  if _ctx is None or not _ctx._eager_context.is_eager:\n",
                      function_setup,
                      "    _, _, _op = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn("        ");
@@ -492,7 +492,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
       strings::StrAppend(function_setup, indentation, "  ", attr_api_name,
                          " = ", default_value, "\n");
     }
-    if (attr_type.starts_with("list(")) {
+    if (str_util::StartsWith(attr_type, "list(")) {
       ExpectListArg(indentation, attr_api_name, function_setup);
     }
 
@@ -683,13 +683,14 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
     return true;
   }
 
-  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix), parameters);
+  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix),
+             strings::StrCat(parameters, ", ctx=None"));
   strings::StrAppend(
       &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
   strings::StrAppend(&result_, "  This is for function ", function_name_,
                      "\n  \"\"\"\n");
 
-  strings::StrAppend(&result_, "  _ctx = _context.context()\n");
+  strings::StrAppend(&result_, "  _ctx = ctx if ctx else _context.context()\n");
 
   string function_setup;
   if (!GetEagerFunctionSetup("  ", &function_setup)) {
@@ -713,8 +714,8 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 
 void GenEagerPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params = strings::StrCat(
-      "_ctx._handle, _ctx.device_name, \"", op_def_.name(), "\", ",
-      "_execute.record_gradient, name, _ctx._post_execution_callbacks");
+      "_ctx._context_handle, _ctx._eager_context.device_name, \"",
+      op_def_.name(), "\", ", "name, _ctx._post_execution_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {
@@ -755,6 +756,8 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   strings::StrAppend(&result_, "      ", "return _result\n");
 
   // Handle fallback.
+  if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
+  strings::StrAppend(&fallback_params, "ctx=_ctx");
   strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
   strings::StrAppend(
       &result_, "      ", "return ", function_name_, kEagerFallbackSuffix,
@@ -955,10 +958,10 @@ from tensorflow.python.util.tf_export import tf_export
     if (api_def->visibility() == ApiDef::SKIP) {
       continue;
     }
-
     // An op is hidden if either its ApiDef visibility is HIDDEN
     // or it is in the hidden_ops list.
     bool is_hidden = api_def->visibility() == ApiDef::HIDDEN;
+    bool hidden_by_api_def = is_hidden;
     if (!is_hidden) {
       for (const string& hidden : hidden_ops) {
         if (op_def.name() == hidden) {
@@ -971,13 +974,22 @@ from tensorflow.python.util.tf_export import tf_export
     string function_name;
     python_op_gen_internal::GenerateLowerCaseOpName(op_def.name(),
                                                     &function_name);
-    if (is_hidden) function_name = strings::StrCat("_", function_name);
+    bool is_reserved = python_op_gen_internal::IsPythonReserved(function_name);
 
-    // When users create custom python wrappers, they may link in the
-    // default op registry by accident, and because they can't
-    // enumerate all 'hidden' symbols, this guard is to prevent
-    // instantiating a python reserved word in their wrapper.
-    if (python_op_gen_internal::IsPythonReserved(function_name)) {
+    // Prefix an op with underscore if the op is listed in hidden_ops or
+    // name is reserved or it is of the exceptions in IsOpWithUnderscorePrefix.
+    // Do not add underscores to ops set to HIDDEN in ApiDef otherwise.
+    // TODO(annarev): don't prefix with underscores even if op is in hidden_ops.
+    if (is_hidden) {
+      if (!hidden_by_api_def || is_reserved ||
+          python_op_gen_internal::IsOpWithUnderscorePrefix(function_name)) {
+        function_name = strings::StrCat("_", function_name);
+      }
+    } else if (is_reserved) {
+      // When users create custom python wrappers, they may link in the
+      // default op registry by accident, and because they can't
+      // enumerate all 'hidden' symbols, this guard is to prevent
+      // instantiating a python reserved word in their wrapper.
       continue;
     }
 

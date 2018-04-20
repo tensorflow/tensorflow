@@ -120,7 +120,9 @@ function run_configure_for_gpu_build {
   export TF_CUDA_VERSION=9.0
   export CUDA_TOOLKIT_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0"
   export TF_CUDNN_VERSION=7.0
-  export CUDNN_INSTALL_PATH="C:/tools/cuda"
+  if [ -z "$CUDNN_INSTALL_PATH" ]; then
+    export CUDNN_INSTALL_PATH="C:/tools/cuda"
+  fi
   export TF_CUDA_COMPUTE_CAPABILITIES="3.7"
   if [ -z "$TF_ENABLE_XLA" ]; then
     export TF_ENABLE_XLA=0

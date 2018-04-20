@@ -201,6 +201,8 @@ def deserialize(config, custom_objects=None):
 
 @tf_export('keras.initializers.get')
 def get(identifier):
+  if identifier is None:
+    return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
@@ -209,4 +211,5 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret initializer identifier:', identifier)
+    raise ValueError('Could not interpret initializer identifier: ' +
+                     str(identifier))

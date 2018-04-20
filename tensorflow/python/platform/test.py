@@ -62,6 +62,8 @@ if sys.version_info.major == 2:
 else:
   from unittest import mock  # pylint: disable=g-import-not-at-top
 
+tf_export('test.mock')(mock)
+
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
 

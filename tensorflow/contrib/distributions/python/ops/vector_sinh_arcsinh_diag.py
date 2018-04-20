@@ -215,19 +215,19 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
       tailweight = ops.convert_to_tensor(
           tailweight, dtype=dtype, name="tailweight")
       f = bijectors.SinhArcsinh(
-          skewness=skewness, tailweight=tailweight, event_ndims=1)
+          skewness=skewness, tailweight=tailweight)
       if has_default_skewness:
         f_noskew = f
       else:
         f_noskew = bijectors.SinhArcsinh(
             skewness=skewness.dtype.as_numpy_dtype(0.),
-            tailweight=tailweight, event_ndims=0)
+            tailweight=tailweight)
 
       # Make the Affine bijector, Z --> loc + C * Z.
       c = 2 * scale_diag_part / f_noskew.forward(
           ops.convert_to_tensor(2, dtype=dtype))
       affine = bijectors.Affine(
-          shift=loc, scale_diag=c, validate_args=validate_args, event_ndims=1)
+          shift=loc, scale_diag=c, validate_args=validate_args)
 
       bijector = bijectors.Chain([affine, f])
 

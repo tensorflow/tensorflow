@@ -58,7 +58,8 @@ std::ostream& operator<<(std::ostream& out,
 
 LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape,
-    const perftools::gputools::DeviceDescription& device_desc);
+    const perftools::gputools::DeviceDescription& device_desc,
+    int unroll_factor = 1);
 
 }  // namespace gpu
 }  // namespace xla

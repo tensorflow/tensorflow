@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -79,6 +80,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
 
   StatusOr<std::unique_ptr<ShapedBuffer>> return_value =
       ExecuteOnStream(run_options, arguments, profile_ptr.get());
+  TF_RETURN_IF_ERROR(return_value.status());
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";

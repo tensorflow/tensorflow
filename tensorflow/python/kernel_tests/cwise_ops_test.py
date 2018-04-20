@@ -398,13 +398,16 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(x, np.sign, math_ops.sign)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
-    self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sign, math_ops.sign)
+
+  def testInt64Square(self):
+    x = np.arange(-6 << 20, 6 << 20, 2 << 20).reshape(1, 3, 2).astype(np.int64)
+    self._compareCpu(x, np.square, math_ops.square)
+    self._compareBothSparse(x, np.square, math_ops.square)
 
   def testComplex64Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
@@ -495,11 +498,11 @@ class UnaryOpTest(test.TestCase):
     dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 5e-4),
                   (np.complex128, 1e-6)]
     op_range = [
-        (gen_math_ops._reciprocal_grad, [-2, 2]),
-        (gen_math_ops._rsqrt_grad, [0.1, 3]),
-        (gen_math_ops._sigmoid_grad, [-2, 2]),
-        (gen_math_ops._sqrt_grad, [0.1, 3]),
-        (gen_math_ops._tanh_grad, [-2, 2]),
+        (gen_math_ops.reciprocal_grad, [-2, 2]),
+        (gen_math_ops.rsqrt_grad, [0.1, 3]),
+        (gen_math_ops.sigmoid_grad, [-2, 2]),
+        (gen_math_ops.sqrt_grad, [0.1, 3]),
+        (gen_math_ops.tanh_grad, [-2, 2]),
     ]
 
     def rand(dtype):
@@ -2163,6 +2166,48 @@ class AccumulateTest(test.TestCase):
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         math_ops.accumulate_n([a], tensor_dtype=np.int32)
+
+
+class PolyvalTest(test.TestCase):
+
+  def _runtest(self, dtype, degree):
+    x = np.random.rand(2, 2).astype(dtype)
+    coeffs = [np.random.rand(2, 2).astype(dtype) for _ in range(degree + 1)]
+    np_val = np.polyval(coeffs, x)
+    with self.test_session():
+      tf_val = math_ops.polyval(coeffs, x)
+      self.assertAllClose(np_val, tf_val.eval())
+
+  def testSimple(self):
+    for dtype in [
+        np.int32, np.float32, np.float64, np.complex64, np.complex128
+    ]:
+      for degree in range(5):
+        self._runtest(dtype, degree)
+
+  def testBroadcast(self):
+    dtype = np.float32
+    degree = 3
+    shapes = [(1,), (2, 1), (1, 2), (2, 2)]
+    for x_shape in shapes:
+      for coeff_shape in shapes:
+        x = np.random.rand(*x_shape).astype(dtype)
+        coeffs = [
+            np.random.rand(*coeff_shape).astype(dtype)
+            for _ in range(degree + 1)
+        ]
+        np_val = np.polyval(coeffs, x)
+        with self.test_session():
+          tf_val = math_ops.polyval(coeffs, x)
+          self.assertAllClose(np_val, tf_val.eval())
+
+  def testEmpty(self):
+    x = np.random.rand(2, 2).astype(np.float32)
+    coeffs = []
+    np_val = np.polyval(coeffs, x)
+    with self.test_session():
+      tf_val = math_ops.polyval(coeffs, x)
+      self.assertAllClose(np_val, tf_val.eval())
 
 
 if __name__ == "__main__":

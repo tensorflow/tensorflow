@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/robust_stats.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -52,6 +53,8 @@ Status MeasuringCostEstimator::Initialize(const GrapplerItem& item) {
 Status MeasuringCostEstimator::PredictCosts(const GraphDef& optimized_graph,
                                             CostGraphDef* cost_graph,
                                             Costs* costs) const {
+  const bool running_simulation = (cluster_->type() == "virtual");
+
   std::vector<double> times(measurement_steps_);
   BlockingCounter barrier(measurement_steps_);
 
@@ -80,9 +83,23 @@ Status MeasuringCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
 
     const Costs::MicroSeconds finish = Env::Default()->NowMicros();
-    const double time = (finish - start).count() * 1e3;
-    times[step] = time;
-
+    if (running_simulation) {
+      // When running simulation, return the estimated runtime, not the time it
+      // takes to run the simulation.
+      double time = 0.0;
+      for (const DeviceStepStats& stepstats :
+           metadata.step_stats().dev_stats()) {
+        for (const NodeExecStats& node_stats : stepstats.node_stats()) {
+          const double completion_time =
+              node_stats.all_end_rel_micros() + node_stats.all_start_micros();
+          time = std::max(time, completion_time * 1e3);
+        }
+      }
+      times[step] = time;
+    } else {
+      const double time = (finish - start).count() * 1e3;
+      times[step] = time;
+    }
     if (cost_graph && (step + 1 == measurement_steps_)) {
       metadata.mutable_cost_graph()->Swap(cost_graph);
     }

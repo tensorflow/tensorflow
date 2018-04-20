@@ -248,9 +248,6 @@ class StudentT(distribution.Distribution):
             math_ops.lgamma(0.5 * self.df) -
             math_ops.lgamma(0.5 * (self.df + 1.)))
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
   def _cdf(self, x):
     # Take Abs(scale) to make subsequent where work correctly.
     y = (x - self.loc) / math_ops.abs(self.scale)

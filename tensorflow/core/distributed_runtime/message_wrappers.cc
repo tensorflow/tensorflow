@@ -326,6 +326,20 @@ Status InMemoryRunGraphRequest::AddSendFromRunStepRequest(
   return Status::OK();
 }
 
+// TODO(b/74355905): Add a specialized implementation that avoids
+// copying the tensor when at least two of the {client, master,
+// worker} are in the same process.
+Status InMemoryRunGraphRequest::AddSendFromRunCallableRequest(
+    const RunCallableRequest& run_callable_request, size_t i,
+    const string& send_key) {
+  Tensor tensor;
+  if (!ParseTensorProtoToTensor(run_callable_request.feed(i), &tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
+  }
+  sends_.emplace_back(send_key, std::move(tensor));
+  return Status::OK();
+}
+
 size_t InMemoryRunGraphRequest::num_recvs() const { return recvs_.size(); }
 
 const string& InMemoryRunGraphRequest::recv_key(size_t i) const {
@@ -436,6 +450,18 @@ Status MutableProtoRunGraphRequest::AddSendFromRunStepRequest(
   NamedTensorProto* send = request_.add_send();
   send->set_name(send_key);
   TF_RETURN_IF_ERROR(run_step_request.FeedValue(i, send->mutable_tensor()));
+  return Status::OK();
+}
+
+// TODO(b/74355905): Add a specialized implementation that avoids
+// copying the tensor when at least two of the {client, master,
+// worker} are in the same process.
+Status MutableProtoRunGraphRequest::AddSendFromRunCallableRequest(
+    const RunCallableRequest& run_callable_request, size_t i,
+    const string& send_key) {
+  NamedTensorProto* send = request_.add_send();
+  send->set_name(send_key);
+  *send->mutable_tensor() = run_callable_request.feed(i);
   return Status::OK();
 }
 

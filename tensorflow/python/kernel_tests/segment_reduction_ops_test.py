@@ -542,6 +542,25 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         tf_ans = s.eval()
         self.assertAllClose(np_ans, tf_ans)
 
+  def testWithEmptySegments(self):
+    tf_x = constant_op.constant([], shape=[0, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_with_num_segments,
+        math_ops.sparse_segment_mean_with_num_segments
+    ]
+    segment_indices = []
+    tf_indices = []
+    num_segments = 5
+    with self.test_session(use_gpu=False):
+      for tf_op in ops_list:
+        s = tf_op(
+            data=tf_x,
+            indices=tf_indices,
+            segment_ids=segment_indices,
+            num_segments=num_segments)
+        tf_ans = s.eval()
+        self.assertAllClose(np.zeros([5, 4]), tf_ans)
+
   def testSegmentIdsGreaterThanZero(self):
     tf_x, np_x = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [(np.add, None, math_ops.sparse_segment_sum), (

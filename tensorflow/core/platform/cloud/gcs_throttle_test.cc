@@ -96,6 +96,24 @@ TEST_F(GcsThrottleTest, ReverseTime) {
   EXPECT_EQ(200000, throttle_.available_tokens());
 }
 
+TEST(GcsThrottleDisabledTest, Disabled) {
+  TestTime time;
+  GcsThrottle throttle(&time);
+  ASSERT_FALSE(throttle.is_enabled());  // Verify throttle is disabled.
+
+  EXPECT_EQ(0, throttle.available_tokens());
+  time.AdvanceSeconds(1);
+  EXPECT_EQ(100000, throttle.available_tokens());
+  EXPECT_TRUE(throttle.AdmitRequest());
+  EXPECT_EQ(99900, throttle.available_tokens());
+  time.AdvanceSeconds(1);
+  EXPECT_EQ(199900, throttle.available_tokens());
+  throttle.RecordResponse(128000000);  // 128 MB response.
+  EXPECT_LT(0, throttle.available_tokens());
+  // Admit request even without available tokens
+  EXPECT_TRUE(throttle.AdmitRequest());
+}
+
 }  // namespace
 
 }  // namespace tensorflow

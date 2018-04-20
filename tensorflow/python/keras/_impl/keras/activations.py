@@ -22,8 +22,8 @@ import six
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
-from tensorflow.python.layers.base import Layer
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -43,10 +43,10 @@ def softmax(x, axis=-1):
   """
   ndim = K.ndim(x)
   if ndim == 2:
-    return K.softmax(x)
+    return nn.softmax(x)
   elif ndim > 2:
-    e = K.exp(x - K.max(x, axis=axis, keepdims=True))
-    s = K.sum(e, axis=axis, keepdims=True)
+    e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
+    s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
     return e / s
   else:
     raise ValueError('Cannot apply softmax to a tensor that is 1D')
@@ -79,12 +79,12 @@ def selu(x):
 
 @tf_export('keras.activations.softplus')
 def softplus(x):
-  return K.softplus(x)
+  return nn.softplus(x)
 
 
 @tf_export('keras.activations.softsign')
 def softsign(x):
-  return K.softsign(x)
+  return nn.softsign(x)
 
 
 @tf_export('keras.activations.relu')
@@ -94,12 +94,12 @@ def relu(x, alpha=0., max_value=None):
 
 @tf_export('keras.activations.tanh')
 def tanh(x):
-  return K.tanh(x)
+  return nn.tanh(x)
 
 
 @tf_export('keras.activations.sigmoid')
 def sigmoid(x):
-  return K.sigmoid(x)
+  return nn.sigmoid(x)
 
 
 @tf_export('keras.activations.hard_sigmoid')
@@ -134,12 +134,6 @@ def get(identifier):
     identifier = str(identifier)
     return deserialize(identifier)
   elif callable(identifier):
-    if isinstance(identifier, Layer):
-      logging.warning(
-          'Do not pass a layer instance (such as {identifier}) as the '
-          'activation argument of another layer. Instead, advanced '
-          'activation layers should be used just like any other '
-          'layer in a model.'.format(identifier=identifier.__class__.__name__))
     return identifier
   else:
     raise ValueError('Could not interpret '

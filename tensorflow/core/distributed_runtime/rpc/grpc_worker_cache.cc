@@ -34,7 +34,7 @@ namespace {
 class GrpcWorkerCache : public WorkerCachePartial {
  public:
   // TODO(ncteisen): consider adding a config var or flag for this
-  static constexpr const size_t kGrpcWorkerCacheThreadCount = 2;
+  static constexpr const size_t kGrpcWorkerCacheThreadCount = 8;
 
   explicit GrpcWorkerCache(GrpcChannelCache* channel_cache,
                            WorkerInterface* local_worker,

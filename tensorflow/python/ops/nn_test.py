@@ -852,6 +852,57 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       self.assertAllClose(exp_sampled_softmax_loss,
                           got_sampled_softmax_loss.eval(), 1e-4)
 
+  def testSampledSoftmaxLossBf16(self):
+    # A simple test to verify the numerics for bfloat16.
+    def _SoftmaxCrossEntropyWithLogits(logits, targets):
+      # logits, targets: float arrays of the same shape.
+      assert logits.shape == targets.shape
+      stable_exp_logits = np.exp(
+          logits - np.amax(logits, axis=1, keepdims=True))
+      pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
+      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
+    labels = [0, 1, 2]
+    sampled = [1, 0, 2, 3]
+    (weights, biases, hidden_acts, _, exp_logits,
+     exp_labels) = self._GenerateTestData(
+         num_classes=num_classes,
+         dim=10,
+         batch_size=batch_size,
+         num_true=1,
+         labels=labels,
+         sampled=sampled,
+         subtract_log_q=True)
+    exp_sampled_softmax_loss = _SoftmaxCrossEntropyWithLogits(
+        exp_logits, exp_labels)
+
+    with self.test_session():
+      true_exp_bf16 = np.full(
+          [batch_size, 1], fill_value=0.5, dtype=dtypes.bfloat16.as_numpy_dtype)
+      sampled_exp_bf16 = np.full(
+          [len(sampled)], fill_value=0.5, dtype=dtypes.bfloat16.as_numpy_dtype)
+      sampled_vals_bf16 = (sampled, true_exp_bf16, sampled_exp_bf16)
+
+      got_sampled_softmax_loss = math_ops.cast(
+          nn_impl.sampled_softmax_loss(
+              weights=constant_op.constant(weights, dtype=dtypes.bfloat16),
+              biases=constant_op.constant(biases, dtype=dtypes.bfloat16),
+              labels=constant_op.constant(
+                  labels, shape=(batch_size, 1), dtype=dtypes.bfloat16),
+              inputs=constant_op.constant(hidden_acts, dtype=dtypes.bfloat16),
+              num_sampled=4,
+              num_classes=num_classes,
+              num_true=1,
+              sampled_values=sampled_vals_bf16,
+              remove_accidental_hits=False,
+              partition_strategy="div"), dtypes.float32)
+
+      self.assertAllClose(exp_sampled_softmax_loss,
+                          got_sampled_softmax_loss.eval(), 1e-1)
+
 
 class CReluTest(test_lib.TestCase):
 
@@ -1030,6 +1081,42 @@ class DataFormatDimMapTest(test_lib.TestCase):
     self._test([1, -3, -2], [2, 2, 3])
     self._test([[1, -3], [1, -1]], [[2, 2], [2, 1]])
 
+  def testNHWCtoNCHW(self):
+    x_val = [1, -3, -2]
+    y_val_expected = [2, 2, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="NCHW")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testNHWCtoHWNC(self):
+    x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
+    y_val_expected = [2, 0, 1, 3, 2, 0, 1, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="HWNC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testNHWCtoWHCN(self):
+    x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
+    y_val_expected = [3, 1, 0, 2, 3, 1, 0, 2]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="WHCN")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testArbitraryASCII(self):
+    x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
+    y_val_expected = [3, 2, 1, 0, 3, 2, 1, 0]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="qwer", dst_format="rewq")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
 
 class DataFormatVectorPermuteTest(test_lib.TestCase):
 
@@ -1049,6 +1136,22 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
 
+  def testNHWCToHWNC(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="HWNC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [4, 9, 7, 3])
+
+  def testHWNCToNHWC(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="HWNC", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [9, 7, 4, 3])
+
   def testNHWCToNCHW2D(self):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
     x = constant_op.constant(x_val)
@@ -1056,6 +1159,22 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [[7, 4], [5, 1], [9, 3], [4, 5]])
+
+  def testNHWCToHWNC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="HWNC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[9, 3], [4, 5], [7, 4], [5, 1]])
+
+  def testHWNCToNHWC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="HWNC", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[4, 5], [7, 4], [9, 3], [5, 1]])
 
   def testNCHWToNHWC2D(self):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]

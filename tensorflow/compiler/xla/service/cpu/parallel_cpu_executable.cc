@@ -394,7 +394,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   for (auto& entry : *function_names_) {
     tensorflow::mutex_lock lock(jit_mutex_);
     HloInstruction* instruction = entry.first;
-    llvm::JITSymbol sym = jit_->FindSymbol(entry.second);
+    llvm::JITSymbol sym = jit_->FindCompiledSymbol(entry.second);
     TF_RET_CHECK(sym);
     InsertOrDie(
         &functions, instruction,

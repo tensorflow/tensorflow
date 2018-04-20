@@ -173,6 +173,7 @@ namespace functor {
   DECLARE_CPU_SPEC(T, int64, 5);
 
 TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
+TF_CALL_string(DECLARE_CPU_SPECS);
 
 #undef DECLARE_CPU_SPEC
 #undef DECLARE_CPU_SPECS
@@ -194,6 +195,7 @@ TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
 
 // Note that we do register for bool type, but not in the gradient op.
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
+TF_CALL_string(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA

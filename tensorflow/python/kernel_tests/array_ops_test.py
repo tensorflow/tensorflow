@@ -315,21 +315,39 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
             self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
             self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
 
+  # This test covers the axis validation in the shape function
+  # (no eval())
+  def testInvalidAxis(self):
+    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+    with self.assertRaisesRegexp(ValueError,
+                                 "is out of valid range"):
+      array_ops.reverse_v2(x_np, [-30])
+    with self.assertRaisesRegexp(ValueError,
+                                 "is out of valid range"):
+      array_ops.reverse_v2(x_np, [2])
+    with self.assertRaisesRegexp(ValueError,
+                                 "axis 0 specified more than once"):
+      array_ops.reverse_v2(x_np, [0, -2])
+
   # This is the version of reverse that uses axis indices rather than
   # bool tensors
   # TODO(b/32254538): Change this test to use array_ops.reverse
+  #
+  # Note: this test passes placeholder as constant axis is validated
+  # in shape function (see testInvalidAxis)
   def testInvalid(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+    axis = array_ops.placeholder(dtypes.int32)
     with self.test_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "is out of valid range"):
-        array_ops.reverse_v2(x_np, [-30]).eval()
+        array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [-30]})
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "is out of valid range"):
-        array_ops.reverse_v2(x_np, [2]).eval()
+        array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [2]})
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "axis 0 specified more than once"):
-        array_ops.reverse_v2(x_np, [0, -2]).eval()
+        array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [0, -2]})
 
   def testReverse1DimAuto(self):
     for dtype in [
@@ -498,7 +516,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
 
   def test_basic_slice(self):
     for tensor_type in STRIDED_SLICE_TYPES:
-      with self.test_session(use_gpu=True):
+      with self.test_session(use_gpu=not tensor_type.is_integer):
         checker = StridedSliceChecker(
             self, StridedSliceChecker.REF_TENSOR, tensor_type=tensor_type)
         _ = checker[:, :, :]
@@ -762,6 +780,14 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       grad = GradSliceChecker(self, sess, var, np.array(8))
       _ = grad[tuple()]
 
+  def testInt64Indices(self):
+    with self.test_session(use_gpu=True) as sess:
+      a = math_ops.range(3)
+      index = constant_op.constant(1, dtype=dtypes.int64)
+      b = 2 * a[index]
+      grad, = gradients_impl.gradients(b, a)
+      self.assertAllEqual(sess.run(grad), [0, 2, 0])
+
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
   """Test varied index types and host located memory."""
@@ -884,12 +910,13 @@ class StridedSliceAssignChecker(object):
     if self.tensor_type.is_complex:
       value -= 1j * value
 
-    with self.test.test_session(use_gpu=True) as sess:
+    with self.test.test_session(
+        use_gpu=not self.tensor_type.is_integer) as sess:
       if self._use_resource:
         var = resource_variable_ops.ResourceVariable(self.x)
       else:
         var = variables.Variable(self.x)
-      sess.run(variables.initialize_variables([var]))
+      sess.run(variables.variables_initializer([var]))
       val = sess.run(var[index].assign(value))
       # val_copy is used to check that tf.assign works equivalently to the
       # assign method above.
@@ -974,38 +1001,44 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
           errors.InvalidArgumentError,
           "l-value dtype int32 does not match r-value dtype int64"):
         sess.run(v[:].assign(too_large_val))
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "l-value dtype int32 does not match r-value dtype int8"):
+      with self.assertRaises(errors.InvalidArgumentError):
         sess.run(v[:].assign(too_small_val))
 
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testDenseShape(self):
-    with self.test_session():
-      t_value = [[0, 42], [24, 0]]
-      self.assertAllEqual((2, 2), array_ops.shape(t_value).eval())
-      self.assertEqual(4, array_ops.size(t_value).eval())
-      self.assertEqual(2, array_ops.rank(t_value).eval())
+    t_value = [[0, 42], [24, 0]]
+    self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(t_value)))
+    self.assertEqual(4, self.evaluate(array_ops.size(t_value)))
+    self.assertEqual(2, self.evaluate(array_ops.rank(t_value)))
 
-      t = constant_op.constant(t_value)
-      self.assertAllEqual((2, 2), array_ops.shape(t).eval())
-      self.assertEqual(4, array_ops.size(t).eval())
-      self.assertEqual(2, array_ops.rank(t).eval())
+    t = constant_op.constant(t_value)
+    self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(t)))
+    self.assertEqual(4, self.evaluate(array_ops.size(t)))
+    self.assertEqual(2, self.evaluate(array_ops.rank(t)))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSparseShape(self):
-    with self.test_session():
-      sp_value = sparse_tensor.SparseTensorValue(
-          indices=((0, 1), (1, 0)), values=(42, 24), dense_shape=(2, 2))
-      self.assertAllEqual((2, 2), array_ops.shape(sp_value).eval())
-      self.assertEqual(4, array_ops.size(sp_value).eval())
-      self.assertEqual(2, array_ops.rank(sp_value).eval())
+    sp_value = sparse_tensor.SparseTensorValue(
+        indices=((0, 1), (1, 0)), values=(42, 24), dense_shape=(2, 2))
+    self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(sp_value)))
+    self.assertEqual(4, self.evaluate(array_ops.size(sp_value)))
+    self.assertEqual(2, self.evaluate(array_ops.rank(sp_value)))
 
-      sp = sparse_tensor.SparseTensor.from_value(sp_value)
-      self.assertAllEqual((2, 2), array_ops.shape(sp).eval())
-      self.assertEqual(4, array_ops.size(sp).eval())
-      self.assertEqual(2, array_ops.rank(sp).eval())
+    sp = sparse_tensor.SparseTensor.from_value(sp_value)
+    self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(sp)))
+    self.assertEqual(4, self.evaluate(array_ops.size(sp)))
+    self.assertEqual(2, self.evaluate(array_ops.rank(sp)))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testSizeDtype(self):
+    tensor = [1]
+    self.assertEqual(dtypes.int32, self.evaluate(array_ops.size(tensor)).dtype)
+    self.assertEqual(
+        dtypes.int64,
+        self.evaluate(array_ops.size(tensor, out_type=dtypes.int64)).dtype)
 
 
 @test_util.with_c_api
@@ -1025,6 +1058,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
+  @test_util.enable_c_shapes
   def testOneDimensionalDtypeWithoutMaxlen(self):
     with self.test_session():
       # test dtype and default maxlen:
@@ -1038,6 +1072,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           res.eval(),
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
+  @test_util.enable_c_shapes
   def testOneDimensionalWithoutMaxlen(self):
     with self.test_session():
       res = array_ops.sequence_mask(
@@ -1052,6 +1087,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
            [True, False, False, False],
            [True, True, True, True]])
 
+  @test_util.enable_c_shapes
   def testTwoDimensional(self):
     with self.test_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)
@@ -1224,7 +1260,7 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
     for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
       with self.test_session(use_gpu=True):
         x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
-        y = gen_array_ops._snapshot(x)
+        y = gen_array_ops.snapshot(x)
         self.assertAllEqual(y.eval(), [0, 1, 2, 3])
 
 

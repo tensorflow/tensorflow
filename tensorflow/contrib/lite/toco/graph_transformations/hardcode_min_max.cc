@@ -95,34 +95,62 @@ bool HardcodeMinMaxForConcatenation(Model* model, Operator* op) {
   overall_minmax.min = overall_min;
   overall_minmax.max = overall_max;
   bool changed = false;
-  for (const auto& input : op->inputs) {
-    auto& array = model->GetArray(input);
-    if (!array.minmax) {
-      changed = true;
-    } else if (!(overall_minmax == array.GetMinMax())) {
-      changed = true;
-      LOG(WARNING)
-          << "Tweaking the MinMax of array " << input << ", which is "
-          << "an input to " << LogName(*op) << ", because we want all inputs "
-          << "and outputs of a Concatenation operator to have the same MinMax "
-          << "so that it can be implemented as a pure byte-copy, no "
-             "arithmetic.";
+  if (model->flags.change_concat_input_ranges()) {
+    for (const auto& input : op->inputs) {
+      auto& array = model->GetArray(input);
+      if (!array.minmax) {
+        changed = true;
+      } else if (!(overall_minmax == array.GetMinMax())) {
+        changed = true;
+        LOG(WARNING)
+            << "Tweaking the MinMax of array " << input << ", which is "
+            << "an input to " << LogName(*op) << ", because we want all inputs "
+            << "and outputs of a Concatenation operator to have the same "
+            << "MinMax so that it can be implemented as a pure byte-copy, no "
+               "arithmetic.";
+      }
+      array.GetOrCreateMinMax() = overall_minmax;
     }
-    array.GetOrCreateMinMax() = overall_minmax;
   }
   if (!output.minmax) {
     changed = true;
   } else if (!(overall_minmax == output.GetMinMax())) {
-    changed = true;
-    LOG(WARNING)
-        << "Tweaking the MinMax of the output array of " << LogName(*op)
-        << ", because we want all inputs "
-        << "and outputs of a Concatenation operator to have the same MinMax "
-        << "so that it can be implemented as a pure byte-copy, no arithmetic.";
+    if (model->flags.change_concat_input_ranges()) {
+      changed = true;
+      LOG(WARNING)
+          << "Tweaking the MinMax of the output array of " << LogName(*op)
+          << ", because we want all inputs "
+          << "and outputs of a Concatenation operator to have the same MinMax "
+          << "so that it can be implemented as a pure byte-copy, no "
+          << "arithmetic.";
+    } else {
+      return false;
+    }
   }
   output.GetOrCreateMinMax() = overall_minmax;
 
   return changed;
+}
+
+bool HardcodeMinMaxForSplit(Model* model, Operator* op) {
+  for (const auto& output : op->outputs) {
+    if (model->GetArray(output).minmax) {
+      LOG(WARNING) << "Skipping min-max setting for " << LogName(*op)
+                   << " because output " << output << " already has min-max.";
+      return false;
+    }
+  }
+  // Data is in second input.
+  auto& input_array = model->GetArray(op->inputs[1]);
+  if (!input_array.minmax) {
+    return false;
+  } else {
+    for (const auto& output : op->outputs) {
+      auto& array = model->GetArray(output);
+      array.GetOrCreateMinMax() = *input_array.minmax;
+    }
+    return true;
+  }
 }
 
 // The output of average or max pooling is within the same range as its input.
@@ -202,8 +230,11 @@ bool PropagateMinMaxAmongArrays(Model* model,
     if (array.minmax) {
       CHECK(*array.minmax == *reference_minmax)
           << "Both the following arrays have minmax, and they disagree: "
-          << reference_array_name << " and " << array_name
-          << ". Expected that either only one of them would have minmax, or at "
+          << reference_array_name << " (" << reference_minmax->min << ","
+          << reference_minmax->max << ") and " << array_name << " ("
+          << array.minmax->min << "," << array.minmax->max
+          << "). Expected that either only one of them would have minmax, or "
+             "at "
              "least that they would agree.";
     } else {
       array.GetOrCreateMinMax() = *reference_minmax;
@@ -296,14 +327,22 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForConcatenation(model, op);
       break;
 
+    case OperatorType::kTensorFlowSplit:
+      changed = HardcodeMinMaxForSplit(model, op);
+      break;
+
     case OperatorType::kAveragePool:
     case OperatorType::kMaxPool:
       changed = HardcodeMinMaxForAverageOrMaxPool(model, op);
       break;
 
+    case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
     case OperatorType::kTensorFlowReshape:
     case OperatorType::kPad:
+    case OperatorType::kGather:
+    case OperatorType::kTranspose:
+    case OperatorType::kMean:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
 

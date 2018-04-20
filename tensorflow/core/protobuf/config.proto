@@ -67,9 +67,7 @@ message GPUOptions {
   // set or set to 0, gets set to a non-zero default.
   int32 polling_active_delay_usecs = 6;
 
-  // In the event polling loop sleep this many millisconds between
-  // PollEvents calls, when the queue is empty.  If value is not
-  // set or set to 0, gets set to a non-zero default.
+  // This field is deprecated and ignored.
   int32 polling_inactive_delay_msecs = 7;
 
   // Force all tensors to be gpu_compatible. On a GPU-enabled TensorFlow,
@@ -409,4 +407,43 @@ message RunMetadata {
 
   // Graphs of the partitions executed by executors.
   repeated GraphDef partition_graphs = 3;
+}
+
+// Defines a connection between two tensors in a `GraphDef`.
+message TensorConnection {
+  // A tensor name. The value of this tensor will be substituted for
+  // the tensor named in `to_tensor`.
+  string from_tensor = 1;
+
+  // A tensor name. The value of this tensor will be bound to the
+  // value of the tensor named in `from_tensor`.
+  string to_tensor = 2;
+}
+
+// Defines a subgraph in another `GraphDef` as a set of feed points and nodes
+// to be fetched or executed.
+//
+// Compare with the arguments to `Session::Run()`.
+message CallableOptions {
+  // Tensors to be fed in the callable. Each feed is the name of a tensor.
+  repeated string feed = 1;
+
+  // Fetches. A list of tensor names. The caller of the callable expects a
+  // tensor to be returned for each fetch[i] (see RunStepResponse.tensor). The
+  // order of specified fetches does not change the execution order.
+  repeated string fetch = 2;
+
+  // Target Nodes. A list of node names. The named nodes will be run by the
+  // callable but their outputs will not be returned.
+  repeated string target = 3;
+
+  // Options that will be applied to each run.
+  RunOptions run_options = 4;
+
+  // Tensors to be connected in the callable. Each TensorConnection denotes
+  // a pair of tensors in the graph, between which an edge will be created
+  // in the callable.
+  repeated TensorConnection tensor_connection = 5;
+
+  // Next: 6
 }

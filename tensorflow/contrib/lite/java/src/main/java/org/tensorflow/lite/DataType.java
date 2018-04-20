@@ -71,6 +71,23 @@ enum DataType {
     throw new IllegalArgumentException("DataType " + this + " is not supported yet");
   }
 
+  /** Gets string names of the data type. */
+  String toStringName() {
+    switch (this) {
+      case FLOAT32:
+        return "float";
+      case INT32:
+        return "int";
+      case UINT8:
+        return "byte";
+      case INT64:
+        return "long";
+      case BYTEBUFFER:
+        return "ByteBuffer";
+    }
+    throw new IllegalArgumentException("DataType " + this + " is not supported yet");
+  }
+
   // Cached to avoid copying it
   private static final DataType[] values = values();
 }

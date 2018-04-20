@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,22 +27,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.python.ops.gen_functional_ops import *
-# pylint: enable=wildcard-import
 # pylint: disable=unused-import
-from tensorflow.python.ops.gen_functional_ops import _symbolic_gradient
+from tensorflow.python.ops.gen_functional_ops import remote_call
 # pylint: enable=unused-import
+from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -90,7 +92,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "foldl", [elems]):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -178,7 +180,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "foldr", [elems]):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -343,7 +345,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "map", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -364,8 +366,16 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     dtype = dtype or input_pack([elem.dtype for elem in elems_flat])
     dtype_flat = output_flatten(dtype)
 
-    # Convert elems to tensor array.
-    n = array_ops.shape(elems_flat[0])[0]
+    # Convert elems to tensor array. n may be known statically.
+    static_shape = elems_flat[0].shape
+    if static_shape.ndims is not None and static_shape.ndims < 1:
+      if len(elems_flat) == 1:
+        raise ValueError("elems must be a 1+ dimensional Tensor, not a scalar")
+      else:
+        raise ValueError(
+            "elements in elems must be 1+ dimensional Tensors, not scalars"
+        )
+    n = static_shape[0].value or array_ops.shape(elems_flat[0])[0]
 
     # TensorArrays are always flat
     elems_ta = [
@@ -536,7 +546,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "scan", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -555,7 +565,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
 
-    n = array_ops.shape(elems_flat[0])[0]
+    # Convert elems to tensor array. n may be known statically.
+    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
 
     # TensorArrays are always flat
     elems_ta = [
@@ -615,7 +626,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     _, _, r_a = control_flow_ops.while_loop(
         lambda i, _1, _2: i < n, compute, (i, a_flat, accs_ta),
         parallel_iterations=parallel_iterations,
-        back_prop=back_prop, swap_memory=swap_memory)
+        back_prop=back_prop, swap_memory=swap_memory,
+        maximum_iterations=n)
 
     results_flat = [r.stack() for r in r_a]
 
@@ -632,3 +644,249 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(None)
 
     return output_pack(results_flat)
+
+
+# pylint: disable=invalid-name
+def If(cond, inputs, then_branch, else_branch, name=None):
+  r"""output = Cond(inputs) ? then_branch(inputs) : else_branch(inputs).
+
+  Args:
+    cond: A `Tensor`. A scalar. If the scalar is not a boolean, the scalar is
+      converted to a boolean according to the following rule: if the
+      scalar is a numerical value, non-zero means True and zero means
+      False; if the scalar is a string, non-empty means True and empty
+      means False.
+    inputs: A list of input tensors.
+    then_branch: A function takes 'inputs' and returns a list of tensors,
+        whose types are the same as what else_branch returns.
+    else_branch: A function takes 'inputs' and returns a list of tensors.
+        whose types are the same as what then_branch returns.
+    name: A name for the operation (optional).
+
+  Returns:
+    A list of tensors returned by either then_branch(inputs)
+    or else_branch(inputs).
+  """
+  # pylint: disable=protected-access
+  return gen_functional_ops._if(
+      cond,
+      inputs, [_.type for _ in then_branch.definition.signature.output_arg],
+      then_branch,
+      else_branch,
+      name=name)
+
+
+def Gradient(inputs, f, name=None):
+  r"""Computes the gradient function for function f via backpropagation.
+
+  Args:
+    inputs: A list of tensors of size N + M.
+    f: The function we want to compute the gradient for.
+
+      The function 'f' must be a numerical function which takes N inputs and
+      produces M outputs. Its gradient function 'g', which is  a function
+      taking N + M inputs and produces N outputs.
+
+      I.e. if we have
+         (y1, y2, ..., yM) = f(x1, x2, ..., xN),
+      then, g is
+         (dL/dx1, dL/dx2, ..., dL/dxN) = g(x1, x2, ..., xN,
+                                           dL/dy1, dL/dy2, ..., dL/dyM),
+
+      where L is a scalar-value function of (x1, x2, ..., xN) (e.g., the
+      loss function). dL/dxi is the partial derivative of L with respect
+      to xi.
+
+    name: A name for the operation (optional).
+
+  Returns:
+    A list of tensors of size N.
+  """
+  # TODO(zhifengc): Pretty-print the above spec in latex.
+  # TODO(zhfiengc): Needs some math expert to say the comment above better.
+  tlist = [_.type for _ in f.definition.signature.input_arg]
+  return symbolic_gradient(input=inputs, Tout=tlist, f=f, name=name)
+
+
+# pylint: disable=invalid-name,protected-access
+def While(input_, cond, body, name=None, hostmem=None):
+  r"""output = input; While (Cond(output)) { output = Body(output) }.
+
+  Args:
+    input_: A list of `Tensor` objects.
+      A list of input tensors whose types are T.
+    cond: . A function takes 'input' and returns a tensor.  If the tensor is
+      a scalar of non-boolean, the scalar is converted to a boolean
+      according to the following rule: if the scalar is a numerical
+      value, non-zero means True and zero means False; if the scalar is
+      a string, non-empty means True and empty means False. If the
+      tensor is not a scalar, non-emptiness means True and False
+      otherwise.
+    body: . A funcion takes a list of tensors and returns another
+      list tensors. Both lists have the same types as specified
+      by T.
+    name: A name for the operation (optional).
+    hostmem: A list of integer. If i is in the list, input[i] is a
+      host memory tensor.
+
+  Returns:
+    A list of `Tensor` objects. Has the same type as `input`.
+    A list of output tensors whose types are T.
+  """
+  ret = gen_functional_ops._while(input_, cond, body, name=name)
+  if hostmem:
+    input_attr = attr_value_pb2.AttrValue()
+    input_attr.list.i.extend(hostmem)
+    ret[0].op._set_attr("_input_hostmem", input_attr)  # pylint: disable=protected-access
+
+    output_attr = attr_value_pb2.AttrValue()
+    output_attr.list.i.extend(hostmem)
+    ret[0].op._set_attr("_output_hostmem", output_attr)  # pylint: disable=protected-access
+  return ret
+
+
+# b/36459430
+#
+# Ideally, we do not need this rewrite For loop into a While loop.
+# However, today, if a While runs on GPU and the condition returns a
+# boolean, the While kernel crashes. Even if we fix the crash, the
+# bool needs to be copied between GPU and CPU. So, a for loop is much
+# preferred when running on GPU.
+#
+# On the other hand, For op has no directly XLA kernel. So, when we run
+# a for loop, we need to rewrite it using a While op.
+#
+# It should be possible and probably better to write a XLA C++ kernel
+# implementing the logic in _ForUsingWhile.
+def _ForUsingWhile(start,
+                   limit,
+                   delta,
+                   inputs,
+                   forbody,
+                   name=None,
+                   hostmem=None):
+  """Helper to implement a For loop using a While."""
+  # To support negative delta (e.g., range(100, 0, -3)), we iterate
+  # over the range(n) and use iter * delta + start as the real
+  # iteration index. (e.g., for i in range(34): iter = i * (-3) +
+  # 100).
+  d = math_ops.abs(delta)
+  # XLA on TPUs doesn't support integer division
+  n = math_ops.cast(
+      math_ops.cast((math_ops.abs(limit - start) + d - 1), dtypes.float32) /
+      math_ops.cast(d, dtypes.float32), dtypes.int32)
+
+  # Carried loop variables ("extra_args") are implicitly added to the input list
+  # of the WhileBody function. WhileCond does not call forbody, and so does not
+  # depend on any of forbody's extra_args. Since WhileCond and WhileBody
+  # must have identical inputs, we have to augment the cond signature to take
+  # the same types as the carried loop variables.
+  body_sig = [dtypes.int32] * 4 + list(forbody.declared_input_types)[1:]
+  cond_sig = body_sig + [t.dtype for t in forbody.captured_inputs]
+
+  cond_name = "%s_Cond" % forbody.name
+
+  @function.Defun(*cond_sig, func_name=cond_name)
+  def WhileCond(i, n, *args):
+    del args
+    return i < n
+
+  body_name = "%s_Body" % forbody.name
+
+  @function.Defun(*body_sig, func_name=body_name)
+  def WhileBody(i, n, start, delta, *args):
+    """A While wrapper for forbody that handles loop-carried captured inputs."""
+    for_result = forbody(start + i * delta, *args)
+    # Nullary functions return an Operation. Normal functions can't do this
+    # because their return values are converted to Tensors.
+    if isinstance(for_result, ops.Operation):
+      for_result = ()
+    # Unary functions return a single Tensor value.
+    elif isinstance(for_result, ops.Tensor):
+      for_result = (for_result,)
+    extra_args = tuple(function.get_extra_args())
+    return (i + 1, n, start, delta) + tuple(for_result) + extra_args
+
+  if hostmem is not None:
+    hostmem = [(4 + _) for _ in hostmem]
+
+  results = While(
+      input_=[0, n, start, delta] + inputs + WhileBody.captured_inputs,
+      cond=WhileCond,
+      body=WhileBody,
+      name=name,
+      hostmem=hostmem)
+  # Slice off the loop-carried captured inputs.
+  return list(results[4:len(results) - len(WhileBody.captured_inputs)])
+
+
+def For(start,
+        limit,
+        delta,
+        inputs,
+        body,
+        name=None,
+        hostmem=None,
+        rewrite_with_while=None):
+  r"""out = input; for i in range(start, limit, delta) out = body(i, out).
+
+  Args:
+    start: A `Tensor` of type `int32`.
+    limit: A `Tensor` of type `int32`.
+    delta: A `Tensor` of type `int32`.
+    inputs: A list of `Tensor` objects.
+      A list of input tensors whose types are T.
+    body: A function takes a list of tensors and returns another
+      list of tensors. Both lists have the same types as (int32, T...).
+    name: A name for the operation (optional).
+    hostmem: A list of integer. If i is in the list, inputs[i] is a
+      host memory tensor. In other words, (i+1)-th argument of the body
+      function is expecting a host memory.
+    rewrite_with_while: If True, using While op to implement the For.
+
+  Returns:
+    A list of `Tensor` objects. Has the same type as `input`.
+    A list of output tensors whose types are T.
+  """
+  if rewrite_with_while:
+    return _ForUsingWhile(start, limit, delta, inputs, body, name, hostmem)
+  if body.captured_inputs:
+    wrapper_name = "%s_BodyWrapper" % body.name
+
+    @function.Defun(*body.declared_input_types, func_name=wrapper_name)
+    def BodyWrapper(*args):
+      """A wrapper for body that handles loop-carried captured inputs."""
+      body_result = body(*args)
+      extra_args = tuple(function.get_extra_args())
+      # Nullary functions return an Operation. Normal functions can't do this
+      # because their return values are converted to Tensors.
+      if isinstance(body_result, ops.Operation):
+        return extra_args
+      # Unary functions return a single Tensor value.
+      elif not isinstance(body_result, tuple):
+        return (body_result,) + extra_args
+      # N-ary functions return a tuple of Tensors.
+      else:
+        return body_result + extra_args
+
+    inputs += BodyWrapper.captured_inputs
+    ret = gen_functional_ops._for(
+        start, limit, delta, inputs, BodyWrapper, name=name)
+    # Slice off the loop-carried captured inputs.
+    ret = ret[:-len(BodyWrapper.captured_inputs)]
+  else:
+    ret = gen_functional_ops._for(start, limit, delta, inputs, body, name=name)
+  if hostmem:
+    num_for_params = 3  # start/limit/delta
+
+    input_attr = attr_value_pb2.AttrValue()
+    input_attr.list.i.extend([num_for_params + i for i in hostmem])
+    ret[0].op._set_attr("_input_hostmem", input_attr)  # pylint: disable=protected-access
+
+    output_attr = attr_value_pb2.AttrValue()
+    output_attr.list.i.extend(hostmem)
+    ret[0].op._set_attr("_output_hostmem", output_attr)  # pylint: disable=protected-access
+  return ret
+
+
+# pylint: enable=invalid-name,protected-access

@@ -29,7 +29,7 @@ GetCpuCastFromComplex128(DataType dst_dtype) {
 #if GOOGLE_CUDA
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetGpuCastFromComplex128(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, GPUDevice, std::complex<double>);
+  CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, std::complex<double>);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA

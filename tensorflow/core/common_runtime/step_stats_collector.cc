@@ -226,13 +226,14 @@ void StepStatsCollector::BuildCostModel(
       if (node) {
         for (int i = 0; i < stats.output_size(); ++i) {
           const auto& output = stats.output(i);
-          cm->RecordMaxMemorySize(node, i,
+          int output_slot = output.slot();
+          cm->RecordMaxMemorySize(node, output_slot,
                                   Bytes(output.tensor_description()
                                             .allocation_description()
                                             .allocated_bytes()),
-                                  stats.output(i).tensor_description().shape(),
-                                  node->output_types()[i]);
-          cm->RecordAllocationId(node, i,
+                                  output.tensor_description().shape(),
+                                  node->output_types()[output_slot]);
+          cm->RecordAllocationId(node, output_slot,
                                  output.tensor_description()
                                      .allocation_description()
                                      .allocation_id());

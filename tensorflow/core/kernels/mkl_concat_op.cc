@@ -519,9 +519,11 @@ class MklConcatOp : public OpKernel {
     mkl_tensor_tf_shape.AddDim(
         SIZE_OF_MKL_SERIAL_DATA(mkl_tensor_mkl_shape.GetDimension()));
     int tf_output_index = 0;
-    context->allocate_output(
+    // TODO(jktomer): replace this with OP_REQUIRES_OK and clean up this file
+    // to propagate the status up the call stack.
+    TF_CHECK_OK(context->allocate_output(
         GetTensorMetaDataIndex(tf_output_index, context->num_outputs()),
-        mkl_tensor_tf_shape, &mkl_tensor);
+        mkl_tensor_tf_shape, &mkl_tensor));
     mkl_tensor_mkl_shape.SerializeMklShape(
         mkl_tensor->flat<uint8>().data(),
         mkl_tensor->flat<uint8>().size() * sizeof(uint8));
@@ -549,9 +551,11 @@ class MklConcatOp : public OpKernel {
     mkl_tensor_tf_shape.AddDim(
         SIZE_OF_MKL_SERIAL_DATA(mkl_tensor_mkl_shape.GetDimension()));
     int tf_output_index = 0;
-    context->allocate_output(
+    // TODO(jktomer): replace this with OP_REQUIRES_OK and clean up this file
+    // to propagate the status up the call stack.
+    TF_CHECK_OK(context->allocate_output(
         GetTensorMetaDataIndex(tf_output_index, context->num_outputs()),
-        mkl_tensor_tf_shape, &mkl_tensor);
+        mkl_tensor_tf_shape, &mkl_tensor));
     mkl_tensor_mkl_shape.SerializeMklShape(
         mkl_tensor->flat<uint8>().data(),
         mkl_tensor->flat<uint8>().size() * sizeof(uint8));
@@ -799,8 +803,10 @@ class MklConcatOp : public OpKernel {
     Tensor* output_tensor = nullptr;
     TensorShape tf_shape_output;
     tf_shape_output.AddDim(dnn_shape_output.GetSerializeBufferSize());
-    context->allocate_output(GetTensorMetaDataIndex(0, context->num_outputs()),
-                             tf_shape_output, &output_tensor);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       GetTensorMetaDataIndex(0, context->num_outputs()),
+                       tf_shape_output, &output_tensor));
     dnn_shape_output.SerializeMklDnnShape(
         output_tensor->flat<uint8>().data(),
         output_tensor->flat<uint8>().size() * sizeof(uint8));

@@ -110,12 +110,12 @@ class PruningTest(test.TestCase):
       self.assertAllEqual(np.count_nonzero(masked_weights_val), 100)
       session.run(mask_update_op)
       masked_weights_val = masked_weights.eval()
-      self.assertAllEqual(np.count_nonzero(masked_weights_val), 51)
+      self.assertAllEqual(np.count_nonzero(masked_weights_val), 50)
 
   def _blockMasking(self, hparams, weights, expected_mask):
 
     threshold = variables.Variable(0.0, name="threshold")
-    sparsity = variables.Variable(0.51, name="sparsity")
+    sparsity = variables.Variable(0.5, name="sparsity")
     test_spec = ",".join(hparams)
     pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
 
@@ -138,7 +138,26 @@ class PruningTest(test.TestCase):
     weights_max = constant_op.constant(
         [[0.1, 0.0, 0.2, 0.0], [0.0, -0.1, 0.0, -0.2], [0.3, 0.0, 0.4, 0.0],
          [0.0, -0.3, 0.0, -0.4]])
-    expected_mask = [[0, 0, 0, 0], [0, 0, 0, 0], [1, 1, 1, 1], [1, 1, 1, 1]]
+    expected_mask = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                     [1., 1., 1., 1.], [1., 1., 1., 1.]]
+
+    self._blockMasking(param_list + ["block_pooling_function=MAX"], weights_max,
+                       expected_mask)
+    self._blockMasking(param_list + ["block_pooling_function=AVG"], weights_avg,
+                       expected_mask)
+
+  def testBlockMaskingWithHigherDimensions(self):
+    param_list = ["block_height=2", "block_width=2", "threshold_decay=0"]
+
+    # Weights as in testBlockMasking, but with one extra dimension.
+    weights_avg = constant_op.constant(
+        [[[0.1, 0.1, 0.2, 0.2], [0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4],
+          [0.3, 0.3, 0.4, 0.4]]])
+    weights_max = constant_op.constant(
+        [[[0.1, 0.0, 0.2, 0.0], [0.0, -0.1, 0.0, -0.2], [0.3, 0.0, 0.4, 0.0],
+          [0.0, -0.3, 0.0, -0.4]]])
+    expected_mask = [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                      [1., 1., 1., 1.], [1., 1., 1., 1.]]]
 
     self._blockMasking(param_list + ["block_pooling_function=MAX"], weights_max,
                        expected_mask)
@@ -161,11 +180,12 @@ class PruningTest(test.TestCase):
       masked_weights_val = masked_weights.eval()
       session.run(mask_update_op)
       masked_weights_val = masked_weights.eval()
-      self.assertAllEqual(np.count_nonzero(masked_weights_val), 51)
+      self.assertAllEqual(np.count_nonzero(masked_weights_val), 50)
 
   def testConditionalMaskUpdate(self):
     param_list = [
-        "pruning_frequency=2", "begin_pruning_step=1", "end_pruning_step=6"
+        "pruning_frequency=2", "begin_pruning_step=1", "end_pruning_step=6",
+        "nbins=100"
     ]
     test_spec = ",".join(param_list)
     pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)

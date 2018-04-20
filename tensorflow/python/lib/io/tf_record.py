@@ -75,14 +75,15 @@ def tf_record_iterator(path, options=None):
 
   if reader is None:
     raise IOError("Could not open %s." % path)
-  while True:
-    try:
-      with errors.raise_exception_on_not_ok_status() as status:
-        reader.GetNext(status)
-    except errors.OutOfRangeError:
-      break
-    yield reader.record()
-  reader.Close()
+  try:
+    while True:
+      try:
+        reader.GetNext()
+      except errors.OutOfRangeError:
+        break
+      yield reader.record()
+  finally:
+    reader.Close()
 
 
 @tf_export("python_io.TFRecordWriter")

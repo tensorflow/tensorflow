@@ -19,11 +19,11 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import gen_dataset_ops
 
 
@@ -45,17 +45,7 @@ class _ShuffleAndRepeatDataset(dataset_ops.Dataset):
     else:
       self._count = ops.convert_to_tensor(
           count, dtype=dtypes.int64, name="count")
-
-    seed, seed2 = random_seed.get_seed(seed)
-    if seed is None:
-      self._seed = constant_op.constant(0, dtype=dtypes.int64, name="seed")
-    else:
-      self._seed = ops.convert_to_tensor(seed, dtype=dtypes.int64, name="seed")
-    if seed2 is None:
-      self._seed2 = constant_op.constant(0, dtype=dtypes.int64, name="seed2")
-    else:
-      self._seed2 = ops.convert_to_tensor(
-          seed2, dtype=dtypes.int64, name="seed2")
+    self._seed, self._seed2 = random_seed.get_seed(seed)
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access

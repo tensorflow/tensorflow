@@ -468,7 +468,7 @@ class FixedSizeSparseClassificationGrowStats : public ClassificationStats {
   void PackToProto(FertileSlot* slot) const override;
 
   void InitLeafClassStats(int best_split_index, LeafStat* left_stats,
-                          LeafStat* right_stats) const;
+                          LeafStat* right_stats) const override;
 
  protected:
   void ClassificationAddSplitStats() override {

@@ -14,6 +14,7 @@ py_library(
     name = "opt_py",
     srcs = [
         "__init__.py",
+        "python/training/adamax.py",
         "python/training/addsign.py",
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/elastic_average_optimizer.py",
@@ -43,8 +44,24 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "adamax_test",
+    srcs = ["python/training/adamax_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -52,6 +69,9 @@ py_test(
     name = "external_optimizer_test",
     srcs = ["python/training/external_optimizer_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",
@@ -261,15 +281,4 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

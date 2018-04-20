@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -80,17 +81,52 @@ class TestText(test.TestCase):
     x_train = ['This text has only known words']
     x_test = ['This text has some unknown words']  # 2 OOVs: some, unknown
 
-    # Defalut, without OOV flag
+    # Default, without OOV flag
     tokenizer = keras.preprocessing.text.Tokenizer()
     tokenizer.fit_on_texts(x_train)
     x_test_seq = tokenizer.texts_to_sequences(x_test)
-    assert len(x_test_seq[0]) == 4  # discards 2 OOVs
+    self.assertEqual(len(x_test_seq[0]), 4)  # discards 2 OOVs
 
     # With OOV feature
     tokenizer = keras.preprocessing.text.Tokenizer(oov_token='<unk>')
     tokenizer.fit_on_texts(x_train)
     x_test_seq = tokenizer.texts_to_sequences(x_test)
-    assert len(x_test_seq[0]) == 6  # OOVs marked in place
+    self.assertEqual(len(x_test_seq[0]), 6)  # OOVs marked in place
+
+  def test_sequential_fit(self):
+    texts = [
+        'The cat sat on the mat.', 'The dog sat on the log.',
+        'Dogs and cats living together.'
+    ]
+    word_sequences = [['The', 'cat', 'is', 'sitting'],
+                      ['The', 'dog', 'is', 'standing']]
+    tokenizer = keras.preprocessing.text.Tokenizer()
+    tokenizer.fit_on_texts(texts)
+    tokenizer.fit_on_texts(word_sequences)
+
+    self.assertEqual(tokenizer.document_count, 5)
+
+    tokenizer.texts_to_matrix(texts)
+    tokenizer.texts_to_matrix(word_sequences)
+
+  def test_text_to_word_sequence(self):
+    text = 'hello! ? world!'
+    seq = keras.preprocessing.text.text_to_word_sequence(text)
+    self.assertEqual(seq, ['hello', 'world'])
+
+  def test_text_to_word_sequence_unicode(self):
+    text = u'ali! veli? kırk dokuz elli'
+    seq = keras.preprocessing.text.text_to_word_sequence(text)
+    self.assertEqual(seq, [u'ali', u'veli', u'kırk', u'dokuz', u'elli'])
+
+  def test_tokenizer_unicode(self):
+    texts = [
+        u'ali veli kırk dokuz elli', u'ali veli kırk dokuz elli veli kırk dokuz'
+    ]
+    tokenizer = keras.preprocessing.text.Tokenizer(num_words=5)
+    tokenizer.fit_on_texts(texts)
+
+    self.assertEqual(len(tokenizer.word_counts), 5)
 
 
 if __name__ == '__main__':

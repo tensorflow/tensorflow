@@ -221,16 +221,20 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   // Build a simple graph with an op that's marked for swapping.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Variable(s.WithOpName("a"), {10, 10}, DT_FLOAT);
-  Output b = ops::AddN(s.WithOpName("b"), {a});
-  Output c = ops::AddN(s.WithOpName("c"), {b});
-  Output d = ops::AddN(s.WithOpName("d"), {c});
-  Output e = ops::AddN(s.WithOpName("e"), {b, d});
+  Output a =
+      ops::Variable(s.WithOpName("a").WithDevice("/gpu:0"), {10, 10}, DT_FLOAT);
+  Output b = ops::AddN(s.WithOpName("b").WithDevice("/gpu:0"), {a});
+  Output c = ops::AddN(s.WithOpName("c").WithDevice("/gpu:0"), {b});
+  Output d = ops::AddN(s.WithOpName("d").WithDevice("/gpu:0"), {c});
+  Output e = ops::AddN(s.WithOpName("e").WithDevice("/gpu:0"), {b, d});
+
+  Output constant = ops::Const(s.WithOpName("constant"), 0.0f, {10, 10});
+  Output init = ops::Assign(s.WithOpName("init"), a, constant);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  EXPECT_EQ(5, item.graph.node_size());
+  EXPECT_EQ(7, item.graph.node_size());
   EXPECT_EQ(NodeName(e.name()), item.graph.node(4).name());
   AttrValue& val =
       (*item.graph.mutable_node(4)->mutable_attr())["_swap_to_host"];
@@ -243,32 +247,43 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   Status status = optimizer.Optimize(cluster.get(), item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(7, output.node_size());
-  const NodeDef& new_e = output.node(4);
+  EXPECT_EQ(9, output.node_size());
+  const NodeDef& new_e = output.node(6);
   EXPECT_EQ(NodeName(e.name()), new_e.name());
 
   EXPECT_EQ(2, new_e.input_size());
   EXPECT_EQ(NodeName(d.name()), new_e.input(1));
   EXPECT_EQ("swap_in_e_0", new_e.input(0));
 
-  const NodeDef& swap_out = output.node(5);
+  const NodeDef& swap_out = output.node(7);
   EXPECT_EQ("swap_out_e_0", swap_out.name());
+  EXPECT_EQ("_CopyFromGpuToHost", swap_out.op());
 
-  const NodeDef& swap_in = output.node(6);
+  const NodeDef& swap_in = output.node(8);
   EXPECT_EQ("swap_in_e_0", swap_in.name());
+  EXPECT_EQ("_CopyFromHostToGpu", swap_in.op());
 
   EXPECT_EQ(NodeName(b.name()), swap_out.input(0));
   EXPECT_EQ(NodeName(swap_out.name()), swap_in.input(0));
   EXPECT_EQ("^c", swap_in.input(1));
 
-  const NodeDef& new_c = output.node(2);
+  const NodeDef& new_c = output.node(4);
   EXPECT_EQ(NodeName(c.name()), new_c.name());
   EXPECT_EQ("^swap_out_e_0", new_c.input(1));
 
   // Run the optimizer a second time to ensure it's idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(cluster.get(), item, &output);
+  GrapplerItem item_copy(item, std::move(output));
+  status = optimizer.Optimize(cluster.get(), item_copy, &output);
   TF_EXPECT_OK(status);
+
+#if GOOGLE_CUDA
+  item.fetch = {"e"};
+  item.init_ops = {init.name()};
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+#endif
 }
 
 TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
@@ -287,9 +302,13 @@ TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
   Output h = ops::Exp(s.WithOpName("h").WithDevice("/gpu:0"), c);
   Output i = ops::Log(s.WithOpName("i").WithDevice("/gpu:0"), d);
 
+  Output constant = ops::Const(s.WithOpName("constant"), 0.0f, {128, 128, 8});
+  Output init = ops::Assign(s.WithOpName("init"), v, constant);
+
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   item.fetch = {"e", "f", "g", "h", "i"};
+  item.init_ops = {init.name()};
 
   std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
 
@@ -308,6 +327,15 @@ TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
       EXPECT_EQ("axis", node.input(4));
     }
   }
+
+#if GOOGLE_CUDA
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+  }
+#endif
 }
 
 TEST_F(MemoryOptimizerTest, UnswappableInputs) {
@@ -325,9 +353,13 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
   Output e =
       ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {b, c, d}, axis);
 
+  Output constant = ops::Const(s.WithOpName("constant"), 0.0f, {128, 128, 8});
+  Output init = ops::Assign(s.WithOpName("init"), v, constant);
+
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   item.fetch = {"e"};
+  item.init_ops = {init.name()};
 
   std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
 
@@ -344,6 +376,13 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
       EXPECT_EQ("^swap_out_d_2", node.input(4));
     }
   }
+
+#if GOOGLE_CUDA
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+#endif
 }
 
 TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
@@ -387,7 +426,7 @@ TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
   EXPECT_EQ(4, count);
 
   std::vector<string> fetch = {"a", "b", "c", "e"};
-  auto tensors = EvaluateNodes(output, fetch);
+  auto tensors = EvaluateNodes(output, fetch, {});
   EXPECT_EQ(4, tensors.size());
 
   for (int i = 0; i < tensors[0].NumElements(); ++i) {

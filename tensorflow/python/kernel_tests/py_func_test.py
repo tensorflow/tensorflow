@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 import numpy as np
 from six.moves import queue
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -33,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
@@ -49,6 +52,38 @@ class PyFuncTest(test.TestCase):
   """Encapsulates tests for py_func and eager_py_func."""
 
   # ----- Tests for py_func -----
+  def testRealDataTypes(self):
+    def sum_func(x, y):
+      return x + y
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
+                  dtypes.uint8, dtypes.int8, dtypes.uint16, dtypes.int16,
+                  dtypes.int32, dtypes.int64]:
+      with self.test_session():
+        x = constant_op.constant(1, dtype=dtype)
+        y = constant_op.constant(2, dtype=dtype)
+        z = self.evaluate(script_ops.py_func(sum_func, [x, y], dtype))
+        self.assertEqual(z, 3)
+
+  def testComplexDataTypes(self):
+    def sub_func(x, y):
+      return x - y
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      with self.test_session():
+        x = constant_op.constant(1 + 1j, dtype=dtype)
+        y = constant_op.constant(2 - 2j, dtype=dtype)
+        z = self.evaluate(script_ops.py_func(sub_func, [x, y], dtype))
+        self.assertEqual(z, -1 + 3j)
+
+  def testBoolDataTypes(self):
+    def and_func(x, y):
+      return x and y
+    dtype = dtypes.bool
+    with self.test_session():
+      x = constant_op.constant(True, dtype=dtype)
+      y = constant_op.constant(False, dtype=dtype)
+      z = self.evaluate(script_ops.py_func(and_func, [x, y], dtype))
+      self.assertEqual(z, False)
+
   def testSingleType(self):
     with self.test_session():
       x = constant_op.constant(1.0, dtypes.float32)
@@ -356,12 +391,22 @@ class PyFuncTest(test.TestCase):
 
   def _testExceptionHandling(self, py_exp, tf_exp, eager=False):
 
-    def raise_exception():
+    def inner_exception():
       raise py_exp("blah")  # pylint: disable=not-callable
 
+    def raise_exception():
+      inner_exception()
+
+    expected_regexp = r": blah.*"               # Error at the top
+    expected_regexp += r"in raise_exception.*"  # Stacktrace outer
+    expected_regexp += r"in inner_exception.*"  # Stacktrace inner
+    expected_regexp += r": blah"                # Stacktrace of raise
+    def expected_error_check(exception):
+      return re.search(expected_regexp, str(exception), re.DOTALL)
+
     if eager:
-      if context.in_eager_mode():
-        with self.assertRaisesRegexp(tf_exp, "blah"):
+      if context.executing_eagerly():
+        with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
           f = script_ops.eager_py_func(raise_exception, [], [])
         return
       else:
@@ -370,7 +415,7 @@ class PyFuncTest(test.TestCase):
       f = script_ops.py_func(raise_exception, [], [])
 
     with self.test_session():
-      with self.assertRaisesRegexp(tf_exp, "blah"):
+      with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
         self.evaluate(f)
 
   def testExceptionHandling(self):
@@ -432,7 +477,7 @@ class PyFuncTest(test.TestCase):
 
       output = script_ops.eager_py_func(no_return_value, inp=[], Tout=[])
       ret = self.evaluate(output)
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         self.assertEquals(len(ret), 0)
       else:
         self.assertIsNone(ret)
@@ -467,6 +512,18 @@ class PyFuncTest(test.TestCase):
         pass
 
       self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerReturningVariableRaisesError(self):
+    def return_variable():
+      variable = resource_variable_ops.ResourceVariable(0.0)
+      return variable
+
+    with self.assertRaisesRegexp(errors.UnknownError,
+                                 "Attempting to return a variable"):
+      output = script_ops.eager_py_func(
+          return_variable, inp=[], Tout=dtypes.float32)
+      self.evaluate(output)
 
 
 if __name__ == "__main__":

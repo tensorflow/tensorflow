@@ -15,6 +15,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+
 #include <algorithm>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -328,6 +330,27 @@ struct ApplyAdamSYCL {
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
 
+template <typename Device, typename T>
+struct ApplyAdaMaxNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
+                  typename TTypes<T>::ConstScalar beta1_power,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar beta1,
+                  typename TTypes<T>::ConstScalar beta2,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    m.device(d) += (grad - m) * (T(1) - beta1());
+    // Here v is u in section 7.1
+    v.device(d) = (beta2() * v).cwiseMax(grad.abs());
+    // var is θ in section 7.1
+    var.device(d) -= lr() / (T(1) - beta1_power()) * (m / (v + epsilon()));
+  }
+};
+
+template <typename T>
+struct ApplyAdaMax<CPUDevice, T> : ApplyAdaMaxNonCuda<CPUDevice, T> {};
+
 template <typename T>
 struct ApplyRMSProp<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -494,6 +517,7 @@ class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -647,6 +671,7 @@ class ApplyAdadeltaOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -822,6 +847,7 @@ class SparseApplyAdadeltaOp : public OpKernel {
   REGISTER_KERNELS(T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -1107,6 +1133,7 @@ class ApplyAdagradOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -1228,11 +1255,8 @@ inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
     quadratic =
         Eigen::numext::pow(accum, -lr_power) / lr + static_cast<T>(2) * l2;
   }
-  if (Eigen::numext::abs(linear) > l1) {
-    return (l1 * sgn(linear) - linear) / quadratic;
-  } else {
-    return static_cast<T>(0.0);
-  }
+  auto l1_reg_adjust = std::max(std::min(linear, l1), -l1);
+  return (l1_reg_adjust - linear) / quadratic;
 }
 }  // namespace
 
@@ -1363,6 +1387,7 @@ class SparseApplyAdagradOp : public OpKernel {
   REGISTER_KERNELS(T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -1964,6 +1989,7 @@ class ApplyFtrlOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -1985,6 +2011,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -2233,6 +2260,7 @@ class SparseApplyFtrlOp : public OpKernel {
   REGISTER_KERNELS(T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -2257,6 +2285,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
   REGISTER_KERNELS(T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -2335,6 +2364,7 @@ class ApplyMomentumOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -2474,6 +2504,7 @@ class SparseApplyMomentumOp : public OpKernel {
   REGISTER_KERNELS(T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -2701,6 +2732,7 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -2727,6 +2759,135 @@ namespace functor {
       typename TTypes<T>::ConstScalar epsilon,                \
       typename TTypes<T>::ConstFlat grad, bool use_nesterov); \
   extern template struct ApplyAdam<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half);
+REGISTER_KERNELS(GPU, float);
+REGISTER_KERNELS(GPU, double);
+#endif
+#undef REGISTER_CPU_KERNELS
+#undef REGISTER_KERNELS
+
+template <typename Device, typename T>
+class ApplyAdaMaxOp : public OpKernel {
+ public:
+  explicit ApplyAdaMaxOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
+
+    Tensor var;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
+    Tensor m;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &m));
+    Tensor v;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &v));
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(0)));
+    OP_REQUIRES(
+        ctx, m.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(1)));
+    OP_REQUIRES(
+        ctx, v.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(2)));
+
+    const Tensor& beta1_power = ctx->input(3);
+    const Tensor& lr = ctx->input(4);
+    const Tensor& beta1 = ctx->input(5);
+    const Tensor& beta2 = ctx->input(6);
+    const Tensor& epsilon = ctx->input(7);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power.shape()),
+                errors::InvalidArgument("beta1_power is not a scalar: ",
+                                        beta1_power.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
+                errors::InvalidArgument("lr is not a scalar : ",
+                                        lr.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1.shape()),
+                errors::InvalidArgument("beta1 is not a scalar: ",
+                                        beta1.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2.shape()),
+                errors::InvalidArgument("beta2 is not a scalar: ",
+                                        beta2.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon.shape()),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon.shape().DebugString()));
+
+    const Tensor& grad = ctx->input(8);
+    OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
+                errors::InvalidArgument("var and m do not have the same shape",
+                                        var.shape().DebugString(), " ",
+                                        m.shape().DebugString()));
+    OP_REQUIRES(ctx, var.shape().IsSameSize(v.shape()),
+                errors::InvalidArgument("var and v do not have the same shape",
+                                        var.shape().DebugString(), " ",
+                                        v.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    const Device& device = ctx->template eigen_device<Device>();
+    functor::ApplyAdaMax<Device, T>()(
+        device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
+        beta1_power.scalar<T>(), lr.scalar<T>(),
+        beta1.scalar<T>(), beta2.scalar<T>(), epsilon.scalar<T>(),
+        grad.flat<T>());
+
+    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+};
+
+#define REGISTER_KERNELS(D, T)                                     \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("ApplyAdaMax").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyAdaMaxOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdaMax")                \
+                              .HostMemory("var")                   \
+                              .HostMemory("m")                     \
+                              .HostMemory("v")                     \
+                              .Device(DEVICE_##D)                  \
+                              .TypeConstraint<T>("T"),             \
+                          ApplyAdaMaxOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                   \
+  template <>                                                 \
+  void ApplyAdaMax<GPUDevice, T>::operator()(                   \
+      const GPUDevice& d, typename TTypes<T>::Flat var,       \
+      typename TTypes<T>::Flat m, typename TTypes<T>::Flat v, \
+      typename TTypes<T>::ConstScalar beta1_power,            \
+      typename TTypes<T>::ConstScalar lr,                     \
+      typename TTypes<T>::ConstScalar beta1,                  \
+      typename TTypes<T>::ConstScalar beta2,                  \
+      typename TTypes<T>::ConstScalar epsilon,                \
+      typename TTypes<T>::ConstFlat grad); \
+  extern template struct ApplyAdaMax<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
@@ -2940,6 +3101,7 @@ class ApplyCenteredRMSPropOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -3355,6 +3517,7 @@ class ApplyAddSignOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
@@ -3460,6 +3623,7 @@ class ApplyPowerSignOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 

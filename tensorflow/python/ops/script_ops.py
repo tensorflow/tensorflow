@@ -25,6 +25,9 @@ from __future__ import print_function
 
 import threading
 
+# Used by py_util.cc to get tracebacks.
+import traceback  # pylint: disable=unused-import
+
 import numpy as np
 import six
 
@@ -33,6 +36,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -50,6 +55,16 @@ class EagerFunc(object):
     self._func = func
     self._out_dtypes = Tout
 
+  def _convert(self, value, dtype):
+    if isinstance(value, resource_variable_ops.ResourceVariable):
+      raise RuntimeError(
+          "Attempting to return a variable from an eagerly executed py_func. "
+          "Only numeric data structures like Tensors or NumPy arrays should "
+          "be returned; to return the value of a variable, make sure to obtain "
+          "the Tensor backing it by calling `.read_value()` on the variable in "
+          "question: %s" % value)
+    return ops.convert_to_tensor(value, dtype=dtype)
+
   def __call__(self, on_gpu, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
     with context.eager_mode():
@@ -57,14 +72,13 @@ class EagerFunc(object):
       maybe_copy_to_gpu = lambda x: x if not on_gpu else x.gpu()
       if isinstance(ret, (tuple, list)):
         return [
-            maybe_copy_to_gpu(ops.convert_to_tensor(x, dtype=dtype))
+            maybe_copy_to_gpu(self._convert(x, dtype=dtype))
             for (x, dtype) in zip(ret, self._out_dtypes)
         ]
       elif ret is None:
         return ret
       else:
-        return maybe_copy_to_gpu(
-            ops.convert_to_tensor(ret, dtype=self._out_dtypes[0]))
+        return maybe_copy_to_gpu(self._convert(ret, dtype=self._out_dtypes[0]))
 
 
 class FuncRegistry(object):
@@ -218,18 +232,16 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
   graph._cleanup_py_funcs_used_in_graph.append(cleanup)
   # pylint: enable=protected-access
 
-  # pylint: disable=protected-access
   if eager:
-    result = gen_script_ops._eager_py_func(
+    result = gen_script_ops.eager_py_func(
         input=inp, token=token, Tout=Tout, name=name)
   else:
     if stateful:
-      result = gen_script_ops._py_func(
+      result = gen_script_ops.py_func(
           input=inp, token=token, Tout=Tout, name=name)
     else:
-      result = gen_script_ops._py_func_stateless(
+      result = gen_script_ops.py_func_stateless(
           input=inp, token=token, Tout=Tout, name=name)
-  # pylint: enable=protected-access
   return result if is_list_or_tuple else result[0]
 
 
@@ -267,7 +279,7 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
   Given a python function `func`, which takes numpy arrays as its
-  inputs and returns numpy arrays as its outputs, wrap this function as an
+  arguments and returns numpy arrays as its outputs, wrap this function as an
   operation in a TensorFlow graph. The following snippet constructs a simple
   TensorFlow graph that invokes the `np.sinh()` NumPy function as a operation
   in the graph:
@@ -276,8 +288,8 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   def my_func(x):
     # x will be a numpy array with the contents of the placeholder below
     return np.sinh(x)
-  inp = tf.placeholder(tf.float32)
-  y = tf.py_func(my_func, [inp], tf.float32)
+  input = tf.placeholder(tf.float32)
+  y = tf.py_func(my_func, [input], tf.float32)
   ```
 
   **N.B.** The `tf.py_func()` operation has the following known limitations:
@@ -293,10 +305,12 @@ def py_func(func, inp, Tout, stateful=True, name=None):
     server (e.g. using `with tf.device():`).
 
   Args:
-    func: A Python function, which accepts a list of NumPy `ndarray` objects
-      having element types that match the corresponding `tf.Tensor` objects
-      in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
-      having element types that match the corresponding values in `Tout`.
+    func: A Python function, which accepts `ndarray` objects as arguments and
+      returns a list of `ndarray` objects (or a single `ndarray`). This function
+      must accept as many arguments as there are tensors in `inp`, and these
+      argument types will match the corresponding `tf.Tensor` objects
+      in `inp`. The returns `ndarray`s must match the number and types defined
+      `Tout`.
       Important Note: Input and output numpy `ndarray`s of `func` are not
       guaranteed to be copies. In some cases their underlying memory will be
       shared with the corresponding TensorFlow tensors.
@@ -316,6 +330,16 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   Returns:
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
+  if context.executing_eagerly():
+    result = func(*[x.numpy() for x in inp])
+    result = nest.flatten(result)
+
+    result = [x if x is None else ops.convert_to_tensor(x) for x in result]
+    if len(result) == 1:
+      # Mimic the automatic unwrapping in graph-mode py_func
+      result, = result
+    return result
+
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
 

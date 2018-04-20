@@ -50,7 +50,7 @@ class HloDataflowAnalysisTest : public HloTestBase,
                                          bool bitcast_defines_value = false) {
     hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before dataflow analysis");
     analysis_ =
-        HloDataflowAnalysis::Run(module_.get(), ssa_form, bitcast_defines_value)
+        HloDataflowAnalysis::Run(*module_, ssa_form, bitcast_defines_value)
             .ConsumeValueOrDie();
     return *analysis_;
   }
@@ -1602,11 +1602,17 @@ TEST_P(HloDataflowAnalysisTest, ConditionalWithIdentity) {
   EXPECT_THAT(analysis.GetValueDefinedAt(constant2).uses(),
               ElementsAre(HloUse{conditional, 2, {}}));
 
-  EXPECT_EQ(analysis.values().size(), 3);
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(conditional));
-  EXPECT_THAT(HloValuesAt(conditional),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                   analysis.GetValueDefinedAt(constant2)));
+  bool ssa_form = GetParam();
+  if (ssa_form) {
+    EXPECT_EQ(analysis.values().size(), 4);
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(conditional));
+  } else {
+    EXPECT_EQ(analysis.values().size(), 3);
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(conditional));
+    EXPECT_THAT(HloValuesAt(conditional),
+                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
+                                     analysis.GetValueDefinedAt(constant2)));
+  }
 }
 
 TEST_P(HloDataflowAnalysisTest, ConditionalTakingTupleOperand) {
@@ -1713,11 +1719,17 @@ TEST_P(HloDataflowAnalysisTest, ConditionalTakingTupleOperand) {
                   HloUse{true_x, 0, {}}, HloUse{true_y, 0, {}},
                   HloUse{false_x, 0, {}}, HloUse{false_y, 0, {}}));
 
-  EXPECT_EQ(analysis.values().size(), 6);
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(conditional));
-  EXPECT_THAT(HloValuesAt(conditional),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(add),
-                                   analysis.GetValueDefinedAt(sub)));
+  bool ssa_form = GetParam();
+  if (ssa_form) {
+    EXPECT_EQ(analysis.values().size(), 7);
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(conditional));
+  } else {
+    EXPECT_EQ(analysis.values().size(), 6);
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(conditional));
+    EXPECT_THAT(HloValuesAt(conditional),
+                UnorderedElementsAre(analysis.GetValueDefinedAt(add),
+                                     analysis.GetValueDefinedAt(sub)));
+  }
 }
 
 TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
@@ -1834,20 +1846,27 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
   EXPECT_EQ(analysis.GetUniqueValueAt(false_operand_cond),
             analysis.GetValueDefinedAt(constant2));
 
-  EXPECT_EQ(analysis.values().size(), 9);
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(inner_conditional));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(conditional));
-  EXPECT_THAT(
-      HloValuesAt(inner_conditional),
-      UnorderedElementsAre(
-          analysis.GetValueDefinedAt(computation1->root_instruction()),
-          analysis.GetValueDefinedAt(computation2->root_instruction())));
-  EXPECT_THAT(
-      HloValuesAt(conditional),
-      UnorderedElementsAre(
-          analysis.GetValueDefinedAt(computation1->root_instruction()),
-          analysis.GetValueDefinedAt(computation2->root_instruction()),
-          analysis.GetValueDefinedAt(computation3->root_instruction())));
+  bool ssa_form = GetParam();
+  if (ssa_form) {
+    EXPECT_EQ(analysis.values().size(), 11);
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(inner_conditional));
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(conditional));
+  } else {
+    EXPECT_EQ(analysis.values().size(), 9);
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(inner_conditional));
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(conditional));
+    EXPECT_THAT(
+        HloValuesAt(inner_conditional),
+        UnorderedElementsAre(
+            analysis.GetValueDefinedAt(computation1->root_instruction()),
+            analysis.GetValueDefinedAt(computation2->root_instruction())));
+    EXPECT_THAT(
+        HloValuesAt(conditional),
+        UnorderedElementsAre(
+            analysis.GetValueDefinedAt(computation1->root_instruction()),
+            analysis.GetValueDefinedAt(computation2->root_instruction()),
+            analysis.GetValueDefinedAt(computation3->root_instruction())));
+  }
 }
 
 INSTANTIATE_TEST_CASE_P(HloDataflowAnalysisInstantiation,

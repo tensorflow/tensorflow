@@ -88,7 +88,8 @@ class MklLRNOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
     workspace_enabled_ = false;
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -357,7 +358,8 @@ class MklLRNGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
     workspace_enabled_ = false;
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -535,7 +537,6 @@ class MklLRNGradOp : public OpKernel {
                                 Tensor* mkl_tmp_outimage_buf_tensor) {
       const Tensor& in_grads = MklGetInput(context, 0);
       const Tensor& in_image = MklGetInput(context, 1);
-      const Tensor& out_image = MklGetInput(context, 2);
       const Tensor& workspace = MklGetInput(
           context,
           3); /*Worskpsace is enabled, get the buffer to the workspace */
@@ -544,8 +545,6 @@ class MklLRNGradOp : public OpKernel {
           static_cast<const void*>(in_grads.flat<T>().data()));
       void* user_fwd_input = const_cast<void*>(
           static_cast<const void*>(in_image.flat<T>().data()));
-      void* user_fwd_output = const_cast<void*>(
-          static_cast<const void*>(out_image.flat<T>().data()));
       void* workspace_buffer = const_cast<void*>(
           static_cast<const void*>(workspace.flat<T>().data()));
 
@@ -753,7 +752,8 @@ class MklLRNOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
     workspace_enabled_ = false;
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1002,7 +1002,8 @@ class MklLRNGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
     workspace_enabled_ = false;
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1044,7 +1045,6 @@ class MklLRNGradOp : public OpKernel {
       // Naming: diff_dst is input_gradient_tensor; src is orig_input_tensor.
       const Tensor& input_grad_tensor = MklGetInput(context, kIdxGradient);
       const Tensor& orig_input_tensor = MklGetInput(context, kIdxOrigInput);
-      const Tensor& orig_output_tensor = MklGetInput(context, kIdxOrigOutput);
 
       // Get input sizes in MKL-DNN required NCHW format.
       // LRN does not have data_format attribute. But by default it has

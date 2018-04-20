@@ -38,20 +38,6 @@ cc_library(
     alwayslink = 1,
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 # JAR with Java bindings to TF.
 android_library(
     name = "android_tensorflow_inference_java",

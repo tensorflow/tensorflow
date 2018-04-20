@@ -214,7 +214,7 @@ def masked_convolution(inputs,
     elif data_format == 'NCHW':
       df = 'channels_first'
     else:
-      raise ValueError('Unsupported data fromat', data_format)
+      raise ValueError('Unsupported data format', data_format)
 
     layer = layer_class(
         filters=num_outputs,

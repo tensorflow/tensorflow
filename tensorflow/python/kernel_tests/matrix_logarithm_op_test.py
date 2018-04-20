@@ -39,8 +39,8 @@ class LogarithmOpTest(test.TestCase):
     inp = x.astype(np_type)
     with self.test_session(use_gpu=True):
       # Verify that expm(logm(A)) == A.
-      tf_ans = gen_linalg_ops._matrix_exponential(
-          gen_linalg_ops._matrix_logarithm(inp))
+      tf_ans = gen_linalg_ops.matrix_exponential(
+          gen_linalg_ops.matrix_logarithm(inp))
       out = tf_ans.eval()
       self.assertAllClose(inp, out, rtol=1e-4, atol=1e-3)
 
@@ -85,14 +85,14 @@ class LogarithmOpTest(test.TestCase):
     # When the logarithm of a non-square matrix is attempted we should return
     # an error
     with self.assertRaises(ValueError):
-      gen_linalg_ops._matrix_logarithm(
+      gen_linalg_ops.matrix_logarithm(
           np.array([[1., 2., 3.], [3., 4., 5.]], dtype=np.complex64))
 
   def testWrongDimensions(self):
     # The input to the logarithm should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.], dtype=dtypes.complex64)
     with self.assertRaises(ValueError):
-      gen_linalg_ops._matrix_logarithm(tensor3)
+      gen_linalg_ops.matrix_logarithm(tensor3)
 
   def testEmpty(self):
     self._verifyLogarithmComplex(np.empty([0, 2, 2], dtype=np.complex64))
@@ -115,8 +115,8 @@ class LogarithmOpTest(test.TestCase):
           random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
       matrix2 = math_ops.cast(
           random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
-      logm1 = gen_linalg_ops._matrix_logarithm(matrix1)
-      logm2 = gen_linalg_ops._matrix_logarithm(matrix2)
+      logm1 = gen_linalg_ops.matrix_logarithm(matrix1)
+      logm2 = gen_linalg_ops.matrix_logarithm(matrix2)
       logm = sess.run([logm1, logm2])
       self.assertAllEqual(logm[0], logm[1])
 
@@ -152,7 +152,7 @@ class MatrixLogarithmBenchmark(test.Benchmark):
           session.Session() as sess, \
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
-        logm = gen_linalg_ops._matrix_logarithm(matrix)
+        logm = gen_linalg_ops.matrix_logarithm(matrix)
         variables.global_variables_initializer().run()
         self.run_op_benchmark(
             sess,

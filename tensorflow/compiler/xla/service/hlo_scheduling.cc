@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 
-#include <queue>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -103,10 +103,11 @@ class ListScheduler {
     for (auto* instruction : computation.instructions()) {
       tensorflow::gtl::FlatSet<const LogicalBuffer*> instr_uses;
       for (auto* operand : instruction->operands()) {
-        for (const LogicalBuffer* buffer :
-             points_to_analysis.GetBuffersDefinedByInstruction(operand)) {
-          instr_uses.insert(buffer);
-        }
+        points_to_analysis.GetPointsToSet(operand).ForEachElement(
+            [&](const ShapeIndex& /*index*/,
+                const PointsToSet::BufferList& buffers) {
+              instr_uses.insert(buffers.begin(), buffers.end());
+            });
       }
       buffer_uses_[instruction] = std::vector<const LogicalBuffer*>(
           instr_uses.begin(), instr_uses.end());
@@ -151,8 +152,10 @@ class ListScheduler {
     int64 bytes_defined;
 
     // For each buffer B used by this instruction, we keep a pair (B, U), where
-    // U is the number of uses of B that have not yet been scheduled.
-    std::vector<std::pair<const LogicalBuffer* const, int64>>
+    // U is the number of uses of B that have not yet been scheduled. This pair
+    // is a pointer into the unscheduled_use_count_ map, so it gets updated for
+    // free when we update counts in the map.
+    std::vector<const std::pair<const LogicalBuffer* const, int64>*>
         used_buffer_unscheduled_use_counts;
   };
 
@@ -175,8 +178,8 @@ class ListScheduler {
       }
       auto unscheduled_use_count_it = unscheduled_use_count_.find(buffer);
       CHECK(unscheduled_use_count_it != unscheduled_use_count_.end());
-      entry.used_buffer_unscheduled_use_counts.emplace_back(
-          unscheduled_use_count_it->first, unscheduled_use_count_it->second);
+      entry.used_buffer_unscheduled_use_counts.push_back(
+          &*unscheduled_use_count_it);
     }
     return entry;
   }
@@ -185,8 +188,8 @@ class ListScheduler {
   int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
     int64 freed_bytes = 0;
     for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
-      auto buffer = kv.first;
-      auto use_count = kv.second;
+      auto buffer = kv->first;
+      auto use_count = kv->second;
       if (use_count == 1) {
         freed_bytes += size_function_(*buffer);
       }
@@ -217,23 +220,18 @@ class ListScheduler {
       }
     }
 
-    auto priority_comparator =
-        [this](const std::pair<Priority, ReadyListEntry>& lhs,
-               const std::pair<Priority, ReadyListEntry>& rhs) {
-          return lhs.first < rhs.first;
-        };
-    std::priority_queue<std::pair<Priority, ReadyListEntry>,
-                        std::vector<std::pair<Priority, ReadyListEntry>>,
-                        decltype(priority_comparator)>
-        ready_queue(priority_comparator);
+    // Use a multimap to sort ReadyListEntry according to their priority.
+    std::multimap<Priority, ReadyListEntry> ready_queue;
 
-    // Set of instructions in the ready list.
-    tensorflow::gtl::FlatSet<const HloInstruction*> ready_instructions;
+    // Map of ready instructions to their iterators in ready_queue.
+    tensorflow::gtl::FlatMap<const HloInstruction*,
+                             std::multimap<Priority, ReadyListEntry>::iterator>
+        ready_instructions;
 
     auto add_to_ready_queue = [&](HloInstruction* inst) {
       auto entry = MakeReadyListEntry(inst);
-      ready_queue.emplace(GetPriority(entry), std::move(entry));
-      ready_instructions.insert(inst);
+      auto it = ready_queue.emplace(GetPriority(entry), std::move(entry));
+      ready_instructions[inst] = it;
     };
 
     for (auto* instruction : computation_.instructions()) {
@@ -247,14 +245,10 @@ class ListScheduler {
     while (!ready_queue.empty()) {
       // Remove the selected instruction from the ready list and add it to the
       // schedule.
-      const HloInstruction* best = ready_queue.top().second.instruction;
-      ready_queue.pop();
-      // We may have duplicates in the priority queue, because when a ready
-      // instruction's priority goes up, we reinsert it to the priority queue.
-      // Skip the duplicate.
-      if (scheduled_instructions_.find(best) != scheduled_instructions_.end()) {
-        continue;
-      }
+      auto best_it = ready_queue.end();
+      --best_it;
+      const HloInstruction* best = best_it->second.instruction;
+      ready_queue.erase(best_it);
       ready_instructions.erase(best);
       schedule.push_back(best);
       scheduled_instructions_.insert(best);
@@ -287,16 +281,27 @@ class ListScheduler {
         update_pred_count(succ);
       }
       // The unscheduled use count for a buffer has changed to 1, so the
-      // priorities of some ready instructions may go up. We reinsert them to
-      // the priority queue, so that they can appear earlier. The old entries
-      // will become duplicates and will be skipped.
+      // priorities of some ready instructions may go up. We update them in the
+      // ready queue, so that they can appear earlier.
       if (adjust_ready_queue) {
         for (HloInstruction* operand : best->operands()) {
           for (HloInstruction* operand_user : operand->users()) {
-            if (ready_instructions.find(operand_user) !=
-                ready_instructions.end()) {
-              add_to_ready_queue(operand_user);
+            auto ready_instructions_it = ready_instructions.find(operand_user);
+            if (ready_instructions_it == ready_instructions.end()) {
+              continue;
             }
+            auto ready_queue_it = ready_instructions_it->second;
+            auto& entry = ready_queue_it->second;
+            Priority new_priority = GetPriority(entry);
+            if (new_priority == ready_queue_it->first) {
+              continue;
+            }
+            // Create a new entry in ready_queue, then update
+            // ready_instructions[operand_user] to refer to the new entry.
+            ready_instructions_it->second =
+                ready_queue.emplace(new_priority, std::move(entry));
+            // Remove the old entry in ready_queue.
+            ready_queue.erase(ready_queue_it);
           }
         }
       }
@@ -317,8 +322,9 @@ class ListScheduler {
       buffer_uses_;
 
   // A map containing the count of unscheduled HLOs which using a particular
-  // LogicalBuffer.  We rely on iterator stability in this map.
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, int64> unscheduled_use_count_;
+  // LogicalBuffer.  We rely on iterator stability in this map, and that the map
+  // entries are std::pair's.
+  std::unordered_map<const LogicalBuffer*, int64> unscheduled_use_count_;
 
   // Set of instructions which have been scheduled.
   tensorflow::gtl::FlatSet<const HloInstruction*> scheduled_instructions_;
@@ -334,7 +340,33 @@ int64 SumLogicalBufferSizes(
   return size;
 }
 
-StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
+StatusOr<int64> MinimumMemoryForComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
+                         sequence, points_to_analysis, size_function));
+  return result.heap_size;
+}
+
+StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function,
+    const MemorySchedulerAlgorithm& algorithm) {
+  VLOG(2) << "Computation: " << computation.name();
+  if (algorithm) {
+    return algorithm(computation, points_to_analysis, size_function);
+  }
+  return DefaultMemoryScheduler(computation, points_to_analysis, size_function);
+}
+
+}  // namespace
+
+StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function) {
@@ -343,6 +375,7 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
   // simply users-1 for each instruction.  By subtracting 1, we're saying that
   // instructions with no users or a single user don't count; instructions with
   // lots of fan-out will be visited earlier.
+  int64 cumulative_total_size = 0;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
@@ -352,14 +385,17 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
       continue;
     }
     extra_users[hlo] = hlo->users().empty() ? 0 : hlo->users().size() - 1;
-    total_sizes[hlo] = SumLogicalBufferSizes(
+    int64 logical_buffer_size = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
+    total_sizes[hlo] = logical_buffer_size;
+    cumulative_total_size += logical_buffer_size;
     tensorflow::gtl::FlatSet<const HloInstruction*> unique_operands(
         hlo->operands().begin(), hlo->operands().end());
     for (const HloInstruction* operand : unique_operands) {
       extra_users[hlo] += extra_users[operand];
       total_sizes[hlo] += total_sizes[operand];
     }
+    total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
   }
   CHECK_EQ(extra_users.size(), computation.instruction_count());
   CHECK_EQ(total_sizes.size(), computation.instruction_count());
@@ -387,32 +423,17 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
   return sequence;
 }
 
-StatusOr<int64> MinimumMemoryForComputation(
+StatusOr<std::vector<const HloInstruction*>> ListMemoryScheduler(
     const HloComputation& computation,
-    const std::vector<const HloInstruction*>& sequence,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function) {
-  TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
-                         sequence, points_to_analysis, size_function));
-  return result.heap_size;
+  return ListScheduler::Run(computation, points_to_analysis, size_function);
 }
 
-StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    SchedulerAlgorithm algorithm) {
-  VLOG(2) << "Computation: " << computation.name();
-  if (algorithm == SchedulerAlgorithm::kListSchedule) {
-    return ListScheduler::Run(computation, points_to_analysis, size_function);
-  }
-  if (algorithm == SchedulerAlgorithm::kDfsSchedule) {
-    return RunDFSMemoryScheduler(computation, points_to_analysis,
-                                 size_function);
-  }
-
+    const LogicalBuffer::SizeFunction& size_function) {
   // We try both a list-scheduler based ordering and a DFS based ordering, and
   // choose whichever returns a lower min-memory, not accounting for
   // fragmentation.
@@ -422,7 +443,7 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
   // within the caller's context. But it's good enough for now.
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> list_sequence,
-      ListScheduler::Run(computation, points_to_analysis, size_function));
+      ListMemoryScheduler(computation, points_to_analysis, size_function));
   TF_ASSIGN_OR_RETURN(
       const int64 list_memory,
       MinimumMemoryForComputation(computation, list_sequence,
@@ -431,7 +452,7 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> dfs_sequence,
-      RunDFSMemoryScheduler(computation, points_to_analysis, size_function));
+      DFSMemoryScheduler(computation, points_to_analysis, size_function));
   TF_ASSIGN_OR_RETURN(
       const int64 dfs_memory,
       MinimumMemoryForComputation(computation, dfs_sequence, points_to_analysis,
@@ -449,12 +470,10 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
   }
 }
 
-}  // namespace
-
 StatusOr<SequentialHloOrdering::HloModuleSequence>
 CreateMemoryMinimizingSequence(const HloModule& module,
                                const LogicalBuffer::SizeFunction& size_function,
-                               SchedulerAlgorithm algorithm) {
+                               const MemorySchedulerAlgorithm& algorithm) {
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
@@ -470,7 +489,7 @@ CreateMemoryMinimizingSequence(const HloModule& module,
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
     const LogicalBuffer::SizeFunction& size_function,
-    SchedulerAlgorithm algorithm) {
+    const MemorySchedulerAlgorithm& algorithm) {
   CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));

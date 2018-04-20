@@ -228,9 +228,12 @@ class _WishartLinearOperator(distribution.Distribution):
     # Complexity: O(nbk)
     # This parametrization is equivalent to Chi2, i.e.,
     # ChiSquared(k) == Gamma(alpha=k/2, beta=1/2)
+    expanded_df = self.df * array_ops.ones(
+        self.scale_operator.batch_shape_tensor(),
+        dtype=self.df.dtype.base_dtype)
     g = random_ops.random_gamma(shape=[n],
                                 alpha=self._multi_gamma_sequence(
-                                    0.5 * self.df, self.dimension),
+                                    0.5 * expanded_df, self.dimension),
                                 beta=0.5,
                                 dtype=self.dtype,
                                 seed=distribution_util.gen_new_seed(

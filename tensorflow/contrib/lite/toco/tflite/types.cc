@@ -90,6 +90,8 @@ flatbuffers::Offset<flatbuffers::Vector<uint8_t>> DataBuffer::Serialize(
       return CopyBuffer<ArrayDataType::kFloat>(array, builder);
     case ArrayDataType::kInt32:
       return CopyBuffer<ArrayDataType::kInt32>(array, builder);
+    case ArrayDataType::kInt64:
+      return CopyBuffer<ArrayDataType::kInt64>(array, builder);
     case ArrayDataType::kString:
       return CopyBuffer<ArrayDataType::kString>(array, builder);
     case ArrayDataType::kUint8:

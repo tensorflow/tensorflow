@@ -306,6 +306,12 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
+  if (static_cast<FullyConnectedOperator*>(fully_connected)
+          ->experimental_shuffled_weights) {
+    // Not yet implemented: experimental shuffled weights in fused LSTM cell.
+    return false;
+  }
+
   // Emplace a new LSTM cell operator
   auto* lstm_cell_op = new LstmCellOperator;
   lstm_cell_op->inputs.resize(LstmCellOperator::NUM_INPUTS);

@@ -148,19 +148,7 @@ viewing. Do not include url parameters in the source code URL.
 Before building the documentation, you must first set up your environment by
 doing the following:
 
-1. If pip isn't installed on your machine, install it now by issuing the
-following command:
-
-        $ sudo easy_install pip
-
-2. Use pip to install codegen, mock, and pandas by issuing the following
-   command (Note: If you are using
-   a [virtualenv](https://virtualenv.pypa.io/en/stable/) to manage your
-   dependencies, you may not want to use sudo for these installations):
-
-        $ sudo pip install codegen mock pandas
-
-3. If bazel is not installed on your machine, install it now. If you are on
+1. If bazel is not installed on your machine, install it now. If you are on
    Linux, install bazel by issuing the following command:
 
         $ sudo apt-get install bazel  # Linux
@@ -168,10 +156,10 @@ following command:
     If you are on Mac OS, find bazel installation instructions on
     [this page](https://bazel.build/versions/master/docs/install.html#mac-os-x).
 
-4. Change directory to the top-level `tensorflow` directory of the TensorFlow
+2. Change directory to the top-level `tensorflow` directory of the TensorFlow
    source code.
 
-5. Run the `configure` script and answer its prompts appropriately for your
+3. Run the `configure` script and answer its prompts appropriately for your
    system.
 
         $ ./configure
@@ -477,31 +465,29 @@ should use Markdown in the docstring.
 
 Here's a simple example:
 
-```python
-def foo(x, y, name="bar"):
-  """Computes foo.
+    def foo(x, y, name="bar"):
+      """Computes foo.
 
-  Given two 1-D tensors `x` and `y`, this operation computes the foo.
+      Given two 1-D tensors `x` and `y`, this operation computes the foo.
 
-  Example:
+      Example:
 
-  ```
-  # x is [1, 1]
-  # y is [2, 2]
-  tf.foo(x, y) ==> [3, 3]
-  ```
-  Args:
-    x: A `Tensor` of type `int32`.
-    y: A `Tensor` of type `int32`.
-    name: A name for the operation (optional).
+      ```
+      # x is [1, 1]
+      # y is [2, 2]
+      tf.foo(x, y) ==> [3, 3]
+      ```
+      Args:
+        x: A `Tensor` of type `int32`.
+        y: A `Tensor` of type `int32`.
+        name: A name for the operation (optional).
 
-  Returns:
-    A `Tensor` of type `int32` that is the foo of `x` and `y`.
+      Returns:
+        A `Tensor` of type `int32` that is the foo of `x` and `y`.
 
-  Raises:
-    ValueError: If `x` or `y` are not of type `int32`.
-  """
-```
+      Raises:
+        ValueError: If `x` or `y` are not of type `int32`.
+      """
 
 ## Description of the docstring sections
 

@@ -23,6 +23,20 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+REGISTER_OP("RegexReplace")
+    .Input("input: string")
+    .Input("pattern: string")
+    .Input("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
     .Output("output: int64")
@@ -108,6 +122,11 @@ REGISTER_OP("StringSplit")
       c->set_output(2, c->Vector(2));
       return Status::OK();
     });
+
+REGISTER_OP("StringStrip")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")
     .Input("input: string")

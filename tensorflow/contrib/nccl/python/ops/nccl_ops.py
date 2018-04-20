@@ -267,5 +267,5 @@ def _check_device(tensor, expected=None):
 
 
 def _check_graph_mode():
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError('Nccl ops are not supported in eager mode')

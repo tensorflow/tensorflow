@@ -35,8 +35,11 @@ namespace {
 // Superclass of pooling ops.
 class PoolingOp : public XlaOpKernel {
  public:
-  PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
+  PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims,
+            const DataType reduction_type)
+      : XlaOpKernel(ctx),
+        num_spatial_dims_(num_spatial_dims),
+        reduction_type_(reduction_type) {
     if (ctx->num_inputs() == 1) {
       std::vector<int32> ksize_int;
       std::vector<int32> stride_int;
@@ -63,12 +66,10 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
   // Method that builds an initial value to use in reductions.
-  virtual xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b,
-                                               DataType data_type) = 0;
+  virtual xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) = 0;
 
   // The reduction operation to apply to each window.
-  virtual const xla::Computation* Reduction(XlaOpKernelContext* ctx,
-                                            DataType dtype) = 0;
+  virtual const xla::Computation* Reduction(XlaOpKernelContext* ctx) = 0;
 
   // A post-processing operation to apply on the outputs of the ReduceWindow.
   virtual xla::ComputationDataHandle PostProcessOutput(
@@ -76,9 +77,6 @@ class PoolingOp : public XlaOpKernel {
       DataType dtype, const TensorShape& input_shape) = 0;
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationDataHandle input = ctx->Input(0);
-    const TensorShape input_shape = ctx->InputShape(0);
-
     std::vector<int64> ksize = ksize_;
     std::vector<int64> stride = stride_;
     if (ctx->num_inputs() != 1) {
@@ -106,16 +104,20 @@ class PoolingOp : public XlaOpKernel {
       stride.clear();
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &stride));
     }
+    const TensorShape input_shape = ctx->InputShape(0);
     OP_REQUIRES(ctx, input_shape.dims() == num_dims(),
                 errors::InvalidArgument("Input to ", type_string(),
                                         " operator must have ", num_dims(),
                                         " dimensions"));
 
-    const DataType type = input_type(0);
-    xla::ComputationDataHandle pooled = ctx->builder()->ReduceWindow(
-        input, InitValue(ctx->builder(), type), *Reduction(ctx, type), ksize,
-        stride, padding_);
-    ctx->SetOutput(0, PostProcessOutput(ctx, pooled, type, input_shape));
+    xla::ComputationBuilder* const b = ctx->builder();
+    auto input =
+        XlaHelpers::ConvertElementType(b, ctx->Input(0), reduction_type_);
+    auto reduce = ctx->builder()->ReduceWindow(
+        input, InitValue(b), *Reduction(ctx), ksize, stride, padding_);
+    auto pooled = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
+    ctx->SetOutput(0,
+                   PostProcessOutput(ctx, pooled, input_type(0), input_shape));
   }
 
  protected:
@@ -124,21 +126,21 @@ class PoolingOp : public XlaOpKernel {
   std::vector<int64> stride_;
   xla::Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
+  DataType reduction_type_;
 };
 
 class MaxPoolOp : public PoolingOp {
  public:
   MaxPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims) {}
+      : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
+                  /*reduction_type=*/ctx->input_type(0)) {}
 
-  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b,
-                                       DataType data_type) override {
-    return XlaHelpers::MinValue(b, data_type);
+  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) override {
+    return XlaHelpers::MinValue(b, reduction_type_);
   }
 
-  const xla::Computation* Reduction(XlaOpKernelContext* ctx,
-                                    DataType dtype) override {
-    return ctx->GetOrCreateMax(dtype);
+  const xla::Computation* Reduction(XlaOpKernelContext* ctx) override {
+    return ctx->GetOrCreateMax(reduction_type_);
   }
 
   xla::ComputationDataHandle PostProcessOutput(
@@ -209,15 +211,17 @@ static xla::ComputationDataHandle AvgPoolDivideByCount(
     }
 
     // Build a matrix of all 1s, with the same width/height as the input.
+    const DataType accumulation_type = XlaHelpers::SumAccumulationType(dtype);
     auto ones = ctx->builder()->Broadcast(
-        XlaHelpers::One(ctx->builder(), dtype), input_dim_sizes);
+        XlaHelpers::One(ctx->builder(), accumulation_type), input_dim_sizes);
 
     // Perform a ReduceWindow with the same window size, strides, and padding
     // to count the number of contributions to each result element.
-    auto counts = ctx->builder()->ReduceWindow(
-        ones, XlaHelpers::Zero(ctx->builder(), dtype),
-        *ctx->GetOrCreateAdd(dtype), window_ksize, window_stride,
+    auto reduce = ctx->builder()->ReduceWindow(
+        ones, XlaHelpers::Zero(ctx->builder(), accumulation_type),
+        *ctx->GetOrCreateAdd(accumulation_type), window_ksize, window_stride,
         xla::Padding::kSame);
+    auto counts = XlaHelpers::ConvertElementType(ctx->builder(), reduce, dtype);
 
     return ctx->builder()->Div(output, counts, window_dims);
   }
@@ -226,16 +230,16 @@ static xla::ComputationDataHandle AvgPoolDivideByCount(
 class AvgPoolOp : public PoolingOp {
  public:
   AvgPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : PoolingOp(ctx, num_spatial_dims) {}
+      : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
+                  /*reduction_type=*/
+                  XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
 
-  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b,
-                                       DataType data_type) override {
-    return XlaHelpers::Zero(b, data_type);
+  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) override {
+    return XlaHelpers::Zero(b, reduction_type_);
   }
 
-  const xla::Computation* Reduction(XlaOpKernelContext* ctx,
-                                    DataType dtype) override {
-    return ctx->GetOrCreateAdd(dtype);
+  const xla::Computation* Reduction(XlaOpKernelContext* ctx) override {
+    return ctx->GetOrCreateAdd(reduction_type_);
   }
 
   xla::ComputationDataHandle PostProcessOutput(
@@ -455,14 +459,12 @@ class AvgPoolGradOp : public XlaOpKernel {
                  gradients_shape, filter_shape, out_backprop_shape, stride_,
                  padding_, data_format_, &dims));
 
+    // The input gradients are computed by a convolution of the output gradients
+    // and the filter, with some appropriate padding. See the comment at the top
+    // of conv_grad_ops.h for details.
+    xla::ComputationBuilder* const b = ctx->builder();
     auto out_backprop = ctx->Input(1);
-
-    // The input gradients are computed by a convolution of the output
-    // gradients
-    // and the filter, with some appropriate padding. See the comment at
-    // the top of conv_grad_ops.h for details.
-    DataType dtype = input_type(1);
-
+    auto dtype = input_type(1);
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
@@ -483,17 +485,18 @@ class AvgPoolGradOp : public XlaOpKernel {
       padding->set_interior_padding(dims.spatial_dims[i].stride - 1);
     }
 
-    auto zero = XlaHelpers::Zero(ctx->builder(), dtype);
-    auto padded_gradients =
-        ctx->builder()->Pad(out_backprop_div, zero, padding_config);
+    auto zero = XlaHelpers::Zero(b, dtype);
+    auto padded_gradients = b->Pad(out_backprop_div, zero, padding_config);
 
     // in_backprop = padded_gradients <conv> ones
     std::vector<int64> ones(num_dims(), 1LL);
-    xla::ComputationDataHandle in_backprop = ctx->builder()->ReduceWindow(
-        padded_gradients, zero, *ctx->GetOrCreateAdd(dtype), ksize_,
+    auto accumulation_type = XlaHelpers::SumAccumulationType(dtype);
+    auto in_backprop = b->ReduceWindow(
+        XlaHelpers::ConvertElementType(b, padded_gradients, accumulation_type),
+        XlaHelpers::Zero(b, accumulation_type),
+        *ctx->GetOrCreateAdd(accumulation_type), ksize_,
         /* window_strides=*/ones, xla::Padding::kValid);
-
-    ctx->SetOutput(0, in_backprop);
+    ctx->SetOutput(0, XlaHelpers::ConvertElementType(b, in_backprop, dtype));
   }
 
  protected:
@@ -524,6 +527,173 @@ class AvgPool3DGradOp : public AvgPoolGradOp {
 };
 REGISTER_XLA_OP(Name("AvgPool3DGrad").CompileTimeConstInput("orig_input_shape"),
                 AvgPool3DGradOp);
+
+class MaxPoolGradGradOp : public XlaOpKernel {
+ public:
+  MaxPoolGradGradOp(OpKernelConstruction* ctx, int num_spatial_dims)
+      : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
+    if (ctx->num_inputs() == 3) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
+    }
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+  }
+
+  int num_dims() const { return num_spatial_dims_ + 2; }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    if (ctx->num_inputs() != 3) {
+      OP_REQUIRES(
+          ctx, ctx->num_inputs() == 5,
+          errors::InvalidArgument("Must supply ksize and stride arguments."));
+      const TensorShape ksize_shape = ctx->InputShape(3);
+      // Validate input sizes.
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(ksize_shape),
+                  errors::InvalidArgument("ksize must be a vector, not shape ",
+                                          ksize_shape.DebugString()));
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(3, &ksize_));
+
+      const TensorShape stride_shape = ctx->InputShape(4);
+      // Validate input sizes.
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(stride_shape),
+                  errors::InvalidArgument("stride must be a vector, not shape ",
+                                          stride_shape.DebugString()));
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(4, &stride_));
+    }
+
+    OP_REQUIRES(ctx, ksize_.size() == num_dims(),
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+    OP_REQUIRES(ctx, stride_.size() == num_dims(),
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+
+    const TensorShape tensor_in_shape = ctx->InputShape(0);
+    const TensorShape tensor_out_shape = ctx->InputShape(1);
+    const TensorShape out_backprop_shape = ctx->InputShape(2);
+
+    // For maxpooling, tensor_in should have num_dims() dimensions.
+    OP_REQUIRES(ctx, tensor_in_shape.dims() == num_dims(),
+                errors::InvalidArgument("tensor_in must be ", num_dims(),
+                                        "-dimensional"));
+    OP_REQUIRES(ctx, tensor_out_shape.dims() == num_dims(),
+                errors::InvalidArgument("tensor_out must be ", num_dims(),
+                                        "-dimensional"));
+    // For maxpooling, out_backprop should have num_dims() dimensions.
+    OP_REQUIRES(ctx, out_backprop_shape.dims() == num_dims(),
+                errors::InvalidArgument("out_backprop must be ", num_dims(),
+                                        "-dimensional"));
+
+    // What we want to compute:
+    // Given y = MaxPool(x), and xs_grad = MaxPoolGrad(x, y, ys_grad)
+    // MaxPoolGradGrad computes {ys_grad}_grad given x, y, and {xs_grad}_grad.
+    //
+    // In the regular TF op, this amounts to selecting for each window the
+    // incoming backprop value from xs_grad_grad that corresponds to the maximal
+    // value in the corresponding window of x.
+    //
+    // TODO(b/73062247): What we really want is a ReduceWindow with different
+    // arrays for index selection vs return value selection--a select-to-gather.
+    //
+    // Here, we implement a bitwise hack: we use the hi 16 bits of input for
+    // separate max pooling alongside each of the hi and lo 16 bits of
+    // out_backprop packed into 16 lo bits, which we then glue back together at
+    // the end to get a full 32 bits of gradient.
+    //
+    // This could select the wrong backprop value for two x values that are
+    // equally maximal up to the first 16 bits, in which case we are taking the
+    // latter.
+    //
+    // Note that in principle we could use 32 separate maxpools to recover each
+    // of 32 bits of the gradient while preserving 31 bits of input for the max
+    // pooling criteria; here, we just truncate to the first 16 bits of input.
+
+    auto input = ctx->Input(0);
+    auto out_backprop = ctx->Input(2);
+
+    auto b = ctx->builder();
+
+    auto sixteen = b->ConstantR0<uint32>(16);
+    // in (f32) -> round to bf16 -> f32 for correct bitwidth -> 16-high-bit u32
+    auto in_hi = b->BitcastConvertType(
+        b->ConvertElementType(b->ConvertElementType(input, xla::BF16),
+                              xla::F32),
+        xla::U32);
+    auto bp_int = b->BitcastConvertType(out_backprop, xla::U32);
+    auto bp_hi = b->ShiftRightLogical(bp_int, sixteen);
+    auto bp_lo = b->ShiftRightLogical(b->ShiftLeft(bp_int, sixteen), sixteen);
+    auto in_hi_bp_hi = b->Add(in_hi, bp_hi);  // Want an unsigned add.
+    auto in_hi_bp_lo = b->Add(in_hi, bp_lo);  // Want an unsigned add.
+
+    auto init_value = XlaHelpers::MinValue(b, DT_FLOAT);
+    // We will reduce by taking the maximal value up to 16 bits (ignoring the lo
+    // 16 bits of packed-in hi/lo backprop value).
+    auto rb = b->CreateSubBuilder("GreaterOrEqOf_ByFirst16Bits");
+    {
+      // F32 parameters to satisfy lowering type restriction for reduce opcode.
+      const xla::Shape scalar = xla::ShapeUtil::MakeShape(xla::F32, {});
+      auto lhs = rb->Parameter(0, scalar, "lhs");
+      auto rhs = rb->Parameter(1, scalar, "rhs");
+      auto sixteen = rb->ConstantR0<int32>(16);
+      auto lhs_criteria = rb->ShiftLeft(
+          rb->ShiftRightLogical(rb->BitcastConvertType(lhs, xla::S32), sixteen),
+          sixteen);
+      auto rhs_criteria = rb->ShiftLeft(
+          rb->ShiftRightLogical(rb->BitcastConvertType(rhs, xla::S32), sixteen),
+          sixteen);
+      // Must use a F32 comparison, because S32 would not work for negatives.
+      rb->Select(rb->Ge(rb->BitcastConvertType(lhs_criteria, xla::F32),
+                        rb->BitcastConvertType(rhs_criteria, xla::F32)),
+                 lhs, rhs);
+    }
+    auto reduce = rb->BuildAndNoteError();
+    xla::Padding xla_padding =
+        (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
+    auto pooled_hi =
+        b->ReduceWindow(b->BitcastConvertType(in_hi_bp_hi, xla::F32),
+                        init_value, reduce, ksize_, stride_, xla_padding);
+    auto pooled_lo =
+        b->ReduceWindow(b->BitcastConvertType(in_hi_bp_lo, xla::F32),
+                        init_value, reduce, ksize_, stride_, xla_padding);
+    auto grads_hi =
+        b->ShiftLeft(b->BitcastConvertType(pooled_hi, xla::U32), sixteen);
+    auto grads_lo = b->ShiftRightLogical(
+        b->ShiftLeft(b->BitcastConvertType(pooled_lo, xla::U32), sixteen),
+        sixteen);
+    auto grads = b->Add(grads_hi, grads_lo);  // Want an unsigned add.
+
+    xla::PrimitiveType element_type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(2), &element_type));
+    ctx->SetOutput(0, b->BitcastConvertType(grads, element_type));
+  }
+
+ protected:
+  const int num_spatial_dims_;
+  std::vector<int64> ksize_;
+  std::vector<int64> stride_;
+  Padding padding_;
+  TensorFormat data_format_ = FORMAT_NHWC;
+};
+
+class MaxPool2DGradGradOp : public MaxPoolGradGradOp {
+ public:
+  explicit MaxPool2DGradGradOp(OpKernelConstruction* ctx)
+      : MaxPoolGradGradOp(ctx, /*num_spatial_dims=*/2) {
+    string data_format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+  }
+};
+REGISTER_XLA_OP(Name("MaxPoolGradGrad").TypeConstraint("T", DT_FLOAT),
+                MaxPool2DGradGradOp);
+REGISTER_XLA_OP(Name("MaxPoolGradGradV2")
+                    .TypeConstraint("T", DT_FLOAT)
+                    .CompileTimeConstInput("ksize")
+                    .CompileTimeConstInput("strides"),
+                MaxPool2DGradGradOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

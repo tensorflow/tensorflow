@@ -18,6 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.tensorrt.python import *
-# pylint: enable=unused-import,wildcard-import
+from tensorflow.python.framework import errors
+
+# pylint: disable=unused-import,wildcard-import,g-import-not-at-top
+try:
+  from tensorflow.contrib.tensorrt.python import *
+except errors.NotFoundError as e:
+  no_trt_message = (
+      '**** Failed to initialize TensorRT. This is either because the TensorRT'
+      ' installation path is not in LD_LIBRARY_PATH, or because you do not have'
+      ' it installed. If not installed, please go to'
+      ' https://developer.nvidia.com/tensorrt to download and install'
+      ' TensorRT ****')
+  print(no_trt_message)
+  raise e
+# pylint: enable=unused-import,wildcard-import,g-import-not-at-top

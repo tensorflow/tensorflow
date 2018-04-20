@@ -29,6 +29,7 @@ tf_kernel_library(
         "cwise_ops.h",
         "depthtospace_op.cc",
         "diag_op.cc",
+        "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
         "elu_op.cc",
         "extract_image_patches_op.cc",
@@ -56,6 +57,7 @@ tf_kernel_library(
         "pooling_ops.cc",
         "quantize_and_dequantize_op.cc",
         "random_ops.cc",
+        "reduce_window_op.cc",
         "reduction_ops.cc",
         "reduction_ops.h",
         "reduction_ops_common.cc",
@@ -93,6 +95,7 @@ tf_kernel_library(
         "shape_util.h",
     ],
     deps = [
+        ":if_op",
         ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -102,7 +105,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:triangular_solve",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/tf2xla/lib:while_loop",
-        "//tensorflow/compiler/tf2xla/ops:sendrecv_ops",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -145,13 +148,46 @@ tf_kernel_library(
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+tf_kernel_library(
+    name = "if_op",
+    srcs = ["if_op.cc"],
+    hdrs = ["if_op.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+# Kernels that have a dummy (no-op) implementation.
+tf_kernel_library(
+    name = "xla_dummy_ops",
+    srcs = [
+        "assert_op.cc",
+        "check_numerics_op.cc",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:logging_ops_op_lib",
+    ],
+    alwayslink = 1,
 )
 
 # Kernels that only work on CPU, because they use XLA custom calls.
@@ -199,18 +235,4 @@ cc_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

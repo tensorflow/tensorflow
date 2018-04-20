@@ -47,6 +47,9 @@ public final class NativeInterpreterWrapperTest {
   private static final String MODEL_WITH_CUSTOM_OP_PATH =
       "tensorflow/contrib/lite/java/src/testdata/with_custom_op.lite";
 
+  private static final String NONEXISTING_MODEL_PATH =
+      "tensorflow/contrib/lite/java/src/testdata/nonexisting_model.bin";
+
   @Test
   public void testConstructor() {
     NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
@@ -60,7 +63,18 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("is not a valid flatbuffer model");
+      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer file");
+    }
+  }
+
+  @Test
+  public void testConstructorWithNonexistingModel() {
+    try {
+      NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(NONEXISTING_MODEL_PATH);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer file");
+      assertThat(e).hasMessageThat().contains("Could not open");
     }
   }
 
@@ -90,6 +104,30 @@ public final class NativeInterpreterWrapperTest {
     outputs[0].copyTo(parsedOutputs);
     float[] outputOneD = parsedOutputs[0][0][0];
     float[] expected = {3.69f, -19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    wrapper.close();
+  }
+
+  @Test
+  public void testRunWithInputsOfSameDims() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    float[] oneD = {1.23f, -6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    Object[] inputs = {fourD};
+    Tensor[] outputs = wrapper.run(inputs);
+    assertThat(outputs.length).isEqualTo(1);
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    outputs[0].copyTo(parsedOutputs);
+    float[] outputOneD = parsedOutputs[0][0][0];
+    float[] expected = {3.69f, -19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    outputs = wrapper.run(inputs);
+    assertThat(outputs.length).isEqualTo(1);
+    parsedOutputs = new float[2][8][8][3];
+    outputs[0].copyTo(parsedOutputs);
+    outputOneD = parsedOutputs[0][0][0];
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     wrapper.close();
   }
@@ -416,5 +454,88 @@ public final class NativeInterpreterWrapperTest {
     assertThat(shape[0]).isEqualTo(2);
     assertThat(shape[1]).isEqualTo(3);
     assertThat(shape[2]).isEqualTo(1);
+  }
+
+  @Test
+  public void testGetInferenceLatency() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    Object[] inputs = {fourD};
+    Tensor[] outputs = wrapper.run(inputs);
+    assertThat(outputs.length).isEqualTo(1);
+    assertThat(wrapper.getLastNativeInferenceDurationNanoseconds()).isGreaterThan(0L);
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetInferenceLatencyWithNewWrapper() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    assertThat(wrapper.getLastNativeInferenceDurationNanoseconds()).isNull();
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetLatencyAfterFailedInference() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    Object[] inputs = {fourD};
+    try {
+      wrapper.run(inputs);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains("0-th input dimension should be [?,8,8,3], but found [?,8,7,3]");
+    }
+    assertThat(wrapper.getLastNativeInferenceDurationNanoseconds()).isNull();
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetInputDims() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    int[] expectedDims = {1, 8, 8, 3};
+    assertThat(wrapper.getInputDims(0)).isEqualTo(expectedDims);
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetInputDimsOutOfRange() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    try {
+      wrapper.getInputDims(-1);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Out of range");
+    }
+    try {
+      wrapper.getInputDims(1);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Out of range");
+    }
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetOutputDataType() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("float");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(LONG_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("long");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(INT_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("int");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(BYTE_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("byte");
+    wrapper.close();
   }
 }
