@@ -156,6 +156,19 @@ Status MetaOptimizer::InitializeOptimizersByName(
       VLOG(2) << "Can't register an optimizer by name: " << optimizer_name;
     }
   }
+  for (const auto& optimizer_config : cfg_.custom_optimizers()) {
+    auto custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
+        optimizer_config.name());
+    if (custom_optimizer) {
+      VLOG(2) << "Registered custom configurable graph optimizer: "
+              << optimizer_config.name();
+      TF_RETURN_IF_ERROR(custom_optimizer->Init(&optimizer_config));
+      optimizers->push_back(std::move(custom_optimizer));
+    } else {
+      VLOG(2) << "Can't register an optimizer by name: "
+              << optimizer_config.name();
+    }
+  }
   return Status::OK();
 }
 
@@ -164,7 +177,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   VLOG(2) << "Optimize GrapplerItem: item.id=" << item.id;
 
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  bool register_by_name = !cfg_.optimizers().empty();
+  bool register_by_name =
+      (!cfg_.optimizers().empty() || !cfg_.custom_optimizers().empty());
   TF_RETURN_IF_ERROR(register_by_name ? InitializeOptimizersByName(&optimizers)
                                       : InitializeOptimizers(&optimizers));
 
@@ -321,7 +335,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
-         !cfg.optimizers().empty();
+         !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
