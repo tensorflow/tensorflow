@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -75,12 +76,10 @@ string UniqueSpecializedFunctionName(const FunctionDef& func,
 
 class FunctionOptimizerContext {
  public:
-  explicit FunctionOptimizerContext(const GrapplerItem& item,
-                                    RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level),
-        function_library_(FunctionLibraryDefinition(OpRegistry::Global(),
-                                                    item.graph.library())) {
-    InitializeInlinedFunctions(item);
+  explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
+                                    const GrapplerItem& item)
+      : function_library_(OpRegistry::Global(), item.graph.library()) {
+    InitializeInlinedFunctions(opt_level, item);
   }
 
   const FunctionLibraryDefinition& function_library() const {
@@ -101,8 +100,9 @@ class FunctionOptimizerContext {
   }
 
  private:
-  void InitializeInlinedFunctions(const GrapplerItem& item) {
-    bool aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
+  void InitializeInlinedFunctions(RewriterConfig::Toggle opt_level,
+                                  const GrapplerItem& item) {
+    bool aggressive = opt_level == RewriterConfig::AGGRESSIVE;
 
     for (const FunctionDef& func : item.graph.library().function()) {
       // Can't create IdentityN nodes with no input or output: skip these
@@ -120,7 +120,6 @@ class FunctionOptimizerContext {
     }
   }
 
-  RewriterConfig::Toggle opt_level_;
   FunctionLibraryDefinition function_library_;
   // Functions that can be inlined into optimized graph.
   std::unordered_map<string, const FunctionDef*> inlined_functions_;
@@ -128,9 +127,93 @@ class FunctionOptimizerContext {
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionOptimizerContext);
 };
 
+// Return trimmed FunctionDefLibrary with functions that are reachable from
+// the optimized graph.
+FunctionDefLibrary TrimFunctionLibrary(const FunctionLibraryDefinition& flib,
+                                       const GraphDef& optimized_graph) {
+  // Functions that are reachable from the optimized graph.
+  std::unordered_set<string> keep_funcs;
+
+  std::vector<const FunctionDef*> func_queue;
+  func_queue.reserve(flib.num_functions());
+
+  // Add registered and not already processed functions to the queue by name.
+  const auto add_to_func_queue = [&](const string& func_name) {
+    const FunctionDef* func = flib.Find(func_name);
+    if (func && keep_funcs.find(func_name) == keep_funcs.end()) {
+      func_queue.push_back(func);
+    }
+  };
+
+  // Find all the functions that are reachable from the given node.
+  const auto add_node_to_func_queue = [&](const NodeDef& node) {
+    // Node itself can be a call to the function.
+    add_to_func_queue(node.op());
+
+    // Or node can have an attribute referencing a function.
+    for (const auto& attr : node.attr()) {
+      const auto& attr_value = attr.second;
+
+      // 1. AttrValue.func
+      if (attr_value.has_func()) {
+        add_to_func_queue(attr_value.func().name());
+      }
+
+      // 2. AttrValue.ListValue.func
+      if (attr_value.has_list()) {
+        for (const auto& func : attr_value.list().func()) {
+          add_to_func_queue(func.name());
+        }
+      }
+    }
+  };
+
+  // Add all functions that are directly called from the optimized graph.
+  const auto& graph_nodes = optimized_graph.node();
+  std::for_each(graph_nodes.begin(), graph_nodes.end(), add_node_to_func_queue);
+
+  // Process all reachable functions.
+  while (!func_queue.empty()) {
+    const FunctionDef* func = func_queue.back();
+    func_queue.pop_back();
+
+    const string& func_name = func->signature().name();
+    keep_funcs.insert(func_name);
+
+    // Find all the functions that called from the function body.
+    const auto& func_body = func->node_def();
+    std::for_each(func_body.begin(), func_body.end(), add_node_to_func_queue);
+
+    // Check if the function has a registered gradient.
+    const string grad_func_name = flib.FindGradient(func_name);
+    if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
+  }
+
+  FunctionDefLibrary lib;
+  for (const string& func_name : keep_funcs) {
+    const FunctionDef* func = CHECK_NOTNULL(flib.Find(func_name));
+    *lib.add_function() = *func;
+
+    const string grad_func_name = flib.FindGradient(func_name);
+    if (!grad_func_name.empty()) {
+      GradientDef* gd = lib.add_gradient();
+      gd->set_function_name(func_name);
+      gd->set_gradient_func(grad_func_name);
+    }
+  }
+
+  VLOG(3) << "Trimmed function library: " << keep_funcs.size() << " functions ("
+          << static_cast<int>(keep_funcs.size() - flib.num_functions()) << ")";
+
+  return lib;
+}
+
 Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
                           FunctionOptimizerContext* ctx,
                           GraphDef* optimized_graph) {
+  VLOG(2) << "Specialize function instantiation: "
+          << SummarizeNodeDef(func_node);
+
   const std::unordered_map<string, AttrValue> func_attr(
       func_node.attr().begin(), func_node.attr().end());
 
@@ -141,20 +224,20 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
 
   // TODO(ezhulenev): Push down const inputs and known input shapes.
-  FunctionDef specialized;
-  TF_RETURN_IF_ERROR(MakeSpecializedFunctionDef(item, flib, &specialized));
+  FunctionDef specialized_func;
+  TF_RETURN_IF_ERROR(MakeFunctionDef(item, flib, &specialized_func));
 
   // Find a name for specialized function.
   const string specialized_func_name =
       UniqueSpecializedFunctionName(func, func_node, flib);
 
-  specialized.mutable_signature()->set_name(specialized_func_name);
-  auto* specialized_attr = specialized.mutable_attr();
+  specialized_func.mutable_signature()->set_name(specialized_func_name);
+  auto* specialized_attr = specialized_func.mutable_attr();
   (*specialized_attr)[kGrapplerSpecializedFuncAttr].set_b(true);
 
   // Add specialized function to the library.
   TF_RETURN_IF_ERROR(
-      ctx->mutable_function_library().AddFunctionDef(specialized));
+      ctx->mutable_function_library().AddFunctionDef(specialized_func));
 
   // Add a function call node for the specialized function.
   NodeDef* specialized_func_node = optimized_graph->add_node();
@@ -226,6 +309,8 @@ Status HookInlinedFunctionOutputs(
 Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
                       const FunctionOptimizerContext& ctx,
                       GraphDef* optimized_graph) {
+  VLOG(2) << "Inline function instantiation: " << SummarizeNodeDef(func_node);
+
   const std::unordered_map<string, AttrValue> func_attr(
       func_node.attr().begin(), func_node.attr().end());
 
@@ -359,6 +444,8 @@ class SymbolicGradientEnv {
 
 Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
                               GraphDef* inlined_graph) {
+  VLOG(2) << "Inline symbolic gradient: " << SummarizeNodeDef(node);
+
   GraphDef graph_def;
 
   // Create a node to anchor the gradient inputs
@@ -454,13 +541,16 @@ Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
 
 Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
+  VLOG(2) << "Optimize function library: id=" << item.id;
+
   // Nothing to do here.
   if (item.graph.library().function_size() == 0) {
+    VLOG(3) << "Skip Grappler item with empty function library";
     *optimized_graph = item.graph;
     return Status::OK();
   }
 
-  FunctionOptimizerContext ctx(item, opt_level_);
+  FunctionOptimizerContext ctx(opt_level_, item);
   SymbolicGradientEnv env(item.graph.versions().producer(),
                           item.graph.library());
 
@@ -506,9 +596,11 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     *optimized_graph->add_node() = node;
   }
 
-  // TODO(bsteiner): trim the library to remove unused function definitions
   *optimized_graph->mutable_versions() = item.graph.versions();
-  *optimized_graph->mutable_library() = ctx.function_library().ToProto();
+  *optimized_graph->mutable_library() =
+      options_.enable_trim_function_library
+          ? TrimFunctionLibrary(ctx.function_library(), *optimized_graph)
+          : ctx.function_library().ToProto();
 
   return Status::OK();
 }
