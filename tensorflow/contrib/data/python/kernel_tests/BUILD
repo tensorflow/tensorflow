@@ -308,13 +308,17 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["noasan"],
     deps = [
+        "//third_party/py/absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/contrib/data/python/ops:resampling",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
     ],
 )
 

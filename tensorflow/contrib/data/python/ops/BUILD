@@ -193,7 +193,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":batching",
+        ":interleave_ops",
         ":scan_ops",
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
