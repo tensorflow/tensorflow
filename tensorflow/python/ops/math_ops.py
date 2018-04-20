@@ -1467,7 +1467,8 @@ def count_nonzero(input_tensor,
   ```
 
   Args:
-    input_tensor: The tensor to reduce. Should be of numeric type, or `bool`.
+    input_tensor: The tensor to reduce. Should be of numeric type, `string`,
+      or `bool`.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
