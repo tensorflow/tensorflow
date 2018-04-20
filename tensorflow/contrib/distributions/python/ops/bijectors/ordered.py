@@ -36,6 +36,8 @@ class Ordered(bijector.Bijector):
   """Bijector which maps a tensor x_k that has increasing elements in the last
   dimension to an unconstrained tensor y_k.
 
+  Both the domain and the codomain of the mapping is [-inf, inf], however,
+  the input of the forward mapping must be strictly increasing.
   The inverse of the bijector applied to a normal random vector `y ~ N(0, 1)`
   gives back a sorted random vector with the same distribution `x ~ N(0, 1)`
   where `x = sort(y)`
@@ -55,11 +57,7 @@ class Ordered(bijector.Bijector):
   ```
   """
 
-  def __init__(self,
-               validate_args=False,
-               name="ordered"):
-    self._graph_parents = []
-    self._name = name
+  def __init__(self, validate_args=False, name="ordered"):
     super(Ordered, self).__init__(
         forward_min_event_ndims=1,
         validate_args=validate_args,
@@ -90,21 +88,30 @@ class Ordered(bijector.Bijector):
 
   def _forward(self, x):
     x = self._maybe_assert_valid_x(x)
-    y0 = array_ops.expand_dims(x[..., 0], -1)
+    y0 = x[..., 0, array_ops.newaxis]
     yk = math_ops.log(x[..., 1:] - x[..., :-1])
     y = array_ops.concat([y0, yk], axis=-1)
     return y
 
   def _inverse(self, y):
-    x0 = array_ops.expand_dims(y[..., 0], -1)
+    x0 = y[..., 0, array_ops.newaxis]
     xk = math_ops.exp(y[..., 1:])
     x = array_ops.concat([x0, xk], axis=-1)
     return math_ops.cumsum(x, axis=-1)
 
   def _inverse_log_det_jacobian(self, y):
+    # The Jacobian of the inverse mapping is lower
+    # triangular, with the diagonal elements being:
+    # J[i,i] = 1 if i=1, and
+    #          exp(y_i) if 1<i<=K
+    # which gives the absolute Jacobian determinant:
+    # |det(Jac)| = prod_{i=1}^{K} exp(y[i]).
+    # (1) - Stan Modeling Language User’s Guide and Reference Manual
+    #       Version 2.17.0 session 35.2
     return math_ops.reduce_sum(y[..., 1:], axis=-1)
 
   def _forward_log_det_jacobian(self, x):
+    x = self._maybe_assert_valid_x(x)
     return -math_ops.reduce_sum(
       math_ops.log(x[..., 1:] - x[..., :-1]),
       axis=-1)
