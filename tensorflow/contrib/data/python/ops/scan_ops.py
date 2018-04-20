@@ -144,6 +144,7 @@ class _ScanDataset(dataset_ops.Dataset):
                                                    weakened_state_shapes)
 
     self._scan_func = tf_scan_func
+    self._scan_func.add_to_graph(ops.get_default_graph())
 
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access

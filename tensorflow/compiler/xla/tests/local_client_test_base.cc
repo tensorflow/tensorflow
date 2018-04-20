@@ -44,7 +44,8 @@ StatusOr<se::DeviceMemoryBase> TestAllocator::Allocate(int device_ordinal,
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
-  return StreamExecutorMemoryAllocator::Allocate(device_ordinal, size);
+  return StreamExecutorMemoryAllocator::Allocate(device_ordinal, size,
+                                                 retry_on_failure);
 }
 
 tensorflow::Status TestAllocator::Deallocate(int device_ordinal,

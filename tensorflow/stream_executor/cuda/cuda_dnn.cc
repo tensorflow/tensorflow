@@ -2530,12 +2530,20 @@ cudnnDataType_t GetConvComputeType<double>() {
 }
 
 // A helper struct to decide whether to use FP32 as the internal compute type
-// for rnn when the input data type is FP16. By default it is turned on,
-// users can explicitly disable them (choose to use FP16 as the internal compute
-// type) through an env-var "TF_FP16_RNN_USE_FP32_COMPUTE=0".
+// for rnn when the input data type is FP16. At present it is turned off,
+// users can explicitly control them through an env-var
+// TF_FP16_RNN_USE_FP32_COMPUTE.
+// After the TODO below is fixed, users should almost always use fp32 compute
+// type for training. Using fp16 might suffer suboptimal accuracy due to loss
+// in precision.
 struct RnnDoFP32ComputationFP16Input {
   static constexpr const char* kName = "TF_FP16_RNN_USE_FP32_COMPUTE";
-  static constexpr bool kDefaultFlag = true;
+  // TODO(jamesqin): b/78182362 flip to true when cudnn 7.1.4 fixes the bug.
+  // Before cudnn 7.1.4 RNN are always done in fp32, no matter what math
+  // precision is set.
+  // Set it temporary to false s.t. no error is raised when using fp16 inputs,
+  // fp32 math precision.
+  static constexpr bool kDefaultFlag = false;
 };
 
 // A helper function to return the internal compute type for

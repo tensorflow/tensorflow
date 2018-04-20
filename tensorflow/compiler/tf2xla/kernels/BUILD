@@ -21,6 +21,7 @@ tf_kernel_library(
         "cast_op.cc",
         "categorical_op.cc",
         "cholesky_op.cc",
+        "clip_by_value_op.cc",
         "concat_op.cc",
         "const_op.cc",
         "conv_ops.cc",
