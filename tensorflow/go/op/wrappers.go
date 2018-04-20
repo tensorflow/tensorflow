@@ -5917,6 +5917,17 @@ func Sqrt(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Conv3DBackpropFilterAttr is an optional argument to Conv3DBackpropFilter.
+type Conv3DBackpropFilterAttr func(optionalAttr)
+
+// Conv3DBackpropFilterDilations sets the optional dilations attribute to value.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 i:1 >
+func Conv3DBackpropFilterDilations(value []int64) Conv3DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
 // Computes the gradients of 3-D convolution with respect to the filter.
 //
 // DEPRECATED at GraphDef version 10: Use Conv3DBackpropFilterV2
@@ -5930,11 +5941,14 @@ func Sqrt(scope *Scope, x tf.Output) (y tf.Output) {
 //	strides: 1-D tensor of length 5. The stride of the sliding window for each
 // dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 //	padding: The type of padding algorithm to use.
-func Conv3DBackpropFilter(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string) (output tf.Output) {
+func Conv3DBackpropFilter(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv3DBackpropFilterAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "Conv3DBackpropFilter",
 		Input: []tf.Input{
@@ -12306,6 +12320,17 @@ func MaxPool3D(scope *Scope, input tf.Output, ksize []int64, strides []int64, pa
 	return op.Output(0)
 }
 
+// Conv3DBackpropInputAttr is an optional argument to Conv3DBackpropInput.
+type Conv3DBackpropInputAttr func(optionalAttr)
+
+// Conv3DBackpropInputDilations sets the optional dilations attribute to value.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 i:1 >
+func Conv3DBackpropInputDilations(value []int64) Conv3DBackpropInputAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
 // Computes the gradients of 3-D convolution with respect to the input.
 //
 // DEPRECATED at GraphDef version 10: Use Conv3DBackpropInputV2
@@ -12319,11 +12344,14 @@ func MaxPool3D(scope *Scope, input tf.Output, ksize []int64, strides []int64, pa
 //	strides: 1-D tensor of length 5. The stride of the sliding window for each
 // dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 //	padding: The type of padding algorithm to use.
-func Conv3DBackpropInput(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string) (output tf.Output) {
+func Conv3DBackpropInput(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv3DBackpropInputAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "Conv3DBackpropInput",
 		Input: []tf.Input{

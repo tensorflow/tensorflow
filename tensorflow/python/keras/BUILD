@@ -208,6 +208,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
