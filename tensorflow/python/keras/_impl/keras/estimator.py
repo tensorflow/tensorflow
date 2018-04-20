@@ -287,8 +287,7 @@ def _clone_and_build_model(mode,
                                         is_input=False)
   else:
     target_tensors = [
-        _convert_tensor(
-            sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(labels))
+        _convert_tensor(labels)
     ]
 
   if keras_model._is_graph_network:
