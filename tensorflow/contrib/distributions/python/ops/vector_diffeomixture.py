@@ -427,7 +427,6 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       self._endpoint_affine = [
           AffineLinearOperator(shift=loc_,
                                scale=scale_,
-                               event_ndims=1,
                                validate_args=validate_args,
                                name="endpoint_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(loc, scale))]
@@ -467,7 +466,6 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       self._interpolated_affine = [
           AffineLinearOperator(shift=loc_,
                                scale=scale_,
-                               event_ndims=1,
                                validate_args=validate_args,
                                name="interpolated_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(
@@ -621,9 +619,11 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     log_prob = math_ops.reduce_sum(self.distribution.log_prob(y), axis=-2)
     # Because the affine transformation has a constant Jacobian, it is the case
     # that `affine.fldj(x) = -affine.ildj(x)`. This is not true in general.
-    fldj = array_ops.stack(
-        [aff.forward_log_det_jacobian(x) for aff in self.interpolated_affine],
-        axis=-1)
+    fldj = array_ops.stack([
+        aff.forward_log_det_jacobian(
+            x,
+            event_ndims=array_ops.rank(self.event_shape_tensor())
+        ) for aff in self.interpolated_affine], axis=-1)
     return math_ops.reduce_logsumexp(
         self.mixture_distribution.logits - fldj + log_prob, axis=-1)
 

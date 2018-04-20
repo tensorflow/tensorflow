@@ -68,7 +68,9 @@ class Convolution
     auto activation_function =
         ActivationFunction::Serialize(op.fused_activation_function);
     return ::tflite::CreateConv2DOptions(*builder, padding, op.stride_width,
-                                         op.stride_height, activation_function);
+                                         op.stride_height, activation_function,
+                                         op.dilation_width_factor,
+                                         op.dilation_height_factor);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -76,6 +78,8 @@ class Convolution
     op->padding.type = Padding::Deserialize(options.padding());
     op->stride_width = options.stride_w();
     op->stride_height = options.stride_h();
+    op->dilation_width_factor = options.dilation_w_factor();
+    op->dilation_height_factor = options.dilation_h_factor();
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
@@ -895,6 +899,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "MAXIMUM", OperatorType::kTensorFlowMaximum));
   ops.emplace_back(new SimpleOperator<TensorFlowMinimumOperator>(
       "MINIMUM", OperatorType::kTensorFlowMinimum));
+  ops.emplace_back(new SimpleOperator<TensorFlowLessOperator>(
+      "LESS", OperatorType::kTensorFlowLess));
 
   return ops;
 }

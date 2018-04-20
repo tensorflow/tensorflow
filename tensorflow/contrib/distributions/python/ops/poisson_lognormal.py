@@ -114,7 +114,7 @@ def quadrature_scheme_lognormal_quantiles(
     # Create a LogNormal distribution.
     dist = transformed_lib.TransformedDistribution(
         distribution=normal_lib.Normal(loc=loc, scale=scale),
-        bijector=Exp(event_ndims=0),
+        bijector=Exp(),
         validate_args=validate_args)
     batch_ndims = dist.batch_shape.ndims
     if batch_ndims is None:

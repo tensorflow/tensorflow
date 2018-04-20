@@ -31,6 +31,10 @@ limitations under the License.
 
 #include "i_malloc.h"
 
+#ifdef _WIN32
+typedef unsigned int uint;
+#endif
+
 namespace tensorflow {
 
 class MklSubAllocator : public SubAllocator {

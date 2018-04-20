@@ -95,7 +95,7 @@ class KerasIntegrationTest(test.TestCase):
       model.compile(loss='categorical_crossentropy',
                     optimizer=keras.optimizers.Adam(lr=0.1),
                     metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
+      history = model.fit(x_train, y_train, epochs=15, batch_size=16,
                           validation_data=(x_train, y_train),
                           verbose=2)
       self.assertGreater(history.history['val_acc'][-1], 0.7)

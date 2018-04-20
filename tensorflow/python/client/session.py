@@ -1454,7 +1454,10 @@ class BaseSession(SessionInterface):
               self._session._session, self._handle, args, status, None)
 
     def __del__(self):
-      if self._handle is not None:
+      # NOTE(mrry): It is possible that `self._session.__del__()` could be
+      # called before this destructor, in which case `self._session._session`
+      # will be `None`.
+      if self._handle is not None and self._session._session is not None:
         with errors.raise_exception_on_not_ok_status() as status:
           if self._session._created_with_new_api:
             tf_session.TF_SessionReleaseCallable(

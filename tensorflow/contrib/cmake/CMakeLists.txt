@@ -34,11 +34,16 @@ option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for th
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
 
-# enable SIMD instructions with MSVC, as AVX and SSE
 if (WIN32)
 SET(tensorflow_WIN_CPU_SIMD_OPTIONS "/arch:AVX" CACHE STRING "Enables CPU SIMD instructions")
 SET_PROPERTY(CACHE tensorflow_WIN_CPU_SIMD_OPTIONS PROPERTY STRINGS /arch:AVX) 
 endif()
+
+# SIMD, MKL and MKLDNN options
+option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions" OFF)
+option(tensorflow_ENABLE_MKL_SUPPORT "Enable Intel MKL support" OFF)
+option(tensorflow_ENABLE_MKLDNN_SUPPORT "Enable Intel MKLDNN support, requires MKL enabled" OFF)
+
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
@@ -134,8 +139,16 @@ endif()
 
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
+  if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      # 64 bits
+      add_definitions(-DWIN64)
+  elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+      # 32 bits
+      # temporary fix for #18241
+      add_definitions(-DEIGEN_DEFAULT_DENSE_INDEX_TYPE=std::int64_t)
+  endif()
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11)
-  add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
+  add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
   add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
@@ -169,12 +182,21 @@ endif()
 
 # MSVC SIMD instructions
 if (tensorflow_WIN_CPU_SIMD_OPTIONS)
+  include(CheckCXXCompilerFlag)
+  if (tensorflow_ENABLE_MKL_SUPPORT)
+    add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
+    if (NOT tensorflow_ENABLE_MKLDNN_SUPPORT)
+      add_definitions(-DINTEL_MKL_ML)
+    endif()
+  endif()
+  CHECK_CXX_COMPILER_FLAG("-fopenmp" COMPILER_OPT_OPENMP_SUPPORT)
+  if (COMPILER_OPT_OPENMP_SUPPORT)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+  endif()
   if (WIN32)
-    CHECK_CXX_COMPILER_FLAG("${tensorflow_WIN_CPU_SIMD_OPTIONS}" COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+    CHECK_CXX_COMPILER_FLAG(${tensorflow_WIN_CPU_SIMD_OPTIONS} COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
     if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
-    else()
-      message(FATAL_ERROR "${tensorflow_WIN_CPU_SIMD_OPTIONS} not supported")
     endif()
   endif()
 endif()
@@ -304,6 +326,43 @@ endif()
 if(HAIKU)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES network)
 endif()
+
+if (tensorflow_ENABLE_MKL_SUPPORT)
+  if (WIN32)
+    find_path(MKL_HOME_PLATFORM mkl
+      PATHS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
+      PATH_SUFFIXES windows)
+    set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
+    set(MKL_LINK_DIRS
+      ${MKL_HOME_PLATFORM}/mkl/lib/intel64
+      ${MKL_HOME_PLATFORM}/tbb/lib/intel64/vc_mt
+      ${MKL_HOME_PLATFORM}/compiler/lib/intel64
+      ${MKL_HOME_PLATFORM}/mkl/tools/builder/lib)
+    set(MKL_REDIST_DLL_DIRS
+      ${MKL_HOME_PLATFORM}/redist/intel64/mkl
+      ${MKL_HOME_PLATFORM}/redist/intel64/tbb/vc_mt
+      ${MKL_HOME_PLATFORM}/redist/intel64/compiler)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES
+      mkl_intel_lp64_dll mkl_sequential_dll mkl_core_dll mkl_rt mkl_cdll_intel64)
+  endif()
+  if (UNIX)
+    # Fix me: complete the path on linux
+    find_path(MKL_HOME_PLATFORM mkl
+      HINTS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
+      PATH_SUFFIXES linux)
+    set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
+    set(MKL_LINK_DIRS) # incompleted
+    set(MKL_REDIST_SO_DIRS) # incompleted
+  endif()
+  include_directories(${MKL_INCLUDE_DIRS})
+  link_directories(${MKL_LINK_DIRS})
+  if (tensorflow_ENABLE_MKLDNN_SUPPORT)
+    include(mkldnn)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn)
+    include_directories(${mkldnn_INCLUDE_DIRS})
+  endif()
+endif (tensorflow_ENABLE_MKL_SUPPORT)
 
 if (tensorflow_ENABLE_GPU)
   if (NOT WIN32)

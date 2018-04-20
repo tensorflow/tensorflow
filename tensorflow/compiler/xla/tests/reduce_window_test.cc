@@ -1063,15 +1063,12 @@ struct R2ReduceWindowTestData {
      /*strides=*/{1, 1}, /*pad_low=*/{0, 130}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kAdd},
-// TODO(b/76025683): These tests fail on TPU.
-#if defined(XLA_TEST_BACKEND_CPU) || defined(XLA_TEST_BACKEND_GPU)
-    {/*base_bounds=*/{4096, 4096}, /*window_bounds=*/{1, 4},
-     /*strides=*/{1, 1024}, /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
-     /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{8, 256}, /*window_bounds=*/{1, 4},
      /*strides=*/{1, 64}, /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
-#endif
+    {/*base_bounds=*/{4096, 4096}, /*window_bounds=*/{1, 4},
+     /*strides=*/{1, 1024}, /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
+     /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
 };
 
 string R2ReduceWindowTestDataToString(
@@ -1436,6 +1433,23 @@ ENTRY R3Window {
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
+}
+
+TEST_F(HloTestBase, ReduceWindowIdentity) {
+  const string& hlo_string = R"(
+HloModule ReduceWindowIdentity
+identity.pad_to_reduce_window {
+  param0 = f32[] parameter(0)
+  ROOT param1 = f32[] parameter(1)
+}
+ENTRY reduce-window-identity {
+  operand = f32[1,32,64]{2,1,0} parameter(0)
+  constant.4466 = f32[] constant(0)
+  ROOT reduce-window = f32[1,33,64]{2,1,0} reduce-window(operand, constant.4466),     window={size=1x1x1 pad=0_0x1_0x0_0}, to_apply=identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
 }
 
 }  // namespace

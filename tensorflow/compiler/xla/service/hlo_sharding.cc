@@ -376,6 +376,16 @@ HloSharding HloSharding::TransformShardedTileShape(
   return HloSharding::Tile(new_tile_shape, tile_assignment());
 }
 
+HloSharding HloSharding::GetSubSharding(const Shape& shape,
+                                        const ShapeIndex& index) const {
+  CHECK(IsTuple());
+
+  ShapeTree<HloSharding> sub_shape_tree(ShapeUtil::GetSubshape(shape, index),
+                                        Replicate());
+  sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
+  return Tuple(sub_shape_tree);
+}
+
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {
   out << sharding.ToString();
   return out;

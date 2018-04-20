@@ -70,8 +70,9 @@ class ClipOp : public OpKernel {
         functor::BinaryLeftClipOp<Device, T>()(d, in0_flat, in1_flat, in2_flat,
                                                out_flat);
       } else {
-        OP_REQUIRES(ctx, (in0.shape() == in2.shape() &&
-                          TensorShapeUtils::IsScalar(in1.shape())),
+        OP_REQUIRES(ctx,
+                    (in0.shape() == in2.shape() &&
+                     TensorShapeUtils::IsScalar(in1.shape())),
                     errors::InvalidArgument(
                         "clip_value_min and clip_value_max must be either of "
                         "the same shape as input, or a scalar. ",
@@ -90,12 +91,12 @@ namespace functor {
 template <typename T>
 struct UnaryClipFunc {
   UnaryClipFunc(const T& value_min, const T& value_max)
-      : value_min_(value_min), value_max_(value_max) {}
+      : value_min(value_min), value_max(value_max) {}
   const T operator()(const T& value) const {
-    return std::max(std::min(value, value_max_), value_min_);
+    return std::max(std::min(value, value_max), value_min);
   }
-  T value_min_;
-  T value_max_;
+  T value_min;
+  T value_max;
 };
 template <typename T>
 struct UnaryClipOp<CPUDevice, T> {
@@ -110,11 +111,11 @@ struct UnaryClipOp<CPUDevice, T> {
 // Binary functor for clip [Tensor, Scalar, Tensor]
 template <typename T>
 struct BinaryRightClipFunc {
-  BinaryRightClipFunc(const T& value_min) : value_min_(value_min) {}
+  explicit BinaryRightClipFunc(const T& value_min) : value_min(value_min) {}
   const T operator()(const T& value, const T& value_max) const {
-    return std::max(std::min(value, value_max), value_min_);
+    return std::max(std::min(value, value_max), value_min);
   }
-  T value_min_;
+  T value_min;
 };
 template <typename T>
 struct BinaryRightClipOp<CPUDevice, T> {
@@ -130,11 +131,11 @@ struct BinaryRightClipOp<CPUDevice, T> {
 // Binary functor for clip [Tensor, Tensor, Scalar]
 template <typename T>
 struct BinaryLeftClipFunc {
-  BinaryLeftClipFunc(const T& value_max) : value_max_(value_max) {}
+  explicit BinaryLeftClipFunc(const T& value_max) : value_max(value_max) {}
   const T operator()(const T& value, const T& value_min) const {
-    return std::max(std::min(value, value_max_), value_min);
+    return std::max(std::min(value, value_max), value_min);
   }
-  T value_max_;
+  T value_max;
 };
 template <typename T>
 struct BinaryLeftClipOp<CPUDevice, T> {

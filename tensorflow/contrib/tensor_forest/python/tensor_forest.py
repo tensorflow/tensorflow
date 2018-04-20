@@ -212,7 +212,7 @@ class ForestHParams(object):
     self.regression = getattr(self, 'regression', False)
 
     # Num_outputs is the actual number of outputs (a single prediction for
-    # classification, a N-dimenensional point for regression).
+    # classification, a N-dimensional point for regression).
     self.num_outputs = self.num_classes if self.regression else 1
 
     # Add an extra column to classes for storing counts, which is needed for

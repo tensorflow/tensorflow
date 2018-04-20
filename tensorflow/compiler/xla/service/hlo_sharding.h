@@ -175,6 +175,10 @@ class HloSharding {
     }
   }
 
+  // Retrieves the sub sharding at a given index, out of a tuple sharding.
+  // REQUIRES: IsTuple()
+  HloSharding GetSubSharding(const Shape& shape, const ShapeIndex& index) const;
+
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
            ShapeUtil::Compatible(tile_shape_, other.tile_shape_) &&

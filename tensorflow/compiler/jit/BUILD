@@ -183,6 +183,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shape_inference_helpers",
+    srcs = ["shape_inference_helpers.cc"],
+    hdrs = ["shape_inference_helpers.h"],
+    deps = ["//tensorflow/core:graph"],
+)
+
 # Internal targets below this point.
 
 cc_library(
@@ -293,6 +300,7 @@ cc_library(
     deps = [
         ":common",
         ":graph_to_functiondef",
+        ":shape_inference_helpers",
         ":union_find",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
@@ -310,6 +318,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
     ],
 )
 

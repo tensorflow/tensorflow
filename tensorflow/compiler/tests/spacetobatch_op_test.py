@@ -163,17 +163,26 @@ class SpaceToBatchNDTest(XLATestCase):
         # error.
         if dtype == dtypes.bfloat16.as_numpy_dtype:
           continue
-        # TODO(b/77694432): Half test failed on CPU, last ran on 04-06-2018.
-        if dtype == np.float16 and self.device == "XLA_CPU":
-          continue
+        if dtype == np.float16:
+          actual_inputs = np.array(inputs).astype(dtype)
+          actual_paddings = np.array(paddings).astype(dtype)
+          expected_outputs = np.array(outputs).astype(dtype)
+        else:
+          actual_inputs = inputs
+          actual_paddings = paddings
+          expected_outputs = outputs
         placeholder = array_ops.placeholder(dtype)
         # outputs = space_to_batch(inputs)
-        x_tf = array_ops.space_to_batch_nd(placeholder, block_shape, paddings)
-        self.assertAllEqual(sess.run(x_tf, {placeholder: inputs}), outputs)
+        x_tf = array_ops.space_to_batch_nd(placeholder, block_shape,
+                                           actual_paddings)
+        self.assertAllEqual(
+            sess.run(x_tf, {placeholder: actual_inputs}), expected_outputs)
         # inputs = batch_to_space(outputs)
         placeholder = array_ops.placeholder(dtype)
-        x_tf = array_ops.batch_to_space_nd(placeholder, block_shape, paddings)
-        self.assertAllEqual(sess.run(x_tf, {placeholder: outputs}), inputs)
+        x_tf = array_ops.batch_to_space_nd(placeholder, block_shape,
+                                           actual_paddings)
+        self.assertAllEqual(
+            sess.run(x_tf, {placeholder: expected_outputs}), actual_inputs)
 
   def _testDirect(self, input_shape, block_shape, paddings):
     inputs = np.arange(np.prod(input_shape), dtype=np.float32)
