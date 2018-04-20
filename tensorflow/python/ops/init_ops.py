@@ -848,7 +848,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
     """
     n = projection_matrix.shape.as_list()[0]
     kernel = {}
-    eye = linalg_ops.eye(n, dtype=self.dtype)
+    eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel[0] = projection_matrix
     kernel[1] = eye - projection_matrix
     return kernel
@@ -976,7 +976,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     if p1_shape != p2.shape.as_list() or p1_shape != p3.shape.as_list():
       raise ValueError("The dimension of the matrices must be the same.")
     n = p1_shape[0]
-    eye = linalg_ops.eye(n, dtype=self.dtype)
+    eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel2x2x2 = {}
     def matmul(p1, p2, p3):
       return math_ops.matmul(math_ops.matmul(p1, p2), p3)
