@@ -570,18 +570,36 @@ class PerDeviceDataset(object):
         dataset_iterator, self._devices, self._prefetch_on_device)
 
 
+class PerIteration(object):
+  """Holds input for multiple iterations at once."""
+
+  def __init__(self, index):
+    self._index = index
+
+  def get(self, iteration):
+    return array_ops.gather(self._index, iteration)
+
+  def get_shape(self):
+    return self._index[-1][-1].get_shape()
+
+  def get_dtype(self):
+    return self._index[-1][-1].dtype
+
+
 class MultiIterator(object):
   """Iterator that returns results of multiple get_next()s."""
 
-  def __init__(self, dataset_iterator, iterations):
+  def __init__(self, dataset_iterator, iterations, batches_per_iteration):
     self._dataset_iterator = dataset_iterator
     self._iterations = iterations
+    self._batches_per_iteration = batches_per_iteration
 
   def get_next(self, name=None):
-    return [
+    return PerIteration([[
         self._dataset_iterator.get_next(name=name)
-        for _ in range(self._iterations)
+        for _ in range(self._batches_per_iteration)
     ]
+                         for _ in range(self._iterations)])
 
   @property
   def initializer(self):
@@ -589,18 +607,22 @@ class MultiIterator(object):
 
 
 class PerIterationDataset(object):
+  """A dataset that returns MultiIterators."""
 
-  def __init__(self, dataset, iterations):
+  def __init__(self, dataset, iterations, batches_per_iteration):
     self._dataset = dataset
     self._iterations = iterations
+    self._batches_per_iteration = batches_per_iteration
 
   def make_one_shot_iterator(self):
     iterator = self._dataset.make_one_shot_iterator()
-    return MultiIterator(iterator, self._iterations)
+    return MultiIterator(iterator, self._iterations,
+                         self._batches_per_iteration)
 
   def make_initializable_iterator(self):
     iterator = self._dataset.make_initializable_iterator()
-    return MultiIterator(iterator, self._iterations)
+    return MultiIterator(iterator, self._iterations,
+                         self._batches_per_iteration)
 
 
 class MapOutput(object):

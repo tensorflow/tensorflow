@@ -96,8 +96,17 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       combinations.times(
           combinations.distributions_and_v1_optimizers() +
           combinations.distributions_and_v2_optimizers(),
-          combinations.combine(mode=["graph", "eager"])))
-  def testOptimizerInsideModelFn(self, distribution, optimizer_fn):
+          combinations.combine(mode=["graph", "eager"], is_tpu=[False])) +
+      combinations.combine(
+          distribution=[combinations.tpu_strategy],
+          optimizer_fn=[
+              combinations.adam_optimizer_v1_fn,
+              combinations.gradient_descent_optimizer_v1_fn
+          ],
+          mode=["graph"],
+          is_tpu=[True]))
+
+  def testOptimizerInsideModelFn(self, distribution, optimizer_fn, is_tpu):
     created_variables = []
     trainable_variables = []
 
@@ -128,10 +137,16 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       if not context.executing_eagerly():
         with self.test_session() as sess:
+          if is_tpu:
+            sess.run(tpu.initialize_system())
           run_step = sess.make_callable(run_step())
         self.evaluate(variables_lib.global_variables_initializer())
 
       run_step()
+
+      if is_tpu:
+        with self.test_session() as sess:
+          sess.run(tpu.shutdown_system())
 
       def get_expected_variables(optimizer_fn, num_parameter_devices):
         variables_map = {
