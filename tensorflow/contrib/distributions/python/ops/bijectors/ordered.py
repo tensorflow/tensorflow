@@ -46,7 +46,7 @@ class Ordered(bijector.Bijector):
   `y[0] = x[0]`
   `y[1:] = math_ops.log(x[1:] - x[:-1])`
 
-  Example Use:
+  #### Example Use:
 
   ```python
   bijector.Ordered().forward([2, 3, 4])
