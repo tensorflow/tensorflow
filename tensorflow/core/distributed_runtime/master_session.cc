@@ -416,6 +416,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
   if (!s.ok()) {
     for (Part& part : partitions_) {
       worker_cache_->ReleaseWorker(part.name, part.worker);
+      part.worker = nullptr;
     }
     return s;
   }
@@ -1119,6 +1120,7 @@ MasterSession::MasterSession(
     std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     std::unique_ptr<DeviceSet> device_set,
+    std::vector<string> filtered_worker_list,
     StatsPublisherFactory stats_publisher_factory)
     : session_opts_(opt),
       env_(env),
@@ -1126,6 +1128,7 @@ MasterSession::MasterSession(
       remote_devs_(std::move(remote_devs)),
       worker_cache_(std::move(worker_cache)),
       devices_(std::move(device_set)),
+      filtered_worker_list_(std::move(filtered_worker_list)),
       stats_publisher_factory_(std::move(stats_publisher_factory)),
       graph_version_(0),
       run_graphs_(5),
@@ -1183,9 +1186,8 @@ Status MasterSession::Create(GraphDef* graph_def,
 
 Status MasterSession::CreateWorkerSessions(
     const WorkerCacheFactoryOptions& options) {
-  std::vector<string> worker_names;
+  const std::vector<string> worker_names = filtered_worker_list_;
   WorkerCacheInterface* worker_cache = get_worker_cache();
-  worker_cache->ListWorkers(&worker_names);
 
   struct WorkerGroup {
     // The worker name. (Not owned.)
@@ -1263,8 +1265,7 @@ Status MasterSession::CreateWorkerSessions(
 
 Status MasterSession::DeleteWorkerSessions() {
   WorkerCacheInterface* worker_cache = get_worker_cache();
-  std::vector<string> worker_names;
-  worker_cache->ListWorkers(&worker_names);
+  const std::vector<string>& worker_names = filtered_worker_list_;
 
   struct WorkerGroup {
     // The worker name. (Not owned.)
