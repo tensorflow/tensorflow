@@ -29,7 +29,8 @@ extern "C" {
  * (Ljava/lang/String;[Ljava/lang/String;[B)Lorg/tensorflow/SavedModelBundle;
  */
 JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
-    JNIEnv *, jclass, jstring, jobjectArray, jbyteArray);
+    JNIEnv *, jclass, jstring, jobjectArray, jbyteArray, jbyteArray);
+
 
 #ifdef __cplusplus
 }  // extern "C"
