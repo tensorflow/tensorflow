@@ -358,7 +358,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         input_shape=(16,),
         num_classes=2)
     np.random.seed(_RANDOM_SEED)
-    (input_s_train, _), (input_s_test, _) = testing_utils.get_test_data(
+    (input_m_train, _), (input_m_test, _) = testing_utils.get_test_data(
         train_samples=_TRAIN_SIZE,
         test_samples=50,
         input_shape=(8,),
@@ -371,13 +371,13 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
 
     def train_input_fn():
       input_dict = {'input_a': a_train, 'input_b': b_train,
-                    'input_m': input_s_train > 0}
+                    'input_m': input_m_train > 0}
       output_dict = {'dense_2': c_train, 'dense_3': d_train}
       return input_dict, output_dict
 
     def eval_input_fn():
       input_dict = {'input_a': a_test, 'input_b': b_test,
-                    'input_m': input_s_test > 0}
+                    'input_m': input_m_test > 0}
       output_dict = {'dense_2': c_test, 'dense_3': d_test}
       return input_dict, output_dict
 
