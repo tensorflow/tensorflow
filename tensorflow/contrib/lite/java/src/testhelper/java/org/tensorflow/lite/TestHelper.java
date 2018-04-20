@@ -32,4 +32,55 @@ public class TestHelper {
       throw new IllegalArgumentException("Interpreter has not initialized; Failed to setUseNNAPI.");
     }
   }
+
+  /**
+   * Gets the last inference duration in nanoseconds. It returns null if there is no previous
+   * inference run or the last inference run failed.
+   *
+   * @param interpreter an instance of {@code Interpreter}. If it is not initialized, an {@code
+   *     IllegalArgumentException} will be thrown.
+   */
+  public static Long getLastNativeInferenceDurationNanoseconds(Interpreter interpreter) {
+    if (interpreter != null && interpreter.wrapper != null) {
+      return interpreter.wrapper.getLastNativeInferenceDurationNanoseconds();
+    } else {
+      throw new IllegalArgumentException("Interpreter has not initialized; Failed to get latency.");
+    }
+  }
+
+  /**
+   * Gets the dimensions of an input.
+   *
+   * @param interpreter an instance of {@code Interpreter}. If it is not initialized, an {@code
+   *     IllegalArgumentException} will be thrown.
+   * @param index an integer index of the input. If it is invalid, an {@code
+   *     IllegalArgumentException} will be thrown.
+   */
+  public static int[] getInputDims(Interpreter interpreter, int index) {
+    if (interpreter != null && interpreter.wrapper != null) {
+      return interpreter.wrapper.getInputDims(index);
+    } else {
+      throw new IllegalArgumentException(
+          "Interpreter has not initialized;" + " Failed to get input dimensions.");
+    }
+  }
+
+  /**
+   * Gets the string name of the data type of an output.
+   *
+   * @param interpreter an instance of {@code Interpreter}. If it is not initialized, an {@code
+   *     IllegalArgumentException} will be thrown.
+   * @param index an integer index of the output. If it is invalid, an {@code
+   *     IllegalArgumentException} will be thrown.
+   * @return string name of the data type. Possible values include "float", "int", "byte", and
+   *     "long".
+   */
+  public static String getOutputDataType(Interpreter interpreter, int index) {
+    if (interpreter != null && interpreter.wrapper != null) {
+      return interpreter.wrapper.getOutputDataType(index);
+    } else {
+      throw new IllegalArgumentException(
+          "Interpreter has not initialized;" + " Failed to get output data type.");
+    }
+  }
 }

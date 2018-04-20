@@ -1274,6 +1274,19 @@ class ProfilerHookTest(test.TestCase):
         sess.run(self.train_op)  # Saved.
         self.assertEqual(3, self._count_timeline_files())
 
+  def test_run_metadata_saves_in_first_step(self):
+    writer_cache.FileWriterCache.clear()
+    fake_summary_writer.FakeSummaryWriter.install()
+    fake_writer = writer_cache.FileWriterCache.get(self.output_dir)
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.ProfilerHook(
+          save_secs=2, output_dir=self.output_dir)
+      with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
+        sess.run(self.train_op)  # Saved.
+        self.assertEqual(
+            list(fake_writer._added_run_metadata.keys()), ['step_1'])
+    fake_summary_writer.FakeSummaryWriter.uninstall()
+
 
 if __name__ == '__main__':
   test.main()

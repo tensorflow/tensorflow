@@ -95,10 +95,8 @@ Color GetColorForArray(const Model& model, const string& array_name) {
       array_name == dump_options.graphviz_last_array) {
     return Color(0x9E, 0x9E, 0x9E);
   }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return Color(0x9E, 0x9E, 0x9E);
-    }
+  if (IsOutputArray(model, array_name)) {
+    return Color(0x9E, 0x9E, 0x9E);
   }
   // Remaining arrays are intermediate activation arrays.
   // Lighter tone of the same grey as for input/output arrays:
@@ -115,6 +113,12 @@ void AppendArrayVal(string* string, Array const& array, int index) {
     AppendF(string, "%.3f", data[index]);
   } else if (array.buffer->type == ArrayDataType::kUint8) {
     const auto& data = array.GetBuffer<ArrayDataType::kUint8>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kInt16) {
+    const auto& data = array.GetBuffer<ArrayDataType::kInt16>().data;
     if (index >= data.size()) {
       return;
     }
@@ -142,14 +146,8 @@ NodeProperties GetPropertiesForArray(const Model& model,
 
   // Append array shape to the label.
   auto& array = model.GetArray(array_name);
-
-  if (array.data_type == ArrayDataType::kFloat) {
-    AppendF(&node_properties.label, "\\nType: float");
-  } else if (array.data_type == ArrayDataType::kInt32) {
-    AppendF(&node_properties.label, "\\nType: int32");
-  } else if (array.data_type == ArrayDataType::kUint8) {
-    AppendF(&node_properties.label, "\\nType: uint8");
-  }
+  AppendF(&node_properties.label, "\\nType: %s",
+          ArrayDataTypeName(array.data_type));
 
   if (array.has_shape()) {
     auto& array_shape = array.shape();
@@ -199,12 +197,12 @@ NodeProperties GetPropertiesForArray(const Model& model,
   }
 
   if (array.minmax) {
-    AppendF(&node_properties.label, "\\nMinMax: [%.3g, %.3g]",
+    AppendF(&node_properties.label, "\\nMinMax: [%.7g, %.7g]",
             array.minmax->min, array.minmax->max);
   }
 
   if (array.quantization_params) {
-    AppendF(&node_properties.label, "\\nQuantization: %.3g * (x - %d)",
+    AppendF(&node_properties.label, "\\nQuantization: %7g * (x - %d)",
             array.quantization_params->scale,
             array.quantization_params->zero_point);
   }

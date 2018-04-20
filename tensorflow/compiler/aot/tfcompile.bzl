@@ -132,7 +132,7 @@ def tf_library(name, graph, config,
   header_file = name + ".h"
   metadata_object_file = name + "_tfcompile_metadata.o"
   function_object_file = name + "_tfcompile_function.o"
-  ep = ("__" + PACKAGE_NAME + "__" + name).replace("/", "_")
+  ep = ("__" + native.package_name() + "__" + name).replace("/", "_")
   if type(tfcompile_flags) == type(""):
     flags = tfcompile_flags
   else:

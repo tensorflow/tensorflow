@@ -317,6 +317,7 @@ class InferenceContext {
     input_tensors_as_shapes_ = input_tensors_as_shapes;
   }
 
+  ShapeHandle output(int64 idx) const { return outputs_[idx]; }
   void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
   Status set_output(StringPiece output_name,
                     const std::vector<ShapeHandle>& shapes);
@@ -461,6 +462,12 @@ class InferenceContext {
   // <input_idx>. The tensor must be a 1-dimensional int32 or int64 tensor.  If
   // the input tensor is NULL, then an unknown shape is returned.
   Status MakeShapeFromShapeTensor(int input_idx, ShapeHandle* out);
+
+  // Like the function above, but treats scalar values as unknown
+  // shapes.  **NOTE** If the scalar is statically known, its value
+  // must be -1 or an error is returned.
+  Status MakeShapeFromShapeTensorTreatScalarAsUnknownShape(int input_idx,
+                                                           ShapeHandle* out);
 
   // Returns in <out> a new shape corresponding to <proto>.
   Status MakeShapeFromShapeProto(const TensorShapeProto& proto,
@@ -706,6 +713,11 @@ class InferenceContext {
     merged_shapes_.clear();
     merged_dims_.clear();
   }
+
+  // Helper method for MakeShapeFromTensor and MakeShapeFromShapeTensor.
+  Status InternalMakeShapeFromTensor(
+      bool treat_unknown_scalar_tensor_as_unknown_shape, const Tensor* t,
+      ShapeHandle tensor_shape, ShapeHandle* out);
 
   ShapeManager shape_manager_;
 

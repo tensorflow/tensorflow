@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -107,14 +106,6 @@ class Executable {
   ExecutionProfile execution_profile() const {
     tensorflow::mutex_lock lock(mutex_);
     return execution_profile_;
-  }
-
-  // Returns Status::ok() if the two executables are equal to each other.
-  //
-  // An error status is returned otherwise.
-  virtual const Status EqualOrFail(const Executable& executable) {
-    return Unimplemented(
-        "Equality test on this executable is not implemented.");
   }
 
   const HloProfilePrinterData& hlo_profile_printer_data() const {

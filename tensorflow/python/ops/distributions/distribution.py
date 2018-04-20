@@ -338,6 +338,27 @@ class Distribution(_BaseDistribution):
   cum_prob_invalid = u.cdf([4.0, 5.0, 6.0])
   ```
 
+  #### Shapes
+
+  There are three important concepts associated with TensorFlow Distributions
+  shapes:
+  - Event shape describes the shape of a single draw from the distribution;
+    it may be dependent across dimensions. For scalar distributions, the event
+    shape is `[]`. For a 5-dimensional MultivariateNormal, the event shape is
+    `[5]`.
+  - Batch shape describes independent, not identically distributed draws, aka a
+    "collection" or "bunch" of distributions.
+  - Sample shape describes independent, identically distributed draws of batches
+    from the distribution family.
+
+  The event shape and the batch shape are properties of a Distribution object,
+  whereas the sample shape is associated with a specific call to `sample` or
+  `log_prob`.
+
+  For detailed usage examples of TensorFlow Distributions shapes, see
+  [this tutorial](
+  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding%20TensorFlow%20Distributions%20Shapes.ipynb)
+
   #### Parameter values leading to undefined statistics or distributions.
 
   Some distributions do not have well-defined statistics for all initialization
@@ -593,7 +614,7 @@ class Distribution(_BaseDistribution):
     Returns:
       batch_shape: `TensorShape`, possibly unknown.
     """
-    return self._batch_shape()
+    return tensor_shape.as_shape(self._batch_shape())
 
   def _event_shape_tensor(self):
     raise NotImplementedError("event_shape_tensor is not implemented")
@@ -626,7 +647,7 @@ class Distribution(_BaseDistribution):
     Returns:
       event_shape: `TensorShape`, possibly unknown.
     """
-    return self._event_shape()
+    return tensor_shape.as_shape(self._event_shape())
 
   def is_scalar_event(self, name="is_scalar_event"):
     """Indicates that `event_shape == []`.
@@ -1104,6 +1125,34 @@ class Distribution(_BaseDistribution):
     """
     with self._name_scope(name):
       return self._kl_divergence(other)
+
+  def __str__(self):
+    return ("tf.distributions.{type_name}("
+            "\"{self_name}\""
+            "{maybe_batch_shape}"
+            "{maybe_event_shape}"
+            ", dtype={dtype})".format(
+                type_name=type(self).__name__,
+                self_name=self.name,
+                maybe_batch_shape=(", batch_shape={}".format(self.batch_shape)
+                                   if self.batch_shape.ndims is not None
+                                   else ""),
+                maybe_event_shape=(", event_shape={}".format(self.event_shape)
+                                   if self.event_shape.ndims is not None
+                                   else ""),
+                dtype=self.dtype.name))
+
+  def __repr__(self):
+    return ("<tf.distributions.{type_name} "
+            "'{self_name}'"
+            " batch_shape={batch_shape}"
+            " event_shape={event_shape}"
+            " dtype={dtype}>".format(
+                type_name=type(self).__name__,
+                self_name=self.name,
+                batch_shape=self.batch_shape,
+                event_shape=self.event_shape,
+                dtype=self.dtype.name))
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):

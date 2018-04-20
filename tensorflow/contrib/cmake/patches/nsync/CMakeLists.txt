@@ -42,7 +42,6 @@ if ("${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
   include_directories ("${PROJECT_SOURCE_DIR}/platform/c++11")
   add_definitions ("-DNSYNC_USE_CPP11_TIMEPOINT -DNSYNC_ATOMIC_CPP11")
   set (NSYNC_OS_CPP_SRC
-    "platform/c++11/src/nsync_semaphore_mutex.cc"
     "platform/c++11/src/per_thread_waiter.cc"
     "platform/c++11/src/yield.cc"
     "platform/c++11/src/time_rep_timespec.cc"
@@ -52,6 +51,7 @@ if ("${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/win32")
     add_compile_options ("/TP")
     set (NSYNC_OS_SRC
+      "platform/c++11/src/nsync_semaphore_mutex.cc"
       "platform/win32/src/clock_gettime.c"
       "platform/win32/src/pthread_key_win32.cc"
       ${NSYNC_OS_CPP_SRC}
@@ -68,6 +68,7 @@ if ("${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
     add_compile_options ("-std=c++11")
     set (NSYNC_OS_SRC
       ${NSYNC_OS_CPP_SRC}
+      "platform/c++11/src/nsync_semaphore_mutex.cc"
       "platform/posix/src/clock_gettime.c"
       "platform/posix/src/nsync_semaphore_mutex.c"
     )
@@ -75,9 +76,11 @@ if ("${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
       "platform/posix/src/start_thread.c"
     )
   elseif ("${CMAKE_SYSTEM_NAME}X" STREQUAL "LinuxX")
+    include_directories (BEFORE "${PROJECT_SOURCE_DIR}/platform/c++11.futex")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/posix")
     add_compile_options ("-std=c++11")
     set (NSYNC_OS_SRC
+      "platform/linux/src/nsync_semaphore_futex.c"
       ${NSYNC_OS_CPP_SRC}
     )
     set (NSYNC_TEST_OS_SRC
@@ -87,6 +90,7 @@ if ("${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/posix")
     add_compile_options ("-std=c++11")
     set (NSYNC_OS_SRC
+      "platform/c++11/src/nsync_semaphore_mutex.cc"
       ${NSYNC_OS_CPP_SRC}
     )
     set (NSYNC_TEST_OS_SRC
@@ -96,6 +100,7 @@ if ("${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/posix")
     add_compile_options ("-std=c++11")
     set (NSYNC_OS_SRC
+      "platform/c++11/src/nsync_semaphore_mutex.cc"
       ${NSYNC_OS_CPP_SRC}
     )
     set (NSYNC_TEST_OS_SRC
@@ -105,6 +110,7 @@ if ("${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/posix")
     add_compile_options ("-std=c++11")
     set (NSYNC_OS_SRC
+      "platform/c++11/src/nsync_semaphore_mutex.cc"
       ${NSYNC_OS_CPP_SRC}
     )
     set (NSYNC_TEST_OS_SRC

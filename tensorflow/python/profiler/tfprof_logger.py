@@ -156,7 +156,7 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   Returns:
     tmp_op_log: Merged OpLogProto proto.
   """
-  if not graph and context.in_graph_mode():
+  if not graph and not context.executing_eagerly():
     graph = ops.get_default_graph()
 
   tmp_op_log = tfprof_log_pb2.OpLogProto()
@@ -210,7 +210,7 @@ def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
     add_trace: Whether to add python code trace information.
         Used to support "code" view.
   """
-  if not graph and context.in_graph_mode():
+  if not graph and not context.executing_eagerly():
     graph = ops.get_default_graph()
   op_log = merge_default_with_oplog(graph, op_log, run_meta, add_trace)
 

@@ -201,9 +201,7 @@ class SequenceDatasetTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(init_op)
-      with self.assertRaisesRegexp(
-          errors.OutOfRangeError,
-          "Attempted to repeat an empty dataset infinitely."):
+      with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
 

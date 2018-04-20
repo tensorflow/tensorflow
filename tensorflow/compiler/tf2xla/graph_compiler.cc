@@ -130,7 +130,7 @@ Status GraphCompiler::Compile() {
     // Set up inputs from outputs of previous nodes.
     for (auto* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      Node* src = e->src();
+      const Node* src = e->src();
       TF_RET_CHECK(src->id() < output_registry.size());
       const NodeOutputs& src_outputs = output_registry[src->id()];
 

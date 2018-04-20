@@ -141,14 +141,20 @@ class IteratorResource : public ResourceBase {
     std::vector<Tensor> outputs;
     GraphRunner graph_runner(ctx->env());
 
-    // Build a new FLR that knows about the functions in the graph.
-    std::shared_ptr<FunctionLibraryDefinition> flib_def(
-        new FunctionLibraryDefinition(
-            *ctx->function_library()->GetFunctionLibraryDefinition()));
+    // Build a new FLR that knows about the functions in the graph, and use
+    // it for all operations on the restored iterator.
+    // NOTE(mrry): We clone the existing FLR and use it in the GraphRunner
+    // because some of the OpKernels in the graph might call functions that are
+    // only defined in the loaded GraphDef.
+    FunctionLibraryRuntime* lib;
+    std::unique_ptr<DeviceMgr> device_mgr(nullptr);
+    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+    TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&flib_def, &pflr, &lib));
     TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
 
     TF_RETURN_IF_ERROR(
-        graph_runner.Run(&graph, lib_, {}, {output_node}, &outputs));
+        graph_runner.Run(&graph, lib, {}, {output_node}, &outputs));
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
     TF_RETURN_IF_ERROR(set_iterator(dataset->MakeIterator("Iterator")));
@@ -158,9 +164,8 @@ class IteratorResource : public ResourceBase {
       IteratorContext::Params params;
       params.env = ctx->env();
       params.runner = *(ctx->runner());
-      params.function_library = flib_def;
-      params.lib = lib_;
-      DeviceBase* device = lib_->device();
+      params.lib = lib;
+      DeviceBase* device = lib->device();
       params.allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
@@ -168,7 +173,10 @@ class IteratorResource : public ResourceBase {
 
       TF_RETURN_IF_ERROR(captured_iterator->Restore(&iter_ctx, reader));
       mutex_lock l(mu_);
+      device_mgr_ = std::move(device_mgr);
       lib_def_ = std::move(flib_def);
+      pflr_ = std::move(pflr);
+      lib_ = lib;
       return Status::OK();
     } else {
       return errors::FailedPrecondition(
@@ -859,9 +867,7 @@ class IteratorGetNextOp : public AsyncOpKernel {
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     thread_pool_->Schedule(std::bind(
-        [this, ctx, iterator](DoneCallback done) {
-          core::ScopedUnref unref_iterator(iterator);
-
+        [ctx, iterator](DoneCallback done) {
           std::vector<Tensor> components;
           bool end_of_sequence = false;
 
@@ -878,17 +884,22 @@ class IteratorGetNextOp : public AsyncOpKernel {
           };
           IteratorContext iter_ctx(std::move(params));
 
-          OP_REQUIRES_OK_ASYNC(
-              ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-              done);
-          OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
-                            errors::OutOfRange("End of sequence"), done);
+          Status s =
+              iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+          // NOTE(mrry): We must unref the iterator before calling `done()`, to
+          // avoid destruction races.
+          iterator->Unref();
 
-          for (int i = 0; i < components.size(); ++i) {
-            // TODO(mrry): Check that the shapes match the shape attrs.
-            ctx->set_output(i, components[i]);
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+          } else if (end_of_sequence) {
+            ctx->SetStatus(errors::OutOfRange("End of sequence"));
+          } else {
+            for (int i = 0; i < components.size(); ++i) {
+              // TODO(mrry): Check that the shapes match the shape attrs.
+              ctx->set_output(i, components[i]);
+            }
           }
-
           done();
         },
         std::move(done)));

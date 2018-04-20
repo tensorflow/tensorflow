@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -95,7 +96,8 @@ string InferSourceFileName(const char* argv_zero) {
   // operators defined in <op type>_ops.cc
   const char* kExecPrefix = "gen_";
   const char* kExecSuffix = "_py_wrappers_cc";
-  if (command_str.Consume(kExecPrefix) && command_str.ends_with(kExecSuffix)) {
+  if (str_util::ConsumePrefix(&command_str, kExecPrefix) &&
+      str_util::EndsWith(command_str, kExecSuffix)) {
     command_str.remove_suffix(strlen(kExecSuffix));
     return strings::StrCat(command_str, ".cc");
   } else {

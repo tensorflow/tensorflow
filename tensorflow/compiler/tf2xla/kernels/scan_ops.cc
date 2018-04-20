@@ -66,7 +66,7 @@ class ScanOp : public XlaOpKernel {
                                 -input_shape.dims(), ", ", input_shape.dims(),
                                 "), but got ", axis));
 
-    DataType dtype = ctx->input_type(0);
+    DataType dtype = XlaHelpers::SumAccumulationType(ctx->input_type(0));
 
     if (input_shape.num_elements() == 0) {
       // Exit early if there is nothing to compute.
@@ -91,7 +91,6 @@ class ScanOp : public XlaOpKernel {
       std::swap(padding[axis].first, padding[axis].second);
     }
 
-    xla::ComputationDataHandle input = ctx->Input(0);
     xla::ComputationDataHandle init;
     const xla::Computation* reducer;
     if (sum_) {
@@ -102,7 +101,10 @@ class ScanOp : public XlaOpKernel {
       reducer = ctx->GetOrCreateMul(dtype);
     }
     auto output = builder->ReduceWindowWithGeneralPadding(
-        ctx->Input(0), init, *reducer, window_dims, window_strides, padding);
+        XlaHelpers::ConvertElementType(builder, ctx->Input(0), dtype), init,
+        *reducer, window_dims, window_strides, padding);
+    output =
+        XlaHelpers::ConvertElementType(builder, output, ctx->input_type(0));
 
     // In exclusive mode, we have computed an extra element containing the sum
     // of all the input elements. Slice off this extra "last" element.

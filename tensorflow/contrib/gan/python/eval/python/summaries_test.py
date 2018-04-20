@@ -65,15 +65,14 @@ def get_cyclegan_model():
   return namedtuples.CycleGANModel(
       model_x2y=model_x2y,
       model_y2x=model_y2x,
-      reconstructed_x=array_ops.zeros([3, 30, 35, 6]),
-      reconstructed_y=array_ops.zeros([3, 30, 35, 6]))
+      reconstructed_x=array_ops.zeros([4, 32, 32, 3]),
+      reconstructed_y=array_ops.zeros([4, 32, 32, 3]))
 
 
 class SummariesTest(test.TestCase):
 
-  def _test_add_gan_model_image_summaries_impl(self, get_model_fn,
-                                               expected_num_summary_ops,
-                                               model_summaries):
+  def _test_add_gan_model_image_summaries_impl(
+      self, get_model_fn, expected_num_summary_ops, model_summaries):
     summaries.add_gan_model_image_summaries(get_model_fn(), grid_size=2,
                                             model_summaries=model_summaries)
 
@@ -89,9 +88,9 @@ class SummariesTest(test.TestCase):
   def test_add_gan_model_image_summaries_no_model(self):
     self._test_add_gan_model_image_summaries_impl(get_gan_model, 2, False)
 
-  def test_add_gan_model_image_summaries_for_cyclegan(self):
-    self._test_add_gan_model_image_summaries_impl(get_cyclegan_model, 10,
-                                                  True)
+  def test_cyclegan_image_summaries_dont_work(self):
+    with self.assertRaises(ValueError):
+      summaries.add_gan_model_image_summaries(get_cyclegan_model())
 
   def _test_add_gan_model_summaries_impl(self, get_model_fn,
                                          expected_num_summary_ops):
@@ -138,7 +137,11 @@ class SummariesTest(test.TestCase):
     self._test_add_image_comparison_summaries_impl(get_gan_model, 1)
 
   def test_add_image_comparison_summaries_for_cyclegan(self):
-    self._test_add_image_comparison_summaries_impl(get_cyclegan_model, 2)
+    summaries.add_cyclegan_image_summaries(get_cyclegan_model())
+
+    self.assertEquals(2, len(ops.get_collection(ops.GraphKeys.SUMMARIES)))
+    with self.test_session(use_gpu=True):
+      summary.merge_all().eval()
 
 
 if __name__ == '__main__':

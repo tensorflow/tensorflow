@@ -94,7 +94,7 @@ class SavedModelTest(test.TestCase):
     self.assertEqual(expected_asset_file_name, asset.filename)
     self.assertEqual(expected_asset_tensor_name, asset.tensor_info.name)
 
-  def _validate_inputs_tensor_info(self, builder, tensor_info):
+  def _validate_inputs_tensor_info_fail(self, builder, tensor_info):
     with self.test_session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
@@ -107,7 +107,18 @@ class SavedModelTest(test.TestCase):
           sess, ["foo"],
           signature_def_map={"foo_key": foo_signature})
 
-  def _validate_outputs_tensor_info(self, builder, tensor_info):
+  def _validate_inputs_tensor_info_accept(self, builder, tensor_info):
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      foo_signature = signature_def_utils.build_signature_def({
+          "foo_inputs": tensor_info
+      }, dict(), "foo")
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"],
+          signature_def_map={"foo_key": foo_signature})
+
+  def _validate_outputs_tensor_info_fail(self, builder, tensor_info):
     with self.test_session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
@@ -116,6 +127,16 @@ class SavedModelTest(test.TestCase):
       self.assertRaises(
           AssertionError,
           builder.add_meta_graph_and_variables,
+          sess, ["foo"],
+          signature_def_map={"foo_key": foo_signature})
+
+  def _validate_outputs_tensor_info_accept(self, builder, tensor_info):
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      foo_signature = signature_def_utils.build_signature_def(
+          dict(), {"foo_outputs": tensor_info}, "foo")
+      builder.add_meta_graph_and_variables(
           sess, ["foo"],
           signature_def_map={"foo_key": foo_signature})
 
@@ -538,23 +559,50 @@ class SavedModelTest(test.TestCase):
       self.assertEqual("bar", bar_signature["bar_key"].method_name)
       self.assertEqual("foo_new", bar_signature["foo_key"].method_name)
 
-  def testSignatureDefValidation(self):
-    export_dir = self._get_export_dir("test_signature_def_validation")
+  def testSignatureDefValidationFails(self):
+    export_dir = self._get_export_dir("test_signature_def_validation_fail")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    tensor_without_name = meta_graph_pb2.TensorInfo()
-    tensor_without_name.dtype = types_pb2.DT_FLOAT
-    self._validate_inputs_tensor_info(builder, tensor_without_name)
-    self._validate_outputs_tensor_info(builder, tensor_without_name)
+    tensor_without_encoding = meta_graph_pb2.TensorInfo()
+    tensor_without_encoding.dtype = types_pb2.DT_FLOAT
+    self._validate_inputs_tensor_info_fail(builder, tensor_without_encoding)
+    self._validate_outputs_tensor_info_fail(builder, tensor_without_encoding)
 
     tensor_without_dtype = meta_graph_pb2.TensorInfo()
     tensor_without_dtype.name = "x"
-    self._validate_inputs_tensor_info(builder, tensor_without_dtype)
-    self._validate_outputs_tensor_info(builder, tensor_without_dtype)
+    self._validate_inputs_tensor_info_fail(builder, tensor_without_dtype)
+    self._validate_outputs_tensor_info_fail(builder, tensor_without_dtype)
 
     tensor_empty = meta_graph_pb2.TensorInfo()
-    self._validate_inputs_tensor_info(builder, tensor_empty)
-    self._validate_outputs_tensor_info(builder, tensor_empty)
+    self._validate_inputs_tensor_info_fail(builder, tensor_empty)
+    self._validate_outputs_tensor_info_fail(builder, tensor_empty)
+
+  def testSignatureDefValidationSucceedsWithName(self):
+    tensor_with_name = meta_graph_pb2.TensorInfo()
+    tensor_with_name.name = "foo"
+    tensor_with_name.dtype = types_pb2.DT_FLOAT
+
+    export_dir = self._get_export_dir("test_signature_def_validation_name_1")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+    self._validate_inputs_tensor_info_accept(builder, tensor_with_name)
+
+    export_dir = self._get_export_dir("test_signature_def_validation_name_2")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+    self._validate_outputs_tensor_info_accept(builder, tensor_with_name)
+
+  def testSignatureDefValidationSucceedsWithCoo(self):
+    tensor_with_coo = meta_graph_pb2.TensorInfo()
+    # TODO(soergel) test validation of each of the fields of coo_sparse
+    tensor_with_coo.coo_sparse.values_tensor_name = "foo"
+    tensor_with_coo.dtype = types_pb2.DT_FLOAT
+
+    export_dir = self._get_export_dir("test_signature_def_validation_coo_1")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+    self._validate_inputs_tensor_info_accept(builder, tensor_with_coo)
+
+    export_dir = self._get_export_dir("test_signature_def_validation_coo_2")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+    self._validate_outputs_tensor_info_accept(builder, tensor_with_coo)
 
   def testAssets(self):
     export_dir = self._get_export_dir("test_assets")

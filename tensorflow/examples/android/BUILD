@@ -76,7 +76,6 @@ android_binary(
     custom_package = "org.tensorflow.demo",
     inline_constants = 1,
     manifest = "AndroidManifest.xml",
-    manifest_merger = "legacy",
     resource_files = glob(["res/**"]),
     tags = [
         "manual",
@@ -99,22 +98,6 @@ filegroup(
     ],
 )
 # LINT.ThenChange(//tensorflow/examples/android/download-models.gradle)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-            "gradleBuild/**",
-            "libs/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 filegroup(
     name = "java_files",

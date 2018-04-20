@@ -27,6 +27,7 @@ from sklearn.cluster import KMeans as SklearnKMeans
 # pylint: disable=g-import-not-at-top
 from tensorflow.contrib.factorization.python.ops import kmeans as kmeans_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -226,6 +227,44 @@ class KMeansTest(KMeansTestBase):
     self._infer_helper(kmeans, clusters, 10)
     self._infer_helper(kmeans, clusters, 1)
 
+  def _parse_feature_dict_helper(self, features, parsed_feature_dict):
+    # Perform a sanity check.
+    self.assertEqual(features.shape, parsed_feature_dict.shape)
+    self.assertEqual(features.dtype, parsed_feature_dict.dtype)
+    # Then check that running the tensor yields the original list of points.
+    with self.test_session() as sess:
+      parsed_points = sess.run(parsed_feature_dict)
+      self.assertAllEqual(self.points, parsed_points)
+
+  def test_parse_features(self):
+    """Tests the various behaviours of kmeans._parse_features_if_necessary."""
+
+    # No-op if a tensor is passed in.
+    features = constant_op.constant(self.points)
+    parsed_features = kmeans_lib._parse_features_if_necessary(features, None)
+    self.assertAllEqual(features, parsed_features)
+
+    # All values from a feature dict are transformed into a tensor.
+    feature_dict = {
+        'x': [[point[0]] for point in self.points],
+        'y': [[point[1]] for point in self.points]
+    }
+    parsed_feature_dict = kmeans_lib._parse_features_if_necessary(
+        feature_dict, None)
+    self._parse_feature_dict_helper(features, parsed_feature_dict)
+
+    # Only the feature_columns of a feature dict are transformed into a tensor.
+    feature_dict_with_extras = {
+        'foo': 'bar',
+        'x': [[point[0]] for point in self.points],
+        'baz': {'fizz': 'buzz'},
+        'y': [[point[1]] for point in self.points]
+    }
+    feature_columns = [fc.numeric_column(key='x'), fc.numeric_column(key='y')]
+    parsed_feature_dict = kmeans_lib._parse_features_if_necessary(
+        feature_dict_with_extras, feature_columns)
+    self._parse_feature_dict_helper(features, parsed_feature_dict)
+
 
 class KMeansTestMultiStageInit(KMeansTestBase):
 
@@ -374,7 +413,7 @@ class KMeansCosineDistanceTest(KMeansTestBase):
     self.assertAllClose(score, self.true_score, atol=1e-2)
 
   def test_predict_kmeans_plus_plus(self):
-    # Most points are concetrated near one center. KMeans++ is likely to find
+    # Most points are concentrated near one center. KMeans++ is likely to find
     # the less populated centers.
     points = np.array(
         [[2.5, 3.5], [2.5, 3.5], [-2, 3], [-2, 3], [-3, -3], [-3.1, -3.2],
@@ -394,7 +433,6 @@ class KMeansCosineDistanceTest(KMeansTestBase):
     true_assignments = [0] * 2 + [1] * 2 + [2] * 8
     true_score = len(points) - np.tensordot(
         normalize(points), true_centers[true_assignments])
-
     kmeans = kmeans_lib.KMeansClustering(
         3,
         initial_clusters=self.initial_clusters,
@@ -566,7 +604,7 @@ class KMeansTestQueues(test.TestCase):
     return _fn
 
   # This test makes sure that there are no deadlocks when using a QueueRunner.
-  # Note that since cluster initialization is dependendent on inputs, if input
+  # Note that since cluster initialization is dependent on inputs, if input
   # is generated using a QueueRunner, one has to make sure that these runners
   # are started before the initialization.
   def test_queues(self):

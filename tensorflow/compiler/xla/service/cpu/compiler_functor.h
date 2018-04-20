@@ -47,7 +47,7 @@ class CompilerFunctor {
         post_optimization_hook_(post_optimization_hook) {}
 
   // Compile a Module to an ObjectFile.
-  llvm::object::OwningBinary<llvm::object::ObjectFile> operator()(
+  std::unique_ptr<llvm::MemoryBuffer> operator()(
       llvm::Module& module) const;  // NOLINT
 
  private:

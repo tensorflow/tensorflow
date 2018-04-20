@@ -163,7 +163,7 @@ def einsum(equation, *inputs, **kwargs):
     if '...' in equation:
       raise ValueError('Subscripts with ellipses are not yet supported.')
 
-    match = re.match('([a-z,]+)(->[a-z]*)?', equation)
+    match = re.match('^([a-zA-Z,]+)(->[a-zA-Z]*)?$', equation)
     if not match:
       raise ValueError('Indices have incorrect format: %s' % equation)
 
@@ -402,7 +402,7 @@ def _exponential_space_einsum(equation, *inputs):
   if '...' in equation:
     raise ValueError('Subscripts with ellipses are not yet supported.')
 
-  match = re.match('([a-z,]+)(->[a-z]*)?', equation)
+  match = re.match('^([a-zA-Z,]+)(->[a-zA-Z]*)?$', equation)
   if not match:
     raise ValueError('Indices have incorrect format: %s' % equation)
 

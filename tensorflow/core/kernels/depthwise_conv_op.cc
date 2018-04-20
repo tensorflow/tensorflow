@@ -241,7 +241,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 };
 
 // Extern template instantiated in conv_ops.cc.
-extern template class LaunchConv2DOp<CPUDevice, float>;
+extern template struct LaunchConv2DOp<CPUDevice, float>;
 
 #if GOOGLE_CUDA
 
@@ -251,7 +251,7 @@ extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
 // Extern template instantiated in conv_ops.cc.
-extern template class LaunchConv2DOp<GPUDevice, float>;
+extern template struct LaunchConv2DOp<GPUDevice, float>;
 
 #endif
 

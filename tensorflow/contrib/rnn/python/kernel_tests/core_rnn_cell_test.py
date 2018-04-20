@@ -187,6 +187,8 @@ class RNNCellTest(test.TestCase):
               ],
               state_is_tuple=False)
           self.assertEqual(cell.dtype, None)
+          self.assertEqual("cell-0", cell._checkpoint_dependencies[0].name)
+          self.assertEqual("cell-1", cell._checkpoint_dependencies[1].name)
           g, out_m = cell(x, m)
           # Layer infers the input type.
           self.assertEqual(cell.dtype, dtype.name)

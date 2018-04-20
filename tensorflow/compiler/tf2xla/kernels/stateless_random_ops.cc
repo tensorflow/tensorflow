@@ -239,6 +239,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomUniform")
+                    .CompileTimeConstInput("shape")
                     .TypeConstraint("dtype", DT_FLOAT)
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomUniformOp);
@@ -272,6 +273,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomNormal")
+                    .CompileTimeConstInput("shape")
                     .TypeConstraint("dtype", DT_FLOAT)
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomNormalOp);

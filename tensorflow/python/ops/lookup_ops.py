@@ -157,10 +157,10 @@ class InitializableLookupTableBase(LookupInterface):
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
-    if context.in_graph_mode():
-      name = table_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       name = context.context().scope_name
+    else:
+      name = table_ref.op.name.split("/")[-1]
     super(InitializableLookupTableBase,
           self).__init__(initializer.key_dtype, initializer.value_dtype,
                          name)
@@ -196,9 +196,7 @@ class InitializableLookupTableBase(LookupInterface):
     """
     with ops.name_scope(name, "%s_Size" % self._name,
                         [self._table_ref]) as scope:
-      # pylint: disable=protected-access
-      return gen_lookup_ops._lookup_table_size_v2(self._table_ref, name=scope)
-      # pylint: enable=protected-access
+      return gen_lookup_ops.lookup_table_size_v2(self._table_ref, name=scope)
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -227,10 +225,8 @@ class InitializableLookupTableBase(LookupInterface):
     with ops.name_scope(name, "%s_Lookup" % self._name,
                         (self._table_ref, key_tensor,
                          self._default_value)) as scope:
-      # pylint: disable=protected-access
-      values = gen_lookup_ops._lookup_table_find_v2(
+      values = gen_lookup_ops.lookup_table_find_v2(
           self._table_ref, key_tensor, self._default_value, name=scope)
-      # pylint: enable=protected-access
 
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -274,13 +270,11 @@ class HashTable(InitializableLookupTableBase):
     """
     with ops.name_scope(name, "hash_table", (initializer,
                                              default_value)) as scope:
-      # pylint: disable=protected-access
-      table_ref = gen_lookup_ops._hash_table_v2(
+      table_ref = gen_lookup_ops.hash_table_v2(
           shared_name=shared_name,
           key_dtype=initializer.key_dtype,
           value_dtype=initializer.value_dtype,
           name=scope)
-      # pylint: enable=protected-access
 
       super(HashTable, self).__init__(table_ref, default_value, initializer)
 
@@ -352,10 +346,8 @@ class KeyValueTensorInitializer(TableInitializerBase):
     with ops.name_scope(
         self._name, values=(table.table_ref, self._keys,
                             self._values)) as scope:
-      # pylint: disable=protected-access
-      init_op = gen_lookup_ops._initialize_table_v2(
+      init_op = gen_lookup_ops.initialize_table_v2(
           table.table_ref, self._keys, self._values, name=scope)
-      # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -518,8 +510,7 @@ class TextFileInitializer(TableInitializerBase):
                         (table.table_ref,)) as scope:
       filename = ops.convert_to_tensor(
           self._filename, dtypes.string, name="asset_filepath")
-      # pylint: disable=protected-access
-      init_op = gen_lookup_ops._initialize_table_from_text_file_v2(
+      init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
           table.table_ref,
           filename,
           self._key_index,
@@ -527,11 +518,10 @@ class TextFileInitializer(TableInitializerBase):
           -1 if self._vocab_size is None else self._vocab_size,
           self._delimiter,
           name=scope)
-      # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g., if
     # it is a placeholder) then it does not make sense to track it as an asset.
-    if context.in_graph_mode() and constant_op.is_constant(filename):
+    if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 

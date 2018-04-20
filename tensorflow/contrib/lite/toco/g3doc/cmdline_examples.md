@@ -1,21 +1,72 @@
 # TensorFlow Lite Optimizing Converter command-line examples
 
-This page is a guide to using the TensorFlow Lite Optimizing Converter by
-looking at some example command lines. It is complemented by the following other
-documents:
+This page provides examples on how to use TOCO via command line. It is
+complemented by the following documents:
 
 *   [README](../README.md)
-*   [Command-line reference](cmdline_reference.md)
+*   [Command-line glossary](cmdline_reference.md)
+*   [Python API examples](python_api.md)
 
 Table of contents:
 
-[TOC]
+*   [Convert a TensorFlow SavedModel to TensorFlow Lite](#savedmodel)
+*   [Convert a TensorFlow GraphDef to TensorFlow Lite for float
+    inference](#graphdef-float)
+*   [Quantization](#quantization)
+    *   [Convert a TensorFlow GraphDef to TensorFlow Lite for quantized
+        inference](#graphdef-quant)
+    *   [Use "dummy-quantization" to try out quantized inference on a float
+        graph](#dummy-quant)
+*   [Specifying input and output arrays](#specifying-input-and-output-arrays)
+    *   [Multiple output arrays](#multiple-output-arrays)
+    *   [Multiple input arrays](#multiple-input-arrays)
+    *   [Specifying subgraphs](#specifying-subgraphs)
+*   [Other conversions supported by TOCO](#other-conversions)
+    *   [Optimize a TensorFlow GraphDef](#optimize-graphdef)
+    *   [Convert a TensorFlow Lite FlatBuffer back into TensorFlow GraphDef
+        format](#to-graphdef)
+*   [Logging](#logging)
+    *   [Standard logging](#standard-logging)
+    *   [Verbose logging](#verbose-logging)
+    *   [Graph "video" logging](#graph-video-logging)
+*   [Graph visualizations](#graph-visualizations)
+    *   [Using --output_format=GRAPHVIZ_DOT](#using-output-formatgraphviz-dot)
+    *   [Using --dump_graphviz](#using-dump-graphviz)
+    *   [Legend for the graph visualizations](#graphviz-legend)
 
-## Convert a TensorFlow GraphDef to TensorFlow Lite for float inference
+## Convert a TensorFlow SavedModel to TensorFlow Lite <a name="savedmodel"></a>
 
-In this example, we look at the most common task: we have an ordinary TensorFlow
-GraphDef and want to convert it to a TensorFlow Lite flatbuffer to perform
-floating-point inference.
+The follow example converts a basic TensorFlow SavedModel into a Tensorflow Lite
+FlatBuffer to perform floating-point inference.
+
+```
+bazel run --config=opt \
+  third_party/tensorflow/contrib/lite/toco:toco -- \
+  --savedmodel_directory=/tmp/saved_model \
+  --output_file=/tmp/foo.tflite
+```
+
+[SavedModel](https://www.tensorflow.org/programmers_guide/saved_model#using_savedmodel_with_estimators)
+has fewer required flags than frozen graphs (described [below](#graphdef-float))
+due to access to additional data contained within the SavedModel. The values for
+`--input_arrays` and `--output_arrays` are an aggregated, alphabetized list of
+the inputs and outputs in the
+[SignatureDefs](https://www.tensorflow.org/serving/signature_defs) within the
+[MetaGraphDef](https://www.tensorflow.org/programmers_guide/saved_model#apis_to_build_and_load_a_savedmodel)
+specified by `--savedmodel_tagset`. The value for `input_shapes` is
+automatically determined from the MetaGraphDef whenever possible. The default
+value for `--inference_type` for SavedModels is `FLOAT`.
+
+There is currently no support for MetaGraphDefs without a SignatureDef or for
+MetaGraphDefs that use the [`assets/`
+directory](https://www.tensorflow.org/programmers_guide/saved_model#structure_of_a_savedmodel_directory).
+
+## Convert a TensorFlow GraphDef to TensorFlow Lite for float inference <a name="graphdef-float"></a>
+
+The follow example converts a basic TensorFlow GraphDef (frozen by
+[freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py))
+into a TensorFlow Lite FlatBuffer to perform floating-point inference. Frozen
+graphs contain the variables stored in Checkpoint files as Const ops.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
@@ -24,107 +75,26 @@ bazel run --config=opt \
   //tensorflow/contrib/lite/toco:toco -- \
   --input_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
   --output_file=/tmp/foo.tflite \
-  --input_format=TENSORFLOW_GRAPHDEF \
-  --output_format=TFLITE \
   --inference_type=FLOAT \
   --input_shape=1,128,128,3 \
   --input_array=input \
   --output_array=MobilenetV1/Predictions/Reshape_1
 ```
 
-To explain each of these flags:
+## Quantization
 
-*   `--input_format` and `--output_format` determine the formats of the input
-    and output files: here we are converting from `TENSORFLOW_GRAPHDEF` to
-    `TFLITE`.
-*   `--input_file` specifies the path of the input file, to be converted. When
-    `--input_format=TENSORFLOW_GRAPHDEF`, this file should be a
-    *[frozen](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py)*
-    *inference* graph. Being frozen means in particular that the input file is
-    self-contained, and does not reference any external "checkpoint" file. An
-    *inference* graph is a version of a graph meant to be used for inference,
-    typically not the same graph file as was used for training a given model.
-*   `--output_file` specifies the destination to write the converted file to.
-*   `--input_array` specifies the input activations, that is, the input "tensor"
-    in the input TensorFlow GraphDef file. The array designated by
-    `--input_array` is the one that the user will have to provide the contents
-    of as input to the runtime inference code.
-*   `--output_array` specifies the output activations, that is, the output
-    "tensor" in the input TensorFlow GraphDef file. The runtime inference code
-    will store its results in the array designated by `--output_array`.
-*   `--input_shape` specifies the shape of the input array. It is currently
-    required, but the plan is for a future version to no longer require it,
-    allowing to defer the specification of the input shape until runtime. The
-    format of `input_shape` is always a comma-separated list of dimensions,
-    always in TensorFlow convention.
-*   `--inference_type` specifies what type of arithmetic the output file should
-    be relying on. It implies in particular the choice of type of the output
-    arrays in the output file.
+### Convert a TensorFlow GraphDef to TensorFlow Lite for quantized inference <a name="graphdef-quant"></a>
 
-## Just optimize a TensorFlow GraphDef
+TOCO is compatible with fixed point quantization models described
+[here](https://www.tensorflow.org/performance/quantization). These are float
+models with
+[`FakeQuant*`](https://www.tensorflow.org/api_guides/python/array_ops#Fake_quantization)
+ops inserted at the boundaries of fused layers to record min-max range
+information. This generates a quantized inference workload that reproduces the
+quantization behavior that was used during training.
 
-The converter accepts both TENSORFLOW_GRAPHDEF and TFLITE file formats as both
-`--input_format` and `--output_format`. This means that conversion from and to
-any supported format is possible, and in particular, same-format "conversions"
-are possible, and effectively ask the converter to optimize and simplify a
-graph. Example:
-
-```
-curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
-  | tar xzv -C /tmp
-bazel run --config=opt \
-  //tensorflow/contrib/lite/toco:toco -- \
-  --input_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --output_file=/tmp/foo.pb \
-  --input_format=TENSORFLOW_GRAPHDEF \
-  --output_format=TENSORFLOW_GRAPHDEF \
-  --input_shape=1,128,128,3 \
-  --input_array=input \
-  --output_array=MobilenetV1/Predictions/Reshape_1
-```
-
-Here we did not pass `--inference_type` because it is not considered applicable
-to the TensorFlow GraphDef format (as far as we are concerned, TensorFlow
-GraphDefs are technically always float, and the only flavor of "quantized"
-GraphDef that the converter deals with is "FakeQuantized" graphs that are still
-technically float graphs).
-
-Below in the section about passing arbitrary input/output arrays we give another
-example, using the converter to extract just a sub-graph from a TensorFlow
-GraphDef.
-
-## Convert a TensorFlow Lite flatbuffer back into TensorFlow GraphDef format
-
-As we mentioned that the converter supports file format conversions in any
-direction, let us just give an example of that:
-
-```
-bazel run --config=opt \
-  //tensorflow/contrib/lite/toco:toco -- \
-  --input_file=/tmp/foo.tflite \
-  --output_file=/tmp/foo.pb \
-  --input_format=TFLITE \
-  --output_format=TENSORFLOW_GRAPHDEF \
-  --input_shape=1,128,128,3 \
-  --input_array=input \
-  --output_array=MobilenetV1/Predictions/Reshape_1
-```
-
-## Convert a TensorFlow GraphDef to TensorFlow Lite for quantized inference
-
-Let us now look at a quantized model. As mentioned above, the only flavor of
-quantized TensorFlow GraphDefs that the converter is concerned with, is
-"FakeQuantized" models. These are technically float models, but with special
-`FakeQuant*` ops inserted at the boundaries of fused layers to record min-max
-range information allowing to generate a quantized inference workload that is
-able to reproduce exactly the specific quantization behavior that was used
-during training. Indeed, the whole point of quantized training is to allow for
-both training and inference to perform exactly the same arithmetic, so that the
-way that the training process about around quantization inaccuracy is
-effectively helping the quantized inference process to be more accurate.
-
-Given a quantized TensorFlow GraphDef, generating a quantized TensorFlow Lite
-flatbuffer is done like this:
+The following command generates a quantized TensorFlow Lite FlatBuffer from a
+"quantized" TensorFlow GraphDef.
 
 ```
 bazel run --config=opt \
@@ -141,36 +111,17 @@ bazel run --config=opt \
   --std_value=127
 ```
 
-Here, besides changing `--input_file` to point to a (fake-)quantized GraphDef,
-the only other changes are:
+### Use \"dummy-quantization\" to try out quantized inference on a float graph <a name="dummy-quant"></a>
 
-*   To change `--inference_type` to `QUANTIZED_UINT8`. This effectively tells
-    the converter to generate an output file that performs quantized inference
-    on a quantized input.
-*   To pass `--mean_value` and `--std_value` flags to describe how the quantized
-    uint8 input array values are to be interpreted as the mathematical real
-    numbers that the graph is concerned with (keep in mind that even a
-    "fake-quantized" TensorFlow GraphDef is still technically a float graph).
-    The meaning of `--mean_value` and `--std_value` is explained in the
-    command-line reference; it suffices for now to say that they are a property
-    of each model.
+In order to evaluate the possible benefit of generating a quantized graph, TOCO
+allows "dummy-quantization" on float graphs. The flags `--default_ranges_min`
+and `--default_ranges_max` accept plausable values for the min-max ranges of the
+values in all arrays that do not have min-max information. "Dummy-quantization"
+will produce lower accuracy but will emulate the performance of a correctly
+quantized model.
 
-## Use dummy-quantization to try out quantized inference on a float graph
-
-Sometimes, one only has a plain float graph, and one is curious as to how much
-faster inference might run if one could perform quantized inference instead of
-float inference. Rather than requiring users to first invest in quantizing their
-graphs before they can evaluate a possible benefit, the converter allows to
-simply experiment with what we call "dummy quantization": provide some vaguely
-plausible values for the min-max ranges of values in all arrays that do not have
-min-max information, so that quantization can carry on, certainly producing
-inaccurate results (do not use that in production!) but with performance
-characteristics that should be identical to those of an actually quantized
-flavor of the model.
-
-In the present example, we have a model using Relu6 activation functions almost
-everywhere, so a reasonable guess is that most activation ranges should be
-contained in [0, 6] and roughly comparable to it.
+The example below contains a model using Relu6 activation functions. Therefore,
+a reasonable guess is that most activation ranges should be contained in [0, 6].
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
@@ -191,15 +142,13 @@ bazel run --config=opt \
   --std_value=127.5
 ```
 
-## Multiple output arrays
+## Specifying input and output arrays
 
-Some models have multiple outputs. Even in a model with only one output, you may
-want for the inference code to return the contents of other arrays as well, or
-to perform inference on a subgraph with multiple outputs (see the section below
-on specifying arbitrary arrays as input/output arrays).
+### Multiple output arrays
 
-Either way, using `--output_arrays` instead of `--output_array` allows to
-specify a comma-separated list of output arrays.
+The flag `output_arrays` takes in a comma-separated list of output arrays as
+seen in the example below. This is useful for models or subgraphs with multiple
+outputs.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_2016_08_28_frozen.pb.tar.gz \
@@ -216,18 +165,11 @@ bazel run --config=opt \
   --output_arrays=InceptionV1/InceptionV1/Mixed_3b/Branch_1/Conv2d_0a_1x1/Relu,InceptionV1/InceptionV1/Mixed_3b/Branch_2/Conv2d_0a_1x1/Relu
 ```
 
-## Multiple input arrays
+### Multiple input arrays
 
-Some models have multiple inputs; even in a model with a single input, you may
-want for the inference code to implement only a subgraph with multiple inputs
-(see the section below on specifying arbitrary arrays as input/output arrays).
-
-Either way, multiple input arrays are specified by using `--input_arrays`
-instead of `--input_array` to specify a comma-separated list of input arrays. In
-that case, one also needs to use `--input_shapes` instead of `--input_shape`.
-The syntax for `--input_shapes` is a bit trickier, since already the singular
-`--input_shape` was a comma-separated list of integers! Multiple input shapes
-are delimited by a colon (`:`) in `--input_shapes`.
+The flag `input_arrays` takes in a comma-separated list of input arrays as seen
+in the example below. This is useful for models or subgraphs with multiple
+inputs.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_2016_08_28_frozen.pb.tar.gz \
@@ -244,41 +186,19 @@ bazel run --config=opt \
   --output_array=InceptionV1/Logits/Predictions/Reshape_1
 ```
 
-## Specifying arbitrary arrays in a graph as input or output arrays
+Note that `input_shapes` is provided as a colon-separated list. Each input shape
+corresponds to the input array at the same position in the respective list.
 
-Any array in the input file can be specified as an input or output array. This
-allows to use the converter to extract a sub-graph out of the input graph file.
-The converter then automatically discards any part of the graph that is not
-needed for the subgraph identified by the specified input and output arrays.
-Another use case for specifying multiple output arrays is to get inference code
-to return the contents of some specified intermediate activations array, not
-just the output activations.
+### Specifying subgraphs
 
-In order to know which array you want to pass as `--input_arrays` /
-`--output_arrays`, it helps to have a visualization of the graph. See the
-section below on graph visualization. When using graph visualization for that
-purpose, make sure to use `--dump_graphviz=` to visualize exactly the graph as
-it is in the actual final form being exported to the output file.
+Any array in the input file can be specified as an input or output array in
+order to extract subgraphs out of an input graph file. TOCO discards the parts
+of the graph outside of the specific subgraph. Use [graph
+visualizations](#graph-visualizations) to identify the input and output arrays
+that make up the desired subgraph.
 
-Note that the final representation of an on-device inference workload (say, in
-TensorFlow Lite flatbuffers format) tends to have coarser granularity than the
-very fine granularity of the TensorFlow GraphDef representation. For example,
-while a fully-connected layer is typically represented as at least four separate
-ops in TensorFlow GraphDef (Reshape, MatMul, BiasAdd, Relu...), it is typically
-represented as a single "fused" op (FullyConnected) in the converter's optimized
-representation and in the final on-device representation (e.g. in TensorFlow
-Lite flatbuffer format). As the level of granularity gets coarser, some
-intermediate arrays (say, the array between the MatMul and the BiasAdd in the
-TensorFlow GraphDef) are dropped. When specifying intermediate arrays as
-`--input_arrays` / `--output_arrays`, it is generally at least desirable (and
-often required) to specify arrays that are meant to survive in the final form of
-the graph, after fusing. These are typically the outputs of activation functions
-(since everything in each layer until the activation function tends to get
-fused).
-
-Here is an example of extracting just a sub-graph, namely just a single fused
-layer, out of a TensorFlow GraphDef, and exporting a TensorFlow GraphDef
-containing just that subgraph:
+The follow command shows how to extract a single fused layer out of a TensorFlow
+GraphDef.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_2016_08_28_frozen.pb.tar.gz \
@@ -294,13 +214,74 @@ bazel run --config=opt \
   --output_array=InceptionV1/InceptionV1/Mixed_3b/concat_v2
 ```
 
+Note that the final representation of an on-device inference workload (say, in
+TensorFlow Lite FlatBuffers format) tends to have coarser granularity than the
+very fine granularity of the TensorFlow GraphDef representation. For example,
+while a fully-connected layer is typically represented as at least four separate
+ops in TensorFlow GraphDef (Reshape, MatMul, BiasAdd, Relu...), it is typically
+represented as a single "fused" op (FullyConnected) in the converter's optimized
+representation and in the final on-device representation (e.g. in TensorFlow
+Lite FlatBuffer format). As the level of granularity gets coarser, some
+intermediate arrays (say, the array between the MatMul and the BiasAdd in the
+TensorFlow GraphDef) are dropped. When specifying intermediate arrays as
+`--input_arrays` / `--output_arrays`, it is desirable (and often required) to
+specify arrays that are meant to survive in the final form of the graph, after
+fusing. These are typically the outputs of activation functions (since
+everything in each layer until the activation function tends to get fused).
+
+## Other conversions supported by TOCO <a name="other-conversions"></a>
+
+The converter accepts both TENSORFLOW_GRAPHDEF and TFLITE file formats as both
+`--input_format` and `--output_format`. This means that conversion to and from
+any supported format is possible.
+
+### Optimize a TensorFlow GraphDef <a name="optimize-graphdef"></a>
+
+Same-format "conversions" can be used to optimize and simplify a graph or be
+used to [get a subgraph](#specifying-subgraphs) of a graph. The flag
+`--inference_type` is not required because TensorFlow graphs, including those
+containing the
+[`FakeQuant*`](https://www.tensorflow.org/api_guides/python/array_ops#Fake_quantization)
+ops are always float graphs.
+
+```
+curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
+  | tar xzv -C /tmp
+bazel run --config=opt \
+  //tensorflow/contrib/lite/toco:toco -- \
+  --input_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
+  --output_file=/tmp/foo.pb \
+  --input_format=TENSORFLOW_GRAPHDEF \
+  --output_format=TENSORFLOW_GRAPHDEF \
+  --input_shape=1,128,128,3 \
+  --input_array=input \
+  --output_array=MobilenetV1/Predictions/Reshape_1
+```
+
+### Convert a TensorFlow Lite FlatBuffer back into TensorFlow GraphDef format <a name="to-graphdef"></a>
+
+The converter supports file format conversions from TensorFlow Lite, back into
+TensorFlow GraphDef format.
+
+```
+bazel run --config=opt \
+  //tensorflow/contrib/lite/toco:toco -- \
+  --input_file=/tmp/foo.tflite \
+  --output_file=/tmp/foo.pb \
+  --input_format=TFLITE \
+  --output_format=TENSORFLOW_GRAPHDEF \
+  --input_shape=1,128,128,3 \
+  --input_array=input \
+  --output_array=MobilenetV1/Predictions/Reshape_1
+```
+
 ## Logging
 
 ### Standard logging
 
 The converter generates some informative log messages during processing. The
-easiest way to view them is to add `--logtostderr` to command lines. For the
-previous example, that gives:
+easiest way to view them is to add `--logtostderr` to command lines as seen in
+the following example.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
@@ -333,42 +314,34 @@ I1101 21:51:33.309484    5339 toco_tooling.cc:249] Estimated count of arithmetic
 For debugging purposes, the converter supports two levels of verbose logging,
 which can be set by passing a `--v=` flag:
 
-*   At `--v=1`, the converter generates text dumps of the graph at various
-    points during processing, as well as log messages about every graph
-    transformation that did take place, typically answering questions of the
-    form "why was my graph transformed in this way"?
-*   At `--v=2`, the converter additionally generates log messages about graph
-    transformations that were considered but not actually performed, typically
-    answering questions of the form "why was my graph NOT transformed when I
-    expected it would be?".
+*   For `--v=1`, the converter generates text dumps of the graph at various
+    points during processing as well as log messages about every graph
+    transformation that took place.
+*   For `--v=2`, the converter additionally generates log messages about graph
+    transformations that were considered but not performed.
 
 ### Graph "video" logging
 
-When `--dump_graphviz=` is used (see the section on Graph visualizations), one
-may additionally pass `--dump_graphviz_video`, which causes a graph
-visualization to be dumped after each individual graph transformations, often
-resulting in thousands of files. Typically, one would then bisect into these
-files to understand when a given change was introduced in the graph.
+When `--dump_graphviz=` is used (see the section on [graph
+visualizations](#graph-visualizations)), one may additionally pass
+`--dump_graphviz_video`, which causes a graph visualization to be dumped after
+each individual graph transformation. This results in thousands of files.
+Typically, one would then bisect into these files to understand when a given
+change was introduced in the graph.
 
 ## Graph visualizations
 
-The converter is able to export a graph to the GraphViz Dot format, for easy
-visualization. Combined with the converter's ability to transform the graph into
-a simpler, coarser-granularity representation, that makes it a very powerful
-visualization tool.
-
-There are two ways to get the converter to export a GraphViz Dot file,
-corresponding to two separate use cases. Understanding the difference between
-them is key to getting useful graph visualizations.
+TOCO can export a graph to the GraphViz Dot format for easy visualization via
+either the `--output_format` flag or the `--dump_graphviz` flag. The subsections
+below outline the use cases for each.
 
 ### Using `--output_format=GRAPHVIZ_DOT`
 
-The first way to get a graphviz rendering is to pass
-`--output_format=GRAPHVIZ_DOT`, instead of the `--output_format` that you would
-otherwise use. This says: "I just want to get a plausible visualization of that
-graph". The upside is that it makes for very simple command lines, and makes the
-converter very lax about aspects of the graph or the command line that it would
-otherwise complain about. Example:
+The first way to get a graphviz rendering is to pass `GRAPHVIZ_DOT` into
+`--output_format`. This results in a plausable visualization of the graph. This
+reduces the requirements that normally exist during conversion between other
+input and output formats. For example, this may be useful if conversion from
+TENSORFLOW_GRAPHDEF to TFLITE is failing.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
@@ -391,7 +364,7 @@ dot -Tpdf -O /tmp/foo.dot
 ```
 
 And the resulting `.dot.pdf` can be viewed in any PDF viewer, but we suggest one
-with a good ability to pan and zoom across a very large page; Google Chrome does
+with a good ability to pan and zoom across a very large page. Google Chrome does
 well in that respect.
 
 ```
@@ -400,14 +373,14 @@ google-chrome /tmp/foo.dot.pdf
 
 Example PDF files are viewable online in the next section.
 
-### Using `--dump_graphviz=`
+### Using `--dump_graphviz`
 
-The second way to get a graphviz rendering is to pass a `--dump_graphviz=` flag
-specifying a destination directory to dump GraphViz rendering to. Unlike the
-previous approach, this one allows you to keep your real command-line (with your
-real `--output_format` and other flags) unchanged, just appending a
-`--dump_graphviz=` flag to it. This says: "I want visualizations of the actual
-graph during this specific conversion process". Example:
+The second way to get a graphviz rendering is to pass the `--dump_graphviz=`
+flag, specifying a destination directory to dump GraphViz rendering to. Unlike
+the previous approach, this one allows you to keep your real command-line (with
+your real `--output_format` and other flags) unchanged, just appending a
+`--dump_graphviz=` flag to it. This provides a visualization of the actual graph
+during a specific conversion process.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
@@ -425,8 +398,8 @@ bazel run --config=opt \
   --dump_graphviz=/tmp
 ```
 
-This generates a few files in the destination directory, here `/tmp`. Most
-important are these two files:
+This generates a few files in the destination directory, here `/tmp`. The two
+most important files are:
 
 ```
 /tmp/toco_AT_IMPORT.dot
@@ -442,8 +415,7 @@ conversion subsequently fails).
 
 `toco_AFTER_TRANSFORMATIONS.dot` represents the graph after all transformations
 were applied to it, just before it was exported to the `--output_file`.
-Typically, this is a much smaller graph, and it conveys much more information
-about each node.
+Typically, this is a much smaller graph with more information about each node.
 
 Again, these can be rendered to PDFs:
 
@@ -451,12 +423,12 @@ Again, these can be rendered to PDFs:
 dot -Tpdf -O /tmp/toco_*.dot
 ```
 
-The resulting files can be seen here:
+Sample output files can be seen here:
 
 *   [toco_AT_IMPORT.dot.pdf](https://storage.googleapis.com/download.tensorflow.org/example_images/toco_AT_IMPORT.dot.pdf)
 *   [toco_AFTER_TRANSFORMATIONS.dot.pdf](https://storage.googleapis.com/download.tensorflow.org/example_images/toco_AFTER_TRANSFORMATIONS.dot.pdf).
 
-### Legend for the graph visualizations
+### Legend for the graph visualizations <a name="graphviz-legend"></a>
 
 *   Operators are red square boxes with the following hues of red:
     *   Most operators are

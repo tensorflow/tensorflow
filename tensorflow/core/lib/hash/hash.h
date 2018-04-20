@@ -24,7 +24,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -65,13 +64,6 @@ struct hash<T*> {
 };
 
 template <>
-struct hash<bfloat16> {
-  size_t operator()(const bfloat16& t) const {
-    return std::hash<float>()(static_cast<float>(t));
-  }
-};
-
-template <>
 struct hash<string> {
   size_t operator()(const string& s) const {
     return static_cast<size_t>(Hash64(s));
@@ -84,6 +76,7 @@ struct hash<StringPiece> {
     return static_cast<size_t>(Hash64(sp.data(), sp.size()));
   }
 };
+using StringPieceHasher = ::tensorflow::hash<StringPiece>;
 
 template <typename T, typename U>
 struct hash<std::pair<T, U>> {
@@ -91,15 +84,6 @@ struct hash<std::pair<T, U>> {
     return Hash64Combine(hash<T>()(p.first), hash<U>()(p.second));
   }
 };
-
-// Wrapper around protocol buffer serialization that requests deterministic
-// serialization, in particular for Map fields, which serialize in a random
-// order by default. Returns true on success.
-// Serialization is guaranteed to be deterministic for a given binary only.
-// See the following for more details:
-// https://github.com/google/protobuf/blob/a1bb147e96b6f74db6cdf3c3fcb00492472dbbfa/src/google/protobuf/io/coded_stream.h#L834
-bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
-                                    string* result);
 
 }  // namespace tensorflow
 

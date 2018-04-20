@@ -98,6 +98,12 @@ from tensorflow.python.summary import summary
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
+# Import boosted trees ops to make sure the ops are registered (but unused).
+from tensorflow.python.ops import gen_boosted_trees_ops as _gen_boosted_trees_ops
+
+# Import cudnn rnn ops to make sure their ops are registered.
+from tensorflow.python.ops import gen_cudnn_rnn_ops as _
+
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -138,6 +144,23 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
+
+# Eager execution
+from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.framework.ops import enable_eager_execution
+
+# Necessary for the symbols in this module to be taken into account by
+# the namespace management system (API decorators).
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
+
+# Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
+# (due to a circular dependency issue: rnn depends on layers).
+nn.dynamic_rnn = rnn.dynamic_rnn
+nn.static_rnn = rnn.static_rnn
+nn.raw_rnn = rnn.raw_rnn
+nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
+nn.rnn_cell = rnn_cell
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -198,13 +221,9 @@ tf_export('TensorInfo')(TensorInfo)
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
-    'mul',  # use tf.multiply instead.
-    'neg',  # use tf.negative instead.
-    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',
-    'list_diff',  # Use tf.listdiff instead.
     'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',
@@ -292,6 +311,12 @@ _allowed_symbols.extend([
     'COMPILER_VERSION',
     'CXX11_ABI_FLAG',
     'MONOLITHIC_BUILD',
+])
+
+# Eager execution
+_allowed_symbols.extend([
+    'enable_eager_execution',
+    'executing_eagerly',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly

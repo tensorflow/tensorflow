@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(_MSC_VER)
 #include "tensorflow/core/platform/windows/cpu_info.h"
 #endif
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -60,7 +61,7 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedDefaultAttr) {
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
   Status s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(StringPiece(s.ToString()).contains("NodeDef missing attr"));
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), "NodeDef missing attr"));
 
   // Add the defaults.
   TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, *OpRegistry::Global(), 0));
@@ -83,7 +84,7 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
   Status s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(StringPiece(s.ToString()).contains("NodeDef missing attr"));
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), "NodeDef missing attr"));
 
   // Add the defaults.
   TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, *OpRegistry::Global(), 0));
@@ -91,7 +92,7 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
   // Validation should still fail.
   s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(StringPiece(s.ToString()).contains("NodeDef missing attr"));
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), "NodeDef missing attr"));
 }
 
 TEST(ValidateGraphDefAgainstOpListTest, GraphWithOpOnlyInOpList) {

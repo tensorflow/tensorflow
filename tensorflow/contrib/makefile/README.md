@@ -155,7 +155,7 @@ CC_PREFIX=ccache tensorflow/contrib/makefile/build_all_android.sh -s tensorflow/
 (add -T on subsequent builds to skip protobuf downloading/building)
 
 
-#### Testing the the CUDA-enabled benchmark via adb:
+#### Testing the CUDA-enabled benchmark via adb:
 Build binaries first as above, then run:
 
 ```bash
@@ -193,6 +193,8 @@ with:
 ```
 srcs = glob(["libs/arm64-v8a/*.so"]),
 ```
+
+If you are building for Android TV (Shield TV devices), replace "portrait" with "landscape" for android:screenOrientation in all four activities in tensorflow/examples/android/AndroidManifest.xml
 
 Then run:
 ```bash

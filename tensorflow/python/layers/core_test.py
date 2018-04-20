@@ -67,7 +67,7 @@ class DenseTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllEqual(x.eval(), [[0.0]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testCall(self):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')
     inputs = random_ops.random_uniform((5, 4), seed=1)
@@ -77,11 +77,19 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.trainable_variables,
                          [dense.kernel, dense.bias])
     self.assertListEqual(dense.non_trainable_variables, [])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
     self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
     self.assertEqual(dense.bias.name, 'my_dense/bias:0')
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testNoEagerLeak(self):
+    # Tests that repeatedly constructing and building a Layer does not leak
+    # Python objects.
+    inputs = random_ops.random_uniform((5, 4), seed=1)
+    core_layers.Dense(5)(inputs)
+    core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')(inputs)
 
   @test_util.run_in_graph_and_eager_modes()
   def testCallTensorDot(self):
@@ -98,7 +106,7 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.variables, [dense.kernel])
     self.assertListEqual(dense.trainable_variables, [dense.kernel])
     self.assertListEqual(dense.non_trainable_variables, [])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
     self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
@@ -113,7 +121,7 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.non_trainable_variables,
                          [dense.kernel, dense.bias])
     self.assertListEqual(dense.trainable_variables, [])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 0)
 
@@ -162,13 +170,13 @@ class DenseTest(test.TestCase):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='dense1')
     inputs = random_ops.random_uniform((5, 3), seed=1)
     outputs = dense(inputs)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(outputs.op.name, 'dense1/Relu')
 
     dense = core_layers.Dense(2, name='dense2')
     inputs = random_ops.random_uniform((5, 3), seed=1)
     outputs = dense(inputs)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(outputs.op.name, 'dense2/BiasAdd')
 
   def testActivityRegularizer(self):
@@ -374,7 +382,7 @@ class DropoutTest(test.TestCase):
     dp = core_layers.Dropout(0.5)
     inputs = array_ops.ones((5, 3))
     dropped = dp.apply(inputs, training=True)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
     np_output = self.evaluate(dropped)
     self.assertAlmostEqual(0., np_output.min())

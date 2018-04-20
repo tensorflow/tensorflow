@@ -247,6 +247,8 @@ class FakeQuantWithMinMaxVarsGradOp : public XlaOpKernel {
     const TensorShape gradient_shape = ctx->InputShape(0);
     xla::ComputationDataHandle input = ctx->Input(1);
     const DataType data_type = ctx->input_type(1);
+    const DataType accumulation_type =
+        XlaHelpers::SumAccumulationType(data_type);
     xla::ComputationDataHandle input_min = ctx->Input(2);
     xla::ComputationDataHandle input_max = ctx->Input(3);
 
@@ -265,15 +267,23 @@ class FakeQuantWithMinMaxVarsGradOp : public XlaOpKernel {
     ctx->SetOutput(0, output0);
 
     xla::ComputationDataHandle below_min = b->Lt(input, nudged_input_min);
+    xla::ComputationDataHandle select1 = b->Select(below_min, gradient, zeroes);
+    xla::ComputationDataHandle reduce1 = b->ReduceAll(
+        XlaHelpers::ConvertElementType(b, select1, accumulation_type),
+        XlaHelpers::Zero(b, accumulation_type),
+        *ctx->GetOrCreateAdd(accumulation_type));
     xla::ComputationDataHandle output1 =
-        b->ReduceAll(b->Select(below_min, gradient, zeroes), zero,
-                     *ctx->GetOrCreateAdd(data_type));
+        XlaHelpers::ConvertElementType(b, reduce1, data_type);
     ctx->SetOutput(1, output1);
 
     xla::ComputationDataHandle above_max = b->Gt(input, nudged_input_max);
+    xla::ComputationDataHandle select2 = b->Select(above_max, gradient, zeroes);
+    xla::ComputationDataHandle reduce2 = b->ReduceAll(
+        XlaHelpers::ConvertElementType(b, select2, accumulation_type),
+        XlaHelpers::Zero(b, accumulation_type),
+        *ctx->GetOrCreateAdd(accumulation_type));
     xla::ComputationDataHandle output2 =
-        b->ReduceAll(b->Select(above_max, gradient, zeroes), zero,
-                     *ctx->GetOrCreateAdd(data_type));
+        XlaHelpers::ConvertElementType(b, reduce2, data_type);
     ctx->SetOutput(2, output2);
   }
 

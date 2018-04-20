@@ -263,6 +263,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 }
                 const int64 window_size =
                     window_size_func_output[0].scalar<int64>()();
+                if (window_size <= 0) {
+                  return errors::InvalidArgument(
+                      "Window size must be greater than zero, but got ",
+                      window_size, ".");
+                }
                 window_sizes_[key] = window_size;
               }
 

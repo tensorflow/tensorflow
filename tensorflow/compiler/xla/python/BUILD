@@ -72,15 +72,3 @@ tf_py_wrap_cc(
         "//tensorflow/compiler/xla/service:cpu_plugin",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

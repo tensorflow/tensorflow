@@ -40,6 +40,12 @@ static Costs::NanoSeconds PredictExecutionTime(
     op_context.op_info.add_inputs()->Swap(&input);
   }
 
+  std::vector<OpInfo::TensorProperties> outputs =
+      properties.GetOutputProperties(node.name());
+  for (auto& output : outputs) {
+    op_context.op_info.add_outputs()->Swap(&output);
+  }
+
   DeviceProperties device = placer.get_device(node);
   op_context.op_info.mutable_device()->Swap(&device);
 

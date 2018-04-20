@@ -47,7 +47,7 @@ class StatsAggregator(object):
   dataset = ...
   iterator = dataset.make_one_shot_iterator()
   stats_aggregator = stats_ops.StatsAggregator()
-  set_op = stats_op.set_stats_aggregator_op(iterator, stats_aggregator)
+  set_op = stats_aggregator.subscribe(iterator)
 
   with tf.Session() as sess:
     # Running `set_op` will associate `iterator` with `stats_aggregator`.

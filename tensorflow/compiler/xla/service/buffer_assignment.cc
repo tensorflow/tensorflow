@@ -48,6 +48,183 @@ using ::tensorflow::strings::HumanReadableNumBytes;
 using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrAppend;
 
+namespace {
+
+template <typename T>
+string ColocatedBufferSetsToString(const T& container, const char* title) {
+  string result;
+  StrAppend(&result, title, "\n");
+  for (const auto& it : container) {
+    StrAppend(&result, "\t", it->ToString(), "\n");
+  }
+  return result;
+}
+
+// Walk the call graph of the HLO module and place each computation into either
+// thread_local_computations or global_computations depending upon whether the
+// computation requires thread-local allocations or global allocations. The
+// elements in thread_local_computations and global_computations are in post
+// order (if computation A has an instruction which calls computation B, then A
+// will appear after B in the vector).
+Status GatherComputationsByAllocationType(
+    const HloModule* module,
+    std::vector<const HloComputation*>* thread_local_computations,
+    std::vector<const HloComputation*>* global_computations) {
+  // Create a worklist of computations paired with whether the allocation must
+  // be thread-local.
+  std::deque<std::pair<const HloComputation*, bool>> worklist;
+  worklist.push_back(std::make_pair(module->entry_computation(),
+                                    /*is_thread_local*/ false));
+
+  // Sets for quickly checking membership. Computations are returned in vectors
+  // for stable iteration.
+  FlatSet<const HloComputation*> thread_local_set;
+  FlatSet<const HloComputation*> global_set;
+
+  while (!worklist.empty()) {
+    auto worklist_front = worklist.front();
+    worklist.pop_front();
+    const HloComputation* computation = worklist_front.first;
+    bool is_thread_local = worklist_front.second;
+    bool in_thread_local_set = thread_local_set.count(computation) > 0;
+    bool in_global_set = global_set.count(computation) > 0;
+
+    // If the computation has already been added to the respective set, then
+    // nothing to do.
+    if ((is_thread_local && in_thread_local_set) ||
+        (!is_thread_local && in_global_set)) {
+      continue;
+    }
+
+    // If the computation has already been added to the other set this is an
+    // error condition because the global call to the computation (eg,
+    // while/call) may return a reference to one of the thread-local buffers to
+    // the calling computation which will become a dangling reference when the
+    // thread-local is deallocated with the call return.
+    if ((is_thread_local && in_global_set) ||
+        (!is_thread_local && in_thread_local_set)) {
+      return InvalidArgument(
+          "computation %s has conflicting allocation requirements (global "
+          "and thread-local)",
+          computation->name().c_str());
+    }
+
+    if (is_thread_local) {
+      thread_local_set.insert(computation);
+    } else {
+      global_set.insert(computation);
+    }
+
+    for (auto* instruction : computation->instructions()) {
+      for (HloComputation* subcomputation :
+           instruction->called_computations()) {
+        switch (instruction->opcode()) {
+          case HloOpcode::kCall:
+          case HloOpcode::kConditional:
+          case HloOpcode::kWhile:
+            // Call and while must be called from a computation with global
+            // allocations as they may return references to buffers inside the
+            // called computation which cannot be thread-local.
+            if (is_thread_local) {
+              return InvalidArgument(
+                  "computation %s cannot contain call/while op because it "
+                  "requires thread-local buffer allocations",
+                  computation->name().c_str());
+            }
+            worklist.push_back(std::make_pair(subcomputation,
+                                              false));  // Not thread local.
+            break;
+          case HloOpcode::kMap:
+          case HloOpcode::kReduce:
+          case HloOpcode::kReduceWindow:
+          case HloOpcode::kSelectAndScatter:
+          case HloOpcode::kFusion:
+            // Map/reduce etc computations are always thread-local.
+            worklist.push_back(std::make_pair(subcomputation,
+                                              true));  // Thread local.
+            break;
+          default:
+            return InternalError(
+                "Unexpected calling opcode: %s",
+                HloOpcodeString(instruction->opcode()).c_str());
+        }
+      }
+    }
+  }
+
+  // Add the computations to the vectors in post order.
+  for (auto* computation : module->MakeComputationPostOrder()) {
+    if (thread_local_set.count(computation) > 0) {
+      thread_local_computations->push_back(computation);
+    } else if (global_set.count(computation) > 0) {
+      global_computations->push_back(computation);
+    }
+    // If the computation is not reachable from the entry computation, then it
+    // will not appear in either thread_local_set or global_set. We don't bother
+    // assigning buffers for these.
+  }
+  return Status::OK();
+}
+
+// Checks that points-to set of 'instruction' is unambiguous and distinct
+// (ensured by CopyInsertion), then adds the buffer from the points-to set at
+// 'index' to 'colocated_set'.
+const LogicalBuffer* AddBufferToColocatedSet(
+    const HloInstruction* instruction, const ShapeIndex& index,
+    const TuplePointsToAnalysis& points_to_analysis,
+    std::vector<const LogicalBuffer*>* colocated_set) {
+  // CopyInsertion ensures root points-to set is unambiguous and distinct.
+  const auto& points_to = points_to_analysis.GetPointsToSet(instruction);
+  DCHECK(!points_to.IsAmbiguous());
+  colocated_set->push_back(points_to.element(index)[0]);
+  return colocated_set->back();
+}
+
+// Given the interference map of a graph (the list of interfering node indices
+// for each node), perform graph coloring such that interfering nodes are
+// assigned to different colors. Returns the assigned color of the nodes, where
+// the colors are represented as integer values [0, color_count).
+std::vector<int64> ColorInterferenceGraph(
+    const std::vector<std::vector<int64>>& interference_map) {
+  const int64 node_count = interference_map.size();
+
+  // Sort the nodes such that we assign nodes with more interference first. This
+  // relies on the common heuristic of assigning the most constrained node
+  // first, but it would be good to investigate other ordering heuristics too.
+  std::vector<int64> nodes(node_count);
+  std::iota(nodes.begin(), nodes.end(), 0);
+  std::sort(nodes.begin(), nodes.end(),
+            [&interference_map](const int64 i, const int64 j) {
+              return interference_map[i].size() > interference_map[j].size();
+            });
+
+  const int64 kColorUnassigned = -1;
+  std::vector<int64> assigned_colors(node_count, kColorUnassigned);
+  for (int64 node : nodes) {
+    // Mark the colors that are already assigned to the neighbors.
+    std::vector<bool> available_colors(node_count, true);
+    for (int64 neighbor : interference_map[node]) {
+      int64 color = assigned_colors[neighbor];
+      if (color != kColorUnassigned) {
+        available_colors[color] = false;
+      }
+    }
+
+    // Find the color that is not yet assigned to the neighbors.
+    int64 color = kColorUnassigned;
+    for (color = 0; color < available_colors.size(); ++color) {
+      if (available_colors[color]) {
+        break;
+      }
+    }
+    CHECK_NE(color, kColorUnassigned);
+    assigned_colors[node] = color;
+  }
+  return assigned_colors;
+}
+
+}  // namespace
+
 size_t BufferAllocation::Slice::Hasher::operator()(Slice s) const {
   uint64 h = std::hash<int64>()(s.index());
   h = tensorflow::Hash64Combine(h, std::hash<int64>()(s.offset()));
@@ -113,6 +290,112 @@ BufferAllocationProto BufferAllocation::ToProto() const {
               return assign1.logical_buffer_id() < assign2.logical_buffer_id();
             });
   return proto;
+}
+
+std::pair<int64, std::vector<const LogicalBuffer*>>
+BufferAllocation::ComputePeakMemoryLogicalBuffers() const {
+  if (HeapTraces().empty()) {
+    // Just return the largest LogicalBuffer in the allocation.
+    const LogicalBuffer* largest_buffer = nullptr;
+    int64 largest_size = 0;
+    for (const auto& pair : assigned_buffers()) {
+      const LogicalBuffer* buffer = pair.first;
+      int64 size = pair.second.size;
+      if (largest_buffer == nullptr) {
+        largest_buffer = buffer;
+        largest_size = size;
+        continue;
+      }
+      // Tie-break with LogicalBuffer::Id so the return value is stable relative
+      // to changing addresses.
+      if (size > largest_size ||
+          ((size == largest_size) && (largest_buffer->id() > buffer->id()))) {
+        largest_buffer = buffer;
+        largest_size = size;
+      }
+    }
+    CHECK(largest_buffer != nullptr)
+        << "No logical buffers in allocation: " << ToString();
+    return {largest_size, {largest_buffer}};
+  }
+
+  // Create a map from LogicalBuffer::Id to LogicalBuffer* for the logical
+  // buffers in this allocation.
+  tensorflow::gtl::FlatMap<LogicalBuffer::Id, const LogicalBuffer*>
+      id_to_buffer;
+  tensorflow::gtl::FlatMap<const LogicalBuffer*, int64> buffer_sizes;
+  for (const auto& pair : assigned_buffers()) {
+    const LogicalBuffer* buffer = pair.first;
+    const OffsetSize& offset_size = pair.second;
+    id_to_buffer[buffer->id()] = buffer;
+    buffer_sizes[buffer] = offset_size.size;
+  }
+
+  // Returns how much the given event increases the total size of live
+  // buffers. Can be negative.
+  auto memory_delta = [this, &id_to_buffer, &buffer_sizes](
+                          const HeapSimulatorTrace::Event& event) -> int64 {
+    const LogicalBuffer* buffer = id_to_buffer.at(event.buffer_id());
+    const int64 buffer_size = buffer_sizes.at(buffer);
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      return buffer_size;
+    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+      // Sharing a buffer does not change the live set size for the purposes of
+      // the heap simulator. Even though the shared-with buffer may be smaller,
+      // the entire allocation remains live.
+      return 0;
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      return -1 * buffer_size;
+    }
+    LOG(FATAL) << "Unknown event kind: " << event.kind();
+  };
+
+  int64 total_max_live_size = 0;
+  std::vector<const LogicalBuffer*> live_buffers_vector;
+  for (const HeapSimulatorTrace& heap_trace : HeapTraces()) {
+    // First compute the size of the maximal live set.
+    int64 max_live_size = 0;
+    int64 live_size = 0;
+    for (const auto& event : heap_trace.events()) {
+      live_size += memory_delta(event);
+      if (max_live_size < live_size) {
+        max_live_size = live_size;
+      }
+    }
+
+    // Next gather the set of logical buffers live at the earliest point of
+    // maximal live set size.
+    tensorflow::gtl::FlatSet<const LogicalBuffer*> live_buffers;
+    live_size = 0;
+    for (const auto& event : heap_trace.events()) {
+      const LogicalBuffer* buffer = id_to_buffer.at(event.buffer_id());
+      if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+        InsertOrDie(&live_buffers, buffer);
+      } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+        // Nothing to do.
+      } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+        CHECK(ContainsKey(live_buffers, buffer));
+        live_buffers.erase(buffer);
+      }
+
+      live_size += memory_delta(event);
+      if (live_size == max_live_size) {
+        break;
+      }
+    }
+    CHECK_EQ(live_size, max_live_size);
+    total_max_live_size += max_live_size;
+
+    live_buffers_vector.insert(live_buffers_vector.end(), live_buffers.begin(),
+                               live_buffers.end());
+  }
+
+  // Stabily sort the live buffers.
+  std::sort(live_buffers_vector.begin(), live_buffers_vector.end(),
+            [](const LogicalBuffer* a, const LogicalBuffer* b) {
+              return a->id() < b->id();
+            });
+  return {total_max_live_size, live_buffers_vector};
 }
 
 string BufferAllocation::ToString() const {
@@ -348,6 +631,7 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
 // Combines allocations of temporary buffers of the same color into one big
 // BufferAllocation.
 void BufferAssignment::CombineTempAllocations() {
+  VLOG(1) << "CombineTempAllocations()";
   FlatMap<LogicalBuffer::Color, BufferAllocation, LogicalBuffer::Color::Hasher>
       combined_allocation_map;
 
@@ -369,11 +653,16 @@ void BufferAssignment::CombineTempAllocations() {
       if (combined_it == combined_allocation_map.end()) {
         // We have found the first temp allocation of this color. Collect
         // the other temp allocations of the same color into it.
+        VLOG(1) << "Combined temp allocation for color " << color
+                << " is: " << temp_allocation;
         combined_allocation_map.emplace(color, temp_allocation);
         continue;
       }
 
       auto* combined_allocation = &combined_it->second;
+      VLOG(1) << "Combined allocation absorbing temp allocation: "
+              << temp_allocation;
+
       // Each temp allocation is placed end-to-end, accounting for alignment.
       // The offset of each buffer in the combined allocation is computed from
       // the base offset of the allocation.
@@ -386,6 +675,10 @@ void BufferAssignment::CombineTempAllocations() {
         const int64 offset = buffer_offset_size.second.offset;
         const int64 size = buffer_offset_size.second.size;
         combined_allocation->AddAssignment(*buffer, base + offset, size);
+      }
+      if (!temp_allocation.HeapTraces().empty()) {
+        CHECK_EQ(temp_allocation.HeapTraces().size(), 1);
+        combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
       }
     }
     // Replace all existing temporary allocations with the new combined
@@ -516,122 +809,12 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   for (const BufferAllocation& allocation : Allocations()) {
     BufferAllocationProto proto_allocation = allocation.ToProto();
     proto.add_buffer_allocations()->Swap(&proto_allocation);
-  }
-  for (const HeapSimulatorTrace& trace : heap_simulator_traces_) {
-    *proto.add_heap_simulator_traces() = trace;
+    for (const HeapSimulatorTrace& heap_trace : allocation.HeapTraces()) {
+      *proto.add_heap_simulator_traces() = heap_trace;
+    }
   }
   return proto;
 }
-
-namespace {
-
-// Walk the call graph of the HLO module and place each computation into either
-// thread_local_computations or global_computations depending upon whether the
-// computation requires thread-local allocations or global allocations. The
-// elements in thread_local_computations and global_computations are in post
-// order (if computation A has an instruction which calls computation B, then A
-// will appear after B in the vector).
-Status GatherComputationsByAllocationType(
-    const HloModule* module,
-    std::vector<const HloComputation*>* thread_local_computations,
-    std::vector<const HloComputation*>* global_computations) {
-  // Create a worklist of computations paired with whether the allocation must
-  // be thread-local.
-  std::deque<std::pair<const HloComputation*, bool>> worklist;
-  worklist.push_back(std::make_pair(module->entry_computation(),
-                                    /*is_thread_local*/ false));
-
-  // Sets for quickly checking membership. Computations are returned in vectors
-  // for stable iteration.
-  FlatSet<const HloComputation*> thread_local_set;
-  FlatSet<const HloComputation*> global_set;
-
-  while (!worklist.empty()) {
-    auto worklist_front = worklist.front();
-    worklist.pop_front();
-    const HloComputation* computation = worklist_front.first;
-    bool is_thread_local = worklist_front.second;
-    bool in_thread_local_set = thread_local_set.count(computation) > 0;
-    bool in_global_set = global_set.count(computation) > 0;
-
-    // If the computation has already been added to the respective set, then
-    // nothing to do.
-    if ((is_thread_local && in_thread_local_set) ||
-        (!is_thread_local && in_global_set)) {
-      continue;
-    }
-
-    // If the computation has already been added to the other set this is an
-    // error condition because the global call to the computation (eg,
-    // while/call) may return a reference to one of the thread-local buffers to
-    // the calling computation which will become a dangling reference when the
-    // thread-local is deallocated with the call return.
-    if ((is_thread_local && in_global_set) ||
-        (!is_thread_local && in_thread_local_set)) {
-      return InvalidArgument(
-          "computation %s has conflicting allocation requirements (global "
-          "and thread-local)",
-          computation->name().c_str());
-    }
-
-    if (is_thread_local) {
-      thread_local_set.insert(computation);
-    } else {
-      global_set.insert(computation);
-    }
-
-    for (auto* instruction : computation->instructions()) {
-      for (HloComputation* subcomputation :
-           instruction->called_computations()) {
-        switch (instruction->opcode()) {
-          case HloOpcode::kCall:
-          case HloOpcode::kConditional:
-          case HloOpcode::kWhile:
-            // Call and while must be called from a computation with global
-            // allocations as they may return references to buffers inside the
-            // called computation which cannot be thread-local.
-            if (is_thread_local) {
-              return InvalidArgument(
-                  "computation %s cannot contain call/while op because it "
-                  "requires thread-local buffer allocations",
-                  computation->name().c_str());
-            }
-            worklist.push_back(std::make_pair(subcomputation,
-                                              false));  // Not thread local.
-            break;
-          case HloOpcode::kMap:
-          case HloOpcode::kReduce:
-          case HloOpcode::kReduceWindow:
-          case HloOpcode::kSelectAndScatter:
-          case HloOpcode::kFusion:
-            // Map/reduce etc computations are always thread-local.
-            worklist.push_back(std::make_pair(subcomputation,
-                                              true));  // Thread local.
-            break;
-          default:
-            return InternalError(
-                "Unexpected calling opcode: %s",
-                HloOpcodeString(instruction->opcode()).c_str());
-        }
-      }
-    }
-  }
-
-  // Add the computations to the vectors in post order.
-  for (auto* computation : module->MakeComputationPostOrder()) {
-    if (thread_local_set.count(computation) > 0) {
-      thread_local_computations->push_back(computation);
-    } else if (global_set.count(computation) > 0) {
-      global_computations->push_back(computation);
-    }
-    // If the computation is not reachable from the entry computation, then it
-    // will not appear in either thread_local_set or global_set. We don't bother
-    // assigning buffers for these.
-  }
-  return Status::OK();
-}
-
-}  // namespace
 
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
@@ -1064,7 +1247,8 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
     assignment->AddAssignment(allocation, buffer, chunk.offset, chunk.size);
   }
 
-  assignment->heap_simulator_traces_.push_back(result.debug_trace);
+  VLOG(1) << "Ran heap simulation for allocation: " << allocation->ToString();
+  allocation->AddHeapTrace(result.debug_trace);
 }
 
 // Adds the 'colocated_set' of buffers to 'colocated_buffer_sets', maintaining
@@ -1085,7 +1269,8 @@ void BufferAssigner::AddSetToColocatedBufferSets(
   if (colocated_set.empty()) {
     return;
   }
-
+  VLOG(5) << ColocatedBufferSetsToString(colocated_set,
+                                         "Adding colocated buffer set");
   // Find existing sets that overlap with at least one buffer from the
   // colocated_set. The resulting 'overlap_set_indices' will have at most
   // colocated_buffer_sets->size() entries, and will be in increasing order.
@@ -1093,6 +1278,10 @@ void BufferAssigner::AddSetToColocatedBufferSets(
   for (size_t index = 0; index < colocated_buffer_sets->size(); ++index) {
     for (const LogicalBuffer* buffer : colocated_set) {
       if ((*colocated_buffer_sets)[index].count(buffer) > 0) {
+        VLOG(5) << "Found overlap with existing set on buffer "
+                << buffer->ToString() << "\n"
+                << ColocatedBufferSetsToString((*colocated_buffer_sets)[index],
+                                               "Overlapping set");
         overlap_set_indices.push_back(index);
         break;
       }
@@ -1104,6 +1293,7 @@ void BufferAssigner::AddSetToColocatedBufferSets(
     colocated_buffer_sets->emplace_back();
     colocated_buffer_sets->back().insert(colocated_set.begin(),
                                          colocated_set.end());
+    VLOG(5) << "No overlap found, new group created";
     return;
   }
 
@@ -1115,6 +1305,8 @@ void BufferAssigner::AddSetToColocatedBufferSets(
     first->insert(overlap_set.begin(), overlap_set.end());
   }
   first->insert(colocated_set.begin(), colocated_set.end());
+  VLOG(5) << ColocatedBufferSetsToString(
+      *first, "Result of the colocated buffer set merging");
 
   // Remove overlap sets that we just merged. The offset accounts for the fact
   // that as elements are erased, the indices need to be adjusted. Keep in mind
@@ -1124,67 +1316,6 @@ void BufferAssigner::AddSetToColocatedBufferSets(
     colocated_buffer_sets->erase(colocated_buffer_sets->begin() + offset);
   }
 }
-
-namespace {
-
-// Checks that points-to set of 'instruction' is unambiguous and distinct
-// (ensured by CopyInsertion), then adds the buffer from the points-to set at
-// 'index' to 'colocated_set'.
-const LogicalBuffer* AddBufferToColocatedSet(
-    const HloInstruction* instruction, const ShapeIndex& index,
-    const TuplePointsToAnalysis& points_to_analysis,
-    std::vector<const LogicalBuffer*>* colocated_set) {
-  // CopyInsertion ensures root points-to set is unambiguous and distinct.
-  const auto& points_to = points_to_analysis.GetPointsToSet(instruction);
-  DCHECK(!points_to.IsAmbiguous());
-  colocated_set->push_back(points_to.element(index)[0]);
-  return colocated_set->back();
-}
-
-// Given the interference map of a graph (the list of interfering node indices
-// for each node), perform graph coloring such that interfering nodes are
-// assigned to different colors. Returns the assigned color of the nodes, where
-// the colors are represented as integer values [0, color_count).
-std::vector<int64> ColorInterferenceGraph(
-    const std::vector<std::vector<int64>>& interference_map) {
-  const int64 node_count = interference_map.size();
-
-  // Sort the nodes such that we assign nodes with more interference first. This
-  // relies on the common heuristic of assigning the most constrained node
-  // first, but it would be good to investigate other ordering heuristics too.
-  std::vector<int64> nodes(node_count);
-  std::iota(nodes.begin(), nodes.end(), 0);
-  std::sort(nodes.begin(), nodes.end(),
-            [&interference_map](const int64 i, const int64 j) {
-              return interference_map[i].size() > interference_map[j].size();
-            });
-
-  const int64 kColorUnassigned = -1;
-  std::vector<int64> assigned_colors(node_count, kColorUnassigned);
-  for (int64 node : nodes) {
-    // Mark the colors that are already assigned to the neighbors.
-    std::vector<bool> available_colors(node_count, true);
-    for (int64 neighbor : interference_map[node]) {
-      int64 color = assigned_colors[neighbor];
-      if (color != kColorUnassigned) {
-        available_colors[color] = false;
-      }
-    }
-
-    // Find the color that is not yet assigned to the neighbors.
-    int64 color = kColorUnassigned;
-    for (color = 0; color < available_colors.size(); ++color) {
-      if (available_colors[color]) {
-        break;
-      }
-    }
-    CHECK_NE(color, kColorUnassigned);
-    assigned_colors[node] = color;
-  }
-  return assigned_colors;
-}
-
-}  // namespace
 
 std::vector<BufferAssigner::ColocatedBufferSet>
 BufferAssigner::MergeColocatedBufferSets(
@@ -1208,26 +1339,35 @@ BufferAssigner::MergeColocatedBufferSets(
   auto cannot_merge_buffer_sets = [&colocated_buffer_sets, &buffer_liveness,
                                    &buffer_size,
                                    &is_entry_parameter](int64 i, int64 j) {
-    for (auto& buffer_a : colocated_buffer_sets[i]) {
-      for (auto& buffer_b : colocated_buffer_sets[j]) {
-        // Do not merge if the set includes live outs or entry parameters.
-        if ((buffer_liveness.MaybeLiveOut(*buffer_a) &&
-             is_entry_parameter(*buffer_b)) ||
-            (buffer_liveness.MaybeLiveOut(*buffer_b) &&
-             is_entry_parameter(*buffer_a))) {
-          return true;
-        }
-        // Do not merge if the buffers interfere with each other.
-        if (buffer_a->id() != buffer_b->id() &&
-            buffer_liveness.MayInterfere(*buffer_a, *buffer_b)) {
-          return true;
-        }
-        // Do not merge if the buffer sizes are different.
-        if (buffer_size(*buffer_a) != buffer_size(*buffer_b)) {
+    // Do not merge if one of the sets includes live outs or entry parameters.
+    for (int64 key : {i, j}) {
+      for (auto& buffer : colocated_buffer_sets[key]) {
+        if (buffer_liveness.MaybeLiveOut(*buffer) ||
+            is_entry_parameter(*buffer)) {
           return true;
         }
       }
     }
+
+    // Colocated sets satisfy the invariant that all buffers within a set have
+    // the same size. That means we need to check whether the size is the same
+    // between the two sets, but also that it's enough to look at just one
+    // buffer within each set.
+    if (buffer_size(**colocated_buffer_sets[i].begin()) !=
+        buffer_size(**colocated_buffer_sets[j].begin())) {
+      return true;
+    }
+
+    // Do not merge if some pair of buffers interferes with each other.
+    for (auto& buffer_a : colocated_buffer_sets[i]) {
+      for (auto& buffer_b : colocated_buffer_sets[j]) {
+        if (buffer_a->id() != buffer_b->id() &&
+            buffer_liveness.MayInterfere(*buffer_a, *buffer_b)) {
+          return true;
+        }
+      }
+    }
+
     return false;
   };
 

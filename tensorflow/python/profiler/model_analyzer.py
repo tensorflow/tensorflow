@@ -172,7 +172,7 @@ class Profiler(object):
       op_log: optional. tensorflow::tfprof::OpLogProto proto. Used to define
           extra op types.
     """
-    if not graph and context.in_graph_mode():
+    if not graph and not context.executing_eagerly():
       graph = ops.get_default_graph()
     self._coverage = 0.0
     self._graph = graph
@@ -336,7 +336,7 @@ def profile(graph=None,
     If cmd is 'op' or 'code', returns MultiGraphNodeProto proto.
     Side effect: stdout/file/timeline.json depending on options['output']
   """
-  if not graph and context.in_graph_mode():
+  if not graph and not context.executing_eagerly():
     graph = ops.get_default_graph()
 
   if options == _DEFAULT_PROFILE_OPTIONS:

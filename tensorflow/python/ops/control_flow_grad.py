@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
@@ -28,7 +29,6 @@ from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.control_flow_ops import *
-from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
 
 
@@ -75,6 +75,11 @@ def _SwitchGrad(op, *grad):
     # At this point, we have created zero_grad guarded by the right switch.
     # Unfortunately, we may still get None here for not trainable data types.
     if zero_grad is None:
+      # For resource variables we get None always on the other branch, so bypass
+      # this.
+      if op.inputs[0].dtype == dtypes.resource:
+        return merge(
+            [grad[op_ctxt.branch]] * 2, name="cond_resource_grad")[0], None
       return None, None
     return merge(grad, name="cond_grad")[0], None
   else:
@@ -143,6 +148,7 @@ def _ExitGrad(op, grad):
   """Gradients for an exit op are calculated using an Enter op."""
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
+  op_ctxt = op._get_control_flow_context()
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if not grad_ctxt.back_prop:
@@ -151,10 +157,8 @@ def _ExitGrad(op, grad):
     # no gradient computation.
     return None
 
-  # pylint: disable=protected-access
-  if op._get_control_flow_context().grad_state:
+  if op_ctxt.grad_state:
     raise TypeError("Second-order gradient for while loops not supported.")
-  # pylint: enable=protected-access
 
   if isinstance(grad, ops.Tensor):
     grad_ctxt.AddName(grad.name)

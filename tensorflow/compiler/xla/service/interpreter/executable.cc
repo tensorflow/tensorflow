@@ -93,7 +93,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> InterpreterExecutable::ExecuteOnStream(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result,
                       transfer_manager->AllocateShapedBuffer(
                           result_literal->shape(), run_options->allocator(),
-                          run_options->device_ordinal()));
+                          executor->device_ordinal()));
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
       executor, *result_literal, *result));
 

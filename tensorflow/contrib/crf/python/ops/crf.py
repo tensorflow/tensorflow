@@ -105,8 +105,8 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
   return utils.smart_cond(
       pred=math_ops.equal(inputs.shape[1].value or array_ops.shape(inputs)[1],
                           1),
-      fn1=_single_seq_fn,
-      fn2=_multi_seq_fn)
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
 
 
 def crf_log_norm(inputs, sequence_lengths, transition_params):
@@ -479,15 +479,17 @@ def crf_decode(potentials, transition_params, sequence_length):
     initial_state = array_ops.slice(potentials, [0, 0, 0], [-1, 1, -1])
     initial_state = array_ops.squeeze(initial_state, axis=[1])  # [B, O]
     inputs = array_ops.slice(potentials, [0, 1, 0], [-1, -1, -1])  # [B, T-1, O]
+    # sequence length is not allowed to be less than zero
+    sequence_length_less_one = math_ops.maximum(0, sequence_length - 1)
     backpointers, last_score = rnn.dynamic_rnn(  # [B, T - 1, O], [B, O]
         crf_fwd_cell,
         inputs=inputs,
-        sequence_length=sequence_length - 1,
+        sequence_length=sequence_length_less_one,
         initial_state=initial_state,
         time_major=False,
         dtype=dtypes.int32)
     backpointers = gen_array_ops.reverse_sequence(  # [B, T - 1, O]
-        backpointers, sequence_length - 1, seq_dim=1)
+        backpointers, sequence_length_less_one, seq_dim=1)
 
     # Computes backward decoding. Extract tag indices from backpointers.
     crf_bwd_cell = CrfDecodeBackwardRnnCell(num_tags)
@@ -497,7 +499,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     decode_tags, _ = rnn.dynamic_rnn(  # [B, T - 1, 1]
         crf_bwd_cell,
         inputs=backpointers,
-        sequence_length=sequence_length - 1,
+        sequence_length=sequence_length_less_one,
         initial_state=initial_state,
         time_major=False,
         dtype=dtypes.int32)
@@ -511,7 +513,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     return decode_tags, best_score
 
   return utils.smart_cond(
-      pred=math_ops.equal(
-          potentials.shape[1].value or array_ops.shape(potentials)[1], 1),
-      fn1=_single_seq_fn,
-      fn2=_multi_seq_fn)
+      pred=math_ops.equal(potentials.shape[1].value or
+                          array_ops.shape(potentials)[1], 1),
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)

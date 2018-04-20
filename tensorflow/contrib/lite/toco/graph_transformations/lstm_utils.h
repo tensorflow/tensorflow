@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_LSTM_UTILS_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_LSTM_UTILS_H_
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -100,3 +103,5 @@ bool GetMatchingRnnArray(Model* model, const string& back_edge_source_array,
                          string* rnn_array);
 
 }  // namespace toco
+
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_LSTM_UTILS_H_

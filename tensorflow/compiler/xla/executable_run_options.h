@@ -84,6 +84,9 @@ class ExecutableRunOptions {
       DeviceAssignment* device_assignment);
   const DeviceAssignment* device_assignment() const;
 
+  ExecutableRunOptions& set_rng_seed(int rng_seed);
+  int rng_seed() const;
+
  private:
   DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
@@ -92,6 +95,7 @@ class ExecutableRunOptions {
   tensorflow::thread::ThreadPool* inter_op_thread_pool_ = nullptr;
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
   ExecutionProfile* execution_profile_ = nullptr;
+  int rng_seed_ = 0;
 };
 
 }  // namespace xla

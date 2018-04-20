@@ -30,7 +30,6 @@ from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -275,8 +274,7 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     if self._c_func:
       with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          c_api.TF_FunctionToFunctionDef(self._c_func, buf, status)
+        c_api.TF_FunctionToFunctionDef(self._c_func.func, buf)
         fdef = function_pb2.FunctionDef()
         proto_data = c_api.TF_GetBuffer(buf)
         fdef.ParseFromString(compat.as_bytes(proto_data))
@@ -353,8 +351,10 @@ class _DefinedFunction(object):
           outputs = (outputs,)
         if any([_ is None for _ in outputs]):
           raise ValueError("Function can not return None.")
-      # Ensures each output is a Tensor.
-      outputs = [ops.convert_to_tensor(_) for _ in outputs]
+      # Ensures each output is a Tensor in the function graph.
+      outputs = [ops.convert_to_tensor(t) for t in outputs]
+      outputs = [temp_graph.capture(t) if t.graph is not temp_graph else t
+                 for t in outputs]
     self._extra_inputs = temp_graph.extra_inputs
     inputs.extend(temp_graph.extra_args)
     # pylint: disable=protected-access
@@ -397,18 +397,17 @@ class _DefinedFunction(object):
                       if self._out_names else [])
       description = self._func.__doc__ or None
       # pylint: disable=protected-access
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._c_func = c_api.TF_GraphToFunction_wrapper(
-            temp_graph._c_graph,
-            base_func_name,
-            self._func_name is None,  # append_hash_to_fn_name
-            None,  # opers
-            [t._as_tf_output() for t in inputs],
-            [t._as_tf_output() for t in outputs],
-            output_names,
-            None,  # opts
-            description,
-            status)
+      c_func = c_api.TF_GraphToFunction_wrapper(
+          temp_graph._c_graph,
+          base_func_name,
+          self._func_name is None,  # append_hash_to_fn_name
+          None,  # opers
+          [t._as_tf_output() for t in inputs],
+          [t._as_tf_output() for t in outputs],
+          output_names,
+          None,  # opts
+          description)
+      self._c_func = c_api_util.ScopedTFFunction(c_func)
       # pylint: enable=protected-access
       self._set_c_attrs(kwargs_attr)
 
@@ -431,9 +430,8 @@ class _DefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use the same status.
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.TF_FunctionSetAttrValueProto(self._c_func, compat.as_str(name),
-                                           serialized, status)
+      c_api.TF_FunctionSetAttrValueProto(self._c_func.func, compat.as_str(name),
+                                         serialized)
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
     """Creates an 8-character string unique to this input.
@@ -487,10 +485,10 @@ class _DefinedFunction(object):
 
     # Adds this function into 'g'.
     # pylint: disable=protected-access
-    if context.in_graph_mode():
-      g._add_function(self)
-    else:
+    if context.executing_eagerly():
       context.context().add_function_def(self.definition)
+    else:
+      g._add_function(self)
     # pylint: enable=protected-access
 
     # Ensures related sub-routines are defined in 'g', too.
@@ -683,27 +681,33 @@ class _FuncGraph(ops.Graph):
   def create_op(self, op_type, inputs, data_types, **kwargs):
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
-        # Referring to a tensor from other graph.
-        if x in self._captured:
-          # Captured already.
-          inputs[i] = self._captured[x]
-        elif self._capture_by_value:
-          inputs[i] = self._add_tensor_and_parents(x)
-        else:
-          # Substitute with a placeholder.
-          self.extra_inputs.append(x)
-          # Hoist the new input placeholder out of any control flow context
-          # we're currently in.
-          with ops.control_dependencies(None):
-            ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
-          # pylint: disable=protected-access
-          ph._handle_data = x._handle_data
-          # pylint: enable=protected-access
-          inputs[i] = ph
-          self._captured[x] = ph
-          self.extra_args.append(ph)
+        inputs[i] = self.capture(x)
     return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
                                              **kwargs)
+
+  def capture(self, tensor):
+    """Adds the given tensor to this graph and returns the captured tensor."""
+    if tensor in self._captured:
+      # Captured already.
+      return self._captured[tensor]
+    elif self._capture_by_value:
+      return self._add_tensor_and_parents(tensor)
+    else:
+      return self._capture_tensor_as_extra_input(tensor)
+
+  def _capture_tensor_as_extra_input(self, tensor):
+    # Substitute with a placeholder.
+    self.extra_inputs.append(tensor)
+    # Hoist the new input placeholder out of any control flow context
+    # we're currently in.
+    with ops.control_dependencies(None):
+      ph = array_ops.placeholder(tensor.dtype, shape=tensor.get_shape())
+    # pylint: disable=protected-access
+    ph._handle_data = tensor._handle_data
+    # pylint: enable=protected-access
+    self._captured[tensor] = ph
+    self.extra_args.append(ph)
+    return ph
 
   def _add_tensor_and_parents(self, tensor):
     op = self._add_op_and_parents(tensor.op)
@@ -822,8 +826,8 @@ def _from_definition(fdef, grad_func=None):
   # pylint: disable=protected-access
   if ops._USE_C_API:
     serialized = fdef.SerializeToString()
-    with errors.raise_exception_on_not_ok_status() as status:
-      result._c_func = c_api.TF_FunctionImportFunctionDef(serialized, status)
+    c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+    result._c_func = c_api_util.ScopedTFFunction(c_func)
     result._extra_inputs = []
   else:
     result._definition = fdef
@@ -925,6 +929,12 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
       attrs["_XlaScope"] = attr_value_pb2.AttrValue(
           s=("function_%s" % func_name).encode())
     # pylint: enable=protected-access
+
+  kwargs_keys = list(kwargs.keys())
+  for key in kwargs_keys:
+    if key.startswith("experimental_"):
+      attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(kwargs[key]))
+      del kwargs[key]
 
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())

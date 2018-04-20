@@ -7,18 +7,6 @@ load(
 )
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "graph_properties_testdata",
     srcs = glob([
         "graph_properties_testdata/*.pbtxt",
@@ -53,8 +41,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
+        "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
@@ -142,6 +132,7 @@ tf_cuda_library(
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",

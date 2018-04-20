@@ -98,8 +98,8 @@ PyObject* TF_OptimizeGraph(
       const tensorflow::MetaGraphDef& metagraph,
       bool verbose, const string& graph_id, TF_Status* out_status) {
     tensorflow::grappler::ItemConfig item_config;
-    item_config.inline_functions = false;
     item_config.apply_optimizations = false;
+    item_config.ignore_user_placement = false;
     std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
         tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph, item_config);
 

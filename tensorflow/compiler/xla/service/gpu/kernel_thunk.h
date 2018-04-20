@@ -47,12 +47,14 @@ class KernelThunk : public Thunk {
   //
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
   KernelThunk(tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
-              const string& kernel_name, const HloInstruction* hlo_instruction);
+              const string& kernel_name, const HloInstruction* hlo_instruction,
+              int unroll_factor);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
 
   const string& kernel_name() const { return kernel_name_; }
+  int unroll_factor() const { return unroll_factor_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
   tensorflow::Status Initialize(const GpuExecutable& executable) override;
@@ -68,6 +70,10 @@ class KernelThunk : public Thunk {
 
   // Entry kernel name for the computation.
   const string kernel_name_;
+
+  // The number of times this kernel should be unrolled. This works as a
+  // multiplier on the number of elements produced by a GPU thread.
+  const int unroll_factor_;
 
   // The thread and block dimension used to launch the kernel.
   // Will be set by IrEmitterUnnested.

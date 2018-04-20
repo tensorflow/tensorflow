@@ -215,7 +215,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
-  auto finish = [this, done, out, opts](const Status& s) {
+  auto finish = [done, out, opts](const Status& s) {
     opts->ClearCancelCallback();
     delete out;
     done(s);
@@ -247,7 +247,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     session->graph_mgr->ExecuteAsync(
         graph_handle, step_id, session.get(), request->exec_opts(),
         nullptr /* collector */, nullptr /* response */, cm, in,
-        [this, token, step_id, session, cm](Status s) {
+        [this, token, step_id, session](Status s) {
           {
             mutex_lock l(mu_);
             cancellation_manager_->DeregisterCallback(token);

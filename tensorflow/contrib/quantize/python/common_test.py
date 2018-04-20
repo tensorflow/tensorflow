@@ -22,6 +22,7 @@ from tensorflow.contrib.quantize.python import common
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -29,8 +30,15 @@ from tensorflow.python.platform import googletest
 class CommonTest(test_util.TensorFlowTestCase):
 
   def testCreateOrGetQuantizationStep(self):
+    self._TestCreateOrGetQuantizationStep(False)
+
+  def testCreateOrGetQuantizationStepResourceVar(self):
+    self._TestCreateOrGetQuantizationStep(True)
+
+  def _TestCreateOrGetQuantizationStep(self, use_resource):
     g = ops.Graph()
     with session.Session(graph=g) as sess:
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
       quantization_step_tensor = common.CreateOrGetQuantizationStep()
 
       # Check that operations are added to the graph.

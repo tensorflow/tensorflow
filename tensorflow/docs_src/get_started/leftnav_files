@@ -1,10 +1,14 @@
 index.md
 
-### Getting Started
+### Beginners
+eager.md
 get_started_for_beginners.md
 premade_estimators.md
 
-### Details
+### Estimators
+get_started_for_beginners.md: For Beginners
+premade_estimators.md: Premade Estimators
+>>>
 checkpoints.md
 feature_columns.md
 datasets_quickstart.md

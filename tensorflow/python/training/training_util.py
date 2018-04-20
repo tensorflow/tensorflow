@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
@@ -30,7 +29,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
-
 
 # Picked a long key value to minimize the chance of collision with user defined
 # collection keys.
@@ -64,7 +62,7 @@ def global_step(sess, global_step_tensor):
   Returns:
     The global step value.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return int(global_step_tensor.numpy())
   return int(sess.run(global_step_tensor))
 
@@ -123,7 +121,7 @@ def create_global_step(graph=None):
     raise ValueError('"global_step" already exists.')
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       with ops.device('cpu:0'):
         return variable_scope.get_variable(
             ops.GraphKeys.GLOBAL_STEP,
@@ -170,8 +168,7 @@ def assert_global_step(global_step_tensor):
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
           isinstance(global_step_tensor, ops.Tensor) or
-          isinstance(global_step_tensor,
-                     resource_variable_ops.ResourceVariable)):
+          resource_variable_ops.is_resource_variable(global_step_tensor)):
     raise TypeError(
         'Existing "global_step" must be a Variable or Tensor: %s.' %
         global_step_tensor)

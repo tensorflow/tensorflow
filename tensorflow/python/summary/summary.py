@@ -48,10 +48,13 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.core.util.event_pb2 import TaggedRunMetadata
 # pylint: enable=unused-import
 
+
 from tensorflow.python.eager import context as _context
+from tensorflow.python.framework import constant_op as _constant_op
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
+from tensorflow.python.ops import gen_summary_ops as _gen_summary_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import summary_op_util as _summary_op_util
 
 # exports tensor-related summaries
@@ -96,10 +99,11 @@ def scalar(name, tensor, collections=None, family=None):
   Raises:
     ValueError: If tensor has the wrong shape or type.
   """
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
-    # pylint: disable=protected-access
-    val = _gen_logging_ops._scalar_summary(tags=tag, values=tensor, name=scope)
+    val = _gen_logging_ops.scalar_summary(tags=tag, values=tensor, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
@@ -150,10 +154,11 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
-    # pylint: disable=protected-access
-    val = _gen_logging_ops._image_summary(
+    val = _gen_logging_ops.image_summary(
         tag=tag, tensor=tensor, max_images=max_outputs, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
@@ -189,11 +194,12 @@ def histogram(name, values, collections=None, family=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[values],
       default_name='HistogramSummary') as (tag, scope):
-    # pylint: disable=protected-access
-    val = _gen_logging_ops._histogram_summary(
+    val = _gen_logging_ops.histogram_summary(
         tag=tag, values=values, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
@@ -235,12 +241,13 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family=family, values=[tensor]) as (tag, scope):
-    # pylint: disable=protected-access
     sample_rate = _ops.convert_to_tensor(
         sample_rate, dtype=_dtypes.float32, name='sample_rate')
-    val = _gen_logging_ops._audio_summary_v2(
+    val = _gen_logging_ops.audio_summary_v2(
         tag=tag, tensor=tensor, max_outputs=max_outputs,
         sample_rate=sample_rate, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
@@ -280,14 +287,15 @@ def merge(inputs, collections=None, name=None):
   @end_compatbility
   """
   # pylint: enable=line-too-long
-  if _context.in_eager_mode():
+  if _context.executing_eagerly():
     raise RuntimeError(
         'Merging tf.summary.* ops is not compatible with eager execution. '
         'Use tf.contrib.summary instead.')
+  if _summary_op_util.skip_summary():
+    return _constant_op.constant('')
   name = _summary_op_util.clean_tag(name)
   with _ops.name_scope(name, 'Merge', inputs):
-    # pylint: disable=protected-access
-    val = _gen_logging_ops._merge_summary(inputs=inputs, name=name)
+    val = _gen_logging_ops.merge_summary(inputs=inputs, name=name)
     _summary_op_util.collect(val, collections, [])
   return val
 
@@ -314,7 +322,7 @@ def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None):
   summaries under eager execution, use `tf.contrib.summary` instead.
   @end_compatbility
   """
-  if _context.in_eager_mode():
+  if _context.executing_eagerly():
     raise RuntimeError(
         'Merging tf.summary.* ops is not compatible with eager execution. '
         'Use tf.contrib.summary instead.')

@@ -234,7 +234,7 @@ def sparse_concat(axis,
     ]
 
   output_ind, output_val, output_shape = (
-      gen_sparse_ops._sparse_concat(inds, vals, shapes, axis, name=name))
+      gen_sparse_ops.sparse_concat(inds, vals, shapes, axis, name=name))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
@@ -302,8 +302,8 @@ def sparse_add(a, b, thresh=0):
     thresh = ops.convert_to_tensor(
         thresh, dtype=a.values.dtype.real_dtype.base_dtype, name="thresh")
     output_ind, output_val, output_shape = (
-        gen_sparse_ops._sparse_add(a.indices, a.values, a.dense_shape,
-                                   b.indices, b.values, b.dense_shape, thresh))
+        gen_sparse_ops.sparse_add(a.indices, a.values, a.dense_shape,
+                                  b.indices, b.values, b.dense_shape, thresh))
 
     # Attempt to get output_shape statically.
     a.get_shape().assert_is_compatible_with(b.get_shape())
@@ -317,8 +317,8 @@ def sparse_add(a, b, thresh=0):
     # swap to make `a` the SparseTensor.
     if isinstance(b, sparse_classes):
       a, b = b, a
-    return gen_sparse_ops._sparse_tensor_dense_add(a.indices, a.values,
-                                                   a.dense_shape, b)
+    return gen_sparse_ops.sparse_tensor_dense_add(a.indices, a.values,
+                                                  a.dense_shape, b)
 
 
 def _sparse_cross(inputs, name=None):
@@ -402,7 +402,7 @@ def _sparse_cross_internal(inputs,
                            num_buckets=0,
                            hash_key=None,
                            name=None):
-  """See gen_sparse_ops._sparse_cross."""
+  """See gen_sparse_ops.sparse_cross."""
   if not isinstance(inputs, list):
     raise TypeError("Inputs must be a list")
   if not all(
@@ -432,7 +432,7 @@ def _sparse_cross_internal(inputs,
       dense_inputs[i] = math_ops.to_int64(dense_inputs[i])
       internal_type = dtypes.int64
 
-  indices_out, values_out, shape_out = gen_sparse_ops._sparse_cross(
+  indices_out, values_out, shape_out = gen_sparse_ops.sparse_cross(
       indices=indices,
       values=values,
       shapes=shapes,
@@ -511,7 +511,7 @@ def sparse_reorder(sp_input, name=None):
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   reordered_ind, reordered_val = (
-      gen_sparse_ops._sparse_reorder(
+      gen_sparse_ops.sparse_reorder(
           sp_input.indices, sp_input.values, sp_input.dense_shape, name=name))
 
   if sp_input.get_shape().is_fully_defined():
@@ -575,7 +575,7 @@ def sparse_reshape(sp_input, shape, name=None):
   shape = math_ops.cast(shape, dtype=dtypes.int64)
 
   with ops.name_scope(name, "SparseReshape", [sp_input]) as name:
-    reshaped_ind, reshaped_shape = gen_sparse_ops._sparse_reshape(
+    reshaped_ind, reshaped_shape = gen_sparse_ops.sparse_reshape(
         sp_input.indices, sp_input.dense_shape, shape, name=name)
 
     reshaped_shape_const = tensor_util.constant_value(shape)
@@ -671,7 +671,7 @@ def sparse_split(keyword_required=KeywordRequired(),
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   output_inds, output_vals, output_shapes = (
-      gen_sparse_ops._sparse_split(
+      gen_sparse_ops.sparse_split(
           axis,
           sp_input.indices,
           sp_input.values,
@@ -782,7 +782,7 @@ def sparse_to_dense(sparse_indices,
     Dense `Tensor` of shape `output_shape`.  Has the same type as
     `sparse_values`.
   """
-  return gen_sparse_ops._sparse_to_dense(
+  return gen_sparse_ops.sparse_to_dense(
       sparse_indices,
       output_shape,
       sparse_values,
@@ -1412,7 +1412,7 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
     default_value = ops.convert_to_tensor(
         default_value, dtype=sp_input.values.dtype)
     (output_indices, output_values, empty_row_indicator,
-     unused_reverse_index_map) = gen_sparse_ops._sparse_fill_empty_rows(
+     unused_reverse_index_map) = gen_sparse_ops.sparse_fill_empty_rows(
          indices=sp_input.indices,
          values=sp_input.values,
          dense_shape=sp_input.dense_shape,
@@ -1441,7 +1441,7 @@ def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return gen_sparse_ops._serialize_sparse(
+  return gen_sparse_ops.serialize_sparse(
       sp_input.indices,
       sp_input.values,
       sp_input.dense_shape,
@@ -1476,7 +1476,7 @@ def serialize_many_sparse(sp_input, name=None, out_type=dtypes.string):
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return gen_sparse_ops._serialize_many_sparse(
+  return gen_sparse_ops.serialize_many_sparse(
       sp_input.indices,
       sp_input.values,
       sp_input.dense_shape,
@@ -1541,7 +1541,7 @@ def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
 
   """
   output_indices, output_values, output_shape = (
-      gen_sparse_ops._deserialize_sparse(serialized_sparse, dtype, name=name))
+      gen_sparse_ops.deserialize_sparse(serialized_sparse, dtype, name=name))
 
   # Feed rank data back in, if available
   output_indices.set_shape([None, rank])
@@ -1610,7 +1610,7 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
     All of the serialized `SparseTensor`s must have had the same rank and type.
   """
   output_indices, output_values, output_shape = (
-      gen_sparse_ops._deserialize_many_sparse(
+      gen_sparse_ops.deserialize_many_sparse(
           serialized_sparse, dtype, name=name))
 
   # Feed rank data back in, if available
@@ -1828,7 +1828,7 @@ def sparse_tensor_dense_matmul(sp_a,
   with ops.name_scope(name, "SparseTensorDenseMatMul",
                       [sp_a.indices, sp_a.values, b]) as name:
     b = ops.convert_to_tensor(b, name="b")
-    return gen_sparse_ops._sparse_tensor_dense_mat_mul(
+    return gen_sparse_ops.sparse_tensor_dense_mat_mul(
         a_indices=sp_a.indices,
         a_values=sp_a.values,
         a_shape=sp_a.dense_shape,
@@ -2046,7 +2046,7 @@ def _add_sparse_to_tensors_map(sp_input,
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return gen_sparse_ops._add_sparse_to_tensors_map(
+  return gen_sparse_ops.add_sparse_to_tensors_map(
       sp_input.indices,
       sp_input.values,
       sp_input.dense_shape,
@@ -2086,7 +2086,7 @@ def _add_many_sparse_to_tensors_map(sp_input,
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return gen_sparse_ops._add_many_sparse_to_tensors_map(
+  return gen_sparse_ops.add_many_sparse_to_tensors_map(
       sp_input.indices,
       sp_input.values,
       sp_input.dense_shape,
@@ -2167,7 +2167,7 @@ def _take_many_sparse_from_tensors_map(sparse_map_op,
   with ops.colocate_with(sparse_map_op):
     shared_name = sparse_map_op.get_attr("shared_name") or sparse_map_op.name
     output_indices, output_values, output_shape = (
-        gen_sparse_ops._take_many_sparse_from_tensors_map(
+        gen_sparse_ops.take_many_sparse_from_tensors_map(
             sparse_handles,
             dtype=sparse_map_op.get_attr("T"),
             container=sparse_map_op.get_attr("container"),

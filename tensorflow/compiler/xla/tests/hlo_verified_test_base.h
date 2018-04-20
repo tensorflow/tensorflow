@@ -44,6 +44,7 @@ class HloVerifiedTestBase : public HloTestBase {
   // Returns the default HloModule, lazily creating it if necessary via
   // HloTestBase::CreateNewModule().
   HloModule& module();
+  void ParseAndVerifyModule(tensorflow::StringPiece hlo_text);
 
   // Sets the shape-size function used during hlo verification. If this isn't
   // called, a default ShapeVerifier is used instead.
@@ -55,6 +56,7 @@ class HloVerifiedTestBase : public HloTestBase {
   std::unique_ptr<HloModule> module_;  // Lazily populated. Access via module().
   std::unique_ptr<ShapeVerifier> shape_verifier_;
   bool tear_down_called_ = false;
+  void VerifyModule();
 };
 
 }  // namespace xla

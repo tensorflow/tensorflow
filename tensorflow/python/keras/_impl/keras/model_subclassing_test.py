@@ -22,7 +22,9 @@ import os
 import tempfile
 
 import numpy as np
+import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
@@ -36,6 +38,7 @@ except ImportError:
   h5py = None
 
 
+# pylint: disable=not-callable
 class SimpleTestModel(keras.Model):
 
   def __init__(self, use_bn=False, use_dp=False, num_classes=10):
@@ -104,7 +107,7 @@ class NestedTestModel1(keras.Model):
   def call(self, inputs):
     x = self.dense1(inputs)
     x = self.bn(x)
-    x = self.test_net(x)  # pylint: disable=not-callable
+    x = self.test_net(x)
     return self.dense2(x)
 
 
@@ -161,7 +164,7 @@ def get_nested_model_3(input_dim, num_classes):
       return tensor_shape.TensorShape((input_shape[0], 5))
 
   test_model = Inner()
-  x = test_model(x)  # pylint: disable=not-callable
+  x = test_model(x)
   outputs = keras.layers.Dense(num_classes)(x)
   return keras.Model(inputs, outputs, name='nested_model_3')
 
@@ -174,19 +177,18 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 100
     input_dim = 50
 
-    with self.test_session():
-      model = SimpleTestModel(num_classes=num_classes,
-                              use_dp=True,
-                              use_bn=True)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = SimpleTestModel(num_classes=num_classes,
+                            use_dp=True,
+                            use_bn=True)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
 
-      model.fit(x, y, epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate(x, y, verbose=0)
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_multi_io_workflow_with_np_arrays(self):
@@ -194,21 +196,20 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 1000
     input_dim = 50
 
-    with self.test_session():
-      model = MultiIOTestModel(num_classes=num_classes,
-                               use_dp=True,
-                               use_bn=True)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = MultiIOTestModel(num_classes=num_classes,
+                             use_dp=True,
+                             use_bn=True)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x1 = np.ones((num_samples, input_dim))
-      x2 = np.ones((num_samples, input_dim))
-      y1 = np.zeros((num_samples, num_classes[0]))
-      y2 = np.zeros((num_samples, num_classes[1]))
+    x1 = np.ones((num_samples, input_dim))
+    x2 = np.ones((num_samples, input_dim))
+    y1 = np.zeros((num_samples, num_classes[0]))
+    y2 = np.zeros((num_samples, num_classes[1]))
 
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
+    model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
 
   def test_single_io_workflow_with_tensors(self):
 
@@ -321,14 +322,13 @@ class ModelSubclassingTest(test.TestCase):
     x = np.ones((num_samples, input_dim))
     y = np.ones((num_samples, input_dim))
 
-    with self.test_session():
-      model = BNNet()
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      y_ref = model.predict(x)
+    model = BNNet()
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    y_ref = model.predict(x)
 
-      model.train_on_batch(x, y)
-      y_new = model.predict(x)
-      self.assertGreater(np.sum(np.abs(y_ref - y_new)), 0.1)
+    model.train_on_batch(x, y)
+    y_new = model.predict(x)
+    self.assertGreater(np.sum(np.abs(y_ref - y_new)), 0.1)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_training_and_inference_behavior(self):
@@ -350,14 +350,13 @@ class ModelSubclassingTest(test.TestCase):
         x = self.dp(inputs)
         return self.dense(x)
 
-    with self.test_session():
-      model = DPNet()
-      x = np.ones((num_samples, input_dim))
-      y = model.predict(x)
-      self.assertEqual(np.sum(y), np.sum(x))
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      loss = model.train_on_batch(x, y)
-      self.assertGreater(loss, 0.1)
+    model = DPNet()
+    x = np.ones((num_samples, input_dim))
+    y = model.predict(x)
+    self.assertEqual(np.sum(y), np.sum(x))
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    loss = model.train_on_batch(x, y)
+    self.assertGreater(loss, 0.1)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_training_methods(self):
@@ -373,21 +372,20 @@ class ModelSubclassingTest(test.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    with self.test_session():
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32)
-      model.fit({'input_1': x1, 'input_2': x2},
-                {'output_1': y1, 'output_2': y2},
-                epochs=2, batch_size=32)
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32,
-                validation_data=([x1, x2], [y1, y2]))
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
+    model.fit({'input_1': x1, 'input_2': x2},
+              {'output_1': y1, 'output_2': y2},
+              epochs=2, batch_size=32)
+    model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0,
+              validation_data=([x1, x2], [y1, y2]))
 
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.train_on_batch([x1, x2], [y1, y2])
-      model.train_on_batch({'input_1': x1, 'input_2': x2},
-                           {'output_1': y1, 'output_2': y2})
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.train_on_batch([x1, x2], [y1, y2])
+    model.train_on_batch({'input_1': x1, 'input_2': x2},
+                         {'output_1': y1, 'output_2': y2})
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def test_inference_methods(self):
@@ -402,17 +400,16 @@ class ModelSubclassingTest(test.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    with self.test_session():
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.evaluate([x1, x2], [y1, y2])
-      model.test_on_batch([x1, x2], [y1, y2])
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.evaluate([x1, x2], [y1, y2])
+    model.test_on_batch([x1, x2], [y1, y2])
 
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.predict([x1, x2])
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.predict([x1, x2])
 
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.predict_on_batch([x1, x2])
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.predict_on_batch([x1, x2])
 
   @test_util.run_in_graph_and_eager_modes()
   def test_trainable_mutation(self):
@@ -435,26 +432,25 @@ class ModelSubclassingTest(test.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    with self.test_session():
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32)
-      y_ref_1, y_ref_2 = model.predict([x1, x2])
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
+    y_ref_1, y_ref_2 = model.predict([x1, x2])
 
-      fd, fname = tempfile.mkstemp('.h5')
-      model.save_weights(fname)
+    fd, fname = tempfile.mkstemp('.h5')
+    model.save_weights(fname)
 
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      # need to build the model before loading weights
-      # (otherwise no weights to load)
-      model._set_inputs([x1, x2])
-      model.load_weights(fname)
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    # need to build the model before loading weights
+    # (otherwise no weights to load)
+    model._set_inputs([x1, x2])
+    model.load_weights(fname)
 
-      y1, y2 = model.predict([x1, x2])
-      self.assertAllClose(y_ref_1, y1, atol=1e-5)
-      self.assertAllClose(y_ref_2, y2, atol=1e-5)
-      os.close(fd)
-      os.remove(fname)
+    y1, y2 = model.predict([x1, x2])
+    self.assertAllClose(y_ref_1, y1, atol=1e-5)
+    self.assertAllClose(y_ref_2, y2, atol=1e-5)
+    os.close(fd)
+    os.remove(fname)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_summary(self):
@@ -488,23 +484,22 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 100
     input_dim = 50
 
-    with self.test_session():
-      model = NestedTestModel1(num_classes=num_classes)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = NestedTestModel1(num_classes=num_classes)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
 
-      model.fit(x, y, epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate(x, y, verbose=0)
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
 
-      self.assertEqual(len(model.weights), 8 + len(model.test_net.weights))
-      self.assertEqual(len(model.non_trainable_weights),
-                       2 + len(model.test_net.non_trainable_weights))
-      self.assertEqual(len(model.trainable_weights),
-                       6 + len(model.test_net.trainable_weights))
+    self.assertEqual(len(model.weights), 8 + len(model.test_net.weights))
+    self.assertEqual(len(model.non_trainable_weights),
+                     2 + len(model.test_net.non_trainable_weights))
+    self.assertEqual(len(model.trainable_weights),
+                     6 + len(model.test_net.trainable_weights))
 
   @test_util.run_in_graph_and_eager_modes()
   def test_graph_nested_in_subclass(self):
@@ -512,23 +507,22 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 100
     input_dim = 50
 
-    with self.test_session():
-      model = NestedTestModel2(num_classes=num_classes)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = NestedTestModel2(num_classes=num_classes)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
 
-      model.fit(x, y, epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate(x, y, verbose=0)
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
 
-      self.assertEqual(len(model.weights), 8 + len(model.test_net.weights))
-      self.assertEqual(len(model.non_trainable_weights),
-                       2 + len(model.test_net.non_trainable_weights))
-      self.assertEqual(len(model.trainable_weights),
-                       6 + len(model.test_net.trainable_weights))
+    self.assertEqual(len(model.weights), 8 + len(model.test_net.weights))
+    self.assertEqual(len(model.non_trainable_weights),
+                     2 + len(model.test_net.non_trainable_weights))
+    self.assertEqual(len(model.trainable_weights),
+                     6 + len(model.test_net.trainable_weights))
 
   @test_util.run_in_graph_and_eager_modes()
   def test_subclass_nested_in_graph(self):
@@ -536,23 +530,170 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 100
     input_dim = 50
 
-    with self.test_session():
-      model = get_nested_model_3(input_dim=input_dim, num_classes=num_classes)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = get_nested_model_3(input_dim=input_dim, num_classes=num_classes)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
 
-      model.fit(x, y, epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate(x, y, verbose=0)
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
 
-      self.assertEqual(len(model.weights), 16)
-      self.assertEqual(
-          len(model.non_trainable_weights), 4)
-      self.assertEqual(len(model.trainable_weights), 12)
+    self.assertEqual(len(model.weights), 16)
+    self.assertEqual(
+        len(model.non_trainable_weights), 4)
+    self.assertEqual(len(model.trainable_weights), 12)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_support_for_manual_training_arg(self):
+    # In most cases, the `training` argument is left unspecified, in which
+    # case it defaults to value corresponding to the Model method being used
+    # (fit -> True, predict -> False, etc).
+    # If the user writes their model `call` method to take
+    # an explicit `training` argument, we must check that the correct value
+    # is being passed to the model for each method call.
+
+    class DPNet(keras.Model):
+
+      def __init__(self):
+        super(DPNet, self).__init__()
+        self.dp = keras.layers.Dropout(0.5)
+        self.dense = keras.layers.Dense(1,
+                                        use_bias=False,
+                                        kernel_initializer='ones')
+
+      def call(self, inputs, training=False):
+        x = self.dp(inputs, training=training)
+        return self.dense(x)
+
+    model = DPNet()
+    x = np.ones((10, 10))
+    y = model.predict(x)
+    self.assertEqual(np.sum(y), np.sum(x))
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    loss = model.train_on_batch(x, y)
+    self.assertGreater(loss, 0.1)
+
+
+class CustomCallModel(keras.Model):
+
+  def __init__(self):
+    super(CustomCallModel, self).__init__()
+    self.dense1 = keras.layers.Dense(1, activation='relu')
+    self.dense2 = keras.layers.Dense(1, activation='softmax')
+
+  def call(self, first, second, fiddle_with_output='no', training=True):
+    combined = self.dense1(first) + self.dense2(second)
+    if fiddle_with_output == 'yes':
+      return 10. * combined
+    else:
+      return combined
+
+
+class CustomCallSignatureTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_no_inputs_in_signature(self):
+    model = CustomCallModel()
+    first = array_ops.ones([2, 3])
+    second = array_ops.ones([2, 5])
+    output = model(first, second)
+    self.evaluate([v.initializer for v in model.variables])
+    expected_output = self.evaluate(model.dense1(first) + model.dense2(second))
+    self.assertAllClose(expected_output, self.evaluate(output))
+    output = model(first, second, fiddle_with_output='yes')
+    self.assertAllClose(10. * expected_output, self.evaluate(output))
+    output = model(first, second=second, training=False)
+    self.assertAllClose(expected_output, self.evaluate(output))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_inputs_in_signature(self):
+
+    class HasInputsAndOtherPositional(keras.Model):
+
+      def call(self, inputs, some_other_arg, training=False):
+        return inputs
+
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
+    model = HasInputsAndOtherPositional()
+    with self.assertRaisesRegexp(
+        TypeError, 'everything else as a keyword argument'):
+      x1, x2 = keras.Input((1, 1)), keras.Input((1, 1))
+      model(x1, x2)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_kwargs_in_signature(self):
+
+    class HasKwargs(keras.Model):
+
+      def call(self, x, y=3, **key_words):
+        return x
+
+    model = HasKwargs()
+    arg = array_ops.ones([])
+    model(arg, a=3)
+    if not context.executing_eagerly():
+      six.assertCountEqual(self, [arg], model.inputs)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_args_in_signature(self):
+
+    class HasArgs(keras.Model):
+
+      def call(self, x, *args, **kwargs):
+        return [x] + list(args)
+
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
+    model = HasArgs()
+    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
+    model(x1, x2, x3, a=3)
+    if not context.executing_eagerly():
+      six.assertCountEqual(self, [x1, x2, x3], model.inputs)
+
+  def test_args_and_keywords_in_signature(self):
+
+    class HasArgs(keras.Model):
+
+      def call(self, x, training=True, *args, **kwargs):
+        return x
+
+    with context.graph_mode():
+      model = HasArgs()
+      x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
+      with self.assertRaisesRegexp(TypeError, 'args and arguments with'):
+        model(x1, x2, x3, a=3)
+
+  def test_training_no_default(self):
+
+    class TrainingNoDefault(keras.Model):
+
+      def call(self, x, training):
+        return x
+
+    with context.graph_mode():
+      model = TrainingNoDefault()
+      arg = array_ops.ones([])
+      model(arg, True)
+      six.assertCountEqual(self, [arg], model.inputs)
+
+  def test_training_no_default_with_positional(self):
+
+    class TrainingNoDefaultWithPositional(keras.Model):
+
+      def call(self, x, training, positional):
+        return x
+
+    with context.graph_mode():
+      model = TrainingNoDefaultWithPositional()
+      x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
+      with self.assertRaisesRegexp(TypeError, 'after a non-input'):
+        model(x1, x2, x3)
 
 if __name__ == '__main__':
   test.main()

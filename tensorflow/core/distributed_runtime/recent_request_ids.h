@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RECENT_REQUEST_IDS_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RECENT_REQUEST_IDS_H_
 
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -64,7 +66,7 @@ class RecentRequestIds {
   // request_id.
   int next_index_ GUARDED_BY(mu_) = 0;
   std::vector<int64> circular_buffer_ GUARDED_BY(mu_);
-  gtl::FlatSet<int64> set_ GUARDED_BY(mu_);
+  std::unordered_set<int64> set_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

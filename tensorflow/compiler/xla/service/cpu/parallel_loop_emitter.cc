@@ -29,7 +29,8 @@ ParallelLoopEmitter::ParallelLoopEmitter(
     : LoopEmitter(target_element_generator, target_array, ir_builder),
       dynamic_loop_bounds_(dynamic_loop_bounds) {}
 
-llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
+std::vector<llvm_ir::IrArray::Index>
+ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
     tensorflow::StringPiece loop_name) {
   CHECK(!ShapeUtil::IsTuple(shape_));
   CHECK(!ShapeUtil::IsScalar(shape_));
@@ -69,7 +70,7 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
   exit_bb_ = loop_nest.GetOuterLoopExitBasicBlock();
   CHECK(exit_bb_ != nullptr);
 
-  return array_index;
+  return {array_index};
 }
 
 }  // namespace cpu

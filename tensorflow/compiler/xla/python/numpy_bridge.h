@@ -107,6 +107,9 @@ void CopyLiteralToNumpyArray(const Literal& literal, PyArrayObject* py_array) {
   std::copy(source.begin(), source.end(), dest);
 }
 
+// Safely returns a repr of the given Python object o as a C++ string.
+string PyObjectCppRepr(PyObject* o);
+
 // Workarounds for Python 2 and 3 interop
 
 PyObject* LongToPyIntOrPyLong(long x);  // NOLINT

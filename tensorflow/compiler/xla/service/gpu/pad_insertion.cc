@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -68,13 +69,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
     HloInstruction* padding =
         computation->AddInstruction(HloInstruction::CreateConstant(
             MakeUnique<Literal>(Literal::Zero(element_type))));
-    input = computation->AddInstruction(HloInstruction::CreatePad(
-        ShapeInference::InferPadShape(
-            /*operand_shape=*/input->shape(),
-            /*padding_value_shape=*/ShapeUtil::MakeShape(element_type, {}),
-            padding_config)
-            .ConsumeValueOrDie(),
-        input, padding, padding_config));
+    input = MakePadHlo(input, padding, padding_config).ValueOrDie();
   }
 
   if (window_util::HasNegativePadding(conv_window)) {
@@ -97,11 +92,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
           std::max<int64>(0LL, -conv_window.dimensions(i).padding_high());
     }
 
-    input = computation->AddInstruction(HloInstruction::CreateSlice(
-        ShapeInference::InferSliceShape(input->shape(), start_indices,
-                                        limit_indices, strides)
-            .ConsumeValueOrDie(),
-        input, start_indices, limit_indices, strides));
+    input =
+        MakeSliceHlo(input, start_indices, limit_indices, strides).ValueOrDie();
   }
 
   return input;
@@ -134,13 +126,7 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   HloInstruction* padding =
       computation->AddInstruction(HloInstruction::CreateConstant(
           MakeUnique<Literal>(Literal::Zero(element_type))));
-  return computation->AddInstruction(HloInstruction::CreatePad(
-      ShapeInference::InferPadShape(
-          /*operand_shape=*/kernel->shape(),
-          /*padding_value_shape=*/ShapeUtil::MakeShape(element_type, {}),
-          padding_config)
-          .ConsumeValueOrDie(),
-      kernel, padding, padding_config));
+  return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
 }
 }  // namespace
 
@@ -252,11 +238,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
       computation->AddInstruction(HloInstruction::CreateConstant(
           MakeUnique<Literal>(Literal::Zero(input->shape().element_type()))));
   HloInstruction* padded_input =
-      computation->AddInstruction(HloInstruction::CreatePad(
-          ShapeInference::InferPadShape(input->shape(), padding->shape(),
-                                        input_padding_config)
-              .ConsumeValueOrDie(),
-          input, padding, input_padding_config));
+      MakePadHlo(input, padding, input_padding_config).ValueOrDie();
 
   // The shape of the backward_conv CustomCall is a tuple (conv_result,
   // scratch_buffer).  Extract out the shape of conv_result.

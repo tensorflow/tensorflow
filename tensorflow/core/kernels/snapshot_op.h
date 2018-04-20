@@ -26,24 +26,19 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace functor {
 
+// Functor used by SnapshotOp.
 template <typename Device, typename Scalar>
-class SnapshotOp : public OpKernel {
- public:
-  explicit SnapshotOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
-    const Device& device = context->eigen_device<Device>();
-    device.memcpy(output->template flat<Scalar>().data(),
-                  input.template flat<Scalar>().data(),
-                  input.NumElements() * sizeof(Scalar));
+struct Snapshot {
+  void operator()(const Device& device,
+                  typename TTypes<Scalar>::ConstTensor input,
+                  typename TTypes<Scalar>::Tensor output) {
+    device.memcpy(output.data(), input.data(), input.size() * sizeof(Scalar));
   }
 };
 
+}  // namespace functor
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_SNAPSHOT_OP_H_

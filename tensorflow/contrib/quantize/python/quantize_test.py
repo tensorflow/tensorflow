@@ -113,6 +113,187 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                             quantization_node_name)
     self.assertEqual(add_quant.type, quantization_node_name)
 
+  def testFinalLayerQuantized(self):
+    self._RunTestOverParameters(self._TestFinalLayerQuantized)
+
+  def _TestFinalLayerQuantized(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      _ = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          scope='test')
+      # Ensure that the a FakeQuant operation is in the outputs of the BiasAdd.
+      bias_add_op = graph.get_operation_by_name('test/BiasAdd')
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [op.type for op in bias_add_op.outputs[0].consumers()])
+
+  def testPostActivationBypassQuantized(self):
+    self._RunTestOverParameters(self._TestPostActivationBypassQuantized)
+
+  def _TestPostActivationBypassQuantized(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      input2 = array_ops.zeros((batch_size, height / 2, width / 2, 32))
+      conv = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=array_ops.identity,
+          scope='test/test')
+      bypass_tensor = math_ops.add(conv, input2, name='test/add')
+      _ = array_ops.identity(bypass_tensor, name='test/output')
+
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+
+      # Ensure that the bypass node is preceded and followed by
+      # FakeQuantWithMinMaxVars operations.
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [c.type for c in bypass_tensor.consumers()])
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [i.op.type for i in bypass_tensor.op.inputs])
+
+  def testOverlappingPostActivationBypassQuantized(self):
+    self._RunTestOverParameters(
+        self._TestOverlappingPostActivationBypassQuantized)
+
+  def _TestOverlappingPostActivationBypassQuantized(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      conv_input = array_ops.zeros((batch_size, height, width, depth))
+      conv1 = conv2d(
+          conv_input,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=array_ops.identity,
+          scope='test/test1')
+
+      # The bypass of this conv is the post activation bypass of the previous
+      # conv.
+      conv2 = conv2d(
+          conv_input,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          scope='test/test2')
+
+      bypass_tensor = math_ops.add(conv1, conv2, name='test/add')
+      _ = array_ops.identity(bypass_tensor, name='test/output')
+
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+
+      # Ensure that the bypass node is preceded and followed by
+      # FakeQuantWithMinMaxVars operations.
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [c.type for c in bypass_tensor.consumers()])
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [i.op.type for i in bypass_tensor.op.inputs])
+
+      # Ensure that all the convs and activations are quantized.
+      op_names = [op.name for op in graph.get_operations()]
+      self.assertTrue(
+          'test/test1/weights_quant/FakeQuantWithMinMaxVars' in op_names)
+      self.assertTrue(
+          'test/test2/weights_quant/FakeQuantWithMinMaxVars' in op_names)
+      self.assertTrue(
+          'test/test1/act_quant/FakeQuantWithMinMaxVars' in op_names)
+      self.assertTrue('test/act_quant/FakeQuantWithMinMaxVars' in op_names)
+      self.assertEqual(
+          'Identity',
+          graph.get_operation_by_name(
+              'test/test1/act_quant/FakeQuantWithMinMaxVars').inputs[0].op.type)
+      self.assertEqual(
+          'Identity',
+          graph.get_operation_by_name(
+              'test/act_quant/FakeQuantWithMinMaxVars').inputs[0].op.type)
+
+  def testWithNameScope(self):
+    self._RunTestOverParameters(self._TestWithNameScope)
+
+  def _TestWithNameScope(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      with graph.name_scope('name_scope'):
+        batch_size, height, width, depth = 5, 128, 128, 3
+        input1 = array_ops.zeros((batch_size, height, width, depth))
+        _ = conv2d(
+            input1,
+            32, [5, 5],
+            stride=2,
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=None,
+            scope='test')
+
+        quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+
+    for op in graph.get_operations():
+      self.assertTrue(not op.name.startswith('name_scope/name_scope/'),
+                      'Broken op: %s' % op.name)
+
+  def testWithNullNameScope(self):
+    self._RunTestOverParameters(self._TestWithNullNameScope)
+
+  def _TestWithNullNameScope(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      with graph.name_scope(None):
+        batch_size, height, width, depth = 5, 128, 128, 32
+        input1 = array_ops.zeros((batch_size, height, width, depth))
+        _ = conv2d(
+            input1,
+            32, [5, 5],
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=None,
+            scope='test')
+
+        quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+        # Passes if Quantize() does not crash.
+
+  def testWithNonMatchingNameScope(self):
+    self._RunTestOverParameters(self._testWithNonMatchingNameScope)
+
+  def _testWithNonMatchingNameScope(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      with graph.name_scope('name_scope'):
+        batch_size, height, width, depth = 5, 128, 128, 3
+        input1 = array_ops.zeros((batch_size, height, width, depth))
+        _ = conv2d(
+            input1,
+            32, [5, 5],
+            stride=2,
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=None,
+            scope='test')
+
+    op_names_before_quantize = set([op.name for op in graph.get_operations()])
+    quantize.Quantize(
+        graph, is_training, weight_bits=8, activation_bits=8,
+        scope='NonExisting/')
+    op_names_after_quantize = set([op.name for op in graph.get_operations()])
+
+    # No ops should be inserted or removed.
+    self.assertEqual(op_names_before_quantize, op_names_after_quantize)
+
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.
 
@@ -122,7 +303,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       stddev: Standard deviation of normal variable.
 
     Returns:
-      An initialized that initialzes with a truncated normal variable.
+      An initialized that initializes with a truncated normal variable.
     """
     return init_ops.truncated_normal_initializer(stddev=stddev)
 

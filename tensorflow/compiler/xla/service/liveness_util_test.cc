@@ -35,8 +35,7 @@ class PointsToAnalysisTestBase : public HloTestBase {
     CHECK_NOTNULL(module_.get());
     points_to_analysis_ =
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
-    dataflow_analysis_ =
-        HloDataflowAnalysis::Run(module_.get()).ConsumeValueOrDie();
+    dataflow_analysis_ = HloDataflowAnalysis::Run(*module_).ConsumeValueOrDie();
   }
 
   void BuildModuleAndRunAnalysis(std::unique_ptr<HloComputation> computation) {

@@ -32,6 +32,8 @@ TileGrad  # Exported through array_grad instead of array_ops.
 ZerosLike  # TODO(josh11b): Use this instead of the Python version.
 Unique
 UniqueV2
+UniqueWithCounts
+UniqueWithCountsV2
 Unpack
 
 # candidate_sampling_ops
@@ -261,6 +263,7 @@ BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
 Bucketize
+ClipByValue
 Complex
 ComplexAbs
 Conj

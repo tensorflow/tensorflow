@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -144,7 +145,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Compile(computation, {&lhs_arg_shape, &rhs_arg_shape},
-                      ExecutableBuildOptions()));
+                      ExecutableBuildOptions().set_hlo_profile(true)));
 
   Executable* executable = local_executable->executable();
   HloExecutionProfile hlo_execution_profile(
@@ -294,7 +295,8 @@ XLA_TEST_F(HloProfileTest,
   auto while_body_profile_start =
       std::find_if(profile_output_lines.begin(), profile_output_lines.end(),
                    [](tensorflow::StringPiece s) {
-                     return s.starts_with("Execution profile for body");
+                     return tensorflow::str_util::StartsWith(
+                         s, "Execution profile for body");
                    });
 
   ASSERT_NE(while_body_profile_start, profile_output_lines.end());

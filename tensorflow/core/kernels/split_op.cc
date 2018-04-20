@@ -121,6 +121,77 @@ class SplitOpBase : public OpKernel {
   }
 };
 
+template <typename T, typename InputReshapedType, int NDims>
+class SplitOpCPUImpl {
+ public:
+  template <typename MakeSizesType, typename ReshapeResultType>
+  void operator()(OpKernelContext* context,
+                  const InputReshapedType& input_reshaped,
+                  const TensorShape& input_shape, int32 split_dim,
+                  Eigen::DenseIndex prefix_dim_size,
+                  Eigen::DenseIndex split_dim_size,
+                  Eigen::DenseIndex suffix_dim_size,
+                  const MakeSizesType& make_sizes,
+                  const ReshapeResultType& reshape_result, int32 num_split,
+                  int64 split_dim_output_size) const {
+    const auto num_threads =
+        context->device()->tensorflow_cpu_worker_threads()->num_threads;
+    // TODO(jewillco): Tune heuristic further.
+    const auto input_element_count = input_shape.num_elements();
+    const bool use_parallelism_between_outputs =
+        (num_split >= 4 &&
+         input_element_count >= std::max(num_threads, num_split) * 4096 &&
+         input_element_count < num_split * 180 * 1024);
+    Eigen::DSizes<Eigen::DenseIndex, NDims> indices;
+    for (int i = 0; i < NDims; ++i) {
+      indices[i] = 0;
+    }
+    auto sizes = make_sizes(split_dim_output_size);
+    TensorShape output_shape(input_shape);
+    output_shape.set_dim(split_dim, split_dim_output_size);
+
+    auto range_output_func = [&indices, context, &output_shape, prefix_dim_size,
+                              split_dim_output_size, suffix_dim_size, &sizes,
+                              use_parallelism_between_outputs, &input_reshaped,
+                              &reshape_result](int64 start, int64 limit) {
+      for (int64 i = start; i < limit; ++i) {
+        Tensor* result = nullptr;
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(i, output_shape, &result));
+        if (prefix_dim_size * split_dim_output_size * suffix_dim_size > 0) {
+          Eigen::DSizes<Eigen::DenseIndex, NDims> slice_indices;
+          Eigen::DSizes<Eigen::DenseIndex, NDims> slice_sizes;
+          for (int j = 0; j < NDims; ++j) {
+            slice_indices[j] =
+                (j == NDims - 2 ? i * split_dim_output_size : indices[j]);
+            slice_sizes[j] = sizes[j];
+          }
+
+          auto result_shaped = reshape_result(result, split_dim_output_size);
+
+          if (use_parallelism_between_outputs) {
+            // Use sequential implementation for single output.
+            result_shaped = input_reshaped.slice(slice_indices, slice_sizes);
+          } else {
+            // This implementation may be parallel internally.
+            functor::Split<CPUDevice, T, NDims>()(
+                context->eigen_device<CPUDevice>(), result_shaped,
+                input_reshaped, slice_indices, slice_sizes);
+          }
+        }
+      }
+    };
+    if (use_parallelism_between_outputs) {
+      // Run in parallel, disabling parallelism in functor.
+      context->device()->tensorflow_cpu_worker_threads()->workers->ParallelFor(
+          num_split, input_element_count / num_split, range_output_func);
+    } else {
+      // Run sequentially, but allow internal parallelism in functor.
+      range_output_func(0, num_split);
+    }
+  }
+};
+
 template <typename T>
 class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
  public:
@@ -154,66 +225,37 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
 
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
         Base::template SetDims<Eigen::DenseIndex>(input_shape, split_dim);
-    auto input_reshaped =
-        input.shaped<T, 3>({prefix_dim_size, split_dim_size, suffix_dim_size});
 
     const int64 split_dim_output_size = split_dim_size / num_split;
-    TensorShape output_shape(input_shape);
-    output_shape.set_dim(split_dim, split_dim_output_size);
 
-    Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, 0};
-    const Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
-        prefix_dim_size, split_dim_output_size, suffix_dim_size};
-
-    const auto num_threads =
-        context->device()->tensorflow_cpu_worker_threads()->num_threads;
-    // TODO(jewillco): Tune heuristic further.
-    const auto input_element_count = input_shape.num_elements();
-    const bool use_parallelism_between_outputs =
-        (num_split >= 4 &&
-         input_element_count >= std::max(num_threads, num_split) * 4096 &&
-         input_element_count < num_split * 180 * 1024);
-
-    auto range_output_func = [&indices, context, &output_shape, prefix_dim_size,
-                              split_dim_output_size, suffix_dim_size, &sizes,
-                              use_parallelism_between_outputs,
-                              &input_reshaped](int64 start, int64 limit) {
-      for (int64 i = start; i < limit; ++i) {
-        Tensor* result = nullptr;
-        OP_REQUIRES_OK(context,
-                       context->allocate_output(i, output_shape, &result));
-        if (prefix_dim_size * split_dim_output_size * suffix_dim_size > 0) {
-          Eigen::DSizes<Eigen::DenseIndex, 3> slice_indices;
-          Eigen::DSizes<Eigen::DenseIndex, 3> slice_sizes;
-          for (int j = 0; j < 3; ++j) {
-            slice_indices[j] =
-                (j == 1 ? i * split_dim_output_size : indices[j]);
-            slice_sizes[j] = sizes[j];
-          }
-
-          auto result_shaped = result->shaped<T, 3>(
-              {prefix_dim_size, split_dim_output_size, suffix_dim_size});
-
-          if (use_parallelism_between_outputs) {
-            // Use sequential implementation for single output.
-            result_shaped = input_reshaped.slice(slice_indices, slice_sizes);
-          } else {
-            // This implementation may be parallel internally.
-            functor::Split<CPUDevice, T>()(context->eigen_device<CPUDevice>(),
-                                           result_shaped, input_reshaped,
-                                           slice_indices, slice_sizes);
-          }
-        }
-      }
-    };
-    if (use_parallelism_between_outputs) {
-      // Run in parallel, disabling parallelism in functor.
-      Shard(num_split,
-            context->device()->tensorflow_cpu_worker_threads()->workers,
-            num_split, input_element_count / num_split, range_output_func);
+    if (prefix_dim_size == 1) {
+      auto input_reshaped =
+          input.shaped<T, 2>({split_dim_size, suffix_dim_size});
+      auto make_sizes = [&](Eigen::DenseIndex split_size) {
+        return Eigen::DSizes<Eigen::DenseIndex, 2>{split_size, suffix_dim_size};
+      };
+      auto reshape_result = [&](Tensor* result, Eigen::DenseIndex split_size) {
+        return result->shaped<T, 2>({split_size, suffix_dim_size});
+      };
+      SplitOpCPUImpl<T, decltype(input_reshaped), 2>{}(
+          context, input_reshaped, input_shape, split_dim, prefix_dim_size,
+          split_dim_size, suffix_dim_size, make_sizes, reshape_result,
+          num_split, split_dim_output_size);
     } else {
-      // Run sequentially, but allow internal parallelism in functor.
-      range_output_func(0, num_split);
+      auto input_reshaped = input.shaped<T, 3>(
+          {prefix_dim_size, split_dim_size, suffix_dim_size});
+      auto make_sizes = [&](Eigen::DenseIndex split_size) {
+        return Eigen::DSizes<Eigen::DenseIndex, 3>{prefix_dim_size, split_size,
+                                                   suffix_dim_size};
+      };
+      auto reshape_result = [&](Tensor* result, Eigen::DenseIndex split_size) {
+        return result->shaped<T, 3>(
+            {prefix_dim_size, split_size, suffix_dim_size});
+      };
+      SplitOpCPUImpl<T, decltype(input_reshaped), 3>{}(
+          context, input_reshaped, input_shape, split_dim, prefix_dim_size,
+          split_dim_size, suffix_dim_size, make_sizes, reshape_result,
+          num_split, split_dim_output_size);
     }
   }
 };

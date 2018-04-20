@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorFlow composable models used as building blocks for estimators."""
+"""TensorFlow composable models used as building blocks for estimators (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -34,6 +39,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.summary import summary
+from tensorflow.python.util.deprecation import deprecated
 
 
 class _ComposableModel(object):
@@ -46,6 +52,7 @@ class _ComposableModel(object):
   _ComposableModel and its subclasses are not part of the public tf.learn API.
   """
 
+  @deprecated(None, "Please use model_fns in tf.estimator.")
   def __init__(self,
                num_label_columns,
                optimizer,
@@ -140,6 +147,10 @@ class _ComposableModel(object):
 
 class LinearComposableModel(_ComposableModel):
   """A _ComposableModel that implements linear regression.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Instances of this class can be used to build estimators through the use
   of composition.
@@ -251,6 +262,10 @@ class LinearComposableModel(_ComposableModel):
 
 class DNNComposableModel(_ComposableModel):
   """A _ComposableModel that implements a DNN.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Instances of this class can be used to build estimators through the use
   of composition.

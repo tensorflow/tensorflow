@@ -86,7 +86,10 @@ tf_xla_py_test(
     # ArgMax needs CustomCall on CPU, which is not available in normal
     # (not precompiled) TensorFlow. The flag below excludes the CPU
     # backend.
-    disabled_backends = "cpu",
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -98,7 +101,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "binary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["binary_ops_test.py"],
     shard_count = 5,
     tags = [
@@ -121,6 +124,7 @@ tf_xla_py_test(
     name = "categorical_op_test",
     size = "small",
     srcs = ["categorical_op_test.py"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -189,6 +193,31 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "oom_test",
+    size = "medium",
+    srcs = ["oom_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
+    tags = [
+        # Allocates very large amounts of memory and does not work under TSAN.
+        "notsan",
+        "optonly",  # Times out frequently in fastbuild.
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv2d_test",
     size = "medium",
     srcs = ["conv2d_test.py"],
@@ -239,6 +268,18 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "dynamic_slice_ops_test",
+    size = "small",
+    srcs = ["dynamic_slice_ops_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
     ],
 )
 
@@ -315,6 +356,8 @@ tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
+    # Functions are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -467,6 +510,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "reduce_window_test",
+    size = "small",
+    srcs = ["reduce_window_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "reverse_ops_test",
     size = "medium",
     srcs = ["reverse_ops_test.py"],
@@ -550,6 +609,8 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    # Stack ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -576,6 +637,8 @@ tf_xla_py_test(
     name = "tensor_array_ops_test",
     size = "small",
     srcs = ["tensor_array_ops_test.py"],
+    # TensorArray ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -649,6 +712,21 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "while_test",
+    size = "small",
+    srcs = ["while_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
     ],
@@ -825,18 +903,4 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

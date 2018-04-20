@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/stream_executor/lib/demangle.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -96,7 +97,7 @@ static const char *kStubPrefix = "__device_stub_";
 void KernelBase::set_name(port::StringPiece name) {
   name_ = name.ToString();
   port::StringPiece stubless_name = name;
-  if (name.starts_with(kStubPrefix)) {
+  if (tensorflow::str_util::StartsWith(name, kStubPrefix)) {
     stubless_name.remove_prefix(strlen(kStubPrefix));
   }
   demangled_name_ = port::Demangle(stubless_name.data());

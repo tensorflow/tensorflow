@@ -156,7 +156,9 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     StringPiece loc(value[0]);
-    return loc.Consume(kColocationGroupPrefix) ? loc.ToString() : "";
+    return str_util::ConsumePrefix(&loc, kColocationGroupPrefix)
+               ? loc.ToString()
+               : "";
   }
 
   string GraphDebugString() const {

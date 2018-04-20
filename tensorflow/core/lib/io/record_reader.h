@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_IO_RECORD_READER_H_
 #define TENSORFLOW_LIB_IO_RECORD_READER_H_
 
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#if !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/lib/io/inputstream_interface.h"
+#if !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #endif  // IS_SLIM_BUILD

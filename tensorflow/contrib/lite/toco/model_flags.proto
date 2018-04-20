@@ -96,9 +96,13 @@ message RnnState {
 // model that does not already contain such MinMax information.
 message ArraysExtraInfo {
   message Entry {
+    // Next ID to use: 7.
     optional string name = 1;
-    optional float min = 2;
-    optional float max = 3;
+    optional double min = 2;
+    optional double max = 3;
+    optional IODataType data_type = 4;
+    optional InputArrayShape shape = 5;
+    optional float constant_float_value = 6;
   }
   repeated Entry entries = 1;
 }
@@ -124,7 +128,7 @@ message ArraysExtraInfo {
 //   optional int32 input_dims = 11 [ default = 4];
 //   repeated int32 input_shape = 13;
 //
-// Next ID to USE: 19.
+// Next ID to USE: 20.
 message ModelFlags {
   // Information about the input arrays, i.e. the arrays from which input
   // activations will be read.
@@ -171,4 +175,8 @@ message ModelFlags {
   // If set, this ArraysExtraInfo allows to pass extra information about arrays
   // not specified in the input model file, such as extra MinMax information.
   optional ArraysExtraInfo arrays_extra_info = 18;
+
+  // When set to false, toco will not change the input ranges and the output
+  // ranges of concat operator to the overlap of all input ranges.
+  optional bool change_concat_input_ranges = 19 [default = true];
 }

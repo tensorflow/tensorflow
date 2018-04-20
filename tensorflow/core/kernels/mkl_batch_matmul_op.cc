@@ -198,12 +198,10 @@ class BatchMatMulMkl : public OpKernel {
   void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
                          const bool TransB, const MKL_INT *M_Array,
                          const MKL_INT *N_Array, const MKL_INT *K_Array,
-                         const complex128 **A_Array,
-                         const MKL_INT *lda_Array,
-                         const complex128 **B_Array,
-                         const MKL_INT *ldb_Array, complex128 **C_Array,
-                         const MKL_INT *ldc_Array, const MKL_INT group_count,
-                         const MKL_INT *group_size) {
+                         const complex128 **A_Array, const MKL_INT *lda_Array,
+                         const complex128 **B_Array, const MKL_INT *ldb_Array,
+                         complex128 **C_Array, const MKL_INT *ldc_Array,
+                         const MKL_INT group_count, const MKL_INT *group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_array(
         group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_array(
