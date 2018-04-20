@@ -188,11 +188,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "highwayhash",
       urls = [
-          "http://mirror.bazel.build/github.com/google/highwayhash/archive/e2098bc92a8540e133b11207ed1f1abfca57724c.tar.gz",
-          "https://github.com/google/highwayhash/archive/e2098bc92a8540e133b11207ed1f1abfca57724c.tar.gz",
+          "http://mirror.bazel.build/github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
+          "https://github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
       ],
-      sha256 = "67e5cdbe8a31ee80d21082a861641cb84fc8fddc10388e47ff358db048a21b67",
-      strip_prefix = "highwayhash-e2098bc92a8540e133b11207ed1f1abfca57724c",
+      sha256 = "9c3e0e87d581feeb0c18d814d98f170ff23e62967a2bd6855847f0b2fe598a37",
+      strip_prefix = "highwayhash-fd3d9af80465e4383162e4a7c5e2f406e82dd968",
       build_file = clean_dep("//third_party:highwayhash.BUILD"),
   )
 
