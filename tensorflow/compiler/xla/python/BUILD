@@ -8,7 +8,6 @@ py_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_xla",
@@ -21,6 +20,7 @@ py_test(
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":xla_client",
         "//tensorflow/python:platform_test",
