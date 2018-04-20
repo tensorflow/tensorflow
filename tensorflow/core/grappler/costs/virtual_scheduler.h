@@ -199,7 +199,7 @@ class FirstReadyManager : public ReadyNodeManager {
   // current node.
   std::vector<const NodeDef*> nodes_;
   // Newly added nodes are added to waiting_queue_. That way, GetCurrNode(),
-  // wihch returns the front of the nodes_, always returns the same node,
+  // which returns the front of the nodes_, always returns the same node,
   // even if any of new nodes has time_ready smaller than the current node's.
   std::vector<const NodeDef*> waiting_queue_;
   // Comparator functor for heap; stl heap is max heap, so we use "greater than"
