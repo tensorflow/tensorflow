@@ -20,7 +20,7 @@ limitations under the License.
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<GRPCService>> GRPCService::NewService(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   std::unique_ptr<GRPCService> grpc_service(new GRPCService());
   TF_ASSIGN_OR_RETURN(grpc_service->service_,
                       ::xla::Service::NewService(platform));

@@ -69,6 +69,10 @@ class Base(gast.NodeTransformer):
   def enclosing_entities(self):
     return tuple(self._enclosing_entities)
 
+  @property
+  def locel_scope_level(self):
+    return len(self._local_scope_state)
+
   def enter_local_scope(self):
     self._local_scope_state.append({})
 

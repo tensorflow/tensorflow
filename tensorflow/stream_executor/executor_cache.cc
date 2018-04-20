@@ -17,8 +17,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 port::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
     const StreamExecutorConfig& config,
@@ -104,5 +103,4 @@ ExecutorCache::Entry::~Entry() {
   configurations.clear();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -49,8 +49,7 @@ namespace Eigen {
 struct half;
 }  // namespace Eigen
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 class ScratchAllocator;
@@ -2100,7 +2099,6 @@ class BlasSupport {
                   DeviceMemory<std::complex<double>> *b, int ldb) override;
 
 }  // namespace blas
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_BLAS_H_

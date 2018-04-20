@@ -178,24 +178,37 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       if (hlo->shape().element_type() == eliminate_type_) {
         Shape shape =
             ShapeUtil::ChangeElementType(hlo->shape(), replace_with_type_);
+
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(shape, new_operands, hlo->GetModule()));
+        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+
         new_hlo = ToElementType(new_hlo, eliminate_type_);
       } else if (ShapeUtil::IsTuple(hlo->shape())) {
         Shape old_shape = hlo->shape();
         Shape new_shape = GetConvertedTupleShape(hlo->shape(), eliminate_type_,
                                                  replace_with_type_);
+
         new_hlo = computation->AddInstruction(hlo->CloneWithNewOperands(
             new_shape, new_operands, hlo->GetModule()));
+        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+
         // Convert the elements of the result of `new_hlo` to produce a new
         // tuple with shape `old_shape`.
         new_hlo = ConvertTupleElements(new_hlo, old_shape);
       } else {
         new_hlo = computation->AddInstruction(hlo->CloneWithNewOperands(
             hlo->shape(), new_operands, hlo->GetModule()));
+        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
       }
 
-      TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_hlo));
+      TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_hlo));
+      TF_RETURN_IF_ERROR(hlo->DropAllControlDeps());
+
+      // NB!  We want to replace and remove side effecting instructions like Rng
+      // as well so we can't rely HloComputation::ReplaceInstruction to reliably
+      // remove the replaced instruction.
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
       changed = true;
     }
   }

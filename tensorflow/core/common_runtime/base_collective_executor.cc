@@ -14,14 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/common_runtime/broadcaster.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/ring_reducer.h"
 #include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 #define VALUE_IN_DEBUG_STRING false
 
@@ -194,37 +193,68 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           const CollectiveParams& col_params,
                                           const string& exec_key,
                                           StatusCallback done) {
-  const Tensor* input = &ctx->input(0);
+  // On any individual collective Op failure we need to abort the
+  // BufRendezvous so that other Ops in the instance don't hang
+  // waiting for transmissions that will never happen.  Do so after a
+  // delay so that the original error status is more likely to
+  // propagate up, and peers are unlikely to re-create the purged
+  // BufRendezvous by late-arriving requests.
+  StatusCallback done_safe = [this, done](const Status& s) {
+    if (!s.ok()) {
+      Ref();  // Ensure this lasts until the closure executes.
+      SchedNonBlockingClosureAfter(1000000, [this, s] {
+        remote_access_->buf_rendezvous()->StartAbort(s);
+        Unref();
+      });
+    }
+    done(s);
+  };
+
   Tensor* output = ctx->mutable_output(0);
   string error;
   switch (col_params.instance.type) {
     case REDUCTION_COLLECTIVE: {
       // TODO(tucker): support other reduction algorithms,
       // e.g. tree-reduce, hybrid tree/ring, delegate-to-NCCL, etc.
+      const Tensor* input = &ctx->input(0);
       RingReducer* reducer =
           CreateReducer(ctx, CtxParams(ctx), col_params, exec_key, step_id_,
                         input, output, &error);
       if (!reducer) {
-        done(errors::Internal(error));
+        done_safe(errors::Internal(error));
         return;
       }
       // Run in an I/O thread, so as not to starve the executor threads.
       // TODO(tucker): Instead of forking every per-device Collective
       // Op off into its own thread, consider queuing them on a
       // fixed-size thread-pool dedicated to running CollectiveOps.
-      SchedClosure([reducer, done]() {
-        reducer->Run([reducer, done](const Status& s) {
-          done(s);
+      SchedClosure([reducer, done_safe]() {
+        reducer->Run([reducer, done_safe](const Status& s) {
+          done_safe(s);
           delete reducer;
         });
       });
     } break;
-    case BROADCAST_COLLECTIVE:
-      done(errors::Internal("Collective Broadcast unimplemented"));
-      break;
+
+    case BROADCAST_COLLECTIVE: {
+      Broadcaster* broadcaster = CreateBroadcaster(
+          ctx, CtxParams(ctx), col_params, exec_key, step_id_, output, &error);
+      if (!broadcaster) {
+        done_safe(errors::Internal(error));
+        return;
+      }
+      // Run in an I/O thread, so as not to starve the executor threads.
+      SchedClosure([broadcaster, done_safe]() {
+        broadcaster->Run([broadcaster, done_safe](const Status& s) {
+          done_safe(s);
+          delete broadcaster;
+        });
+      });
+    } break;
+
     default:
-      done(errors::Internal("Unimplemented CollectiveType ",
-                            col_params.instance.type));
+      done_safe(errors::Internal("Unimplemented CollectiveType ",
+                                 col_params.instance.type));
   }
 }
 
@@ -250,6 +280,33 @@ RingReducer* BaseCollectiveExecutor::CreateReducer(
     default:
       *error = strings::StrCat("Collective Reduce does not support datatype ",
                                col_params.instance.data_type);
+      return nullptr;
+  }
+}
+
+Broadcaster* BaseCollectiveExecutor::CreateBroadcaster(
+    OpKernelContext* ctx, OpKernelContext::Params* params,
+    const CollectiveParams& col_params, const string& exec_key, int64 step_id,
+    Tensor* output, string* error) {
+  switch (col_params.instance.data_type) {
+    case DT_INT32:
+      if (col_params.group.device_type == DEVICE_GPU) {
+        *error =
+            "Collective Broadcast does not support datatype DT_INT32 on "
+            "DEVICE_GPU";
+        return nullptr;
+      }
+      TF_FALLTHROUGH_INTENDED;
+    case DT_FLOAT:
+    case DT_DOUBLE:
+    case DT_INT64: {
+      return new Broadcaster(this, dev_mgr_, ctx, params, col_params, exec_key,
+                             step_id, output);
+    } break;
+    default:
+      *error =
+          strings::StrCat("Collective Broadcast does not support datatype ",
+                          DataTypeString(col_params.instance.data_type));
       return nullptr;
   }
 }

@@ -35,14 +35,17 @@ from tensorflow.python.platform import test
 
 
 class FakeNamer(object):
+  """A fake namer that uses a global counter to generate unique names."""
+
+  def __init__(self):
+    self.i = 0
 
   def new_symbol(self, name_root, used):
-    i = 0
     while True:
-      name = '%s%d' % (name_root, i)
+      self.i += 1
+      name = '%s%d' % (name_root, self.i)
       if name not in used:
         return name
-      i += 1
 
   def compiled_function_name(self,
                              original_fqn,

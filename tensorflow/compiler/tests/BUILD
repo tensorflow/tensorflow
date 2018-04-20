@@ -340,7 +340,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "ftrl_test",
-    size = "small",
+    size = "medium",
     srcs = ["ftrl_test.py"],
     deps = [
         ":xla_test",

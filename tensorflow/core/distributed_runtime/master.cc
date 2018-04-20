@@ -417,9 +417,13 @@ void Master::CreateSession(const CreateSessionRequest* req,
     SessionOptions options;
     options.config = req->config();
 
+    std::vector<string> filtered_worker_list;
+    DeviceFinder::GetRemoteWorkers(req->config().device_filters(), env_,
+                                   worker_cache, &filtered_worker_list);
+
     MasterSession* session = env_->master_session_factory(
         options, env_, std::move(remote_devices), std::move(worker_cache_ptr),
-        std::move(device_set));
+        std::move(device_set), std::move(filtered_worker_list));
 
     GraphDef* gdef =
         const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
