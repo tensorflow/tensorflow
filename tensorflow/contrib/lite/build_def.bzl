@@ -124,19 +124,19 @@ def tf_to_tflite(name, src, options, out):
     out: name of the output flatbuffer file.
   """
 
-  toco = "//tensorflow/contrib/lite/toco:toco"
+  toco_cmdline = " ".join([
+      "//tensorflow/contrib/lite/toco:toco",
+      "--input_format=TENSORFLOW_GRAPHDEF",
+      "--output_format=TFLITE",
+      ("--input_file=$(location %s)" % src),
+      ("--output_file=$(location %s)" % out),
+  ] + options )
   native.genrule(
       name = name,
-      srcs=[src, options],
+      srcs=[src],
       outs=[out],
-      cmd = ("$(location %s) " +
-             "   --input_file=$(location %s) " +
-             "   --output_file=$(location %s) " +
-             "   --input_format=TENSORFLOW_GRAPHDEF" +
-             "   --output_format=TFLITE" +
-             "   `cat $(location %s)`")
-            % (toco, src, out, options),
-      tools= [toco],
+      cmd = toco_cmdline,
+      tools= ["//tensorflow/contrib/lite/toco:toco"],
   )
 
 def tflite_to_json(name, src, out):
