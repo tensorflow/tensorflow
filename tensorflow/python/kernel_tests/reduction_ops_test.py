@@ -889,9 +889,9 @@ class AnyReductionTest(test.TestCase):
 
 class CountNonzeroReductionTest(test.TestCase):
 
-  def _compare(self, x, reduction_axes, keepdims, use_gpu=False,
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False, zero=0,
                feed_dict=None):
-    np_ans = (x != 0).astype(np.int32)
+    np_ans = (x != zero).astype(np.int32)
     if reduction_axes is None:
       np_ans = np.sum(np_ans, keepdims=keepdims)
     else:
@@ -964,6 +964,15 @@ class CountNonzeroReductionTest(test.TestCase):
       v = math_ops.count_nonzero(constant_op.constant(["test"]))
       self.assertAllClose(sess.run(v), 1)
 
+  def testStringReduce1D(self):
+    # Create a 1D array of strings
+    x = np.asarray(["", "", "a", "", "", "b"])
+    self._compare(x, None, keepdims=False, zero=np.str(""))
+    self._compare(x, [], keepdims=False, zero=np.str(""))
+    self._compare(x, [0], keepdims=False, zero=np.str(""))
+    self._compare(x, None, keepdims=True, zero=np.str(""))
+    self._compare(x, [], keepdims=True, zero=np.str(""))
+    self._compare(x, [0], keepdims=True, zero=np.str(""))
 
 if __name__ == "__main__":
   test.main()
