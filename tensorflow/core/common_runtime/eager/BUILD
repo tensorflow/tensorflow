@@ -55,6 +55,22 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "eager_operation",
+    srcs = [
+        "eager_operation.cc",
+    ],
+    hdrs = [
+        "eager_operation.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":tensor_handle",
+        "//tensorflow/c/eager:runtime",
+    ],
+)
+
+tf_cuda_library(
     name = "tensor_handle",
     srcs = [
         "tensor_handle.cc",
