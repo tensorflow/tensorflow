@@ -212,7 +212,7 @@ class FirstReadyManager : public ReadyNodeManager {
 };
 
 // CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal
-// ops (neither _Send nor _Recv) and FirstyReadyManagers for _Send ops and _Recv
+// ops (neither _Send nor _Recv) and FirstReadyManagers for _Send ops and _Recv
 // ops, and then it chooses FirstReady among the ops chosen from each
 // internal NodeManagers. The objective is to maximize producer-consumer
 // locality within device, while processing nodes across devices, including
