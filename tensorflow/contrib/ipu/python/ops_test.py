@@ -54,5 +54,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       dump = tf.contrib.ipu.utils.extract_all_strings_from_event_trace(e);
       self.assertTrue(len(dump) > 100)
 
+      print(dump)
+
 if __name__ == "__main__":
     googletest.main()
