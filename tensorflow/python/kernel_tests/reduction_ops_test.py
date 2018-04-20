@@ -958,6 +958,12 @@ class CountNonzeroReductionTest(test.TestCase):
           y = math_ops.count_nonzero(x, [0])
           self.assertAllEqual(y.eval(), np.zeros(9938))
 
+  def testStringReduce(self):
+    # Test case for GitHub issue 18712
+    with self.test_session() as sess:
+      v = math_ops.count_nonzero(constant_op.constant(["test"]))
+      self.assertAllClose(sess.run(v), 1)
+
 
 if __name__ == "__main__":
   test.main()
