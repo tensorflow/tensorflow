@@ -693,6 +693,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = clean_dep("//third_party/flatbuffers:flatbuffers.BUILD"),
   )
 
+  native.new_http_archive(
+      name = "double_conversion",
+      urls = [
+          "https://github.com/google/double-conversion/archive/3992066a95b823efc8ccc1baf82a1cfc73f6e9b8.zip",
+      ],
+      sha256 = "2f7fbffac0d98d201ad0586f686034371a6d152ca67508ab611adc2386ad30de",
+      strip_prefix = "double-conversion-3992066a95b823efc8ccc1baf82a1cfc73f6e9b8",
+      build_file = clean_dep("//third_party:double_conversion.BUILD")
+  )
+
   tf_http_archive(
       name = "tflite_mobilenet",
       sha256 = "23f814d1c076bdf03715dfb6cab3713aa4fbdf040fd5448c43196bd2e97a4c1b",
