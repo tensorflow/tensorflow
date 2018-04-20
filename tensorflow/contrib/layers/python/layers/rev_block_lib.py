@@ -45,6 +45,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 __all__ = ["rev_block", "RevBlock", "recompute_grad"]
 
@@ -429,12 +430,13 @@ def enable_with_args(dec):
 
 
 @enable_with_args
-def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
+def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False,
+                   tensor_arg_names=None):
   """Decorator that recomputes the function on the backwards pass.
 
   Args:
-    fn: a function that takes Tensors (all as positional arguments) and returns
-      a tuple of Tensors.
+    fn: the subgraph-producing function to wrap and recompute when computing
+      gradients. Provide `tensor_arg_names` if not all arguments are `Tensor`s.
     use_data_dep: `bool`, if `True` will use a dummy data dependency to force
       the recompute to happen. If `False` will use a control dependency. By
       default will be `True` if in an XLA context and `False` otherwise. XLA
@@ -443,17 +445,25 @@ def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
       that all gradients are produced before any are consumed by downstream ops.
       If `use_data_dep` is also `True`, will use a data dependency instead of
       a control dependency.
+    tensor_arg_names: `list<str>`, names of the `Tensor` arguments to `fn`. If
+      `None`, assumes all arguments are `Tensor`s.
 
   Returns:
     A wrapped fn that is identical to fn when called, but its activations will
     be discarded and recomputed on the backwards pass (i.e. on a call to
     tf.gradients).
   """
+  if tensor_arg_names:
+    if not isinstance(tensor_arg_names, (list, tuple)):
+      raise TypeError("tensor_arg_names must be a list")
 
   @functools.wraps(fn)
-  def wrapped(*args):
+  def wrapped(*args, **kwargs):
+    tensor_only_fn, tensor_args = _make_tensor_only(fn, args, kwargs,
+                                                    tensor_arg_names)
     return _recompute_grad(
-        fn, args, use_data_dep=use_data_dep, tupleize_grads=tupleize_grads)
+        tensor_only_fn, tensor_args, use_data_dep=use_data_dep,
+        tupleize_grads=tupleize_grads)
 
   return wrapped
 
@@ -463,11 +473,59 @@ def _is_on_tpu():
   return control_flow_util.GetContainingXLAContext(ctxt) is not None
 
 
-def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
+def _make_tensor_only(fn, args, kwargs, tensor_arg_names):
+  """Return fn such that it only takes Tensor args for tensor_arg_names."""
+  argspec = tf_inspect.getargspec(fn)
+  if argspec.varargs is not None or argspec.keywords is not None:
+    raise ValueError("Function decorated with recompute_grad must not use "
+                     "*args or **kwargs.")
+  fn_arg_names = list(argspec.args)
+
+  # name_to_arg is a dict of argument name to argument value, including both
+  # positional and keyword arguments passed.
+  name_to_arg = {}
+  # Populate positional arguments.
+  for name, arg in zip(fn_arg_names[:len(args)], args):
+    name_to_arg[name] = arg
+  # Populate keyword arguments.
+  name_to_arg.update(kwargs)
+
+  # Separate the Tensor arguments from the non-Tensor arguments.
+  # The default is that all arguments are Tensor arguments.
+  tensor_arg_names = tensor_arg_names or fn_arg_names
+  for name in tensor_arg_names:
+    if name not in name_to_arg:
+      raise ValueError("Must provide Tensor argument %s" % name)
+  tensor_args = [name_to_arg[name] for name in tensor_arg_names]
+  non_tensor_kwargs = dict([(name, arg) for name, arg in name_to_arg.items()
+                            if name not in tensor_arg_names])
+
+  # Check that Tensor arguments are in fact Tensors and that non-Tensor
+  # arguments are not.
+  for name, arg in zip(tensor_arg_names, tensor_args):
+    if not isinstance(arg, framework_ops.Tensor):
+      raise TypeError("Fn argument %s must be a Tensor." % name)
+  for name, arg in non_tensor_kwargs.items():
+    if isinstance(arg, framework_ops.Tensor):
+      raise TypeError("Fn argument %s must not be a Tensor." % name)
+
+  # Construct a Tensor-only wrapper function that will pass the non-Tensor
+  # arguments as well when called.
+  def tensor_only_fn(*tensors):
+    all_kwargs = dict(zip(tensor_arg_names, tensors))
+    all_kwargs.update(non_tensor_kwargs)
+    return fn(**all_kwargs)
+
+  return tensor_only_fn, tensor_args
+
+
+def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT,
+                    tupleize_grads=False):
   """See recompute_grad."""
   for arg in args:
     if not isinstance(arg, framework_ops.Tensor):
       raise ValueError("All inputs to function must be Tensors")
+
   use_data_dep_ = use_data_dep
   if use_data_dep_ == _USE_DEFAULT:
     use_data_dep_ = _is_on_tpu()
@@ -501,6 +559,7 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
     grad_vars = grads[len(inputs):]
     return grad_inputs, grad_vars
 
+  # TODO(rsepassi): Replace with tf.custom_gradient
   @_fn_with_custom_grad(grad_fn)
   def fn_with_recompute(*args):
     cached_vs.append(variable_scope.get_variable_scope())

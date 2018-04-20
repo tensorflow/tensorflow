@@ -52,6 +52,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_ABS;
     case HloOpcode::kCeil:
       return UNOP_CEIL;
+    case HloOpcode::kClz:
+      return UNOP_CLZ;
     case HloOpcode::kCos:
       return UNOP_COS;
     case HloOpcode::kExp:
@@ -360,6 +362,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
             arg, primitive_util::ComplexComponentType(arg.element_type()));
       }
       return arg;
+    case UNOP_CLZ:
     case UNOP_NEGATE:
     case UNOP_ROUND_NEAREST_AFZ:
     case UNOP_SIGN:

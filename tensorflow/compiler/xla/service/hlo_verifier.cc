@@ -174,30 +174,13 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   TF_RETURN_IF_ERROR(CheckShape(broadcast, broadcast->shape()));
   TF_RET_CHECK(ShapeUtil::Rank(operand_shape) ==
                broadcast->dimensions().size());
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
-    int64 output_dimension = broadcast->dimensions()[i];
+  for (int64 operand_dimension = 0;
+       operand_dimension < ShapeUtil::Rank(operand_shape);
+       ++operand_dimension) {
+    int64 output_dimension = broadcast->dimensions()[operand_dimension];
     TF_RET_CHECK(broadcast->shape().dimensions(output_dimension) ==
-                 operand_shape.dimensions(i))
+                 operand_shape.dimensions(operand_dimension))
         << broadcast->ToString() << " operand shape " << operand_shape;
-  }
-  return tensorflow::Status::OK();
-}
-
-Status ShapeVerifier::HandleBroadcastDimOne(HloInstruction* broadcastDimOne) {
-  const Shape& operand_shape = broadcastDimOne->operand(0)->shape();
-  int64 operand_rank = ShapeUtil::Rank(operand_shape);
-  const Shape& output_shape = broadcastDimOne->shape();
-  // Check for mixed precision.
-  TF_RETURN_IF_ERROR(CheckShape(broadcastDimOne, output_shape));
-  TF_RET_CHECK(operand_rank == ShapeUtil::Rank(output_shape));
-  for (int64 i = 0; i < operand_rank; ++i) {
-    int64 operand_dimension = operand_shape.dimensions(i);
-    int64 output_dimension = output_shape.dimensions(i);
-    TF_RET_CHECK(operand_dimension == 1 ||
-                 operand_dimension == output_dimension)
-        << "Dimension " << i << " of broadcastDimOne "
-        << broadcastDimOne->ToString() << " is " << operand_dimension
-        << ", expected 1 or " << output_dimension;
   }
   return tensorflow::Status::OK();
 }

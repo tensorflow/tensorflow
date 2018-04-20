@@ -15830,6 +15830,21 @@ op {
   }
 }
 op {
+  name: "DatasetToTFRecord"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "compression_type"
+    type: DT_STRING
+  }
+}
+op {
   name: "DebugGradientIdentity"
   input_arg {
     name: "input"
@@ -25654,18 +25669,6 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
-  }
-  is_stateful: true
-}
-op {
-  name: "IteratorSetStatsAggregator"
-  input_arg {
-    name: "iterator_handle"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "stats_aggregator_handle"
-    type: DT_RESOURCE
   }
   is_stateful: true
 }
@@ -55064,6 +55067,34 @@ op {
   }
 }
 op {
+  name: "SetStatsAggregatorDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "stats_aggregator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "Shape"
   input_arg {
     name: "input"
@@ -68613,6 +68644,25 @@ op {
   is_stateful: true
 }
 op {
+  name: "TensorListConcatLists"
+  input_arg {
+    name: "input_a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "input_b"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}
+op {
   name: "TensorListElementShape"
   input_arg {
     name: "input_handle"
@@ -69971,6 +70021,29 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "UnbatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {
