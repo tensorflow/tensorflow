@@ -109,7 +109,7 @@ class _WishartLinearOperator(distribution.Distribution):
     """
     parameters = locals()
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[df, scale_operator]):
         if not scale_operator.dtype.is_floating:
           raise TypeError(
@@ -163,7 +163,7 @@ class _WishartLinearOperator(distribution.Distribution):
         parameters=parameters,
         graph_parents=([self._df, self._dimension] +
                        self._scale_operator.graph_parents),
-        name=ns)
+        name=name)
 
   @property
   def df(self):
@@ -531,7 +531,7 @@ class WishartCholesky(_WishartLinearOperator):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[scale]):
+    with ops.name_scope(name, values=[scale]) as name:
       with ops.name_scope("init", values=[scale]):
         scale = ops.convert_to_tensor(scale)
         if validate_args:
@@ -647,7 +647,7 @@ class WishartFull(_WishartLinearOperator):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[scale]):
         scale = ops.convert_to_tensor(scale)
         if validate_args:
@@ -666,5 +666,5 @@ class WishartFull(_WishartLinearOperator):
         cholesky_input_output_matrices=cholesky_input_output_matrices,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        name=ns)
+        name=name)
     self._parameters = parameters

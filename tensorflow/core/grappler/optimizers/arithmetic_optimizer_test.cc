@@ -105,6 +105,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.remove_identity_transpose = false;
     options.remove_redundant_bitcast = false;
     options.remove_redundant_cast = false;
+    options.remove_negation = false;
     optimizer->options_ = options;
   }
 
@@ -2069,20 +2070,20 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_BuildTreeUp) {
   //  a   b c   D          a   b
   NodeMap node_map(&output);
 
-  const NodeDef* mul1_node = node_map.GetNode("mul1");
+  const NodeDef* mul1_node = node_map.GetNode("mul2");
   ASSERT_NE(mul1_node, nullptr);
   EXPECT_EQ("a", mul1_node->input(0));
   EXPECT_EQ("b", mul1_node->input(1));
 
-  const NodeDef* mul2_node = node_map.GetNode("mul2");
+  const NodeDef* mul2_node = node_map.GetNode("mul1");
   ASSERT_NE(mul2_node, nullptr);
-  EXPECT_EQ("mul1", mul2_node->input(0));
+  EXPECT_EQ("mul2", mul2_node->input(0));
   EXPECT_EQ("c", mul2_node->input(1));
 
   const NodeDef* mul3_node = node_map.GetNode("mul3");
   ASSERT_NE(mul3_node, nullptr);
   EXPECT_EQ("D", mul3_node->input(0));
-  EXPECT_EQ("mul2", mul3_node->input(1));
+  EXPECT_EQ("mul1", mul3_node->input(1));
 }
 
 }  // namespace grappler

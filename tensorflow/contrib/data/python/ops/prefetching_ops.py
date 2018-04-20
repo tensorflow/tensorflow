@@ -114,11 +114,13 @@ class _PrefetchToDeviceIterator(object):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
+    iterator_device = gen_dataset_ops.iterator_get_device(
+        self._input_iterator._iterator_resource)
+
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
           f=_prefetch_fn,
-          target_device=gen_dataset_ops.iterator_get_device(
-              self._input_iterator._iterator_resource),
+          target_device=iterator_device,
           string_arg=input_iterator_handle,
           buffer_size=buffer_size,
           shared_name=shared_name)

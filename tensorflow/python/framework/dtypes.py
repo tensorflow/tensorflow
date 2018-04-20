@@ -656,6 +656,7 @@ _PYTHON_TO_TF = {
     bool: bool,
 }
 
+
 @tf_export("as_dtype")
 def as_dtype(type_value):
   """Converts the given `type_value` to a `DType`.
@@ -699,11 +700,13 @@ def as_dtype(type_value):
     if type_value.type == np.string_ or type_value.type == np.unicode_:
       return string
 
-  for key, val in _NP_TO_TF:
-    try:
-      if key == type_value:
-        return val
-    except TypeError as e:
-      raise TypeError("Cannot convert {} to a dtype. {}".format(type_value, e))
+  if isinstance(type_value, (type, np.dtype)):
+    for key, val in _NP_TO_TF:
+      try:
+        if key == type_value:
+          return val
+      except TypeError as e:
+        raise TypeError("Cannot convert {} to a dtype. {}".format(
+            type_value, e))
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." % type_value)

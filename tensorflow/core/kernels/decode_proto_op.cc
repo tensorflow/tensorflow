@@ -105,11 +105,137 @@ bool CheckOutputType(FieldDescriptor::Type field_type, DataType output_type) {
   }
 }
 
+// Used to store the default value of a protocol message field, casted to the
+// type of the output tensor.
+//
+// TODO(paskin): Use absl::variant once TensorFlow gets absl dependencies.
+struct DefaultValue {
+  DataType dtype = DataType::DT_INVALID;
+  union Value {
+    bool v_bool;           // DT_BOOL
+    uint8 v_uint8;         // DT_UINT8
+    int8 v_int8;           // DT_INT8
+    int32 v_int32;         // DT_INT32
+    int64 v_int64;         // DT_INT64
+    float v_float;         // DT_FLOAT
+    double v_double;       // DT_DOUBLE
+    const char* v_string;  // DT_STRING
+  };
+  Value value;
+};
+
+// Initializes a DefaultValue object.  This generic template handles numeric
+// types and strings are handled by a template specialization below.
+//
+// Args:
+//   dtype: the type of the output tensor
+//   value: the default value as obtained from the FieldDescriptor
+//   result: the object to initialize
+template <typename T>
+Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
+  result->dtype = dtype;
+  switch (dtype) {
+    case DT_BOOL:
+      result->value.v_bool = static_cast<bool>(value);
+      break;
+    case DT_INT32:
+      result->value.v_int32 = static_cast<int32>(value);
+      break;
+    case DT_INT8:
+      result->value.v_int8 = static_cast<int8>(value);
+      break;
+    case DT_UINT8:
+      result->value.v_uint8 = static_cast<uint8>(value);
+      break;
+    case DT_INT64:
+      result->value.v_int64 = static_cast<int64>(value);
+      break;
+    case DT_FLOAT:
+      result->value.v_float = static_cast<float>(value);
+      break;
+    case DT_DOUBLE:
+      result->value.v_double = static_cast<double>(value);
+      break;
+    default:
+      // We should never get here, given the type checking that occurs earlier.
+      return errors::Internal(
+          "Cannot initialize default value for unsupported type: ",
+          DataTypeString(dtype));
+  }
+  return Status::OK();
+}
+
+template <>
+Status InitDefaultValue(DataType dtype, const char* value,
+                        DefaultValue* result) {
+  // These are sanity checks that should never trigger given the code that
+  // leads here.
+  if (TF_PREDICT_FALSE(dtype != DT_STRING)) {
+    return errors::InvalidArgument(
+        "Cannot cast field to anything but DT_STRING");
+  }
+  if (TF_PREDICT_FALSE(value == nullptr)) {
+    return errors::InvalidArgument("Null default string value.");
+  }
+  result->dtype = DT_STRING;
+  result->value.v_string = value;
+  return Status::OK();
+}
+
+// Initializes a default value from the output data type and the field
+// descriptor.
+Status InitDefaultValueFromFieldDescriptor(DataType dtype,
+                                           const FieldDescriptor* field_desc,
+                                           DefaultValue* result) {
+  switch (field_desc->type()) {
+    case WireFormatLite::TYPE_DOUBLE:
+      return InitDefaultValue(dtype, field_desc->default_value_double(),
+                              result);
+    case WireFormatLite::TYPE_FLOAT:
+      return InitDefaultValue(dtype, field_desc->default_value_float(), result);
+    case WireFormatLite::TYPE_INT64:
+    case WireFormatLite::TYPE_SINT64:
+    case WireFormatLite::TYPE_SFIXED64:
+      return InitDefaultValue(dtype, field_desc->default_value_int64(), result);
+    case WireFormatLite::TYPE_FIXED64:
+    case WireFormatLite::TYPE_UINT64:
+      return InitDefaultValue(dtype, field_desc->default_value_uint64(),
+                              result);
+    case WireFormatLite::TYPE_ENUM:
+    case WireFormatLite::TYPE_INT32:
+    case WireFormatLite::TYPE_SINT32:
+    case WireFormatLite::TYPE_SFIXED32:
+      return InitDefaultValue(dtype, field_desc->default_value_int32(), result);
+    case WireFormatLite::TYPE_FIXED32:
+    case WireFormatLite::TYPE_UINT32:
+      return InitDefaultValue(dtype, field_desc->default_value_uint32(),
+                              result);
+    case WireFormatLite::TYPE_BOOL:
+      return InitDefaultValue(dtype, field_desc->default_value_bool(), result);
+    case WireFormatLite::TYPE_BYTES:
+    case WireFormatLite::TYPE_STRING:
+      // Manipulating default string values as C-style pointers should be OK
+      // for typical code-generated protocol messages.  It is possible in
+      // principle to register a message descriptor on the fly, and these
+      // pointers may not be stable if that descriptor has a weird
+      // implementation.  (But the return type of default_value_string() is
+      // const string&, so it'd have to be very weird.)
+      return InitDefaultValue(dtype, field_desc->default_value_string().c_str(),
+                              result);
+    case WireFormatLite::TYPE_GROUP:
+    case WireFormatLite::TYPE_MESSAGE:
+      return InitDefaultValue(dtype, "", result);
+      // default: intentionally omitted in order to enable static checking.
+  }
+  return Status::OK();
+}
+
 // A FieldInfo holds a handful of information from the FieldDescriptor
 // and user attributes.
 struct FieldInfo {
-  FieldInfo(const FieldDescriptor* field_desc, int user_index)
-      : output_index(user_index) {
+  FieldInfo(const FieldDescriptor* field_desc, int user_index,
+            DefaultValue def_value)
+      : output_index(user_index), default_value(def_value) {
     // Without this intermediate data structure, the profile had hotspots
     // calling methods of FieldDescriptor.
     number = field_desc->number();
@@ -144,6 +270,7 @@ struct FieldInfo {
   WireFormatLite::FieldType type;
   int number;
   bool is_repeated;
+  DefaultValue default_value;
 };
 
 // A CountCollector counts sizes of repeated and optional fields in a proto.
@@ -394,8 +521,11 @@ class DenseCollector {
   DenseCollector() = default;
 
   // A DenseCollector applies to one field of a serialized message.
-  DenseCollector(uint8* datap, DataType dtype, int max_repeat_count)
-      : datap_(datap), dtype_(dtype), max_repeat_count_(max_repeat_count) {}
+  // Note that default_value.dtype is the type of the output tensor.
+  DenseCollector(uint8* datap, DefaultValue default_value, int max_repeat_count)
+      : datap_(datap),
+        default_value_(default_value),
+        max_repeat_count_(max_repeat_count) {}
 
   // Reads a value from the input stream and stores it.
   //
@@ -415,8 +545,8 @@ class DenseCollector {
     }
     next_repeat_index_ = index + 1;
 
-    return internal::ReadValue(input, field.type, field.number, dtype_, index,
-                               datap_);
+    return internal::ReadValue(input, field.type, field.number,
+                               default_value_.dtype, index, datap_);
   }
 
   // Reads and stores a length-delimited list of values.
@@ -445,8 +575,8 @@ class DenseCollector {
           field.number, ", Max entries allowed: ", max_repeat_count_);
     } else {
       return internal::ReadPackedFromArray(buf, buf_size, field.type,
-                                           field.number, dtype_, stride,
-                                           &next_repeat_index_, datap_);
+                                           field.number, default_value_.dtype,
+                                           stride, &next_repeat_index_, datap_);
     }
   }
 
@@ -454,23 +584,23 @@ class DenseCollector {
   // Dispatches to the appropriately typed field default based on the
   // runtime type tag.
   Status FillWithDefaults() {
-    switch (dtype_) {
+    switch (default_value_.dtype) {
       case DataType::DT_FLOAT:
-        return FillDefault<float>();
+        return FillDefault<float>(default_value_.value.v_float);
       case DataType::DT_DOUBLE:
-        return FillDefault<double>();
+        return FillDefault<double>(default_value_.value.v_double);
       case DataType::DT_INT32:
-        return FillDefault<int32>();
+        return FillDefault<int32>(default_value_.value.v_int32);
       case DataType::DT_UINT8:
-        return FillDefault<uint8>();
+        return FillDefault<uint8>(default_value_.value.v_uint8);
       case DataType::DT_INT8:
-        return FillDefault<int8>();
+        return FillDefault<int8>(default_value_.value.v_int8);
       case DataType::DT_STRING:
-        return FillDefault<string>();
+        return FillDefault<string>(default_value_.value.v_string);
       case DataType::DT_INT64:
-        return FillDefault<int64>();
+        return FillDefault<int64>(default_value_.value.v_int64);
       case DataType::DT_BOOL:
-        return FillDefault<bool>();
+        return FillDefault<bool>(default_value_.value.v_bool);
       default:
         // There are many tensorflow dtypes not handled here, but they
         // should not come up unless type casting is added to the Op.
@@ -485,9 +615,9 @@ class DenseCollector {
   // default value. This uses next_repeat_index_ which counts the number
   // of parsed values for the field.
   template <class T>
-  Status FillDefault() {
+  Status FillDefault(const T& default_value) {
     for (int i = next_repeat_index_; i < max_repeat_count_; i++) {
-      reinterpret_cast<T*>(datap_)[i] = T();
+      reinterpret_cast<T*>(datap_)[i] = default_value;
     }
     return Status::OK();
   }
@@ -501,7 +631,7 @@ class DenseCollector {
   // for more items than we have allocated space.
   void* const datap_ = nullptr;
 
-  const DataType dtype_ = DataType::DT_INVALID;
+  const DefaultValue default_value_;
   const int max_repeat_count_ = 0;
 };
 
@@ -577,8 +707,14 @@ class DecodeProtoOp : public OpKernel {
 
     // Now store the fields in sorted order.
     for (int i = 0; i < field_names.size(); i++) {
-      fields_.push_back(MakeUnique<FieldInfo>(field_descs[output_indices[i]],
-                                              output_indices[i]));
+      const int output_index = output_indices[i];
+      const DataType dtype = output_types[output_index];
+      const FieldDescriptor* field_descriptor = field_descs[output_index];
+      DefaultValue default_value;
+      OP_REQUIRES_OK(context, InitDefaultValueFromFieldDescriptor(
+                                  dtype, field_descriptor, &default_value));
+      fields_.push_back(
+          MakeUnique<FieldInfo>(field_descriptor, output_index, default_value));
     }
 
     message_prototype_ = message_factory_.GetPrototype(message_desc);
@@ -805,9 +941,13 @@ class DecodeProtoOp : public OpKernel {
 
       std::vector<DenseCollector> collectors;
       collectors.reserve(field_count);
-      for (const TensorInfo& info : tensors) {
+      for (int output_index = 0; output_index < field_count; ++output_index) {
+        const TensorInfo& info = tensors[output_index];
+        const FieldInfo* field_info = fields_[output_index].get();
+        DCHECK(field_info != nullptr);
+        const DefaultValue default_value = field_info->default_value;
         collectors.emplace_back(info.data + message_index * info.stride,
-                                info.dtype, info.last_dim_size);
+                                default_value, info.last_dim_size);
       }
 
       // Fill in output tensors from the wire.

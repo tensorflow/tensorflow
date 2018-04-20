@@ -103,6 +103,9 @@ message RegisterGraphRequest {
   // Subgraphs are scoped within one session.
   string session_handle = 1;
 
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  bool create_worker_session_called = 6;
+
   // "graph_def" has the subgraph of nodes for this worker, with each node
   // having its device_name filled in.
   GraphDef graph_def = 2;
@@ -143,6 +146,9 @@ message DeregisterGraphRequest {
   // The session_handle used when registering the graph. If session_handle is
   // empty, a single global namespace is used.
   string session_handle = 2;
+
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  bool create_worker_session_called = 3;
 
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
@@ -200,6 +206,9 @@ message RunGraphRequest {
   // search for the graph_handle.
   string session_handle = 8;
 
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  bool create_worker_session_called = 10;
+
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
   string graph_handle = 1;
@@ -234,7 +243,7 @@ message RunGraphRequest {
   // truncate long metadata messages.
   bool store_errors_in_response_body = 9;
 
-  // Next: 10
+  // Next: 11
 }
 
 message RunGraphResponse {

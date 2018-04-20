@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 class CUDAExecutor;
@@ -625,16 +624,36 @@ class CudnnSupport : public dnn::DnnSupport {
                          dnn::DataType output_type, float scale,
                          DeviceMemoryBase* output_data) override;
 
- private:
-  // Guards the enqueueing of DNN operations via the dnn_handle_ below.
+  const Stream* GetCurrentDnnStream() const
+      SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) {
+    return current_dnn_stream_;
+  }
+
+  void SetCurrentDnnStream(Stream* stream)
+      EXCLUSIVE_LOCKS_REQUIRED(dnn_handle_mutex_) {
+    current_dnn_stream_ = stream;
+  }
+
+  CUDAExecutor* GetParentExecutor() { return parent_; }
+
+  // Guards the enqueueing of DNN operations via the dnn_handle_ below, and
+  // access to current_dnn_stream_.
+  //
+  // This is a public member because we need to add thread safty annotations in
+  // the cudnn wrapper functions in the cc file, which need to access this
+  // mutex (the annotations require C++ permission checks).
   mutex dnn_handle_mutex_;
 
+ private:
   CUDAExecutor* parent_;  // Parent executor object. Not owned.
 
   // cudnn library handle. cudnnHandle_t type is not present in this header to
   // prevent third-party library header inclusions from leaking outside the
   // single cuda_dnn translation unit.
   void* dnn_handle_ GUARDED_BY(dnn_handle_mutex_);
+
+  // The current cudnn stream that is set by cudnnSetStream().
+  Stream* current_dnn_stream_ GUARDED_BY(dnn_handle_mutex_);
 
   // NOTE(keveman): Temporary data layout transformation until cuDNN supports
   // kBatchYXDepth for backward pass. This function allocates temporary memory,
@@ -790,7 +809,6 @@ class CudnnSupport : public dnn::DnnSupport {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_

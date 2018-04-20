@@ -58,9 +58,12 @@ def _export_outputs_to_output_alternatives(export_outputs):
   return None
 
 
-def estimator_spec_to_model_fn_ops(estimator_spec):
-  alternatives = _export_outputs_to_output_alternatives(
-      estimator_spec.export_outputs)
+def estimator_spec_to_model_fn_ops(estimator_spec, export_alternatives=False):
+  if export_alternatives:
+    alternatives = _export_outputs_to_output_alternatives(
+        estimator_spec.export_outputs)
+  else:
+    alternatives = []
 
   return model_fn.ModelFnOps(
       mode=_core_mode_to_contrib_mode(estimator_spec.mode),

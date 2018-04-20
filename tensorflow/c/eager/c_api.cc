@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/python/framework/cpp_shape_inference.pb.h"
 
 using tensorflow::int64;
 using tensorflow::string;
@@ -116,9 +117,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
                          opts->async, std::move(device_mgr), r);
 }
 
-void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
-  delete ctx;
-}
+void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) { delete ctx; }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   TF_DeviceList* list = new TF_DeviceList;
@@ -581,7 +580,6 @@ tensorflow::Device* SelectDevice(const tensorflow::NodeDef& ndef,
   return nullptr;
 }
 
-
 #ifdef TENSORFLOW_EAGER_USE_XLA
 // Synthesizes and returns a wrapper function over `op`, which must be a
 // primitive op (e.g. matmul).
@@ -725,9 +723,7 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
   }
 
   const tensorflow::FunctionDef* fdef;
-  {
-    fdef = op->ctx->context.FindFunctionDef(op->name);
-  }
+  { fdef = op->ctx->context.FindFunctionDef(op->name); }
   std::vector<TF_DataType> const_input_types;
   std::vector<TF_DataType> arg_input_types;
   tensorflow::gtl::FlatMap<int, int> op_input_to_func_input;
@@ -940,8 +936,8 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
     // allocate it.
-    std::vector<tensorflow::TensorHandle*> handle_retvals(*num_retvals,
-                                                          nullptr);
+    tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> handle_retvals(
+        *num_retvals);
     status->status = tensorflow::EagerExecute(
         &op->ctx->context, op->device, op->inputs, kernel, maybe_stats.get(),
         handle_retvals.data(), *num_retvals);
@@ -1020,6 +1016,62 @@ void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
   ctx->context.RunMetadataProto()->Clear();
 }
 
+void TFE_GetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
+                                       TF_Buffer* output_proto,
+                                       TF_Status* status) {
+  tensorflow::Node* node = &output.oper->node;
+  tensorflow::CppShapeInferenceResult::HandleData handle_data;
+  handle_data.set_is_set(true);
+  {
+    tensorflow::mutex_lock l(graph->mu);
+    tensorflow::shape_inference::InferenceContext* ic =
+        graph->refiner.GetContext(node);
+    CHECK(ic != nullptr);
+    CHECK_LT(output.index, ic->num_outputs());
+    const auto* shapes_and_types =
+        ic->output_handle_shapes_and_types(output.index);
+    if (shapes_and_types == nullptr) {
+      output_proto->data = nullptr;
+      output_proto->length = 0;
+      output_proto->data_deallocator = nullptr;
+      return;
+    }
+
+    for (const auto& p : *shapes_and_types) {
+      auto* out_shape_and_type = handle_data.add_shape_and_type();
+      ic->ShapeHandleToProto(p.shape, out_shape_and_type->mutable_shape());
+      out_shape_and_type->set_dtype(p.dtype);
+    }
+  }
+  status->status = MessageToBuffer(handle_data, output_proto);
+}
+
+void TFE_SetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
+                                       const void* proto, size_t proto_len,
+                                       TF_Status* status) {
+  tensorflow::CppShapeInferenceResult::HandleData handle_data;
+  if (!handle_data.ParseFromArray(proto, proto_len)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Couldn't deserialize HandleData proto");
+    return;
+  }
+  DCHECK(handle_data.is_set());
+
+  tensorflow::mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(&output.oper->node);
+
+  std::vector<tensorflow::shape_inference::ShapeAndType> shapes_and_types;
+  for (const auto& shape_and_type_proto : handle_data.shape_and_type()) {
+    tensorflow::shape_inference::ShapeHandle shape;
+    status->status =
+        ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
+    if (status->status.ok()) return;
+    shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype());
+  }
+  ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
+}
+
 namespace {
 TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
                 TF_Status* status) {
@@ -1090,7 +1142,6 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
   }
 }
 }  // namespace tensorflow
-
 
 TFE_Op::~TFE_Op() {
   for (tensorflow::TensorHandle* h : inputs) {

@@ -60,7 +60,9 @@ using perftools::gputools::Stream;
 
 namespace tensorflow {
 
-namespace gpu = ::perftools::gputools;
+// TODO(b/77980417): Remove this and use the regular tensorflow::se alias once
+// that's available.
+namespace gpu = ::stream_executor;
 
 Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
                    const Tensor* dst,

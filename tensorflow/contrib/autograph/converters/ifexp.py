@@ -27,7 +27,7 @@ class IfExp(transformer.Base):
 
   def visit_IfExp(self, node):
     template = """
-        autograph_utils.run_cond(test, lambda: (body,), lambda: (orelse,))
+        ag__.utils.run_cond(test, lambda: (body,), lambda: (orelse,))
     """
     desugared_ifexp = templates.replace_as_expression(
         template, test=node.test, body=node.body, orelse=node.orelse)

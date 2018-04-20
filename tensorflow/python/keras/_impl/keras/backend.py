@@ -2833,6 +2833,8 @@ class Function(object):
     # Handle symbolic feed.
     for x, y in zip(feed_symbols, symbol_vals):
       connection = callable_opts.tensor_connection.add()
+      if x.dtype != y.dtype:
+        y = math_ops.cast(y, dtype=x.dtype)
       from_tensor = ops._as_graph_element(y)
       if from_tensor is None:
         from_tensor = y
@@ -3446,7 +3448,7 @@ def categorical_crossentropy(target, output, from_logits=False):
   Returns:
       Output tensor.
   """
-  # Note: nn.softmax_cross_entropy_with_logits
+  # Note: nn.softmax_cross_entropy_with_logits_v2
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
@@ -3510,7 +3512,7 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
-  # Note: nn.softmax_cross_entropy_with_logits
+  # Note: nn.sigmoid_cross_entropy_with_logits
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # transform back to logits

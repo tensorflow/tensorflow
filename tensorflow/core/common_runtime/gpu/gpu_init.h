@@ -18,11 +18,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 class Platform;
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 namespace tensorflow {
 
@@ -34,7 +32,7 @@ Status ValidateGPUMachineManager();
 // initializing the GPUs on the machine if needed the first time it is
 // called.  Must only be called when there is a valid GPU environment
 // in the process (e.g., ValidateGPUMachineManager() returns OK).
-perftools::gputools::Platform* GPUMachineManager();
+stream_executor::Platform* GPUMachineManager();
 
 }  // namespace tensorflow
 

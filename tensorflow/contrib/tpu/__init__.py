@@ -43,6 +43,7 @@
 @@TPUEstimator
 @@TPUEstimatorSpec
 @@RunConfig
+@@InputPipelineConfig
 @@TPUConfig
 """
 

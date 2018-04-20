@@ -24,6 +24,7 @@ import os
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
+from tensorflow.contrib import checkpoint
 from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import coder
@@ -64,12 +65,14 @@ from tensorflow.contrib import nn
 from tensorflow.contrib import opt
 from tensorflow.contrib import periodic_resample
 from tensorflow.contrib import predictor
+from tensorflow.contrib import proto
 from tensorflow.contrib import quantization
 from tensorflow.contrib import quantize
 from tensorflow.contrib import recurrent
 from tensorflow.contrib import reduce_slice_ops
 from tensorflow.contrib import resampler
 from tensorflow.contrib import rnn
+from tensorflow.contrib import rpc
 from tensorflow.contrib import saved_model
 from tensorflow.contrib import seq2seq
 from tensorflow.contrib import signal

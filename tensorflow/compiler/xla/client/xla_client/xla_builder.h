@@ -53,6 +53,7 @@ class XlaBuilder;
 class XlaOp {
  public:
   XlaOp() : handle_(0), builder_(nullptr) {}
+  ~XlaOp() {}
 
   StatusOr<Shape> GetShape() const;
 
@@ -569,6 +570,9 @@ class XlaBuilder {
 
   // Enqueues a sign instruction onto the computation.
   XlaOp Sign(const XlaOp& operand);
+
+  // Enqueues a count leading zeros instruction onto the computation.
+  XlaOp Clz(const XlaOp& operand);
 
   // Enqueues a cosine instruction onto the computation.
   XlaOp Cos(const XlaOp& operand);

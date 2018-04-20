@@ -448,6 +448,9 @@ class ShapeUtil {
   static bool ShapeIs(const Shape& shape, PrimitiveType element_type,
                       std::initializer_list<int64> dimensions);
 
+  // Returns true if the given shape has a subshape at the given index.
+  static bool IndexIsValid(const Shape& shape, ShapeIndexView index);
+
   // GetSubshape and GetMutableSubshape return a particular nested Shape within
   // the given Shape argument.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);

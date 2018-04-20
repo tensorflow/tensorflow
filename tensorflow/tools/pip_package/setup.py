@@ -22,14 +22,16 @@ import os
 import re
 import sys
 
-from setuptools import find_packages, setup, Command
+from setuptools import Command
+from setuptools import find_packages
+from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.7.0'
+_VERSION = '1.8.0-rc0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -97,7 +99,9 @@ TEST_PACKAGES = [
     'scipy >= 0.15.1',
 ]
 
+
 class BinaryDistribution(Distribution):
+
   def has_ext_modules(self):
     return True
 
@@ -179,9 +183,9 @@ class InstallHeaders(Command):
 
 def find_files(pattern, root):
   """Return all the files matching pattern below root dir."""
-  for path, _, files in os.walk(root):
+  for dirpath, _, files in os.walk(root):
     for filename in fnmatch.filter(files, pattern):
-      yield os.path.join(path, filename)
+      yield os.path.join(dirpath, filename)
 
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
