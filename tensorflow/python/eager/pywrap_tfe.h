@@ -186,16 +186,16 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
 // Returns the set of variables watched by the given tape.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
-// Returns an EagerTensor of dimension [len(`tensor_list`)] containing
-// the `slice_dim`'th dimension of each tensor in `tensor_list`. In other words,
+// Returns an EagerTensor of dimension [len(`tensors`)] containing
+// the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
 // TFE_Py_TensorShapeSlice takes a slice of dimensions of tensors in
-// `tensor_list`. For example, if `tensor_list` contains tensors of with shapes
+// `tensors`. For example, if `tensors` contains tensors of with shapes
 // [1, 2, 3], [4, 5], [6, 7, 8, 9], TFE_Py_TensorShapeSlice called with
 // `slice_dim` equal to 1 will return [2, 5, 7].
 // On error, returns nullptr and sets python exception.
-// REQUIRES: `tensor_list` is a python list of EagerTensors
+// REQUIRES: `tensors` is a python list/tuple of EagerTensors
 // REQUIRES: `slice_dim` is non-negative and smaller than the rank of all
-//   tensors in `tensor_list`.
-PyObject* TFE_Py_TensorShapeSlice(PyObject* tensor_list, int slice_dim);
+//   tensors in `tensors`.
+PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
