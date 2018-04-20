@@ -515,6 +515,7 @@ tf_kernel_library(
     srcs = ["iterator_ops.cc"],
     deps = [
         ":dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -586,7 +587,7 @@ tf_kernel_library(
     srcs = ["writer_ops.cc"],
     deps = [
         ":dataset",
-        "//tensorflow/core:core_cpu_internal",
+        ":dataset_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

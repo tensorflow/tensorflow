@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -609,17 +610,7 @@ class ToSingleElementOp : public AsyncOpKernel {
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
       auto iterator = dataset->MakeIterator("SingleElementIterator");
 
-      IteratorContext::Params params;
-      params.env = ctx->env();
-      params.runner = *(ctx->runner());
-      params.lib = ctx->function_library();
-      DeviceBase* device = ctx->function_library()->device();
-      params.allocator_getter = [device](AllocatorAttributes attrs) {
-        return device->GetAllocator(attrs);
-      };
-
-      IteratorContext iter_ctx(std::move(params));
-
+      IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;

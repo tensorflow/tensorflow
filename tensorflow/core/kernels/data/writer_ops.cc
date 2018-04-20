@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -72,21 +72,10 @@ class ToTFRecordOp : public AsyncOpKernel {
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
       auto iterator = dataset->MakeIterator("ToTFRecordOpIterator");
 
-      IteratorContext::Params params;  // TODO(b/78245447)
-      params.env = ctx->env();
-      params.runner = *(ctx->runner());
-      params.lib = ctx->function_library();
-      DeviceBase* device = ctx->function_library()->device();
-      params.allocator_getter = [device](AllocatorAttributes attrs) {
-        return device->GetAllocator(attrs);
-      };
-
-      IteratorContext iter_ctx(std::move(params));
-
+      IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
-
       do {
         OP_REQUIRES_OK_ASYNC(
             ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
