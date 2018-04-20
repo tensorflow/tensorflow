@@ -318,6 +318,108 @@ class RecomputeTest(test.TestCase):
       self.assertEqual(1, len(grads))
       self.assertTrue(grads[0] is not None)
 
+  def testWithNontensorArgs(self):
+    @rev_block_lib.recompute_grad(tupleize_grads=True,
+                                  tensor_arg_names=["inputs"])
+    def layer_with_recompute(inputs, plus=None):
+      var = variable_scope.get_variable("var", ())
+      self.assertFalse(plus)  # called with False below
+      if plus:
+        return var + inputs
+      else:
+        return var * inputs
+
+    inputs = array_ops.ones((), dtypes.float32)
+    outputs = layer_with_recompute(inputs, plus=False)
+    loss = math_ops.square(outputs)
+    grads = gradients_impl.gradients(loss, variables.trainable_variables())
+    self.assertEqual(1, len(grads))
+    self.assertTrue(grads[0] is not None)
+
+
+class MakeTensorOnlyTest(test.TestCase):
+
+  def testMakeTensorOnly(self):
+    def fn(a, b, c, d=1, e=None, f=7):
+      return (a, b, c, d, e, f)
+
+    t1 = array_ops.ones(())
+    t2 = array_ops.ones(())
+    t3 = array_ops.ones(())
+    args = [1, t1, 3, t2]
+    kwargs = {"e": t3}
+    tensor_only_fn, tensor_args = rev_block_lib._make_tensor_only(
+        fn, args, kwargs, ["b", "d", "e"])
+    self.assertAllEqual(tensor_args, [t1, t2, t3])
+    out = tensor_only_fn(*tensor_args)
+    self.assertAllEqual(out, (1, t1, 3, t2, t3, 7))
+
+  def testMakeTensorOnlyPositionalArgsOnly(self):
+    def fn(a, b, c):
+      return (a, b, c)
+
+    t1 = array_ops.ones(())
+    t2 = array_ops.ones(())
+    args = [t1, 3, t2]
+    tensor_only_fn, tensor_args = rev_block_lib._make_tensor_only(
+        fn, args, {}, ["a", "c"])
+    self.assertAllEqual(tensor_args, [t1, t2])
+    out = tensor_only_fn(*tensor_args)
+    self.assertAllEqual(out, (t1, 3, t2))
+
+  def testMakeTensorOnlyKwargsArgsOnly(self):
+    def fn(a=1, b=2, c=3):
+      return (a, b, c)
+
+    t1 = array_ops.ones(())
+    t2 = array_ops.ones(())
+    args = [t1]
+    kwargs = {"c": t2}
+    tensor_only_fn, tensor_args = rev_block_lib._make_tensor_only(
+        fn, args, kwargs, ["a", "c"])
+    self.assertAllEqual(tensor_args, [t1, t2])
+    out = tensor_only_fn(*tensor_args)
+    self.assertAllEqual(out, (t1, 2, t2))
+
+  def testErrorOnMissingTensorArg(self):
+    def fn(a, b):
+      return (a, b)
+
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "provide Tensor argument"):
+      rev_block_lib._make_tensor_only(fn, [], {"b": 2}, ["a"])
+
+  def testErrorOnSignatureSplats(self):
+    def fn1(a, *args):
+      return (a, args)
+
+    err_msg = r"must not use \*args or \*\*kwargs"
+    with self.assertRaisesWithPredicateMatch(ValueError, err_msg):
+      rev_block_lib._make_tensor_only(fn1, [1, 2], {}, ["a"])
+
+    def fn2(a, **kwargs):
+      return (a, kwargs)
+
+    with self.assertRaisesWithPredicateMatch(ValueError, err_msg):
+      rev_block_lib._make_tensor_only(fn2, [], {"a": 1, "b": 2}, ["a"])
+
+  def testErrorOnNonTensorForTensor(self):
+    def fn(a, b):
+      return (a, b)
+
+    with self.assertRaisesWithPredicateMatch(TypeError, "must be a Tensor"):
+      rev_block_lib._make_tensor_only(fn, [2, 3], {}, ["a"])
+
+  def testErrorOnTensorForNonTensor(self):
+    def fn(a, b):
+      return (a, b)
+
+    with self.assertRaisesWithPredicateMatch(
+        TypeError, "must not be a Tensor"):
+      t1 = array_ops.ones(())
+      t2 = array_ops.ones(())
+      rev_block_lib._make_tensor_only(fn, [t1, t2], {}, ["a"])
+
 
 class FnWithCustomGradTest(test.TestCase):
 
