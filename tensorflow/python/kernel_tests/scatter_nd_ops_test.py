@@ -365,31 +365,35 @@ class ScatterNdTest(test.TestCase):
     return array_ops.scatter_nd(indices, updates, shape)
 
   def testString(self):
-    indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+    indices = constant_op.constant([[4], [3], [1], [7]],
+                                   dtype=dtypes.int32)
     updates = constant_op.constant(["four", "three", "one", "seven"],
                                    dtype=dtypes.string)
-    expected = np.array(["", "one", "", "three", "four", "", "", "seven"])
+    expected = np.array([b"", b"one", b"", b"three", b"four",
+                         b"", b"", b"seven"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.test_session() as sess:
       result = sess.run(scatter)
       self.assertAllEqual(expected, result)
 
     # Same indice is updated twice by same value.
-    indices = constant_op.constant([[4], [3], [3], [7]], dtype=dtypes.int32)
+    indices = constant_op.constant([[4], [3], [3], [7]],
+                                   dtype=dtypes.int32)
     updates = constant_op.constant(["a", "b", "b", "c"],
                                    dtype=dtypes.string)
-    expected = np.array(["", "", "", "bb", "a", "", "", "c"])
+    expected = np.array([b"", b"", b"", b"bb", b"a", b"", b"", b"c"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.test_session() as sess:
       result = sess.run(scatter)
       self.assertAllEqual(expected, result)
 
     # Same indice is updated twice by different value.
-    indices = constant_op.constant([[4], [3], [3], [7]], dtype=dtypes.int32)
+    indices = constant_op.constant([[4], [3], [3], [7]],
+                                   dtype=dtypes.int32)
     updates = constant_op.constant(["a", "b", "c", "d"],
                                    dtype=dtypes.string)
-    expected = [np.array(["", "", "", "bc", "a", "", "", "d"]),
-                np.array(["", "", "", "cb", "a", "", "", "d"])]
+    expected = [np.array([b"", b"", b"", b"bc", b"a", b"", b"", b"d"]),
+                np.array([b"", b"", b"", b"cb", b"a", b"", b"", b"d"])]
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.test_session() as sess:
       result = sess.run(scatter)
