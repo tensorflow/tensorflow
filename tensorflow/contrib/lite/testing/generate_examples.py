@@ -1758,19 +1758,7 @@ def make_strided_slice_tests(zip_path):
           "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
           "constant_indices": [False, True],
       },
-      #
-      {
-          "dtype": [tf.float32],
-          "index_type": [tf.int32],
-          "input_shape": [[12, 2, 2, 5]],
-          "begin": [[0]],
-          "end": [[1]],
-          "strides": [[1]],
-          "begin_mask": [0],
-          "end_mask": [0],
-          "shrink_axis_mask": [1],
-          "constant_indices": [True],
-      },
+      # TODO(b/73170889) Restore test paramaters removed in cl/191608113.
       # 2-D
       {
           "dtype": [tf.float32, tf.int32, tf.int64],

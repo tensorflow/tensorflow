@@ -65,10 +65,8 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
                             device_ordinal, size, /*retry_on_failure=*/false));
   }
 
-  TF_ASSIGN_OR_RETURN(auto scoped_buffer,
-                      xla::ScopedShapedBuffer::MakeScoped(
-                          &buffer, client->backend().memory_allocator()));
-  set_shaped_buffer(std::move(scoped_buffer));
+  set_shaped_buffer(xla::ScopedShapedBuffer(
+      std::move(buffer), client->backend().memory_allocator()));
   return Status::OK();
 }
 

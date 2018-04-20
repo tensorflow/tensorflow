@@ -801,6 +801,9 @@ enum UnaryOperation {
 
   // Elementwise, extract real component of complex x.
   UNOP_IMAG = 16;
+
+  // Elementwise, computes clz(x).
+  UNOP_CLZ = 17;
 }
 
 message UnaryOpRequest {

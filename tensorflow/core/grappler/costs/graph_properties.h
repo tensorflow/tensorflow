@@ -102,16 +102,10 @@ class GraphProperties {
   // Process the Enter node, and enqueue its fanout in new_shapes if needed.
   static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
                             const Node* node, bool relax, bool* new_shapes);
-  // Process a node that is used to feed the model.
-  Status OverwriteFedPorts(
-      SymbolicShapeRefiner* shape_refiner,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
-      const Node* node, bool* new_shapes) const;
   // Update the shapes for node 'n'. If output shapes for n have changed,
   // enqueue its fanout in 'new_shapes'.
   Status UpdateShapes(
       SymbolicShapeRefiner* shape_refiner, bool relax,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
       const Node* n, bool* new_shapes) const;
   // Propagate the shapes for the nodes enqueued in new_shapes and their
   // transitive fanout until a fixed point is reached.
@@ -119,7 +113,6 @@ class GraphProperties {
       SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
       const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
           resources,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
       int num_loops) const;
 
   // Data members

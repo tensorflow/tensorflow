@@ -39,10 +39,11 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
   def testTrainNetwork(self, distribution, optimizer_fn,
                        use_callable_loss=True):
     with distribution.scope():
-      model_fn, dataset, layer = minimize_loss_example(
+      model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
 
-      iterator = distribution.distribute_dataset(dataset)
+      iterator = distribution.distribute_dataset(
+          dataset_fn).make_one_shot_iterator()
 
       def run_step():
         return control_flow_ops.group(distribution.unwrap(

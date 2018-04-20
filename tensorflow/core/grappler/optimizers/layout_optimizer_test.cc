@@ -1174,7 +1174,7 @@ TEST_F(LayoutOptimizerTest, DevicePlacement) {
   NodeMap node_map(&output);
   auto vec_permute =
       node_map.GetNode("s-0-0-VecPermuteNCHWToNHWC-LayoutOptimizer");
-  EXPECT_TRUE(str_util::EndsWith(vec_permute->device(), "CPU:0"));
+  EXPECT_EQ(vec_permute->attr().at("_kernel").s(), "host");
 }
 }  // namespace
 }  // namespace grappler

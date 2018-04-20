@@ -29,13 +29,11 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 class Event;
 class Stream;
 class StreamExecutor;
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 namespace tensorflow {
 

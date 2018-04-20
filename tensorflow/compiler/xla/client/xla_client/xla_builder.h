@@ -571,6 +571,9 @@ class XlaBuilder {
   // Enqueues a sign instruction onto the computation.
   XlaOp Sign(const XlaOp& operand);
 
+  // Enqueues a count leading zeros instruction onto the computation.
+  XlaOp Clz(const XlaOp& operand);
+
   // Enqueues a cosine instruction onto the computation.
   XlaOp Cos(const XlaOp& operand);
 

@@ -45,25 +45,23 @@ class GpuCompiler : public LLVMCompiler {
   // Bring in
   // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
   //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+  //     std::vector<std::vector<se::StreamExecutor*>>
   //        stream_execs)
   using LLVMCompiler::Compile;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec,
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec,
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
                      AotCompilationOptions const& options) override;
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  se::Platform::Id PlatformId() const override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
     // Capture just the pointer size, not the entire GpuCompiler object.

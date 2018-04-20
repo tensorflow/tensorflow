@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "IteratorSetStatsAggregator"
-  summary: "Associates the given iterator with the given statistics aggregator."
-}

@@ -67,6 +67,7 @@ TEST(PatternMatcherTest, ScalarShape) {
   EXPECT_TRUE(Match(&scalar_shape, match::Shape(&matched_shape).IsScalar()));
   EXPECT_EQ(matched_shape, &scalar_shape);
   EXPECT_TRUE(Match(&scalar_shape, match::Shape().IsArray()));
+  EXPECT_TRUE(Match(&scalar_shape, match::Shape().IsDenseArray()));
   EXPECT_FALSE(Match(&scalar_shape, match::Shape().IsTuple()));
   EXPECT_TRUE(Match(&scalar_shape, match::Shape().WithElementType(F32)));
   EXPECT_TRUE(Match(&scalar_shape, match::Shape().WithRank(0)));
@@ -75,11 +76,13 @@ TEST(PatternMatcherTest, ScalarShape) {
       match::Shape().WithSubshape({0}, match::Shape()).WithElementType(F32)));
 }
 
-TEST(PatternMatcherTest, ArrayShape) {
+TEST(PatternMatcherTest, DenseArrayShape) {
   auto array_shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
   Shape* matched_shape;
   EXPECT_TRUE(Match(&array_shape, match::Shape(&matched_shape).IsArray()));
   EXPECT_EQ(matched_shape, &array_shape);
+  EXPECT_TRUE(Match(&array_shape, match::Shape().IsDenseArray()));
+  EXPECT_FALSE(Match(&array_shape, match::Shape().IsSparseArray()));
   EXPECT_FALSE(Match(&array_shape, match::Shape().IsScalar()));
   EXPECT_FALSE(Match(&array_shape, match::Shape().IsTuple()));
   EXPECT_TRUE(Match(&array_shape, match::Shape().WithElementType(F32)));
@@ -90,6 +93,33 @@ TEST(PatternMatcherTest, ArrayShape) {
   EXPECT_FALSE(Match(&array_shape,
                      match::Shape().WithLayout(
                          match::Layout(&matched_layout).WithSparseFormat())));
+  EXPECT_TRUE(Match(&array_shape,
+                    match::Shape().WithLayout(
+                        match::Layout(&matched_layout).WithDenseFormat())));
+  EXPECT_EQ(matched_layout, &array_shape.layout());
+}
+
+TEST(PatternMatcherTest, SparseArrayShape) {
+  auto array_shape = ShapeUtil::MakeShapeWithSparseLayout(F32, {2, 3, 4}, 10);
+  Shape* matched_shape;
+  EXPECT_TRUE(Match(&array_shape, match::Shape(&matched_shape).IsArray()));
+  EXPECT_EQ(matched_shape, &array_shape);
+  EXPECT_FALSE(Match(&array_shape, match::Shape().IsDenseArray()));
+  EXPECT_TRUE(Match(&array_shape, match::Shape().IsSparseArray()));
+  EXPECT_FALSE(Match(&array_shape, match::Shape().IsScalar()));
+  EXPECT_FALSE(Match(&array_shape, match::Shape().IsTuple()));
+  EXPECT_TRUE(Match(&array_shape, match::Shape().WithElementType(F32)));
+  EXPECT_TRUE(Match(&array_shape, match::Shape().WithRank(3)));
+  EXPECT_FALSE(
+      Match(&array_shape, match::Shape().WithSubshape({0}, match::Shape())));
+  Layout* matched_layout;
+  EXPECT_FALSE(Match(&array_shape,
+                     match::Shape().WithLayout(
+                         match::Layout(&matched_layout).WithDenseFormat())));
+  EXPECT_TRUE(Match(&array_shape,
+                    match::Shape().WithLayout(
+                        match::Layout(&matched_layout).WithSparseFormat())));
+  EXPECT_EQ(matched_layout, &array_shape.layout());
 }
 
 TEST(PatternMatcherTest, TupleShape) {
