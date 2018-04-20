@@ -49,7 +49,12 @@ SubComputationVisitor::SubComputationVisitor(
 static bool InputIsUnused(HloInstruction* inst,
                           const std::vector<xla::Shape>& shapes,
                           unsigned int index) {
-  if (inst->user_count() == 0 && inst->parent()->root_instruction() != inst) {
+
+  if (inst->parent()->root_instruction() == inst) {
+    return false;
+  }
+
+  if (inst->user_count() == 0) {
     return true;
   }
 
