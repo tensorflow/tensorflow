@@ -26,7 +26,9 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 
 #ifndef INTEL_MKL_ML
+#include <memory>
 #include "mkldnn.hpp"
+#include "tensorflow/core/kernels/no_op.h"
 
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
@@ -34,6 +36,7 @@ using mkldnn::prop_kind;
 using mkldnn::stream;
 using mkldnn::use_global_stats;
 using mkldnn::use_scale_shift;
+using mkldnn::eltwise_relu;
 #endif
 
 // TODO(inteltf) Address comments from PR 8968.
@@ -857,18 +860,20 @@ class MklFusedBatchNormOp : public OpKernel {
       prop_kind pk = (is_training_) ? prop_kind::forward_training
                                     : prop_kind::forward_scoring;
       auto bnrm_fwd_desc = batch_normalization_forward::desc(
-          pk, src.GetUsrMemDesc(), epsilon_,
-          is_training_ ? use_scale_shift
-                       : (use_scale_shift | use_global_stats));
-      auto bnrm_fwd_pd = batch_normalization_forward::primitive_desc(
-          bnrm_fwd_desc, cpu_engine);
+                               pk, src.GetUsrMemDesc(), epsilon_,
+                               is_training_ ? use_scale_shift :
+                               (use_scale_shift | use_global_stats));
+      std::unique_ptr<batch_normalization_forward::primitive_desc>
+        bnrm_fwd_pd(nullptr);
+      this->CreatePrimitiveDesc(&bnrm_fwd_pd, bnrm_fwd_desc, cpu_engine);
+      CHECK_NOTNULL(bnrm_fwd_pd);
 
       // allocate dst tensor
       MklDnnShape dnn_shape_dst;
       TensorShape tf_shape_dst;
       if (dnn_shape_src.IsMklTensor()) {
         dnn_shape_dst.SetMklTensor(true);
-        auto dst_pd = bnrm_fwd_pd.dst_primitive_desc();
+        auto dst_pd = bnrm_fwd_pd->dst_primitive_desc();
         dnn_shape_dst.SetMklLayout(&dst_pd);
         dnn_shape_dst.SetElemType(MklDnnType<T>());
         dnn_shape_dst.SetTfLayout(dnn_shape_src.GetDimension(), src_dims,
@@ -887,12 +892,12 @@ class MklFusedBatchNormOp : public OpKernel {
       primitive bnrm_fwd_op;
       if (is_training_) {
         bnrm_fwd_op =
-            batch_normalization_forward(bnrm_fwd_pd, src.GetOpMem(), weights_m,
+            batch_normalization_forward(*bnrm_fwd_pd, src.GetOpMem(), weights_m,
                                         dst.GetOpMem(), mean_m, variance_m);
       } else {
         bnrm_fwd_op = batch_normalization_forward(
-            bnrm_fwd_pd, src.GetOpMem(), mean_m, variance_m,
-            (const primitive::at)weights_m, dst.GetOpMem());
+            *bnrm_fwd_pd, src.GetOpMem(), mean_m, variance_m,
+            (const primitive::at) weights_m, dst.GetOpMem());
       }
       std::vector<primitive> net;
       net.push_back(bnrm_fwd_op);
@@ -926,6 +931,18 @@ class MklFusedBatchNormOp : public OpKernel {
           errors::Aborted("Operation received an exception:", error_msg));
     }
   }
+
+ protected:
+  /// This virtual function allows us to create different primitive desc
+  /// when we want to merge postop with BatchNorm.
+  virtual void CreatePrimitiveDesc(
+     std::unique_ptr<batch_normalization_forward::primitive_desc>* bnrm_fwd_pd,
+     const batch_normalization_forward::desc& bnrm_fwd_desc,
+     const engine& cpu_engine) {
+      bnrm_fwd_pd->reset(new batch_normalization_forward::primitive_desc(
+                                                  bnrm_fwd_desc, cpu_engine));
+  }
+
 
  private:
   T epsilon_;
@@ -1024,6 +1041,40 @@ class MklFusedBatchNormOp : public OpKernel {
     // set NAN variance value in case of empty input tensor
     for (int k = 0; k < tf_shape_scale.num_elements(); k++)
       (*saved_variance_tensor)->flat<T>().data()[k] = NAN;
+  }
+};
+
+// Class for BatchNorm + ReLU fusion
+template <typename Device, typename T>
+class MklFusedBatchNormWithReluOp : public MklFusedBatchNormOp<Device, T> {
+ public:
+  ~MklFusedBatchNormWithReluOp() {}
+
+  explicit MklFusedBatchNormWithReluOp(OpKernelConstruction* context)
+      : MklFusedBatchNormOp<Device, T>(context) {}
+
+  virtual void CreatePrimitiveDesc(
+     std::unique_ptr<batch_normalization_forward::primitive_desc>* bnrm_fwd_pd,
+     const batch_normalization_forward::desc& bnrm_fwd_desc,
+     const engine& cpu_engine) {
+    mkldnn::primitive_attr attr;
+    GetMklDnnEltwisePrimitiveAttr(&attr);
+    bnrm_fwd_pd->reset(new batch_normalization_forward::primitive_desc(
+                                             bnrm_fwd_desc, attr, cpu_engine));
+  }
+
+ private:
+  void GetMklDnnEltwisePrimitiveAttr(mkldnn::primitive_attr *attr) {
+    CHECK_NOTNULL(attr);
+
+    mkldnn::post_ops ops;
+    // Reference for parameter values -
+    // http://intel.github.io/mkl-dnn/structmkldnn__eltwise__desc__t.html
+    float scale = 1.0f;  // for fp32, scale is 1.
+    T alpha = 0;  // negative slope for mkldnn_eltwise_relu.
+    T beta = 0;  // ignored for mkldnn_eltwise_relu.
+    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
+    attr->set_post_ops(ops);
   }
 };
 
@@ -1194,8 +1245,10 @@ class MklFusedBatchNormGradOp : public OpKernel {
           prop_kind::forward_training, src.GetUsrMemDesc(), epsilon_,
           is_training_ ? use_scale_shift
                        : (use_scale_shift | use_global_stats));
-      auto bnrm_fwd_pd = batch_normalization_forward::primitive_desc(
-          bnrm_fwd_desc, cpu_engine);
+      std::unique_ptr<batch_normalization_forward::primitive_desc>
+        bnrm_fwd_pd(new batch_normalization_forward::primitive_desc(
+                                                    bnrm_fwd_desc,
+                                                    cpu_engine));
 
       // Indices of output tensors
       const size_t kDiffSrcIndex = 0;  // index of diff_src tensor
@@ -1271,7 +1324,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
           is_training_ ? use_scale_shift
                        : (use_scale_shift | use_global_stats));
       auto bnrm_bwd_pd = batch_normalization_backward::primitive_desc(
-          bnrm_bwd_desc, cpu_engine, bnrm_fwd_pd);
+          bnrm_bwd_desc, cpu_engine, *bnrm_fwd_pd);
 
       std::vector<primitive> net;
       src.CheckReorderToOpMem(memory::primitive_desc(common_md,
@@ -1392,6 +1445,26 @@ class MklFusedBatchNormGradOp : public OpKernel {
                           MklFusedBatchNormOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
+
+#ifndef INTEL_MKL_ML
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("_MklFusedBatchNormWithRelu")        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                         MklFusedBatchNormWithReluOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_MKL_CPU);
+#undef REGISTER_MKL_CPU
+
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyFusedBatchNormWithRelu")  \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                              NoOp);
+TF_CALL_float(REGISTER_MKL_CPU);
+#undef REGISTER_MKL_CPU
+#endif
 
 #define REGISTER_MKL_CPU(T)                                         \
   REGISTER_KERNEL_BUILDER(Name("_MklFusedBatchNormGrad")            \

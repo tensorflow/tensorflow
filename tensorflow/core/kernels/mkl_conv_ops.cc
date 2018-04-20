@@ -20,6 +20,7 @@ limitations under the License.
 #include <map>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/mkl_conv_ops.h"
+#include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -50,6 +52,7 @@ using mkldnn::stream;
 
 using mkldnn::convolution_direct;
 using mkldnn::convolution_forward;
+using mkldnn::eltwise_relu;
 #else
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
@@ -485,6 +488,26 @@ class MklConv2DOp : public OpKernel {
   TensorFormat data_format_;
 };
 
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklConv2DOp<CPUDevice, T, false>);        \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklConv2DOp<CPUDevice, T, true>);         \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          NoOp);
+
+TF_CALL_float(REGISTER_MKL_CPU);
+#undef REGISTER_MKL_CPU
+
 #else
 
 template <typename Device, typename T, bool biasEnabled>
@@ -619,74 +642,80 @@ class MklConv2DOp : public OpKernel {
       dilations[kDilationW] -= 1;
 
       if (biasEnabled) {
-          // Create convolution primitive with Bias.
-          MklDnnData<T> bias(&cpu_engine);
-          memory::dims bias_size;
-          conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_size);
-          const Tensor& bias_tensor = MklGetInput(context, kInputIndex_Bias);
-          bias.SetUsrMem(bias_size, memory::format::x, &bias_tensor);
-          bias.SetOpMemDesc(bias_size, memory::format::any);
+        // Create convolution primitive with Bias.
+        MklDnnData<T> bias(&cpu_engine);
+        memory::dims bias_size;
+        conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_size);
+        const Tensor& bias_tensor = MklGetInput(context, kInputIndex_Bias);
+        bias.SetUsrMem(bias_size, memory::format::x, &bias_tensor);
+        bias.SetOpMemDesc(bias_size, memory::format::any);
 
-          // Create convolution primitive with Bias.
-          // Use MKLDNN dilated convolution in case of dilated rate (>0).
-          auto conv_desc = (dilations[kDilationH] > 0 ||
-              dilations[kDilationW] > 0) ?
-              convolution_forward::desc(prop_kind::forward,
-                      convolution_direct, src.GetOpMemDesc(),
-                      filter.GetOpMemDesc(), bias.GetOpMemDesc(),
-                      output.GetOpMemDesc(), strides, dilations,
-                      padding_l, padding_r,
-                      TFPaddingToMklDnnPadding(padding_)):
-              convolution_forward::desc(prop_kind::forward,
-                      convolution_direct, src.GetOpMemDesc(),
-                      filter.GetOpMemDesc(), bias.GetOpMemDesc(),
-                      output.GetOpMemDesc(), strides,
-                      padding_l, padding_r,
-                      TFPaddingToMklDnnPadding(padding_));
-
-          auto conv_prim_desc = convolution_forward::primitive_desc(conv_desc,
-                                                                  cpu_engine);
-          AllocateOutputTensor(context, conv_prim_desc,
-                               output_dims_mkl_order, tf_fmt, &output_tensor);
-          // Set data handle for output.
-          output.SetUsrMemDataHandle(output_tensor);
-
-          Tensor* filter_out_tensor = nullptr;
-          AllocateFilterOutputTensor(context, conv_prim_desc,
-                TFShapeToMklDnnDims(filter_tf_shape),
-                &filter_out_tensor);
-
-          PrepareAndExecuteNet(conv_prim_desc, &src, &filter, &bias, &output,
-                               filter_out_tensor);
-      } else {
-          // Create convolution primitive without Bias.
-          // Use MKLDNN dilated convolution in case of dilated rate (>0).
-          auto conv_desc = (dilations[kDilationH] > 0 ||
+        // Create convolution primitive with Bias.
+        // Use MKLDNN dilated convolution in case of dilated rate (>0).
+        auto conv_desc = (dilations[kDilationH] > 0 ||
             dilations[kDilationW] > 0) ?
             convolution_forward::desc(prop_kind::forward,
-              convolution_direct, src.GetOpMemDesc(),
-              filter.GetOpMemDesc(), output.GetOpMemDesc(),
-              strides, dilations, padding_l, padding_r,
-              TFPaddingToMklDnnPadding(padding_)):
+                    convolution_direct, src.GetOpMemDesc(),
+                    filter.GetOpMemDesc(), bias.GetOpMemDesc(),
+                    output.GetOpMemDesc(), strides, dilations,
+                    padding_l, padding_r,
+                    TFPaddingToMklDnnPadding(padding_)):
+            convolution_forward::desc(prop_kind::forward,
+                    convolution_direct, src.GetOpMemDesc(),
+                    filter.GetOpMemDesc(), bias.GetOpMemDesc(),
+                    output.GetOpMemDesc(), strides,
+                    padding_l, padding_r,
+                    TFPaddingToMklDnnPadding(padding_));
+
+        std::unique_ptr<convolution_forward::primitive_desc>
+          conv_prim_desc(nullptr);
+        this->CreatePrimitiveDesc(&conv_prim_desc, conv_desc, cpu_engine);
+        CHECK_NOTNULL(conv_prim_desc);
+
+        AllocateOutputTensor(context, conv_prim_desc,
+                             output_dims_mkl_order, tf_fmt, &output_tensor);
+        // Set data handle for output.
+        output.SetUsrMemDataHandle(output_tensor);
+
+        Tensor* filter_out_tensor = nullptr;
+        AllocateFilterOutputTensor(context, conv_prim_desc,
+                                   TFShapeToMklDnnDims(filter_tf_shape),
+                                   &filter_out_tensor);
+
+        PrepareAndExecuteNet(conv_prim_desc, &src, &filter,
+                            &bias, &output, filter_out_tensor);
+      } else {
+        // Create convolution primitive without Bias.
+        // Use MKLDNN dilated convolution in case of dilated rate (>0).
+        auto conv_desc = (dilations[kDilationH] > 0 ||
+          dilations[kDilationW] > 0) ?
           convolution_forward::desc(prop_kind::forward,
-              convolution_direct, src.GetOpMemDesc(),
-              filter.GetOpMemDesc(), output.GetOpMemDesc(),
-              strides, padding_l, padding_r,
-              TFPaddingToMklDnnPadding(padding_));
+            convolution_direct, src.GetOpMemDesc(),
+            filter.GetOpMemDesc(), output.GetOpMemDesc(),
+            strides, dilations, padding_l, padding_r,
+            TFPaddingToMklDnnPadding(padding_)):
+        convolution_forward::desc(prop_kind::forward,
+            convolution_direct, src.GetOpMemDesc(),
+            filter.GetOpMemDesc(), output.GetOpMemDesc(),
+            strides, padding_l, padding_r,
+            TFPaddingToMklDnnPadding(padding_));
 
-          auto conv_prim_desc = convolution_forward::primitive_desc(conv_desc,
-                                                                  cpu_engine);
-          AllocateOutputTensor(context, conv_prim_desc, output_dims_mkl_order,
-                               tf_fmt, &output_tensor);
-          // Set data handle for output.
-          output.SetUsrMemDataHandle(output_tensor);
+        std::unique_ptr<convolution_forward::primitive_desc>
+          conv_prim_desc(nullptr);
+        this->CreatePrimitiveDesc(&conv_prim_desc, conv_desc, cpu_engine);
+        CHECK_NOTNULL(conv_prim_desc);
 
-          Tensor* filter_out_tensor = nullptr;
-          AllocateFilterOutputTensor(context, conv_prim_desc,
+        AllocateOutputTensor(context, conv_prim_desc, output_dims_mkl_order,
+                             tf_fmt, &output_tensor);
+        // Set data handle for output.
+        output.SetUsrMemDataHandle(output_tensor);
+
+        Tensor* filter_out_tensor = nullptr;
+        AllocateFilterOutputTensor(context, conv_prim_desc,
                 TFShapeToMklDnnDims(filter_tf_shape),
                 &filter_out_tensor);
-          PrepareAndExecuteNet(conv_prim_desc, &src, &filter,
-                              nullptr, &output, filter_out_tensor);
+        PrepareAndExecuteNet(conv_prim_desc, &src, &filter,
+                            nullptr, &output, filter_out_tensor);
       }
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
@@ -696,6 +725,18 @@ class MklConv2DOp : public OpKernel {
           context,
           errors::Aborted("Operation received an exception:", error_msg));
     }
+  }
+
+ protected:
+  // Create Convolution forward primitive descriptor based on specific case
+  // This virtual function enables children classes of this class add specific
+  // post-ops to enable convolution + post-op fusion.
+  virtual void CreatePrimitiveDesc(
+      std::unique_ptr<convolution_forward::primitive_desc>* conv_prim_desc,
+      const convolution_forward::desc conv_desc,
+      const engine& cpu_engine) {
+    conv_prim_desc->reset(new convolution_forward::primitive_desc(conv_desc,
+                                                              cpu_engine));
   }
 
  private:
@@ -709,94 +750,161 @@ class MklConv2DOp : public OpKernel {
 
   // Allocate output tensor.
   void AllocateOutputTensor(
-      OpKernelContext* context,
-      const convolution_forward::primitive_desc& conv_prim_desc,
-      const memory::dims& output_dims_mkl_order,
-      memory::format output_tf_format, Tensor** output_tensor) {
-    CHECK_NOTNULL(output_tensor);
-    auto dst_pd = conv_prim_desc.dst_primitive_desc();
+        OpKernelContext* context,
+        const std::unique_ptr<convolution_forward::primitive_desc>&
+            conv_prim_desc,
+        const memory::dims& output_dims_mkl_order,
+        memory::format output_tf_format, Tensor** output_tensor) {
+      CHECK_NOTNULL(output_tensor);
+      CHECK_NOTNULL(conv_prim_desc);
 
-    // Allocate shape of Mkl tensor.
-    MklDnnShape output_mkl_shape;
-    output_mkl_shape.SetMklTensor(true);
-    output_mkl_shape.SetMklLayout(&dst_pd);
-    output_mkl_shape.SetElemType(MklDnnType<T>());
-    output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
-                                 output_dims_mkl_order, output_tf_format);
+      auto dst_pd = conv_prim_desc->dst_primitive_desc();
 
-    // Allocate shape of TF tensor.
-    TensorShape output_tf_shape;
-    output_tf_shape.AddDim((dst_pd.get_size() / sizeof(T)));
+      // Allocate shape of Mkl tensor.
+      MklDnnShape output_mkl_shape;
+      output_mkl_shape.SetMklTensor(true);
+      output_mkl_shape.SetMklLayout(&dst_pd);
+      output_mkl_shape.SetElemType(MklDnnType<T>());
+      output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
+              output_dims_mkl_order, output_tf_format);
 
-    AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
-                              output_tf_shape, output_mkl_shape);
+      // Allocate shape of TF tensor.
+      TensorShape output_tf_shape;
+      output_tf_shape.AddDim((dst_pd.get_size() / sizeof(T)));
+
+      AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
+                                output_tf_shape, output_mkl_shape);
   }
 
   // Allocate output tensor.
   void AllocateFilterOutputTensor(
-      OpKernelContext* context,
-      const convolution_forward::primitive_desc& conv_prim_desc,
-      const memory::dims& filter_dims_tf_order, Tensor** filter_tensor) {
-    CHECK_NOTNULL(filter_tensor);
-    auto filter_pd = conv_prim_desc.weights_primitive_desc();
+        OpKernelContext* context,
+        const std::unique_ptr<convolution_forward::primitive_desc>&
+            conv_prim_desc,
+        const memory::dims& filter_dims_tf_order,
+        Tensor** filter_tensor) {
+      CHECK_NOTNULL(filter_tensor);
+      CHECK_NOTNULL(conv_prim_desc);
 
-    // Allocate shape of Mkl tensor.
-    MklDnnShape filter_mkl_shape;
-    filter_mkl_shape.SetMklTensor(true);
-    filter_mkl_shape.SetMklLayout(&filter_pd);
-    filter_mkl_shape.SetElemType(MklDnnType<T>());
+      auto filter_pd = conv_prim_desc->weights_primitive_desc();
 
-    // The format of the filter is actually OIhw8i8o, but TF doesn't support
-    // this format. Just use format::blocked for now because the layout
-    // is stored in the MKL data.
-    filter_mkl_shape.SetTfLayout(filter_dims_tf_order.size(),
-                                 filter_dims_tf_order, memory::format::blocked);
+      // Allocate shape of Mkl tensor.
+      MklDnnShape filter_mkl_shape;
+      filter_mkl_shape.SetMklTensor(true);
+      filter_mkl_shape.SetMklLayout(&filter_pd);
+      filter_mkl_shape.SetElemType(MklDnnType<T>());
 
-    // Allocate the data space for the filter to propagate as TF tensor.
-    TensorShape filter_tf_shape;
-    filter_tf_shape.AddDim((filter_pd.get_size() / sizeof(T)));
+      // The format of the filter is actually OIhw8i8o, but TF doesn't support
+      // this format. Just use format::blocked for now because the layout
+      // is stored in the MKL data.
+      filter_mkl_shape.SetTfLayout(filter_dims_tf_order.size(),
+                  filter_dims_tf_order, memory::format::blocked);
 
-    AllocateOutputSetMklShape(context, kOutputIndex_Filter, filter_tensor,
-                              filter_tf_shape, filter_mkl_shape);
+      // Allocate the data space for the filter to propagate as TF tensor.
+      TensorShape filter_tf_shape;
+      filter_tf_shape.AddDim((filter_pd.get_size() / sizeof(T)));
+
+      AllocateOutputSetMklShape(context, kOutputIndex_Filter, filter_tensor,
+              filter_tf_shape, filter_mkl_shape);
   }
 
   // Prepare and execute net - checks for input and output reorders.
   void PrepareAndExecuteNet(
-      const convolution_forward::primitive_desc& conv_prim_desc,
-      MklDnnData<T>* src, MklDnnData<T>* filter, MklDnnData<T>* bias,
-      MklDnnData<T>* output, Tensor* filter_out_tensor) {
+      const std::unique_ptr<convolution_forward::primitive_desc>&
+        conv_prim_desc,
+      MklDnnData<T>* src, MklDnnData<T>* filter,
+      MklDnnData<T>* bias, MklDnnData<T>* output,
+      Tensor* filter_out_tensor) {
     CHECK_NOTNULL(filter_out_tensor);
+    CHECK_NOTNULL(conv_prim_desc);
 
     // Create reorders between user layout and MKL layout if it is needed and
     // add it to the net before convolution. No need to check for output
     // reorder as we propagate output layout to the next layer.
     std::vector<primitive> net;
-    src->CheckReorderToOpMem(conv_prim_desc.src_primitive_desc(), &net);
+    src->CheckReorderToOpMem(conv_prim_desc->src_primitive_desc(), &net);
 
     // rather than re-order to a temp buffer, reorder directly to the
     // filter output tensor
-    filter->CheckReorderToOpMem(conv_prim_desc.weights_primitive_desc(),
-                                filter->GetTensorBuffer(filter_out_tensor),
-                                &net);
+    filter->CheckReorderToOpMem(conv_prim_desc->weights_primitive_desc(),
+                    filter->GetTensorBuffer(filter_out_tensor), &net);
 
     // Create convolution primitive and add it to net.
     if (bias) {
       CHECK_EQ(biasEnabled, true);
-      net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
-                                        filter->GetOpMem(), bias->GetOpMem(),
-                                        output->GetOpMem()));
+      net.push_back(convolution_forward(*conv_prim_desc, src->GetOpMem(),
+                                    filter->GetOpMem(), bias->GetOpMem(),
+                                    output->GetOpMem()));
     } else {
       CHECK_EQ(biasEnabled, false);
-      net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
-                                        filter->GetOpMem(),
-                                        output->GetOpMem()));
+      net.push_back(convolution_forward(*conv_prim_desc, src->GetOpMem(),
+                                    filter->GetOpMem(), output->GetOpMem()));
     }
 
     stream(stream::kind::eager).submit(net).wait();
   }
 };
 
-#endif
+///////////////////////////////////////////////////////////////////////////
+//                  Fusion of Convolution with different ops
+///////////////////////////////////////////////////////////////////////////
+
+// Common class for Conv + Eltwise fusion.
+template <typename Device, typename T, bool biasEnabled,
+          mkldnn::algorithm eltwise_alg>
+class MklConv2DWithBiasAndEltwiseBaseOp :
+  public MklConv2DOp<Device, T, biasEnabled> {
+ public:
+  virtual ~MklConv2DWithBiasAndEltwiseBaseOp() {}
+
+  explicit MklConv2DWithBiasAndEltwiseBaseOp(OpKernelConstruction* context)
+    : MklConv2DOp<Device, T, biasEnabled>(context) {}
+
+  virtual void CreatePrimitiveDesc(
+      std::unique_ptr<convolution_forward::primitive_desc>* conv_prim_desc,
+      const convolution_forward::desc conv_desc,
+      const engine& cpu_engine) {
+    mkldnn::primitive_attr attr;
+    GetMklDnnEltwisePrimitiveAttr(&attr);
+    conv_prim_desc->reset(new convolution_forward::primitive_desc(conv_desc,
+                                                                  attr,
+                                                              cpu_engine));
+  }
+
+ protected:
+  virtual void GetMklDnnEltwisePrimitiveAttr(mkldnn::primitive_attr*) = 0;
+};
+
+// -------------------------------------------------------------------------
+
+// Common class for Conv + Eltwise fusion.
+template <typename Device, typename T, bool biasEnabled>
+class MklConv2DWithBiasAndReluOp :
+  public MklConv2DWithBiasAndEltwiseBaseOp<Device, T,
+                                           biasEnabled, eltwise_relu> {
+ public:
+  ~MklConv2DWithBiasAndReluOp() {}
+
+  explicit MklConv2DWithBiasAndReluOp(OpKernelConstruction* context)
+    : MklConv2DWithBiasAndEltwiseBaseOp<Device, T,
+                                        biasEnabled, eltwise_relu>(context) {}
+
+  void GetMklDnnEltwisePrimitiveAttr(mkldnn::primitive_attr *attr) {
+    CHECK_NOTNULL(attr);
+
+    mkldnn::post_ops ops;
+    // Reference for parameter values -
+    // http://intel.github.io/mkl-dnn/structmkldnn__eltwise__desc__t.html
+    float scale = 1.0f;  // for fp32, scale is 1.
+    T alpha = 0;  // negative slope for mkldnn_eltwise_relu.
+    T beta = 0;  // ignored for mkldnn_eltwise_relu.
+    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
+    attr->set_post_ops(ops);
+  }
+};
+
+// For dummy ops below, we use NoOp kernel. These dummy ops are never
+// supposed to be executed.
 
 #define REGISTER_MKL_CPU(T)                                         \
   REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                        \
@@ -813,9 +921,30 @@ class MklConv2DOp : public OpKernel {
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                          MklDummyOp<CPUDevice, T>);
-
+                              NoOp);                                \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithRelu")                \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                   MklConv2DWithBiasAndReluOp<CPUDevice, T, false>);\
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithRelu")          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                              NoOp);                                \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBiasAndRelu")         \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                   MklConv2DWithBiasAndReluOp<CPUDevice, T, true>); \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBiasAndRelu")   \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                              NoOp);
 TF_CALL_float(REGISTER_MKL_CPU);
+#undef REGISTER_MKL_CPU
 
+#endif  // INTEL_MKL_ML
 }  // namespace tensorflow
 #endif  // INTEL_MKL

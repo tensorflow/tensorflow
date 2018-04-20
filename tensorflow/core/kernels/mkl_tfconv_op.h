@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <vector>
+#include <string>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,24 +47,23 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 //               Op kernel
 ///////////////////////////////////////////////////////////
 
+#ifndef INTEL_MKL_ML
+
 template <typename Device, typename T>
 class MklToTfOp : public OpKernel {
  public:
   explicit MklToTfOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES_OK(context, context->GetAttr("T", &op_data_type));
     has_avx512f_ = port::TestCPUFeature(port::CPUFeature::AVX512F);
   }
 
   void Compute(OpKernelContext* context) override {
-    ConvertMklToTf(this, context, data_format_str, op_data_type, has_avx512f_,
-                   0);
+    ConvertMklToTf(this, context, op_data_type, has_avx512f_, 0);
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
-#ifndef INTEL_MKL_ML
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
-                             string data_format_str, DataType op_data_type,
+                             DataType op_data_type,
                              bool has_avx512f, uint input_number) {
     try {
       // Check that input tensor is in MKL format.
@@ -125,7 +125,32 @@ class MklToTfOp : public OpKernel {
           errors::Aborted("Operation received an exception:", error_msg));
     }
   }
+
+ private:
+  /// Data type of the operation
+  DataType op_data_type;
+
+  /// CPUIDInfo
+  bool has_avx512f_ = false;
+};
+
 #else
+
+template <typename Device, typename T>
+class MklToTfOp : public OpKernel {
+ public:
+  explicit MklToTfOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES_OK(context, context->GetAttr("T", &op_data_type));
+    has_avx512f_ = port::TestCPUFeature(port::CPUFeature::AVX512F);
+  }
+
+  void Compute(OpKernelContext* context) override {
+    ConvertMklToTf(this, context, data_format_str, op_data_type, has_avx512f_,
+                   0);
+    VLOG(1) << "MKLToTFConversion complete successfully.";
+  }
+
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
                              bool has_avx512f, uint32 input_number) {
@@ -175,7 +200,6 @@ class MklToTfOp : public OpKernel {
                                      output_buffer);
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
-#endif
 
  private:
   /// Data format of the operation
@@ -187,6 +211,8 @@ class MklToTfOp : public OpKernel {
   /// CPUIDInfo
   bool has_avx512f_ = false;
 };
+
+#endif  // ifndef INTEL_MKL_ML
 
 ///////////////////////////////////////////////////////////
 //               Register kernel
