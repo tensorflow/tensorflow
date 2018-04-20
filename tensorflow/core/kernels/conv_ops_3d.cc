@@ -396,7 +396,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                   conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveAlgorithms(
-          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+              stream->parent()),
+          &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
