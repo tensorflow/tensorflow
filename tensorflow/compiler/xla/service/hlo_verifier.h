@@ -146,6 +146,10 @@ class HloVerifier : public HloPassInterface {
 
   Status CheckWhileInstruction(HloInstruction* instruction);
 
+  // Checks that the non-scalar operand shapes are compatible to the output
+  // shape, i.e., that there are no implicit broadcasts of size-one dimensions.
+  Status CheckElementwiseInstruction(HloInstruction* instruction);
+
   // Creates a ShapeVerifier that checks that shapes match inferred
   // expectations. This is a factory function because ShapeVerifier,
   // being a DfsHloVisitor, is stateful. We want a clean object

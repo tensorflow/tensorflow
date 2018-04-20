@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <set>
 
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -780,6 +781,24 @@ Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
   return tensorflow::Status::OK();
 }
 
+Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
+  const Shape& out_shape = instruction->shape();
+  for (HloInstruction* operand : instruction->operands()) {
+    const Shape& operand_shape = operand->shape();
+    if (!ShapeUtil::IsScalar(operand_shape) &&
+        !ShapeUtil::CompatibleIgnoringElementType(operand_shape, out_shape)) {
+      return FailedPrecondition(
+          "Implicit broadcast is not allowed in HLO."
+          "Found non-compatible shapes for instruction %s.\n"
+          "output: %s\noperand: %s\n",
+          HloOpcodeString(instruction->opcode()).c_str(),
+          ShapeUtil::HumanString(out_shape).c_str(),
+          ShapeUtil::HumanString(operand_shape).c_str());
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
 
@@ -821,6 +840,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
             << " != " << ShapeUtil::Rank(instruction->operand(0)->shape());
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(CheckWhileInstruction(instruction));
+      } else if (instruction->IsElementwise()) {
+        TF_RETURN_IF_ERROR(CheckElementwiseInstruction(instruction));
       }
 
       auto previous = instructions.find(instruction->name());
