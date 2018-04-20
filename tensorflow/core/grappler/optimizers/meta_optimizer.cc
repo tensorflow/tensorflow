@@ -243,6 +243,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   std::unordered_set<string> optimized_funcs;
   bool optimize_function_library = true;
 
+  // TODO(ezhulenev): turn it on after fixing ranklab: tune_tf_test.
+  cfg_.set_constant_folding(RewriterConfig::OFF);
+  cfg_.set_arithmetic_optimization(RewriterConfig::OFF);
+
   while (optimize_function_library) {
     optimize_function_library = false;
 
