@@ -69,14 +69,25 @@ class RecordReader {
   // Read the record at "*offset" into *record and update *offset to
   // point to the offset of the next record.  Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
+  //
+  // Note: if buffering is used (with or without compression), access must be
+  // sequential.
   Status ReadRecord(uint64* offset, string* record);
 
- private:
-  Status ReadChecksummed(uint64 offset, size_t n, string* result);
+  // Skip the records till "offset". Returns OK on success,
+  // OUT_OF_RANGE for end of file, or something else for an error.
+  Status SkipNBytes(uint64 offset);
 
+ private:
+  Status ReadChecksummed(uint64 offset, size_t n, StringPiece* result,
+                         string* storage);
+
+  RandomAccessFile* src_;
   RecordReaderOptions options_;
   std::unique_ptr<InputStreamInterface> input_stream_;
-  bool last_read_failed_;
+#if !defined(IS_SLIM_BUILD)
+  std::unique_ptr<ZlibInputStream> zlib_input_stream_;
+#endif  // IS_SLIM_BUILD
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecordReader);
 };
@@ -110,6 +121,7 @@ class SequentialRecordReader {
       return errors::InvalidArgument(
           "Trying to seek offset: ", offset,
           " which is less than the current offset: ", offset_);
+    TF_RETURN_IF_ERROR(underlying_.SkipNBytes(offset - offset_));
     offset_ = offset;
     return Status::OK();
   }

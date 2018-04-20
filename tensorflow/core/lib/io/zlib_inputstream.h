@@ -40,13 +40,10 @@ class ZlibInputStream : public InputStreamInterface {
   // Create a ZlibInputStream for `input_stream` with a buffer of size
   // `input_buffer_bytes` bytes for reading contents from `input_stream` and
   // another buffer with size `output_buffer_bytes` for caching decompressed
-  // contents.
-  //
-  // Takes ownership of `input_stream` iff `owns_input_stream` is true.
+  // contents. Does *not* take ownership of "input_stream".
   ZlibInputStream(InputStreamInterface* input_stream, size_t input_buffer_bytes,
                   size_t output_buffer_bytes,
-                  const ZlibCompressionOptions& zlib_options,
-                  bool owns_input_stream = false);
+                  const ZlibCompressionOptions& zlib_options);
 
   ~ZlibInputStream();
 
@@ -68,8 +65,7 @@ class ZlibInputStream : public InputStreamInterface {
  private:
   void InitZlibBuffer();
 
-  const bool owns_input_stream_;
-  InputStreamInterface* input_stream_;
+  InputStreamInterface* input_stream_;  // Not owned
   size_t input_buffer_capacity_;        // Size of z_stream_input_
   size_t output_buffer_capacity_;       // Size of z_stream_output_
   char* next_unread_byte_;              // Next unread byte in z_stream_output_
