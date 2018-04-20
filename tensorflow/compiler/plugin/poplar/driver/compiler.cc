@@ -226,7 +226,7 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
           [](const Shape&, const Shape&) { return false; });
   pipeline.AddPass<ZeroSizedHloElimination>();
   pipeline.AddPass<ComputationFlattener>();
-  pipeline.AddPass<TupleSimplifier>();
+  pipeline.AddPass<TupleSimplifier>(true);
   //pipeline.AddPass<WhileLoopSimplifier>();
   //pass.AddPass<ConditionalSimplifier>();
   pipeline.AddPass<HloConstantFolding>();

@@ -236,7 +236,7 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
   EXPECT_EQ(2, GetMap(e).at(3));
 }
 
-TEST_F(GraphCompileIoMapTest, DISABLED_GetTupleFromTuple) {
+TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   Shape image_shape = ShapeUtil::MakeShape(S32, {2, 2});
 
   auto builder = HloComputation::Builder(TestName());

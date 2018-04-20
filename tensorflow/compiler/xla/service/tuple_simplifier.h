@@ -27,13 +27,17 @@ namespace xla {
 // the module.
 class TupleSimplifier : public HloPassInterface {
  public:
-  TupleSimplifier() {}
+  TupleSimplifier() : TupleSimplifier(false) {}
+  TupleSimplifier(bool exclude_entry_computation);
   ~TupleSimplifier() override {}
   tensorflow::StringPiece name() const override { return "tuple-simplifier"; }
 
   // Run tuple simplification on the given computation. Returns whether the
   // computation was changed.
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  bool exclude_entry_computation_;
 };
 
 }  // namespace xla
