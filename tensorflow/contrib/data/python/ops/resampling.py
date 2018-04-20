@@ -82,8 +82,12 @@ def rejection_resample_v2(class_func, target_dist, initial_dist=None,
   """A transformation that resamples a dataset to achieve a target distribution.
 
   This differs from v1 in that it will also sample from the original dataset
-  with some probability, so it makes strictly fewer data rejections. This
-  transformation is faster than the original.
+  with some probability, so it makes strictly fewer data rejections. Due to an
+  implementation detail it must initialize a separate dataset initializer, so
+  the dataset becomes stateful after this transformation is applied
+  (`make_one_shot_iterator` won't work; users must use
+  `make_initializable_iterator`). This transformation is faster than the
+  original, except for overhead.
 
   **NOTE** Resampling is performed via rejection sampling; some fraction
   of the input values will be dropped.
@@ -140,36 +144,6 @@ def rejection_resample_v2(class_func, target_dist, initial_dist=None,
         seed=seed)
 
   return _apply_fn
-
-
-def _random_interleave_datasets(ds1, ds1_classes, ds2, prob_of_ds1, seed=None):
-  """Randomly interleave datasets.
-
-  We carefully combine `ds1` and 'ds2' so that we don't needlessly compute the
-  filtering.
-
-  Args:
-    ds1: A dataset to interleave.
-    ds1_classes: Dataset of class values associated with ds1.
-    ds2: Another dataset to interleave.
-    prob_of_ds1: A dataset of probabilities. Each probability represents the
-      likelihood of drawing from `ds1`.
-    seed: (Optional.) Python integer seed for the resampler.
-
-  Returns:
-    A single dataset, combined from `ds1` and `ds2`.
-  """
-  num_filtered_to_prefetch = 3
-  ds2 = ds2.prefetch(num_filtered_to_prefetch)
-  filtered_iterator = ds2.make_one_shot_iterator()
-  combined_ds = dataset_ops.Dataset.zip(
-        (ds1_classes, ds1, prob_of_ds1)).map(
-        lambda ds1_class, original_data, prob_of_original:
-        control_flow_ops.cond(
-              random_ops.random_uniform([], seed=seed) < prob_of_original,
-              lambda: (ds1_class, original_data),
-              filtered_iterator.get_next))
-  return combined_ds
 
 
 def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,

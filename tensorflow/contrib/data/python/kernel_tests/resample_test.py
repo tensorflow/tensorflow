@@ -60,10 +60,10 @@ def _time_resampling(
 class ResampleTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ('InitialnDistributionKnown', True, False),
-      ('InitialDistributionUnknown', False, False),
-      ('InitialDistributionKnownV2', True, True),
-      ('InitialDistributionUnknownV2', False, True))
+      ("InitialnDistributionKnown", True, False),
+      ("InitialDistributionUnknown", False, False),
+      ("InitialDistributionKnownV2", True, True),
+      ("InitialDistributionUnknownV2", False, True))
   def testDistribution(self, initial_known, use_v2):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
@@ -94,7 +94,6 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
         for c in range(5)])
     returned_dist = class_counts / total_returned
     self.assertAllClose(target_dist, returned_dist, atol=1e-2)
-
 
   def testRandomClasses(self):
     init_dist = [0.25, 0.25, 0.25, 0.25]
@@ -135,11 +134,11 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(target_dist, bincount, atol=1e-2)
 
   @parameterized.named_parameters(
-        ('InitialnDistributionKnown', True, False),
-        ('InitialDistributionUnknown', False, False),
-        ('InitialDistributionKnownV2', True, True),
-        ('InitialDistributionUnknownV2', False, True))
-  def _testNewResampleIsFaster(self, target_dist, num_to_sample):
+      ("SmallSkewManySamples", [0.1, 0.1, 0.1, 0.7], 1000),
+      ("BigSkewManySamples", [0.01, 0.01, 0.01, 0.97], 1000),
+      ("SmallSkewFewSamples", [0.1, 0.1, 0.1, 0.7], 100),
+      ("BigSkewFewSamples", [0.01, 0.01, 0.01, 0.97], 100))
+  def testNewResampleIsFaster(self, target_dist, num_to_sample):
     init_dist = [0.25, 0.25, 0.25, 0.25]
     num_classes = len(init_dist)
     num_samples = 1000
@@ -151,19 +150,6 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
                                  use_v2=False, num_to_sample=num_to_sample)
 
     self.assertLess(fast_time, slow_time)
-
-
-  def testNewResampleIsFasterSmallSkewManySamples(self):
-    self._testNewResampleIsFaster([0.1, 0.1, 0.1, 0.7], 1000)
-
-  def testNewResampleIsFasterBigSkewManySamples(self):
-    self._testNewResampleIsFaster([0.01, 0.01, 0.01, 0.97], 1000)
-
-  def testNewResampleIsFasterSmallSkewFewSamples(self):
-    self._testNewResampleIsFaster([0.1, 0.1, 0.1, 0.7], 100)
-
-  def testNewResampleIsFasterBigSkewFewSamples(self):
-    self._testNewResampleIsFaster([0.01, 0.01, 0.01, 0.97], 100)
 
 
 class MapDatasetBenchmark(test.Benchmark):
