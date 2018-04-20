@@ -38,7 +38,7 @@ class LocalExecutable {
  public:
   // Run the compiled computation with the given arguments and options and
   // return the result.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> Run(
+  StatusOr<ScopedShapedBuffer> Run(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ExecutableRunOptions run_options);
 
@@ -73,7 +73,7 @@ class LocalExecutable {
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteAndDump(
+  StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
@@ -136,7 +136,7 @@ class LocalClient : public Client {
   // ScopedShapedBuffer. If non-null the given memory allocator is used for
   // device memory allocation. If null, the default memory allocator for the
   // device is used.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> LiteralToShapedBuffer(
+  StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const Literal& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
 

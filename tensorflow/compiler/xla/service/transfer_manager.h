@@ -107,10 +107,10 @@ class TransferManager {
   // Allocate a ShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
-  StatusOr<std::unique_ptr<ShapedBuffer>> AllocateShapedBuffer(
-      const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
-      int device_ordinal);
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> AllocateScopedShapedBuffer(
+  StatusOr<ShapedBuffer> AllocateShapedBuffer(const Shape& on_host_shape,
+                                              DeviceMemoryAllocator* allocator,
+                                              int device_ordinal);
+  StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
       int device_ordinal);
 

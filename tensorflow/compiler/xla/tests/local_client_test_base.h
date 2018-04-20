@@ -83,8 +83,7 @@ class LocalClientTestBase : public ::testing::Test {
   // Copy the given literal onto the default device and return a
   // ScopedShapedBuffer. Convenience wrapper around
   // LocalClient::LiteralToShapedBuffer.
-  std::unique_ptr<ScopedShapedBuffer> LiteralToShapedBuffer(
-      const Literal& literal);
+  ScopedShapedBuffer LiteralToShapedBuffer(const Literal& literal);
 
   // Construct and return a literal containing the array represented by
   // shaped_buffer.
@@ -93,19 +92,19 @@ class LocalClientTestBase : public ::testing::Test {
 
   // Execute the given computation on the local client. With and without
   // options.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteLocally(
+  StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteLocally(
+  StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableBuildOptions& build_options,
       const ExecutableRunOptions& run_options);
 
-  std::unique_ptr<ScopedShapedBuffer> ExecuteLocallyOrDie(
+  ScopedShapedBuffer ExecuteLocallyOrDie(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
-  std::unique_ptr<ScopedShapedBuffer> ExecuteLocallyOrDie(
+  ScopedShapedBuffer ExecuteLocallyOrDie(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableBuildOptions& build_options,

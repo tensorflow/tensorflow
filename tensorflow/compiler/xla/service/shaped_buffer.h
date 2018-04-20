@@ -43,6 +43,14 @@ class ShapedBuffer {
   ShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
                const se::Platform* platform, int device_ordinal);
 
+  // Movable, but not copyable.
+  ShapedBuffer(ShapedBuffer&& s);
+  ShapedBuffer& operator=(ShapedBuffer&&);
+  ShapedBuffer(const ShapedBuffer&) = delete;
+  ShapedBuffer& operator=(const ShapedBuffer&) = delete;
+
+  virtual ~ShapedBuffer();
+
   // Returns the shape of the on-host representation of the data held by this
   // ShapedBuffer.
   const Shape& on_host_shape() const { return on_host_shape_; }
@@ -80,13 +88,7 @@ class ShapedBuffer {
 
   string ToString() const;
 
-  ShapedBuffer(ShapedBuffer&& s);
-  ShapedBuffer& operator=(ShapedBuffer&&);
-
  protected:
-  ShapedBuffer(const ShapedBuffer&) = delete;
-  ShapedBuffer& operator=(const ShapedBuffer&) = delete;
-
   // The shape of the data when represented on the host.
   Shape on_host_shape_;
 
@@ -108,41 +110,45 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 // ShapedBuffer derived class which allocates all internal buffers on
 // construction and deallocates the memory when the object is
 // destructed.
+//
+// TODO(timshen): Remove inheritance between ScopedShapedBuffer and
+// ShapedBuffer.  There should never be a need to consider a ScopedShapedBuffer
+// as a ShapedBuffer, because in that case we should just be able to pass around
+// our ShapeTree<DeviceMemoryBase>.  Inheritance only adds complexity.  See
+// discussion in cl/192849370.
 class ScopedShapedBuffer : public ShapedBuffer {
  public:
-  // Takes a ShapedBuffer and returns a ScopedShapedBuffer which manages the
-  // deallocation of the device memory held in the shaped buffer. All device
-  // memory pointers in the given ShapedBuffer are set to null.
-  static StatusOr<std::unique_ptr<ScopedShapedBuffer>> MakeScoped(
-      ShapedBuffer* shaped_buffer, DeviceMemoryAllocator* allocator);
-
-  // Create a ScopedShapedBuffer with null DeviceMemoryBases at each index.
-  ScopedShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
-                     DeviceMemoryAllocator* allocator, int device_ordinal);
+  // Creates a ScopedShapedBuffer with null DeviceMemoryBases at each index.
+  explicit ScopedShapedBuffer(const Shape& on_host_shape,
+                              const Shape& on_device_shape,
+                              DeviceMemoryAllocator* allocator,
+                              int device_ordinal);
 
   // Create a ScopedShapedBuffer by taking over the memory from the incoming
   // ShapedBuffer.
-  ScopedShapedBuffer(ShapedBuffer shaped_buffer,
-                     DeviceMemoryAllocator* allocator);
+  explicit ScopedShapedBuffer(ShapedBuffer shaped_buffer,
+                              DeviceMemoryAllocator* allocator);
+
+  // Movable, but not copyable.
+  ScopedShapedBuffer(ScopedShapedBuffer&& s);
+  ScopedShapedBuffer& operator=(ScopedShapedBuffer&&);
+  ScopedShapedBuffer(const ScopedShapedBuffer&) = delete;
+  ScopedShapedBuffer& operator=(const ScopedShapedBuffer&) = delete;
+
+  // All buffers in the shape are deallocated on destruction.
+  ~ScopedShapedBuffer() override;
 
   // Return the allocator used to allocate the device memory held in this
   // ScopedShapedBuffer.
   DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
 
-  // Release all device memory owned by this ScopedShapedBuffer and
-  // return the device memory pointers in the form of a
-  // ShapedBuffer. The returned ShapedBuffer takes over the memory
-  // from the ScopedShapedBuffer. The resulting ScopedShapedBuffer can
-  // only be destroyed.
-  std::unique_ptr<ShapedBuffer> release();
-
-  // All buffers in the shape are deallocated on destruction.
-  virtual ~ScopedShapedBuffer();
+  // Releases all device memory owned by this ScopedShapedBuffer and returns the
+  // device memory pointers in the form of a ShapedBuffer. The returned
+  // ShapedBuffer takes over the memory from the ScopedShapedBuffer. The
+  // resulting ScopedShapedBuffer can only be destroyed.
+  ShapedBuffer release();
 
  protected:
-  ScopedShapedBuffer(const ScopedShapedBuffer&) = delete;
-  void operator=(const ScopedShapedBuffer&) = delete;
-
   DeviceMemoryAllocator* allocator_;
 };
 

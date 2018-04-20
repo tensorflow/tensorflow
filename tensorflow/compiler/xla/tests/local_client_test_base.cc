@@ -128,7 +128,7 @@ LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
 
 LocalClientTestBase::~LocalClientTestBase() {}
 
-std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::LiteralToShapedBuffer(
+ScopedShapedBuffer LocalClientTestBase::LiteralToShapedBuffer(
     const Literal& literal) {
   return local_client_
       ->LiteralToShapedBuffer(literal, local_client_->default_device_ordinal())
@@ -155,7 +155,7 @@ ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
   return run_options;
 }
 
-std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocallyOrDie(
+ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
@@ -163,7 +163,7 @@ std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocallyOrDie(
       .ConsumeValueOrDie();
 }
 
-std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocallyOrDie(
+ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutableBuildOptions& build_options,
@@ -172,16 +172,14 @@ std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocallyOrDie(
       .ConsumeValueOrDie();
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-LocalClientTestBase::ExecuteLocally(
+StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions());
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-LocalClientTestBase::ExecuteLocally(
+StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutableBuildOptions& build_options,

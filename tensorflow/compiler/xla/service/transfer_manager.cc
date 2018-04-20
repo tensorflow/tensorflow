@@ -175,7 +175,7 @@ Status TransferManager::TransferBufferToDevice(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> TransferManager::AllocateShapedBuffer(
+StatusOr<ShapedBuffer> TransferManager::AllocateShapedBuffer(
     const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
     int device_ordinal) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
@@ -187,31 +187,30 @@ StatusOr<std::unique_ptr<ShapedBuffer>> TransferManager::AllocateShapedBuffer(
   const Shape on_device_shape = HostShapeToDeviceShape(on_host_shape);
   TF_RET_CHECK(LayoutUtil::HasLayout(on_device_shape));
 
-  auto shaped_buffer = WrapUnique(new ShapedBuffer(
-      on_host_shape, on_device_shape, allocator->platform(), device_ordinal));
+  ShapedBuffer shaped_buffer(on_host_shape, on_device_shape,
+                             allocator->platform(), device_ordinal);
 
   // Allocate an appropriate sized buffer for each element in the shape
   // including the tuple pointer arrays.
-  for (auto& pair : shaped_buffer->buffers()) {
+  for (auto& pair : shaped_buffer.buffers()) {
     const ShapeIndex& index = pair.first;
     se::DeviceMemoryBase& memory_base = pair.second;
     const Shape& subshape = ShapeUtil::GetSubshape(on_device_shape, index);
     TF_ASSIGN_OR_RETURN(memory_base,
-                        allocator->Allocate(shaped_buffer->device_ordinal(),
+                        allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape)));
   }
 
   return std::move(shaped_buffer);
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-TransferManager::AllocateScopedShapedBuffer(const Shape& on_host_shape,
-                                            DeviceMemoryAllocator* allocator,
-                                            int device_ordinal) {
+StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
+    const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
+    int device_ordinal) {
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> unscoped_buffer,
+      ShapedBuffer unscoped_buffer,
       AllocateShapedBuffer(on_host_shape, allocator, device_ordinal));
-  return ScopedShapedBuffer::MakeScoped(unscoped_buffer.get(), allocator);
+  return ScopedShapedBuffer(std::move(unscoped_buffer), allocator);
 }
 
 }  // namespace xla
