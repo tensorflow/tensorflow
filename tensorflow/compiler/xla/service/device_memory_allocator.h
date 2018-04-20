@@ -38,13 +38,25 @@ class DeviceMemoryAllocator {
   virtual ~DeviceMemoryAllocator() {}
 
   // 'retry_on_failure': If false, and the first attempt to allocate the memory
-  // fails, the allocation should return immediately without retrying.
-  // An example use case is optional scratch spaces where a failure
-  // has only performance impact.
+  // fails, the allocation should return immediately without retrying.  An
+  // example use case is optional scratch spaces where a failure has only
+  // performance impact.
+  //
   // Allocate() should return a null pointer for a size-0 allocation.
   // Deallocate() must be a no-op for null pointers.
-  virtual StatusOr<se::DeviceMemoryBase> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure = true) = 0;
+  virtual StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal,
+                                                  uint64 size,
+                                                  bool retry_on_failure) = 0;
+
+  // Two-arg version of Allocate(), which sets retry-on-failure to true.
+  //
+  // (We don't simply use a default argument on the virtual Allocate function
+  // because default args on virtual functions are disallowed by the Google
+  // style guide.)
+  StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size) {
+    return Allocate(device_ordinal, size, /*retry_on_failure=*/true);
+  }
+
   virtual tensorflow::Status Deallocate(int device_ordinal,
                                         se::DeviceMemoryBase* mem) = 0;
 
@@ -67,8 +79,12 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
       const se::Platform* platform,
       tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
 
-  StatusOr<se::DeviceMemoryBase> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure = true) override;
+  StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
+                                          bool retry_on_failure) override;
+
+  // Pull in two-arg overload that sets retry_on_failure to true.
+  using DeviceMemoryAllocator::Allocate;
+
   tensorflow::Status Deallocate(int device_ordinal,
                                 se::DeviceMemoryBase* mem) override;
 

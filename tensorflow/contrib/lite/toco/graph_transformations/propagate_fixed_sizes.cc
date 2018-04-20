@@ -1516,10 +1516,7 @@ void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
     return;
   }
 
-  // The current ArgMax implementation only supports 4-dimensional inputs with
-  // the last dimension as the axis to perform ArgMax for.
   const std::vector<int>& input_dims = input_array.shape().dims();
-  CHECK_EQ(input_dims.size(), 4);
   std::vector<int> output_dims;
 
   output_dims.reserve(input_dims.size() - 1);

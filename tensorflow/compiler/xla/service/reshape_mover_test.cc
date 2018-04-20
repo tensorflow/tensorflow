@@ -458,57 +458,6 @@ TEST_F(ReshapeMoverTest, ScalarReshapeNotMovedAcrossSelect) {
   EXPECT_EQ(select, computation->root_instruction());
 }
 
-// Tree looks like:
-//
-// param0 [1,128,1]
-//  |
-// reshape [128,1]          constant [128,1024]
-//   \                         /
-//     multiply w/implicit broadcast [128,1024]
-//
-// The reshape mover would like to sink the reshape below the multiply.
-//
-// Previously we would attempt to insert a reshape of the constant to [1,128,1]
-// (which is unsound, because it has a different number of elements) as
-// preparation for sinking the reshape.
-//
-// To eliminate the unsoundness, we outlaw reshape sinking when one of the
-// operands is implicitly broadcast in the elementwise consumer.
-//
-// TODO(b/37799338) However, it would be possible in this case to do a more
-// in-depth analysis to get reshape movement to occur:
-//
-// 1. Note that the broadcast dimension (logical dimension 1) in the operands
-//    would map back to logical dimension 2 in the param0 node.
-// 2. Match rank of the constant to the param0 node (by prepending a trivial 1
-//    dimension).
-// 3. Reshape to [128,1024] at the root.
-//
-// But this is not currently done.
-TEST_F(ReshapeMoverTest, ImplicitlyBroadcastReshapeIsNotMovedBug37787999) {
-  HloComputation::Builder builder(TestName());
-  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {1, 128, 1}), "param0"));
-  auto reshape = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(F32, {128, 1}), param0));
-  Array2D<float> a(128, 1024);
-  auto literal = Literal::CreateR2FromArray2D<float>(a);
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(std::move(literal)));
-  auto multiply = builder.AddInstruction(HloInstruction::CreateBinary(
-      constant->shape(), HloOpcode::kMultiply, constant, reshape));
-
-  auto computation = module().AddEntryComputation(builder.Build());
-  EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Constant(), op::Reshape(param0)));
-
-  EXPECT_FALSE(ReshapeMover().Run(&module()).ValueOrDie());
-
-  EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Constant(), op::Reshape(param0)));
-  EXPECT_EQ(multiply, computation->root_instruction());
-}
-
 // Tree looks like this:
 //
 // add1

@@ -24,7 +24,7 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -155,7 +155,7 @@ class Embedding(Layer):
   def call(self, inputs):
     if K.dtype(inputs) != 'int32':
       inputs = math_ops.cast(inputs, 'int32')
-    out = array_ops.gather(self.embeddings, inputs)
+    out = embedding_ops.embedding_lookup(self.embeddings, inputs)
     return out
 
   def get_config(self):

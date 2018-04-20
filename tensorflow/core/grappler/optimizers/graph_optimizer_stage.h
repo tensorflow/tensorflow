@@ -182,7 +182,10 @@ class GraphOptimizerStage {
     return ::tensorflow::grappler::AddEmptyNode(ctx_, name);
   }
 
- protected:  // Data members
+ protected:
+  const GraphOptimizerContext& ctx() const { return ctx_; }
+
+ private:  // Data members
   const string optimizer_name_;
   const string stage_name_;
   const GraphOptimizerContext ctx_;
