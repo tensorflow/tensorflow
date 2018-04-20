@@ -974,5 +974,21 @@ class CountNonzeroReductionTest(test.TestCase):
     self._compare(x, [], keepdims=True, zero=np.str(""))
     self._compare(x, [0], keepdims=True, zero=np.str(""))
 
+  def testStringReduce2D(self):
+    # Create a 2D array of strings
+    x = np.asarray([["", "", "a", "", "", "b"],
+                    ["", "c", "", "d", "", ""],
+                    ["e", "", "f", "", "", ""]])
+    self._compare(x, None, keepdims=False, zero=np.str(""))
+    self._compare(x, [], keepdims=False, zero=np.str(""))
+    self._compare(x, [0], keepdims=False, zero=np.str(""))
+    self._compare(x, [1], keepdims=False, zero=np.str(""))
+    self._compare(x, [0, 1], keepdims=False, zero=np.str(""))
+    self._compare(x, None, keepdims=True, zero=np.str(""))
+    self._compare(x, [], keepdims=True, zero=np.str(""))
+    self._compare(x, [0], keepdims=True, zero=np.str(""))
+    self._compare(x, [0, 1], keepdims=True, zero=np.str(""))
+
+
 if __name__ == "__main__":
   test.main()
