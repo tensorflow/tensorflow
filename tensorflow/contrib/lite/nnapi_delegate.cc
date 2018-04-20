@@ -76,7 +76,7 @@ uint32_t addTensorOperands(tflite::Interpreter* interpreter,
   uint32_t next_id = 0;
   for (size_t i = 0; i < interpreter->tensors_size(); i++) {
     int32_t nn_type = 0;
-    float scale = 1.0f;
+    float scale = 0.0f;
     int32_t zeroPoint = 0;
     TfLiteTensor* tensor = interpreter->tensor(i);
     switch (tensor->type) {
