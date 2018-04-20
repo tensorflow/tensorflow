@@ -38,7 +38,16 @@ class FunctionOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  friend class FunctionOptimizerTest;
+
+  struct FunctionOptimizerOptions {
+    bool enable_function_inlining = true;
+    bool enable_function_specialization = true;
+    bool enable_symbolic_gradient_inlining = true;
+  };
+
   RewriterConfig::Toggle opt_level_;
+  FunctionOptimizerOptions options_;
 };
 
 }  // end namespace grappler

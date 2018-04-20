@@ -184,7 +184,7 @@ class TypeInfoResolver(transformer.Base):
     # Multiple targets mean multiple assignment.
     for target in targets:
       # Tuple target means unpacking.
-      if isinstance(target, gast.Tuple):
+      if isinstance(target, (gast.Tuple, gast.List)):
         for i, target_item in enumerate(target.elts):
           # Two cases here:
           #   1. Static unpacking, e.g. a, b = c, d
@@ -199,8 +199,7 @@ class TypeInfoResolver(transformer.Base):
         target_symbol = anno.getanno(target, anno.Basic.QN)
         self.scope.setval(target_symbol, source)
       else:
-        raise ValueError(
-            'assignment target has unknown type: %s' % target_item)
+        raise ValueError('assignment target has unknown type: %s' % target)
 
   def visit_With(self, node):
     for wi in node.items:

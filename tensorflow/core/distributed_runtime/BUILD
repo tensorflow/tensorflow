@@ -133,6 +133,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ptr_util",
         "//tensorflow/core:worker_proto_cc",
     ],
 )

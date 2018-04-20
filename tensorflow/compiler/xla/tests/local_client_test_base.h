@@ -41,15 +41,15 @@ namespace xla {
 
 class TestAllocator : public StreamExecutorMemoryAllocator {
  public:
-  explicit TestAllocator(perftools::gputools::Platform* platform)
+  explicit TestAllocator(se::Platform* platform)
       : StreamExecutorMemoryAllocator(
             platform, PlatformUtil::GetStreamExecutors(platform).ValueOrDie()) {
   }
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure) override;
-  tensorflow::Status Deallocate(
-      int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) override;
+  StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
+                                          bool retry_on_failure) override;
+  tensorflow::Status Deallocate(int device_ordinal,
+                                se::DeviceMemoryBase* mem) override;
 
   // Return the number of allocations that have been performed.
   int64 allocation_count() const;
@@ -75,12 +75,10 @@ class TestAllocator : public StreamExecutorMemoryAllocator {
 class LocalClientTestBase : public ::testing::Test {
  protected:
   struct EigenThreadPoolWrapper;
-  explicit LocalClientTestBase(
-      perftools::gputools::Platform* platform = nullptr);
+  explicit LocalClientTestBase(se::Platform* platform = nullptr);
   virtual ~LocalClientTestBase();
 
-  static TestAllocator* GetOrCreateAllocator(
-      perftools::gputools::Platform* platform);
+  static TestAllocator* GetOrCreateAllocator(se::Platform* platform);
 
   // Copy the given literal onto the default device and return a
   // ScopedShapedBuffer. Convenience wrapper around
@@ -128,7 +126,7 @@ class LocalClientTestBase : public ::testing::Test {
   // of the process. So make the allocator static.
   static TestAllocator* allocator_;
 
-  perftools::gputools::StreamExecutor* stream_executor_;
+  se::StreamExecutor* stream_executor_;
   TransferManager* transfer_manager_;
 
   LocalClient* local_client_;

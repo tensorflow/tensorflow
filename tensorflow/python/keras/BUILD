@@ -175,6 +175,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/data",
         "@six_archive//:six",
     ],
 )
@@ -835,7 +836,7 @@ py_test(
 
 py_test(
     name = "saving_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/engine/saving_test.py"],
     srcs_version = "PY2AND3",
     deps = [
