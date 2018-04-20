@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -88,6 +89,10 @@ class Cluster {
     return devices_;
   }
 
+  const DeviceSet* GetDeviceSet() const {
+    return device_set_;
+  }
+
   // Convenience method that returns the set of device names. These names are
   // sorted alphabetically.
   const std::vector<string> GetDeviceNames() const;
@@ -119,6 +124,7 @@ class Cluster {
 
  protected:
   std::unordered_map<string, DeviceProperties> devices_;
+  const DeviceSet* device_set_ = nullptr;  // Not owned
   const int timeout_s_;
   SessionOptions options_;
   RunOptions run_options_;

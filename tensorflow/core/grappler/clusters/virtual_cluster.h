@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_CLUSTERS_VIRTUAL_CLUSTER_H_
 
 #include <unordered_map>
+
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
@@ -34,6 +36,8 @@ class VirtualCluster : public Cluster {
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
                  OpLevelCostEstimator* node_estimator,
                  ReadyNodeManager* node_manager);
+  VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
+                 const DeviceSet* device_set);
 
   ~VirtualCluster() override;
 
