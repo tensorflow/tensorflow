@@ -167,13 +167,16 @@ class DeviceFinder {
     }
     // Enumerates all known workers' target. A target name is a
     // prefix of a device name. E.g., /job:mnist/replica:0/task:10.
+    CHECK_GT(env_->local_devices.size(), 0) << "No local devices provided.";
+    const string& local_device_name = env_->local_devices[0]->name();
     std::vector<string> workers;
     worker_cache->ListWorkers(&workers);
     if (filters_.empty()) {
       std::swap(workers, targets_);
     } else {
       for (const string& name : workers) {
-        if (MatchFilters(name)) {
+        if (MatchFilters(name) ||
+            DeviceNameUtils::IsSameAddressSpace(name, local_device_name)) {
           targets_.push_back(name);
         }
       }
