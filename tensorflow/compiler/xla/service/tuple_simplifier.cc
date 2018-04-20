@@ -37,8 +37,6 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
   // Initially add all GTE and Tuple instructions to the worklist.
   std::queue<HloInstruction*> worklist;
   for (auto* computation : module->computations()) {
-    LOG(INFO) << "*** Computation is " << computation->name() << " at " << (void*)computation;
-    LOG(INFO) << "*** entry computation is " << (void*)(module->entry_computation());
     if (exclude_entry_computation_ &&
         computation == module->entry_computation()) {
       continue;
