@@ -154,26 +154,15 @@ tf_cc_test(
 cc_library(
     name = "execute",
     srcs = ["execute.cc"],
-    hdrs = ["execute.h"],
+    hdrs = [
+        "execute.h",
+        "execute_node.h",
+    ],
     deps = [
         ":context",
         ":copy_to_device_node",
-        ":kernel_and_device",
-        ":tensor_handle",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "execute_node",
-    hdrs = ["execute_node.h"],
-    deps = [
-        ":context",
         ":eager_executor",
-        ":execute",
+        ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
         "//tensorflow/core:core_cpu_lib",
