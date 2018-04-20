@@ -32,8 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace {
 
@@ -59,8 +57,7 @@ se::Platform* GetReferencePlatform() {
 }  // namespace
 
 ClientLibraryTestBase::ClientLibraryTestBase(
-    perftools::gputools::Platform* platform,
-    const LocalClientOptions& client_options)
+    se::Platform* platform, const LocalClientOptions& client_options)
     : client_(GetOrCreateLocalClientOrDie(client_options)),
       execution_options_(CreateDefaultExecutionOptions()) {
   CHECK_EQ(platform, client_options.platform());

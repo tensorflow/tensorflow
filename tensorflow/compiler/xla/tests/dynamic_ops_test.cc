@@ -35,8 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace {
 
@@ -737,11 +735,11 @@ void BM_DynamicSlice(int num_iters) {
 
   auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *start_indices_literal, *buffer));
+      executors[device_ordinal], *start_indices_literal, buffer));
 
   std::unique_ptr<LocalExecutable> executable =
       client
-          ->Compile(computation, {&buffer->on_host_shape()},
+          ->Compile(computation, {&buffer.on_host_shape()},
                     ExecutableBuildOptions())
           .ConsumeValueOrDie();
 
@@ -750,14 +748,14 @@ void BM_DynamicSlice(int num_iters) {
   options.set_allocator(&allocator);
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = executable->Run({buffer.get()}, options);
+    auto result = executable->Run({&buffer}, options);
     ASSERT_TRUE(result.ok());
   }
 
   // Run benchmark.
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result = executable->Run({buffer.get()}, options);
+    auto result = executable->Run({&buffer}, options);
     ASSERT_TRUE(result.ok());
   }
 }

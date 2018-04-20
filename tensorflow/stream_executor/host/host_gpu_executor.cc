@@ -28,8 +28,7 @@ limitations under the License.
 
 bool FLAGS_stream_executor_cpu_real_clock_rate = false;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 HostStream *AsHostStream(Stream *stream) {
@@ -266,5 +265,4 @@ rng::RngSupport *HostExecutor::CreateRng() {
 }
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

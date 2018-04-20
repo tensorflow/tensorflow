@@ -130,6 +130,8 @@ tensorflow/contrib/boosted_trees/ops
 tensorflow/contrib/boosted_trees/proto
 tensorflow/contrib/boosted_trees/python
 tensorflow/contrib/boosted_trees/python/ops
+tensorflow/contrib/checkpoint
+tensorflow/contrib/checkpoint/python
 tensorflow/contrib/cloud
 tensorflow/contrib/cloud/kernels
 tensorflow/contrib/cloud/ops

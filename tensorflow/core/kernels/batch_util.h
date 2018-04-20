@@ -32,6 +32,12 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
 // Copies the index^th slice of parent (in the 0th dimension) into element.
 Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
 
+// Copies the index^th slice of parent (in the 0th dimension) into element.
+//
+// NOTE(mrry): The implementation may be able to optimize the copy to a move.
+// This is particularly important for DT_STRING tensors.
+Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
+
 // Zero-initializes the tensor `element` using the scalar stored in `padding`.
 // Both `element` and `padding` must have matching `dtype`.
 Status SetElementZero(Tensor* element, const Tensor& padding);

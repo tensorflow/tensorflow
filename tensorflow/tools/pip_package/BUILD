@@ -66,7 +66,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/data/python/kernel_tests:dataset_serialization_test",
     "//tensorflow/contrib/data/python/ops:contrib_op_loader",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
-    "//tensorflow/contrib/eager/python:checkpointable_utils",
     "//tensorflow/contrib/eager/python:evaluator",
     "//tensorflow/contrib/gan:gan",
     "//tensorflow/contrib/graph_editor:graph_editor_pip",

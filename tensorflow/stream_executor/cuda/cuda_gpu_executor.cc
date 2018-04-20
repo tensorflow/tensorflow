@@ -66,8 +66,7 @@ limitations under the License.
 extern bool FLAGS_check_gpu_leaks;
 bool FLAGS_prefer_cubin_to_ptx = true;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // Hook that can be used to CUBIN-ate PTX before it is loaded into the driver.
@@ -1168,17 +1167,14 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
 
 }  // namespace cuda
 
-namespace gpu = ::perftools::gputools;
-
 void initialize_cuda_gpu_executor() {
-  *gpu::internal::MakeCUDAExecutorImplementation() = [](
-      const gpu::PluginConfig &config) {
-    return new gpu::cuda::CUDAExecutor{config};
+  *internal::MakeCUDAExecutorImplementation() = [](const PluginConfig &config) {
+    return new cuda::CUDAExecutor{config};
   };
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(
-    cuda_gpu_executor, {perftools::gputools::initialize_cuda_gpu_executor();});
+REGISTER_MODULE_INITIALIZER(cuda_gpu_executor, {
+  stream_executor::initialize_cuda_gpu_executor();
+});

@@ -30,8 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 /*static*/ StatusOr<std::unique_ptr<HloModule>>
@@ -109,33 +107,35 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
   const ExecutableRunOptions& run_options = service_run_options.run_options();
 
   // Copy arguments to device.
-  std::vector<std::unique_ptr<ScopedShapedBuffer>> argument_buffers;
-  std::vector<ShapedBuffer*> argument_buffer_ptrs;
+  std::vector<ScopedShapedBuffer> argument_buffers;
   for (Literal* argument : arguments) {
     TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<ScopedShapedBuffer> argument_buffer,
+        ScopedShapedBuffer argument_buffer,
         backend().transfer_manager()->AllocateScopedShapedBuffer(
             argument->shape(), run_options.allocator(),
             run_options.device_ordinal()));
     TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-        stream.parent(), *argument, *argument_buffer));
+        stream.parent(), *argument, argument_buffer));
     argument_buffers.push_back(std::move(argument_buffer));
-    argument_buffer_ptrs.push_back(argument_buffers.back().get());
+  }
+
+  std::vector<const ShapedBuffer*> argument_buffer_ptrs;
+  argument_buffer_ptrs.reserve(argument_buffers.size());
+  for (const auto& buf : argument_buffers) {
+    argument_buffer_ptrs.push_back(&buf);
   }
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> result,
+      ShapedBuffer result,
       executable->ExecuteOnStreamWrapper(
           &service_run_options, /*profile=*/nullptr, argument_buffer_ptrs));
 
   // Create a ScopedShapedBuffer of the result to manage deallocation. This will
   // deallocate all the device memory when it goes out of scope.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ScopedShapedBuffer> scoped_result,
-      ScopedShapedBuffer::MakeScoped(result.get(), run_options.allocator()));
+  ScopedShapedBuffer scoped_result(std::move(result), run_options.allocator());
 
   auto result_literal = backend().transfer_manager()->TransferLiteralFromDevice(
-      stream.parent(), *scoped_result);
+      stream.parent(), scoped_result);
   if (result_literal.ok()) {
     VLOG(4) << "Executed binary and got result: "
             << result_literal.ValueOrDie()->ToString();
@@ -157,7 +157,13 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
       backend().computation_placer()->AssignDevices(options.num_replicas, 1));
   std::vector<std::unique_ptr<se::Stream>> streams;
   std::vector<ServiceExecutableRunOptions> service_run_options;
-  std::vector<std::unique_ptr<ScopedShapedBuffer>> argument_buffers;
+
+  std::vector<ScopedShapedBuffer> argument_buffers;
+  // This reserve() call is necessary for correctness, because
+  // argument_buffer_ptrs contains pointers into the elements of
+  // argument_buffers.
+  argument_buffers.reserve(options.num_replicas * options.arguments.size());
+
   // Plus one so we can safely get &argument_buffer_ptrs[0] in case there are
   // no arguments.
   std::vector<const ShapedBuffer*> argument_buffer_ptrs(
@@ -177,13 +183,13 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
     // Copy arguments to device.
     for (const Literal* argument : options.arguments) {
       TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<ScopedShapedBuffer> argument_buffer,
+          ScopedShapedBuffer argument_buffer,
           backend().transfer_manager()->AllocateScopedShapedBuffer(
               argument->shape(), backend().memory_allocator(), device));
       TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-          executor, *argument, *argument_buffer));
+          executor, *argument, argument_buffer));
       argument_buffers.push_back(std::move(argument_buffer));
-      argument_buffer_ptrs[index++] = argument_buffers.back().get();
+      argument_buffer_ptrs[index++] = &argument_buffers.back();
     }
     argument_buffer_slices.emplace_back(
         &argument_buffer_ptrs[index - options.arguments.size()],
@@ -242,19 +248,18 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
   }
 
   LOG(INFO) << "Replicated execution started";
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<ShapedBuffer>> results,
+  TF_ASSIGN_OR_RETURN(std::vector<ShapedBuffer> results,
                       executable->ExecuteOnStreams(service_run_options,
                                                    argument_buffer_slices));
   LOG(INFO) << "Replicated execution terminated";
 
   std::vector<std::unique_ptr<Literal>> exec_results;
   for (int64 i = 0; i < options.num_replicas; ++i) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<ScopedShapedBuffer> result,
-                        ScopedShapedBuffer::MakeScoped(
-                            results[i].get(), backend().memory_allocator()));
+    ScopedShapedBuffer result(std::move(results[i]),
+                              backend().memory_allocator());
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                         backend().transfer_manager()->TransferLiteralFromDevice(
-                            streams[i]->parent(), *result));
+                            streams[i]->parent(), result));
     exec_results.push_back(std::move(literal));
   }
   return std::move(exec_results);

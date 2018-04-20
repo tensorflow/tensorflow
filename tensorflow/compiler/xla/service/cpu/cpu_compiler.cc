@@ -100,8 +100,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace cpu {
 
@@ -440,8 +438,7 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
 }  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> module,
-    perftools::gputools::StreamExecutor* /*stream_exec*/,
+    std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/,
     DeviceMemoryAllocator* /*device_allocator*/) {
   VLOG(2) << "Before optimization:";
   XLA_VLOG_LINES(2, module->ToString());
@@ -454,8 +451,7 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 }
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
-    std::unique_ptr<HloModule> module,
-    perftools::gputools::StreamExecutor* stream_exec,
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* /*device_allocator*/) {
   const string timer_message =
       "Compiling [" + module->name() + "] for CPU using JIT";
@@ -938,9 +934,9 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
 }  // namespace xla
 
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(se::host::kHostPlatformId, []() {
-    return xla::MakeUnique<xla::cpu::CpuCompiler>();
-  });
+  xla::Compiler::RegisterCompilerFactory(
+      stream_executor::host::kHostPlatformId,
+      []() { return xla::MakeUnique<xla::cpu::CpuCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();
