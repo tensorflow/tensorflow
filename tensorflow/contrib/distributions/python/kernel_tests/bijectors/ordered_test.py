@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,33 +23,36 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops.bijectors.ordered import Ordered
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions.bijector_test_util import assert_bijective_and_finite
 from tensorflow.python.platform import test
 
 
-rng = np.random.RandomState(42)
-
 
 class OrderedBijectorTest(test.TestCase):
   """Tests correctness of the ordered transformation."""
 
+  def setUp(self):
+      self._rng = np.random.RandomState(42)
+
+  @test_util.run_in_graph_and_eager_modes()
   def testBijectorVector(self):
     with self.test_session():
       ordered = Ordered()
       self.assertEqual("ordered", ordered.name)
       x = np.asarray([[2., 3, 4], [4., 8, 13]])
       y = [[2., 0, 0], [4., np.log(4.), np.log(5.)]]
-      self.assertAllClose(y, ordered.forward(x).eval())
-      self.assertAllClose(x, ordered.inverse(y).eval())
+      self.assertAllClose(y, self.evaluate(ordered.forward(x)))
+      self.assertAllClose(x, self.evaluate(ordered.inverse(y)))
       self.assertAllClose(
           np.sum(np.asarray(y)[..., 1:], axis=-1),
-          ordered.inverse_log_det_jacobian(y, event_ndims=1).eval(),
+          self.evaluate(ordered.inverse_log_det_jacobian(y, event_ndims=1)),
           atol=0.,
           rtol=1e-7)
       self.assertAllClose(
-          -ordered.inverse_log_det_jacobian(y, event_ndims=1).eval(),
-          ordered.forward_log_det_jacobian(x, event_ndims=1).eval(),
+          self.evaluate(-ordered.inverse_log_det_jacobian(y, event_ndims=1)),
+          self.evaluate(ordered.forward_log_det_jacobian(x, event_ndims=1)),
           atol=0.,
           rtol=1e-7)
 
@@ -79,6 +82,7 @@ class OrderedBijectorTest(test.TestCase):
           atol=0.,
           rtol=1e-7)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testShapeGetters(self):
     with self.test_session():
       x = tensor_shape.TensorShape([4])
@@ -86,18 +90,18 @@ class OrderedBijectorTest(test.TestCase):
       bijector = Ordered(validate_args=True)
       self.assertAllEqual(y, bijector.forward_event_shape(x))
       self.assertAllEqual(y.as_list(),
-                          bijector.forward_event_shape_tensor(
-                              x.as_list()).eval())
+                          self.evaluate(bijector.forward_event_shape_tensor(
+                              x.as_list())))
       self.assertAllEqual(x, bijector.inverse_event_shape(y))
       self.assertAllEqual(x.as_list(),
-                          bijector.inverse_event_shape_tensor(
-                              y.as_list()).eval())
+                          self.evaluate(bijector.inverse_event_shape_tensor(
+                              y.as_list())))
 
   def testBijectiveAndFinite(self):
     with self.test_session():
       ordered = Ordered()
-      x = np.sort(rng.randn(3, 10), axis=-1).astype(np.float32)
-      y = (rng.randn(3, 10)).astype(np.float32)
+      x = np.sort(self._rng.randn(3, 10), axis=-1).astype(np.float32)
+      y = (self._rng.randn(3, 10)).astype(np.float32)
       assert_bijective_and_finite(ordered, x, y, event_ndims=1)
 
 
