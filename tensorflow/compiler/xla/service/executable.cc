@@ -163,9 +163,9 @@ Status Executable::DumpSessionModule() {
                                        result);
 }
 
-/* static */ Status Executable::DumpToDirectory(const string& directory_path,
-                                                string filename,
-                                                const HloSession& hlo_session) {
+/* static */ Status Executable::DumpToDirectory(
+    const string& directory_path, string filename,
+    const HloSnapshot& hlo_session) {
   tensorflow::Env* env = tensorflow::Env::Default();
   if (!env->IsDirectory(directory_path).ok()) {
     // NB! CreateDir does not work reliably with multiple XLA threads -- two

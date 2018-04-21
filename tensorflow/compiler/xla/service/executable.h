@@ -156,9 +156,9 @@ class Executable {
   static Status DumpToDirectory(const string& directory_path, string filename,
                                 const SessionModule& session_module);
 
-  // Dump hlo_session to directory_path/filename.
+  // Dump hlo snapshot to directory_path/filename.
   static Status DumpToDirectory(const string& directory_path, string filename,
-                                const HloSession& hlo_session);
+                                const HloSnapshot& hlo_session);
 
  protected:
   mutable tensorflow::mutex mutex_;
