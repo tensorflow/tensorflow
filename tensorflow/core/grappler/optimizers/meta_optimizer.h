@@ -30,7 +30,7 @@ class MetaOptimizer : public GraphOptimizer {
  public:
   MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg)
       : cpu_device_(cpu_device), cfg_(cfg) {}
-  ~MetaOptimizer() override = default;
+  ~MetaOptimizer() override {}
 
   string name() const override { return "meta_optimizer"; };
 
@@ -43,37 +43,10 @@ class MetaOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
-  std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
-      const string& optimizer) const;
-
-  // Initialize active optimizers from RewriterConfig toggles.
-  Status InitializeOptimizers(
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
-  // Initialize active optimizers from RewriterConfig optimizer names.
-  Status InitializeOptimizersByName(
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
-
-  // Run optimization pass over a single GrapplerItem. Meta optimizer might run
-  // multiple such passes: 1) for the main graph 2) for the function library
-  Status OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
-                       GraphDef* optimized_graph);
-
+  std::unique_ptr<GraphOptimizer> NewOptimizer(const string& optimizer);
   DeviceBase* const cpu_device_;  // may be NULL
   RewriterConfig cfg_;
-
-  struct OptimizerResult {
-    string optimizer_name;
-    string result;
-  };
-
-  struct GraphOptimizationResult {
-    explicit GraphOptimizationResult(const string& id) : id(id) {}
-    string id;
-    bool is_optimized = false;
-    std::vector<OptimizerResult> results;
-  };
-
-  std::vector<GraphOptimizationResult> optimization_results_;
+  std::vector<std::pair<string, string>> result_;
 };
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg);

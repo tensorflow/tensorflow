@@ -31,8 +31,20 @@ constexpr char kDevice[] = "/device:CPU:0";
 
 class FunctionOptimizerTest : public GrapplerTest {
  protected:
-  void DisableFunctionSpecialization(FunctionOptimizer* optimizer) {
+  void DisableAll(FunctionOptimizer* optimizer) {
+    optimizer->options_.enable_function_inlining = false;
     optimizer->options_.enable_function_specialization = false;
+    optimizer->options_.enable_symbolic_gradient_inlining = false;
+  }
+
+  void EnableOnlyFunctionInlining(FunctionOptimizer* optimizer) {
+    DisableAll(optimizer);
+    optimizer->options_.enable_function_inlining = true;
+  }
+
+  void EnableOnlyFunctionSpecialization(FunctionOptimizer* optimizer) {
+    DisableAll(optimizer);
+    optimizer->options_.enable_function_specialization = true;
   }
 };
 
@@ -340,7 +352,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
   using test::function::NDef;
 
   FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
-  DisableFunctionSpecialization(&optimizer);  // do not specialize noinline func
+  EnableOnlyFunctionInlining(&optimizer);
 
   const Tensor kTwo = test::AsScalar<int64>(2);
   FunctionDef func = FunctionDefHelper::Define(
@@ -614,13 +626,14 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_XTimesTwo) {
   using test::function::NDef;
 
   FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  EnableOnlyFunctionSpecialization(&optimizer);
 
-  // Mark XTimesTwo as noinline.
+  // Mark XTimesTwo as noinline
   FunctionDef x_times_two = test::function::XTimesTwo();
   (*x_times_two.mutable_attr())["_noinline"].set_b(true);
   std::vector<FunctionDef> function_library = {x_times_two};
 
-  // Build a graph to compute y = XTimesTwo(x).
+  // Build a graph to compute y = XTimesTwo(x)
   GrapplerItem item;
   item.graph = test::function::GDef(
       {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
@@ -631,13 +644,12 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_XTimesTwo) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  // Make sure that specialized function was added to the library and original
-  // function was removed.
-  EXPECT_EQ(1, output.library().function_size());
+  // Make sure that specialized function was added to the library
+  EXPECT_EQ(2, output.library().function_size());
   EXPECT_EQ("XTimesTwo_specialized_for_y",
-            output.library().function(0).signature().name());
+            output.library().function(1).signature().name());
 
-  // And 'y' node is calling specialized function.
+  // And 'y' node is calling specialized function
   int count = 0;
   for (const NodeDef& node : output.node()) {
     if (node.name() == "y" && count++) {
@@ -646,7 +658,7 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_XTimesTwo) {
   }
   EXPECT_EQ(1, count);
 
-  // And that graph evaluation yields the same result.
+  // And that graph evaluation yields the same result
   Tensor pi = test::AsScalar<float>(3.14f);
   item.fetch = {"z"};
   item.feed.emplace_back("x", pi);

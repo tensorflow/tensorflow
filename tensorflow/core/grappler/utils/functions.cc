@@ -545,12 +545,6 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   return Status::OK();
 }
 
-Status MakeGrapplerFunctionItem(const FunctionDef& func,
-                                const FunctionLibraryDefinition& flib,
-                                GrapplerFunctionItem* item) {
-  return MakeGrapplerFunctionItem(func, AttrValueMap(), flib, item);
-}
-
 // Register GrapplerFunctionItem input arg expansion and function body outputs
 // in the GrapplerFunctionConnectivity.
 Status RegisterGrapplerFunctionConnectivity(
@@ -566,9 +560,9 @@ Status RegisterGrapplerFunctionConnectivity(
   return Status::OK();
 }
 
-Status MakeFunctionDef(const GrapplerFunctionItem& item,
-                       const FunctionLibraryDefinition& flib,
-                       FunctionDef* func) {
+Status MakeSpecializedFunctionDef(const GrapplerFunctionItem& item,
+                                  const FunctionLibraryDefinition& flib,
+                                  FunctionDef* func) {
   func->mutable_signature()->set_name(item.id);
   func->mutable_signature()->set_is_stateful(item.is_stateful());
 
