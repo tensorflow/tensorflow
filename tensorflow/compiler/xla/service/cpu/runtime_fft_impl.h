@@ -195,6 +195,9 @@ void EigenFftWithRank(const EigenDevice& device, void* out, void* operand,
           device, static_cast<float*>(out), static_cast<complex64*>(operand),
           input_batch, fft_length0, fft_length1, fft_length2);
       break;
+    default:
+      // Unsupported FFT type
+      abort();
   }
 }
 
@@ -219,6 +222,9 @@ void EigenFftImpl(const EigenDevice& device, void* out, void* operand,
                                                  input_batch, fft_length0,
                                                  fft_length1, fft_length2);
       break;
+    default:
+      // Unsupported FFT rank
+      abort();
   }
 }
 
