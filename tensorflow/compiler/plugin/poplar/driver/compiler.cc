@@ -264,16 +264,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   const poplar::Device& dev = poplarExecutor->GetPoplarDevice();
 
-  poplar::Graph* graph;
-  {
-    std::lock_guard <std::mutex> g(static_mu_);
-    graph = new poplar::Graph(dev);
-    graph->addCodelets(GetPathToGraphProgFile());
-    popconv::addCodelets(*graph);
-    popnn::addCodelets(*graph);
-    popops::addCodelets(*graph);
-    poprand::addCodelets(*graph);
-  }
+  poplar::Graph graph(dev);
+  graph.addCodelets(GetPathToGraphProgFile());
+  popconv::addCodelets(graph);
+  popnn::addCodelets(graph);
+  popops::addCodelets(graph);
+  poprand::addCodelets(graph);
 
   CompilerResources resources(module->config().seed() + 1,
                               poplarExecutor->GetRandomGenMode());
@@ -310,7 +306,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   std::vector<const HloInstruction*> instruction_order;
   TF_ASSIGN_OR_RETURN(instruction_order, Scheduler::schedule(entry));
 
-  EntryVisitor visitor(graph, resources, entry->num_parameters());
+  EntryVisitor visitor(&graph, resources, entry->num_parameters());
   try {
     TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
   }
@@ -329,7 +325,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     try {
       VLOG(1) << "Compile engine " << module->name();
 
-      engine.reset(new poplar::Engine(dev, *graph, progs));
+      engine.reset(new poplar::Engine(dev, graph, progs));
     }
     catch (std::logic_error e) {
       return Status(tensorflow::error::UNKNOWN,
@@ -409,8 +405,6 @@ HloCostAnalysis::ShapeSizeFunction
 PoplarCompiler::ShapeSizeBytesFunction() const {
   return PoplarExecutable::ShapeSizeBytes;
 }
-
-std::mutex PoplarCompiler::static_mu_;
 
 }  // namespace poplarplugin
 }  // namespace xla
