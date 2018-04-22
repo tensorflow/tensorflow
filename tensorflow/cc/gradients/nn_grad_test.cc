@@ -85,23 +85,22 @@ TEST_F(NNGradTest, SoftmaxGrad) {
 }
 
 TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
-  TensorShape shape({5,3});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto l = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  OutputList inputs = OutputList();
-  OutputList outputs = OutputList();
-  std::vector<TensorShape> inputShapes = std::vector<TensorShape>();
-  std::vector<TensorShape> outputShapes = std::vector<TensorShape>();
-  inputShapes.push_back(shape);
-  outputShapes.push_back(shape);
-  outputShapes.push_back(shape);
-  auto y = SoftmaxCrossEntropyWithLogits(scope_, x, l);
-  inputs.push_back(x);
-  outputs.push_back(y.backprop);
-  outputs.push_back(y.loss);
-  RunTest(inputs, inputShapes, outputs, outputShapes);
-}
+  TensorShape logitsShape({5,3}); //batch size of 5, 3 possible labels (classes),
+                                  //logits is what is produced by a network
+                                  //they are compared to labels which are the truth
+  TensorShape lossShape({5}); //batch size of 5, 1 value for each entry in the batch
+                              //loss is the difference between logits and labels
 
+  TensorShape backpropShape({5,3}); //the docmentation says the backprop output
+                                    //will have batch size x num classes as its shape
+  auto logits = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(logitsShape)); //estimation
+  auto labels = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(logitsShape)); //truth
+  auto y = SoftmaxCrossEntropyWithLogits(scope_, logits, labels);
+  // Please note the reversal of the backprop and loss orders. A separate issue has been opened
+  // for this. 
+  RunTest({logits, labels}, {logitsShape, logitsShape}, 
+          {y.backprop, y.loss}, {backpropShape, lossShape});
+}
 
 TEST_F(NNGradTest, LogSoftmaxGrad) {
   TensorShape shape({5, 3});
