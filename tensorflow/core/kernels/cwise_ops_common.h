@@ -148,6 +148,13 @@ class BinaryOp : public BinaryOpShared {
           BCast::ToIndexArray<5>(bcast->x_bcast()),
           in1.template shaped<Tin, 5>(bcast->y_reshape()),
           BCast::ToIndexArray<5>(bcast->y_bcast()), error_ptr);
+    } else if (ndims == 6) {
+      functor::BinaryFunctor<Device, Functor, 6>().BCast(
+          eigen_device, out->shaped<Tout, 6>(bcast->result_shape()),
+          in0.template shaped<Tin, 6>(bcast->x_reshape()),
+          BCast::ToIndexArray<6>(bcast->x_bcast()),
+          in1.template shaped<Tin, 6>(bcast->y_reshape()),
+          BCast::ToIndexArray<6>(bcast->y_bcast()), error_ptr);
     } else {
       SetUnimplementedError(ctx);
     }
