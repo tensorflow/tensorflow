@@ -100,7 +100,7 @@ class GradientCheckerTest(test.TestCase):
       index_values = [1, 3]
       y_shape = [2, 2]
       params = constant_op.constant(
-          np.arange(p_size).astype(np.float), shape=p_shape, name="p")
+          np.arange(p_size).astype(np.float32), shape=p_shape, name="p")
       indices = constant_op.constant(index_values, name="i")
       y = array_ops.gather(params, indices, name="y")
 
@@ -119,7 +119,7 @@ class GradientCheckerTest(test.TestCase):
       y2_shape = [2, 2]
 
       params = constant_op.constant(
-          np.arange(p_size).astype(np.float), shape=p_shape, name="p")
+          np.arange(p_size).astype(np.float32), shape=p_shape, name="p")
       indices = constant_op.constant(index_values, name="i")
       y = array_ops.gather(params, indices, name="y")
       indices2 = constant_op.constant(index_values2, name="i2")

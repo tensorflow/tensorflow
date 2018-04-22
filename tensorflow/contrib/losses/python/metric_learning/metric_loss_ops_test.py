@@ -311,7 +311,7 @@ class NpairsLossMultiLabelTest(test.TestCase):
 
       similarity_matrix = np.matmul(embeddings_anchor, embeddings_positive.T)
 
-      labels_remapped = np.dot(labels, labels.T).astype(np.float)
+      labels_remapped = np.dot(labels, labels.T).astype(np.float32)
       labels_remapped /= np.sum(labels_remapped, 1, keepdims=True)
 
       xent_loss = math_ops.reduce_mean(nn.softmax_cross_entropy_with_logits(

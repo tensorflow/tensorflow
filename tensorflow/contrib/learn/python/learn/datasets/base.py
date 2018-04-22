@@ -109,7 +109,7 @@ def load_iris(data_path=None):
     module_path = path.dirname(__file__)
     data_path = path.join(module_path, 'data', 'iris.csv')
   return load_csv_with_header(
-      data_path, target_dtype=np.int, features_dtype=np.float)
+      data_path, target_dtype=np.int, features_dtype=np.float32)
 
 
 @deprecated(None, 'Use scikits.learn.datasets.')
@@ -126,7 +126,7 @@ def load_boston(data_path=None):
     module_path = path.dirname(__file__)
     data_path = path.join(module_path, 'data', 'boston_house_prices.csv')
   return load_csv_with_header(
-      data_path, target_dtype=np.float, features_dtype=np.float)
+      data_path, target_dtype=np.float32, features_dtype=np.float32)
 
 
 @deprecated(None, 'Use the retry module or similar alternatives.')

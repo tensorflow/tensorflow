@@ -114,7 +114,7 @@ class UnaryOpTest(test.TestCase):
         s = list(np.shape(x))
         jacob_t, _ = gradient_checker.compute_gradient(
             inx, s, y, s, x_init_value=x)
-        xf = x.astype(np.float)
+        xf = x.astype(np.float32)
         inxf = ops.convert_to_tensor(xf)
         yf = tf_func(inxf)
         _, jacob_n = gradient_checker.compute_gradient(
@@ -880,8 +880,8 @@ class BinaryOpTest(test.TestCase):
           # care is taken with choosing the inputs and the delta. This is
           # a weaker check (in particular, it does not test the op itself,
           # only its gradient), but it's much better than nothing.
-          self._compareGradientX(x, y, np_func, tf_func, np.float)
-          self._compareGradientY(x, y, np_func, tf_func, np.float)
+          self._compareGradientX(x, y, np_func, tf_func, np.float32)
+          self._compareGradientY(x, y, np_func, tf_func, np.float32)
         else:
           self._compareGradientX(x, y, np_func, tf_func)
           self._compareGradientY(x, y, np_func, tf_func)
@@ -1528,8 +1528,8 @@ class SelectOpTest(test.TestCase):
         # care is taken with choosing the inputs and the delta. This is
         # a weaker check (in particular, it does not test the op itself,
         # only its gradient), but it's much better than nothing.
-        self._compareGradientX(c, xt, yt, np.float)
-        self._compareGradientY(c, xt, yt, np.float)
+        self._compareGradientX(c, xt, yt, np.float32)
+        self._compareGradientY(c, xt, yt, np.float32)
       else:
         self._compareGradientX(c, xt, yt)
         self._compareGradientY(c, xt, yt)
@@ -1657,8 +1657,8 @@ class BatchSelectOpTest(test.TestCase):
         # care is taken with choosing the inputs and the delta. This is
         # a weaker check (in particular, it does not test the op itself,
         # only its gradient), but it's much better than nothing.
-        self._compareGradientX(c, xt, yt, np.float)
-        self._compareGradientY(c, xt, yt, np.float)
+        self._compareGradientX(c, xt, yt, np.float32)
+        self._compareGradientY(c, xt, yt, np.float32)
       else:
         self._compareGradientX(c, xt, yt)
         self._compareGradientY(c, xt, yt)

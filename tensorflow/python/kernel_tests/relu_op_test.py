@@ -210,7 +210,7 @@ class Relu6Test(test.TestCase):
       self._testRelu6(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
           use_gpu=False)
-      if t in [np.float16, np.float, np.double]:
+      if t in [np.float16, np.float32, np.double]:
         self._testRelu6(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
             use_gpu=True)
