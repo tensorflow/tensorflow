@@ -105,7 +105,7 @@ def _precision_at_thresholds(predictions, targets, weights=None):
 
 def _recall(predictions, targets, weights=None):
   return metrics.recall(
-    labels=targets, predictions=predictions, weights=weights)
+      labels=targets, predictions=predictions, weights=weights)
 
 
 def _recall_at_thresholds(predictions, targets, weights=None):
