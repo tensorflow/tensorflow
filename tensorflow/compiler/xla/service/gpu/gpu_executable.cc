@@ -250,7 +250,7 @@ Status GpuExecutable::ExecuteThunks(
   return Status::OK();
 }
 
-StatusOr<ShapedBuffer> GpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -297,8 +297,8 @@ StatusOr<ShapedBuffer> GpuExecutable::ExecuteOnStream(
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
-  auto shaped_buffer = ShapedBuffer(root->shape(), root->shape(),
-                                    executor->platform(), device_ordinal);
+  ScopedShapedBuffer shaped_buffer(root->shape(), root->shape(),
+                                   memory_allocator, device_ordinal);
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer.
@@ -335,7 +335,7 @@ StatusOr<ShapedBuffer> GpuExecutable::ExecuteOnStream(
   return std::move(shaped_buffer);
 }
 
-StatusOr<ShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.

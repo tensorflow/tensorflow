@@ -447,7 +447,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   return Status::OK();
 }
 
-StatusOr<ShapedBuffer> ParallelCpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> ParallelCpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -459,9 +459,9 @@ StatusOr<ShapedBuffer> ParallelCpuExecutable::ExecuteOnStream(
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
 
-  ShapedBuffer result_buffer(
+  ScopedShapedBuffer result_buffer(
       /*on_host_shape=*/result_shape(), /*on_device_shape=*/result_shape(),
-      stream->parent()->platform(), stream->parent()->device_ordinal());
+      run_options->allocator(), stream->parent()->device_ordinal());
 
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
@@ -470,7 +470,7 @@ StatusOr<ShapedBuffer> ParallelCpuExecutable::ExecuteOnStream(
                                              hlo_execution_profile));
 
   // Copy DeviceMemoryBase values which into the respective location in
-  // ShapedBuffer which is returned to the caller.
+  // the ScopedShapedBuffer which is returned to the caller.
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_RETURN_IF_ERROR(result_buffer.buffers().ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
@@ -511,7 +511,7 @@ StatusOr<ShapedBuffer> ParallelCpuExecutable::ExecuteOnStream(
   return std::move(result_buffer);
 }
 
-StatusOr<ShapedBuffer> ParallelCpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> ParallelCpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.

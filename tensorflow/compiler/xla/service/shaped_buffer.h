@@ -30,6 +30,8 @@ limitations under the License.
 
 namespace xla {
 
+class ScopedShapedBuffer;
+
 // Class which encapsulates a buffer or set of buffers containing data of a
 // particular XLA shape.
 class ShapedBuffer {
@@ -48,6 +50,10 @@ class ShapedBuffer {
   ShapedBuffer& operator=(ShapedBuffer&&);
   ShapedBuffer(const ShapedBuffer&) = delete;
   ShapedBuffer& operator=(const ShapedBuffer&) = delete;
+
+  // Prevent (some forms of) accidental object slicing.
+  ShapedBuffer(const ScopedShapedBuffer&) = delete;
+  ShapedBuffer& operator=(const ScopedShapedBuffer&) = delete;
 
   virtual ~ShapedBuffer();
 
