@@ -1203,39 +1203,16 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                  output_activation_max, output_data, output_dims, gemm_context);
 }
 
-inline void ExperimentalShuffledFullyConnected(
-    const uint8* input_data, const Dims<4>& input_dims,
-    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
-    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
-    int output_shift, int32 output_activation_min, int32 output_activation_max,
-    int16* output_data, const Dims<4>& output_dims,
-    gemmlowp::GemmContext* gemm_context) {
-  gemmlowp::ScopedProfilingLabel label(
-      "ExperimentalShuffledFullyConnected/8bit");
-  (void)gemm_context;  // only used in optimized code.
-  TFLITE_DCHECK_EQ(output_activation_min, -32768);
-  TFLITE_DCHECK_EQ(output_activation_max, 32767);
-  // TODO(benoitjacob): This really should be:
-  //     const int batches = ArraySize(output_dims, 1);
-  // but the current --variable_batch hack consists in overwriting the 3rd
-  // dimension with the runtime batch size, as we don't keep track for each
-  // array of which dimension is the batch dimension in it.
-  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
-                      ArraySize(output_dims, 3);
-  const int output_depth = MatchingArraySize(weights_dims, 1, output_dims, 0);
-  const int accum_depth = ArraySize(weights_dims, 0);
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
-  // The experimental shuffling is an optimization for matrix*vector product.
-  // We aren't interested in supporting non-matrix*vector-product cases, i.e.
-  // batches>1.
-  TFLITE_DCHECK_EQ(batches, 1);
-  // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
-  // so that just reinterpreting them as int8 values is equivalent to
-  // subtracting 128 from them, thus implementing for free the subtraction of
-  // the zero_point value 128.
-  const int8* shuffled_weights_ptr =
-      reinterpret_cast<const int8*>(shuffled_weights_data);
+// Internal function doing the actual arithmetic work for
+// ExperimentalShuffledFullyConnected.
+// May be called either directly by it (single-threaded case) or may be used
+// as the 'task' for worker threads to run (multi-threaded case, see
+// ExperimentalShuffledFullyConnectedWorkerTask below).
+inline void ExperimentalShuffledFullyConnectedWorkerImpl(
+    const uint8* input_data, const int8* shuffled_weights_data,
+    int output_depth, int accum_depth, const int32* bias_data,
+    int32 output_multiplier, int output_shift, int16* output_data) {
+  const int8* shuffled_weights_ptr = shuffled_weights_data;
 #if defined USE_NEON
   // We'll only need to xor signbit to the input activation values, as
   // that xor-ing is pre-built into the shuffled weights values.
@@ -1331,12 +1308,111 @@ inline void ExperimentalShuffledFullyConnected(
       acc =
           MultiplyByQuantizedMultiplier(acc, output_multiplier, -output_shift);
       // Saturate, cast to int16, and store to output array.
-      acc = std::max(acc, output_activation_min);
-      acc = std::min(acc, output_activation_max);
+      acc = std::max(acc, -32768);
+      acc = std::min(acc, 32767);
       output_data[c + i] = acc;
     }
   }
 #endif
+}
+
+// Wraps ExperimentalShuffledFullyConnectedWorkerImpl into a Task class
+// to allow using gemmlowp's threadpool.
+struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
+  ExperimentalShuffledFullyConnectedWorkerTask(
+      const uint8* input_data, const int8* shuffled_weights_data,
+      int output_depth, int accum_depth, const int32* bias_data,
+      int32 output_multiplier, int output_shift, int16* output_data)
+      : input_data_(input_data),
+        shuffled_weights_data_(shuffled_weights_data),
+        output_depth_(output_depth),
+        accum_depth_(accum_depth),
+        bias_data_(bias_data),
+        output_multiplier_(output_multiplier),
+        output_shift_(output_shift),
+        output_data_(output_data) {}
+
+  void Run() override {
+    ExperimentalShuffledFullyConnectedWorkerImpl(
+        input_data_, shuffled_weights_data_, output_depth_, accum_depth_,
+        bias_data_, output_multiplier_, output_shift_, output_data_);
+  }
+
+  const uint8* input_data_;
+  const int8* shuffled_weights_data_;
+  int output_depth_;
+  int accum_depth_;
+  const int32* bias_data_;
+  int32 output_multiplier_;
+  int output_shift_;
+  int16* output_data_;
+};
+
+inline void ExperimentalShuffledFullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims,
+    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
+    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    int16* output_data, const Dims<4>& output_dims,
+    gemmlowp::GemmContext* gemm_context) {
+  gemmlowp::ScopedProfilingLabel label(
+      "ExperimentalShuffledFullyConnected/8bit");
+  (void)gemm_context;  // only used in optimized code.
+  TFLITE_DCHECK_EQ(output_activation_min, -32768);
+  TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  // TODO(benoitjacob): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                      ArraySize(output_dims, 3);
+  const int output_depth = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  const int accum_depth = ArraySize(weights_dims, 0);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
+  // The experimental shuffling is an optimization for matrix*vector product.
+  // We aren't interested in supporting non-matrix*vector-product cases, i.e.
+  // batches>1.
+  TFLITE_DCHECK_EQ(batches, 1);
+  // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+  // so that just reinterpreting them as int8 values is equivalent to
+  // subtracting 128 from them, thus implementing for free the subtraction of
+  // the zero_point value 128.
+  const int8* int8_shuffled_weights_data =
+      reinterpret_cast<const int8*>(shuffled_weights_data);
+
+  // Our GEMV kernel has 4 rows. This doesn't matter in practice for GEMV
+  // shapes, gemmlowp::HowManyThreads only takes that parameter because it
+  // matters for other kinds of GEMM shapes.
+  static constexpr int kKernelRows = 4;
+  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
+      gemm_context->max_num_threads(), output_depth, 1, accum_depth);
+  if (thread_count == 1) {
+    // Single-thread case: do the computation on the current thread, don't
+    // use a threadpool
+    ExperimentalShuffledFullyConnectedWorkerImpl(
+        input_data, int8_shuffled_weights_data, output_depth, accum_depth,
+        bias_data, output_multiplier, output_shift, output_data);
+    return;
+  }
+
+  // Multi-threaded case: use the gemmlowp context's threadpool.
+  TFLITE_DCHECK_GT(thread_count, 1);
+  std::vector<gemmlowp::Task*> tasks(thread_count);
+  const int kRowsPerWorker =
+      gemmlowp::RoundUp<kKernelRows>(output_depth / thread_count);
+  int row_start = 0;
+  for (int i = 0; i < thread_count; i++) {
+    int row_end = std::min(output_depth, row_start + kRowsPerWorker);
+    tasks[i] = new ExperimentalShuffledFullyConnectedWorkerTask(
+        input_data, int8_shuffled_weights_data + row_start * accum_depth,
+        row_end - row_start, accum_depth, bias_data + row_start,
+        output_multiplier, output_shift, output_data + row_start);
+    row_start = row_end;
+  }
+  TFLITE_DCHECK_EQ(row_start, output_depth);
+  gemm_context->workers_pool()->Execute(tasks);
 }
 
 template <typename T>
