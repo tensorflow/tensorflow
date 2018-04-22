@@ -231,7 +231,7 @@ Note that you must activate the Virtualenv environment each time you
 use TensorFlow. If the Virtualenv environment is not currently active,
 invoke one of the following commands:
 
-<pre> $ <b>source ~/tensorflow/bin/activate</b>      # bash, sh, ksh, or zsh
+<pre>$ <b>source ~/tensorflow/bin/activate</b>      # bash, sh, ksh, or zsh
 $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh</pre>
 
 When the Virtualenv environment is active, you may run
