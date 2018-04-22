@@ -37,7 +37,7 @@ def _top_k_generator(k):
   def _top_k(probabilities, targets):
     targets = math_ops.to_int32(targets)
     if targets.get_shape().ndims > 1:
-      targets = array_ops.squeeze(targets, squeeze_dims=[1])
+      targets = array_ops.squeeze(targets, axis=[1])
     return metric_ops.streaming_mean(nn.in_top_k(probabilities, targets, k))
   return _top_k
 
@@ -57,7 +57,7 @@ def _r2(probabilities, targets, weights=None):
 
 
 def _squeeze_and_onehot(targets, depth):
-  targets = array_ops.squeeze(targets, squeeze_dims=[1])
+  targets = array_ops.squeeze(targets, axis=[1])
   return array_ops.one_hot(math_ops.to_int32(targets), depth)
 
 
