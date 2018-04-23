@@ -508,6 +508,17 @@ class BatchTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
+  def testUint64DataTypes(self):
+    values = constant_op.constant([0, 1, 2, 3, 4, 5], dtype=dtypes.uint64)
+    batched = inp.batch([values], batch_size=2)
+    with self.test_session() as sess:
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
+      sess.run(batched)
+      coord.request_stop()
+      for thread in threads:
+        thread.join()
+
   def testOneThreadDynamicPad(self):
     with self.test_session() as sess:
       batch_size = 10
