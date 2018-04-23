@@ -454,6 +454,14 @@ bool SplitAndParseAsFloats(StringPiece text, char delim,
                                     result);
 }
 
+size_t Strnlen(const char* str, const size_t string_max_len) {
+  size_t len = 0;
+  while (len < string_max_len && str[len] != '\0') {
+    ++len;
+  }
+  return len;
+}
+
 bool StrContains(StringPiece haystack, StringPiece needle) {
   return std::search(haystack.begin(), haystack.end(), needle.begin(),
                      needle.end()) != haystack.end();

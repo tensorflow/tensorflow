@@ -543,7 +543,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                 fused_conv_parameters, &algorithm_config)) {
     std::vector<dnn::AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
-        fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(),
+        fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+            stream->parent()),
         &algorithms));
     dnn::ProfileResult best_result;
     dnn::ProfileResult best_result_no_scratch;

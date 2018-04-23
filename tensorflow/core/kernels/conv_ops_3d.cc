@@ -49,12 +49,18 @@ template <typename T>
 struct LaunchConvOp<CPUDevice, T> {
   static void launch(OpKernelContext* context, bool cudnn_use_autotune,
                      const Tensor& input, const Tensor& filter,
+                     const std::array<int64, 3>& dilations,
                      const std::array<int64, 3>& strides, const Padding padding,
                      TensorFormat data_format, Tensor* output) {
     OP_REQUIRES(context, data_format == FORMAT_NHWC,
                 errors::InvalidArgument("CPU implementation of Conv3D "
                                         "currently only supports the NHWC "
                                         "tensor format."));
+    OP_REQUIRES(context,
+                dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1,
+                errors::InvalidArgument("CPU implementation of Conv3D "
+                                        "currently only supports dilated rates "
+                                        "of 1."));
     functor::CuboidConvolution<CPUDevice, T>()(
         context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
         input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
@@ -80,6 +86,28 @@ class Conv3DOp : public BinaryOp<T> {
          GetTensorDim(stride_, data_format_, 'C') == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context,
+        (GetTensorDim(stride_, data_format_, '0') > 0 &&
+         GetTensorDim(stride_, data_format_, '1') > 0 &&
+         GetTensorDim(stride_, data_format_, '2') > 0),
+        errors::InvalidArgument("Spatial strides should be larger than 0."));
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES(context, dilation_.size() == 5,
+                errors::InvalidArgument("Dilation rates field must "
+                                        "specify 5 dimensions"));
+    OP_REQUIRES(context,
+                (GetTensorDim(dilation_, data_format_, 'N') == 1 &&
+                 GetTensorDim(dilation_, data_format_, 'C') == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilation rates in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context,
+        (GetTensorDim(dilation_, data_format_, '0') > 0 &&
+         GetTensorDim(dilation_, data_format_, '1') > 0 &&
+         GetTensorDim(dilation_, data_format_, '2') > 0),
+        errors::InvalidArgument("Dilated rates should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
@@ -115,13 +143,18 @@ class Conv3DOp : public BinaryOp<T> {
          GetTensorDim(input, data_format_, '2')}};
     std::array<int64, 3> filter_size = {
         {filter.dim_size(0), filter.dim_size(1), filter.dim_size(2)}};
+    std::array<int64, 3> dilations = {
+        {GetTensorDim(dilation_, data_format_, '0'),
+         GetTensorDim(dilation_, data_format_, '1'),
+         GetTensorDim(dilation_, data_format_, '2')}};
     std::array<int64, 3> strides = {{GetTensorDim(stride_, data_format_, '0'),
                                      GetTensorDim(stride_, data_format_, '1'),
                                      GetTensorDim(stride_, data_format_, '2')}};
     std::array<int64, 3> out, padding;
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, filter_size, strides,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(
+        context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,
+                                   padding_, &out, &padding));
     TensorShape out_shape = ShapeFromFormat(
         data_format_, in_batch, {{out[0], out[1], out[2]}}, out_depth);
     Tensor* output;
@@ -131,10 +164,12 @@ class Conv3DOp : public BinaryOp<T> {
     if (out_shape.num_elements() == 0) return;
 
     LaunchConvOp<Device, T>::launch(context, cudnn_use_autotune_, input, filter,
-                                    strides, padding_, data_format_, output);
+                                    dilations, strides, padding_, data_format_,
+                                    output);
   }
 
  private:
+  std::vector<int32> dilation_;
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
@@ -165,6 +200,7 @@ template <typename T>
 struct LaunchConvOp<GPUDevice, T> {
   static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
                      const Tensor& input_param, const Tensor& filter,
+                     const std::array<int64, 3>& dilations,
                      const std::array<int64, 3>& strides, const Padding padding,
                      TensorFormat data_format, Tensor* output) {
     auto* stream = ctx->op_device_context()->stream();
@@ -199,6 +235,7 @@ struct LaunchConvOp<GPUDevice, T> {
 
     // NOTE: This only works in NHWC.
     if (filter_planes == 1 && filter_rows == 1 && filter_cols == 1 &&
+        dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1 &&
         strides[0] == 1 && strides[1] == 1 && strides[2] == 1 &&
         data_format == FORMAT_NHWC) {
       // 1x1 filter, so call cublas directly.
@@ -330,7 +367,10 @@ struct LaunchConvOp<GPUDevice, T> {
         .set_input_feature_map_count(in_depth)
         .set_output_feature_map_count(out_depth);
     perftools::gputools::dnn::ConvolutionDescriptor conv_desc(3);
-    conv_desc.set_filter_stride(DimIndex::X, strides[2])
+    conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
+        .set_dilation_rate(DimIndex::Y, dilations[1])
+        .set_dilation_rate(DimIndex::Z, dilations[0])
+        .set_filter_stride(DimIndex::X, strides[2])
         .set_filter_stride(DimIndex::Y, strides[1])
         .set_filter_stride(DimIndex::Z, strides[0])
         .set_zero_padding(DimIndex::X, pad_cols / 2)
@@ -377,9 +417,7 @@ struct LaunchConvOp<GPUDevice, T> {
         {{in_planes, in_rows, in_cols}},
         out_depth,
         {{filter_planes, filter_rows, filter_cols}},
-        // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
-        // conv is supported.
-        /*dilation=*/{{1, 1, 1}},
+        {{dilations[0], dilations[1], dilations[2]}},
         {{strides[0], strides[1], strides[2]}},
         {{pad_planes, pad_rows, pad_cols}},
         dtype,
@@ -396,7 +434,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                   conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveAlgorithms(
-          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+              stream->parent()),
+          &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {

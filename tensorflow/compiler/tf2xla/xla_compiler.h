@@ -325,6 +325,23 @@ class XlaCompiler {
                                  gtl::ArraySlice<DataType> types,
                                  gtl::ArraySlice<TensorShape> shapes);
 
+  // In order to avoid deadlocks from dependencies in host computations, it can
+  // be necessary to enforce a partial order on the execution of HostCompute
+  // Ops. In particular it may be necessary to constrain the SendToHost for one
+  // HostCompute to run before blocking on the RecvAtHost for another
+  // HostCompute. The compiler maintains a mapping from 'host_compute_name' to
+  // handle, where the handle is an 'output' of the HostCompute Op corresponding
+  // to 'host_compute_name'. Another HostCompute Op that needs to be sequenced
+  // later can add the handle as an 'input' to enforce the constraints.
+  // 'host_compute_name' can be any string the client wishes to use to identify
+  // a given HostCompute Op as long as the names are unique within the
+  // compilation.
+  Status GetHostComputeControlDependency(const string& host_compute_name,
+                                         xla::ComputationDataHandle* handle);
+  Status SetHostComputeControlDependency(
+      const string& host_compute_name,
+      const xla::ComputationDataHandle& handle);
+
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
   FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
@@ -390,6 +407,9 @@ class XlaCompiler {
 
   std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_sends_;
   std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_recvs_;
+
+  std::unordered_map<string, xla::ComputationDataHandle>
+      host_compute_control_output_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };

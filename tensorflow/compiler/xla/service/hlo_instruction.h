@@ -956,6 +956,14 @@ class HloInstruction {
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
   bool has_sharding() const { return sharding_ != nullptr; }
+  // Checks whether the instruction has compatible sharding with the other
+  // instruction.
+  bool has_compatible_sharding(const HloInstruction* other) const {
+    if (!has_sharding()) {
+      return !other->has_sharding();
+    }
+    return other->has_sharding() ? sharding() == other->sharding() : false;
+  }
 
   // When creating a new instruction which either replaces, or shifts up (kCopy
   // insertion case), another instruction, we need to make sure the certain
