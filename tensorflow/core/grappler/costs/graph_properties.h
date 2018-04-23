@@ -93,7 +93,7 @@ class GraphProperties {
   // enqueue its fanout in 'new_shapes'.
   static Status UpdateResource(
       const Node* qnode, const std::unordered_set<const Node*>& queue_inputs,
-      SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes);
+      SymbolicShapeRefiner* shape_refiner, TopoQueue* new_shapes);
 
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.

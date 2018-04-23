@@ -1080,7 +1080,7 @@ Status GraphProperties::PropagateShapes(
       // fanout of the queues, we need to manually propagate the shapes from
       // enqueue node to the corresponding queue.
       TF_RETURN_IF_ERROR(UpdateResource(resource.first, resource.second,
-                                        shape_refiner, relax, new_shapes));
+                                        shape_refiner, new_shapes));
     }
   } while (!new_shapes->empty() &&
            num_resource_iterations++ < max_resource_iterations);
@@ -1094,7 +1094,7 @@ Status GraphProperties::PropagateShapes(
 
 Status GraphProperties::UpdateResource(
     const Node* qnode, const std::unordered_set<const Node*>& queue_inputs,
-    SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes) {
+    SymbolicShapeRefiner* shape_refiner, TopoQueue* new_shapes) {
   // Proceed only if qnode is a queue or an Enter with queue input.
   if (!IsQueue(*qnode) && !IsEnterWithQueue(*qnode)) {
     return Status::OK();
@@ -1108,9 +1108,6 @@ Status GraphProperties::UpdateResource(
   // Merge all inputs into the enqueue node, regardless of which phase we
   // are in.
   std::vector<ShapeAndType> queue_shapes_and_types;
-  if (queue_handle_data) {
-    queue_shapes_and_types = *queue_handle_data;
-  }
   for (const auto& node : queue_inputs) {
     auto ctx = shape_refiner->GetContext(node);
     if (!ctx) {
@@ -1126,13 +1123,8 @@ Status GraphProperties::UpdateResource(
       if (queue_shapes_and_types.empty()) {
         queue_shapes_and_types = shapes_and_types;
       } else {
-        if (relax) {
-          TF_RETURN_IF_ERROR(RelaxEnqueueShapesAndMergeTypes(
-              shape_refiner, qnode, shapes_and_types, &queue_shapes_and_types));
-        } else {
-          TF_RETURN_IF_ERROR(MergeEnqueueShapesAndTypes(
-              shape_refiner, qnode, shapes_and_types, &queue_shapes_and_types));
-        }
+        TF_RETURN_IF_ERROR(RelaxEnqueueShapesAndMergeTypes(
+            shape_refiner, qnode, shapes_and_types, &queue_shapes_and_types));
       }
     }
   }
