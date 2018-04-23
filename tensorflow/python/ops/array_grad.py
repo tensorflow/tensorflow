@@ -196,7 +196,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
             array_ops.where(
                 math_ops.logical_and(grad.indices >= start,
                                      grad.indices < end)),
-            squeeze_dims=[1])
+            axis=[1])
         new_indices = array_ops.gather(grad.indices, indices_to_select) - start
         new_values = array_ops.gather(grad.values, indices_to_select)
         out_grads.append(ops.IndexedSlices(new_values, new_indices, size))
