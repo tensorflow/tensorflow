@@ -143,8 +143,7 @@ class ConvParameters {
   bool ShouldIncludeWinogradNonfusedAlgo(
       perftools::gputools::StreamExecutor* stream_exec) const {
     // Skip this check for cuDNN 7 and newer.
-    perftools::gputools::port::StatusOr<std::tuple<int, int, int>> version =
-        stream_exec->AsDnn()->GetVersion();
+    auto version = stream_exec->AsDnn()->GetVersion();
     if (version.ok() && std::get<0>(version.ValueOrDie()) >= 7) {
       return true;
     }
