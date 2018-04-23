@@ -211,6 +211,14 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
                                                   arguments);
 }
 
+void ClientLibraryTestBase::ComputeAndCompareR1(
+    XlaBuilder* builder, const tensorflow::core::Bitmap& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+  std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+                                                  arguments);
+}
+
 template <typename BuilderT>
 void ClientLibraryTestBase::ComputeAndCompareLiteral(
     BuilderT* builder, const Literal& expected,

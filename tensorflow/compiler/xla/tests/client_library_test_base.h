@@ -165,6 +165,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   void ComputeAndCompareR1(ComputationBuilder* builder,
                            const tensorflow::core::Bitmap& expected,
                            tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+  void ComputeAndCompareR1(XlaBuilder* builder,
+                           const tensorflow::core::Bitmap& expected,
+                           tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
   template <typename NativeT, typename BuilderT>
   void ComputeAndCompareR2(BuilderT* builder, const Array2D<NativeT>& expected,

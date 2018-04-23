@@ -19,10 +19,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -52,7 +51,7 @@ class Bfloat16Test : public ClientLibraryTestBase {
 };
 
 XLA_TEST_F(Bfloat16Test, ScalarOperation) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(2.0f));
   auto y = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(1.0f));
   builder.Add(x, y);
@@ -62,7 +61,7 @@ XLA_TEST_F(Bfloat16Test, ScalarOperation) {
 }
 
 XLA_TEST_F(Bfloat16Test, LogOperation) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(4.0f));
   builder.Log(x);
 
@@ -71,7 +70,7 @@ XLA_TEST_F(Bfloat16Test, LogOperation) {
 }
 
 XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   builder.Neg(builder.ConstantR0<bfloat16>(static_cast<bfloat16>(2.1f)));
 
   ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(-2.1f), {},
@@ -80,7 +79,7 @@ XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
 
 XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
   const int kFeatureIndex = 2;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   auto operand = builder.ConstantR4FromArray4D<bfloat16>(
       {{{{static_cast<bfloat16>(1.f)}, {static_cast<bfloat16>(2.f)}},
@@ -117,7 +116,7 @@ XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
 
 XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
   const int kFeatureIndex = 2;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   auto operand = builder.ConstantR4FromArray4D<bfloat16>(
       Array4D<bfloat16>(2, 2, 2, 1, static_cast<bfloat16>(0.0f)));
