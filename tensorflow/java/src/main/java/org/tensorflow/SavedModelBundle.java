@@ -23,8 +23,58 @@ package org.tensorflow;
  * and a description of the model (a serialized representation of a <a
  * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/meta_graph.proto">MetaGraphDef
  * protocol buffer</a>).
+ *
+ * <p>Also can specify the executor the model about running and session configuration that
+ * serialized protocol buffers message.
  */
 public class SavedModelBundle implements AutoCloseable {
+  /**
+   * The model loader set for run options and session options that just the serialized ConfigProto
+   * message.
+   *
+   * <p>runOptions: serialized RunOptions message. (a {@link org.tensorflow.framework.ConfigProto})
+   * sessionConfig: serialized ConfigProto message.(a {@link org.tensorflow.framework.RunOptions})
+   */
+  public final class Loader {
+    private byte[] runOptions = null;
+    private byte[] sessionConfig = null;
+    private String[] tags = null;
+    private String exportDir = null;
+
+    public Loader withRunOptions(byte[] options) {
+      this.runOptions = options;
+      return this;
+    }
+
+    public Loader withSessionConfig(byte[] config) {
+      this.sessionConfig = config;
+      return this;
+    }
+
+    public Loader addTag(String... tags) {
+      this.tags = tags;
+      return this;
+    }
+
+    public SavedModelBundle load() {
+      return SavedModelBundle.load(exportDir, tags, runOptions, sessionConfig);
+    }
+
+    private Loader(String exportDir) {
+      this.exportDir = exportDir;
+    }
+  }
+  /**
+   * Load a saved model from a export directory. The model that is being loaded should be created
+   * using the <a href="https://www.tensorflow.org/api_docs/python/tf/saved_model">Saved Model
+   * API</a>.
+   *
+   * @param exportDir
+   * @return
+   */
+  public static Loader load(String exportDir) {
+    return new Loader(exportDir);
+  }
 
   /**
    * Load a saved model from an export directory. The model that is being loaded should be created
@@ -36,22 +86,9 @@ public class SavedModelBundle implements AutoCloseable {
    * @return a bundle containing the graph and associated session.
    */
   public static SavedModelBundle load(String exportDir, String... tags) {
-    return load(exportDir, tags, null, null);
+    return load(exportDir).addTag(tags).load();
   }
-   
-    /**
-   * Load a saved model from an export directory. The model that is being loaded should be created
-   * using the <a href="https://www.tensorflow.org/api_docs/python/tf/saved_model">Saved Model
-   * API</a>.
-   *
-   * @param exportDir the directory path containing a saved model.
-   * @param tags the tags identifying the specific metagraphdef to load.
-   * @return a bundle containing the graph and associated session.
-   */
-  public static SavedModelBundle load(String exportDir,byte[] runOptions, byte[] sessionOptions, String... tags) {
-    return load(exportDir, tags, runOptions, sessionOptions);
-  }
-    
+
   /**
    * Returns the serialized <a
    * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/meta_graph.proto">MetaGraphDef
@@ -108,7 +145,8 @@ public class SavedModelBundle implements AutoCloseable {
     return new SavedModelBundle(graph, session, metaGraphDef);
   }
 
-  private static native SavedModelBundle load(String exportDir, String[] tags, byte[] runOptions, byte[] sessionOptions);
+  private static native SavedModelBundle load(
+      String exportDir, String[] tags, byte[] runOptions, byte[] sessionOptions);
 
   static {
     TensorFlow.init();
