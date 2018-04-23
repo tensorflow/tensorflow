@@ -1466,8 +1466,18 @@ def count_nonzero(input_tensor,
   tf.count_nonzero(x, [0, 1])  # 3
   ```
 
+  **NOTE** Strings are compared against zero-length empty string `""`. Any
+  string with a size greater than zero is already considered as nonzero.
+
+  For example:
+  ```python
+  x = tf.constant(["", "a", "  ", "b", ""])
+  tf.count_nonzero(x) # 3, with "a", "  ", and "b" as nonzero strings.
+  ```
+
   Args:
-    input_tensor: The tensor to reduce. Should be of numeric type, or `bool`.
+    input_tensor: The tensor to reduce. Should be of numeric type, `bool`,
+      or `string`.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
@@ -1487,7 +1497,8 @@ def count_nonzero(input_tensor,
 
   with ops.name_scope(name, "count_nonzero", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
-    zero = input_tensor.dtype.as_numpy_dtype()
+    # A scalar of 'zero' is enough as `not_equal` will broadcast.
+    zero = array_ops.zeros([], dtype=input_tensor.dtype)
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU

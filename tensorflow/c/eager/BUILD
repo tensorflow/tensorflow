@@ -41,6 +41,8 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
+            # TODO(b/74620627): move this here
+            "//tensorflow/python:cpp_shape_inference_proto_cc",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [

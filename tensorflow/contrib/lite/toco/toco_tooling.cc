@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/contrib/lite/toco/allocate_transient_arrays.h"
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
@@ -270,10 +271,6 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
 
-  // Fix any issues with IO edges. This must happen after any transform that
-  // may modify the structure of the edges.
-  FixEdgeArrays(model);
-
   if (quantize_output) {
     if (toco_flags.propagate_fake_quant_num_bits()) {
       RunGraphTransformations(model,
@@ -287,23 +284,50 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
                             });
   }
 
+  // Fix any issues with IO edges. This must happen after any transform that
+  // may modify the structure of the edges.
+  FixEdgeArrays(model);
+
   if (quantize_output) {
+    // If the user specified default min/max ranges we need to set all arrays
+    // that didn't either have a min/max specified or get one set via
+    // HardcodeMinMax or PropagateFakeQuantNumBits. This may require running
+    // HardcodeMinMax to move changes through the graph as we make changes.
+    auto propagate_default_min_max =
+        absl::make_unique<PropagateDefaultMinMax>();
     if (toco_flags.has_default_ranges_min() &&
         toco_flags.has_default_ranges_max()) {
-      UseDefaultMinMaxRangeValues(model, toco_flags.default_ranges_min(),
-                                  toco_flags.default_ranges_max());
-      // The new MinMax info may need to be propagated a bit.
+      propagate_default_min_max->DefineTypeRange(
+          ArrayDataType::kUint8, toco_flags.default_ranges_min(),
+          toco_flags.default_ranges_max());
+    }
+    if (toco_flags.has_default_int16_ranges_min() &&
+        toco_flags.has_default_int16_ranges_max()) {
+      propagate_default_min_max->DefineTypeRange(
+          ArrayDataType::kInt16, toco_flags.default_int16_ranges_min(),
+          toco_flags.default_int16_ranges_max());
+    }
+    if (propagate_default_min_max->has_any_ranges_defined()) {
       RunGraphTransformations(
           model, "default min-max range propagation graph transformations",
-          {new HardcodeMinMax});
+          {
+              propagate_default_min_max.release(),
+              new HardcodeMinMax,
+          });
     }
+
     CheckIsReadyForQuantization(*model);
+    auto* ensure_safe_for_int8_kernels =
+        new EnsureUint8WeightsSafeForFastInt8Kernels;
+    ensure_safe_for_int8_kernels->set_allow_nudging_weights(
+        toco_flags.allow_nudging_weights_to_use_fast_gemm_kernel());
     RunGraphTransformations(model, "quantization graph transformations",
                             {
                                 new RemoveTrivialQuantizedActivationFunc,
                                 new RemoveTrivialQuantizedMinMax,
                                 new Quantize,
                                 new RemoveFinalDequantizeOp,
+                                ensure_safe_for_int8_kernels,
                             });
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};

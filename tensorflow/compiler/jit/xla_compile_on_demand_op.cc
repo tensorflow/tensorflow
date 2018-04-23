@@ -67,6 +67,7 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   run_options.set_stream(stream);
   run_options.set_allocator(client->backend().memory_allocator());
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
+  run_options.set_rng_seed(ctx->step_id());
 
   auto run_result = executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
