@@ -137,20 +137,17 @@ class ConvParameters {
     // clang-format on
   }
 
-  // TODO(yangzihao): The purpose of this function is to disable winograd
-  // nonfused conv algorithm for certain input parameters so as to avoid a bug
-  // in cuDNNv5 and cuDNNv6. Remove this once switch to cuDNNv7.
+  // The purpose of this function is to disable winograd nonfused conv algorithm
+  // for certain input parameters so as to avoid a bug in cuDNNv5 and cuDNNv6.
   template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgo() const {
-    int64 total_size = 16 * std::ceil(batch_ / 16.0) *
-                       std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
-                       sizeof(T);
-    int64 threshold = 1LL << 31;
-    if (total_size >= threshold) {
-      return false;
-    } else {
+  bool ShouldIncludeWinogradNonfusedAlgo(
+      perftools::gputools::StreamExecutor* stream_exec) const {
+    // Skip this check for cuDNN 7 and newer.
+    auto version = stream_exec->AsDnn()->GetVersion();
+    if (version.ok() && version.ValueOrDie().major_version() >= 7) {
       return true;
     }
+    return ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
   }
 
  protected:
@@ -166,6 +163,21 @@ class ConvParameters {
   uint64 hash_code_;
 
  private:
+  friend struct ConvParametersPeer;  // For testing purposes.
+
+  template <typename T>
+  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() const {
+    int64 total_size = 16 * std::ceil(batch_ / 16.0) *
+                       std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
+                       sizeof(T);
+    int64 threshold = 1LL << 31;
+    if (total_size >= threshold) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+
   int64 batch_;
   int64 in_depths_;
   int64 out_depths_;

@@ -43,6 +43,7 @@ SessionMgr::SessionMgr(
               new GraphMgr(worker_env, worker_env->device_mgr)))),
       worker_cache_factory_(std::move(worker_cache_factory)) {}
 
+/* static */
 string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
   return strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:",
                          server_def.task_index());
@@ -56,13 +57,14 @@ Status SessionMgr::CreateSession(const string& session,
     return errors::InvalidArgument("Session must be non-empty.");
   }
 
-  const string worker_name = WorkerNameFromServerDef(server_def);
-
   WorkerCacheInterface* worker_cache = nullptr;
+  string worker_name;
   if (server_def.cluster().job().empty()) {
     worker_cache = new WorkerCacheWrapper(default_worker_cache_.get());
+    worker_name = legacy_session_->worker_name;
   } else {
     TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
+    worker_name = WorkerNameFromServerDef(server_def);
   }
 
   if (worker_cache != nullptr & default_worker_cache_.get() != nullptr) {

@@ -114,11 +114,13 @@ bool safe_strtou64(StringPiece str, uint64* value);
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
+// Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
 bool safe_strtof(const char* str, float* value);
 
 // Convert strings to double precision floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
+// Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
 bool safe_strtod(const char* str, double* value);
 
 inline bool ProtoParseNumeric(StringPiece s, int32* value) {

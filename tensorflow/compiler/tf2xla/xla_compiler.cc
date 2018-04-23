@@ -813,4 +813,29 @@ Status XlaCompiler::SetHostToDeviceMetadata(
   return Status::OK();
 }
 
+Status XlaCompiler::GetHostComputeControlDependency(
+    const string& host_compute_name, xla::ComputationDataHandle* handle) {
+  const auto iter = host_compute_control_output_.find(host_compute_name);
+  if (iter == host_compute_control_output_.end()) {
+    return errors::InvalidArgument(
+        "No registered control handle for host compute Op '", host_compute_name,
+        "'");
+  } else {
+    *handle = iter->second;
+  }
+  return Status::OK();
+}
+
+Status XlaCompiler::SetHostComputeControlDependency(
+    const string& host_compute_name, const xla::ComputationDataHandle& handle) {
+  if (host_compute_control_output_.find(host_compute_name) !=
+      host_compute_control_output_.end()) {
+    return errors::InvalidArgument(
+        "Duplicate control handles registered for for host compute Op ",
+        host_compute_name);
+  }
+  host_compute_control_output_[host_compute_name] = handle;
+  return Status::OK();
+}
+
 }  // namespace tensorflow
