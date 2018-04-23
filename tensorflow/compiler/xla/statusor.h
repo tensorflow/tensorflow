@@ -113,17 +113,19 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   StatusOr& operator=(StatusOr&&) = default;
 
   // Conversion copy/move constructor, T must be convertible from U.
-  // TODO(b/62186717): These should not participate in overload resolution if U
-  // is not convertible to T.
-  template <typename U>
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr(const StatusOr<U>& other);
-  template <typename U>
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr(StatusOr<U>&& other);
 
   // Conversion copy/move assignment operator, T must be convertible from U.
-  template <typename U>
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr& operator=(const StatusOr<U>& other);
-  template <typename U>
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr& operator=(StatusOr<U>&& other);
 
   // Constructs a new StatusOr with the given value. After calling this
@@ -233,12 +235,14 @@ StatusOr<T>& StatusOr<T>::operator=(Status&& status) {
 }
 
 template <typename T>
-template <typename U>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
 inline StatusOr<T>::StatusOr(const StatusOr<U>& other)
     : Base(static_cast<const typename StatusOr<U>::Base&>(other)) {}
 
 template <typename T>
-template <typename U>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
 inline StatusOr<T>& StatusOr<T>::operator=(const StatusOr<U>& other) {
   if (other.ok())
     this->Assign(other.ValueOrDie());
@@ -248,12 +252,14 @@ inline StatusOr<T>& StatusOr<T>::operator=(const StatusOr<U>& other) {
 }
 
 template <typename T>
-template <typename U>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
 inline StatusOr<T>::StatusOr(StatusOr<U>&& other)
     : Base(static_cast<typename StatusOr<U>::Base&&>(other)) {}
 
 template <typename T>
-template <typename U>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
 inline StatusOr<T>& StatusOr<T>::operator=(StatusOr<U>&& other) {
   if (other.ok()) {
     this->Assign(std::move(other).ValueOrDie());
