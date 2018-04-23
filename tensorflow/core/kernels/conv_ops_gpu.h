@@ -144,7 +144,7 @@ class ConvParameters {
       perftools::gputools::StreamExecutor* stream_exec) const {
     // Skip this check for cuDNN 7 and newer.
     auto version = stream_exec->AsDnn()->GetVersion();
-    if (version.ok() && std::get<0>(version.ValueOrDie()) >= 7) {
+    if (version.ok() && version.ValueOrDie().major_version() >= 7) {
       return true;
     }
     return ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
