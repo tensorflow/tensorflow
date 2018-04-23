@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
