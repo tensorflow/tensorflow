@@ -70,6 +70,26 @@ class FunctionalOpsTest(test.TestCase):
           initializer=10)
       self.assertAllEqual(880, self.evaluate(r))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testFoldl_SingleInputMultiOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array([1, -1.0])
+      r = functional_ops.foldl(lambda a, x: a + x, elems, initializer)
+      r_value = self.evaluate(r)
+
+      self.assertAllEqual(22, r_value[0])
+      self.assertAllEqual(20, r_value[1])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testFoldl_MultiInputSingleOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      r = functional_ops.foldl(lambda a, x: a + x[0] + x[1], (elems, -elems),
+                               initializer)
+      self.assertAllEqual(1, self.evaluate(r))
+
   def testFoldl_Scoped(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope("root") as varscope:
@@ -104,6 +124,26 @@ class FunctionalOpsTest(test.TestCase):
           elems,
           initializer=10)
       self.assertAllEqual(1282, self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testFoldr_SingleInputMultiOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array([1, -1.0])
+      r = functional_ops.foldr(lambda a, x: a + x, elems, initializer)
+      r_value = self.evaluate(r)
+
+      self.assertAllEqual(22, r_value[0])
+      self.assertAllEqual(20, r_value[1])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testFoldr_MultiInputSingleOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      r = functional_ops.foldr(lambda a, x: a + x[0] + x[1], (elems, -elems),
+                               initializer)
+      self.assertAllEqual(1, self.evaluate(r))
 
   def testFoldr_Scoped(self):
     with self.test_session() as sess:
