@@ -29,7 +29,7 @@ py_library(
         "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
-        "//tensorflow/contrib/coder:coder_ops_py",
+        "//tensorflow/contrib/coder:coder_py",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
