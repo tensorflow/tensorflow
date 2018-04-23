@@ -38,7 +38,8 @@ using AttrValueMap = std::unordered_map<string, AttrValue>;
 // function body in place of function inputs and a resolved input data type.
 struct InputArgExpansion {
   // TODO(ezhulenev): Add support for functions with tensor sequence inputs of
-  // different data types
+  // different data types.
+  // TODO(ezhulenev): Support type parametrized inputs?
   string input_name;                 // name of the function input argument
   DataType data_type;                // input data type
   bool is_ref;                       // if true, inputs are required to be refs
@@ -53,7 +54,8 @@ struct InputArgExpansion {
 // tensors of a function body nodes and a resolved output data type
 struct OutputArgExpansion {
   // TODO(ezhulenev): Add support for functions with tensor sequence outputs of
-  // different data types
+  // different data types.
+  // TODO(ezhulenev): Support type parametrized outputs?
   string output_name;                  // name of the function output argument
   DataType data_type;                  // output data type
   bool is_ref;                         // if true, outputs are refs
@@ -186,13 +188,6 @@ bool HasParametrizedBody(const FunctionDef& func);
 // Check if function has parametrized type or body.
 bool IsParametrized(const FunctionDef& func);
 
-// Make a GrapplerFunctionItem from the function definition and attributes.
-// Return error if the given function def cannot be converted.
-Status MakeGrapplerFunctionItem(
-    const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_instantiation_attr,
-    const FunctionLibraryDefinition& flib, GrapplerFunctionItem* item);
-
 // Register GrapplerFunctionItem input arg expansion and function body outputs
 // in the GrapplerFunctionConnectivity.  Use function library definition to
 // lookup function body nodes output names and ranges.
@@ -200,11 +195,28 @@ Status RegisterGrapplerFunctionConnectivity(
     const GrapplerFunctionItem& item, const FunctionLibraryDefinition& flib,
     GrapplerFunctionConnectivity* connectivity);
 
-// Make a specialized FunctionDef from the GrapplerFunctionItem. Use function
-// library definition to lookup function body nodes output names and ranges.
-Status MakeSpecializedFunctionDef(const GrapplerFunctionItem& item,
-                                  const FunctionLibraryDefinition& flib,
-                                  FunctionDef* func);
+// Make a GrapplerFunctionItem from the function definition and function
+// instantiation attributes (caller node attributes). Returns error if the given
+// function def cannot be converted (e.g. not all attributes are defined).
+Status MakeGrapplerFunctionItem(
+    const FunctionDef& func,
+    const std::unordered_map<string, AttrValue>& func_instantiation_attr,
+    const FunctionLibraryDefinition& flib, GrapplerFunctionItem* item);
+
+// Make a GrapplerFunction item from the function definition. Function must be
+// fully defined (no type or body parametrization).
+// TODO(ezhulenev): Support parametrized functions without fully defined
+// instantiation attributes? Do we ever want to optimize parametrized function
+// without specializing it to it's instantiation attributes (at least types)?
+Status MakeGrapplerFunctionItem(const FunctionDef& func,
+                                const FunctionLibraryDefinition& flib,
+                                GrapplerFunctionItem* item);
+
+// Make a FunctionDef from the GrapplerFunctionItem. Use function library
+// definition to lookup function body nodes output names and ranges.
+Status MakeFunctionDef(const GrapplerFunctionItem& item,
+                       const FunctionLibraryDefinition& flib,
+                       FunctionDef* func);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

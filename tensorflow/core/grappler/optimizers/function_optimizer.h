@@ -26,8 +26,9 @@ namespace grappler {
 // operations to make the overall graph more efficient.
 class FunctionOptimizer : public GraphOptimizer {
  public:
-  FunctionOptimizer(RewriterConfig::Toggle opt_level) : opt_level_(opt_level) {}
-  ~FunctionOptimizer() override {}
+  explicit FunctionOptimizer(RewriterConfig::Toggle opt_level)
+      : opt_level_(opt_level) {}
+  ~FunctionOptimizer() override = default;
 
   string name() const override { return "function_optimizer"; };
 
@@ -44,6 +45,7 @@ class FunctionOptimizer : public GraphOptimizer {
     bool enable_function_inlining = true;
     bool enable_function_specialization = true;
     bool enable_symbolic_gradient_inlining = true;
+    bool enable_trim_function_library = true;
   };
 
   RewriterConfig::Toggle opt_level_;

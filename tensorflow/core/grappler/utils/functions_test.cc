@@ -524,7 +524,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
   EXPECT_EQ("two", cast.input(0));
 }
 
-TEST_F(FunctionsTest, MakeSpecializedFunctionDef) {
+TEST_F(FunctionsTest, MakeFunctionDef) {
   const Tensor kTwo = test::AsScalar<int64>(2);
   FunctionDef func = FunctionDefHelper::Define(
       // Name
@@ -550,7 +550,7 @@ TEST_F(FunctionsTest, MakeSpecializedFunctionDef) {
   TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
 
   FunctionDef specialized;
-  TF_EXPECT_OK(MakeSpecializedFunctionDef(item, flib, &specialized));
+  TF_EXPECT_OK(MakeFunctionDef(item, flib, &specialized));
 
   // Input and output types are resolved based on instantiation attributes.
   EXPECT_EQ("x", specialized.signature().input_arg(0).name());
@@ -573,7 +573,7 @@ TEST_F(FunctionsTest, MakeSpecializedFunctionDef) {
   EXPECT_EQ(2, count);
 }
 
-TEST_F(FunctionsTest, SwapFunctionBodyAndMakeSpecializedFunctionDef) {
+TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   using test::function::NDef;
 
   FunctionDef mul_func = FunctionDefHelper::Create(
@@ -606,7 +606,7 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeSpecializedFunctionDef) {
   // Replace function body with identity function
   item.SwapFunctionBody(std::move(id_func_body));
   FunctionDef specialized;
-  TF_EXPECT_OK(MakeSpecializedFunctionDef(item, flib, &specialized));
+  TF_EXPECT_OK(MakeFunctionDef(item, flib, &specialized));
 
   // Check that graph body was updated.
   int count = 0;

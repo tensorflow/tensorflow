@@ -219,11 +219,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (already_optimized) {
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     ReassignColocation(optimized_graph);
-    // Make sure that the optimizers preserved the graph version and library.
-    DCHECK_GE(optimized_graph->library().function_size(),
-              item.graph.library().function_size());
-    DCHECK_GE(optimized_graph->library().gradient_size(),
-              item.graph.library().gradient_size());
+    // Make sure that the optimizers preserved the graph version.
     DCHECK_EQ(optimized_graph->versions().producer(),
               item.graph.versions().producer());
   }
