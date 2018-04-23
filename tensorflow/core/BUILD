@@ -271,7 +271,7 @@ PLATFORM_BASE_HDRS = [
     "platform/logging.h",
     "platform/macros.h",
     "platform/types.h",
-    "platform/cpu_info.h",
+    "platform/byte_order.h",
 ]
 
 PLATFORM_OTHER_HDRS = [
@@ -279,6 +279,7 @@ PLATFORM_OTHER_HDRS = [
     "platform/stacktrace.h",
     "platform/stacktrace_handler.h",
     "platform/context.h",
+    "platform/cpu_info.h",
     "platform/cpu_feature_guard.h",
     "platform/dynamic_annotations.h",
     "platform/env.h",
@@ -307,7 +308,6 @@ cc_library(
     srcs = glob([
         "platform/*/integral_types.h",
         "platform/*/logging.h",
-        "platform/*/cpu_info.h",
     ]),
     hdrs = PLATFORM_BASE_HDRS,
     deps = [
@@ -658,6 +658,7 @@ cc_library(
         "framework/tensor_types.h",
         "framework/type_traits.h",
         "lib/bfloat16/bfloat16.h",
+        "platform/byte_order.h",
         "platform/default/dynamic_annotations.h",
         "platform/default/integral_types.h",
         "platform/default/logging.h",
@@ -1903,6 +1904,7 @@ cc_library(
         "lib/core/casts.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
+        "platform/byte_order.h",
         "platform/cpu_info.h",
         "platform/default/integral_types.h",
         "platform/default/logging.h",
