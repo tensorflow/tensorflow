@@ -534,7 +534,7 @@ class OpKernelContext {
     Rendezvous* rendezvous = nullptr;
 
     // Mechanism for executing a collective op that needs to coordinate
-    // with parallel instances runing on other devices.
+    // with parallel instances running on other devices.
     CollectiveExecutor* collective_executor = nullptr;
 
     // The session state for this op.

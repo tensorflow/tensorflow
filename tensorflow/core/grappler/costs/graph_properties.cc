@@ -553,7 +553,7 @@ class SymbolicShapeRefiner {
     }
   };
 
-  // Compute the shape of the tensors outputed by node 'node' at output port
+  // Compute the shape of the tensors outputted by node 'node' at output port
   // 'port_index' as the intersection of shape1 and shape2.
   ShapeHandle OutputAsIntersection(const Node* node, int port_index,
                                    ShapeHandle shape1, ShapeHandle shape2) {
@@ -598,7 +598,7 @@ class SymbolicShapeRefiner {
     return merged;
   }
 
-  // Compute the shape of the tensors outputed by node 'node' at output port
+  // Compute the shape of the tensors outputted by node 'node' at output port
   // 'port_index' as the union of shape1 and shape2.
   ShapeHandle OutputAsUnion(const Node* node, int port_index,
                             ShapeHandle shape1, ShapeHandle shape2) {
@@ -1043,7 +1043,7 @@ Status GraphProperties::PropagateShapes(
         resources,
     int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
-  // incorrect shape functions. The algoritm should converge in at most
+  // incorrect shape functions. The algorithm should converge in at most
   // num_nested_loops^2 * max_rank. We approximate max_rank with the constant 4.
   // The same applies to resources.
   VLOG(1) << "Propagating (relax=" << relax << ") " << new_shapes->size()
