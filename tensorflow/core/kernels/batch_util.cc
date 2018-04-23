@@ -134,6 +134,8 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index) {
   switch (element.dtype()) {
     TF_CALL_ALL_TYPES(HANDLE_TYPE);
     TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
+    TF_CALL_uint32(HANDLE_TYPE);
+    TF_CALL_uint64(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
