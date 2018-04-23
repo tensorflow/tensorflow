@@ -65,7 +65,7 @@ table Tensor {
   quantization:QuantizationParameters;  // Optional.
 }
 
-// A list of builtin operators. Builtin operators a slighlty faster than custom
+// A list of builtin operators. Builtin operators are slightly faster than custom
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.

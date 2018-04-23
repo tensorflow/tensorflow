@@ -104,7 +104,7 @@ class RoundRobinPlacementMixin(object):
             cov_update_thunks, inv_update_thunks)
 
   def make_vars_and_create_op_thunks(self, scope=None):
-    """Make vars and create op thunks w/ a round-robin device placement strat.
+    """Make vars and create op thunks w/ a round-robin device placement start.
 
     For each factor, all of that factor's cov variables and their associated
     update ops will be placed on a particular device.  A new device is chosen
