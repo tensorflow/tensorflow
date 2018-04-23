@@ -22,11 +22,14 @@ from __future__ import print_function
 import copy
 import json
 import os
+import weakref
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
@@ -37,6 +40,7 @@ from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_wi
 from tensorflow.python.keras._impl.keras.utils.layer_utils import print_summary as print_layer_summary
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpointable
+from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -113,6 +117,13 @@ class Network(base_layer.Layer):
     # Used in symbolic mode only, only in conjonction with graph-networks
     self._outbound_nodes = []
     self._inbound_nodes = []
+
+    self._checkpointable_saver = checkpointable_utils.CheckpointableSaver(
+        weakref.ref(self))
+    # A zero-argument function which should be called and set back to None as
+    # soon as the network is built (only applicable to subclassed Models). Runs
+    # restore operations when graph building.
+    self._in_progress_restore_finalizer = None
 
   def _init_graph_network(self, inputs, outputs, name=None):
     self._uses_inputs_arg = True
@@ -1125,62 +1136,179 @@ class Network(base_layer.Layer):
     from tensorflow.python.keras._impl.keras.models import save_model  # pylint: disable=g-import-not-at-top
     save_model(self, filepath, overwrite, include_optimizer)
 
-  def save_weights(self, filepath, overwrite=True):
-    """Dumps all layer weights to a HDF5 file.
+  def save_weights(self, filepath, overwrite=True, save_format=None):
+    """Saves all layer weights.
 
-    The weight file has:
-        - `layer_names` (attribute), a list of strings
-            (ordered names of model layers).
-        - For every layer, a `group` named `layer.name`
-            - For every such layer group, a group attribute `weight_names`,
-                a list of strings
-                (ordered names of weights tensor of the layer).
-            - For every weight in the layer, a dataset
-                storing the weight value, named after the weight tensor.
+    Either saves in HDF5 or in TensorFlow format based on the `save_format`
+    argument.
+
+    When saving in HDF5 format, the weight file has:
+      - `layer_names` (attribute), a list of strings
+          (ordered names of model layers).
+      - For every layer, a `group` named `layer.name`
+          - For every such layer group, a group attribute `weight_names`,
+              a list of strings
+              (ordered names of weights tensor of the layer).
+          - For every weight in the layer, a dataset
+              storing the weight value, named after the weight tensor.
+
+    Currently the TensorFlow format is only supported for user-defined classes
+    inheriting from `tf.keras.Model`, and not for networks constructed from
+    inputs and outputs (using `tf.keras.Model(inputs, outputs)`).
+
+    When saving in TensorFlow format, all objects referenced by the network are
+    saved in the same format as `tf.train.Checkpoint`, including any `Layer`s or
+    `Optimizer`s assigned to attributes in the constructor. See
+    `tf.train.Checkpoint`'s documentation for details.
 
     Arguments:
-        filepath: String, path to the file to save the weights to.
+        filepath: String, path to the file to save the weights to. When saving
+            in TensorFlow format, this is the prefix used for checkpoint files
+            (multiple files are generated). Note that the '.h5' suffix causes
+            weights to be saved in HDF5 format.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
+        save_format: Either 'tf' or 'h5'. If `None`, defaults to 'tf' for
+            user-defined classes inheriting from `tf.keras.Model` and 'h5' for
+            networks constructed from inputs and outputs. `filepath`s ending in
+            '.h5' or '.keras' always default to HDF5. Currently only 'h5' is
+            supported for networks constructed from inputs and outputs. Once
+            supported, the default for all networks will switch to 'tf'.
 
     Raises:
-        ImportError: If h5py is not available.
+        ImportError: If h5py is not available when attempting to save in HDF5
+            format.
+        ValueError: For invalid/unknown format arguments.
     """
-    if h5py is None:
-      raise ImportError('`save_weights` requires h5py.')
+    filepath_is_h5 = filepath.endswith('.h5') or filepath.endswith('.keras')
+    if save_format is None:
+      if filepath_is_h5:
+        save_format = 'h5'
+      else:
+        if self._is_graph_network:
+          # TODO(allenl): Handle loading by weight index and fix dependencies,
+          # then enable 'tensorflow' format by default for graph networks.
+          save_format = 'h5'
+        else:
+          # Subclassed models save in TensorFlow format by default.
+          save_format = 'tf'
+    else:
+      user_format = save_format.lower().strip()
+      if user_format in ('tensorflow', 'tf'):
+        save_format = 'tf'
+      elif user_format in ('hdf5', 'h5', 'keras'):
+        save_format = 'h5'
+      else:
+        raise ValueError(
+            'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
+                save_format,))
+    if save_format == 'tf' and filepath_is_h5:
+      raise ValueError(
+          ('save_weights got save_format="tf"/"tensorflow", but the '
+           'filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras" '
+           'when saving in TensorFlow format.')
+          % filepath)
+
+    if save_format == 'h5' and h5py is None:
+      raise ImportError(
+          '`save_weights` requires h5py when saving in hdf5.')
+    if save_format == 'tf':
+      if self._is_graph_network:
+        raise NotImplementedError(
+            'Networks constructed from inputs and outputs do not yet support '
+            'saving weights in the TensorFlow ("tf") save_format.')
+      check_filepath = filepath + '.index'
+    else:
+      check_filepath = filepath
     # If file exists and should not be overwritten:
-    if not overwrite and os.path.isfile(filepath):
-      proceed = ask_to_proceed_with_overwrite(filepath)
+    if not overwrite and os.path.isfile(check_filepath):
+      proceed = ask_to_proceed_with_overwrite(check_filepath)
       if not proceed:
         return
-    with h5py.File(filepath, 'w') as f:
-      saving.save_weights_to_hdf5_group(f, self.layers)
+    if save_format == 'h5':
+      with h5py.File(filepath, 'w') as f:
+        saving.save_weights_to_hdf5_group(f, self.layers)
+    else:
+      self._checkpointable_saver.save(filepath)
 
   def load_weights(self, filepath, by_name=False):
-    """Loads all layer weights from a HDF5 save file.
+    """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
-    If `by_name` is False (default) weights are loaded
-    based on the network's topology, meaning the architecture
-    should be the same as when the weights were saved.
-    Note that layers that don't have weights are not taken
-    into account in the topological ordering, so adding or
-    removing layers is fine as long as they don't have weights.
+    If `by_name` is False weights are loaded based on the network's
+    topology. This means the architecture should be the same as when the weights
+    were saved.  Note that layers that don't have weights are not taken into
+    account in the topological ordering, so adding or removing layers is fine as
+    long as they don't have weights.
 
-    If `by_name` is True, weights are loaded into layers
-    only if they share the same name. This is useful
-    for fine-tuning or transfer-learning models where
+    If `by_name` is True, weights are loaded into layers only if they share the
+    same name. This is useful for fine-tuning or transfer-learning models where
     some of the layers have changed.
 
+    Only topological loading (`by_name=False`) is supported when loading weights
+    from the TensorFlow format. Note that topological loading differs slightly
+    between TensorFlow and HDF5 formats for user-defined classes inheriting from
+    `tf.keras.Model`: HDF5 loads based on a flattened list of weights, while the
+    TensorFlow format loads based on the object-local names of attributes to
+    which layers are assigned in the `Model`'s constructor.
+
     Arguments:
-        filepath: String, path to the weights file to load.
-        by_name: Boolean, whether to load weights by name
-            or by topological order.
+        filepath: String, path to the weights file to load. For weight files in
+            TensorFlow format, this is the file prefix (the same as was passed
+            to `save_weights`).
+        by_name: Boolean, whether to load weights by name or by topological
+            order. Only topological loading is supported for weight files in
+            TensorFlow format.
+
+    Returns:
+        When loading a weight file in TensorFlow format, returns the same status
+        object as `tf.train.Checkpoint.restore`. When graph building, restore
+        ops are run automatically as soon as the network is built (on first call
+        for user-defined classes inheriting from `Model`, immediately if it is
+        already built).
+
+        When loading weights in HDF5 format, returns `None`.
 
     Raises:
-        ImportError: If h5py is not available.
+        ImportError: If h5py is not available and the weight file is in HDF5
+            format.
     """
+    if self._is_graph_network:
+      # Graph networks do not currently support TensorFlow formatted weight
+      # files.
+      save_format = 'h5'
+    else:
+      save_format = None
+    if save_format is None:
+      try:
+        pywrap_tensorflow.NewCheckpointReader(filepath)
+        save_format = 'tf'
+      except errors_impl.DataLossError:
+        # The checkpoint is not readable in TensorFlow format. Try HDF5.
+        save_format = 'h5'
+    if save_format == 'tf':
+      status = self._checkpointable_saver.restore(filepath)
+      if by_name:
+        raise NotImplementedError(
+            'Weights may only be loaded based on topology into Models when '
+            'loading TensorFlow-formatted weights (got by_name=True to '
+            'load_weights).')
+      if not context.executing_eagerly():
+        finalizer = status.run_restore_ops
+        if self.built:
+          finalizer()
+        else:
+          # Hold on to this status object until the network is built (for
+          # subclassed Models). Then we'll run restore ops if necessary.
+          self._in_progress_restore_finalizer = finalizer
+      return status
     if h5py is None:
-      raise ImportError('`load_weights` requires h5py.')
+      raise ImportError(
+          '`load_weights` requires h5py when loading weights from HDF5.')
+    if self._is_graph_network and not self.built:
+      raise NotImplementedError(
+          'Unable to load weights saved in HDF5 format into a subclassed '
+          'Model which has not created its variables yet. Call the Model '
+          'first, then load the weights.')
     with h5py.File(filepath, 'r') as f:
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
@@ -1188,6 +1316,14 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
+
+  def _post_build_cleanup(self):
+    super(Network, self)._post_build_cleanup()
+    if self._in_progress_restore_finalizer is not None:
+      # Runs queued restore operations left over from load_weights when graph
+      # building.
+      self._in_progress_restore_finalizer()
+      self._in_progress_restore_finalizer = None
 
   def _updated_config(self):
     """Util shared between different serialization methods.

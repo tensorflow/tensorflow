@@ -726,7 +726,16 @@ class Layer(checkpointable.CheckpointableBase):
     if hasattr(self, '_initial_weights') and self._initial_weights is not None:
       self.set_weights(self._initial_weights)
       del self._initial_weights
+    self._post_build_cleanup()
     return outputs
+
+  def _post_build_cleanup(self):
+    """Hooks to run after all sub-Layers are built."""
+    # Note that in addition to Layer.__call__, this method is called by Model
+    # after building a graph network (which skips __call__). It should be called
+    # when possible if self.built may have switched from False to True, and is
+    # idempotent.
+    pass  # No-op for Layers which don't override this method.
 
   def apply(self, inputs, *args, **kwargs):
     """Apply the layer on a input.

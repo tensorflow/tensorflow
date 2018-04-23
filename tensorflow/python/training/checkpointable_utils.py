@@ -616,11 +616,10 @@ class CheckpointableSaver(object):
     # Allow passing in a weak reference to avoid reference cycles when
     # `Checkpointable` objects save themselves.
     self._root_checkpointable_ref = root_checkpointable
-    if not context.executing_eagerly():
-      with ops.device("/cpu:0"):
-        self._file_prefix_placeholder = constant_op.constant("model")
-    else:
-      self._file_prefix_placeholder = None
+    # The file prefix placeholder is created lazily when graph building (and not
+    # at all when executing eagerly) to avoid creating ops in the constructor
+    # (when they may never be necessary).
+    self._file_prefix_placeholder = None
 
     # Op caching for save
     self._object_graph_feed_tensor = None
@@ -778,6 +777,9 @@ class CheckpointableSaver(object):
       return InitializationOnlyStatus(self._root_checkpointable)
     in_graph_mode = not context.executing_eagerly()
     if in_graph_mode:
+      if self._file_prefix_placeholder is None:
+        with ops.device("/cpu:0"):
+          self._file_prefix_placeholder = constant_op.constant("model")
       file_prefix_tensor = self._file_prefix_placeholder
       file_prefix_feed_dict = {self._file_prefix_placeholder: save_path}
     else:
