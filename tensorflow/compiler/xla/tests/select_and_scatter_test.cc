@@ -19,11 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -50,7 +50,7 @@ class SelectAndScatterTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<SelectAndScatterTestParam> {
  public:
-  SelectAndScatterTest() : builder_(client_, TestName()) {
+  SelectAndScatterTest() : builder_(TestName()) {
     // Create S32 GE and ADD computations for select and scatter respectively.
     ge_s32_ = CreateScalarGeComputation(S32, &builder_);
     add_s32_ = CreateScalarAddComputation(S32, &builder_);
@@ -60,13 +60,13 @@ class SelectAndScatterTest
     min_f32_ = CreateScalarMinComputation(F32, &builder_);
   }
 
-  ComputationBuilder builder_;
-  Computation ge_s32_;
-  Computation add_s32_;
-  Computation ge_f32_;
-  Computation add_f32_;
-  Computation max_f32_;
-  Computation min_f32_;
+  XlaBuilder builder_;
+  XlaComputation ge_s32_;
+  XlaComputation add_s32_;
+  XlaComputation ge_f32_;
+  XlaComputation add_f32_;
+  XlaComputation max_f32_;
+  XlaComputation min_f32_;
 };
 
 XLA_TEST_P(SelectAndScatterTest, ParamTest) {
@@ -80,12 +80,11 @@ XLA_TEST_P(SelectAndScatterTest, ParamTest) {
   s.FillRandom(12.0f);
   auto source = builder_.ConstantFromArray(s);
 
-  auto select_and_scatter = builder_.SelectAndScatter(
-      operand, ge_f32_, GetParam().window_dimensions, GetParam().window_strides,
-      GetParam().padding_type, source, builder_.ConstantR0<float>(0.0f),
-      add_f32_);
+  builder_.SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
+                            GetParam().window_strides, GetParam().padding_type,
+                            source, builder_.ConstantR0<float>(0.0f), add_f32_);
 
-  ComputeAndCompare(&builder_, select_and_scatter, {}, ErrorSpec(1e-5));
+  ComputeAndCompare(&builder_, {}, ErrorSpec(1e-5));
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -250,6 +249,21 @@ XLA_TEST_F(SelectAndScatterTest, R2S32) {
                             /*window_strides=*/{2, 3}, Padding::kValid, source,
                             builder_.ConstantR0<int32>(0), add_s32_);
   ComputeAndCompareR2<int32>(&builder_, expected, {});
+}
+
+// Test for tie breaking rule in ge_f32_. When a tie is present, the operand
+// that has the lower lexicographical order (smaller index) should be chosen.
+XLA_TEST_F(SelectAndScatterTest, R2F32Tie) {
+  const auto operand = builder_.ConstantR2<float>(
+      {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}});
+  const auto source = builder_.ConstantR2<float>(
+      {{1.0f, 2.0f, 3.0f}, {4.f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}});
+  Array2D<float> expected(
+      {{12.f, 9.f, 0.f}, {15.f, 9.f, 0.f}, {0.f, 0.f, 0.f}});
+  builder_.SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3, 3},
+                            /*window_strides=*/{1, 1}, Padding::kSame, source,
+                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  ComputeAndCompareR2<float>(&builder_, expected, {}, ErrorSpec(1e-7));
 }
 
 // Similar to SelectAndScatterTest.R2S32 but the input is transposed.

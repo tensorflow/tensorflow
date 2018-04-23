@@ -321,7 +321,7 @@ TEST(FlatMap, Copy) {
     NumMap copy2;
     copy2 = src;
     EXPECT_EQ(Contents(src), Contents(copy2));
-    copy2 = copy2;  // Self-assignment
+    copy2 = *&copy2;  // Self-assignment, avoiding -Wself-assign.
     EXPECT_EQ(Contents(src), Contents(copy2));
   }
 }

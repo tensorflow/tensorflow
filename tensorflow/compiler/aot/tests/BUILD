@@ -14,6 +14,7 @@ test_suite(
         ":test_graph_tfadd_test",
         ":test_graph_tfadd_with_ckpt_saver_test",
         ":test_graph_tfadd_with_ckpt_test",
+        ":test_graph_tfassert_eq_test",
         ":test_graph_tffunction_test",
         ":test_graph_tfgather_test",
         ":test_graph_tfmatmul_test",
@@ -33,6 +34,7 @@ py_binary(
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -52,6 +54,7 @@ genrule(
         "test_graph_tfadd_with_ckpt_saver.ckpt",
         "test_graph_tfadd_with_ckpt_saver.pb",
         "test_graph_tfadd_with_ckpt_saver.saver",
+        "test_graph_tfassert_eq.pb",
         "test_graph_tffunction.pb",
         "test_graph_tfgather.pb",
         "test_graph_tfmatmul.pb",
@@ -99,6 +102,17 @@ tf_library(
     freeze_checkpoint = "test_graph_tfadd_with_ckpt_saver.ckpt",
     freeze_saver = "test_graph_tfadd_with_ckpt_saver.saver",
     graph = "test_graph_tfadd_with_ckpt_saver.pb",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfassert_eq",
+    testonly = 1,
+    config = "test_graph_tfassert_eq.config.pbtxt",
+    cpp_class = "AssertComp",
+    graph = "test_graph_tfassert_eq.pb",
     tags = [
         "manual",
     ],
@@ -170,6 +184,7 @@ tf_cc_test(
         ":test_graph_tfadd",
         ":test_graph_tfadd_with_ckpt",
         ":test_graph_tfadd_with_ckpt_saver",
+        ":test_graph_tfassert_eq",
         ":test_graph_tffunction",
         ":test_graph_tfgather",
         ":test_graph_tfmatmul",
@@ -181,18 +196,4 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

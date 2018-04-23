@@ -23,6 +23,7 @@ import glob
 import json
 import os
 import platform
+import re
 
 import numpy as np
 import six
@@ -1411,7 +1412,11 @@ class DebugDumpDir(object):
 
     return self._watch_key_to_datum[device_name].get(debug_watch_key, [])
 
-  def find(self, predicate, first_n=0, device_name=None):
+  def find(self,
+           predicate,
+           first_n=0,
+           device_name=None,
+           exclude_node_names=None):
     """Find dumped tensor data by a certain predicate.
 
     Args:
@@ -1430,17 +1435,24 @@ class DebugDumpDir(object):
         time order) for which the predicate returns True. To return all the
         `DebugTensotDatum` instances, let first_n be <= 0.
       device_name: optional device name.
+      exclude_node_names: Optional regular expression to exclude nodes with
+        names matching the regular expression.
 
     Returns:
       A list of all `DebugTensorDatum` objects in this `DebugDumpDir` object
        for which predicate returns True, sorted in ascending order of the
        timestamp.
     """
+    if exclude_node_names:
+      exclude_node_names = re.compile(exclude_node_names)
 
     matched_data = []
     for device in (self._dump_tensor_data if device_name is None
                    else (self._dump_tensor_data[device_name],)):
       for datum in self._dump_tensor_data[device]:
+        if exclude_node_names and exclude_node_names.match(datum.node_name):
+          continue
+
         if predicate(datum, datum.get_tensor()):
           matched_data.append(datum)
 

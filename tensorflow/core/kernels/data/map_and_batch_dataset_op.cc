@@ -66,28 +66,37 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 errors::InvalidArgument(
                     "num_parallel_batches must be greater than zero."));
 
+    bool drop_remainder;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
+
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(
                             func_, std::move(other_arguments), &captured_func));
 
-    *output = new Dataset(input, batch_size, num_parallel_batches,
-                          output_types_, output_shapes_,
+    *output = new Dataset(ctx, input, batch_size, num_parallel_batches,
+                          drop_remainder, output_types_, output_shapes_, func_,
                           std::move(captured_func), &ctx->eigen_cpu_device());
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(const DatasetBase* input, int64 batch_size,
-            int64 num_parallel_batches, const DataTypeVector& output_types,
+    Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 batch_size,
+            int64 num_parallel_batches, bool drop_remainder,
+            const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
+            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const Eigen::ThreadPoolDevice* device)
-        : input_(input),
+        : GraphDatasetBase(ctx),
+          input_(input),
           batch_size_(batch_size),
           num_parallel_batches_(num_parallel_batches),
+          drop_remainder_(drop_remainder),
           output_types_(output_types),
           output_shapes_(output_shapes),
+          map_fn_(func),
           captured_func_(std::move(captured_func)),
           device_(device) {
       input_->Ref();
@@ -110,6 +119,48 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() override { return "MapAndBatchDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, map_fn_.name()));
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      Node* batch_size_node;
+      TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size_node));
+      Node* num_parallel_batches_node;
+      TF_RETURN_IF_ERROR(
+          b->AddScalar(num_parallel_batches_, &num_parallel_batches_node));
+      Node* drop_remainder_node;
+      TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder_node));
+
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      std::vector<Node*> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
+      for (const Tensor& t : captured_func_->captured_inputs()) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        other_arguments.emplace_back(node);
+        other_arguments_types.emplace_back(t.dtype());
+      }
+      AttrValue f;
+      b->BuildAttrValue(map_fn_, &f);
+      AttrValue other_arguments_types_attr;
+      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this,
+          {std::make_pair(0, input_graph_node),
+           std::make_pair(2, batch_size_node),
+           std::make_pair(3, num_parallel_batches_node),
+           std::make_pair(4, drop_remainder_node)},  // Single tensor inputs.
+          {std::make_pair(1, other_arguments)},      // Tensor list inputs.
+          {std::make_pair("f", f),
+           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+          output));
+      return Status::OK();
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -177,13 +228,21 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           batch_results_[current_batch_index_].output.clear();
         } else {
           if (num_elements < dataset()->batch_size_) {
+            if (dataset()->drop_remainder_) {
+              // Deallocate tensors allocated for the output.
+              batch_results_[current_batch_index_].output.clear();
+              *end_of_sequence = true;
+              return Status::OK();
+            }
             const std::vector<Tensor>& output =
                 batch_results_[current_batch_index_].output;
             for (size_t i = 0; i < output.size(); ++i) {
               TensorShape component_shape(
                   batch_results_[current_batch_index_].output[i].shape());
               component_shape.set_dim(0, num_elements);
-              Tensor component(ctx->allocator({}), output[i].dtype(),
+              AllocatorAttributes attr;
+              attr.set_gpu_compatible(true);
+              Tensor component(ctx->allocator(attr), output[i].dtype(),
                                component_shape);
               TF_RETURN_IF_ERROR(
                   CopyPartialBatch(&component, output[i], num_elements));
@@ -203,9 +262,83 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return status;
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (current_batch_index_ == -1) {
+          // Iterator has not been used. Nothing to save.
+          return Status::OK();
+        }
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_batch_index"),
+                                               current_batch_index_));
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name("invocation_results_size"), invocation_results_.size()));
+        for (size_t i = 0; i < invocation_results_.size(); ++i) {
+          TF_RETURN_IF_ERROR(WriteInvocationResultLocked(writer, i));
+        }
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("batch_results_size"),
+                                               batch_results_.size()));
+        for (size_t i = 0; i < batch_results_.size(); ++i) {
+          TF_RETURN_IF_ERROR(WriteBatchResultLocked(writer, i));
+        }
+        return Status::OK();
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        if (!reader->Contains(full_name("current_batch_index"))) {
+          // Iterator was never used so nothing to restore.
+          return Status::OK();
+        }
+        {
+          int64 temp;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("current_batch_index"), &temp));
+          current_batch_index_ = static_cast<int32>(temp);
+          if (current_batch_index_ != temp) {
+            return errors::Internal("Invalid value for current_batch_index ",
+                                    temp);
+          }
+        }
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        size_t invocation_results_size;
+        {
+          int64 temp;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("invocation_results_size"), &temp));
+          invocation_results_size = static_cast<size_t>(temp);
+          if (invocation_results_size != temp) {
+            return errors::Internal(
+                "Invalid value for invocation_results_size ", temp);
+          }
+        }
+        CHECK_EQ(invocation_results_.size(), invocation_results_size);
+        for (size_t i = 0; i < invocation_results_size; ++i) {
+          TF_RETURN_IF_ERROR(ReadInvocationResultLocked(reader, i));
+        }
+        size_t batch_results_size;
+        {
+          int64 temp;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("batch_results_size"), &temp));
+          batch_results_size = static_cast<size_t>(temp);
+          if (batch_results_size != temp) {
+            return errors::Internal("Invalid value for batch_results_size ",
+                                    temp);
+          }
+        }
+        CHECK_EQ(batch_results_.size(), batch_results_size);
+        for (size_t i = 0; i < batch_results_size; ++i) {
+          TF_RETURN_IF_ERROR(ReadBatchResultLocked(reader, i));
+        }
+        return Status::OK();
+      }
+
      private:
       struct BatchResult {
-        mutex mu;
+        mutex mu ACQUIRED_AFTER(mu_);
         bool output_allocated GUARDED_BY(mu);
         std::vector<Tensor> output;
         std::unique_ptr<BlockingCounter> counter;
@@ -255,7 +388,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         for (size_t i = 0; i < num_components; ++i) {
           TensorShape component_shape({dataset()->batch_size_});
           component_shape.AppendShape(return_values[i].shape());
-          Tensor component(ctx->allocator({}), return_values[i].dtype(),
+          AllocatorAttributes attr;
+          attr.set_gpu_compatible(true);
+          Tensor component(ctx->allocator(attr), return_values[i].dtype(),
                            component_shape);
           batch_result->output.emplace_back(std::move(component));
         }
@@ -377,6 +512,151 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return status;
       }
 
+      Status WriteInvocationResultLocked(IteratorStateWriter* writer,
+                                         size_t index)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        const InvocationResult& result = invocation_results_[index];
+        string prefix = strings::StrCat("invocation_results_", index);
+        TF_RETURN_IF_ERROR(WriteStatusLocked(
+            writer, full_name(strings::StrCat(prefix, "_status")),
+            result.status));
+        if (result.end_of_input) {
+          TF_RETURN_IF_ERROR(writer->WriteScalar(
+              full_name(strings::StrCat(prefix, "_end_of_input")), ""));
+        }
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(strings::StrCat(prefix, "_return_values_size")),
+            result.return_values.size()));
+        for (size_t i = 0; i < result.return_values.size(); i++) {
+          TF_RETURN_IF_ERROR(writer->WriteTensor(
+              full_name(strings::StrCat(prefix, "_return_values_", i)),
+              result.return_values[i]));
+        }
+        return Status::OK();
+      }
+
+      Status ReadInvocationResultLocked(IteratorStateReader* reader,
+                                        size_t index)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        InvocationResult* result = &invocation_results_[index];
+        string prefix = strings::StrCat("invocation_results_", index);
+        TF_RETURN_IF_ERROR(ReadStatusLocked(
+            reader, full_name(strings::StrCat(prefix, "_status")),
+            &result->status));
+        result->end_of_input = reader->Contains(
+            full_name(strings::StrCat(prefix, "_end_of_input")));
+        size_t return_values_size;
+        {
+          int64 temp;
+          TF_RETURN_IF_ERROR(reader->ReadScalar(
+              full_name(strings::StrCat(prefix, "_return_values_size")),
+              &temp));
+          return_values_size = static_cast<size_t>(temp);
+          if (temp != return_values_size) {
+            return errors::Internal("Invalid value for return_values_size ",
+                                    return_values_size);
+          }
+        }
+        result->return_values.reserve(return_values_size);
+        for (size_t i = 0; i < return_values_size; i++) {
+          result->return_values.emplace_back();
+          TF_RETURN_IF_ERROR(reader->ReadTensor(
+              full_name(strings::StrCat(prefix, "_return_values_", i)),
+              &result->return_values.back()));
+        }
+        return Status::OK();
+      }
+
+      Status WriteBatchResultLocked(IteratorStateWriter* writer, size_t index)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        // Wait for the map_fn dispatches made in `InvokeFunctionLocked` to
+        // finish. This may delay saving a checkpoint by a bit but keeps the
+        // code clean and also saves us from checkpointing the state of the
+        // `BlockingCounter`.
+        batch_results_[index].counter->Wait();
+        const BatchResult& result = batch_results_[index];
+        string prefix = strings::StrCat("batch_results_", index);
+        {
+          mutex_lock l(batch_results_[index].mu);
+          if (result.output_allocated) {
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                full_name(strings::StrCat(prefix, "_output_allocated")), ""));
+          }
+        }
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(strings::StrCat(prefix, "_output_size")),
+            result.output.size()));
+        for (size_t i = 0; i < result.output.size(); i++) {
+          TF_RETURN_IF_ERROR(writer->WriteTensor(
+              full_name(strings::StrCat(prefix, "_output_", i)),
+              result.output[i]));
+        }
+        return Status::OK();
+      }
+
+      Status ReadBatchResultLocked(IteratorStateReader* reader, size_t index)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        BatchResult* result = &batch_results_[index];
+        string prefix = strings::StrCat("batch_results_", index);
+        {
+          mutex_lock l(batch_results_[index].mu);
+          result->output_allocated = reader->Contains(
+              full_name(strings::StrCat(prefix, "_output_allocated")));
+          // Simulate that the batch was fully generated.
+          batch_results_[index].counter.reset(new BlockingCounter(0));
+        }
+        size_t output_size;
+        {
+          int64 temp;
+          TF_RETURN_IF_ERROR(reader->ReadScalar(
+              full_name(strings::StrCat(prefix, "_output_size")), &temp));
+          output_size = static_cast<size_t>(temp);
+          if (temp != output_size) {
+            return errors::Internal("Invalid value for output_size ",
+                                    output_size);
+          }
+        }
+        result->output.reserve(output_size);
+        for (size_t i = 0; i < output_size; i++) {
+          result->output.emplace_back();
+          TF_RETURN_IF_ERROR(reader->ReadTensor(
+              full_name(strings::StrCat(prefix, "_output_", i)),
+              &result->output.back()));
+        }
+        return Status::OK();
+      }
+
+      Status WriteStatusLocked(IteratorStateWriter* writer,
+                               const string& prefix, const Status& status)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name(strings::StrCat(prefix, "_code")),
+                                static_cast<int64>(status.code())));
+        if (!status.ok()) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name(strings::StrCat(prefix, "_msg")),
+                                  status.error_message()));
+        }
+        return Status::OK();
+      }
+
+      Status ReadStatusLocked(IteratorStateReader* reader, const string& prefix,
+                              Status* status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        int64 code_int;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            full_name(strings::StrCat(prefix, "_code")), &code_int));
+        error::Code code = static_cast<error::Code>(code_int);
+
+        if (code != error::Code::OK) {
+          string error_message;
+          TF_RETURN_IF_ERROR(reader->ReadScalar(
+              full_name(strings::StrCat(prefix, "_msg")), &error_message));
+          *status = Status(code, error_message);
+        } else {
+          *status = Status::OK();
+        }
+        return Status::OK();
+      }
       mutex mu_;
       int32 current_batch_index_ GUARDED_BY(mu_) = -1;
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
@@ -388,8 +668,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const NameAttrList func_;
     const int64 batch_size_;
     const int64 num_parallel_batches_;
+    const bool drop_remainder_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
+    const NameAttrList map_fn_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const Eigen::ThreadPoolDevice* device_;  // not owned
   };

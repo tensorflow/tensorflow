@@ -48,20 +48,32 @@ py_library(
     ],
 )
 
-py_test(
-    name = "reader_test",
-    size = "small",
-    srcs = ["python/saved_model/reader_test.py"],
+py_library(
+    name = "reader",
+    srcs = ["python/saved_model/reader.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:private"],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    visibility = ["//visibility:public"],
     deps = [
         ":saved_model_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:tag_constants",
+    ],
+)
+
+py_test(
+    name = "reader_test",
+    size = "small",
+    srcs = ["python/saved_model/reader_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    visibility = ["//visibility:private"],
+    deps = [
+        ":reader",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -80,16 +92,4 @@ py_test(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:utils",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

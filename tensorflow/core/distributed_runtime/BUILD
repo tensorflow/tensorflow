@@ -8,18 +8,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "c_srcs",
     data = glob([
         "**/*.cc",
@@ -145,6 +133,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ptr_util",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -595,6 +584,7 @@ tf_cc_test(
     srcs = ["recent_request_ids_test.cc"],
     deps = [
         ":recent_request_ids",
+        ":request_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -107,6 +107,18 @@ class XlaHelpers {
                        const xla::ComputationDataHandle& on_value,
                        const xla::ComputationDataHandle& off_value,
                        xla::ComputationDataHandle* one_hot);
+
+  // Certain DataTypes should use increased precision DataTypes when performing
+  // reductions.  This function remaps a given DataType to a higher precision
+  // DataType if needed.
+  static DataType SumAccumulationType(const DataType& dtype);
+
+  // A helper for creating a ConvertElementType xla op given a DataType rather
+  // than the xla::PrimitiveType.
+  static xla::ComputationDataHandle ConvertElementType(
+      xla::ComputationBuilder* const builder,
+      const xla::ComputationDataHandle& operand,
+      const DataType new_element_type);
 };
 
 }  // end namespace tensorflow

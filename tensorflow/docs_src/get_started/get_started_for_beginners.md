@@ -1,4 +1,4 @@
-# Getting Started for ML Beginners
+# Get Started with Graph Execution
 
 This document explains how to use machine learning to classify (categorize)
 Iris flowers by species.  This document dives deeply into the TensorFlow
@@ -13,6 +13,11 @@ If the following list describes you, then you are in the right place:
 If you are already familiar with basic machine learning concepts
 but are new to TensorFlow, read
 @{$premade_estimators$Getting Started with TensorFlow: for ML Experts}.
+
+If you'd like to learn a lot about the basics of Machine Learning,
+consider taking
+[Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/).
+
 
 ## The Iris classification problem
 
@@ -85,6 +90,9 @@ a number.  Here's the representation scheme:
 * 0 represents setosa
 * 1 represents versicolor
 * 2 represents virginica
+
+For a look at other examples of labels and examples, see the
+[ML Terminology section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/framing/ml-terminology).
 
 
 ## Models and training
@@ -371,7 +379,7 @@ There are several categories of neural networks.
 We'll be using a [**fully connected neural
 network**](https://developers.google.com/machine-learning/glossary/#fully_connected_layer),
 which means that the neurons in one layer take inputs from *every* neuron in
-the previous layer.  For example, the following figure illustrates a 
+the previous layer.  For example, the following figure illustrates a
 fully connected neural network consisting of three hidden layers:
 
 *   The first hidden layer contains four neurons.
@@ -384,6 +392,9 @@ fully connected neural network consisting of three hidden layers:
 
 **A neural network with three hidden layers.**
 <p>&nbsp;</p>
+
+For a more detailed introduction to neural networks, see the
+[Introduction to Neural Nets section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/introduction-to-neural-networks/anatomy).
 
 To specify a model type, instantiate an
 [**Estimator**](https://developers.google.com/machine-learning/glossary/#Estimators)
@@ -448,9 +459,9 @@ will become very important.
 
 ### Train the model
 
-Instantiating a `tf.Estimator.DNNClassifier` creates a framework for learning 
-the model. Basically, we've wired a network but haven't yet let data flow 
-through it. To train the neural network, call the Estimator object's `train` 
+Instantiating a `tf.Estimator.DNNClassifier` creates a framework for learning
+the model. Basically, we've wired a network but haven't yet let data flow
+through it. To train the neural network, call the Estimator object's `train`
 method. For example:
 
 ```python
@@ -559,15 +570,15 @@ of 0.5.  The following suggests a more effective model:
     <th colspan="1">Label</th>
     <th colspan="1">Prediction</th>
   </tr>
-  <tr> <td>5.9</td> <td>3.0</td> <td>4.3</td> <td>1.5</td> <td>1</td> 
+  <tr> <td>5.9</td> <td>3.0</td> <td>4.3</td> <td>1.5</td> <td>1</td>
           <td style="background-color:green">1</td></tr>
-  <tr> <td>6.9</td> <td>3.1</td> <td>5.4</td> <td>2.1</td> <td>2</td> 
+  <tr> <td>6.9</td> <td>3.1</td> <td>5.4</td> <td>2.1</td> <td>2</td>
           <td style="background-color:green">2</td></tr>
-  <tr> <td>5.1</td> <td>3.3</td> <td>1.7</td> <td>0.5</td> <td>0</td> 
+  <tr> <td>5.1</td> <td>3.3</td> <td>1.7</td> <td>0.5</td> <td>0</td>
           <td style="background-color:green">0</td></tr>
-  <tr> <td>6.0</td> <td>3.4</td> <td>4.5</td> <td>1.6</td> <td>1</td> 
+  <tr> <td>6.0</td> <td>3.4</td> <td>4.5</td> <td>1.6</td> <td>1</td>
           <td style="background-color:red">2</td></tr>
-  <tr> <td>5.5</td> <td>2.5</td> <td>4.0</td> <td>1.3</td> <td>1</td> 
+  <tr> <td>5.5</td> <td>2.5</td> <td>4.0</td> <td>1.3</td> <td>1</td>
           <td style="background-color:green">1</td></tr>
 </table>
 
@@ -630,6 +641,10 @@ Test set accuracy: 0.967
 
 An accuracy of 0.967 implies that our trained model correctly classified 29
 out of the 30 Iris species in the test set.
+
+To get a deeper understanding of different metrics for evaluating
+models, see the
+[Classification section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/classification).
 
 
 ### Predicting
@@ -723,7 +738,6 @@ Prediction is "Virginica" (97.9%), expected "Virginica"
 
 ## Summary
 
-<!--TODO(barryr): When MLCC is released, add pointers to relevant sections.-->
 This document provides a short introduction to machine learning.
 
 Because `premade_estimators.py` relies on high-level APIs, much of the

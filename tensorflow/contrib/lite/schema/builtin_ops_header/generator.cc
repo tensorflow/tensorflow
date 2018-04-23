@@ -45,6 +45,8 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+// The enum for builtin operators.
+// Note: CUSTOM and DELEGATE are 2 special ops which are not real built-in ops.
 typedef enum {
 )";
 

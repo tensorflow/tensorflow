@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -106,8 +107,10 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = ir_builder->CreateFCmpUGE(lhs_value, rhs_value);
     return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
-    return EmitCallToIntrinsic(llvm::Intrinsic::maxnum, {lhs_value, rhs_value},
-                               {lhs_value->getType()}, ir_builder);
+    auto cmp_ge = ir_builder->CreateFCmpOGE(lhs_value, rhs_value);
+    auto lhs_is_nan = ir_builder->CreateFCmpUNE(lhs_value, lhs_value);
+    auto sel_lhs = ir_builder->CreateOr(cmp_ge, lhs_is_nan);
+    return ir_builder->CreateSelect(sel_lhs, lhs_value, rhs_value);
   }
 }
 
@@ -117,8 +120,10 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = ir_builder->CreateFCmpULE(lhs_value, rhs_value);
     return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
-    return EmitCallToIntrinsic(llvm::Intrinsic::minnum, {lhs_value, rhs_value},
-                               {lhs_value->getType()}, ir_builder);
+    auto cmp_le = ir_builder->CreateFCmpOLE(lhs_value, rhs_value);
+    auto lhs_is_nan = ir_builder->CreateFCmpUNE(lhs_value, lhs_value);
+    auto sel_lhs = ir_builder->CreateOr(cmp_le, lhs_is_nan);
+    return ir_builder->CreateSelect(sel_lhs, lhs_value, rhs_value);
   }
 }
 
@@ -758,7 +763,7 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
     fake_argv_storage.push_back("");
     for (const auto& it : options) {
       // Skip options the XLA backend itself consumes.
-      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
+      if (!tensorflow::str_util::StartsWith(it.first, "xla_")) {
         if (it.second.empty()) {
           fake_argv_storage.push_back(it.first);
         } else {

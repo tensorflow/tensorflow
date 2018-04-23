@@ -265,9 +265,6 @@ ds = tf.data.TextLineDataset(train_path).skip(1)
 
 ### Build a csv line parser
 
-Ultimately we will need to parse each of the lines in the dataset, to
-produce the necessary `(features, label)` pairs.
-
 We will start by building a function to parse a single line.
 
 The following `iris_data.parse_line` function accomplishes this task using the

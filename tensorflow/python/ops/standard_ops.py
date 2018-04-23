@@ -22,12 +22,13 @@ from __future__ import print_function
 
 import sys as _sys
 
+# pylint: disable=g-bad-import-order
 # Imports the following modules so that @RegisterGradient get executed.
 from tensorflow.python.ops import array_grad
+from tensorflow.python.ops import cudnn_rnn_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import math_grad
-from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import sparse_grad
 from tensorflow.python.ops import spectral_grad
 from tensorflow.python.ops import state_grad
@@ -60,6 +61,7 @@ from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
 from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
+from tensorflow.python.ops.logging_ops import timestamp
 from tensorflow.python.ops.lookup_ops import initialize_all_tables
 from tensorflow.python.ops.lookup_ops import tables_initializer
 from tensorflow.python.ops.manip_ops import *
@@ -79,6 +81,8 @@ from tensorflow.python.ops.state_ops import scatter_add
 from tensorflow.python.ops.state_ops import scatter_div
 from tensorflow.python.ops.state_ops import scatter_mul
 from tensorflow.python.ops.state_ops import scatter_sub
+from tensorflow.python.ops.state_ops import scatter_min
+from tensorflow.python.ops.state_ops import scatter_max
 from tensorflow.python.ops.state_ops import scatter_update
 from tensorflow.python.ops.state_ops import scatter_nd_add
 from tensorflow.python.ops.state_ops import scatter_nd_sub
@@ -93,6 +97,7 @@ from tensorflow.python.ops.tensor_array_ops import *
 from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *
 # pylint: enable=wildcard-import
+# pylint: enable=g-bad-import-order
 
 #### For use in remove_undocumented below:
 from tensorflow.python.framework import constant_op as _constant_op
@@ -185,7 +190,6 @@ _allowed_symbols_array_ops = [
     "quantize_and_dequantize",  # to-doc
 
     # TODO(drpng): legacy symbols to be removed.
-    "list_diff",  # Use tf.listdiff instead.
     "batch_matrix_diag",
     "batch_matrix_band_part",
     "batch_matrix_diag_part",
@@ -218,6 +222,8 @@ _allowed_symbols_gradients = [
     # Documented in training.py:
     # Not importing training.py to avoid complex graph dependencies.
     "AggregationMethod",
+    "GradientTape",
+    "custom_gradient",
     "gradients",  # tf.gradients = gradients.gradients
     "hessians",
 ]
@@ -232,7 +238,7 @@ _allowed_symbols_clip_ops = [
     "global_norm",
 ]
 
-_allowed_symbols_image_ops = [
+_allowed_symbols_logging_ops = [
     # Documented in training.py.
     # We are not importing training.py to avoid complex dependencies.
     "audio_summary",
@@ -262,8 +268,8 @@ _allowed_symbols = (_allowed_symbols_array_ops +
                     _allowed_symbols_clip_ops +
                     _allowed_symbols_control_flow_ops +
                     _allowed_symbols_functional_ops +
-                    _allowed_symbols_image_ops +
                     _allowed_symbols_gradients +
+                    _allowed_symbols_logging_ops +
                     _allowed_symbols_math_ops +
                     _allowed_symbols_variable_scope_ops +
                     _allowed_symbols_misc +

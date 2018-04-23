@@ -303,12 +303,12 @@ def _swish_grad(features, grad):
 # @Defun decorator with noinline=True so that sigmoid(features) is re-computed
 # during backprop, and we can free the sigmoid(features) expression immediately
 # after use during the forward pass.
+@tf_export("nn.swish")
 @function.Defun(
     grad_func=_swish_grad,
     shape_func=_swish_shape,
     func_name="swish",
     noinline=True)
-@tf_export("nn.swish")
 def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
@@ -765,9 +765,9 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
     weighted_variance = math_ops.multiply(weighted_distsq, divisor)
 
     if not keep_dims:
-      weighted_mean = array_ops.squeeze(weighted_mean, squeeze_dims=axes)
+      weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)
       weighted_variance = array_ops.squeeze(
-          weighted_variance, squeeze_dims=axes)
+          weighted_variance, axis=axes)
 
     if needs_cast:
       weighted_mean = math_ops.cast(weighted_mean, dtypes.float16)
@@ -888,12 +888,10 @@ def fused_batch_norm(
   # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
   # currently only use the V2 version for float16 inputs, which is not supported
   # by the V1 version.
-  # pylint: disable=protected-access
   if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm_v2
+    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
   else:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm
-  # pylint: enable=protected-access
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access
   y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
       x,
       scale,
@@ -989,7 +987,7 @@ def _compute_sampled_logits(weights,
         class biases.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
-        the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
+        the `labels` argument of `nn.softmax_cross_entropy_with_logits_v2`.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -1014,7 +1012,7 @@ def _compute_sampled_logits(weights,
     out_logits: `Tensor` object with shape
         `[batch_size, num_true + num_sampled]`, for passing to either
         `nn.sigmoid_cross_entropy_with_logits` (NCE) or
-        `nn.softmax_cross_entropy_with_logits` (sampled softmax).
+        `nn.softmax_cross_entropy_with_logits_v2` (sampled softmax).
     out_labels: A Tensor object with the same shape as `out_logits`.
   """
 
@@ -1287,7 +1285,7 @@ def sampled_softmax_loss(weights,
     logits = tf.matmul(inputs, tf.transpose(weights))
     logits = tf.nn.bias_add(logits, biases)
     labels_one_hot = tf.one_hot(labels, n_classes)
-    loss = tf.nn.softmax_cross_entropy_with_logits(
+    loss = tf.nn.softmax_cross_entropy_with_logits_v2(
         labels=labels_one_hot,
         logits=logits)
   ```
@@ -1305,7 +1303,7 @@ def sampled_softmax_loss(weights,
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
-        the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
+        the `labels` argument of `nn.softmax_cross_entropy_with_logits_v2`.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -1342,7 +1340,8 @@ def sampled_softmax_loss(weights,
       partition_strategy=partition_strategy,
       name=name,
       seed=seed)
-  sampled_losses = nn_ops.softmax_cross_entropy_with_logits(
+  labels = array_ops.stop_gradient(labels, name="labels_stop_gradient")
+  sampled_losses = nn_ops.softmax_cross_entropy_with_logits_v2(
       labels=labels, logits=logits)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses

@@ -213,7 +213,7 @@ def _ndtri(p):
 
   # Compute x for p <= exp(-2): x = z - log(z)/z - (1/z) P(1/z) / Q(1/z),
   # where z = sqrt(-2. * log(p)), and P/Q are chosen between two different
-  # arrays based on wether p < exp(-32).
+  # arrays based on whether p < exp(-32).
   z = math_ops.sqrt(-2. * math_ops.log(sanitized_mcp))
   first_term = z - math_ops.log(z) / z
   second_term_small_p = (_create_polynomial(1. / z, p2)

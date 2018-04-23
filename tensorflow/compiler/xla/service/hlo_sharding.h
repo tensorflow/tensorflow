@@ -94,6 +94,10 @@ class HloSharding {
   // Create a new sharding from a protobuf OpSharding.
   static StatusOr<HloSharding> FromProto(const OpSharding& proto);
 
+  // Checks whether device is a reserved device number. A reserved device number
+  // has usually a special meaning, with dedicated handling logic.
+  static bool IsReservedDevice(int64 device) { return device < 0; }
+
   OpSharding ToProto() const;
   string ToString() const;
 
@@ -171,9 +175,13 @@ class HloSharding {
     }
   }
 
+  // Retrieves the sub sharding at a given index, out of a tuple sharding.
+  // REQUIRES: IsTuple()
+  HloSharding GetSubSharding(const Shape& shape, const ShapeIndex& index) const;
+
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
-           protobuf_util::ProtobufEquals(tile_shape_, other.tile_shape_) &&
+           ShapeUtil::Compatible(tile_shape_, other.tile_shape_) &&
            tile_assignment_ == other.tile_assignment_ &&
            tuple_elements_ == other.tuple_elements_;
   }
@@ -206,6 +214,26 @@ class HloSharding {
   // Gets the tile assignment tensor.
   // REQUIRES: !IsReplicated() && !IsTuple()
   const Array<int64>& tile_assignment() const { return tile_assignment_; }
+
+  // Returns the flattened list of all the leaf shardings in a tuple shape, by
+  // pre-order walk (ShapeTree iterator order).
+  // REQUIRES: IsTuple().
+  const std::vector<HloSharding>& tuple_elements() const {
+    return tuple_elements_;
+  }
+
+  // Return a new sharding that can apply to the given new shape.
+  // If this sharding is tile-maximal, the returned sharding will be the same as
+  // this sharding. If this sharding is not tile-maximal, the returned
+  // sharding's tile size will differ:
+  //   - Non-sharded dimensions will be adapted to be the same as `new_shape`;
+  //     tile_dimension(i) = new_shape.dimensions(i);
+  //   - Sharded dimensions will be kept the same unless `transform` is supplied
+  //     in which case tile_dimension(i) = transform(i, tile_dimension(i));
+  // REQUIRES: !IsTuple().
+  HloSharding TransformShardedTileShape(
+      const Shape& new_shape,
+      const std::function<int64(int64, int64)>& transform = nullptr) const;
 
  private:
   HloSharding()
@@ -248,6 +276,8 @@ class HloSharding {
   // shardings in a tuple shape, by pre-order walk (ShapeTree iterator order).
   std::vector<HloSharding> tuple_elements_;
 };
+
+std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);
 
 }  // namespace xla
 

@@ -6,18 +6,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "c_srcs",
     data = glob([
         "**/*.cc",
@@ -201,7 +189,7 @@ cc_library(
     srcs = ["grpc_worker_service_impl.cc"],
     hdrs = ["grpc_worker_service_impl.h"],
     deps = [
-        ":grpc_serialization_traits",
+        ":grpc_util",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "@grpc//:grpc++_unsecure",
@@ -247,17 +235,7 @@ cc_library(
     srcs = ["grpc_master_service_impl.cc"],
     hdrs = ["grpc_master_service_impl.h"],
     deps = [
-        ":grpc_serialization_traits",
         "//tensorflow/core:master_proto_cc",
-        "@grpc//:grpc++_unsecure",
-    ],
-)
-
-cc_library(
-    name = "grpc_serialization_traits",
-    srcs = [],
-    hdrs = ["grpc_serialization_traits.h"],
-    deps = [
         "@grpc//:grpc++_unsecure",
     ],
 )
@@ -381,6 +359,7 @@ tf_cuda_library(
     data = [
         ":grpc_testlib_server",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":grpc_session",
         ":grpc_testlib_ops",
@@ -508,4 +487,34 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:variable_ops",
     ],
+)
+
+cc_library(
+    name = "grpc_rpc_factory",
+    srcs = [
+        "grpc_rpc_factory.cc",
+    ],
+    hdrs = ["grpc_rpc_factory.h"],
+    deps = [
+        ":grpc_state",
+        ":grpc_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/rpc:call_container",
+        "//tensorflow/core/util/rpc:rpc_factory",
+    ],
+)
+
+cc_library(
+    name = "grpc_rpc_factory_registration",
+    srcs = [
+        "grpc_rpc_factory_registration.cc",
+    ],
+    deps = [
+        ":grpc_rpc_factory",
+        "//tensorflow/core/util/rpc:rpc_factory",
+        "//tensorflow/core/util/rpc:rpc_factory_registry",
+    ],
+    alwayslink = 1,
 )

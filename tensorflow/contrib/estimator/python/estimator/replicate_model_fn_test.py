@@ -21,6 +21,7 @@ from __future__ import print_function
 import re
 import shutil
 import tempfile
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -57,26 +58,19 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import training
 
 
-# TODO(isaprykin):  Parametrize all the tests on
-#   replicate_model_fn._VariableDistributionMode when it's supported.
-class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
+class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase,
+                                   parameterized.TestCase):
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
 
-  def test_complete_flow_with_public_version(self):
-    return self._complete_flow_with_mode(mode=None)
-
-  def test_complete_flow_with_mode_local_ps_server(self):
-    return self._complete_flow_with_mode(
-        replicate_model_fn._VariableDistributionMode.
-        SHARED_LOCAL_PARAMETER_SERVER)
-
-  def test_complete_flow_with_mode_round_robin(self):
-    return self._complete_flow_with_mode(
-        replicate_model_fn._VariableDistributionMode.SHARED_ROUND_ROBIN)
-
-  def _complete_flow_with_mode(self, mode):
+  @parameterized.named_parameters(
+      ('PublicInterface', None),
+      ('ParameterServerMode', replicate_model_fn._VariableDistributionMode.
+       SHARED_LOCAL_PARAMETER_SERVER),
+      ('RoundRobinMode',
+       replicate_model_fn._VariableDistributionMode.SHARED_ROUND_ROBIN))
+  def test_complete_flow_with_mode(self, mode):
     n_classes = 3
     input_dimension = 2
     batch_size = 12

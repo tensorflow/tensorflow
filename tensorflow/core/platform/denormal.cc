@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <tuple>
+
 #include "tensorflow/core/platform/denormal.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"

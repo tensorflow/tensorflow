@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/scoped_allocator.h"
+#include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -40,7 +42,8 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                    Allocator* allocator)
     : LocalDevice(options, Device::BuildDeviceAttributes(
                                name, DEVICE_CPU, memory_limit, locality)),
-      allocator_(allocator) {}
+      allocator_(allocator),
+      scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {}
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
@@ -62,6 +65,17 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
 }
 
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
+  return allocator_;
+}
+
+Allocator* ThreadPoolDevice::GetScopedAllocator(AllocatorAttributes attr,
+                                                int64 step_id) {
+  if (attr.scope_id > 0) {
+    return scoped_allocator_mgr_->GetContainer(step_id)->GetInstance(
+        attr.scope_id);
+  }
+  LOG(FATAL) << "Unexpected call to ThreadPoolDevice::GetScopedAllocator "
+             << "attr.scope_id = " << attr.scope_id;
   return allocator_;
 }
 

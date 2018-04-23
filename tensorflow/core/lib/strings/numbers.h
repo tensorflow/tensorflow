@@ -60,19 +60,18 @@ static const int kFastToBufferSize = 32;
 // the output.  The buffer should typically be at least kFastToBufferSize
 // bytes.
 //
-// Returns a pointer to the end of the string (i.e. the null character
-// terminating the string).
+// Returns the number of characters written.
 // ----------------------------------------------------------------------
 
-char* FastInt32ToBufferLeft(int32 i, char* buffer);    // at least 12 bytes
-char* FastUInt32ToBufferLeft(uint32 i, char* buffer);  // at least 12 bytes
-char* FastInt64ToBufferLeft(int64 i, char* buffer);    // at least 22 bytes
-char* FastUInt64ToBufferLeft(uint64 i, char* buffer);  // at least 22 bytes
+size_t FastInt32ToBufferLeft(int32 i, char* buffer);    // at least 12 bytes
+size_t FastUInt32ToBufferLeft(uint32 i, char* buffer);  // at least 12 bytes
+size_t FastInt64ToBufferLeft(int64 i, char* buffer);    // at least 22 bytes
+size_t FastUInt64ToBufferLeft(uint64 i, char* buffer);  // at least 22 bytes
 
 // Required buffer size for DoubleToBuffer is kFastToBufferSize.
 // Required buffer size for FloatToBuffer is kFastToBufferSize.
-char* DoubleToBuffer(double i, char* buffer);
-char* FloatToBuffer(float i, char* buffer);
+size_t DoubleToBuffer(double value, char* buffer);
+size_t FloatToBuffer(float value, char* buffer);
 
 // Convert a 64-bit fingerprint value to an ASCII representation.
 string FpToString(Fprint fp);

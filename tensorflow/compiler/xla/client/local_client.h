@@ -38,7 +38,7 @@ class LocalExecutable {
  public:
   // Run the compiled computation with the given arguments and options and
   // return the result.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> Run(
+  StatusOr<ScopedShapedBuffer> Run(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ExecutableRunOptions run_options);
 
@@ -69,11 +69,11 @@ class LocalExecutable {
   // of the computation.
   tensorflow::Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutableRunOptions& options, const Backend& backend);
+      const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteAndDump(
+  StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
@@ -123,11 +123,20 @@ class LocalClient : public Client {
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
       const ExecutableBuildOptions& options);
 
+  // Build and return a LocalExecutable object. The executable is compiled using
+  // the given XlaComputation, argument layouts and options.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<LocalExecutable>> Compile(
+      const XlaComputation& computation,
+      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+      const ExecutableBuildOptions& options);
+
   // Copy the literal data to the device with the given ordinal and return as a
   // ScopedShapedBuffer. If non-null the given memory allocator is used for
   // device memory allocation. If null, the default memory allocator for the
   // device is used.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> LiteralToShapedBuffer(
+  StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const Literal& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
 
@@ -158,7 +167,7 @@ class LocalClient : public Client {
   StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
   // Returns the platform that the underlying service targets.
-  perftools::gputools::Platform* platform() const;
+  se::Platform* platform() const;
 
   // Returns the number of devices on the system of the service platform
   // type. Not all devices may be supported by the service (see

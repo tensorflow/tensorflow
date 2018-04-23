@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
 from tensorflow.python.ops import gen_dataset_ops
 
 
@@ -59,9 +60,14 @@ def get_single_element(dataset):
   """
   if not isinstance(dataset, dataset_ops.Dataset):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
-  return nest.pack_sequence_as(
-      dataset.output_types,
-      gen_dataset_ops.dataset_to_single_element(
+
+  nested_ret = nest.pack_sequence_as(
+      dataset.output_types, gen_dataset_ops.dataset_to_single_element(
           dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          output_types=nest.flatten(dataset.output_types),
-          output_shapes=nest.flatten(dataset.output_shapes)))
+          output_types=nest.flatten(sparse.as_dense_types(
+              dataset.output_types, dataset.output_classes)),
+          output_shapes=nest.flatten(sparse.as_dense_shapes(
+              dataset.output_shapes, dataset.output_classes))))
+  return sparse.deserialize_sparse_tensors(
+      nested_ret, dataset.output_types, dataset.output_shapes,
+      dataset.output_classes)

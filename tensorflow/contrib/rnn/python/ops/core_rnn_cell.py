@@ -40,7 +40,6 @@ from tensorflow.python.util import nest
 
 # pylint: disable=protected-access,invalid-name
 RNNCell = rnn_cell_impl.RNNCell
-_like_rnncell = rnn_cell_impl._like_rnncell
 _WEIGHTS_VARIABLE_NAME = rnn_cell_impl._WEIGHTS_VARIABLE_NAME
 _BIAS_VARIABLE_NAME = rnn_cell_impl._BIAS_VARIABLE_NAME
 # pylint: enable=protected-access,invalid-name
@@ -221,8 +220,7 @@ class EmbeddingWrapper(RNNCell):
       ValueError: if embedding_classes is not positive.
     """
     super(EmbeddingWrapper, self).__init__(_reuse=reuse)
-    if not _like_rnncell(cell):
-      raise TypeError("The parameter cell is not RNNCell.")
+    rnn_cell_impl.assert_like_rnncell("cell", cell)
     if embedding_classes <= 0 or embedding_size <= 0:
       raise ValueError("Both embedding_classes and embedding_size must be > 0: "
                        "%d, %d." % (embedding_classes, embedding_size))
@@ -301,8 +299,7 @@ class InputProjectionWrapper(RNNCell):
     super(InputProjectionWrapper, self).__init__(_reuse=reuse)
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
-    if not _like_rnncell(cell):
-      raise TypeError("The parameter cell is not RNNCell.")
+    rnn_cell_impl.assert_like_rnncell("cell", cell)
     self._cell = cell
     self._num_proj = num_proj
     self._activation = activation
@@ -356,8 +353,7 @@ class OutputProjectionWrapper(RNNCell):
       ValueError: if output_size is not positive.
     """
     super(OutputProjectionWrapper, self).__init__(_reuse=reuse)
-    if not _like_rnncell(cell):
-      raise TypeError("The parameter cell is not RNNCell.")
+    rnn_cell_impl.assert_like_rnncell("cell", cell)
     if output_size < 1:
       raise ValueError("Parameter output_size must be > 0: %d." % output_size)
     self._cell = cell

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -39,8 +40,15 @@ namespace tensorflow {
 // represent the TF_AttrType type of the values in the list.
 typedef std::unordered_map<string, uint32> AttrTypeMap;
 
+// Look up OpDef for `op_name`.
+Status OpDefForOp(const char* op_name, const OpDef** op_def);
+
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out);
+
+// Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
+Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
+                      TF_AttrType* out, unsigned char* is_list);
 
 // Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
@@ -146,47 +154,6 @@ template <>
 AttrBuilder& AttrBuilder::Set(StringPiece attr_name,
                               tensorflow::DataType&& value);
 
-// KernelAndDevice encapsulates an instantiated kernel and the device it is on.
-//
-// Also see:
-// https://www.tensorflow.org/code/tensorflow/core/common_runtime/kernel_benchmark_testlib.h
-// and
-// https://www.tensorflow.org/code/tensorflow/core/kernels/ops_testutil.h
-class KernelAndDevice {
- public:
-  // Populates 'out' with a kernel appropriate for 'ndef'.
-  //
-  // The provided FunctionLibraryRuntime MUST outlive all calls to
-  // Run() on the returned KernelAndDevice.
-  //
-  // TODO(ashankar): Figure out thread-safety concerns around
-  // FunctionLibraryRuntime (in particular, how the underlying
-  // FunctionLibraryDefinition might be mutated by another thread as new
-  // functions are registered with it).  Conservatively, thread-safe usage of
-  // the FunctionLibraryRuntime is pushed on to the caller (see locking in
-  // c_api.cc).
-  static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
-                     KernelAndDevice* out);
-  // TODO(ashankar): Remove this
-  static Status InitOp(Device* device, const NodeDef& ndef,
-                       KernelAndDevice* out);
-
-  KernelAndDevice(tensorflow::Rendezvous* rendez)
-      : device_(nullptr), flib_(nullptr), rendez_(rendez) {}
-
-  // TODO(ashankar): Handle list-valued inputs.
-  Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
-             NodeExecStats* stats);
-
-  const OpKernel* kernel() const { return kernel_.get(); }
-
- private:
-  std::unique_ptr<OpKernel> kernel_;
-  Device* device_;
-  FunctionLibraryRuntime* flib_;
-  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
-  Rendezvous* rendez_;
-};
 
 }  // namespace tensorflow
 

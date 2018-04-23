@@ -30,6 +30,8 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
 
 _allowed_symbols = [
+    "get_default_layer_collection",
+    "set_default_layer_collection",
     "LayerParametersDict",
     "LayerCollection",
     "APPROX_KRONECKER_NAME",

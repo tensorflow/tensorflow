@@ -55,12 +55,12 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  StatusOr<ShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
+  StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
@@ -69,11 +69,6 @@ class CpuExecutable : public Executable {
 
   void set_ir_module_string(const string& ir_module_string) {
     ir_module_string_ = ir_module_string;
-  }
-
-  const Status EqualOrFail(const Executable& executable) {
-    // TODO(b/62952745) Implement equality test on CPU executable.
-    return Unimplemented("Equality test on CPU executable is not implemented.");
   }
 
   static int64 ShapeSizeBytes(const Shape& shape);
@@ -95,29 +90,27 @@ class CpuExecutable : public Executable {
   // assignment. Each vector element corresponds to a particular Index. If
   // a vector element already contains a non-null DeviceMemoryBase, then no
   // buffer is assigned for this element.
-  Status AllocateBuffers(
-      DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-      std::vector<perftools::gputools::DeviceMemoryBase>* buffers);
+  Status AllocateBuffers(DeviceMemoryAllocator* memory_allocator,
+                         int device_ordinal,
+                         std::vector<se::DeviceMemoryBase>* buffers);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
   Status ExecuteComputeFunction(
       const ExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
+      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
       HloExecutionProfile* hlo_execution_profile);
 
-  // Create a ShapedBuffer for holding the result of the computation. The
+  // Creates a ShapedBuffer for holding the result of the computation. The
   // addresses (DeviceMemoryBases) are set according to buffer assignment.
   // 'buffers_in_result' should point to a vector of the same size as
   // 'allocated_buffers'. An element in buffers_in_result is set to true if the
   // corresponding buffer is live out of the computation (and thus contained in
   // the returned ShapedBuffer).
-  StatusOr<std::unique_ptr<ShapedBuffer>> CreateResultShapedBuffer(
+  StatusOr<ShapedBuffer> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          allocated_buffers,
+      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> allocated_buffers,
       std::vector<bool>* buffers_in_result);
 
   // Returns the points-to set of the root instruction of the entry

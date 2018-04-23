@@ -22,24 +22,59 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentStart="true"
+        android:layout_alignParentLeft="true"
         android:layout_alignParentTop="true" />
 
     <FrameLayout
         android:id="@+id/control"
         android:layout_width="match_parent"
-        android:layout_height="112dp"
+        android:layout_height="135dp"
         android:layout_alignParentBottom="true"
         android:layout_alignParentStart="true"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentRight="true"
+        android:layout_marginEnd="150dp"
+        android:layout_marginRight="150dp"
         android:background="@color/control_background">
 
-        <TextView android:id="@+id/text"
+        <TextView
+            android:id="@+id/text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingLeft="80dp"
+            android:paddingLeft="20dp"
             android:textColor="#FFF"
             android:textSize="20sp"
             android:textStyle="bold" />
 
     </FrameLayout>
+
+    <RelativeLayout
+        android:id="@+id/control2"
+        android:layout_width="match_parent"
+        android:layout_height="135dp"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentStart="true"
+        android:layout_alignTop="@+id/control"
+        android:layout_marginLeft="300dp"
+        android:layout_marginStart="300dp"
+        android:background="@color/control_background">
+
+        <ToggleButton
+            android:id="@+id/button"
+            android:textOff="@string/tflite"
+            android:textOn="@string/nnapi"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentStart="true" />
+
+        <NumberPicker
+            android:id="@+id/np"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/button"
+            android:visibility="visible" />
+    </RelativeLayout>
 
 </RelativeLayout>

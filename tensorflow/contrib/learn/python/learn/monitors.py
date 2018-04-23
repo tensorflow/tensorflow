@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Monitors instrument the training process.
+"""Monitors instrument the training process (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 @@get_default_monitors
 @@BaseMonitor
@@ -58,6 +62,10 @@ from tensorflow.python.util import tf_inspect
 # TODO(ptucker): Fail if epoch or step does not monotonically increase?
 class BaseMonitor(object):
   """Base class for Monitors.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Defines basic interfaces of Monitors.
   Monitors can either be run on all workers or, more commonly, restricted
@@ -228,6 +236,10 @@ def _extract_output(outputs, request):
 
 class EveryN(BaseMonitor):
   """Base class for monitors that execute callbacks every N steps.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   This class adds three new callbacks:
     - every_n_step_begin
@@ -418,6 +430,10 @@ class StopAtStep(BaseMonitor):
 class PrintTensor(EveryN):
   """Prints given tensors every N steps.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   This is an `EveryN` monitor and has consistent semantic for `every_n`
   and `first_n`.
 
@@ -455,9 +471,12 @@ class PrintTensor(EveryN):
 class LoggingTrainable(EveryN):
   """Writes trainable variable values into log every N steps.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Write the tensors in trainable variables `every_n` steps,
   starting with the `first_n`th step.
-
   """
 
   def __init__(self, scope=None, every_n=100, first_n=1):
@@ -493,7 +512,12 @@ class LoggingTrainable(EveryN):
 
 
 class SummarySaver(EveryN):
-  """Saves summaries every N steps."""
+  """Saves summaries every N steps.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
 
   def __init__(self,
                summary_op,
@@ -554,6 +578,10 @@ class SummarySaver(EveryN):
 class ValidationMonitor(EveryN):
   """Runs evaluation of a given estimator, at most every N steps.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Note that the evaluation is done based on the saved checkpoint, which will
   usually be older than the current step.
 
@@ -573,7 +601,8 @@ class ValidationMonitor(EveryN):
                early_stopping_rounds=None,
                early_stopping_metric="loss",
                early_stopping_metric_minimize=True,
-               name=None):
+               name=None,
+               check_interval_secs=5):
     """Initializes a ValidationMonitor.
 
     Args:
@@ -600,6 +629,9 @@ class ValidationMonitor(EveryN):
           loss metrics like mean squared error, and False for performance
           metrics like accuracy.
       name: See `BaseEstimator.evaluate`.
+      check_interval_secs: Only check for new checkpoint if at least
+          `check_interval_secs` have passed. Ignore if None. Default is 5 secs.
+
 
     Raises:
       ValueError: If both x and input_fn are provided.
@@ -626,6 +658,8 @@ class ValidationMonitor(EveryN):
     self._early_stopped = False
     self._latest_path = None
     self._latest_path_step = None
+    self._last_checkpoint_check_time = None
+    self._check_interval_secs = check_interval_secs
 
   @property
   def early_stopped(self):
@@ -690,6 +724,16 @@ class ValidationMonitor(EveryN):
     # that's what is being evaluated.
     if self._estimator is None:
       raise ValueError("Missing call to set_estimator.")
+    current_time = time.time()
+    if (self._check_interval_secs is not None and
+        self._last_checkpoint_check_time is not None and
+        current_time - self._last_checkpoint_check_time <=
+        self._check_interval_secs):
+      logging.debug(
+          "Skipping evaluation since less than %d seconds have passed since "
+          "last check for a new checkpoint.", self._check_interval_secs)
+      return False
+    self._last_checkpoint_check_time = current_time
     # Check that we are not running evaluation on the same checkpoint.
     latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
     if latest_path is None:
@@ -740,6 +784,10 @@ class ValidationMonitor(EveryN):
 class CaptureVariable(EveryN):
   """Captures a variable's values into a collection.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   This monitor is useful for unit testing. You should exercise caution when
   using this monitor in production, since it never discards values.
 
@@ -778,6 +826,7 @@ class CaptureVariable(EveryN):
     self._var_values[step] = _extract_output(outputs, self._var_name)
 
 
+@deprecation.deprecated(None, "Use tf.train.MonitoredTrainingSession.")
 def get_default_monitors(loss_op=None,
                          summary_op=None,
                          save_summary_steps=100,
@@ -811,6 +860,10 @@ def get_default_monitors(loss_op=None,
 
 class GraphDump(BaseMonitor):
   """Dumps almost all tensors in the graph at every step.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Note, this is very expensive, prefer `PrintTensor` in production.
   """
@@ -901,7 +954,12 @@ class GraphDump(BaseMonitor):
 
 
 class ExportMonitor(EveryN):
-  """Monitor that exports Estimator every N steps."""
+  """Monitor that exports Estimator every N steps.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
 
   @deprecation.deprecated("2017-03-25",
                           "ExportMonitor is deprecated. Please pass an "
@@ -1024,7 +1082,12 @@ class ExportMonitor(EveryN):
 
 
 class CheckpointSaver(BaseMonitor):
-  """Saves checkpoints every N steps or N seconds."""
+  """Saves checkpoints every N steps or N seconds.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
 
   def __init__(self,
                checkpoint_dir,
@@ -1109,7 +1172,12 @@ class CheckpointSaver(BaseMonitor):
 
 
 class StepCounter(EveryN):
-  """Steps per second monitor."""
+  """Steps per second monitor.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
 
   def __init__(self, every_n_steps=100, output_dir=None, summary_writer=None):
     super(StepCounter, self).__init__(every_n_steps=every_n_steps)
@@ -1148,6 +1216,10 @@ class NanLossDuringTrainingError(RuntimeError):
 
 class NanLoss(EveryN):
   """NaN Loss monitor.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Monitors loss and stops training if loss is NaN.
   Can either fail with exception or just stop training.

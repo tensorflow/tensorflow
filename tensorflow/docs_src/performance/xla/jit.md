@@ -157,7 +157,7 @@ to fuse Ops is visible by starting at `hlo_graph_0.dot` and viewing each diagram
 in succession.
 
 To Render the .dot file into a png, install
-[GraphViz](http://www.graphviz.org/Download..php) and run:
+[GraphViz](https://www.graphviz.org/download/) and run:
 
 ```shell
 dot -Tpng hlo_graph_80.dot -o hlo_graph_80.png

@@ -20,5 +20,6 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long
 from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
+from tensorflow.contrib.tensorrt.python.trt_convert import calib_graph_to_infer_graph
 from tensorflow.contrib.tensorrt.python.trt_convert import create_inference_graph
 # pylint: enable=unused-import,line-too-long

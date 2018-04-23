@@ -22,11 +22,12 @@ from tensorflow.python import pywrap_tensorflow as tf_wrap
 from tensorflow.python.framework import errors
 
 
-def GenerateModelReport(metagraph, debug=False):
+def GenerateModelReport(metagraph, assume_valid_feeds=True, debug=False):
   """Report what's known statically about each node in the provided metagraph.
 
   Args:
     metagraph: A TensorFlow MetaGraphDef.
+    assume_valid_feeds: If True, assume that the shape of the fed nodes is valid
     debug: Add some information useful for debugging.
 
   Returns:
@@ -34,6 +35,6 @@ def GenerateModelReport(metagraph, debug=False):
   """
   with errors.raise_exception_on_not_ok_status():
     ret_from_swig = tf_wrap.GenerateModelReport(metagraph.SerializeToString(),
-                                                debug)
+                                                assume_valid_feeds, debug)
 
   return ret_from_swig

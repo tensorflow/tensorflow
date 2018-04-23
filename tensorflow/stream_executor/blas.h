@@ -49,8 +49,7 @@ namespace Eigen {
 struct half;
 }  // namespace Eigen
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 class ScratchAllocator;
@@ -103,6 +102,8 @@ enum class ComputationType {
 
 // Converts a ComputationType to a string.
 string ComputationTypeString(ComputationType ty);
+
+std::ostream &operator<<(std::ostream &os, ComputationType ty);
 
 // Opaque identifier for an "algorithm" used by a blas routine.  This functions
 // as a hint to the blas library.
@@ -2098,7 +2099,6 @@ class BlasSupport {
                   DeviceMemory<std::complex<double>> *b, int ldb) override;
 
 }  // namespace blas
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_BLAS_H_

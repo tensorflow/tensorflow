@@ -43,13 +43,13 @@ class SoftplusBijectorTest(test.TestCase):
 
   def testHingeSoftnessZeroRaises(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0, hinge_softness=0., validate_args=True)
+      bijector = Softplus(hinge_softness=0., validate_args=True)
       with self.assertRaisesOpError("must be non-zero"):
         bijector.forward([1., 1.]).eval()
 
   def testBijectorForwardInverseEventDimsZero(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0)
+      bijector = Softplus()
       self.assertEqual("softplus", bijector.name)
       x = 2 * rng.randn(2, 10)
       y = self._softplus(x)
@@ -59,7 +59,7 @@ class SoftplusBijectorTest(test.TestCase):
 
   def testBijectorForwardInverseWithHingeSoftnessEventDimsZero(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0, hinge_softness=1.5)
+      bijector = Softplus(hinge_softness=1.5)
       x = 2 * rng.randn(2, 10)
       y = 1.5 * self._softplus(x / 1.5)
 
@@ -68,16 +68,17 @@ class SoftplusBijectorTest(test.TestCase):
 
   def testBijectorLogDetJacobianEventDimsZero(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0)
+      bijector = Softplus()
       y = 2 * rng.rand(2, 10)
       # No reduction needed if event_dims = 0.
       ildj = self._softplus_ildj_before_reduction(y)
 
-      self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(y).eval())
+      self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(
+          y, event_ndims=0).eval())
 
   def testBijectorForwardInverseEventDimsOne(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=1)
+      bijector = Softplus()
       self.assertEqual("softplus", bijector.name)
       x = 2 * rng.randn(2, 10)
       y = self._softplus(x)
@@ -87,58 +88,59 @@ class SoftplusBijectorTest(test.TestCase):
 
   def testBijectorLogDetJacobianEventDimsOne(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=1)
+      bijector = Softplus()
       y = 2 * rng.rand(2, 10)
       ildj_before = self._softplus_ildj_before_reduction(y)
       ildj = np.sum(ildj_before, axis=1)
 
-      self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(y).eval())
+      self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(
+          y, event_ndims=1).eval())
 
   def testScalarCongruency(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0)
+      bijector = Softplus()
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=2.)
 
   def testScalarCongruencyWithPositiveHingeSoftness(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0, hinge_softness=1.3)
+      bijector = Softplus(hinge_softness=1.3)
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=2.)
 
   def testScalarCongruencyWithNegativeHingeSoftness(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0, hinge_softness=-1.3)
+      bijector = Softplus(hinge_softness=-1.3)
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=2.)
 
   def testBijectiveAndFinite32bit(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0)
+      bijector = Softplus()
       x = np.linspace(-20., 20., 100).astype(np.float32)
       y = np.logspace(-10, 10, 100).astype(np.float32)
       assert_bijective_and_finite(
-          bijector, x, y, rtol=1e-2, atol=1e-2)
+          bijector, x, y, event_ndims=0, rtol=1e-2, atol=1e-2)
 
   def testBijectiveAndFiniteWithPositiveHingeSoftness32Bit(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0, hinge_softness=1.23)
+      bijector = Softplus(hinge_softness=1.23)
       x = np.linspace(-20., 20., 100).astype(np.float32)
       y = np.logspace(-10, 10, 100).astype(np.float32)
       assert_bijective_and_finite(
-          bijector, x, y, rtol=1e-2, atol=1e-2)
+          bijector, x, y, event_ndims=0, rtol=1e-2, atol=1e-2)
 
   def testBijectiveAndFiniteWithNegativeHingeSoftness32Bit(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0, hinge_softness=-0.7)
+      bijector = Softplus(hinge_softness=-0.7)
       x = np.linspace(-20., 20., 100).astype(np.float32)
       y = -np.logspace(-10, 10, 100).astype(np.float32)
       assert_bijective_and_finite(
-          bijector, x, y, rtol=1e-2, atol=1e-2)
+          bijector, x, y, event_ndims=0, rtol=1e-2, atol=1e-2)
 
   def testBijectiveAndFinite16bit(self):
     with self.test_session():
-      bijector = Softplus(event_ndims=0)
+      bijector = Softplus()
       # softplus(-20) is zero, so we can't use such a large range as in 32bit.
       x = np.linspace(-10., 20., 100).astype(np.float16)
       # Note that float16 is only in the open set (0, inf) for a smaller
@@ -146,7 +148,7 @@ class SoftplusBijectorTest(test.TestCase):
       # for the test.
       y = np.logspace(-6, 3, 100).astype(np.float16)
       assert_bijective_and_finite(
-          bijector, x, y, rtol=1e-1, atol=1e-3)
+          bijector, x, y, event_ndims=0, rtol=1e-1, atol=1e-3)
 
 
 if __name__ == "__main__":

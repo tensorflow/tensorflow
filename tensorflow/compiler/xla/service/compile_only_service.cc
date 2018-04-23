@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
-CompileOnlyService::NewService(perftools::gputools::Platform* platform) {
+CompileOnlyService::NewService(se::Platform* platform) {
   ServiceOptions default_options;
   default_options.set_platform(platform);
   return NewService(default_options);
@@ -45,7 +45,7 @@ CompileOnlyService::NewService(perftools::gputools::Platform* platform) {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
 CompileOnlyService::NewService(const ServiceOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
@@ -63,6 +63,33 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
+    const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+    const AotCompilationOptions& options) {
+  std::vector<std::unique_ptr<HloModule>> hlo_modules;
+  for (const AotXlaComputationInstance& instance : computations) {
+    TF_RET_CHECK(instance.computation.has_program_shape());
+
+    const DebugOptions& debug_options = options.debug_options();
+    const auto& program_shape = instance.computation.program_shape();
+    ExecutionOptions execution_options;
+    *execution_options.mutable_debug_options() = debug_options;
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleConfig> module_config,
+        CreateModuleConfig(program_shape, instance.argument_layouts,
+                           &execution_options));
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> hlo_module,
+        HloModule::CreateFromProto(instance.computation, *module_config));
+    TF_RETURN_IF_ERROR(MaybeDumpHloModule(*hlo_module));
+    hlo_modules.push_back(std::move(hlo_module));
+  }
+
+  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
+}
+
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+CompileOnlyService::CompileAheadOfTime(
     const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
     const AotCompilationOptions& options) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
@@ -72,8 +99,7 @@ CompileOnlyService::CompileAheadOfTime(
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
 
-    // TODO(b/63773457): Track DebugOptions in AotCompilationOptions.
-    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+    const DebugOptions& debug_options = options.debug_options();
 
     // Dump computation proto state if flag is set.
     const string& directory_path = debug_options.xla_dump_computations_to();
@@ -101,7 +127,7 @@ CompileOnlyService::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(*program_shape, instance.argument_layouts,
-                           &execution_options, *user_computation));
+                           &execution_options, user_computation));
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(

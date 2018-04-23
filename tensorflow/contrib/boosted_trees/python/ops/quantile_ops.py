@@ -184,7 +184,7 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
     """Finalizes quantile summary stream and resets it for next iteration.
 
     Args:
-      stamp_token: Exepcted current token.
+      stamp_token: Expected current token.
       next_stamp_token: Next value for the token.
     Returns:
       A list of quantiles or approximate boundaries.

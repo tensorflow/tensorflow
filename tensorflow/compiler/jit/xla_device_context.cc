@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_device_context.h"
 
+#include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/mem.h"
 
@@ -26,33 +28,58 @@ namespace se = ::perftools::gputools;
 namespace tensorflow {
 
 // The allocator used for Tensors assigned to the XLA device.
-XlaDeviceAllocator::XlaDeviceAllocator(const xla::Backend* backend,
-                                       int device_ordinal)
-    : backend_(backend), device_ordinal_(device_ordinal) {}
-
+XlaDeviceAllocator::XlaDeviceAllocator() {}
 XlaDeviceAllocator::~XlaDeviceAllocator() = default;
 
 string XlaDeviceAllocator::Name() { return "xla"; }
 
 void* XlaDeviceAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
-  se::DeviceMemoryBase dmem =
-      backend_->memory_allocator()
-          ->Allocate(device_ordinal_, num_bytes, /*retry_on_failure=*/false)
-          .ValueOrDie();
-  VLOG(2) << "Allocated XLA device tensor " << dmem.opaque() << "(" << num_bytes
-          << ")";
-  return dmem.opaque();
+  // We always return an empty XlaTensor object, encoded as an opaque tagged
+  // pointer. We can return an empty object and ignore num_bytes here because we
+  // have control over all of the uses of this device tensor, and can lazily
+  // allocate memory when used. This allows us to also know the shape of the
+  // allocated Tensor, which is useful if the device's tensor representation
+  // differs from the host.
+  return XlaTensor::ToOpaquePointer(new XlaTensor());
 }
 
 void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
-  se::DeviceMemoryBase dmem(ptr);
-  TF_CHECK_OK(backend_->memory_allocator()->Deallocate(device_ordinal_, &dmem));
-  VLOG(2) << "Deallocated XLA device tensor " << ptr;
+  delete XlaTensor::FromOpaquePointer(ptr);
 }
 
 void XlaDeviceAllocator::GetStats(AllocatorStats* stats) { stats->Clear(); }
 
-XlaTransferManager::XlaTransferManager(se::Stream* stream) : stream_(stream) {}
+XlaTransferManager::XlaTransferManager(se::Stream* stream,
+                                       xla::LocalClient* client,
+                                       bool transfer_as_literal)
+    : stream_(stream),
+      client_(client),
+      transfer_manager_(client->backend().transfer_manager()),
+      transfer_as_literal_(transfer_as_literal) {}
+
+Status XlaTransferManager::TransferLiteralToDevice(
+    const Tensor& host_tensor, Tensor* device_tensor) const {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(HostTensorToLiteral(host_tensor, &literal));
+  VLOG(1) << "Transfer to device as literal: " << literal.ToString();
+
+  const xla::ShapedBuffer& shaped_buffer =
+      XlaTensor::FromTensor(device_tensor)->shaped_buffer();
+  return transfer_manager_->TransferLiteralToDevice(stream_->parent(), literal,
+                                                    shaped_buffer);
+}
+
+Status XlaTransferManager::TransferLiteralFromDevice(
+    Tensor* host_tensor, const Tensor& device_tensor) const {
+  const xla::ShapedBuffer& shaped_buffer =
+      XlaTensor::FromTensor(&device_tensor)->shaped_buffer();
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
+                      transfer_manager_->TransferLiteralFromDevice(
+                          stream_->parent(), shaped_buffer));
+  VLOG(1) << "Transfer from device as literal: " << literal->ToString();
+  return LiteralToHostTensor(*literal, host_tensor->dtype(), host_tensor);
+}
 
 void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                                Device* device,
@@ -68,18 +95,35 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
 
     void* src_ptr = const_cast<void*>(DMAHelper::base(cpu_tensor));
     const int64 total_bytes = cpu_tensor->TotalBytes();
-    void* dst_ptr = DMAHelper::base(device_tensor);
-    se::DeviceMemoryBase dev_dst_ptr(dst_ptr, total_bytes);
 
-    Status status;
-    stream_->ThenMemcpy(&dev_dst_ptr, src_ptr, total_bytes);
-    // TODO(hpucha): Make this asynchronous.
-    Status block_status = stream_->BlockHostUntilDone();
-    if (!block_status.ok()) {
-      status = xla::InternalError(
-          "Failed to complete data transfer on stream %p: %s", stream_,
-          block_status.error_message().c_str());
+    XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
+    CHECK(xla_tensor);
+    if (!xla_tensor->has_shaped_buffer()) {
+      Status s = xla_tensor->AllocateShapedBuffer(
+          device_tensor->dtype(), device_tensor->shape(), client_,
+          stream_->parent()->device_ordinal());
+      if (!s.ok()) {
+        done(s);
+        return;
+      }
     }
+
+    se::DeviceMemoryBase dev_dst_ptr =
+        XlaTensor::DeviceMemoryFromTensor(*device_tensor);
+    Status status;
+    if (transfer_as_literal_) {
+      status = TransferLiteralToDevice(*cpu_tensor, device_tensor);
+    } else {
+      stream_->ThenMemcpy(&dev_dst_ptr, src_ptr, total_bytes);
+      // TODO(hpucha): Make this asynchronous.
+      Status block_status = stream_->BlockHostUntilDone();
+      if (!block_status.ok()) {
+        status = xla::InternalError(
+            "Failed to complete data transfer on stream %p: %s", stream_,
+            block_status.error_message().c_str());
+      }
+    }
+    xla_tensor->set_host_tensor(*cpu_tensor);
 
     done(status);
     return;
@@ -103,18 +147,22 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
             << device_tensor->NumElements();
 
     const int64 total_bytes = cpu_tensor->TotalBytes();
-    void* src_ptr = const_cast<void*>(DMAHelper::base(device_tensor));
-    se::DeviceMemoryBase dev_src_ptr(src_ptr, total_bytes);
+    se::DeviceMemoryBase dev_src_ptr =
+        XlaTensor::DeviceMemoryFromTensor(*device_tensor);
     void* dst_ptr = DMAHelper::base(cpu_tensor);
 
     Status status;
-    stream_->ThenMemcpy(dst_ptr, dev_src_ptr, total_bytes);
-    // TODO(hpucha): Make this asynchronous.
-    Status block_status = stream_->BlockHostUntilDone();
-    if (!block_status.ok()) {
-      status = xla::InternalError(
-          "Failed to complete data transfer on stream %p: %s", stream_,
-          block_status.error_message().c_str());
+    if (transfer_as_literal_) {
+      status = TransferLiteralFromDevice(cpu_tensor, *device_tensor);
+    } else {
+      stream_->ThenMemcpy(dst_ptr, dev_src_ptr, total_bytes);
+      // TODO(hpucha): Make this asynchronous.
+      Status block_status = stream_->BlockHostUntilDone();
+      if (!block_status.ok()) {
+        status = xla::InternalError(
+            "Failed to complete data transfer on stream %p: %s", stream_,
+            block_status.error_message().c_str());
+      }
     }
 
     done(status);
@@ -125,7 +173,9 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   done(Status::OK());
 }
 
-XlaDeviceContext::XlaDeviceContext(se::Stream* stream) : manager_(stream) {}
+XlaDeviceContext::XlaDeviceContext(se::Stream* stream, xla::LocalClient* client,
+                                   bool transfer_as_literal)
+    : manager_(stream, client, transfer_as_literal) {}
 
 void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                              Device* device,

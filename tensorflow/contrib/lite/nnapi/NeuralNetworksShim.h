@@ -22,7 +22,7 @@ limitations under the License.
 
 // helpers
 
-#define NNAPI_LOG(format, ...) printf(format "\n", __VA_ARGS__);
+#define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
 #define LOAD_FUNCTION(name) \
   static name##_fn fn = reinterpret_cast<name##_fn>(loadFunction(#name));
 #define EXECUTE_FUNCTION(...) \
@@ -34,10 +34,13 @@ limitations under the License.
 inline void* loadLibrary(const char* name) {
   // TODO: change RTLD_LOCAL? Assumes there can be multiple instances of nn
   // api RT
-  void* handle = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
+  void* handle = nullptr;
+#ifdef __ANDROID__
+  handle = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
   if (handle == nullptr) {
     NNAPI_LOG("nnapi error: unable to open library %s", name);
   }
+#endif
   return handle;
 }
 
@@ -569,7 +572,7 @@ enum {
   ANEURALNETWORKS_LOGISTIC = 14,
 
   /**
-   * Projects an input to a bit vector via locality senstive hashing.
+   * Projects an input to a bit vector via locality sensitive hashing.
    *
    * Inputs:
    * * 0: Hash functions. Dim.size == 2, DataType: Float.

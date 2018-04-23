@@ -62,12 +62,12 @@ class LocalShapedBuffer {
   static LocalShapedBuffer* FromLiteral(
       const Literal& argument,
       const tensorflow::gtl::optional<Shape>& shape_with_layout);
-  LocalShapedBuffer(std::unique_ptr<ScopedShapedBuffer> shaped_buffer);
-  const std::unique_ptr<ScopedShapedBuffer>& shaped_buffer() const;
+  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
+  const ScopedShapedBuffer* shaped_buffer() const;
   std::unique_ptr<Literal> ToLiteral() const;
 
  private:
-  std::unique_ptr<ScopedShapedBuffer> shaped_buffer_;
+  ScopedShapedBuffer shaped_buffer_;
 };
 
 // Wraps a LocalExecutable produced by compiling a
@@ -170,6 +170,10 @@ class LocalComputationBuilder {
                               tensorflow::gtl::ArraySlice<int64> limit_indices,
                               tensorflow::gtl::ArraySlice<int64> strides);
 
+  ComputationDataHandle SliceInDim(const ComputationDataHandle& operand,
+                                   int64 start_index, int64 limit_index,
+                                   int64 stride, int64 dimno);
+
   ComputationDataHandle DynamicSlice(
       const ComputationDataHandle& operand,
       const ComputationDataHandle& start_indices,
@@ -263,6 +267,13 @@ class LocalComputationBuilder {
                                     const LocalComputation& true_computation,
                                     const ComputationDataHandle& false_operand,
                                     const LocalComputation& false_computation);
+
+  StatusOr<bool> IsConstant(const ComputationDataHandle& operand,
+                            int64 num_parameters);
+
+  StatusOr<std::unique_ptr<Literal> > ComputeConstant(
+      const ComputationDataHandle& operand, const Layout* output_layout,
+      tensorflow::gtl::ArraySlice<Literal> parameters);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
   return_sig method_name args_sig;

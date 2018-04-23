@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/dataset.h"
-
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/dataset.h"
 
 #include "src-cpp/rdkafkacpp.h"
 

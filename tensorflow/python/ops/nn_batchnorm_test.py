@@ -57,7 +57,6 @@ class BatchNormalizationTest(test.TestCase):
     test_util.set_producer_version(ops.get_default_graph(), 8)
     return gen_nn_ops._batch_norm_with_global_normalization(
         x, m, v, beta, gamma, epsilon, scale_after_normalization)
-    # pylint: enable=protected-access
 
   def _tfBatchNormV1BW(self, x, m, v, beta, gamma, epsilon,
                        scale_after_normalization):
@@ -223,7 +222,7 @@ class BatchNormalizationTest(test.TestCase):
         for scale_after_normalization in [True, False]:
           # _batch_norm_with_global_normalization_grad is deprecated in v9
           test_util.set_producer_version(ops.get_default_graph(), 8)
-          grad = gen_nn_ops._batch_norm_with_global_normalization_grad(
+          grad = gen_nn_ops.batch_norm_with_global_normalization_grad(
               x, m, v, gamma, backprop, epsilon, scale_after_normalization)
           dx, dm, dv, db, dg = grad
           self.assertEqual(grad.dx, dx)

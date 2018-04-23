@@ -158,7 +158,7 @@ class StudentT(distribution.Distribution):
       TypeError: if loc and scale are different dtypes.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[df, loc, scale]):
+    with ops.name_scope(name, values=[df, loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(df)]
                                     if validate_args else []):
         self._df = array_ops.identity(df, name="df")
@@ -247,9 +247,6 @@ class StudentT(distribution.Distribution):
             0.5 * np.log(np.pi) +
             math_ops.lgamma(0.5 * self.df) -
             math_ops.lgamma(0.5 * (self.df + 1.)))
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
 
   def _cdf(self, x):
     # Take Abs(scale) to make subsequent where work correctly.
@@ -353,7 +350,7 @@ class StudentTWithAbsDfSoftplusScale(StudentT):
                allow_nan_stats=True,
                name="StudentTWithAbsDfSoftplusScale"):
     parameters = locals()
-    with ops.name_scope(name, values=[df, scale]):
+    with ops.name_scope(name, values=[df, scale]) as name:
       super(StudentTWithAbsDfSoftplusScale, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
           loc=loc,

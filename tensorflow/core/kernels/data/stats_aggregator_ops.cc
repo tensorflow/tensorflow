@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/data/stats_aggregator.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 
 #include <memory>
 
@@ -47,7 +47,7 @@ class StatsAggregatorImpl : public StatsAggregator {
       Summary::Value* value = out_summary->add_value();
       value->set_tag(name);
       histogram.EncodeToProto(value->mutable_histo(),
-                              true /* preserve_zero_buckets */);
+                              false /* doesn't preserve zero buckets */);
     }
   }
 

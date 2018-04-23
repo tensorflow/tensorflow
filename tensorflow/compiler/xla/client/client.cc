@@ -177,6 +177,50 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
   return Transfer(*data, shape_with_output_layout);
 }
 
+StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
+    const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const ExecutionOptions* execution_options,
+    ExecutionProfile* execution_profile) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GlobalData> data,
+      Execute(computation, arguments, execution_options, execution_profile));
+
+  const Shape* shape_with_output_layout = nullptr;
+  if (execution_options && execution_options->has_shape_with_output_layout()) {
+    shape_with_output_layout = &execution_options->shape_with_output_layout();
+  }
+  return Transfer(*data, shape_with_output_layout);
+}
+
+StatusOr<std::unique_ptr<Literal>> Client::ComputeConstant(
+    const XlaComputation& computation, const Layout* output_layout) const {
+  ComputeConstantGraphRequest request;
+  *request.mutable_computation() = computation.proto();
+  if (output_layout != nullptr) {
+    *request.mutable_output_layout() = *output_layout;
+  }
+
+  ComputeConstantResponse response;
+
+  VLOG(2) << "making compute-constant-graph request";
+  Status s = stub_->ComputeConstantGraph(&request, &response);
+  VLOG(2) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+
+  VLOG(3) << "ComputeConstant: {" << response.DebugString() << "}";
+
+  if (!response.has_literal()) {
+    return InternalError(
+        "no computed literal in the provided response in ComputeConstantGraph "
+        "request");
+  }
+  return Literal::CreateFromProto(response.literal());
+}
+
 StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
   LoadComputationSnapshotRequest request;
   *request.mutable_module() = module;
@@ -231,6 +275,46 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   return MakeUnique<GlobalData>(stub_, response.output());
 }
 
+StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
+    const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const ExecutionOptions* execution_options,
+    ExecutionProfile* execution_profile) {
+  ExecuteGraphRequest request;
+  *request.mutable_computation() = computation.proto();
+
+  if (execution_options == nullptr) {
+    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
+  } else {
+    *request.mutable_execution_options() = *execution_options;
+  }
+  for (GlobalData* argument : arguments) {
+    CHECK(argument != nullptr) << "Argument pointers must not be null.";
+    *request.add_arguments() = argument->handle();
+  }
+
+  ExecuteResponse response;
+  VLOG(1) << "making execute request: " << request.ShortDebugString();
+  Status s = stub_->ExecuteGraph(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+
+  if (execution_profile != nullptr) {
+    *execution_profile = response.profile();
+    if (VLOG_IS_ON(1)) {
+      TF_ASSIGN_OR_RETURN(
+          auto execution_stats,
+          ExecutionStatsAsString(computation, response.profile()));
+      VLOG(1) << execution_stats;
+    }
+  }
+
+  return MakeUnique<GlobalData>(stub_, response.output());
+}
+
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
     tensorflow::gtl::ArraySlice<ComputationInstance> computations) {
   ExecuteParallelRequest request;
@@ -248,6 +332,42 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   ExecuteParallelResponse response;
   VLOG(1) << "making execute-parallel request: " << request.ShortDebugString();
   tensorflow::Status s = stub_->ExecuteParallel(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+
+  std::vector<std::unique_ptr<GlobalData>> outputs;
+  for (size_t i = 0; i < computations.size(); ++i) {
+    outputs.push_back(
+        MakeUnique<GlobalData>(stub_, response.responses(i).output()));
+    if (computations[i].execution_profile != nullptr) {
+      *computations[i].execution_profile = response.responses(i).profile();
+    }
+  }
+
+  return std::move(outputs);
+}
+
+StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
+    tensorflow::gtl::ArraySlice<XlaComputationInstance> computations) {
+  ExecuteGraphParallelRequest request;
+
+  for (const XlaComputationInstance& computation : computations) {
+    ExecuteGraphRequest single_request;
+    *single_request.mutable_computation() = computation.computation.proto();
+    for (GlobalData* argument : computation.arguments) {
+      *single_request.add_arguments() = argument->handle();
+    }
+    *single_request.mutable_execution_options() = computation.execution_options;
+    *request.add_requests() = single_request;
+  }
+
+  ExecuteParallelResponse response;
+  VLOG(1) << "making execute-graph-parallel request: "
+          << request.ShortDebugString();
+  tensorflow::Status s = stub_->ExecuteGraphParallel(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -342,6 +462,27 @@ StatusOr<ComputationStats> Client::GetComputationStats(
   return response.stats();
 }
 
+StatusOr<ComputationStats> Client::GetComputationStats(
+    const XlaComputation& computation,
+    const DebugOptions& debug_options) const {
+  ComputationGraphStatsRequest request;
+
+  // TODO(b/74197823): Find a way to avoid the copy of the hlo proto.
+  *request.mutable_computation() = computation.proto();
+  *request.mutable_debug_options() = debug_options;
+  ComputationStatsResponse response;
+
+  VLOG(1) << "making computation graph stats request";
+  Status s = stub_->GetComputationGraphStats(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+  CHECK(response.has_stats());
+  return response.stats();
+}
+
 StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const Computation& computation) {
   GetComputationShapeRequest request;
@@ -357,6 +498,12 @@ StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
   }
 
   return WrapUnique(response.release_program_shape());
+}
+
+StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
+  return MakeUnique<ProgramShape>(result);
 }
 
 StatusOr<Shape> Client::GetShape(const GlobalData& data) {
@@ -377,6 +524,28 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
 
 StatusOr<string> Client::ExecutionStatsAsString(
     const Computation& computation, const ExecutionProfile& profile) {
+  TF_ASSIGN_OR_RETURN(
+      auto computation_stats,
+      GetComputationStats(computation,
+                          legacy_flags::GetDebugOptionsFromFlags()));
+  int64 total_flops =
+      computation_stats.flop_count() + computation_stats.transcendental_count();
+  if (profile.compute_time_ns() > 0) {
+    int64 nanoseconds = profile.compute_time_ns();
+    int64 cycle_count = profile.compute_cycle_count();
+    double gflops = total_flops / nanoseconds;
+    return tensorflow::strings::StrCat(
+        "[Execution Statistics] flop count: ", computation_stats.flop_count(),
+        ", transcendental count: ", computation_stats.transcendental_count(),
+        ", compute execution time: ", nanoseconds, " nsec",
+        ", compute cycles: ", cycle_count, ", performance: ", gflops,
+        "gflop/s");
+  }
+  return string("[Execution Statistics] not available.");
+}
+
+StatusOr<string> Client::ExecutionStatsAsString(
+    const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
       GetComputationStats(computation,

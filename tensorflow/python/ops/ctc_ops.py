@@ -148,7 +148,7 @@ def ctc_loss(labels, inputs, sequence_length,
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
 
-  loss, _ = gen_ctc_ops._ctc_loss(
+  loss, _ = gen_ctc_ops.ctc_loss(
       inputs,
       labels.indices,
       labels.values,
@@ -218,13 +218,13 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
         The rows store: `[batch, time]`.
       `decoded.values`: Values vector, size `(total_decoded_outputs)`.
         The vector stores the decoded classes.
-      `decoded.shape`: Shape vector, size `(2)`.
+      `decoded.dense_shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length]`
     neg_sum_logits: A `float` matrix `(batch_size x 1)` containing, for the
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
   """
-  outputs = gen_ctc_ops._ctc_greedy_decoder(
+  outputs = gen_ctc_ops.ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
   return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val, decoded_shape)],
@@ -265,14 +265,14 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
         The rows store: [batch, time].
       `decoded[j].values`: Values vector, size `(total_decoded_outputs[j])`.
         The vector stores the decoded classes for beam j.
-      `decoded[j].shape`: Shape vector, size `(2)`.
+      `decoded[j].dense_shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length[j]]`.
     log_probability: A `float` matrix `(batch_size x top_paths)` containing
         sequence log-probabilities.
   """
 
   decoded_ixs, decoded_vals, decoded_shapes, log_probabilities = (
-      gen_ctc_ops._ctc_beam_search_decoder(
+      gen_ctc_ops.ctc_beam_search_decoder(
           inputs, sequence_length, beam_width=beam_width, top_paths=top_paths,
           merge_repeated=merge_repeated))
 

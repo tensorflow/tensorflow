@@ -39,7 +39,6 @@ class SinhArcsinhBijectorTest(test.TestCase):
       bijector = SinhArcsinh(
           skewness=skewness,
           tailweight=tailweight,
-          event_ndims=1,
           validate_args=True)
       self.assertEqual("SinhArcsinh", bijector.name)
       x = np.array([[[-2.01], [2.], [1e-4]]]).astype(np.float32)
@@ -50,10 +49,11 @@ class SinhArcsinhBijectorTest(test.TestCase):
           np.sum(
               np.log(np.cosh(np.arcsinh(y) / tailweight - skewness)) -
               np.log(tailweight) - np.log(np.sqrt(y**2 + 1)),
-              axis=-1), bijector.inverse_log_det_jacobian(y).eval())
+              axis=-1),
+          bijector.inverse_log_det_jacobian(y, event_ndims=1).eval())
       self.assertAllClose(
-          -bijector.inverse_log_det_jacobian(y).eval(),
-          bijector.forward_log_det_jacobian(x).eval(),
+          -bijector.inverse_log_det_jacobian(y, event_ndims=1).eval(),
+          bijector.forward_log_det_jacobian(x, event_ndims=1).eval(),
           rtol=1e-4,
           atol=0.)
 
@@ -106,14 +106,15 @@ class SinhArcsinhBijectorTest(test.TestCase):
       bijector = SinhArcsinh(skewness=-1., tailweight=0.5, validate_args=True)
       x = np.concatenate((-np.logspace(-2, 10, 1000), [0], np.logspace(
           -2, 10, 1000))).astype(np.float32)
-      assert_bijective_and_finite(bijector, x, x, rtol=1e-3)
+      assert_bijective_and_finite(bijector, x, x, event_ndims=0, rtol=1e-3)
 
   def testBijectiveAndFiniteSkewness1Tailweight3(self):
     with self.test_session():
       bijector = SinhArcsinh(skewness=1., tailweight=3., validate_args=True)
       x = np.concatenate((-np.logspace(-2, 5, 1000), [0], np.logspace(
           -2, 5, 1000))).astype(np.float32)
-      assert_bijective_and_finite(bijector, x, x, rtol=1e-3)
+      assert_bijective_and_finite(
+          bijector, x, x, event_ndims=0, rtol=1e-3)
 
   def testBijectorEndpoints(self):
     with self.test_session():
@@ -124,7 +125,8 @@ class SinhArcsinhBijectorTest(test.TestCase):
             [np.finfo(dtype).min, np.finfo(dtype).max], dtype=dtype)
         # Note that the above bijector is the identity bijector. Hence, the
         # log_det_jacobian will be 0. Because of this we use atol.
-        assert_bijective_and_finite(bijector, bounds, bounds, atol=2e-6)
+        assert_bijective_and_finite(
+            bijector, bounds, bounds, event_ndims=0, atol=2e-6)
 
   def testBijectorOverRange(self):
     with self.test_session():
@@ -156,12 +158,12 @@ class SinhArcsinhBijectorTest(test.TestCase):
                 np.arcsinh(y_float128) / tailweight - skewness) / np.sqrt(
                     y_float128**2 + 1)) -
             np.log(tailweight),
-            bijector.inverse_log_det_jacobian(y).eval(),
+            bijector.inverse_log_det_jacobian(y, event_ndims=0).eval(),
             rtol=1e-4,
             atol=0.)
         self.assertAllClose(
-            -bijector.inverse_log_det_jacobian(y).eval(),
-            bijector.forward_log_det_jacobian(x).eval(),
+            -bijector.inverse_log_det_jacobian(y, event_ndims=0).eval(),
+            bijector.forward_log_det_jacobian(x, event_ndims=0).eval(),
             rtol=1e-4,
             atol=0.)
 

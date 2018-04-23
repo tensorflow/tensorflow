@@ -504,8 +504,8 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
     input_shape =
         c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('2'), dim('C')}});
     stride_planes = strides[2];
-    stride_cols = strides[3];
-    stride_rows = strides[4];
+    stride_rows = strides[3];
+    stride_cols = strides[4];
   } else {
     stride_planes = strides[1];
     stride_rows = strides[2];
@@ -1210,7 +1210,7 @@ Status ConcatV2Shape(InferenceContext* c) {
                            c->num_inputs() - 1 /* dim_index */);
 }
 
-Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
+Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
   ShapeHandle shape_x = c->input(0);
   ShapeHandle shape_y = c->input(1);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
@@ -1272,7 +1272,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
     }
   }
 
-  c->set_output(0, c->MakeShape(dims));
+  c->set_output(output_index, c->MakeShape(dims));
   return Status::OK();
 }
 

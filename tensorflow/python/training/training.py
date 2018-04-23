@@ -28,8 +28,10 @@ See the @{$python/train} guide.
 @@ProximalGradientDescentOptimizer
 @@ProximalAdagradOptimizer
 @@RMSPropOptimizer
+@@custom_gradient
 @@gradients
 @@AggregationMethod
+@@GradientTape
 @@stop_gradient
 @@hessians
 @@clip_by_value
@@ -94,6 +96,8 @@ See the @{$python/train} guide.
 @@load_variable
 @@list_variables
 @@init_from_checkpoint
+@@warm_start
+@@VocabInfo
 """
 
 # Optimizers.
@@ -152,6 +156,7 @@ from tensorflow.python.training.basic_session_run_hooks import FinalOpsHook
 from tensorflow.python.training.basic_session_run_hooks import FeedFnHook
 from tensorflow.python.training.basic_session_run_hooks import ProfilerHook
 from tensorflow.python.training.basic_loops import basic_train_loop
+from tensorflow.python.training.checkpointable_utils import Checkpoint
 from tensorflow.python.training.checkpoint_utils import init_from_checkpoint
 from tensorflow.python.training.checkpoint_utils import list_variables
 from tensorflow.python.training.checkpoint_utils import load_checkpoint
@@ -187,6 +192,8 @@ from tensorflow.python.training.training_util import get_global_step
 from tensorflow.python.training.training_util import assert_global_step
 from tensorflow.python.training.training_util import create_global_step
 from tensorflow.python.training.training_util import get_or_create_global_step
+from tensorflow.python.training.warm_starting_util import VocabInfo
+from tensorflow.python.training.warm_starting_util import warm_start
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 from tensorflow.python.util.tf_export import tf_export

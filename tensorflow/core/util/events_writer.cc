@@ -122,9 +122,11 @@ Status EventsWriter::Flush() {
   CHECK(recordio_file_ != nullptr) << "Unexpected NULL file";
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(recordio_writer_->Flush(), "Failed to flush ",
-                                  num_outstanding_events_, " to ", filename_);
+                                  num_outstanding_events_, " events to ",
+                                  filename_);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(recordio_file_->Sync(), "Failed to sync ",
-                                  num_outstanding_events_, " to ", filename_);
+                                  num_outstanding_events_, " events to ",
+                                  filename_);
 
   // The FileStillExists() condition is necessary because
   // recordio_writer_->Sync() can return OK even if the underlying
@@ -135,7 +137,8 @@ Status EventsWriter::Flush() {
   // disappearing file, in case for some file system File::Exists() is
   // false after File::Open() but before File::Sync().
   TF_RETURN_WITH_CONTEXT_IF_ERROR(FileStillExists(), "Failed to flush ",
-                                  num_outstanding_events_, " to ", filename_);
+                                  num_outstanding_events_, " events to ",
+                                  filename_);
   VLOG(1) << "Wrote " << num_outstanding_events_ << " events to disk.";
   num_outstanding_events_ = 0;
   return Status::OK();

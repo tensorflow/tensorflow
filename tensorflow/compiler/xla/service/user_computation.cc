@@ -49,6 +49,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kAbs;
     case UNOP_CEIL:
       return HloOpcode::kCeil;
+    case UNOP_CLZ:
+      return HloOpcode::kClz;
     case UNOP_COS:
       return HloOpcode::kCos;
     case UNOP_EXP:
@@ -226,7 +228,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddParameterInstruction(
   return handle;
 }
 
-Status UserComputation::AddSendInstruction(const SendRequest& send_request) {
+StatusOr<ComputationDataHandle> UserComputation::AddSendInstruction(
+    const SendRequest& send_request) {
   tensorflow::mutex_lock lock(mutex_);
 
   // Check if the operand of the instruction is valid.
@@ -244,7 +247,7 @@ Status UserComputation::AddSendInstruction(const SendRequest& send_request) {
   VLOG(1) << "AddSendInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << send_request.ShortDebugString();
-  return Status::OK();
+  return handle;
 }
 
 StatusOr<ComputationDataHandle> UserComputation::AddRecvInstruction(
@@ -1283,8 +1286,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
     TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
   }
 
-  if (tensorflow::StringPiece(custom_call_request.call_target_name())
-          .starts_with("$")) {
+  if (tensorflow::str_util::StartsWith(custom_call_request.call_target_name(),
+                                       "$")) {
     return InvalidArgument(
         "Invalid custom_call_target \"%s\": Call targets that start with '$' "
         "are reserved for internal use.",
@@ -3314,20 +3317,23 @@ void ComputationLowerer::Visit(
       HloInstruction* rhs = lookup_instruction(ternary_op_request.rhs());
       HloInstruction* ehs = lookup_instruction(ternary_op_request.ehs());
       auto hlo_opcode = TernaryOperationToHloOpcode(ternary_op_request.triop());
-
-      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
-        if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast() &&
+          !ShapeUtil::IsTuple(request.output_shape())) {
+        if (!ShapeUtil::IsTuple(lhs->shape()) &&
+            !ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
           // lhs side is being implicitly broadcast. Change to explicit.
           lhs =
               ImplicitBroadcastToExplicitBroadcast(lhs, request.output_shape());
         }
 
-        if (!ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
+        if (!ShapeUtil::IsTuple(rhs->shape()) &&
+            !ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
           rhs =
               ImplicitBroadcastToExplicitBroadcast(rhs, request.output_shape());
         }
 
-        if (!ShapeUtil::SameDimensions(request.output_shape(), ehs->shape())) {
+        if (!ShapeUtil::IsTuple(ehs->shape()) &&
+            !ShapeUtil::SameDimensions(request.output_shape(), ehs->shape())) {
           ehs =
               ImplicitBroadcastToExplicitBroadcast(ehs, request.output_shape());
         }
@@ -3487,7 +3493,6 @@ void ComputationLowerer::Visit(
       HloInstruction* operand = lookup_instruction(trace_request.operand());
       hlo_instruction = add_instruction(
           HloInstruction::CreateTrace(trace_request.tag(), operand));
-      operand->set_tracing(hlo_instruction);
       break;
     }
 

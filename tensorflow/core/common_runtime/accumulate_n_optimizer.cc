@@ -114,19 +114,43 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
 
     const string accumulator_name =
         strings::StrCat(n->name(), "/Internal/Accumulator");
+    TensorShapeProto variable_shape;
+    variable_shape.add_dim()->set_size(0);
     TF_RETURN_IF_ERROR(make_node("TemporaryVariable")
-                           .Attr("shape", shape)
+                           .Attr("shape", variable_shape)
                            .Attr("dtype", dtype)
                            .Attr("var_name", accumulator_name)
                            .Finalize(g, &create_accumulator));
-    TF_RETURN_IF_ERROR(make_node("Const")
-                           .Attr("value", make_zeros(dtype, shape))
-                           .Attr("dtype", dtype)
-                           .Finalize(g, &initial_val));
+    if (PartialTensorShape(shape).IsFullyDefined()) {
+      // For fully defined shapes make a constant zero tensor.
+      TF_RETURN_IF_ERROR(make_node("Const")
+                             .Attr("value", make_zeros(dtype, shape))
+                             .Attr("dtype", dtype)
+                             .Finalize(g, &initial_val));
+    } else {
+      // For partial shapes make a Fill operation to make a zero tensor with the
+      // shape of the first input.
+      Node* shape_node;
+      TF_RETURN_IF_ERROR(
+          make_node("Shape")
+              .Input(data_edges[0]->src(), data_edges[0]->src_output())
+              .Finalize(g, &shape_node));
+      Node* zero;
+      TF_RETURN_IF_ERROR(
+          make_node("Const")
+              .Attr("value", make_zeros(dtype, TensorShapeProto()))
+              .Attr("dtype", dtype)
+              .Finalize(g, &zero));
+      TF_RETURN_IF_ERROR(make_node("Fill")
+                             .Input(shape_node)
+                             .Input(zero)
+                             .Finalize(g, &initial_val));
+    }
     TF_RETURN_IF_ERROR(make_node("Assign")
                            .Attr("T", dtype)
                            .Input(create_accumulator)  // ref: Ref(T)
                            .Input(initial_val)         // value: T
+                           .Attr("validate_shape", false)
                            .Finalize(g, &initialize_accumulator));
     for (int i = 0; i < data_edges.size(); ++i) {
       Node* assignAdd;

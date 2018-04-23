@@ -385,7 +385,11 @@ class MonitorsTest(test.TestCase):
     estimator.evaluate.return_value = validation_outputs
 
     monitor = learn.monitors.ValidationMonitor(
-        x=constant_op.constant(2.0), every_n_steps=0, early_stopping_rounds=2)
+        x=constant_op.constant(2.0),
+        every_n_steps=0,
+        early_stopping_rounds=2,
+        check_interval_secs=None)
+
     self._assert_validation_monitor(monitor)
     monitor.set_estimator(estimator)
     with ops.Graph().as_default() as g, self.test_session(g):

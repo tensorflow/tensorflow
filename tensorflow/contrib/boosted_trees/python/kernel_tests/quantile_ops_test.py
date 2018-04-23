@@ -482,7 +482,7 @@ class QuantilesOpTest(test_util.TensorFlowTestCase):
     """Sets up the quantile op tests.
 
     Create a batch of 4 examples having 2 dense and 4 sparse features.
-    Forth sparse feature is multivalent (3 dimensional)
+    Fourth sparse feature is multivalent (3 dimensional)
     The data looks like this
     | Instance | Dense 0 | Dense 1 | Sparse 0 | Sparse 1 |Sparse 2| SparseM
     | 0        |   -0.1  |  -1     |   -2     |   0.1    |        |_ ,1,_

@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 # The maximum input rank to test.
@@ -212,7 +213,8 @@ class SumReductionTest(BaseReductionTest):
     arr = np.ones([68000], dtype=np.float16)
 
     with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
-      tf_arr = array_ops.constant(arr)
+      tf_arr = variables.Variable(arr)
+      variables.global_variables_initializer().run()
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
       tf_out_mean = sess.run(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
@@ -887,13 +889,9 @@ class AnyReductionTest(test.TestCase):
 
 class CountNonzeroReductionTest(test.TestCase):
 
-  def _compare(self,
-               x,
-               reduction_axes,
-               keepdims,
-               use_gpu=False,
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False, zero=0,
                feed_dict=None):
-    np_ans = (x != 0).astype(np.int32)
+    np_ans = (x != zero).astype(np.int32)
     if reduction_axes is None:
       np_ans = np.sum(np_ans, keepdims=keepdims)
     else:
@@ -959,6 +957,37 @@ class CountNonzeroReductionTest(test.TestCase):
           x = array_ops.zeros((0, 9938), dtype=dtype)
           y = math_ops.count_nonzero(x, [0])
           self.assertAllEqual(y.eval(), np.zeros(9938))
+
+  def testStringReduce(self):
+    # Test case for GitHub issue 18712
+    with self.test_session() as sess:
+      v = math_ops.count_nonzero(constant_op.constant(["test"]))
+      self.assertAllClose(sess.run(v), 1)
+
+  def testStringReduce1D(self):
+    # Create a 1D array of strings
+    x = np.asarray(["", "", "a", "", "", "b"])
+    self._compare(x, None, keepdims=False, zero=np.str(""))
+    self._compare(x, [], keepdims=False, zero=np.str(""))
+    self._compare(x, [0], keepdims=False, zero=np.str(""))
+    self._compare(x, None, keepdims=True, zero=np.str(""))
+    self._compare(x, [], keepdims=True, zero=np.str(""))
+    self._compare(x, [0], keepdims=True, zero=np.str(""))
+
+  def testStringReduce2D(self):
+    # Create a 2D array of strings
+    x = np.asarray([["", "", "a", "", "", "b"],
+                    ["", "c", "", "d", "", ""],
+                    ["e", "", "f", "", "", ""]])
+    self._compare(x, None, keepdims=False, zero=np.str(""))
+    self._compare(x, [], keepdims=False, zero=np.str(""))
+    self._compare(x, [0], keepdims=False, zero=np.str(""))
+    self._compare(x, [1], keepdims=False, zero=np.str(""))
+    self._compare(x, [0, 1], keepdims=False, zero=np.str(""))
+    self._compare(x, None, keepdims=True, zero=np.str(""))
+    self._compare(x, [], keepdims=True, zero=np.str(""))
+    self._compare(x, [0], keepdims=True, zero=np.str(""))
+    self._compare(x, [0, 1], keepdims=True, zero=np.str(""))
 
 
 if __name__ == "__main__":

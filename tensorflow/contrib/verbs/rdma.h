@@ -262,7 +262,7 @@ class RdmaTensorRequest {
   // Receive tensor content (RDMA write was completed).
   //
   // Decode proto if required and/or move to GPU if the content was not
-  // written to it directly (GPU direct is not avaliable). Afterwards,
+  // written to it directly (GPU direct is not available). Afterwards,
   // invoke Done().
   void RecvTensorContent();
 

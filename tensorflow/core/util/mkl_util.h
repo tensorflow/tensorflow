@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <utility>
 
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
@@ -43,6 +45,10 @@ using mkldnn::memory;
 using mkldnn::padding_kind;
 using mkldnn::primitive;
 using mkldnn::reorder;
+#endif
+
+#ifdef _WIN32
+typedef unsigned int uint;
 #endif
 
 // The file contains a number of utility classes and functions used by MKL
@@ -1112,8 +1118,10 @@ inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
 // Forward the MKL shape ONLY (used in elementwise and other ops where
 // we call the eigen implementation and MKL shape is not used)
 inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
-                                      uint32 idx_data_in, uint32_t idx_data_out) {
-  uint32 idx_meta_in = GetTensorMetaDataIndex(idx_data_in, context->num_inputs());
+                                      uint32 idx_data_in,
+                                      uint32_t idx_data_out) {
+  uint32 idx_meta_in =
+      GetTensorMetaDataIndex(idx_data_in, context->num_inputs());
   uint32 idx_meta_out =
       GetTensorMetaDataIndex(idx_data_out, context->num_outputs());
 
@@ -1577,10 +1585,10 @@ class MklDnnData {
   }
 
   /// Set function for data buffer of user memory primitive.
-  inline void* SetUsrMemDataHandle(void* data_buffer) {
+  inline void SetUsrMemDataHandle(void* data_buffer) {
     CHECK_NOTNULL(user_memory_);
     CHECK_NOTNULL(data_buffer);
-    return user_memory_->set_data_handle(data_buffer);
+    user_memory_->set_data_handle(data_buffer);
   }
 
   /// Set function for data buffer of user memory primitive.
@@ -1753,7 +1761,90 @@ class MklDnnData {
   }
 };
 
-#endif  // INTEL_MKL_ML
+/// Base class for operations with reuse of DNN primitives
+///
+class DnnOp {
+ public:
+  virtual ~DnnOp() {}
+
+  // Dummy data. Its size, hard-coded as 256 here, does
+  // not matter since MKL should never operate on this buffer.
+  unsigned char DummyData[256];
+};
+
+const mkldnn::memory::dims NONE_DIMS = {};
+// This constant is used to declare dummy buffer (size), for MKL primitives
+template <typename T>
+class DnnOpFactory {
+ public:
+  DnnOpFactory() {}
+  ~DnnOpFactory() {}
+
+  DnnOp* GetOp(const std::string& key) {
+    auto stream_iter = DnnOpFactory<T>::GetHashMap().find(key);
+    if (stream_iter == DnnOpFactory<T>::GetHashMap().end()) {
+      return nullptr;
+    } else {
+      return stream_iter->second;
+    }
+  }
+
+  void SetOp(const std::string& key, DnnOp* op) {
+    auto stream_iter = DnnOpFactory<T>::GetHashMap().find(key);
+
+    CHECK(stream_iter == DnnOpFactory<T>::GetHashMap().end());
+
+    DnnOpFactory<T>::GetHashMap()[key] = op;
+  }
+
+ private:
+  static inline std::unordered_map<std::string, DnnOp*> &GetHashMap() {
+    static thread_local std::unordered_map<std::string, DnnOp*> map_;
+    return map_;
+  }
+};
+
+// utility class for creating keys of MKL primitive pool.
+class FactoryKeyCreator {
+ public:
+  FactoryKeyCreator() {
+    key_.reserve(kMaxKeyLength);
+  }
+
+  ~FactoryKeyCreator() {}
+
+  void AddAsKey(const string &str) {
+    auto buffer = reinterpret_cast<const char *>(str.c_str());
+    Append(buffer, str.length());
+  }
+
+  void AddAsKey(const mkldnn::memory::dims &dims) {
+    for (unsigned int i = 0; i < dims.size(); i++) {
+      AddAsKey<int>(dims[i]);
+    }
+  }
+
+  template <typename T>
+  void AddAsKey(const T data) {
+    auto buffer = reinterpret_cast<const char *>(&data);
+    Append(buffer, sizeof(T));
+  }
+
+  std::string GetKey() {
+    return key_;
+  }
+
+ private:
+  string key_;
+  const char delimiter = 'x';
+  const int kMaxKeyLength = 256;
+  void Append(const char* data, int len) {
+    key_.append(data, len);
+    key_.append(1, delimiter);
+  }
+};
+
+#endif  // INTEL_MKL_DNN
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

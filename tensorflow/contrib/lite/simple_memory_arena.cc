@@ -113,21 +113,21 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context) {
     underlying_buffer_size_ = required_size;
     underlying_buffer_aligned_ptr_ = new_underlying_buffer_aligned_ptr;
   }
-  commited_ = true;
+  committed_ = true;
   return underlying_buffer_ != nullptr ? kTfLiteOk : kTfLiteError;
 }
 
 TfLiteStatus SimpleMemoryArena::ResolveAlloc(TfLiteContext* context,
                                              const ArenaAlloc& alloc,
                                              char** output_ptr) {
-  TF_LITE_ENSURE(context, commited_);
+  TF_LITE_ENSURE(context, committed_);
   TF_LITE_ENSURE(context, output_ptr != nullptr);
   *output_ptr = underlying_buffer_aligned_ptr_ + alloc.offset;
   return kTfLiteOk;
 }
 
 TfLiteStatus SimpleMemoryArena::Clear() {
-  commited_ = false;
+  committed_ = false;
   high_water_mark_ = 0;
   allocs_.clear();
   return kTfLiteOk;

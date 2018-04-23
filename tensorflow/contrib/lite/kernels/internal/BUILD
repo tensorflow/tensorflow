@@ -10,21 +10,25 @@ tflite_deps_intel = [
     "@arm_neon_2_x86_sse",
 ]
 
+HARD_FP_FLAGS_IF_APPLICABLE = select({
+    "//tensorflow:android_arm": ["-mfloat-abi=softfp"],
+    "//tensorflow:android_arm64": ["-mfloat-abi=softfp"],
+    "//tensorflow:android_armeabi": ["-mfloat-abi=softfp"],
+    "//conditions:default": [],
+})
+
 NEON_FLAGS_IF_APPLICABLE = select({
     ":arm": [
         "-O3",
         "-mfpu=neon",
-        "-mfloat-abi=softfp",
     ],
     ":armeabi-v7a": [
         "-O3",
         "-mfpu=neon",
-        "-mfloat-abi=softfp",
     ],
     ":armv7a": [
         "-O3",
         "-mfpu=neon",
-        "-mfloat-abi=softfp",
     ],
     "//conditions:default": [
         "-O3",
@@ -145,10 +149,12 @@ cc_library(
         "common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_uint8.h",
+        "optimized/depthwiseconv_uint8_3x3_filter.h",
         "optimized/optimized_ops.h",
     ],
     copts = tflite_copts(),
     deps = [
+        ":quantization_util",
         ":types",
         ":round",
         "//third_party/eigen3",
@@ -208,7 +214,10 @@ cc_library(
         "compatibility.h",
         "quantization_util.h",
     ],
-    deps = [":round"],
+    deps = [
+        ":round",
+        ":types",
+    ],
 )
 
 cc_test(
@@ -230,6 +239,7 @@ cc_library(
         "reference/reference_ops.h",
     ],
     deps = [
+        ":quantization_util",
         ":round",
         ":types",
         "//third_party/eigen3",
@@ -283,7 +293,7 @@ cc_library(
         "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
     ],
-    copts = NEON_FLAGS_IF_APPLICABLE,
+    copts = NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
@@ -302,6 +312,27 @@ cc_library(
     deps = [
         ":tensor_utils",
         "//tensorflow/contrib/lite:builtin_op_data",
+    ],
+)
+
+# Audio support classes imported directly from TensorFlow.
+cc_library(
+    name = "audio_utils",
+    srcs = [
+        "mfcc.cc",
+        "mfcc_dct.cc",
+        "mfcc_mel_filterbank.cc",
+        "spectrogram.cc",
+    ],
+    hdrs = [
+        "mfcc.h",
+        "mfcc_dct.h",
+        "mfcc_mel_filterbank.h",
+        "spectrogram.h",
+    ],
+    deps = [
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d",
     ],
 )
 
@@ -401,16 +432,13 @@ cc_library(
     ),
 )
 
-exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_test(
+    name = "batch_to_space_nd_test",
+    srcs = ["batch_to_space_nd_test.cc"],
+    deps = [
+        ":optimized_base",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
+
+exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])

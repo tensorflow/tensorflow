@@ -137,6 +137,61 @@ class TreeEnsembleDeserializeOp : public OpKernel {
   }
 };
 
+class TreeEnsembleUsedHandlersOp : public OpKernel {
+ public:
+  explicit TreeEnsembleUsedHandlersOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("num_all_handlers", &num_handlers_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
+
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
+                                           &ensemble_resource));
+    tf_shared_lock l(*ensemble_resource->get_mutex());
+    core::ScopedUnref unref_me(ensemble_resource);
+
+    // Get the stamp token.
+    const Tensor* stamp_token_t;
+    OP_REQUIRES_OK(context, context->input("stamp_token", &stamp_token_t));
+    int64 stamp_token = stamp_token_t->scalar<int64>()();
+
+    // Only the Chief should run this Op and it is guaranteed to be in
+    // a consistent state so the stamps must always match.
+    CHECK(ensemble_resource->is_stamp_valid(stamp_token));
+
+    Tensor* output_used_handlers_t = nullptr;
+    OP_REQUIRES_OK(
+        context, context->allocate_output("used_handlers_mask", {num_handlers_},
+                                          &output_used_handlers_t));
+    auto output_used_handlers = output_used_handlers_t->vec<bool>();
+
+    Tensor* output_num_used_handlers_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output("num_used_handlers", {},
+                                            &output_num_used_handlers_t));
+    int handler_idx = 0;
+    std::vector<int64> used_handlers = ensemble_resource->GetUsedHandlers();
+    output_num_used_handlers_t->scalar<int64>()() = used_handlers.size();
+    for (int64 i = 0; i < num_handlers_; ++i) {
+      if (handler_idx >= used_handlers.size() ||
+          used_handlers[handler_idx] > i) {
+        output_used_handlers(i) = false;
+      } else {
+        OP_REQUIRES(context, used_handlers[handler_idx] == i,
+                    errors::InvalidArgument("Handler IDs should be sorted."));
+        ++handler_idx;
+        output_used_handlers(i) = true;
+      }
+    }
+  }
+
+ private:
+  int64 num_handlers_;
+};
+
 REGISTER_RESOURCE_HANDLE_KERNEL(DecisionTreeEnsembleResource);
 
 REGISTER_KERNEL_BUILDER(
@@ -155,5 +210,7 @@ REGISTER_KERNEL_BUILDER(Name("TreeEnsembleSerialize").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("TreeEnsembleDeserialize").Device(DEVICE_CPU),
                         TreeEnsembleDeserializeOp);
 
+REGISTER_KERNEL_BUILDER(Name("TreeEnsembleUsedHandlers").Device(DEVICE_CPU),
+                        TreeEnsembleUsedHandlersOp);
 }  // namespace boosted_trees
 }  // namespace tensorflow

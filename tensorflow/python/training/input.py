@@ -159,7 +159,7 @@ def input_producer(input_tensor,
   enabled. Please use the `tf.data` API to ingest data under eager execution.
   @end_compatibility
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -515,8 +515,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
     def _sparse_values_to_keep(t, keep_input):
       """Convert a per-row `keep_input` vector to a per-value one."""
       # Get the rows of every value in the sparse Tensor.
-      row_values = array_ops.reshape(
-          t.indices, [array_ops.shape(t.indices)[0], -1])[:, 0]
+      row_values = t.indices[:, 0]
       # The value should be kept iff the row should be kept.
       return array_ops.gather(keep_input, row_values)
     if keep_input.shape.ndims == 1:
@@ -737,7 +736,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
            allow_smaller_final_batch=False, shared_name=None,
            name=None):
   """Helper function for `batch` and `maybe_batch`."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -775,7 +774,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
                 enqueue_many=False, shapes=None, dynamic_pad=False,
                 allow_smaller_final_batch=False, shared_name=None, name=None):
   """Helper function for `batch_join` and `maybe_batch_join`."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -810,7 +809,7 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                    shapes=None, allow_smaller_final_batch=False,
                    shared_name=None, name=None):
   """Helper function for `shuffle_batch` and `maybe_shuffle_batch`."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -855,7 +854,7 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
                         allow_smaller_final_batch=False, shared_name=None,
                         name=None):
   """Helper function for `shuffle_batch_join` and `maybe_shuffle_batch_join`."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"

@@ -43,13 +43,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
     const ServiceOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
@@ -68,6 +66,68 @@ namespace xla {
 LocalService::LocalService(const ServiceOptions& options,
                            std::unique_ptr<Backend> execute_backend)
     : Service(options, std::move(execute_backend)) {}
+
+namespace {
+
+// Retrieves the parameter metadata for the given computation and parameter
+// number.
+//
+// If the parameter number is invalid for this computation, nullopt is
+// returned. When the return value has_value(), nullptr will never be
+// the held value.
+tensorflow::gtl::optional<const OpMetadata*> ParameterMetadata(
+    const XlaComputation& computation, int parameter_number) {
+  for (const HloComputationProto& comp : computation.proto().computations()) {
+    if (comp.id() == computation.proto().entry_computation_id()) {
+      for (const HloInstructionProto& instr : comp.instructions()) {
+        if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
+            instr.parameter_number() == parameter_number) {
+          if (!instr.has_metadata()) {
+            return tensorflow::gtl::nullopt;
+          }
+          return &instr.metadata();
+        }
+      }
+    }
+  }
+  return tensorflow::gtl::nullopt;
+}
+
+ExecutionOptions CreateExecutionOptions(
+    const ExecutableBuildOptions& build_options,
+    const ProgramShape* program_shape) {
+  ExecutionOptions execution_options = CreateDefaultExecutionOptions();
+  if (build_options.hlo_profile().has_value()) {
+    execution_options.mutable_debug_options()->set_xla_hlo_profile(
+        *build_options.hlo_profile());
+  }
+  if (build_options.generate_hlo_graph().has_value()) {
+    execution_options.mutable_debug_options()->set_xla_generate_hlo_graph(
+        build_options.generate_hlo_graph().value());
+  }
+  if (build_options.dump_optimized_hlo_proto_to().has_value()) {
+    execution_options.mutable_debug_options()
+        ->set_xla_dump_optimized_hlo_proto_to(
+            build_options.dump_optimized_hlo_proto_to().value());
+  }
+  if (build_options.dump_per_pass_hlo_proto_to().has_value()) {
+    execution_options.mutable_debug_options()
+        ->set_xla_dump_per_pass_hlo_proto_to(
+            build_options.dump_per_pass_hlo_proto_to().value());
+  }
+  if (build_options.result_layout() != nullptr) {
+    *execution_options.mutable_shape_with_output_layout() =
+        *build_options.result_layout();
+  } else {
+    *execution_options.mutable_shape_with_output_layout() =
+        program_shape->result();
+    LayoutUtil::SetToDefaultLayout(
+        execution_options.mutable_shape_with_output_layout());
+  }
+  return execution_options;
+}
+
+}  // namespace
 
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const ComputationHandle& computation,
@@ -118,30 +178,78 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
         *build_options.result_layout(), program_shape->result()));
   }
 
-  ExecutionOptions execution_options = CreateDefaultExecutionOptions();
-  if (build_options.generate_hlo_graph().has_value()) {
-    execution_options.mutable_debug_options()->set_xla_generate_hlo_graph(
-        build_options.generate_hlo_graph().value());
-  }
-  if (build_options.result_layout() != nullptr) {
-    *execution_options.mutable_shape_with_output_layout() =
-        *build_options.result_layout();
-  } else {
-    *execution_options.mutable_shape_with_output_layout() =
-        program_shape->result();
-    LayoutUtil::SetToDefaultLayout(
-        execution_options.mutable_shape_with_output_layout());
-  }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, argument_layouts, &execution_options,
-                         *user_computation));
+  ExecutionOptions execution_options =
+      CreateExecutionOptions(build_options, program_shape.get());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(*program_shape, argument_layouts,
+                                         &execution_options, user_computation));
 
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));
 
   return BuildExecutable(versioned_handle, std::move(module_config),
+                         execute_backend_.get(), executor,
+                         build_options.device_allocator());
+}
+
+StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
+    const XlaComputation& computation,
+    const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+    const ExecutableBuildOptions& build_options) {
+  const HloModuleProto& proto = computation.proto();
+  TF_RET_CHECK(proto.has_program_shape());
+  const ProgramShape& program_shape = proto.program_shape();
+
+  // Validate incoming layouts.
+  if (argument_layouts.size() != program_shape.parameters_size()) {
+    return InvalidArgument(
+        "Invalid number of arguments for computation: expected %d, got %zu.",
+        program_shape.parameters_size(), argument_layouts.size());
+  }
+
+  for (int i = 0; i < argument_layouts.size(); ++i) {
+    const Shape& argument_shape = *argument_layouts[i];
+    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(argument_shape));
+    if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
+      tensorflow::gtl::optional<const OpMetadata*> metadata =
+          ParameterMetadata(computation, /*parameter_number=*/i);
+      auto metadata_string = [&metadata]() -> string {
+        if (!metadata.has_value()) {
+          return "";
+        }
+        CHECK(metadata.value() != nullptr);
+        const OpMetadata& m = *metadata.value();
+        if (!m.source_file().empty()) {
+          return tensorflow::strings::Printf(
+              " (%s:%d)", m.source_file().c_str(), m.source_line());
+        }
+        return "";
+      };
+      return InvalidArgument(
+          "Invalid argument shape for argument %d%s, expected %s, got %s.", i,
+          metadata_string().c_str(),
+          ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
+          ShapeUtil::HumanString(argument_shape).c_str());
+    }
+  }
+  if (build_options.result_layout() != nullptr) {
+    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(
+        *build_options.result_layout(), program_shape.result()));
+  }
+
+  ExecutionOptions execution_options =
+      CreateExecutionOptions(build_options, &program_shape);
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> module_config,
+      CreateModuleConfig(program_shape, argument_layouts, &execution_options));
+
+  TF_ASSIGN_OR_RETURN(
+      se::StreamExecutor * executor,
+      execute_backend_->stream_executor(build_options.device_ordinal()));
+
+  return BuildExecutable(proto, std::move(module_config),
                          execute_backend_.get(), executor,
                          build_options.device_allocator());
 }

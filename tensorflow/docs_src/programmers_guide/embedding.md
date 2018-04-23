@@ -7,6 +7,9 @@ with the TensorBoard Embedding Projector
 newcomers to machine learning or TensorFlow, and the Embedding Projector how-to
 is for users at all levels.
 
+An alternative tutorial on these concepts is available in the
+[Embeddings section of Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/embeddings/video-lecture).
+
 [TOC]
 
 An **embedding** is a mapping from discrete objects, such as words, to vectors

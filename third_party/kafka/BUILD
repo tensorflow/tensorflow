@@ -130,12 +130,16 @@ cc_library(
     ],
     hdrs = [
         "config.h",
+        "src-cpp/rdkafkacpp.h",
+        "src-cpp/rdkafkacpp_int.h",
+        "src/lz4.c",
+        "src/snappy_compat.h",
+    ],
+    copts = [
+        "-Iexternal/kafka/src",
+        "-Iexternal/kafka/src-cpp",
     ],
     defines = [
-    ],
-    includes = [
-        "src",
-        "src-cpp",
     ],
     linkopts = [
         "-lpthread",
@@ -143,5 +147,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@boringssl//:ssl",
+        "@zlib_archive//:zlib",
     ],
 )

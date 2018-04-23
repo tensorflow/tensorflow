@@ -11,6 +11,7 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -47,9 +48,11 @@ tf_cuda_cc_test(
 
 tf_custom_op_library(
     name = "python/ops/_trt_engine_op.so",
-    srcs = ["ops/trt_engine_op.cc"],
+    srcs = [
+        "ops/trt_calib_op.cc",
+        "ops/trt_engine_op.cc",
+    ],
     deps = [
-        ":trt_engine_op_kernel",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
@@ -71,22 +74,34 @@ tf_cuda_library(
 
 cc_library(
     name = "trt_engine_op_kernel",
-    srcs = ["kernels/trt_engine_op.cc"],
-    hdrs = ["kernels/trt_engine_op.h"],
+    srcs = [
+        "kernels/trt_calib_op.cc",
+        "kernels/trt_engine_op.cc",
+    ],
+    hdrs = [
+        "kernels/trt_calib_op.h",
+        "kernels/trt_engine_op.h",
+    ],
     copts = tf_copts(),
+    visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
+        ":trt_resources",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
-    alwayslink = 1,
+    # TODO(laigd)
+    alwayslink = 1,  # buildozer: disable=alwayslink-with-hdrs
 )
 
 tf_gen_op_libs(
-    op_lib_names = ["trt_engine_op"],
+    op_lib_names = [
+        "trt_engine_op",
+        "trt_calib_op",
+    ],
     deps = if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),
@@ -106,7 +121,9 @@ tf_cuda_library(
 
 tf_gen_op_wrapper_py(
     name = "trt_engine_op",
+    gen_locally = True,
     deps = [
+        ":trt_calib_op_op_lib",
         ":trt_engine_op_op_lib",
         ":trt_logging",
         ":trt_shape_function",
@@ -123,6 +140,7 @@ tf_custom_op_py_library(
     ]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:resources",
     ],
@@ -138,6 +156,7 @@ py_library(
     deps = [
         ":trt_convert_py",
         ":trt_ops_py",
+        "//tensorflow/python:errors",
     ],
 )
 
@@ -156,6 +175,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":wrap_conversion",
+        "//tensorflow/python:tf_optimizer",
     ],
 )
 
@@ -165,9 +185,31 @@ tf_py_wrap_cc(
     copts = tf_copts(),
     deps = [
         ":trt_conversion",
+        ":trt_engine_op_kernel",
         "//tensorflow/core:framework_lite",
         "//util/python:python_headers",
     ],
+)
+
+tf_cuda_library(
+    name = "trt_resources",
+    srcs = [
+        "resources/trt_int8_calibrator.cc",
+        "resources/trt_resource_manager.cc",
+    ],
+    hdrs = [
+        "resources/trt_int8_calibrator.h",
+        "resources/trt_resource_manager.h",
+        "resources/trt_resources.h",
+    ],
+    deps = [
+        ":trt_logging",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
 )
 
 # Library for the node-level conversion portion of TensorRT operation creation
@@ -184,6 +226,7 @@ tf_cuda_library(
     deps = [
         ":segment",
         ":trt_logging",
+        ":trt_resources",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core:framework",
@@ -233,14 +276,18 @@ tf_cc_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_test(
+    name = "tf_trt_integration_test",
+    srcs = ["test/tf_trt_integration_test.py"],
+    main = "test/tf_trt_integration_test.py",
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":init_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
 )

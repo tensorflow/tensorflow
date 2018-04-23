@@ -27,13 +27,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
-namespace se = ::perftools::gputools;
+
 namespace gtl = ::tensorflow::gtl;
 
 class HloProfileTest : public ClientLibraryTestBase {};
@@ -128,23 +129,23 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   auto* transfer_manager = backend->transfer_manager();
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<ScopedShapedBuffer> lhs_arg,
+      ScopedShapedBuffer lhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           lhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      executor, *Literal::CreateFromShape(lhs_arg_shape), *lhs_arg));
+      executor, *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<ScopedShapedBuffer> rhs_arg,
+      ScopedShapedBuffer rhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           rhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      executor, *Literal::CreateFromShape(rhs_arg_shape), *rhs_arg));
+      executor, *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Compile(computation, {&lhs_arg_shape, &rhs_arg_shape},
-                      ExecutableBuildOptions()));
+                      ExecutableBuildOptions().set_hlo_profile(true)));
 
   Executable* executable = local_executable->executable();
   HloExecutionProfile hlo_execution_profile(
@@ -164,7 +165,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       backend->eigen_intra_op_thread_pool());
   TF_ASSERT_OK_AND_ASSIGN(
       auto execution_result,
-      executable->ExecuteOnStream(&run_options, {lhs_arg.get(), rhs_arg.get()},
+      executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
                                   &hlo_execution_profile));
   (void)execution_result;
 
@@ -294,7 +295,8 @@ XLA_TEST_F(HloProfileTest,
   auto while_body_profile_start =
       std::find_if(profile_output_lines.begin(), profile_output_lines.end(),
                    [](tensorflow::StringPiece s) {
-                     return s.starts_with("Execution profile for body");
+                     return tensorflow::str_util::StartsWith(
+                         s, "Execution profile for body");
                    });
 
   ASSERT_NE(while_body_profile_start, profile_output_lines.end());

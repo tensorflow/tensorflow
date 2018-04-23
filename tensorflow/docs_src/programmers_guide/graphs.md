@@ -96,7 +96,7 @@ to all API functions in the same context.  For example:
   (See @{$programmers_guide/variables} for more information about variables.)
 
 * Calling @{tf.train.Optimizer.minimize} will add operations and tensors to the
-  default graph that calculate gradients, and return a @{tf.Operation} that,
+  default graph that calculates gradients, and return a @{tf.Operation} that,
   when run, will apply those gradients to a set of variables.
 
 Most programs rely solely on the default graph. However,
@@ -210,9 +210,8 @@ with tf.device("/device:GPU:0"):
   # Operations created in this context will be pinned to the GPU.
   result = tf.matmul(weights, img)
 ```
-
-If you are deploying TensorFlow in a @{$deploy/distributed$typical distributed
-configuration}, you might specify the job name and task ID to place variables on
+If you are deploying TensorFlow in a @{$distributed$typical distributed configuration},
+you might specify the job name and task ID to place variables on
 a task in the parameter server job (`"/job:ps"`), and the other operations on
 task in the worker job (`"/job:worker"`):
 
@@ -336,20 +335,20 @@ described below.
   controls the behavior of the session. For example, some of the configuration
   options include:
 
-  * `allow_soft_placement`. Set this to `True` to enable a "soft" device
+    * `allow_soft_placement`. Set this to `True` to enable a "soft" device
     placement algorithm, which ignores @{tf.device} annotations that attempt
     to place CPU-only operations on a GPU device, and places them on the CPU
     instead.
 
-  * `cluster_def`. When using distributed TensorFlow, this option allows you
+    * `cluster_def`. When using distributed TensorFlow, this option allows you
     to specify what machines to use in the computation, and provide a mapping
     between job names, task indices, and network addresses. See
     @{tf.train.ClusterSpec.as_cluster_def} for details.
 
-  * `graph_options.optimizer_options`. Provides control over the optimizations
+    * `graph_options.optimizer_options`. Provides control over the optimizations
     that TensorFlow performs on your graph before executing it.
 
-  * `gpu_options.allow_growth`. Set this to `True` to change the GPU memory
+    * `gpu_options.allow_growth`. Set this to `True` to change the GPU memory
     allocator so that it gradually increases the amount of memory allocated,
     rather than allocating most of the memory at startup.
 
@@ -363,7 +362,7 @@ operations that are needed to compute the result.
 
 @{tf.Session.run} requires you to specify a list of **fetches**, which determine
 the return values, and may be a @{tf.Operation}, a @{tf.Tensor}, or
-a [tensor-like type](#tensor-like-objects) such as @{tf.Variable}. These fetches
+a [tensor-like type](#tensor-like_objects) such as @{tf.Variable}. These fetches
 determine what **subgraph** of the overall @{tf.Graph} must be executed to
 produce the result: this is the subgraph that contains all operations named in
 the fetch list, plus all operations whose outputs are used to compute the value
@@ -506,7 +505,7 @@ multiple graphs in the same process.
 As noted above, TensorFlow provides a "default graph" that is implicitly passed
 to all API functions in the same context. For many applications, a single graph
 is sufficient. However, TensorFlow also provides methods for manipulating
-the default graph, which can be useful in more advanced used cases. For example:
+the default graph, which can be useful in more advanced use cases. For example:
 
 * A @{tf.Graph} defines the namespace for @{tf.Operation} objects: each
   operation in a single graph must have a unique name. TensorFlow will

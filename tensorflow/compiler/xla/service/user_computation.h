@@ -236,7 +236,8 @@ class UserComputation {
       const UserComputation& false_computation);
 
   // Enqueues a Send instruction onto this user computation.
-  Status AddSendInstruction(const SendRequest& send_request);
+  StatusOr<ComputationDataHandle> AddSendInstruction(
+      const SendRequest& send_request);
 
   // Enqueues a Recv instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddRecvInstruction(

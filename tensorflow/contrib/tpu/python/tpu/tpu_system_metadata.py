@@ -72,9 +72,9 @@ def _query_tpu_system_metadata(master_address, run_config,
               tpu_core_count += 1
           break
     except errors.DeadlineExceededError:
-      msg = ('Fail to connect Tensorflow master. It could be the TPU worker is '
-             'not ready (still under scheduling) or Tensorflow '
-             'master address is correct: got (%s).' %
+      msg = ('Failed to connect to the Tensorflow master. The TPU worker may '
+             'not be ready (still scheduling) or the Tensorflow master address '
+             'is incorrect: got (%s).' %
              (master_address))
 
       # TODO(xiejw): For local or grpc master we might not need retry logic
@@ -120,7 +120,8 @@ def _query_tpu_system_metadata(master_address, run_config,
     logging.info('*** Num TPU Workers: %d', metadata.num_hosts)
     logging.info('*** Num TPU Cores Per Worker: %d',
                  metadata.num_of_cores_per_host)
-    logging.info('*** Available Devices: %s', metadata.devices)
+    for device in metadata.devices:
+      logging.info('*** Available Device: %s', device)
   else:
     logging.info('Failed to find TPU: %s', metadata)
   return metadata

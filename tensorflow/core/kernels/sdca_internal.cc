@@ -21,6 +21,7 @@ limitations under the License.
 #include <random>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 
@@ -226,7 +227,7 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
 }
 
 // Examples contains all the training examples that SDCA uses for a mini-batch.
-Status Examples::SampleAdaptativeProbabilities(
+Status Examples::SampleAdaptiveProbabilities(
     const int num_loss_partitions, const Regularizations& regularization,
     const ModelWeights& model_weights,
     const TTypes<float>::Matrix example_state_data,
@@ -302,6 +303,11 @@ Status Examples::SampleAdaptativeProbabilities(
   return Status::OK();
 }
 
+void Examples::RandomShuffle() {
+  std::iota(sampled_index_.begin(), sampled_index_.end(), 0);
+  std::random_shuffle(sampled_index_.begin(), sampled_index_.end());
+}
+
 // TODO(sibyl-Aix6ihai): Refactor/shorten this function.
 Status Examples::Initialize(OpKernelContext* const context,
                             const ModelWeights& weights,
@@ -363,9 +369,9 @@ Status Examples::Initialize(OpKernelContext* const context,
   TF_RETURN_IF_ERROR(CreateDenseFeatureRepresentation(
       worker_threads, num_examples, num_dense_features, weights,
       dense_features_inputs, &examples_));
-  ComputeSquaredNormPerExample(worker_threads, num_examples,
-                               num_sparse_features, num_dense_features,
-                               &examples_);
+  TF_RETURN_IF_ERROR(ComputeSquaredNormPerExample(
+      worker_threads, num_examples, num_sparse_features, num_dense_features,
+      &examples_));
   return Status::OK();
 }
 
@@ -377,7 +383,7 @@ Status Examples::CreateSparseFeatureRepresentation(
     const OpInputList& sparse_feature_values_inputs,
     std::vector<Example>* const examples) {
   mutex mu;
-  Status result GUARDED_BY(mu);
+  Status result;  // Guarded by mu
   auto parse_partition = [&](const int64 begin, const int64 end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
@@ -455,7 +461,7 @@ Status Examples::CreateDenseFeatureRepresentation(
     const OpInputList& dense_features_inputs,
     std::vector<Example>* const examples) {
   mutex mu;
-  Status result GUARDED_BY(mu);
+  Status result;  // Guarded by mu
   auto parse_partition = [&](const int64 begin, const int64 end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
@@ -481,14 +487,17 @@ Status Examples::CreateDenseFeatureRepresentation(
   return result;
 }
 
-void Examples::ComputeSquaredNormPerExample(
+Status Examples::ComputeSquaredNormPerExample(
     const DeviceBase::CpuWorkerThreads& worker_threads, const int num_examples,
     const int num_sparse_features, const int num_dense_features,
     std::vector<Example>* const examples) {
+  mutex mu;
+  Status result;  // Guarded by mu
   // Compute norm of examples.
   auto compute_example_norm = [&](const int64 begin, const int64 end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
+    gtl::FlatSet<int64> previous_indices;
     for (int example_id = static_cast<int>(begin); example_id < end;
          ++example_id) {
       double squared_norm = 0;
@@ -496,12 +505,19 @@ void Examples::ComputeSquaredNormPerExample(
       for (int j = 0; j < num_sparse_features; ++j) {
         const Example::SparseFeatures& sparse_features =
             example->sparse_features_[j];
-        if (sparse_features.values) {
-          const Eigen::Tensor<float, 0, Eigen::RowMajor> sn =
-              sparse_features.values->square().sum();
-          squared_norm += sn();
-        } else {
-          squared_norm += sparse_features.indices->size();
+        previous_indices.clear();
+        for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
+          const int64 feature_index = (*sparse_features.indices)(k);
+          if (previous_indices.insert(feature_index).second == false) {
+            mutex_lock l(mu);
+            result =
+                errors::InvalidArgument("Duplicate index in sparse vector.");
+            return;
+          }
+          const double feature_value = sparse_features.values == nullptr
+                                           ? 1.0
+                                           : (*sparse_features.values)(k);
+          squared_norm += feature_value * feature_value;
         }
       }
       for (int j = 0; j < num_dense_features; ++j) {
@@ -516,6 +532,7 @@ void Examples::ComputeSquaredNormPerExample(
   const int64 kCostPerUnit = num_dense_features + num_sparse_features;
   Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
         kCostPerUnit, compute_example_norm);
+  return result;
 }
 
 }  // namespace sdca

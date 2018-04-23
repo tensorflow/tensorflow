@@ -35,10 +35,10 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
 
   The RelaxedBernoulli is a distribution over the unit interval (0,1), which
   continuously approximates a Bernoulli. The degree of approximation is
-  controlled by a temperature: as the temperaturegoes to 0 the RelaxedBernoulli
-  becomes discrete with a distribution described by the `logits` or `probs`
-  parameters, as the temperature goes to infinity the RelaxedBernoulli
-  becomes the constant distribution that is identically 0.5.
+  controlled by a temperature: as the temperature goes to 0 the
+  RelaxedBernoulli becomes discrete with a distribution described by the
+  `logits` or `probs` parameters, as the temperature goes to infinity the
+  RelaxedBernoulli becomes the constant distribution that is identically 0.5.
 
   The RelaxedBernoulli distribution is a reparameterized continuous
   distribution that is the binary special case of the RelaxedOneHotCategorical
@@ -166,7 +166,7 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
       ValueError: If both `probs` and `logits` are passed, or if neither.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs, temperature]):
+    with ops.name_scope(name, values=[logits, probs, temperature]) as name:
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")

@@ -21,6 +21,8 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import gamma
 
@@ -86,8 +88,12 @@ class Chi2(gamma.Gamma):
     # not true in the parent class "gamma."  therefore, passing
     # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.name_scope(name, values=[df]):
-      self._df = ops.convert_to_tensor(df, name="df")
+    with ops.name_scope(name, values=[df]) as name:
+      with ops.control_dependencies([
+          check_ops.assert_positive(df),
+      ] if validate_args else []):
+        self._df = array_ops.identity(df, name="df")
+
       super(Chi2, self).__init__(
           concentration=0.5 * self._df,
           rate=constant_op.constant(0.5, dtype=self._df.dtype),
@@ -114,7 +120,7 @@ class Chi2WithAbsDf(Chi2):
                allow_nan_stats=True,
                name="Chi2WithAbsDf"):
     parameters = locals()
-    with ops.name_scope(name, values=[df]):
+    with ops.name_scope(name, values=[df]) as name:
       super(Chi2WithAbsDf, self).__init__(
           df=math_ops.floor(
               math_ops.abs(df, name="abs_df"),

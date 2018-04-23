@@ -37,14 +37,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
 
-#if defined(PLATFORM_WINDOWS)
-// TODO: in windows ARRAYSIZE is defined in winnt.h but including it
-//  here creates a conflict with cuda.h - for now define it here.
-#define ARRAYSIZE(a) \
-  ((sizeof(a) / sizeof(*(a))) / \
-  static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
-#endif
-
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
 bool FLAGS_gpuexec_cuda_device_0_only = false;
@@ -53,8 +45,7 @@ bool FLAGS_gpuexec_cuda_device_0_only = false;
 // matches the expected one.
 constexpr bool kVerifyCudaContext = false;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 namespace {
@@ -720,15 +711,15 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
         port::bit_cast<void *>(uintptr_t(info_log_buffer_bytes)),
         port::bit_cast<void *>(info_log_buffer.data()),
         port::bit_cast<void *>(uintptr_t(log_verbose))};
-    CHECK(ARRAYSIZE(options) == ARRAYSIZE(option_values));
+    CHECK(TF_ARRAYSIZE(options) == TF_ARRAYSIZE(option_values));
 
     CUresult res;
     {
       // TODO(leary) Need to see if NVIDIA can expunge the leakiness in their
       // module loading: see http://b/13248943
 
-      res = cuModuleLoadDataEx(module, ptx_data, ARRAYSIZE(options), options,
-                               option_values);
+      res = cuModuleLoadDataEx(module, ptx_data, TF_ARRAYSIZE(options),
+                               options, option_values);
     }
 
     // The PTX JIT mutates the values in the option values array to reflect the
@@ -1503,6 +1494,19 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return true;
 }
 
+/* static */ port::StatusOr<int> CUDADriver::GetDeviceAttribute(
+    CUdevice_attribute attribute, CUdevice device) {
+  int val;
+  CUresult res = cuDeviceGetAttribute(&val, attribute, device);
+  if (res != CUDA_SUCCESS) {
+    return port::Status{
+        port::error::INTERNAL,
+        port::Printf("failed to get device attribute %d for device %d: %s",
+                     attribute, device, ToString(res).c_str())};
+  }
+  return val;
+}
+
 /* static */ bool CUDADriver::IsEccEnabled(CUdevice device, bool *result) {
   int value = -1;
   CUresult res =
@@ -1636,5 +1640,4 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
 }
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -1,7 +1,7 @@
 path: "tensorflow.estimator.VocabInfo"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.warm_starting_util.VocabInfo\'>"
-  is_instance: "<class \'tensorflow.python.estimator.warm_starting_util.VocabInfo\'>"
+  is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
+  is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
   is_instance: "<type \'tuple\'>"
   member {
     name: "backup_initializer"

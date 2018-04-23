@@ -104,7 +104,7 @@ def tflite_jni_binary(name,
   """Builds a jni binary for TFLite."""
   linkopts = linkopts + [
       "-Wl,--version-script",  # Export only jni functions & classes.
-      linkscript,
+      "$(location {})".format(linkscript),
   ]
   native.cc_binary(
       name=name,
@@ -200,8 +200,7 @@ def gen_zipped_test_files(name, files):
     native.genrule(
         name = name + "_" + f + ".files",
         cmd = ("$(locations :generate_examples) --toco $(locations %s) " % toco
-               + " --zip_to_output " + f +
-               " $(@D) zipped"),
+               + " --zip_to_output " + f + " $(@D)"),
         outs = [out_file],
         tools = [
             ":generate_examples",

@@ -66,7 +66,7 @@ class DropoutUtils {
       // Current weights and num_updates will be updated as a result of this
       // func
       std::vector<float>* current_weights,
-      // How many weight assignements have been done for each tree already.
+      // How many weight assignments have been done for each tree already.
       std::vector<int32>* num_updates);
 };
 

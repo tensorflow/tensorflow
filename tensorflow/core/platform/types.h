@@ -31,12 +31,6 @@ limitations under the License.
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
-#if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
-#endif
-
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
-
 namespace tensorflow {
 
 // Define tensorflow::string to refer to appropriate platform specific type.
@@ -64,6 +58,14 @@ static const int64 kint64max = ((int64)0x7FFFFFFFFFFFFFFFll);
 // A typedef for a uint64 used as a short fingerprint.
 typedef uint64 Fprint;
 
+}  // namespace tensorflow
+
+// Alias namespace ::stream_executor as ::tensorflow::se.
+namespace stream_executor {}
+namespace tensorflow {
+// TODO(b/77980417): Uncomment this once all namespace aliases named 'se' are
+// removed in ::xla.
+// namespace se = ::stream_executor;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PLATFORM_TYPES_H_

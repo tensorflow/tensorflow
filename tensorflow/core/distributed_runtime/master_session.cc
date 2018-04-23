@@ -66,13 +66,13 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     std::unique_ptr<ClientGraph> cg,
                     const SessionOptions& session_opts,
                     const StatsPublisherFactory& stats_publisher_factory,
-                    GraphExecutionState* execution_state, bool is_partial,
-                    WorkerCacheInterface* worker_cache, bool should_deregister)
+                    bool is_partial, WorkerCacheInterface* worker_cache,
+                    bool should_deregister)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
         session_opts_(session_opts),
         is_partial_(is_partial),
-        debug_opts_(bopts.debug_options),
+        callable_opts_(bopts.callable_options),
         worker_cache_(worker_cache),
         should_deregister_(should_deregister) {
     VLOG(1) << "Created ReffedClientGraph for node with "
@@ -80,8 +80,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
     stats_publisher_ = stats_publisher_factory(handle, bopts, session_opts);
 
-    // Initialize a name to node map for testing that fetches are reachable.
-    for (Node* n : execution_state->full_graph()->nodes()) {
+    // Initialize a name to node map for processing device stats.
+    for (Node* n : client_graph_->graph.nodes()) {
       name_to_node_.insert({n->name(), n});
     }
   }
@@ -94,10 +94,16 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   const ClientGraph* client_graph() { return client_graph_.get(); }
 
+  const CallableOptions& callable_options() { return callable_opts_; }
+
   std::unique_ptr<ProfileHandler> GetProfileHandler(uint64 step,
                                                     int64 execution_count,
                                                     const RunOptions& ropts) {
     return stats_publisher_->GetProfileHandler(step, execution_count, ropts);
+  }
+
+  int64 get_and_increment_execution_count() {
+    return execution_count_.fetch_add(1);
   }
 
   // Turn RPC logging on or off, both at the WorkerCache used by this
@@ -178,6 +184,10 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                        CallOptions* opts, const RunStepRequestWrapper& req,
                        MutableRunStepResponseWrapper* resp,
                        CancellationManager* cm, const bool is_last_partial_run);
+  Status RunPartitions(const MasterEnv* env, int64 step_id,
+                       int64 execution_count, PerStepState* pss,
+                       CallOptions* call_opts, const RunCallableRequest& req,
+                       RunCallableResponse* resp, CancellationManager* cm);
 
   // Calls workers to cleanup states for the step "step_id".  Calls
   // `done` when all cleanup RPCs have completed.
@@ -211,10 +221,11 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const std::unique_ptr<ClientGraph> client_graph_;
   const SessionOptions session_opts_;
   const bool is_partial_;
-  const DebugOptions& debug_opts_;
+  const CallableOptions callable_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
   std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node_;
   const bool should_deregister_;
+  std::atomic<int64> execution_count_ = {0};
 
   // Graph partitioned into per-location subgraphs.
   struct Part {
@@ -268,6 +279,17 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   Status DoRegisterPartitions(
       const PartitionOptions& popts,
       std::unordered_map<string, GraphDef> graph_partitions);
+
+  // Prepares a number of calls to workers. One call per partition.
+  // This is a generic method that handles Run, PartialRun, and RunCallable.
+  template <class FetchListType, class ClientRequestType,
+            class ClientResponseType>
+  Status RunPartitionsHelper(
+      const std::unordered_map<StringPiece, size_t, StringPieceHasher>& feeds,
+      const FetchListType& fetches, const MasterEnv* env, int64 step_id,
+      int64 execution_count, PerStepState* pss, CallOptions* call_opts,
+      const ClientRequestType& req, ClientResponseType* resp,
+      CancellationManager* cm, bool is_last_partial_run);
 
   // Deregisters the partitions on the workers.  Called in the
   // destructor and does not wait for the rpc completion.
@@ -394,6 +416,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
   if (!s.ok()) {
     for (Part& part : partitions_) {
       worker_cache_->ReleaseWorker(part.name, part.worker);
+      part.worker = nullptr;
     }
     return s;
   }
@@ -409,9 +432,11 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     const Part& part = partitions_[i];
     Call* c = &calls[i];
     c->req.set_session_handle(session_handle_);
+    c->req.set_create_worker_session_called(!should_deregister_);
     c->req.mutable_graph_def()->Swap(&graph_partitions[part.name]);
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
-    *c->req.mutable_debug_options() = debug_opts_;
+    *c->req.mutable_debug_options() =
+        callable_opts_.run_options().debug_options();
     VLOG(2) << "Register " << c->req.graph_def().DebugString();
     auto cb = [c, &done](const Status& s) {
       c->status = s;
@@ -490,24 +515,46 @@ class RunManyGraphs {
   TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
 };
 
-Status MasterSession::ReffedClientGraph::RunPartitions(
-    const MasterEnv* env, int64 step_id, int64 execution_count,
-    PerStepState* pss, CallOptions* call_opts, const RunStepRequestWrapper& req,
-    MutableRunStepResponseWrapper* resp, CancellationManager* cm,
-    const bool is_last_partial_run) {
-  VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
-          << execution_count;
-  // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
+namespace {
+Status AddSendFromClientRequest(const RunStepRequestWrapper& client_req,
+                                MutableRunGraphRequestWrapper* worker_req,
+                                size_t index, const string& send_key) {
+  return worker_req->AddSendFromRunStepRequest(client_req, index, send_key);
+}
 
-  for (size_t i = 0; i < req.num_feeds(); ++i) {
-    if (!feeds.insert({req.feed_name(i), i}).second) {
-      return errors::InvalidArgument("Duplicated feeds: ", req.feed_name(i));
-    }
+Status AddSendFromClientRequest(const RunCallableRequest& client_req,
+                                MutableRunGraphRequestWrapper* worker_req,
+                                size_t index, const string& send_key) {
+  return worker_req->AddSendFromRunCallableRequest(client_req, index, send_key);
+}
+
+// TODO(mrry): Add a full-fledged wrapper that avoids TensorProto copies for
+// in-process messages.
+struct RunCallableResponseWrapper {
+  RunCallableResponse* resp;  // Not owned.
+  std::unordered_map<string, TensorProto> fetch_key_to_protos;
+
+  RunMetadata* mutable_metadata() { return resp->mutable_metadata(); }
+
+  Status AddTensorFromRunGraphResponse(
+      const string& tensor_name, MutableRunGraphResponseWrapper* worker_resp,
+      size_t index) {
+    // TODO(b/74355905): Add a specialized implementation that avoids
+    // copying the tensor into the RunCallableResponse when at least
+    // two of the {client, master, worker} are in the same process.
+    return worker_resp->RecvValue(index, &fetch_key_to_protos[tensor_name]);
   }
+};
+}  // namespace
 
-  // Prepares a number of calls to workers. One call per partition.
-
+template <class FetchListType, class ClientRequestType,
+          class ClientResponseType>
+Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
+    const std::unordered_map<StringPiece, size_t, StringPieceHasher>& feeds,
+    const FetchListType& fetches, const MasterEnv* env, int64 step_id,
+    int64 execution_count, PerStepState* pss, CallOptions* call_opts,
+    const ClientRequestType& req, ClientResponseType* resp,
+    CancellationManager* cm, bool is_last_partial_run) {
   // Collect execution cost stats on a smoothly decreasing frequency.
   ExecutorOpts exec_opts;
   if (pss->report_tensor_allocations_upon_oom) {
@@ -542,6 +589,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       c->req->set_is_last_partial_run(is_last_partial_run);
     }
     c->req->set_session_handle(session_handle_);
+    c->req->set_create_worker_session_called(!should_deregister_);
     c->req->set_graph_handle(part.graph_handle);
     c->req->set_step_id(step_id);
     *c->req->mutable_exec_opts() = exec_opts;
@@ -553,28 +601,19 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     // We keep these as separate paths for now, to ensure we aren't
     // inadvertently slowing down the normal run path.
     if (is_partial_) {
-      for (size_t i = 0; i < req.num_feeds(); ++i) {
-        const string& name = req.feed_name(i);
-        const auto iter = part.feed_key.find(name);
+      for (const auto& name_index : feeds) {
+        const auto iter = part.feed_key.find(name_index.first.ToString());
         if (iter == part.feed_key.end()) {
           // The provided feed must be for a different partition.
           continue;
         }
         const string& key = iter->second;
-        auto feeds_iter = feeds.find(name);
-        if (feeds_iter == feeds.end()) {
-          return errors::InvalidArgument("No feed is provided for feed=", name,
-                                         ", key=", key);
-        } else if (feeds_iter->second != static_cast<size_t>(i)) {
-          return errors::Internal("Cannot find feed named \"", name,
-                                  " in request.");
-        }
-        TF_RETURN_IF_ERROR(c->req->AddSendFromRunStepRequest(req, i, key));
+        TF_RETURN_IF_ERROR(AddSendFromClientRequest(req, c->req.get(),
+                                                    name_index.second, key));
       }
       // TODO(suharshs): Make a map from feed to fetch_key to make this faster.
       // For now, we just iterate through partitions to find the matching key.
-      for (int i = 0; static_cast<size_t>(i) < req.num_fetches(); ++i) {
-        const string& req_fetch = req.fetch_name(i);
+      for (const string& req_fetch : fetches) {
         for (const auto& key_fetch : part.key_fetch) {
           if (key_fetch.second == req_fetch) {
             c->req->add_recv_key(key_fetch.first);
@@ -586,9 +625,13 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       for (const auto& feed_key : part.feed_key) {
         const string& feed = feed_key.first;
         const string& key = feed_key.second;
-        const int64 feed_index = feeds[feed];
+        auto iter = feeds.find(feed);
+        if (iter == feeds.end()) {
+          return errors::Internal("No feed index found for feed: ", feed);
+        }
+        const int64 feed_index = iter->second;
         TF_RETURN_IF_ERROR(
-            c->req->AddSendFromRunStepRequest(req, feed_index, key));
+            AddSendFromClientRequest(req, c->req.get(), feed_index, key));
       }
       for (const auto& key_fetch : part.key_fetch) {
         const string& key = key_fetch.first;
@@ -622,48 +665,113 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   } else {
     return errors::Cancelled("Step was cancelled");
   }
+  TF_RETURN_IF_ERROR(calls.status());
 
-  // Collects fetches.
-  Status status = calls.status();
-  if (status.ok()) {
-    for (int i = 0; i < num; ++i) {
-      const Part& part = partitions_[i];
-      MutableRunGraphResponseWrapper* run_graph_resp = calls.get(i)->resp.get();
-      for (size_t j = 0; j < run_graph_resp->num_recvs(); ++j) {
-        auto iter = part.key_fetch.find(run_graph_resp->recv_key(j));
-        if (iter == part.key_fetch.end()) {
-          status.Update(errors::Internal("Unexpected fetch key: ",
-                                         run_graph_resp->recv_key(j)));
-          break;
-        }
-        const string& fetch = iter->second;
-        status.Update(
-            resp->AddTensorFromRunGraphResponse(fetch, run_graph_resp, j));
-        if (!status.ok()) {
-          break;
-        }
+  // Collects fetches and metadata.
+  Status status;
+  for (int i = 0; i < num; ++i) {
+    const Part& part = partitions_[i];
+    MutableRunGraphResponseWrapper* run_graph_resp = calls.get(i)->resp.get();
+    for (size_t j = 0; j < run_graph_resp->num_recvs(); ++j) {
+      auto iter = part.key_fetch.find(run_graph_resp->recv_key(j));
+      if (iter == part.key_fetch.end()) {
+        status.Update(errors::Internal("Unexpected fetch key: ",
+                                       run_graph_resp->recv_key(j)));
+        break;
       }
-      if (pss->collect_timeline) {
-        pss->step_stats[i].Swap(run_graph_resp->mutable_step_stats());
+      const string& fetch = iter->second;
+      status.Update(
+          resp->AddTensorFromRunGraphResponse(fetch, run_graph_resp, j));
+      if (!status.ok()) {
+        break;
       }
-      if (pss->collect_costs) {
-        CostGraphDef* cost_graph = run_graph_resp->mutable_cost_graph();
-        for (int j = 0; j < cost_graph->node_size(); ++j) {
-          resp->mutable_metadata()->mutable_cost_graph()->add_node()->Swap(
-              cost_graph->mutable_node(j));
-        }
+    }
+    if (pss->collect_timeline) {
+      pss->step_stats[i].Swap(run_graph_resp->mutable_step_stats());
+    }
+    if (pss->collect_costs) {
+      CostGraphDef* cost_graph = run_graph_resp->mutable_cost_graph();
+      for (int j = 0; j < cost_graph->node_size(); ++j) {
+        resp->mutable_metadata()->mutable_cost_graph()->add_node()->Swap(
+            cost_graph->mutable_node(j));
       }
-      if (pss->collect_partition_graphs) {
-        protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
-            resp->mutable_metadata()->mutable_partition_graphs();
-        for (size_t i = 0; i < run_graph_resp->num_partition_graphs(); i++) {
-          partition_graph_defs->Add()->Swap(
-              run_graph_resp->mutable_partition_graph(i));
-        }
+    }
+    if (pss->collect_partition_graphs) {
+      protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
+          resp->mutable_metadata()->mutable_partition_graphs();
+      for (size_t i = 0; i < run_graph_resp->num_partition_graphs(); i++) {
+        partition_graph_defs->Add()->Swap(
+            run_graph_resp->mutable_partition_graph(i));
       }
     }
   }
   return status;
+}
+
+Status MasterSession::ReffedClientGraph::RunPartitions(
+    const MasterEnv* env, int64 step_id, int64 execution_count,
+    PerStepState* pss, CallOptions* call_opts, const RunStepRequestWrapper& req,
+    MutableRunStepResponseWrapper* resp, CancellationManager* cm,
+    const bool is_last_partial_run) {
+  VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
+          << execution_count;
+  // Maps the names of fed tensors to their index in `req`.
+  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
+  for (size_t i = 0; i < req.num_feeds(); ++i) {
+    if (!feeds.insert({req.feed_name(i), i}).second) {
+      return errors::InvalidArgument("Duplicated feeds: ", req.feed_name(i));
+    }
+  }
+
+  std::vector<string> fetches;
+  fetches.reserve(req.num_fetches());
+  for (size_t i = 0; i < req.num_fetches(); ++i) {
+    fetches.push_back(req.fetch_name(i));
+  }
+
+  return RunPartitionsHelper(feeds, fetches, env, step_id, execution_count, pss,
+                             call_opts, req, resp, cm, is_last_partial_run);
+}
+
+Status MasterSession::ReffedClientGraph::RunPartitions(
+    const MasterEnv* env, int64 step_id, int64 execution_count,
+    PerStepState* pss, CallOptions* call_opts, const RunCallableRequest& req,
+    RunCallableResponse* resp, CancellationManager* cm) {
+  VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
+          << execution_count;
+  // Maps the names of fed tensors to their index in `req`.
+  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
+  for (size_t i = 0; i < callable_opts_.feed_size(); ++i) {
+    if (!feeds.insert({callable_opts_.feed(i), i}).second) {
+      // MakeCallable will fail if there are two feeds with the same name.
+      return errors::Internal("Duplicated feeds in callable: ",
+                              callable_opts_.feed(i));
+    }
+  }
+
+  // Create a wrapped response object to collect the fetched values and
+  // rearrange them for the RunCallableResponse.
+  RunCallableResponseWrapper wrapped_resp;
+  wrapped_resp.resp = resp;
+
+  TF_RETURN_IF_ERROR(RunPartitionsHelper(
+      feeds, callable_opts_.fetch(), env, step_id, execution_count, pss,
+      call_opts, req, &wrapped_resp, cm, false /* is_last_partial_run */));
+
+  // Collects fetches.
+  // TODO(b/74355905): Add a specialized implementation that avoids
+  // copying the tensor into the RunCallableResponse when at least
+  // two of the {client, master, worker} are in the same process.
+  for (const string& fetch : callable_opts_.fetch()) {
+    TensorProto* fetch_proto = resp->mutable_fetch()->Add();
+    auto iter = wrapped_resp.fetch_key_to_protos.find(fetch);
+    if (iter == wrapped_resp.fetch_key_to_protos.end()) {
+      return errors::Internal("Worker did not return a value for fetch: ",
+                              fetch);
+    }
+    fetch_proto->Swap(&iter->second);
+  }
+  return Status::OK();
 }
 
 namespace {
@@ -829,8 +937,6 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
 // TODO(suharsh,mrry): Build a map from fetch target to set of feeds it depends
 // on once at setup time to prevent us from computing the dependencies
 // everytime.
-// TODO(suharshs,mrry): Consider removing the need for execution_state to reduce
-// contention.
 Status MasterSession::ReffedClientGraph::CheckFetches(
     const RunStepRequestWrapper& req, const RunState* run_state,
     GraphExecutionState* execution_state) {
@@ -840,8 +946,8 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
     // Skip if already fed.
     if (input.second) continue;
     TensorId id(ParseTensorName(input.first));
-    const auto it = name_to_node_.find(id.first);
-    if (it == name_to_node_.end()) {
+    const Node* n = execution_state->get_node_by_name(id.first.ToString());
+    if (n == nullptr) {
       return errors::NotFound("Feed ", input.first, ": not found");
     }
     pending_feeds.insert(id);
@@ -856,11 +962,11 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
   for (size_t i = 0; i < req.num_fetches(); ++i) {
     const string& fetch = req.fetch_name(i);
     const TensorId id(ParseTensorName(fetch));
-    auto it = name_to_node_.find(id.first);
-    if (it == name_to_node_.end()) {
+    const Node* n = execution_state->get_node_by_name(id.first.ToString());
+    if (n == nullptr) {
       return errors::NotFound("Fetch ", fetch, ": not found");
     }
-    stack.push_back(it->second);
+    stack.push_back(n);
   }
 
   // Any tensor needed for fetches can't be in pending_feeds.
@@ -900,6 +1006,7 @@ void MasterSession::ReffedClientGraph::DeregisterPartitions() {
     if (!part.graph_handle.empty()) {
       Call* c = new Call;
       c->req.set_session_handle(session_handle_);
+      c->req.set_create_worker_session_called(!should_deregister_);
       c->req.set_graph_handle(part.graph_handle);
       // NOTE(mrry): We must capture `worker_cache_` since `this`
       // could be deleted before the callback is called.
@@ -921,61 +1028,70 @@ void MasterSession::ReffedClientGraph::DeregisterPartitions() {
   }
 }
 
+namespace {
+void CopyAndSortStrings(size_t size,
+                        const std::function<string(size_t)>& input_accessor,
+                        protobuf::RepeatedPtrField<string>* output) {
+  std::vector<string> temp;
+  temp.reserve(size);
+  for (size_t i = 0; i < size; ++i) {
+    output->Add(input_accessor(i));
+  }
+  std::sort(output->begin(), output->end());
+}
+}  // namespace
+
 void BuildBuildGraphOptions(const RunStepRequestWrapper& req,
                             BuildGraphOptions* opts) {
-  for (size_t i = 0; i < req.num_feeds(); ++i) {
-    opts->feed_endpoints.push_back(req.feed_name(i));
-  }
-  for (size_t i = 0; i < req.num_fetches(); ++i) {
-    opts->fetch_endpoints.push_back(req.fetch_name(i));
-  }
-  for (size_t i = 0; i < req.num_targets(); ++i) {
-    opts->target_nodes.push_back(req.target_name(i));
-  }
+  CallableOptions* callable_opts = &opts->callable_options;
+  CopyAndSortStrings(req.num_feeds(),
+                     [&req](size_t i) { return req.feed_name(i); },
+                     callable_opts->mutable_feed());
+  CopyAndSortStrings(req.num_fetches(),
+                     [&req](size_t i) { return req.fetch_name(i); },
+                     callable_opts->mutable_fetch());
+  CopyAndSortStrings(req.num_targets(),
+                     [&req](size_t i) { return req.target_name(i); },
+                     callable_opts->mutable_target());
 
   if (!req.options().debug_options().debug_tensor_watch_opts().empty()) {
-    opts->debug_options = req.options().debug_options();
+    *callable_opts->mutable_run_options()->mutable_debug_options() =
+        req.options().debug_options();
   }
-
-  std::sort(opts->feed_endpoints.begin(), opts->feed_endpoints.end());
-  std::sort(opts->target_nodes.begin(), opts->target_nodes.end());
-  std::sort(opts->fetch_endpoints.begin(), opts->fetch_endpoints.end());
 }
 
 void BuildBuildGraphOptions(const PartialRunSetupRequest& req,
                             BuildGraphOptions* opts) {
-  for (const auto& feed : req.feed()) {
-    opts->feed_endpoints.push_back(feed);
-  }
-  for (const auto& fetch : req.fetch()) {
-    opts->fetch_endpoints.push_back(fetch);
-  }
-  for (const auto& target : req.target()) {
-    opts->target_nodes.push_back(target);
-  }
+  CallableOptions* callable_opts = &opts->callable_options;
+  CopyAndSortStrings(req.feed_size(), [&req](size_t i) { return req.feed(i); },
+                     callable_opts->mutable_feed());
+  CopyAndSortStrings(req.fetch_size(),
+                     [&req](size_t i) { return req.fetch(i); },
+                     callable_opts->mutable_fetch());
+  CopyAndSortStrings(req.target_size(),
+                     [&req](size_t i) { return req.target(i); },
+                     callable_opts->mutable_target());
 
   // TODO(cais): Add TFDBG support to partial runs.
-
-  std::sort(opts->feed_endpoints.begin(), opts->feed_endpoints.end());
-  std::sort(opts->target_nodes.begin(), opts->target_nodes.end());
-  std::sort(opts->fetch_endpoints.begin(), opts->fetch_endpoints.end());
 }
 
 uint64 HashBuildGraphOptions(const BuildGraphOptions& opts) {
   uint64 h = 0x2b992ddfa23249d6ull;
-  for (const string& name : opts.feed_endpoints) {
+  for (const string& name : opts.callable_options.feed()) {
     h = Hash64(name.c_str(), name.size(), h);
   }
-  for (const string& name : opts.target_nodes) {
+  for (const string& name : opts.callable_options.target()) {
     h = Hash64(name.c_str(), name.size(), h);
   }
-  for (const string& name : opts.fetch_endpoints) {
+  for (const string& name : opts.callable_options.fetch()) {
     h = Hash64(name.c_str(), name.size(), h);
   }
 
-  if (!opts.debug_options.debug_tensor_watch_opts().empty()) {
-    const string watch_summary = SummarizeDebugTensorWatches(
-        opts.debug_options.debug_tensor_watch_opts());
+  const DebugOptions& debug_options =
+      opts.callable_options.run_options().debug_options();
+  if (!debug_options.debug_tensor_watch_opts().empty()) {
+    const string watch_summary =
+        SummarizeDebugTensorWatches(debug_options.debug_tensor_watch_opts());
     h = Hash64(watch_summary.c_str(), watch_summary.size(), h);
   }
 
@@ -984,15 +1100,15 @@ uint64 HashBuildGraphOptions(const BuildGraphOptions& opts) {
 
 string BuildGraphOptionsString(const BuildGraphOptions& opts) {
   string buf;
-  for (const string& name : opts.feed_endpoints) {
+  for (const string& name : opts.callable_options.feed()) {
     strings::StrAppend(&buf, " FdE: ", name);
   }
   strings::StrAppend(&buf, "\n");
-  for (const string& name : opts.target_nodes) {
+  for (const string& name : opts.callable_options.target()) {
     strings::StrAppend(&buf, " TN: ", name);
   }
   strings::StrAppend(&buf, "\n");
-  for (const string& name : opts.fetch_endpoints) {
+  for (const string& name : opts.callable_options.fetch()) {
     strings::StrAppend(&buf, " FeE: ", name);
   }
   strings::StrAppend(&buf, "\n");
@@ -1004,6 +1120,7 @@ MasterSession::MasterSession(
     std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     std::unique_ptr<DeviceSet> device_set,
+    std::vector<string> filtered_worker_list,
     StatsPublisherFactory stats_publisher_factory)
     : session_opts_(opt),
       env_(env),
@@ -1011,6 +1128,7 @@ MasterSession::MasterSession(
       remote_devs_(std::move(remote_devs)),
       worker_cache_(std::move(worker_cache)),
       devices_(std::move(device_set)),
+      filtered_worker_list_(std::move(filtered_worker_list)),
       stats_publisher_factory_(std::move(stats_publisher_factory)),
       graph_version_(0),
       run_graphs_(5),
@@ -1068,9 +1186,8 @@ Status MasterSession::Create(GraphDef* graph_def,
 
 Status MasterSession::CreateWorkerSessions(
     const WorkerCacheFactoryOptions& options) {
-  std::vector<string> worker_names;
+  const std::vector<string> worker_names = filtered_worker_list_;
   WorkerCacheInterface* worker_cache = get_worker_cache();
-  worker_cache->ListWorkers(&worker_names);
 
   struct WorkerGroup {
     // The worker name. (Not owned.)
@@ -1148,8 +1265,7 @@ Status MasterSession::CreateWorkerSessions(
 
 Status MasterSession::DeleteWorkerSessions() {
   WorkerCacheInterface* worker_cache = get_worker_cache();
-  std::vector<string> worker_names;
-  worker_cache->ListWorkers(&worker_names);
+  const std::vector<string>& worker_names = filtered_worker_list_;
 
   struct WorkerGroup {
     // The worker name. (Not owned.)
@@ -1157,6 +1273,8 @@ Status MasterSession::DeleteWorkerSessions() {
 
     // The worker referenced by name. (Not owned.)
     WorkerInterface* worker = nullptr;
+
+    CallOptions call_opts;
 
     // Request and responses used for a given worker.
     DeleteWorkerSessionRequest request;
@@ -1181,6 +1299,9 @@ Status MasterSession::DeleteWorkerSessions() {
     workers[i].name = &worker_names[i];
     workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
+    // Since the worker may have gone away, set a timeout to avoid blocking the
+    // session-close operation.
+    workers[i].call_opts.SetTimeout(10000);
   }
 
   for (size_t i = 0; i < worker_names.size(); ++i) {
@@ -1188,8 +1309,8 @@ Status MasterSession::DeleteWorkerSessions() {
       workers[i].status = s;
       done.DecrementCount();
     };
-    workers[i].worker->DeleteWorkerSessionAsync(&workers[i].request,
-                                                &workers[i].response, cb);
+    workers[i].worker->DeleteWorkerSessionAsync(
+        &workers[i].call_opts, &workers[i].request, &workers[i].response, cb);
   }
 
   done.Wait();
@@ -1259,15 +1380,11 @@ WorkerCacheInterface* MasterSession::get_worker_cache() const {
   return env_->worker_cache;
 }
 
-Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
-                                ReffedClientGraph** rcg, bool is_partial) {
+Status MasterSession::StartStep(const BuildGraphOptions& opts, bool is_partial,
+                                ReffedClientGraph** out_rcg, int64* out_count) {
   const uint64 hash = HashBuildGraphOptions(opts);
   {
     mutex_lock l(mu_);
-    // Keep track of how many times this subgraph has been executed in
-    // this session.
-    int64* c = &subgraph_execution_counts_[hash];
-    *count = (*c)++;
     // TODO(suharshs): We cache partial run graphs and run graphs separately
     // because there is preprocessing that needs to only be run for partial
     // run calls.
@@ -1284,13 +1401,14 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
       WorkerCacheInterface* worker_cache = get_worker_cache();
       auto entry = new ReffedClientGraph(
           handle_, opts, std::move(client_graph), session_opts_,
-          stats_publisher_factory_, execution_state_.get(), is_partial,
-          worker_cache, !should_delete_worker_sessions_);
+          stats_publisher_factory_, is_partial, worker_cache,
+          !should_delete_worker_sessions_);
       iter = m->insert({hash, entry}).first;
       VLOG(1) << "Preparing to execute new graph";
     }
-    *rcg = iter->second;
-    (*rcg)->Ref();
+    *out_rcg = iter->second;
+    (*out_rcg)->Ref();
+    *out_count = (*out_rcg)->get_and_increment_execution_count();
   }
   return Status::OK();
 }
@@ -1309,6 +1427,12 @@ void MasterSession::ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
   rcg_map->clear();
 }
 
+namespace {
+uint64 MakeStepId() {
+  return (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
+}
+}  // namespace
+
 Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
                                       PartialRunSetupResponse* resp) {
   std::vector<string> inputs, outputs, targets;
@@ -1325,15 +1449,15 @@ Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
   string handle = std::to_string(partial_run_handle_counter_.fetch_add(1));
 
   ReffedClientGraph* rcg = nullptr;
-  int64 count = 0;
 
   // Prepare.
   BuildGraphOptions opts;
   BuildBuildGraphOptions(*req, &opts);
-  TF_RETURN_IF_ERROR(StartStep(opts, &count, &rcg, true));
+  int64 count;
+  TF_RETURN_IF_ERROR(StartStep(opts, true, &rcg, &count));
   // Keeps the highest 8 bits 0x01: we reserve some bits of the
   // step_id for future use.
-  uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
+  const uint64 step_id = MakeStepId();
   TRACEPRINTF("stepid %llu", step_id);
 
   rcg->Ref();
@@ -1578,68 +1702,47 @@ Status MasterSession::CreateDebuggerState(
   return Status::OK();
 }
 
-Status MasterSession::DoRunWithLocalExecution(
-    CallOptions* opts, const RunStepRequestWrapper& req,
-    MutableRunStepResponseWrapper* resp) {
-  VLOG(2) << "DoRunWithLocalExecution req: " << req.DebugString();
-  PerStepState pss;
-  pss.start_micros = Env::Default()->NowMicros();
-  auto cleanup = gtl::MakeCleanup([this] { MarkRunCompletion(); });
-
-  // Prepare.
-  BuildGraphOptions bgopts;
-  BuildBuildGraphOptions(req, &bgopts);
-  ReffedClientGraph* rcg = nullptr;
-  int64 count = 0;
-  TF_RETURN_IF_ERROR(StartStep(bgopts, &count, &rcg, false));
-
-  // Unref "rcg" when out of scope.
-  core::ScopedUnref unref(rcg);
-
-  std::unique_ptr<DebuggerStateInterface> debugger_state;
-  const DebugOptions& debug_options = req.options().debug_options();
-
-  if (!debug_options.debug_tensor_watch_opts().empty()) {
-    TF_RETURN_IF_ERROR(
-        CreateDebuggerState(debug_options, req, count, &debugger_state));
-  }
-  TF_RETURN_IF_ERROR(BuildAndRegisterPartitions(rcg));
-
-  // Keeps the highest 8 bits 0x01: we reserve some bits of the
-  // step_id for future use.
-  const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
-  TRACEPRINTF("stepid %llu", step_id);
-
-  pss.collect_timeline = req.options().trace_level() == RunOptions::FULL_TRACE;
-  pss.collect_rpcs = req.options().trace_level() == RunOptions::FULL_TRACE;
-  pss.report_tensor_allocations_upon_oom =
-      req.options().report_tensor_allocations_upon_oom();
+void MasterSession::FillPerStepState(MasterSession::ReffedClientGraph* rcg,
+                                     const RunOptions& run_options,
+                                     uint64 step_id, int64 count,
+                                     PerStepState* out_pss,
+                                     std::unique_ptr<ProfileHandler>* out_ph) {
+  out_pss->collect_timeline =
+      run_options.trace_level() == RunOptions::FULL_TRACE;
+  out_pss->collect_rpcs = run_options.trace_level() == RunOptions::FULL_TRACE;
+  out_pss->report_tensor_allocations_upon_oom =
+      run_options.report_tensor_allocations_upon_oom();
   // Build the cost model every 'build_cost_model_every' steps after skipping an
   // initial 'build_cost_model_after' steps.
   const int64 build_cost_model_after =
       session_opts_.config.graph_options().build_cost_model_after();
   const int64 build_cost_model_every =
       session_opts_.config.graph_options().build_cost_model();
-  pss.collect_costs =
+  out_pss->collect_costs =
       build_cost_model_every > 0 &&
       ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
-  pss.collect_partition_graphs = req.options().output_partition_graphs();
+  out_pss->collect_partition_graphs = run_options.output_partition_graphs();
 
-  std::unique_ptr<ProfileHandler> ph =
-      rcg->GetProfileHandler(step_id, count, req.options());
-  if (ph) {
-    pss.collect_timeline = true;
-    pss.collect_rpcs = ph->should_collect_rpcs();
+  *out_ph = rcg->GetProfileHandler(step_id, count, run_options);
+  if (*out_ph) {
+    out_pss->collect_timeline = true;
+    out_pss->collect_rpcs = (*out_ph)->should_collect_rpcs();
   }
+}
 
-  Status s = rcg->RunPartitions(env_, step_id, count, &pss, opts, req, resp,
-                                &cancellation_manager_, false);
+Status MasterSession::PostRunCleanup(MasterSession::ReffedClientGraph* rcg,
+                                     uint64 step_id,
+                                     const RunOptions& run_options,
+                                     PerStepState* pss,
+                                     const std::unique_ptr<ProfileHandler>& ph,
+                                     const Status& run_status,
+                                     RunMetadata* out_run_metadata) {
+  Status s = run_status;
   if (s.ok()) {
-    pss.end_micros = Env::Default()->NowMicros();
+    pss->end_micros = Env::Default()->NowMicros();
 
     // Schedule post-processing and cleanup to be done asynchronously.
-    rcg->ProcessStats(step_id, &pss, ph.get(), req.options(),
-                      resp->mutable_metadata());
+    rcg->ProcessStats(step_id, pss, ph.get(), run_options, out_run_metadata);
   } else if (errors::IsCancelled(s)) {
     mutex_lock l(mu_);
     if (closed_) {
@@ -1655,7 +1758,6 @@ Status MasterSession::DoRunWithLocalExecution(
   }
   Ref();
   rcg->Ref();
-  cleanup.release();  // MarkRunCompletion called in done closure.
   rcg->CleanupPartitionsAsync(step_id, [this, rcg](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;
@@ -1665,6 +1767,164 @@ Status MasterSession::DoRunWithLocalExecution(
     Unref();
   });
   return s;
+}
+
+Status MasterSession::DoRunWithLocalExecution(
+    CallOptions* opts, const RunStepRequestWrapper& req,
+    MutableRunStepResponseWrapper* resp) {
+  VLOG(2) << "DoRunWithLocalExecution req: " << req.DebugString();
+  PerStepState pss;
+  pss.start_micros = Env::Default()->NowMicros();
+  auto cleanup = gtl::MakeCleanup([this] { MarkRunCompletion(); });
+
+  // Prepare.
+  BuildGraphOptions bgopts;
+  BuildBuildGraphOptions(req, &bgopts);
+  ReffedClientGraph* rcg = nullptr;
+  int64 count;
+  TF_RETURN_IF_ERROR(StartStep(bgopts, false, &rcg, &count));
+
+  // Unref "rcg" when out of scope.
+  core::ScopedUnref unref(rcg);
+
+  std::unique_ptr<DebuggerStateInterface> debugger_state;
+  const DebugOptions& debug_options = req.options().debug_options();
+
+  if (!debug_options.debug_tensor_watch_opts().empty()) {
+    TF_RETURN_IF_ERROR(
+        CreateDebuggerState(debug_options, req, count, &debugger_state));
+  }
+  TF_RETURN_IF_ERROR(BuildAndRegisterPartitions(rcg));
+
+  // Keeps the highest 8 bits 0x01: we reserve some bits of the
+  // step_id for future use.
+  const uint64 step_id = MakeStepId();
+  TRACEPRINTF("stepid %llu", step_id);
+
+  std::unique_ptr<ProfileHandler> ph;
+  FillPerStepState(rcg, req.options(), step_id, count, &pss, &ph);
+
+  Status s = rcg->RunPartitions(env_, step_id, count, &pss, opts, req, resp,
+                                &cancellation_manager_, false);
+  cleanup.release();  // MarkRunCompletion called in PostRunCleanup().
+  return PostRunCleanup(rcg, step_id, req.options(), &pss, ph, s,
+                        resp->mutable_metadata());
+}
+
+Status MasterSession::MakeCallable(const MakeCallableRequest& req,
+                                   MakeCallableResponse* resp) {
+  UpdateLastAccessTime();
+
+  BuildGraphOptions opts;
+  opts.callable_options = req.options();
+  opts.use_function_convention = false;
+
+  ReffedClientGraph* callable;
+
+  {
+    mutex_lock l(mu_);
+    if (closed_) {
+      return errors::FailedPrecondition("Session is closed.");
+    }
+    std::unique_ptr<ClientGraph> client_graph;
+    TF_RETURN_IF_ERROR(execution_state_->BuildGraph(opts, &client_graph));
+    callable = new ReffedClientGraph(handle_, opts, std::move(client_graph),
+                                     session_opts_, stats_publisher_factory_,
+                                     false /* is_partial */, get_worker_cache(),
+                                     !should_delete_worker_sessions_);
+  }
+
+  Status s = BuildAndRegisterPartitions(callable);
+  if (!s.ok()) {
+    callable->Unref();
+    return s;
+  }
+
+  uint64 handle;
+  {
+    mutex_lock l(mu_);
+    handle = next_callable_handle_++;
+    callables_[handle] = callable;
+  }
+
+  resp->set_handle(handle);
+  return Status::OK();
+}
+
+Status MasterSession::DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
+                                    const RunCallableRequest& req,
+                                    RunCallableResponse* resp) {
+  VLOG(2) << "DoRunCallable req: " << req.DebugString();
+  PerStepState pss;
+  pss.start_micros = Env::Default()->NowMicros();
+  auto cleanup = gtl::MakeCleanup([this] { MarkRunCompletion(); });
+
+  // Prepare.
+  int64 count = rcg->get_and_increment_execution_count();
+
+  // Keeps the highest 8 bits 0x01: we reserve some bits of the
+  // step_id for future use.
+  const uint64 step_id = MakeStepId();
+  TRACEPRINTF("stepid %llu", step_id);
+
+  const RunOptions& run_options = rcg->callable_options().run_options();
+
+  if (run_options.timeout_in_ms() != 0) {
+    opts->SetTimeout(run_options.timeout_in_ms());
+  }
+
+  std::unique_ptr<ProfileHandler> ph;
+  FillPerStepState(rcg, run_options, step_id, count, &pss, &ph);
+  Status s = rcg->RunPartitions(env_, step_id, count, &pss, opts, req, resp,
+                                &cancellation_manager_);
+  cleanup.release();  // MarkRunCompletion called in PostRunCleanup().
+  return PostRunCleanup(rcg, step_id, run_options, &pss, ph, s,
+                        resp->mutable_metadata());
+}
+
+Status MasterSession::RunCallable(CallOptions* opts,
+                                  const RunCallableRequest& req,
+                                  RunCallableResponse* resp) {
+  UpdateLastAccessTime();
+  ReffedClientGraph* callable;
+  {
+    mutex_lock l(mu_);
+    if (closed_) {
+      return errors::FailedPrecondition("Session is closed.");
+    }
+    int64 handle = req.handle();
+    if (handle >= next_callable_handle_) {
+      return errors::InvalidArgument("No such callable handle: ", handle);
+    }
+    auto iter = callables_.find(req.handle());
+    if (iter == callables_.end()) {
+      return errors::InvalidArgument(
+          "Attempted to run callable after handle was released: ", handle);
+    }
+    callable = iter->second;
+    callable->Ref();
+    ++num_running_;
+  }
+  core::ScopedUnref unref_callable(callable);
+  return DoRunCallable(opts, callable, req, resp);
+}
+
+Status MasterSession::ReleaseCallable(const ReleaseCallableRequest& req,
+                                      ReleaseCallableResponse* resp) {
+  UpdateLastAccessTime();
+  ReffedClientGraph* to_unref = nullptr;
+  {
+    mutex_lock l(mu_);
+    auto iter = callables_.find(req.handle());
+    if (iter != callables_.end()) {
+      to_unref = iter->second;
+      callables_.erase(iter);
+    }
+  }
+  if (to_unref != nullptr) {
+    to_unref->Unref();
+  }
+  return Status::OK();
 }
 
 Status MasterSession::Close() {
@@ -1681,6 +1941,7 @@ Status MasterSession::Close() {
     }
     ClearRunsTable(&to_unref, &run_graphs_);
     ClearRunsTable(&to_unref, &partial_run_graphs_);
+    ClearRunsTable(&to_unref, &callables_);
   }
   for (ReffedClientGraph* rcg : to_unref) rcg->Unref();
   if (should_delete_worker_sessions_) {

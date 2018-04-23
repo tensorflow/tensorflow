@@ -58,6 +58,15 @@ xla_proto_library(
     ],
 )
 
+xla_proto_library(
+    name = "host_compute_metadata_proto",
+    srcs = ["host_compute_metadata.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 cc_library(
     name = "tf2xla",
     srcs = ["tf2xla.cc"],
@@ -149,6 +158,7 @@ cc_library(
         ":common",
         ":dump_graph",
         ":functionalize_control_flow",
+        ":host_compute_metadata_proto",
         ":sharding_util",
         ":tf2xla_util",
         "//tensorflow/compiler/tf2xla/lib:util",
@@ -322,6 +332,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -404,7 +415,7 @@ cc_library(
         "//tensorflow/compiler/jit:graph_to_functiondef",
         "//tensorflow/compiler/jit:union_find",
         "//tensorflow/compiler/tf2xla:dump_graph",
-        "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:core_cpu",
@@ -426,7 +437,7 @@ tf_cc_test(
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
-        "//tensorflow/compiler/tf2xla/cc:functional_ops",
+        "//tensorflow/compiler/tf2xla/cc:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -451,18 +462,4 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

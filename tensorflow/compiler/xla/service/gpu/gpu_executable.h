@@ -74,19 +74,14 @@ class GpuExecutable : public Executable {
 
   // ExecuteOnStream will fail if the compute capability of the stream doesn't
   // match the compute capability passed to this object's constructor.
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  StatusOr<ShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
+  StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
-
-  const Status EqualOrFail(const Executable& executable) {
-    // TODO(b/62952745) Implement equality test on GPU executable.
-    return Unimplemented("Equality test on GPU executable is not implemented.");
-  }
 
  private:
   // If `block_host_until_done` is false, execution will not block the host

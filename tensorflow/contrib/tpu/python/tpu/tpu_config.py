@@ -26,6 +26,7 @@ import os
 import numpy as np
 
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.platform import tf_logging as logging
 
@@ -34,8 +35,14 @@ _TF_CONFIG_ENV = run_config_lib._TF_CONFIG_ENV
 _SERVICE_KEY = run_config_lib._SERVICE_KEY
 _TPU_WORKER_JOB_NAME = 'tpu_worker_job_name'
 _NUM_CORES_PER_HOST = 8
-
 # pylint: enable=protected-access
+
+
+class InputPipelineConfig(object):
+  r"""Please see the definition of these values in TPUConfig."""
+  PER_SHARD_V1 = 1
+  PER_HOST_V1 = 2
+  PER_HOST_V2 = 3
 
 
 # TODO(b/72511246) Provide a simplified api to configure model parallelism.
@@ -65,15 +72,18 @@ class TPUConfig(
       cores. This is required by model-parallelism which enables partitioning
       the model to multiple cores. For example, [2, 2, 1] means the model is
       partitioned across 4 cores which span two cores in both x and y
-      coordinates.  Please refer to ${tf.contrib.tpu.TopologyProto} for the
+      coordinates.  Please refer to @{tf.contrib.tpu.Topology} for the
       geometry of a TPU mesh.
-    per_host_input_for_training: If `True`, `input_fn` is invoked Per-Host
-      rather than Per-Core. With Per-Host input pipeline deployment, `input_fn`
-      is invoked once on each host. With Per-Core input pipeline deployment, it
-      is invoked once for each core. To be precise, with a global batch size
-      `train_batch_size` in `TPUEstimator` constructor, the batch size for each
-      shard is `train_batch_size` // #hosts. With Per-Core input pipeline
-      deployment, the shard batch size is `train_batch_size` // #cores.
+    per_host_input_for_training: If `True`, `PER_HOST_V1`, or `PER_HOST_V2`,
+      `input_fn` is invoked per-host rather than per-core. With per-host input
+      pipeline configuration, `input_fn` is invoked once on each host. With the
+      per-core input pipeline configuration, it is invoked once for each core.
+      With a global batch size `train_batch_size` in `TPUEstimator` constructor,
+      the batch size for each shard is `train_batch_size` // #hosts in the
+      `True` or `PER_HOST_V1` mode. In `PER_HOST_V2` mode, it is
+      `train_batch_size` // #cores. With the per-core input pipeline
+      configuration, the shard batch size is also `train_batch_size` // #cores.
+      Note: per_host_input_for_training==PER_SHARD_V1 only supports mode.TRAIN.
     tpu_job_name: The name of the TPU job. Typically, this name is auto-inferred
       within TPUEstimator, however when using ClusterSpec propagation in more
       esoteric cluster configurations, you may need to specify the job name as a
@@ -116,6 +126,13 @@ class TPUConfig(
         raise ValueError('computation_shape elements can only be 1 or 2; got '
                          'computation_shape={}'.format(computation_shape))
 
+    # per_host_input_for_training may be True, False, or integer in [1..3].
+    # Map legacy values (True, False) to numeric values.
+    if per_host_input_for_training is False:
+      per_host_input_for_training = InputPipelineConfig.PER_SHARD_V1
+    elif per_host_input_for_training is True:
+      per_host_input_for_training = InputPipelineConfig.PER_HOST_V1
+
     # Check initial_infeed_sleep_secs.
     if initial_infeed_sleep_secs:
       util_lib.check_positive_integer(initial_infeed_sleep_secs,
@@ -140,6 +157,7 @@ class RunConfig(run_config_lib.RunConfig):
                tpu_config=None,
                evaluation_master=None,
                master=None,
+               cluster=None,
                **kwargs):
     """Constructs a RunConfig.
 
@@ -148,15 +166,26 @@ class RunConfig(run_config_lib.RunConfig):
       evaluation_master: a string. The address of the master to use for eval.
         Defaults to master if not set.
       master: a string. The address of the master to use for training.
+      cluster: a ClusterResolver
       **kwargs: keyword config parameters.
+
+    Raises:
+      ValueError: if cluster is not None and the provided session_config has a
+        cluster_def already.
     """
     super(RunConfig, self).__init__(**kwargs)
     self._tpu_config = tpu_config or TPUConfig()
+    self._cluster = cluster
 
-    # If user sets master and/or evaluation_master explicilty, including empty
+    # If user sets master and/or evaluation_master explicitly, including empty
     # string '', take it. Otherwise, take the values set by parent class.
     if master is not None:
+      if cluster is not None:
+        raise ValueError('Both master and cluster are set.')
       self._master = master
+    else:
+      if cluster:
+        self._master = cluster.master()
 
     if evaluation_master is not None:
       self._evaluation_master = evaluation_master
@@ -170,6 +199,20 @@ class RunConfig(run_config_lib.RunConfig):
       # evaluation_master to master, unless user overwrites it.
       self._evaluation_master = self._master
 
+    # Set the ClusterSpec to use
+    if cluster:
+      self._cluster_spec = cluster.cluster_spec()
+
+      # Merge the cluster_def into the ConfigProto.
+      if self._session_config is None:  # pylint: disable=access-member-before-definition
+        self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+      if self._session_config.HasField('cluster_def'):
+        raise ValueError(
+            'You cannot provide a ClusterResolver and '
+            'session_config.cluster_def.')
+      self._session_config.cluster_def.CopyFrom(
+          self._cluster_spec.as_cluster_def())
+
   @property
   def evaluation_master(self):
     return self._evaluation_master
@@ -181,6 +224,10 @@ class RunConfig(run_config_lib.RunConfig):
   @property
   def tpu_config(self):
     return self._tpu_config
+
+  @property
+  def cluster(self):
+    return self._cluster
 
   def replace(self, **kwargs):
     if 'tpu_config' not in kwargs:

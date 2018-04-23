@@ -46,12 +46,21 @@ def train_and_evaluate_exogenous(csv_file_name=_DATA_FILE, train_steps=300):
 
   # Indicate the format of our exogenous feature, in this case a string
   # representing a boolean value.
-  string_feature = tf.contrib.layers.sparse_column_with_keys(
-      column_name="is_changepoint", keys=["no", "yes"])
+  string_feature = tf.feature_column.categorical_column_with_vocabulary_list(
+      key="is_changepoint", vocabulary_list=["no", "yes"])
   # Specify the way this feature is presented to the model, here using a one-hot
   # encoding.
-  one_hot_feature = tf.contrib.layers.one_hot_column(
-      sparse_id_column=string_feature)
+  one_hot_feature = tf.feature_column.indicator_column(
+      categorical_column=string_feature)
+
+  def _exogenous_update_condition(times, features):
+    del times  # unused
+    # Make exogenous updates sparse by setting an update condition. This in
+    # effect allows missing exogenous features: if the condition evaluates to
+    # False, no update is performed. Otherwise we sometimes end up with "leaky"
+    # updates which add unnecessary uncertainty to the model even when there is
+    # no changepoint.
+    return tf.equal(tf.squeeze(features["is_changepoint"], axis=-1), "yes")
 
   estimator = tf.contrib.timeseries.StructuralEnsembleRegressor(
       periodicities=12,
@@ -60,13 +69,7 @@ def train_and_evaluate_exogenous(csv_file_name=_DATA_FILE, train_steps=300):
       cycle_num_latent_values=3,
       num_features=1,
       exogenous_feature_columns=[one_hot_feature],
-      # Make exogenous updates sparse by setting an update condition. This in
-      # effect allows missing exogenous features: if the condition evaluates to
-      # False, no update is performed. Otherwise we sometimes end up with
-      # "leaky" updates which add unnecessary uncertainty to the model even when
-      # there is no changepoint.
-      exogenous_update_condition=
-      lambda times, features: tf.equal(features["is_changepoint"], "yes"))
+      exogenous_update_condition=_exogenous_update_condition)
   reader = tf.contrib.timeseries.CSVReader(
       csv_file_name,
       # Indicate the format of our CSV file. First we have two standard columns,

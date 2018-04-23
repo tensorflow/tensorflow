@@ -43,7 +43,6 @@ def _ShapeTensor(shape):
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
-# pylint: disable=protected-access
 @tf_export("random_normal")
 def random_normal(shape,
                   mean=0.0,
@@ -74,7 +73,7 @@ def random_normal(shape,
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._random_standard_normal(
+    rnd = gen_random_ops.random_standard_normal(
         shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
@@ -126,7 +125,7 @@ def parameterized_truncated_normal(shape,
     minvals_tensor = ops.convert_to_tensor(minvals, dtype=dtype, name="minvals")
     maxvals_tensor = ops.convert_to_tensor(maxvals, dtype=dtype, name="maxvals")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._parameterized_truncated_normal(
+    rnd = gen_random_ops.parameterized_truncated_normal(
         shape_tensor,
         means_tensor,
         stddevs_tensor,
@@ -171,7 +170,7 @@ def truncated_normal(shape,
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._truncated_normal(
+    rnd = gen_random_ops.truncated_normal(
         shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
@@ -210,7 +209,7 @@ def random_uniform(shape,
     maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
       the range of random values to generate.  Defaults to 1 if `dtype` is
       floating point.
-    dtype: The type of the output: 'float16`, `float32`, `float64`, `int32`,
+    dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
       See @{tf.set_random_seed}
@@ -237,11 +236,10 @@ def random_uniform(shape,
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)
     if dtype.is_integer:
-      return gen_random_ops._random_uniform_int(
+      return gen_random_ops.random_uniform_int(
           shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
     else:
-      rnd = gen_random_ops._random_uniform(
-          shape, dtype, seed=seed1, seed2=seed2)
+      rnd = gen_random_ops.random_uniform(shape, dtype, seed=seed1, seed2=seed2)
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
@@ -275,7 +273,7 @@ def random_shuffle(value, seed=None, name=None):
     dimension.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_random_ops._random_shuffle(
+  return gen_random_ops.random_shuffle(
       value, seed=seed1, seed2=seed2, name=name)
 
 
@@ -420,7 +418,7 @@ def random_gamma(shape,
     seed1, seed2 = random_seed.get_seed(seed)
     return math_ops.maximum(
         np.finfo(dtype.as_numpy_dtype).tiny,
-        gen_random_ops._random_gamma(
+        gen_random_ops.random_gamma(
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
 
 ops.NotDifferentiable("RandomGamma")

@@ -123,6 +123,10 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 5,
+    tags = [
+        "noasan",  # times out
+        "optonly",
+    ],
 )
 
 cuda_py_test(
@@ -139,16 +143,4 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 5,
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

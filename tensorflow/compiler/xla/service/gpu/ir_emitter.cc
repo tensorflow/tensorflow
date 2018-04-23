@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
@@ -438,6 +439,32 @@ Status IrEmitter::HandleSelect(HloInstruction* select) {
   return IrEmitter::DefaultAction(select);
 }
 
+namespace {
+llvm::Value* Real(llvm::Value* x, llvm::IRBuilder<>* ir_builder) {
+  return ir_builder->CreateExtractValue(x, {0});
+}
+
+llvm::Value* Imag(llvm::Value* x, llvm::IRBuilder<>* ir_builder) {
+  return ir_builder->CreateExtractValue(x, {1});
+}
+
+std::pair<llvm::Value*, llvm::Value*> MultiplyComplex(
+    llvm::Value* lhs_value, llvm::Value* rhs_value,
+    llvm::IRBuilder<>* ir_builder) {
+  llvm::Value* lhs_real = Real(lhs_value, ir_builder);
+  llvm::Value* lhs_imag = Imag(lhs_value, ir_builder);
+  llvm::Value* rhs_real = Real(rhs_value, ir_builder);
+  llvm::Value* rhs_imag = Imag(rhs_value, ir_builder);
+  llvm::Value* real_result1 = ir_builder->CreateFMul(lhs_real, rhs_real);
+  llvm::Value* real_result2 = ir_builder->CreateFMul(lhs_imag, rhs_imag);
+  llvm::Value* real_result = ir_builder->CreateFSub(real_result1, real_result2);
+  llvm::Value* imag_result1 = ir_builder->CreateFMul(lhs_real, rhs_imag);
+  llvm::Value* imag_result2 = ir_builder->CreateFMul(lhs_imag, rhs_real);
+  llvm::Value* imag_result = ir_builder->CreateFAdd(imag_result1, imag_result2);
+  return {real_result, imag_result};
+}
+}  // namespace
+
 Status IrEmitter::HandleDot(HloInstruction* dot) {
   auto lhs_instruction = dot->operand(0);
   auto rhs_instruction = dot->operand(1);
@@ -456,21 +483,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
         rhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
     llvm::Value* result;
     if (ShapeUtil::ElementIsComplex(lhs_shape)) {
-      auto real = [&](llvm::Value* x) {
-        return ir_builder_.CreateExtractValue(x, {0});
-      };
-      auto imag = [&](llvm::Value* x) {
-        return ir_builder_.CreateExtractValue(x, {1});
-      };
-      llvm::Value* real_result = ir_builder_.CreateFSub(
-          ir_builder_.CreateFMul(real(lhs_value), real(rhs_value)),
-          ir_builder_.CreateFMul(imag(lhs_value), imag(rhs_value)));
-      llvm::Value* imag_result = ir_builder_.CreateFAdd(
-          ir_builder_.CreateFMul(real(lhs_value), imag(rhs_value)),
-          ir_builder_.CreateFMul(imag(lhs_value), real(rhs_value)));
+      auto value = MultiplyComplex(lhs_value, rhs_value, &ir_builder_);
       result = llvm::ConstantAggregateZero::get(lhs_array.GetElementLlvmType());
-      result = ir_builder_.CreateInsertValue(result, real_result, {0});
-      result = ir_builder_.CreateInsertValue(result, imag_result, {1});
+      result = ir_builder_.CreateInsertValue(result, value.first, {0});
+      result = ir_builder_.CreateInsertValue(result, value.second, {1});
     } else {
       result = ir_builder_.CreateFMul(lhs_value, rhs_value);
     }
@@ -548,20 +564,13 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   llvm::Value* accum = ir_builder_.CreateLoad(accum_address);
   llvm::Value* updated_accum;
   if (ShapeUtil::ElementIsComplex(lhs_shape)) {
-#define REAL(x) ir_builder_.CreateExtractValue(x, {0})
-#define IMAG(x) ir_builder_.CreateExtractValue(x, {1})
-    llvm::Value* product_real = ir_builder_.CreateFSub(
-        ir_builder_.CreateFMul(REAL(lhs_element), REAL(rhs_element)),
-        ir_builder_.CreateFMul(IMAG(lhs_element), IMAG(rhs_element)));
-    llvm::Value* product_imag = ir_builder_.CreateFAdd(
-        ir_builder_.CreateFMul(REAL(lhs_element), IMAG(rhs_element)),
-        ir_builder_.CreateFMul(IMAG(lhs_element), REAL(rhs_element)));
-    updated_accum = ir_builder_.CreateInsertValue(
-        accum, ir_builder_.CreateFAdd(REAL(accum), product_real), {0});
-    updated_accum = ir_builder_.CreateInsertValue(
-        updated_accum, ir_builder_.CreateFAdd(IMAG(accum), product_imag), {1});
-#undef IMAG
-#undef REAL
+    auto value = MultiplyComplex(lhs_element, rhs_element, &ir_builder_);
+    llvm::Value* accum_real = Real(accum, &ir_builder_);
+    llvm::Value* real_sum = ir_builder_.CreateFAdd(accum_real, value.first);
+    updated_accum = ir_builder_.CreateInsertValue(accum, real_sum, {0});
+    llvm::Value* accum_imag = Imag(accum, &ir_builder_);
+    llvm::Value* imag_sum = ir_builder_.CreateFAdd(accum_imag, value.second);
+    updated_accum = ir_builder_.CreateInsertValue(updated_accum, imag_sum, {1});
   } else {
     llvm::Value* product = ir_builder_.CreateFMul(lhs_element, rhs_element);
     updated_accum = ir_builder_.CreateFAdd(accum, product);

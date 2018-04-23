@@ -13,17 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Include cuBLAS headers early, and then set EIGEN_HAS_CUDA_FP16
-// if we have new enough CUDA (which we will only know after including
-// cuda.h). This ensures that Eigen's Half.h does not attempt to make its own
-// __half typedef if CUDA has already defined one (and conversely, that we do
-// not include <cuda_fp16.h> after Half.h has made its typedef).
-#include "cuda/include/cuda.h"
 #include "cuda/include/cublas_v2.h"
-
-#if CUDA_VERSION >= 7050
-#define EIGEN_HAS_CUDA_FP16
-#endif
+#include "cuda/include/cuda.h"
 
 #if CUDA_VERSION >= 8000
 #define SE_CUDA_DATA_HALF CUDA_R_16F
@@ -32,6 +23,34 @@ limitations under the License.
 #endif
 
 #include "tensorflow/stream_executor/cuda/cuda_blas.h"
+
+// Both Eigen Half.h and CUDA cuda_fp16.h provide similar typedef for __half. As
+// such, there are two ways to get the typedef for __half:
+//
+// (1) Includes cuda_fp16.h and defines EIGEN_HAS_CUDA_FP16.
+// (2) Neither includes cuda_fp16.h nor defines EIGEN_HAS_CUDA_FP16.
+//
+// Due to issue b/73793421, when the first approach is used and NVCC is used to
+// compile this file, NVCC will complain duplicated definition for
+// EIGEN_HAS_CUDA_FP16. On the other hand, when the second approach is used and
+// clang is used to compile this file, clang will not understand __half
+// due to missing the definition and macro EIGEN_HAS_CUDA_FP16.
+//
+// Because this file may be compiled with CLANG but will never be compiled with
+// NVCC, we choose the first approach for CUDA < 9.0. For CUDA >= 9.0, we have
+// to use the second approach because the data member in the __half defined
+// by CUDA > 9.0 is `__x` while Eigen expects it to be `x`.
+//
+// TODO(b/73793421): Remove the following code block to switch to the second
+// approach when the issue is fixed.
+#if CUDA_VERSION < 9000
+#include "cuda/include/cuda_fp16.h"
+#if CUDA_VERSION >= 7050
+#define EIGEN_HAS_CUDA_FP16
+#endif
+#endif
+
+#include "third_party/eigen3/Eigen/Core"
 
 #include <assert.h>
 #include <complex>
@@ -56,15 +75,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuBlasPlugin);
 
 namespace wrap {
 
-#define PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(__name)                      \
+#define STREAM_EXECUTOR_CUBLAS_WRAP(__name)                         \
   struct WrapperShim__##__name {                                    \
     static const char *kName;                                       \
     template <typename... Args>                                     \
@@ -75,8 +93,8 @@ namespace wrap {
   } __name;                                                         \
   const char *WrapperShim__##__name::kName = #__name;
 
-#define PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(__name) \
-  PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(__name)
+#define STREAM_EXECUTOR_CUBLAS_V2_WRAP(__name) \
+  STREAM_EXECUTOR_CUBLAS_WRAP(__name)
 
 #define CUBLAS_BLAS_ROUTINE_EACH(__macro) \
   __macro(cublasSnrm2)                    \
@@ -250,28 +268,28 @@ namespace wrap {
   __macro(cublasCdgmm)                    \
   __macro(cublasZdgmm)
 
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasCreate)
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasDestroy)
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasSetStream)
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasSetPointerMode)
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasGetPointerMode)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSgemmBatched)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasDgemmBatched)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasCgemmBatched)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasZgemmBatched)
-CUBLAS_BLAS_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasCreate)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasDestroy)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasSetStream)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasSetPointerMode)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasGetPointerMode)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasSgemmBatched)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasDgemmBatched)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasCgemmBatched)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasZgemmBatched)
+CUBLAS_BLAS_ROUTINE_EACH(STREAM_EXECUTOR_CUBLAS_V2_WRAP)
 
 #if CUDA_VERSION >= 7050
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSgemmEx)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasSgemmEx)
 #endif
 
 #if CUDA_VERSION >= 8000
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasGemmEx)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasGemmEx)
 #endif
 
 #if CUDA_VERSION >= 9000
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasGetMathMode)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSetMathMode)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasGetMathMode)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasSetMathMode)
 #endif
 
 }  // namespace wrap
@@ -2057,12 +2075,6 @@ bool CUDABlas::DoBlasGemvWithProfilingImpl(
     const DeviceMemory<T> &a, int lda, const DeviceMemory<T> &x, int incx,
     const T &beta, DeviceMemory<T> *y, int incy,
     blas::ProfileResult *output_profile_result) {
-  struct TimerDeleter {
-    void operator()(CUDATimer *t) {
-      t->Destroy();
-      delete t;
-    }
-  };
   std::unique_ptr<CUDATimer, TimerDeleter> timer;
   if (output_profile_result != nullptr) {
     timer.reset(new CUDATimer(parent_));
@@ -2095,12 +2107,6 @@ bool CUDABlas::DoBlasGemmWithProfilingImpl(
     uint64 n, uint64 k, const ParamType &alpha, const DeviceMemory<T> &a,
     int lda, const DeviceMemory<T> &b, int ldb, const ParamType &beta,
     DeviceMemory<T> *c, int ldc, blas::ProfileResult *output_profile_result) {
-  struct TimerDeleter {
-    void operator()(CUDATimer *t) {
-      t->Destroy();
-      delete t;
-    }
-  };
   std::unique_ptr<CUDATimer, TimerDeleter> timer;
   if (output_profile_result != nullptr) {
     timer.reset(new CUDATimer(parent_));
@@ -2169,12 +2175,6 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     return false;
   }
 
-  struct TimerDeleter {
-    void operator()(CUDATimer *t) {
-      t->Destroy();
-      delete t;
-    }
-  };
   std::unique_ptr<CUDATimer, TimerDeleter> timer;
   if (output_profile_result != nullptr) {
     timer.reset(new CUDATimer(parent_));
@@ -2256,6 +2256,14 @@ bool CUDABlas::DoBlasGemmWithAlgorithm(
     DeviceMemory<Eigen::half> *c, int ldc,
     blas::ComputationType computation_type, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
+  if (computation_type == blas::ComputationType::kF32) {
+    return DoBlasGemmWithAlgorithmImpl(
+        stream, transa, transb, m, n, k, static_cast<float>(alpha), a, lda, b,
+        ldb, static_cast<float>(beta), c, ldc, computation_type, algorithm,
+        output_profile_result);
+  }
+
+  CHECK_EQ(computation_type, blas::ComputationType::kF16);
   return DoBlasGemmWithAlgorithmImpl(
       stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
       computation_type, algorithm, output_profile_result);
@@ -2794,46 +2802,39 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
 
 }  // namespace cuda
 
-namespace gpu = ::perftools::gputools;
-
 void initialize_cublas() {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::BlasFactory>(
-              gpu::cuda::kCudaPlatformId, gpu::cuda::kCuBlasPlugin, "cuBLAS",
-              [](gpu::internal::StreamExecutorInterface
-                     *parent) -> gpu::blas::BlasSupport * {
-                gpu::cuda::CUDAExecutor *cuda_executor =
-                    dynamic_cast<gpu::cuda::CUDAExecutor *>(parent);
-                if (cuda_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the cuBLAS "
-                      << "support library with a non-CUDA StreamExecutor";
-                  return nullptr;
-                }
+  port::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
+          cuda::kCudaPlatformId, cuda::kCuBlasPlugin, "cuBLAS",
+          [](internal::StreamExecutorInterface *parent) -> blas::BlasSupport * {
+            cuda::CUDAExecutor *cuda_executor =
+                dynamic_cast<cuda::CUDAExecutor *>(parent);
+            if (cuda_executor == nullptr) {
+              LOG(ERROR)
+                  << "Attempting to initialize an instance of the cuBLAS "
+                  << "support library with a non-CUDA StreamExecutor";
+              return nullptr;
+            }
 
-                gpu::cuda::CUDABlas *blas =
-                    new gpu::cuda::CUDABlas(cuda_executor);
-                if (!blas->Init()) {
-                  // Note: Init() will log a more specific error.
-                  delete blas;
-                  return nullptr;
-                }
-                return blas;
-              });
+            cuda::CUDABlas *blas = new cuda::CUDABlas(cuda_executor);
+            if (!blas->Init()) {
+              // Note: Init() will log a more specific error.
+              delete blas;
+              return nullptr;
+            }
+            return blas;
+          });
 
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuBLAS factory: "
                << status.error_message();
   }
 
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,
-                                                     gpu::PluginKind::kBlas,
-                                                     gpu::cuda::kCuBlasPlugin);
+  PluginRegistry::Instance()->SetDefaultFactory(
+      cuda::kCudaPlatformId, PluginKind::kBlas, cuda::kCuBlasPlugin);
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(register_cublas,
-                            { perftools::gputools::initialize_cublas(); });
+                            { stream_executor::initialize_cublas(); });

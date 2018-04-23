@@ -102,7 +102,6 @@ class SaverTest(test.TestCase):
       # Can still restore it.
       saver.restore(ckpt_prefix)
       self.assertEqual(v1.read_value().numpy(), 1.0)
-      self.assertEqual(v1.read_value().numpy(), 1.0)
       # However, cannot restore it with default name.
       with self.assertRaisesOpError('not found in checkpoint'):
         saver = _saver.Saver([v1, v2]).restore(ckpt_prefix)

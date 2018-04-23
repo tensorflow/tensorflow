@@ -40,7 +40,10 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   flags->set_xla_cpu_multi_thread_eigen(true);
   flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   flags->set_xla_eliminate_hlo_implicit_broadcast(true);
-
+#ifdef INTEL_MKL
+  flags->set_xla_cpu_use_mkl_dnn(true);
+#endif  // INTEL_MKL
+  flags->set_xla_gpu_max_kernel_unroll_factor(1);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
   flags->set_xla_gpu_use_cudnn_batchnorm(false);
@@ -221,6 +224,11 @@ void AllocateFlags() {
           flag_values->xla_gpu_disable_multi_streaming(),
           "If true, multi-streaming in the GPU backend is disabled."),
       tensorflow::Flag(
+          "xla_gpu_max_kernel_unroll_factor",
+          int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
+          flag_values->xla_gpu_max_kernel_unroll_factor(),
+          "Specify the maximum kernel unroll factor for the GPU backend."),
+      tensorflow::Flag(
           "xla_dump_optimized_hlo_proto_to",
           flag_values->mutable_xla_dump_optimized_hlo_proto_to(),
           "Dump Hlo after all hlo passes are executed as proto binary into "
@@ -288,6 +296,10 @@ void AllocateFlags() {
           flag_values->xla_gpu_use_cudnn_batchnorm(),
           "Allows the GPU backend to implement batchnorm HLOs using cudnn, "
           "rather than expanding them to a soup of HLOs."),
+      tensorflow::Flag("xla_cpu_use_mkl_dnn",
+                       bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
+                       flag_values->xla_cpu_use_mkl_dnn(),
+                       "Generate calls to MKL-DNN in the CPU backend."),
   });
   ParseFlagsFromEnv(*flag_objects);
 }

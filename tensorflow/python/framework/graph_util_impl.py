@@ -235,7 +235,7 @@ def convert_variables_to_constants(sess,
   variable_names = []
   variable_dict_names = []
   for node in inference_graph.node:
-    if node.op in ["Variable", "VariableV2"]:
+    if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
       variable_name = node.name
       if ((variable_names_whitelist is not None and
            variable_name not in variable_names_whitelist) or
@@ -243,7 +243,10 @@ def convert_variables_to_constants(sess,
            variable_name in variable_names_blacklist)):
         continue
       variable_dict_names.append(variable_name)
-      variable_names.append(variable_name + ":0")
+      if node.op == "VarHandleOp":
+        variable_names.append(variable_name + "/Read/ReadVariableOp:0")
+      else:
+        variable_names.append(variable_name + ":0")
   if variable_names:
     returned_variables = sess.run(variable_names)
   else:
@@ -266,12 +269,23 @@ def convert_variables_to_constants(sess,
               tensor=tensor_util.make_tensor_proto(
                   data, dtype=dtype.type, shape=data.shape)))
       how_many_converted += 1
+    elif input_node.op == "ReadVariableOp" and (
+        input_node.input[0] in found_variables):
+      # The preceding branch converts all VarHandleOps of ResourceVariables to
+      # constants, so we need to convert the associated ReadVariableOps to
+      # Identity ops.
+      output_node.op = "Identity"
+      output_node.name = input_node.name
+      output_node.input.extend([input_node.input[0]])
+      output_node.attr["T"].CopyFrom(input_node.attr["dtype"])
+      if "_class" in input_node.attr:
+        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
     else:
       output_node.CopyFrom(input_node)
     output_graph_def.node.extend([output_node])
 
   output_graph_def.library.CopyFrom(inference_graph.library)
-  print("Converted %d variables to const ops." % how_many_converted)
+  logging.info("Converted %d variables to const ops.", how_many_converted)
   return output_graph_def
 
 

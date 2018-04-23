@@ -869,7 +869,7 @@ class LSTMTest(test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
-    in_graph_mode = context.in_graph_mode()
+    in_graph_mode = not context.executing_eagerly()
     with self.test_session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
@@ -934,8 +934,7 @@ class LSTMTest(test.TestCase):
       if in_graph_mode:
         self.assertAllEqual(outputs_static, outputs_dynamic)
       else:
-        self.assertAllEqual(
-            array_ops.stack(outputs_static).numpy(), outputs_dynamic.numpy())
+        self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
       self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
 
   @test_util.run_in_graph_and_eager_modes()
@@ -946,7 +945,7 @@ class LSTMTest(test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
-    in_graph_mode = context.in_graph_mode()
+    in_graph_mode = not context.executing_eagerly()
     with self.test_session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
@@ -1022,10 +1021,9 @@ class LSTMTest(test.TestCase):
       if in_graph_mode:
         self.assertAllEqual(outputs_static, outputs_dynamic)
       else:
-        self.assertAllEqual(
-            array_ops.stack(outputs_static).numpy(), outputs_dynamic.numpy())
-        state_static = [s.numpy() for s in nest.flatten(state_static)]
-        state_dynamic = [s.numpy() for s in nest.flatten(state_dynamic)]
+        self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
+        state_static = nest.flatten(state_static)
+        state_dynamic = nest.flatten(state_dynamic)
       self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
 
   def _testDynamicEquivalentToStaticRNN(self, use_sequence_length):
@@ -1043,7 +1041,7 @@ class LSTMTest(test.TestCase):
     else:
       sequence_length = None
 
-    in_graph_mode = context.in_graph_mode()
+    in_graph_mode = not context.executing_eagerly()
 
     # TODO(b/68017812): Eager ignores operation seeds, so we need to create a
     # single cell and reuse it across the static and dynamic RNNs. Remove this

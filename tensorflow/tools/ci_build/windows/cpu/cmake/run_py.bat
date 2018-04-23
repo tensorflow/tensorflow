@@ -28,6 +28,9 @@ IF DEFINED TF_NIGHTLY (ECHO TF_NIGHTLY is set to %TF_NIGHTLY%) ELSE (SET TF_NIGH
 :: Set pip binary location. Do not override if it is set already.
 IF DEFINED PIP_EXE (ECHO PIP_EXE is set to %PIP_EXE%) ELSE (SET PIP_EXE="C:\Program Files\Anaconda3\Scripts\pip.exe")
 
+:: Install absl-py.
+%PIP_EXE% install --upgrade absl-py
+
 :: Run the CMAKE build to build the pip package.
 CALL %REPO_ROOT%\tensorflow\tools\ci_build\windows\cpu\cmake\run_build.bat
 if %errorlevel% neq 0 exit /b %errorlevel%
@@ -36,9 +39,6 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 DIR %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\ /S /B > wheel_filename_file
 set /p WHEEL_FILENAME=<wheel_filename_file
 del wheel_filename_file
-
-:: Install absl-py.
-%PIP_EXE% install --upgrade absl-py
 
 :: Install the pip package.
 echo Installing PIP package...

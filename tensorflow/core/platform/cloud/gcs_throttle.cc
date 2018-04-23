@@ -26,10 +26,9 @@ GcsThrottle::GcsThrottle(EnvTime* env_time)
 
 bool GcsThrottle::AdmitRequest() {
   mutex_lock l(mu_);
-  if (!config_.enabled) return true;
   UpdateState();
   if (available_tokens_ < config_.tokens_per_request) {
-    return false;
+    return false || !config_.enabled;
   }
   available_tokens_ -= config_.tokens_per_request;
   return true;
@@ -37,7 +36,6 @@ bool GcsThrottle::AdmitRequest() {
 
 void GcsThrottle::RecordResponse(size_t num_bytes) {
   mutex_lock l(mu_);
-  if (!config_.enabled) return;
   UpdateState();
   available_tokens_ -= request_bytes_to_tokens(num_bytes);
 }

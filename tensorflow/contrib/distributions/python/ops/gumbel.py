@@ -125,7 +125,7 @@ class _Gumbel(distribution.Distribution):
       TypeError: if loc and scale are different dtypes.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]):
+    with ops.name_scope(name, values=[loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
@@ -189,9 +189,6 @@ class _Gumbel(distribution.Distribution):
 
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
 
   def _log_cdf(self, x):
     return -math_ops.exp(-self._z(x))

@@ -391,7 +391,8 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
                saver=None,
                checkpoint_basename="model.ckpt",
                scaffold=None,
-               listeners=None):
+               listeners=None,
+               steps_per_run=1):
     """Initializes a `CheckpointSaverHook`.
 
     Args:
@@ -404,6 +405,9 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       listeners: List of `CheckpointSaverListener` subclass instances.
         Used for callbacks that run immediately before or after this hook saves
         the checkpoint.
+      steps_per_run: `int`, number of steps that occur between each invocation
+        of the hook. Primarily used for TPU workloads which run multiple steps
+        in a while loop in a single Session.run.
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
@@ -419,6 +423,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._timer = SecondOrStepTimer(every_secs=save_secs,
                                     every_steps=save_steps)
     self._listeners = listeners or []
+    self._steps_per_run = steps_per_run
 
   def begin(self):
     self._summary_writer = SummaryWriterCache.get(self._checkpoint_dir)
@@ -450,7 +455,8 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     stale_global_step = run_values.results
-    if self._timer.should_trigger_for_step(stale_global_step+1):
+    if self._timer.should_trigger_for_step(
+        stale_global_step + self._steps_per_run):
       # get the real value after train op.
       global_step = run_context.session.run(self._global_step_tensor)
       if self._timer.should_trigger_for_step(global_step):
@@ -859,6 +865,7 @@ class ProfilerHook(session_run_hook.SessionRunHook):
           showing the sizes and lifetimes of tensors.
     """
     self._output_file = os.path.join(output_dir, "timeline-{}.json")
+    self._file_writer = SummaryWriterCache.get(output_dir)
     self._show_dataflow = show_dataflow
     self._show_memory = show_memory
     self._timer = SecondOrStepTimer(
@@ -889,6 +896,8 @@ class ProfilerHook(session_run_hook.SessionRunHook):
       self._save(global_step,
                  self._output_file.format(global_step),
                  run_values.run_metadata.step_stats)
+      self._file_writer.add_run_metadata(run_values.run_metadata,
+                                         "step_%d" % global_step)
 
     self._next_step = global_step + 1
 

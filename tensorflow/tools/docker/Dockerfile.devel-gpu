@@ -47,6 +47,8 @@ RUN pip --no-cache-dir install \
         && \
     python -m ipykernel.kernelspec
 
+# RUN ln -s -f /usr/bin/python3 /usr/bin/python#
+
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
 
@@ -66,7 +68,7 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.8.0
+ENV BAZEL_VERSION 0.11.0
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
@@ -79,7 +81,7 @@ RUN mkdir /bazel && \
 
 # Download and build TensorFlow.
 WORKDIR /tensorflow
-RUN git clone --branch=r1.6 --depth=1 https://github.com/tensorflow/tensorflow.git .
+RUN git clone --branch=r1.8 --depth=1 https://github.com/tensorflow/tensorflow.git .
 
 # Configure the build for our CUDA configuration.
 ENV CI_BUILD_PYTHON python

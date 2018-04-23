@@ -368,11 +368,11 @@ bool HloDataflowAnalysis::UpdateConditionalValueSet(
           conditional->true_computation()->root_instruction()),
       &GetInstructionValueSet(
           conditional->false_computation()->root_instruction())};
-  // A phi-node is not defined for a kConditional instruction even though it
-  // represents a join point. This is because the current approach is to define
-  // a phi-node only for kWhile to account for the dataflow through back-edges
-  // and deal with the ambiguity in other cases.
-  return GetInstructionValueSet(conditional).AssignUnionOf(inputs);
+  if (ssa_form_) {
+    return Phi(conditional, inputs);
+  } else {
+    return GetInstructionValueSet(conditional).AssignUnionOf(inputs);
+  }
 }
 
 bool HloDataflowAnalysis::UpdateCopyValueSet(HloInstruction* copy) {

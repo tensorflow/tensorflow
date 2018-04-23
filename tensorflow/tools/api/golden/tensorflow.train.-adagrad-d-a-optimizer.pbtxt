@@ -2,7 +2,6 @@ path: "tensorflow.train.AdagradDAOptimizer"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.adagrad_da.AdagradDAOptimizer\'>"
   is_instance: "<class \'tensorflow.python.training.optimizer.Optimizer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.Checkpointable\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {

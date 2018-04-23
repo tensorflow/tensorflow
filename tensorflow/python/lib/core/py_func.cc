@@ -79,10 +79,11 @@ Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
     const Tensor& t = call->ins[i];
     if (call->eager) {
       if (call->gpu) {
-        arg = EagerTensorFromHandle(new TFE_TensorHandle(t, call->device));
+        arg = EagerTensorFromHandle(
+            new TFE_TensorHandle(t, call->device, call->device));
       } else {
         // TFE_TensorHandle assumes that CPU is identified by `nullptr`.
-        arg = EagerTensorFromHandle(new TFE_TensorHandle(t, nullptr));
+        arg = EagerTensorFromHandle(new TFE_TensorHandle(t, nullptr, nullptr));
       }
       if (arg == nullptr) {
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
@@ -125,6 +126,9 @@ Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
     case NPY_INT8:
       *tf = DT_INT8;
       break;
+    case NPY_UINT16:
+      *tf = DT_UINT16;
+      break;
     case NPY_INT16:
       *tf = DT_INT16;
       break;
@@ -163,9 +167,9 @@ bool IsSingleNone(PyObject* obj) {
 }
 
 // Retrieves a Tensor from `eager_tensor` and stores it in `output_tensor`.
-void ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
-                                  Tensor* output_tensor) {
-  *output_tensor = EagerTensor_Handle(eager_tensor)->t;
+tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
+                                                const Tensor** output_tensor) {
+  return EagerTensor_Handle(eager_tensor)->handle->Tensor(output_tensor);
 }
 
 // Calls the registered py function through the trampoline.
@@ -219,7 +223,9 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
       if (call->eager) {
         const PyObject* item = PyList_GetItem(result, i);
         if (EagerTensor_CheckExact(item)) {
-          ExtractTensorFromEagerTensor(item, &t);
+          const Tensor* tensor = nullptr;
+          s = ExtractTensorFromEagerTensor(item, &tensor);
+          if (s.ok()) t = *tensor;
         } else {
           s = errors::FailedPrecondition(
               "Expected EagerTensor, found PyObject of type: ",
@@ -237,10 +243,10 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   } else if (EagerTensor_CheckExact(result) || result == Py_None) {
     // result is an `EagerTensor` or `None`.
     DCHECK(call->eager);
-    Tensor t;
     if (result != Py_None) {
-      ExtractTensorFromEagerTensor(result, &t);
-      call->out.push_back(t);
+      const Tensor* t = nullptr;
+      s = ExtractTensorFromEagerTensor(result, &t);
+      if (s.ok()) call->out.push_back(*t);
     }
   } else if (PyArray_Check(result)) {
     // `result` is a NumPy array.

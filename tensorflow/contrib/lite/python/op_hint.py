@@ -119,8 +119,10 @@ class OpHint(object):
 
   def _setattr(self, dest_op, name, value):
     tensor_value = _ops.convert_to_tensor(value)
-    dest_op.op.node_def.attr[name].tensor.CopyFrom(
-        tensor_value.op.node_def.attr["value"].tensor)
+    # pylint: disable=protected-access
+    dest_op.op._set_attr(name, _attr_value_pb2.AttrValue(
+        tensor=tensor_value.op.node_def.attr["value"].tensor))
+    # pylint: enable=protected-access
 
   def add_inputs(self, *args):
     """Add a sequence of inputs to the function invocation.

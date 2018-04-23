@@ -60,8 +60,8 @@ class RevBlockTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       x1, x2, x1_inv, x2_inv = sess.run([x1, x2, x1_inv, x2_inv])
 
-      self.assertAllClose(x1, x1_inv)
-      self.assertAllClose(x2, x2_inv)
+      self.assertAllClose(x1, x1_inv, atol=1e-5)
+      self.assertAllClose(x2, x2_inv, atol=1e-5)
 
   def testBackwardForward(self):
 
@@ -154,7 +154,7 @@ class RevBlockTest(test.TestCase):
       y_val, yd_val, gd_val, g_val = sess.run([y, y_rev, grads_rev, grads])
       self.assertAllClose(y_val, yd_val)
       for g1, g2 in zip(gd_val, g_val):
-        self.assertAllClose(g1, g2)
+        self.assertAllClose(g1, g2, rtol=1e-5)
 
   def testRevBlock(self):
     self._testRevBlock()
@@ -255,25 +255,170 @@ class RecomputeTest(test.TestCase):
     def fn_recompute(x):
       return fn(x)
 
-    x = random_ops.random_uniform((3, 1, 3))
-    recompute_vars = None
-    with variable_scope.variable_scope("recompute") as vs:
-      out1 = math_ops.reduce_sum(fn_recompute(x))
-      recompute_vars = vs.trainable_variables()
-    reg_vars = None
-    with variable_scope.variable_scope("regular") as vs:
-      out2 = math_ops.reduce_sum(fn(x))
-      reg_vars = vs.trainable_variables()
+    @rev_block_lib.recompute_grad(use_data_dep=True)
+    def fn_use_data_dep(x):
+      return fn(x)
 
-    grad1 = gradients_impl.gradients(out1, recompute_vars)
-    grad2 = gradients_impl.gradients(out2, reg_vars)
+    @rev_block_lib.recompute_grad(tupleize_grads=True)
+    def fn_tupleize(x):
+      return fn(x)
+
+    @rev_block_lib.recompute_grad(use_data_dep=True, tupleize_grads=True)
+    def fn_both(x):
+      return fn(x)
+
+    x = random_ops.random_uniform((3, 1, 3))
+
+    names_and_fns = [
+        ("recompute", fn_recompute),
+        ("regular", fn),
+        ("use_data_dep", fn_use_data_dep),
+        ("tupleize", fn_tupleize),
+        ("tuple_and_data_dep", fn_both),
+    ]
+    outputs_and_vars = []
+    for name, wrapped_fn in names_and_fns:
+      with variable_scope.variable_scope(name) as vs:
+        out = math_ops.reduce_sum(wrapped_fn(x))
+        outputs_and_vars.append((out, vs.trainable_variables()))
+
+    all_grads = []
+    for out, scope_vars in outputs_and_vars:
+      all_grads.append(gradients_impl.gradients(out, scope_vars))
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      outs = sess.run([out1, out2, grad1, grad2])
-      self.assertAllClose(outs[0], outs[1])
-      for g1, g2 in zip(outs[2], outs[3]):
-        self.assertAllClose(g1, g2)
+      outputs = list(zip(*outputs_and_vars))[0]
+      outs, all_grads_val = sess.run([outputs, all_grads])
+
+      # All outputs are the same
+      current = outs[0]
+      for out in outs[1:]:
+        self.assertAllClose(current, out)
+        current = out
+
+      # All gradients are the same
+      for grads in zip(all_grads_val):
+        current = grads[0]
+        for g in grads[1:]:
+          self.assertAllClose(current, g)
+          current = g
+
+  def testResourceVariable(self):
+    @rev_block_lib.recompute_grad(tupleize_grads=True)
+    def layer_with_recompute(inputs):
+      var = variable_scope.get_variable("var", ())
+      return var * inputs
+
+    inputs = array_ops.ones((), dtypes.float32)
+    with variable_scope.variable_scope("layer", use_resource=True):
+      outputs = layer_with_recompute(inputs)
+      loss = math_ops.square(outputs)
+      grads = gradients_impl.gradients(loss, variables.trainable_variables())
+      self.assertEqual(1, len(grads))
+      self.assertTrue(grads[0] is not None)
+
+  def testWithNontensorArgs(self):
+    @rev_block_lib.recompute_grad(tupleize_grads=True,
+                                  tensor_arg_names=["inputs"])
+    def layer_with_recompute(inputs, plus=None):
+      var = variable_scope.get_variable("var", ())
+      self.assertFalse(plus)  # called with False below
+      if plus:
+        return var + inputs
+      else:
+        return var * inputs
+
+    inputs = array_ops.ones((), dtypes.float32)
+    outputs = layer_with_recompute(inputs, plus=False)
+    loss = math_ops.square(outputs)
+    grads = gradients_impl.gradients(loss, variables.trainable_variables())
+    self.assertEqual(1, len(grads))
+    self.assertTrue(grads[0] is not None)
+
+
+class MakeTensorOnlyTest(test.TestCase):
+
+  def testMakeTensorOnly(self):
+    def fn(a, b, c, d=1, e=None, f=7):
+      return (a, b, c, d, e, f)
+
+    t1 = array_ops.ones(())
+    t2 = array_ops.ones(())
+    t3 = array_ops.ones(())
+    args = [1, t1, 3, t2]
+    kwargs = {"e": t3}
+    tensor_only_fn, tensor_args = rev_block_lib._make_tensor_only(
+        fn, args, kwargs, ["b", "d", "e"])
+    self.assertAllEqual(tensor_args, [t1, t2, t3])
+    out = tensor_only_fn(*tensor_args)
+    self.assertAllEqual(out, (1, t1, 3, t2, t3, 7))
+
+  def testMakeTensorOnlyPositionalArgsOnly(self):
+    def fn(a, b, c):
+      return (a, b, c)
+
+    t1 = array_ops.ones(())
+    t2 = array_ops.ones(())
+    args = [t1, 3, t2]
+    tensor_only_fn, tensor_args = rev_block_lib._make_tensor_only(
+        fn, args, {}, ["a", "c"])
+    self.assertAllEqual(tensor_args, [t1, t2])
+    out = tensor_only_fn(*tensor_args)
+    self.assertAllEqual(out, (t1, 3, t2))
+
+  def testMakeTensorOnlyKwargsArgsOnly(self):
+    def fn(a=1, b=2, c=3):
+      return (a, b, c)
+
+    t1 = array_ops.ones(())
+    t2 = array_ops.ones(())
+    args = [t1]
+    kwargs = {"c": t2}
+    tensor_only_fn, tensor_args = rev_block_lib._make_tensor_only(
+        fn, args, kwargs, ["a", "c"])
+    self.assertAllEqual(tensor_args, [t1, t2])
+    out = tensor_only_fn(*tensor_args)
+    self.assertAllEqual(out, (t1, 2, t2))
+
+  def testErrorOnMissingTensorArg(self):
+    def fn(a, b):
+      return (a, b)
+
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "provide Tensor argument"):
+      rev_block_lib._make_tensor_only(fn, [], {"b": 2}, ["a"])
+
+  def testErrorOnSignatureSplats(self):
+    def fn1(a, *args):
+      return (a, args)
+
+    err_msg = r"must not use \*args or \*\*kwargs"
+    with self.assertRaisesWithPredicateMatch(ValueError, err_msg):
+      rev_block_lib._make_tensor_only(fn1, [1, 2], {}, ["a"])
+
+    def fn2(a, **kwargs):
+      return (a, kwargs)
+
+    with self.assertRaisesWithPredicateMatch(ValueError, err_msg):
+      rev_block_lib._make_tensor_only(fn2, [], {"a": 1, "b": 2}, ["a"])
+
+  def testErrorOnNonTensorForTensor(self):
+    def fn(a, b):
+      return (a, b)
+
+    with self.assertRaisesWithPredicateMatch(TypeError, "must be a Tensor"):
+      rev_block_lib._make_tensor_only(fn, [2, 3], {}, ["a"])
+
+  def testErrorOnTensorForNonTensor(self):
+    def fn(a, b):
+      return (a, b)
+
+    with self.assertRaisesWithPredicateMatch(
+        TypeError, "must not be a Tensor"):
+      t1 = array_ops.ones(())
+      t2 = array_ops.ones(())
+      rev_block_lib._make_tensor_only(fn, [t1, t2], {}, ["a"])
 
 
 class FnWithCustomGradTest(test.TestCase):

@@ -21,12 +21,100 @@ from __future__ import print_function
 import itertools
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [
     "Chain",
 ]
+
+
+def _use_static_shape(input_tensor, ndims):
+  return input_tensor.shape.is_fully_defined() and isinstance(ndims, int)
+
+
+def _maybe_get_event_ndims_statically(event_ndims):
+  static_event_ndims = (event_ndims if isinstance(event_ndims, int)
+                        else tensor_util.constant_value(event_ndims))
+  if static_event_ndims is not None:
+    return static_event_ndims
+
+  return event_ndims
+
+
+def _compute_min_event_ndims(bijector_list, compute_forward=True):
+  """Computes the min_event_ndims associated with the give list of bijectors.
+
+  Given a list `bijector_list` of bijectors, compute the min_event_ndims that is
+  associated with the composition of bijectors in that list.
+
+  min_event_ndims is the # of right most dimensions for which the bijector has
+  done necessary computation on (i.e. the non-broadcastable part of the
+  computation).
+
+  We can derive the min_event_ndims for a chain of bijectors as follows:
+
+  In the case where there are no rank changing bijectors, this will simply be
+  `max(b.forward_min_event_ndims for b in bijector_list)`. This is because the
+  bijector with the most forward_min_event_ndims requires the most dimensions,
+  and hence the chain also requires operating on those dimensions.
+
+  However in the case of rank changing, more care is needed in determining the
+  exact amount of dimensions. Padding dimensions causes subsequent bijectors to
+  operate on the padded dimensions, and Removing dimensions causes bijectors to
+  operate more left.
+
+  Args:
+    bijector_list: List of bijectors to be composed by chain.
+    compute_forward: Boolean. If True, computes the min_event_ndims associated
+      with a forward call to Chain, and otherwise computes the min_event_ndims
+      associated with an inverse call to Chain. The latter is the same as the
+      min_event_ndims associated with a forward call to Invert(Chain(....)).
+
+  Returns:
+    min_event_ndims
+  """
+  min_event_ndims = 0
+  # This is a mouthful, but what this encapsulates is that if not for rank
+  # changing bijectors, we'd only need to compute the largest of the min
+  # required ndims. Hence "max_min". Due to rank changing bijectors, we need to
+  # account for synthetic rank growth / synthetic rank decrease from a rank
+  # changing bijector.
+  rank_changed_adjusted_max_min_event_ndims = 0
+
+  if compute_forward:
+    bijector_list = reversed(bijector_list)
+
+  for b in bijector_list:
+    if compute_forward:
+      current_min_event_ndims = b.forward_min_event_ndims
+      current_inverse_min_event_ndims = b.inverse_min_event_ndims
+    else:
+      current_min_event_ndims = b.inverse_min_event_ndims
+      current_inverse_min_event_ndims = b.forward_min_event_ndims
+
+    # New dimensions were touched.
+    if rank_changed_adjusted_max_min_event_ndims < current_min_event_ndims:
+      min_event_ndims += (
+          current_min_event_ndims - rank_changed_adjusted_max_min_event_ndims)
+    rank_changed_adjusted_max_min_event_ndims = max(
+        current_min_event_ndims, rank_changed_adjusted_max_min_event_ndims)
+
+    # If the number of dimensions has increased via forward, then
+    # inverse_min_event_ndims > forward_min_event_ndims, and hence the
+    # dimensions we computed on, have moved left (so we have operated
+    # on additional dimensions).
+    # Conversely, if the number of dimensions has decreased via forward,
+    # then we have inverse_min_event_ndims < forward_min_event_ndims,
+    # and so we will have operated on fewer right most dimensions.
+
+    number_of_changed_dimensions = (
+        current_min_event_ndims - current_inverse_min_event_ndims)
+    rank_changed_adjusted_max_min_event_ndims -= number_of_changed_dimensions
+  return min_event_ndims
 
 
 class Chain(bijector.Bijector):
@@ -93,21 +181,24 @@ class Chain(bijector.Bijector):
       raise ValueError("incompatible dtypes: %s" % dtype)
     elif len(dtype) == 2:
       dtype = dtype[1] if dtype[0] is None else dtype[0]
-      event_ndims = bijectors[0].event_ndims
     elif len(dtype) == 1:
       dtype = dtype[0]
-      event_ndims = bijectors[0].event_ndims
     else:
       dtype = None
-      event_ndims = None
+
+    inverse_min_event_ndims = _compute_min_event_ndims(
+        bijectors, compute_forward=False)
+    forward_min_event_ndims = _compute_min_event_ndims(
+        bijectors, compute_forward=True)
 
     super(Chain, self).__init__(
         graph_parents=list(itertools.chain.from_iterable(
             b.graph_parents for b in bijectors)),
+        forward_min_event_ndims=forward_min_event_ndims,
+        inverse_min_event_ndims=inverse_min_event_ndims,
         is_constant_jacobian=all(b.is_constant_jacobian for b in bijectors),
         validate_args=validate_args,
         dtype=dtype,
-        event_ndims=event_ndims,
         name=name or ("identity" if not bijectors else
                       "_of_".join(["chain"] + [b.name for b in bijectors])))
 
@@ -147,10 +238,31 @@ class Chain(bijector.Bijector):
     return y
 
   def _inverse_log_det_jacobian(self, y, **kwargs):
-    ildj = constant_op.constant(0., dtype=y.dtype,
-                                name="inverse_log_det_jacobian")
+    ildj = constant_op.constant(
+        0., dtype=y.dtype.base_dtype, name="inverse_log_det_jacobian")
+
+    if not self.bijectors:
+      return ildj
+
+    event_ndims = _maybe_get_event_ndims_statically(
+        self.inverse_min_event_ndims)
+
+    if _use_static_shape(y, event_ndims):
+      event_shape = y.shape[y.shape.ndims - event_ndims:]
+    else:
+      event_shape = array_ops.shape(y)[array_ops.rank(y) - event_ndims:]
+
     for b in self.bijectors:
-      ildj += b.inverse_log_det_jacobian(y, **kwargs.get(b.name, {}))
+      ildj += b.inverse_log_det_jacobian(
+          y, event_ndims=event_ndims, **kwargs.get(b.name, {}))
+
+      if _use_static_shape(y, event_ndims):
+        event_shape = b.inverse_event_shape(event_shape)
+        event_ndims = _maybe_get_event_ndims_statically(event_shape.ndims)
+      else:
+        event_shape = b.inverse_event_shape_tensor(event_shape)
+        event_ndims = _maybe_get_event_ndims_statically(
+            array_ops.rank(event_shape))
       y = b.inverse(y, **kwargs.get(b.name, {}))
     return ildj
 
@@ -160,9 +272,34 @@ class Chain(bijector.Bijector):
     return x
 
   def _forward_log_det_jacobian(self, x, **kwargs):
-    fldj = constant_op.constant(0., dtype=x.dtype,
-                                name="forward_log_det_jacobian")
+    x = ops.convert_to_tensor(x, name="x")
+
+    fldj = constant_op.constant(
+        0., dtype=x.dtype, name="inverse_log_det_jacobian")
+
+    if not self.bijectors:
+      return fldj
+
+    event_ndims = _maybe_get_event_ndims_statically(
+        self.forward_min_event_ndims)
+
+    if _use_static_shape(x, event_ndims):
+      event_shape = x.shape[x.shape.ndims - event_ndims:]
+    else:
+      event_shape = array_ops.shape(x)[array_ops.rank(x) - event_ndims:]
+
     for b in reversed(self.bijectors):
-      fldj += b.forward_log_det_jacobian(x, **kwargs.get(b.name, {}))
+      fldj += b.forward_log_det_jacobian(
+          x, event_ndims=event_ndims, **kwargs.get(b.name, {}))
+      if _use_static_shape(x, event_ndims):
+        event_shape = b.forward_event_shape(event_shape)
+        event_ndims = _maybe_get_event_ndims_statically(event_shape.ndims)
+      else:
+        event_shape = b.forward_event_shape_tensor(event_shape)
+        event_ndims = _maybe_get_event_ndims_statically(
+            array_ops.rank(event_shape))
+
       x = b.forward(x, **kwargs.get(b.name, {}))
+
     return fldj
+

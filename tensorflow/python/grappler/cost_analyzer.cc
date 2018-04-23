@@ -30,11 +30,12 @@ CostAnalyzer::CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
       analytical_estimator_(cluster, false),
       suffix_(suffix) {}
 
-Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report) {
+Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
+                                    bool verbose) {
   GatherCosts();
   PreprocessCosts();
   AnalyzeCosts();
-  PrintAnalysis(os, per_node_report);
+  PrintAnalysis(os, per_node_report, verbose);
   return Status::OK();
 }
 
@@ -158,7 +159,8 @@ void CostAnalyzer::AnalyzeCosts() {
   }
 }
 
-void CostAnalyzer::PrintAnalysis(std::ostream& os, bool per_node_report) const {
+void CostAnalyzer::PrintAnalysis(std::ostream& os, bool per_node_report,
+                                 bool verbose) const {
   os << std::endl;
   os << std::left << std::setw(50)
      << "Total time measured in ns (serialized): " << std::right
@@ -227,10 +229,55 @@ void CostAnalyzer::PrintAnalysis(std::ostream& os, bool per_node_report) const {
   os << std::endl;
 
   if (per_node_report) {
-    os << "Below is the per-node report:" << std::endl;
-    os << op_perf_.DebugString();
+    if (verbose) {
+      os << "Below is the full per-node report:" << std::endl;
+      os << op_perf_.DebugString();
+    } else {
+      os << "Below is the per-node report summary:" << std::endl;
+      int width = 35;
+      int width_narrow = 15;
+      int width_wide = 20;
+      os << std::setw(width + 1) << "Op,";
+      os << std::setw(width_wide + 1) << "Measured time (ns),";
+      os << std::setw(width_wide + 1) << "Compute time (ns),";
+      os << std::setw(width_wide + 1) << "Memory time (ns),";
+      os << std::setw(width_narrow + 2) << "Compute eff,";
+      os << std::setw(width_narrow + 2) << "Memory eff,";
+      os << "    Inputs" << std::endl;
+      for (int i = 0; i < op_perf_.op_performance_size(); i++) {
+        const auto& perf = op_perf_.op_performance(i);
+        string op_name = perf.op().op();
+        os << std::setw(width) << op_name << ",";
+        os << std::setw(width_wide) << perf.compute_cost() << ",";
+        os << std::setw(width_wide) << perf.compute_time() << ",";
+        os << std::setw(width_wide) << perf.memory_time() << ",";
+        os << std::setw(width_narrow) << std::setprecision(2)
+           << perf.compute_efficiency() * 100 << "%,";
+        os << std::setw(width_narrow) << std::setprecision(2)
+           << perf.memory_efficiency() * 100 << "%,";
+        os << "    [";
+        for (int j = 0; j < perf.op().inputs_size(); j++) {
+          const auto& shape = perf.op().inputs(j).shape();
+          if (shape.dim_size() > 0) {
+            os << "(";
+            std::vector<int> dims;
+            for (int k = 0; k < shape.dim_size(); k++) {
+              os << shape.dim(k).size();
+              if (k < shape.dim_size() - 1) {
+                os << ", ";
+              }
+            }
+            os << ")";
+            if (j < perf.op().inputs_size() - 1) {
+              os << ", ";
+            }
+          }
+        }
+        os << "]" << std::endl;
+      }
+      os << std::endl;
+    }
   }
 }
-
 }  // end namespace grappler
 }  // end namespace tensorflow
