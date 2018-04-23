@@ -48,7 +48,7 @@ should choose depends on (1) the feature type and (2) the model type.
 
       embedded_dept_column = embedding_column(
           categorical_column_with_vocabulary_list(
-              "department", ["math", "philosphy", ...]), dimension=10)
+              "department", ["math", "philosophy", ...]), dimension=10)
 
   * Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).
 

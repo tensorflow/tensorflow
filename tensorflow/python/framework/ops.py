@@ -2573,7 +2573,7 @@ def set_shape_and_handle_data_for_outputs(op):
 
   When _USE_C_API = True, this is lazily called when a tensor's shape is first
   requested. Usually this should work automatically, but some edge cases may
-  require manaully calling this first to make sure Tensor._shape_val and
+  require manually calling this first to make sure Tensor._shape_val and
   Tensor._handle_data are set (e.g. manually overriding _handle_data, copying a
   Tensor).
   """
