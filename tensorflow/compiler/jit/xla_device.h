@@ -105,6 +105,10 @@ class XlaDevice : public LocalDevice {
   xla::LocalClient* client() const;
   xla::StatusOr<::perftools::gputools::Stream*> GetStream();
 
+  // If not already set, create and set GpuDeviceInfo.
+  // Not thread-safe
+  Status CreateAndSetGpuDeviceInfo();
+
  private:
   // The metadata of this XlaDevice.
   const Metadata xla_metadata_;
@@ -123,6 +127,10 @@ class XlaDevice : public LocalDevice {
   // Must we use XLA's transfer manager for correct host<->device transfers? if
   // false, we can use ThenMemcpy() instead.
   bool transfer_as_literal_;
+
+  // If set, holds default device context (that we must Unref)
+  // and its stream.
+  std::unique_ptr<GpuDeviceInfo> gpu_device_info_;
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

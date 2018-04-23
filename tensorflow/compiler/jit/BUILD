@@ -180,6 +180,7 @@ cc_library(
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/memory",
     ],
 )
 
