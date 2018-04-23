@@ -126,7 +126,7 @@ class Network(base_layer.Layer):
     else:
       self.outputs = [outputs]
 
-    # User-prodived argument validation.
+    # User-provided argument validation.
     if context.executing_eagerly():
       # Check that all inputs/outputs are DeferredTensors.
       for tensor in self.inputs:
