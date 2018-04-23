@@ -23,7 +23,6 @@ import unittest
 
 import numpy as np
 
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
