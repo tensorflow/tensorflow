@@ -165,7 +165,7 @@ enum class ConstantType { kUnknown, kZero, kOne };
 // Return the constant type required by this computation, if known.
 ConstantType GetInitValue(const HloComputation& computation) {
   const HloInstruction* const root = computation.root_instruction();
-  if (computation.num_parameters() != 2 ||
+  if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
       root->operand(0)->opcode() != HloOpcode::kParameter ||
       root->operand(1)->opcode() != HloOpcode::kParameter ||
       root->operand(0) == root->operand(1)) {
@@ -339,9 +339,9 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
   return std::move(arguments);
 }
 
-Status VerifyHloModule(const perftools::gputools::Platform& platform,
-                       HloModule* const module) {
-  return HloVerifier().Run(module).status();
+Status VerifyHloModule(const se::Platform& platform, HloModule* const module,
+                       bool allow_mixed_precision) {
+  return HloVerifier(allow_mixed_precision).Run(module).status();
 }
 
 }  // namespace xla

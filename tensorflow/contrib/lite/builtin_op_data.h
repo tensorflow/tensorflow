@@ -53,6 +53,8 @@ typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  int dilation_width_factor;
+  int dilation_height_factor;
   TfLiteFusedActivation activation;
 } TfLiteConvParams;
 
@@ -220,6 +222,10 @@ typedef struct {
   int new_axis_mask;
   int shrink_axis_mask;
 } TfLiteStridedSliceParams;
+
+typedef struct {
+  TfLiteType output_type;
+} TfLiteArgMaxParams;
 
 #ifdef __cplusplus
 }  // extern "C"

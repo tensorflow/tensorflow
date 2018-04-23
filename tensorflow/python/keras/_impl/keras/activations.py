@@ -22,10 +22,8 @@ import six
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
-from tensorflow.python.layers.base import Layer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -136,12 +134,6 @@ def get(identifier):
     identifier = str(identifier)
     return deserialize(identifier)
   elif callable(identifier):
-    if isinstance(identifier, Layer):
-      logging.warning(
-          'Do not pass a layer instance (such as {identifier}) as the '
-          'activation argument of another layer. Instead, advanced '
-          'activation layers should be used just like any other '
-          'layer in a model.'.format(identifier=identifier.__class__.__name__))
     return identifier
   else:
     raise ValueError('Could not interpret '

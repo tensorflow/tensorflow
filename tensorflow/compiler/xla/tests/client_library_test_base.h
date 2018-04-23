@@ -64,11 +64,10 @@ std::vector<TestCase> ExpandUseBfloat16(
 // A client library test establishes an in-process XLA client connection.
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
-  explicit ClientLibraryTestBase(
-      perftools::gputools::Platform* platform = nullptr);
+  explicit ClientLibraryTestBase(se::Platform* platform = nullptr);
 
   // Creates a new ClientLibraryTestBase with custom client options.
-  ClientLibraryTestBase(perftools::gputools::Platform* platform,
+  ClientLibraryTestBase(se::Platform* platform,
                         const LocalClientOptions& client_options);
 
   // Returns the name of the test currently being run.
@@ -110,6 +109,14 @@ class ClientLibraryTestBase : public ::testing::Test {
       const Shape* shape_with_output_layout = nullptr);
 
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+      const XlaComputation& computation,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const Shape* shape_with_output_layout = nullptr);
+
+  // This executes the computation via the reference client (which connects a
+  // interpreter backend). The result is used as the expected values of the
+  // computation.
+  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransferReference(
       const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const Shape* shape_with_output_layout = nullptr);
@@ -233,6 +240,14 @@ class ClientLibraryTestBase : public ::testing::Test {
                          tensorflow::gtl::ArraySlice<Literal> arguments);
   void ComputeAndCompare(ComputationBuilder* builder,
                          const ComputationDataHandle& operand,
+                         tensorflow::gtl::ArraySlice<Literal> arguments,
+                         ErrorSpec error);
+
+  // Convenience method for running a built computation and comparing the result
+  // with the reference result.
+  void ComputeAndCompare(XlaBuilder* builder,
+                         tensorflow::gtl::ArraySlice<Literal> arguments);
+  void ComputeAndCompare(XlaBuilder* builder,
                          tensorflow::gtl::ArraySlice<Literal> arguments,
                          ErrorSpec error);
 
@@ -413,6 +428,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   PrimitiveType FloatType() const { return use_bfloat16_ ? BF16 : F32; }
 
   Client* client_;
+  Client* ref_client_;  // To compute reference result.
   ExecutionOptions execution_options_;
 
  private:
@@ -444,10 +460,17 @@ class ClientLibraryTestBase : public ::testing::Test {
       const Shape* output_with_layout = nullptr);
 
   // Executes the computation and calculates the expected reference value using
-  // the HloEvaluator. Returns two literal in the order of (expected, actual).
+  // the HloEvaluator. Returns two literals in the order of (expected, actual).
   StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
   ComputeValueAndReference(ComputationBuilder* builder,
                            const ComputationDataHandle& operand,
+                           tensorflow::gtl::ArraySlice<Literal> arguments);
+
+  // Executes the computation and calculates the expected reference value using
+  // the reference client. Returns two literals in the order of (expected,
+  // actual).
+  StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
+  ComputeValueAndReference(XlaBuilder* builder,
                            tensorflow::gtl::ArraySlice<Literal> arguments);
 
   // Whether to run tests with all float-type input/output converted to

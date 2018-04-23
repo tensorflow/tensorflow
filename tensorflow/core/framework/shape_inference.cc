@@ -40,6 +40,7 @@ InferenceContext::InferenceContext(
     : graph_def_version_(graph_def_version),
       node_def_(CHECK_NOTNULL(node_def)) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
+  input_tensors_as_shape_handles.reserve(input_tensors_as_shapes.size());
   for (const TensorShapeProto& p : input_tensors_as_shapes) {
     ShapeHandle shape;
     construction_status_.Update(MakeShapeFromShapeProto(p, &shape));
@@ -50,6 +51,7 @@ InferenceContext::InferenceContext(
   }
   PreInputInit(op_def, input_tensors, input_tensors_as_shape_handles);
   if (!construction_status_.ok()) return;
+  inputs_.reserve(input_shapes.size());
   for (const TensorShapeProto& p : input_shapes) {
     ShapeHandle shape;
     construction_status_.Update(MakeShapeFromShapeProto(p, &shape));
@@ -93,6 +95,7 @@ InferenceContext::InferenceContext(
     : graph_def_version_(graph_def_version),
       node_def_(CHECK_NOTNULL(node_def)) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
+  input_tensors_as_shape_handles.reserve(input_tensors_as_shapes.size());
   for (const PartialTensorShape& p : input_tensors_as_shapes) {
     ShapeHandle shape;
     construction_status_.Update(MakeShapeFromPartialTensorShape(p, &shape));
@@ -103,6 +106,7 @@ InferenceContext::InferenceContext(
   }
   PreInputInit(op_def, input_tensors, input_tensors_as_shape_handles);
   if (!construction_status_.ok()) return;
+  inputs_.reserve(input_shapes.size());
   for (const PartialTensorShape& p : input_shapes) {
     ShapeHandle shape;
     construction_status_.Update(MakeShapeFromPartialTensorShape(p, &shape));
@@ -153,8 +157,10 @@ InferenceContext::~InferenceContext() {}
 
 Status InferenceContext::Run(
     const std::function<Status(shape_inference::InferenceContext* c)>& fn) {
+  ForgetMerges();
   Status s = fn(this);
   if (!s.ok()) {
+    ForgetMerges();
     return AttachContext(s);
   }
 #ifndef NDEBUG
@@ -229,9 +235,7 @@ void InferenceContext::PreInputInit(
   for (const auto& e : output_name_map_) {
     num_outputs = std::max(num_outputs, e.second.second);
   }
-  for (int i = 0; i < num_outputs; ++i) {
-    outputs_.push_back(nullptr);
-  }
+  outputs_.assign(num_outputs, nullptr);
   output_handle_shapes_and_types_.resize(num_outputs);
 }
 
@@ -469,13 +473,15 @@ Status InferenceContext::MergePrefix(ShapeHandle s, ShapeHandle prefix,
   TF_RETURN_IF_ERROR(WithRankAtLeast(s, rank, &s));
 
   // Merge the prefix dims and create the new output shapes.
+  const int32 rank_s = Rank(s);
   std::vector<DimensionHandle> dims;
+  dims.reserve(std::max(rank, rank_s));
   dims.resize(rank);
   for (int i = 0; i < rank; ++i) {
     TF_RETURN_IF_ERROR(Merge(Dim(s, i), Dim(prefix, i), &dims[i]));
   }
   *prefix_out = MakeShape(dims);
-  for (int i = rank; i < Rank(s); ++i) dims.push_back(Dim(s, i));
+  for (int i = rank; i < rank_s; ++i) dims.push_back(Dim(s, i));
   *s_out = MakeShape(dims);
   return Status::OK();
 }
@@ -1105,6 +1111,7 @@ Status InferenceContext::Max(DimensionHandle first, DimensionOrConstant second,
 
 Status InferenceContext::AttachContext(const Status& status) {
   std::vector<string> input_shapes;
+  input_shapes.reserve(inputs_.size());
   for (const ShapeHandle& input_shape : inputs_) {
     input_shapes.emplace_back(DebugString(input_shape));
   }
@@ -1112,6 +1119,7 @@ Status InferenceContext::AttachContext(const Status& status) {
   // Add information about the input tensors and partial tensor shapes used.
   std::vector<string> input_from_tensors_str;
   std::vector<string> input_from_tensors_as_shape_str;
+  input_from_tensors_as_shape_str.reserve(inputs_.size());
   for (int i = 0; i < inputs_.size(); ++i) {
     if (requested_input_tensor_as_partial_shape_[i] &&
         i < input_tensors_as_shapes_.size() &&
@@ -1233,9 +1241,7 @@ bool InferenceContext::RelaxHandleShapesAndMergeTypes(
   if (!refined) {
     return false;
   }
-  for (int i = 0; i < new_values.size(); ++i) {
-    (*to_update)[i] = new_values[i];
-  }
+  to_update->swap(new_values);
   return true;
 }
 

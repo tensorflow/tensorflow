@@ -46,7 +46,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
       TfLiteRegistration* registration, const TensorData& input,
       const TensorData& filter, const TensorData& output, int stride_width = 2,
       int stride_height = 2, enum Padding padding = Padding_VALID,
-      enum ActivationFunctionType activation = ActivationFunctionType_NONE) {
+      enum ActivationFunctionType activation = ActivationFunctionType_NONE,
+      int dilation_width_factor = 1, int dilation_height_factor = 1) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -71,8 +72,9 @@ class BaseConvolutionOpModel : public SingleOpModel {
     }
 
     SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
-                 CreateConv2DOptions(builder_, padding, stride_width,
-                                     stride_height, activation)
+                 CreateConv2DOptions(
+                     builder_, padding, stride_width, stride_height, activation,
+                     dilation_width_factor, dilation_height_factor)
                      .Union());
 
     resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,

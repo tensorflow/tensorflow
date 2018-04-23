@@ -157,7 +157,12 @@ class BatchNormalization(bijector.Bijector):
         gamma_constraint=g_constraint)
     self._validate_bn_layer(self.batchnorm)
     self._training = training
+    if isinstance(self.batchnorm.axis, int):
+      forward_min_event_ndims = 1
+    else:
+      forward_min_event_ndims = len(self.batchnorm.axis)
     super(BatchNormalization, self).__init__(
+        forward_min_event_ndims=forward_min_event_ndims,
         validate_args=validate_args, name=name)
 
   def _validate_bn_layer(self, layer):
@@ -186,7 +191,6 @@ class BatchNormalization(bijector.Bijector):
     input_shape = np.int32(x.shape.as_list())
 
     ndims = len(input_shape)
-    # event_dims = self._compute_event_dims(x)
     reduction_axes = [i for i in range(ndims) if i not in self.batchnorm.axis]
     # Broadcasting only necessary for single-axis batch norm where the axis is
     # not the last dimension

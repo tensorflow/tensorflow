@@ -48,7 +48,7 @@ you should choose depends on (1) the feature type and (2) the model type.
    recommended.
 
      embedded_dept_column = embedding_column(
-       sparse_column_with_keys("department", ["math", "philosphy", ...]),
+       sparse_column_with_keys("department", ["math", "philosophy", ...]),
        dimension=10)
 
 * Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).

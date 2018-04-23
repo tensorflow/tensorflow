@@ -93,9 +93,18 @@ string ArrayDataTypeName(ArrayDataType data_type) {
   }
 }
 
-bool IsInputArray(const Model& model, const string& name) {
+bool IsInputArray(const Model& model, const string& array_name) {
   for (const auto& input_array : model.flags.input_arrays()) {
-    if (input_array.name() == name) {
+    if (array_name == input_array.name()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsOutputArray(const Model& model, const string& array_name) {
+  for (const auto& output_array : model.flags.output_arrays()) {
+    if (array_name == output_array) {
       return true;
     }
   }
@@ -106,10 +115,8 @@ bool IsArrayConsumed(const Model& model, const string& name) {
   if (GetOpWithInput(model, name)) {
     return true;
   }
-  for (const string& model_output : model.flags.output_arrays()) {
-    if (model_output == name) {
-      return true;
-    }
+  if (IsOutputArray(model, name)) {
+    return true;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (rnn_state.back_edge_source_array() == name) {
@@ -379,6 +386,7 @@ string HelpfulOperatorTypeName(const Operator& op) {
 bool OperatorSupportsFusedActivation(OperatorType type) {
   switch (type) {
     case OperatorType::kConcatenation:
+    case OperatorType::kFakeQuant:
     case OperatorType::kGather:
     case OperatorType::kSlice:
     case OperatorType::kSqueeze:
@@ -1064,16 +1072,38 @@ void FixEdgeArrays(Model* model) {
   }
 }
 
+namespace {
+void CopyArrayAttribs(const Array& source_array, Array* target_array) {
+  target_array->data_type = source_array.data_type;
+  target_array->final_data_type = source_array.final_data_type;
+  target_array->copy_shape(source_array.shape());
+
+  if (source_array.minmax) {
+    target_array->GetOrCreateMinMax() = source_array.GetMinMax();
+  } else {
+    target_array->minmax.reset();
+  }
+
+  if (source_array.quantization_params) {
+    target_array->GetOrCreateQuantizationParams() =
+        source_array.GetQuantizationParams();
+  } else {
+    target_array->quantization_params.reset();
+  }
+}
+}  // namespace
+
 void InsertCopyOperator(Model* model, const string& source_array_name,
                         const string& target_array_name) {
+  // Reshape to the same size. This should be a no-op.
+  const Array& source_array = model->GetArray(source_array_name);
+  std::vector<int> shape = source_array.shape().dims();
+
   // Drop constant data from the target array as the copy will be done at
   // runtime.
   Array& target_array = model->GetOrCreateArray(target_array_name);
   target_array.buffer.reset();
-
-  // Reshape to the same size. This should be a no-op.
-  const Array& source_array = model->GetArray(source_array_name);
-  std::vector<int> shape = source_array.shape().dims();
+  CopyArrayAttribs(source_array, &target_array);
 
   // Insert copy operator.
   auto* copy_op = new TensorFlowReshapeOperator;
@@ -1084,22 +1114,30 @@ void InsertCopyOperator(Model* model, const string& source_array_name,
   model->operators.emplace_back(copy_op);
 }
 
-namespace {
-template <ArrayDataType A>
-void CopyArrayBuffer(const Array& source_array, Array* target_array) {
-  if (source_array.buffer) {
-    const auto& source_buffer = source_array.GetBuffer<A>();
-    auto& target_buffer = target_array->GetMutableBuffer<A>();
-    target_buffer.data = source_buffer.data;
-  }
-}
-}  // namespace
-
 void CloneArray(Model* model, const string& source_array_name,
                 const string& target_array_name) {
   CHECK(!model->HasArray(target_array_name));
   const Array& source_array = model->GetArray(source_array_name);
   Array& target_array = model->GetOrCreateArray(target_array_name);
+  CopyArrayAttribs(source_array, &target_array);
+
+  if (source_array.minmax) {
+    const auto& smm = source_array.GetMinMax();
+    auto& tmm = target_array.GetOrCreateMinMax();
+    tmm.min = smm.min;
+    tmm.max = smm.max;
+  }
+
+  if (source_array.quantization_params) {
+    const auto& sqp = source_array.GetQuantizationParams();
+    auto& tqp = target_array.GetOrCreateQuantizationParams();
+    tqp.zero_point = sqp.zero_point;
+    tqp.scale = sqp.scale;
+  }
+
+  target_array.data_type = source_array.data_type;
+  target_array.final_data_type = source_array.final_data_type;
+  target_array.copy_shape(source_array.shape());
 
   switch (source_array.data_type) {
     case ArrayDataType::kBool:
@@ -1140,25 +1178,6 @@ void CloneArray(Model* model, const string& source_array_name,
                  << ArrayDataTypeName(source_array.data_type);
       return;
   }
-
-  if (source_array.minmax) {
-    const auto& smm = source_array.GetMinMax();
-    auto& tmm = target_array.GetOrCreateMinMax();
-    tmm.min = smm.min;
-    tmm.max = smm.max;
-  }
-
-  if (source_array.quantization_params) {
-    const auto& sqp = source_array.GetQuantizationParams();
-    auto& tqp = target_array.GetOrCreateQuantizationParams();
-    tqp.zero_point = sqp.zero_point;
-    tqp.scale = sqp.scale;
-  }
-
-  target_array.data_type = source_array.data_type;
-  target_array.final_data_type = source_array.final_data_type;
-
-  target_array.copy_shape(source_array.shape());
 }
 
 void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
@@ -1455,28 +1474,6 @@ void CheckIsReadyForQuantization(const Model& model) {
   }
 }
 
-void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
-                                 double default_ranges_max) {
-  for (const auto& op : model->operators) {
-    for (const auto& input : op->inputs) {
-      auto& input_array = model->GetArray(input);
-      if (!input_array.minmax && !input_array.buffer) {
-        auto& minmax = input_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
-    }
-    for (const auto& output : op->outputs) {
-      auto& output_array = model->GetArray(output);
-      if (!output_array.minmax && !output_array.buffer) {
-        auto& minmax = output_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
-    }
-  }
-}
-
 int ElementSize(ArrayDataType data_type) {
   switch (data_type) {
     case ArrayDataType::kBool:
@@ -1525,13 +1522,8 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
   if (model.IsOptionalArray(array_name)) return false;
   // The model's input and output arrays are externally allocated.
   // They are not transient arrays.
-  if (IsInputArray(model, array_name)) {
+  if (IsInputArray(model, array_name) || IsOutputArray(model, array_name)) {
     return false;
-  }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return false;
-    }
   }
   const auto& array = &model.GetArray(array_name);
   // An array with a constant buffer isn't a transient array.
@@ -1910,15 +1902,8 @@ int AxesCount(AxesOrder axes_order) {
 }
 
 bool IsDiscardableArray(const Model& model, const string& array_name) {
-  for (const auto& input_array : model.flags.input_arrays()) {
-    if (array_name == input_array.name()) {
-      return false;
-    }
-  }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return false;
-    }
+  if (IsInputArray(model, array_name) || IsOutputArray(model, array_name)) {
+    return false;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (!rnn_state.discardable()) {
@@ -1972,8 +1957,8 @@ void CheckFinalDataTypesSatisfied(const Model& model) {
       CHECK(array.final_data_type == array.data_type)
           << "Array \"" << array_entry.first
           << "\" has mis-matching actual and final data types ("
-          << static_cast<int>(array.data_type) << ","
-          << static_cast<int>(array.final_data_type) << ").";
+          << ArrayDataTypeName(array.data_type) << ","
+          << ArrayDataTypeName(array.final_data_type) << ").";
     }
   }
 }

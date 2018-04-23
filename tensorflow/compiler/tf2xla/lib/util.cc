@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -140,13 +140,47 @@ xla::StatusOr<xla::ComputationDataHandle> SliceInMinorDims(
   return builder->Slice(x, padded_start, padded_end, strides);
 }
 
+std::vector<int64> PrependMajorDims(xla::ComputationBuilder* builder,
+                                    const gtl::ArraySlice<int64>& major_dims,
+                                    const gtl::ArraySlice<int64>& indices) {
+  std::vector<int64> output(indices.size() + major_dims.size());
+  std::copy(major_dims.begin(), major_dims.end(), output.begin());
+  std::copy(indices.begin(), indices.end(), output.begin() + major_dims.size());
+  return output;
+}
+
+xla::StatusOr<xla::ComputationDataHandle> DynamicSliceInMinorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+    const std::vector<xla::ComputationDataHandle>& starts,
+    const gtl::ArraySlice<int64>& sizes) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> shape, builder->GetShape(x));
+  const int64 n_dims = xla::ShapeUtil::Rank(*shape);
+  int64 n_minor_dims = starts.size();
+  TF_RET_CHECK(n_minor_dims == sizes.size());
+  TF_RET_CHECK(n_minor_dims <= n_dims);
+  gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(shape->dimensions()),
+                                    /*pos=*/0,
+                                    /*len=*/n_dims - sizes.size());
+  TF_ASSIGN_OR_RETURN(auto padded_starts,
+                      PrependZerosInMajorDims(builder, x, starts));
+  auto padded_sizes = PrependMajorDims(builder, major_dims, sizes);
+  return builder->DynamicSlice(x, padded_starts, padded_sizes);
+}
+
 xla::StatusOr<xla::ComputationDataHandle> UpdateSlice(
     xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
     const xla::ComputationDataHandle& update, gtl::ArraySlice<int64> start) {
   // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
   std::vector<int32> start_as_int32(start.begin(), start.end());
-  return builder->DynamicUpdateSlice(
-      x, update, builder->ConstantR1<int32>(start_as_int32));
+  auto start_constant = builder->ConstantR1<int32>(start_as_int32);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> shape, builder->GetShape(x));
+  const int64 n_dims = xla::ShapeUtil::Rank(*shape);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> start_constant_shape,
+                      builder->GetShape(start_constant));
+  const int64 start_length =
+      xla::ShapeUtil::GetDimension(*start_constant_shape, -1);
+  TF_RET_CHECK(start_length == n_dims);
+  return builder->DynamicUpdateSlice(x, update, start_constant);
 }
 
 xla::StatusOr<xla::ComputationDataHandle> UpdateSliceInMinorDims(
@@ -160,6 +194,29 @@ xla::StatusOr<xla::ComputationDataHandle> UpdateSliceInMinorDims(
   std::copy(start.begin(), start.end(),
             padded_start.begin() + (n_dims - n_minor_dims));
   return UpdateSlice(builder, x, update, padded_start);
+}
+
+xla::StatusOr<xla::ComputationDataHandle> DynamicUpdateSliceInMinorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+    const xla::ComputationDataHandle& update,
+    const std::vector<xla::ComputationDataHandle>& starts) {
+  TF_ASSIGN_OR_RETURN(auto padded_starts,
+                      PrependZerosInMajorDims(builder, x, starts));
+  return builder->DynamicUpdateSlice(x, update, padded_starts);
+}
+
+xla::StatusOr<xla::ComputationDataHandle> PrependZerosInMajorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+    const std::vector<xla::ComputationDataHandle>& starts) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> shape, builder->GetShape(x));
+  const int64 n_dims = xla::ShapeUtil::Rank(*shape);
+  auto zero = builder->Reshape(builder->ConstantR0<int32>(0), {1});
+  std::vector<xla::ComputationDataHandle> padded_starts(n_dims, zero);
+  for (int i = 0; i < starts.size(); ++i) {
+    padded_starts[n_dims - starts.size() + i] =
+        builder->Reshape(starts[i], {1});
+  }
+  return builder->ConcatInDim(padded_starts, 0);
 }
 
 xla::StatusOr<xla::ComputationDataHandle> TransposeInMinorDims(

@@ -191,6 +191,12 @@ library {
 //  be deleted by calling TF_DeleteFunction.
 static std::vector<UniqueFuncPtr> CreateImagenetDatasetFunctions(
     const char* file_path, std::string* dataset_name, TF_Status* status) {
+#if defined(PLATFORM_WINDOWS)
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
+  return std::vector<UniqueFuncPtr>();
+#else
   const char* func_def = R"PREFIX(
 library {
   function {
@@ -7069,6 +7075,7 @@ library {
         DCHECK(found);
       };
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
+#endif
 }
 #endif
 
@@ -7080,6 +7087,12 @@ library {
 static std::vector<UniqueFuncPtr> CreateMNISTDatasetFunctions(
     const char* file_path, int batch_size, std::string* dataset_name,
     TF_Status* status) {
+#if defined(PLATFORM_WINDOWS)
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
+  return nullptr;
+#else
   const char* func_def = R"PREFIX(
 library {
   function {
@@ -8209,6 +8222,7 @@ library {
         DCHECK(found_batch_size);
       };
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
+#endif
 }
 #endif
 

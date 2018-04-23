@@ -112,6 +112,10 @@ class ServiceInterface {
   virtual tensorflow::Status ComputeConstant(
       const ComputeConstantRequest* arg, ComputeConstantResponse* result) = 0;
 
+  virtual tensorflow::Status ComputeConstantGraph(
+      const ComputeConstantGraphRequest* arg,
+      ComputeConstantResponse* result) = 0;
+
   // Methods used by Computation.
   virtual tensorflow::Status SnapshotComputation(
       const SnapshotComputationRequest* ag,

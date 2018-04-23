@@ -41,8 +41,8 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
         ShapesAgreeUpToExtending(input_array.shape(), output_array.shape())) {
       transformation->AddMessageF(
           "%s is trivial because its input and output shapes are equal up to "
-          "extending "
-          "by 1's, and we are told to aggressively discard such Reshape ops.",
+          "extending by 1's, and we are told to aggressively discard such "
+          "Reshape ops.",
           LogName(op));
       return true;
     }
@@ -80,6 +80,7 @@ bool RemoveTrivialReshape::Run(Model* model, std::size_t op_index) {
   }
 
   if (!IsReshapeTrivial(*model, *reshape_op, this)) {
+    AddMessageF("%s is not trivial", LogName(*reshape_op));
     return false;
   }
 

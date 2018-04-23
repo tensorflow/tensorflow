@@ -341,9 +341,3 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
-
-if(WIN32)
-  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
-  # Instead of defining this global, limit it to tf_core_framework where its used.
-  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
-endif()

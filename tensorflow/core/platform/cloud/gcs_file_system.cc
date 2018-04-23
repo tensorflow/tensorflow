@@ -840,7 +840,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
 
   throttle_.RecordResponse(bytes_read);
 
-  if (bytes_read < block_size()) {
+  if (bytes_read < n) {
     // Check stat cache to see if we encountered an interrupted read.
     FileStatistics stat;
     if (stat_cache_->Lookup(filename, &stat)) {

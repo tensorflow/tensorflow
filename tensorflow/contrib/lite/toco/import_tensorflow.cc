@@ -694,6 +694,8 @@ void ConvertFakeQuantWithMinMaxArgs(
   minmax.min = GetFloatAttr(node, "min");
   minmax.max = GetFloatAttr(node, "max");
   op->outputs.push_back(node.name());
+  // tf.fake_quant_with_min_max_args num_bits defaults to 8.
+  op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
   model->operators.emplace_back(op);
 }
 
@@ -711,6 +713,7 @@ void ConvertFakeQuantWithMinMaxVars(
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
+  op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
   model->operators.emplace_back(op);
 }
 

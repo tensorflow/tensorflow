@@ -210,7 +210,7 @@ py_library(
 
 py_test(
     name = "head_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/head_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -250,7 +250,7 @@ py_library(
 
 py_test(
     name = "linear_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/linear_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -447,6 +447,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
+        "noasan",  # times out
         "notsan",
     ],
     deps = [

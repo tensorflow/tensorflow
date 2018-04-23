@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_EIGEN_THREAD_POOL_H_
 #define TENSORFLOW_COMMON_RUNTIME_EIGEN_THREAD_POOL_H_
 
-#define EIGEN_USE_THREADS
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/threadpool.h"
 

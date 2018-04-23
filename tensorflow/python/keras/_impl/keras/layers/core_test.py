@@ -129,7 +129,6 @@ class CoreLayersTest(test.TestCase):
     testing_utils.layer_test(
         keras.layers.RepeatVector, kwargs={'n': 3}, input_shape=(3, 2))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
   def test_lambda(self):
     testing_utils.layer_test(
         keras.layers.Lambda,

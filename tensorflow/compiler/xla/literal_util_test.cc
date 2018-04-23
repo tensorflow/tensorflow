@@ -218,9 +218,7 @@ TEST_F(LiteralUtilTest, CreateSparse) {
   EXPECT_EQ(literal->sparse_indices()->data(),
             ArraySlice<int64>(expected_indices.data(),
                               expected_indices.num_elements()));
-  EXPECT_EQ(
-      ArraySlice<int64>(literal->data<int64>().data(), expected_values.size()),
-      ArraySlice<int64>(expected_values));
+  EXPECT_EQ(literal->data<int64>(), ArraySlice<int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {

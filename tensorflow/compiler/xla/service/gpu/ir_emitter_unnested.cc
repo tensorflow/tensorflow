@@ -536,7 +536,27 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     thunk_sequence_->emplace_back(BuildGemmThunk(fusion));
     return Status::OK();
   }
-  thunk_sequence_->emplace_back(BuildKernelThunk(fusion));
+
+  int max_unroll_factor = fusion->GetModule()
+                              ->config()
+                              .debug_options()
+                              .xla_gpu_max_kernel_unroll_factor();
+
+  // Find the largest possible power of two to unroll by.
+  // TODO(kramerb): Make this smarter.
+  int unroll_factor = 1;
+  if (!fusion->IsMultiOutputFusion()) {
+    CHECK(fusion->fusion_kind() == HloInstruction::FusionKind::kLoop);
+    int64 num_elements = ShapeUtil::ElementsIn(fusion->shape());
+    for (int i = max_unroll_factor; i > 1; i /= 2) {
+      if (num_elements % i == 0) {
+        unroll_factor = i;
+        break;
+      }
+    }
+  }
+
+  thunk_sequence_->emplace_back(BuildKernelThunk(fusion, unroll_factor));
   return IrEmitter::HandleFusion(fusion);
 }
 
@@ -2021,7 +2041,7 @@ Status IrEmitterUnnested::HandleGather(HloInstruction* gather) {
 }
 
 std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
-    const HloInstruction* inst) {
+    const HloInstruction* inst, int unroll_factor) {
   const BufferAssignment& buffer_assn =
       ir_emitter_context_->buffer_assignment();
 
@@ -2113,7 +2133,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   }
 
   return MakeUnique<KernelThunk>(buffers, llvm_ir::AsString(kernel->getName()),
-                                 inst);
+                                 inst, unroll_factor);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(
@@ -2485,20 +2505,27 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk) {
+  int unroll_factor = thunk->unroll_factor();
   VLOG(3) << bindings_.ToString();
 
   const Shape& element_shape = hlo.IsMultiOutputFusion()
                                    ? ShapeUtil::GetSubshape(hlo.shape(), {0})
                                    : hlo.shape();
+  VLOG(3) << "EmitTargetElementLoopInThunk "
+          << ShapeUtil::HumanStringWithLayout(hlo.shape())
+          << " for unroll_factor " << unroll_factor;
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->device_description());
+      element_shape, ir_emitter_context_->device_description(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
   if (!hlo.IsMultiOutputFusion()) {
     return ParallelLoopEmitter(element_generator, GetIrArray(hlo, hlo),
-                               launch_dimensions, &ir_builder_)
+                               launch_dimensions, &ir_builder_, unroll_factor)
         .EmitLoop(IrName(&hlo));
   }
+
+  CHECK_EQ(unroll_factor, 1)
+      << "multi-output fusion does not support unrolling";
 
   // For multiple outputs fusion, we need to emit each operand and the root.
   std::vector<llvm_ir::IrArray> output_arrays;

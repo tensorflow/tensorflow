@@ -51,9 +51,11 @@ DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
                        "output_1,output_2"),
   };
 
+  bool no_inputs = *argc == 1;
   bool success = tensorflow::Flags::Parse(argc, argv, flags);
-  if (!success || (*argc == 2 && !strcmp(argv[1], "--helpfull"))) {
+  if (!success || no_inputs || (*argc == 2 && !strcmp(argv[1], "--helpfull"))) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
+    return {};
   }
 
   return {values.tensorflow_model,

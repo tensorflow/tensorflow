@@ -142,6 +142,16 @@ public abstract class ImageClassifier {
     }
   }
 
+  public void setUseNNAPI(Boolean nnapi) {
+    if (tflite != null)
+        tflite.setUseNNAPI(nnapi);
+  }
+
+  public void setNumThreads(int num_threads) {
+    if (tflite != null)
+        tflite.setNumThreads(num_threads);
+  }
+
   /** Closes tflite to release resources. */
   public void close() {
     tflite.close();

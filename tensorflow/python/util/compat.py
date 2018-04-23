@@ -42,7 +42,6 @@ import six as _six
 
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.util.tf_export import tf_export
 
 
 def as_bytes(bytes_or_text, encoding='utf-8'):
