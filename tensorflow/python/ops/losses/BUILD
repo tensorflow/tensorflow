@@ -33,6 +33,17 @@ py_library(
 )
 
 py_test(
+    name = "losses_impl_test",
+    size = "small",
+    srcs = ["losses_impl_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":losses",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.py"],
