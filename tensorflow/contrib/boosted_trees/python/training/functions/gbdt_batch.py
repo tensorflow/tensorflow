@@ -369,7 +369,7 @@ class GradientBoostedDecisionTreeModel(object):
     Returns:
       a dictionary of prediction results -
         ENSEMBLE_STAMP, PREDICTION, PARTITION_IDS,
-        NUM_LAYER_ATTEMPTED, NUM_TREES_ATTEMPED.
+        NUM_LAYER_ATTEMPTED, NUM_TREES_ATTEMPTED.
     """
     ensemble_stats = training_ops.tree_ensemble_stats(ensemble_handle,
                                                       ensemble_stamp)
