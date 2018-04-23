@@ -27,7 +27,9 @@ namespace tensorflow {
 class RecvTensorResponse;
 class TensorProto;
 
-namespace gpu = ::perftools::gputools;
+// TODO(b/77980417): Remove this and use the regular tensorflow::se alias once
+// that's available.
+namespace gpu = ::stream_executor;
 
 class GPUUtil {
  public:

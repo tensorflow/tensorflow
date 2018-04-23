@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
+class Graph;
+
 namespace grappler {
 
 class SymbolicShapeRefiner;
@@ -95,31 +97,22 @@ class GraphProperties {
 
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.
-  static Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
-                                const Node* node, bool relax,
-                                TopoQueue* new_shapes);
+  Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner, const Node* node,
+                         bool relax, bool* new_shapes) const;
   // Process the Enter node, and enqueue its fanout in new_shapes if needed.
   static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
-                            const Node* node, bool relax,
-                            TopoQueue* new_shapes);
-  // Process a node that is used to feed the model.
-  Status OverwriteFedPorts(
-      SymbolicShapeRefiner* shape_refiner,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
-      const Node* node, TopoQueue* new_shapes) const;
+                            const Node* node, bool relax, bool* new_shapes);
   // Update the shapes for node 'n'. If output shapes for n have changed,
   // enqueue its fanout in 'new_shapes'.
   Status UpdateShapes(
       SymbolicShapeRefiner* shape_refiner, bool relax,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
-      const Node* n, TopoQueue* new_shapes) const;
+      const Node* n, bool* new_shapes) const;
   // Propagate the shapes for the nodes enqueued in new_shapes and their
   // transitive fanout until a fixed point is reached.
   Status PropagateShapes(
       SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
       const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
           resources,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
       int num_loops) const;
 
   // Data members
@@ -127,6 +120,8 @@ class GraphProperties {
   std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
   std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
+
+  Graph* graph_;
 };
 
 }  // end namespace grappler

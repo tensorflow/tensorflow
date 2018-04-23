@@ -32,6 +32,7 @@ namespace java {
 class SourceWriter {
  public:
   SourceWriter();
+
   virtual ~SourceWriter();
 
   // Indents following lines with white spaces.
@@ -60,7 +61,7 @@ class SourceWriter {
   // The data might potentially contain newline characters, therefore it will
   // be scanned to ensure that each line is indented and prefixed properly,
   // making it a bit slower than Append().
-  SourceWriter& Write(const StringPiece& text);
+  SourceWriter& Write(const StringPiece& str);
 
   // Writes a source code snippet read from a file.
   //

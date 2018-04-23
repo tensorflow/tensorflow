@@ -710,7 +710,10 @@ def gan_train_ops(
     be used to train a generator/discriminator pair.
   """
   if isinstance(model, namedtuples.CycleGANModel):
-    saved_params = locals()
+    # Get and store all arguments other than model and loss from locals.
+    # Contents of locals should not be modified, may not affect values. So make
+    # a copy. https://docs.python.org/2/library/functions.html#locals.
+    saved_params = dict(locals())
     saved_params.pop('model', None)
     saved_params.pop('loss', None)
     kwargs = saved_params.pop('kwargs', {})

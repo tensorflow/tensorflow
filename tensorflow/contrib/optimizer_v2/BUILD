@@ -48,6 +48,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
@@ -114,7 +115,6 @@ cuda_py_test(
     additional_deps = [
         ":training",
         "@six_archive//:six",
-        "//tensorflow/contrib/eager/python:checkpointable_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -202,4 +202,5 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
+    tags = ["optonly"],
 )

@@ -41,6 +41,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@prefetch_to_device
 @@read_batch_features
 @@rejection_resample
+@@sample_from_datasets
 @@scan
 @@shuffle_and_repeat
 @@sliding_window_batch
@@ -69,6 +70,7 @@ from tensorflow.contrib.data.python.ops.get_single_element import get_single_ele
 from tensorflow.contrib.data.python.ops.grouping import bucket_by_sequence_length
 from tensorflow.contrib.data.python.ops.grouping import group_by_window
 from tensorflow.contrib.data.python.ops.interleave_ops import parallel_interleave
+from tensorflow.contrib.data.python.ops.interleave_ops import sample_from_datasets
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
@@ -80,8 +82,6 @@ from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
-from tensorflow.python.data.ops.iterator_ops import Iterator
-from tensorflow.python.ops.parsing_ops import parse_single_example_v2 as parse_single_example
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

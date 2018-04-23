@@ -44,6 +44,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
@@ -808,6 +809,30 @@ class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
         r"Gradients of complex tensors must set grad_ys "
         r"\(y\.dtype = tf\.complex64\)"):
       gradients.gradients(y, x)
+
+
+class ResourceCondTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    gamma = resource_variable_ops.ResourceVariable(
+        np.random.random((3,)),
+        dtype="float32", name="gamma")
+
+    inputs = array_ops.ones(shape=(3,), dtype="float32")
+
+    def TestFn():
+      output = inputs + gamma
+      return output
+
+    training = array_ops.placeholder_with_default(True, shape=())
+    output = control_flow_ops.cond(
+        training, TestFn, lambda: inputs)
+
+    loss = output
+
+    grads = gradients.gradients(
+        loss, [gamma])
+    self.assertTrue(None not in grads)
 
 
 if __name__ == "__main__":

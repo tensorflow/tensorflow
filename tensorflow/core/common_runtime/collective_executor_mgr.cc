@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 
+#include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -21,39 +22,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
-namespace {
-// TODO(tucker): Temporary class just until a real CollectiveExecutor
-// implementation is submitted in a later CL.
-class DummyCollectiveExecutor : public CollectiveExecutor {
- public:
-  explicit DummyCollectiveExecutor(CollectiveExecutorMgr* ce_mgr)
-      : CollectiveExecutor(ce_mgr) {}
-
-  ~DummyCollectiveExecutor() override {}
-
-  void RecvFromPeer(const string& peer_device, const string& peer_task,
-                    bool peer_is_local, const string& key, Device* to_device,
-                    DeviceContext* to_device_ctx,
-                    const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-                    const DeviceLocality& client_locality,
-                    const StatusCallback& done) override {
-    done(errors::Internal("Unimplemented"));
-  }
-
-  void PostToPeer(const string& peer_device, const string& peer_task,
-                  const string& key, Device* from_device,
-                  DeviceContext* from_device_ctx,
-                  const AllocatorAttributes& from_alloc_attr,
-                  const Tensor* from_tensor,
-                  const DeviceLocality& client_locality,
-                  const StatusCallback& done) override {
-    done(errors::Internal("Unimplemented"));
-  }
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(DummyCollectiveExecutor);
-};
-}  // namespace
 
 CollectiveExecutorMgr::CollectiveExecutorMgr(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
@@ -77,7 +45,9 @@ CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64 step_id) {
     if (it != executor_table_.end()) {
       ce = it->second;
     } else {
-      ce = new DummyCollectiveExecutor(this);
+      CollectiveRemoteAccessLocal* rma = new CollectiveRemoteAccessLocal(
+          dev_mgr_, dev_resolver_.get(), step_id);
+      ce = new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_);
       executor_table_[step_id] = ce;
     }
     ce->Ref();

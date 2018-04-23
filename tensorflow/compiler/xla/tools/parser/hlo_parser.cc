@@ -470,6 +470,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -722,15 +723,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateBroadcast(
           shape, operands[0], *broadcast_dimensions));
-      break;
-    }
-    case HloOpcode::kBroadcastDimOne: {
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
-        return false;
-      }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateBroadcastDimOne(shape, operands[0]));
       break;
     }
     case HloOpcode::kConcatenate: {

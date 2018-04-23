@@ -524,6 +524,7 @@ REGISTER_OP("Conv3DBackpropInput")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropInputV2")
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
     });
@@ -537,6 +538,7 @@ REGISTER_OP("Conv3DBackpropFilter")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropFilterV2")
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &out));
@@ -1533,6 +1535,7 @@ REGISTER_OP("__MklDummyConv2DWithBias")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 Dummy node that enables fusing Conv2D and BiasAdd operator for MKL. This node
 does not perform anything. It is just created as an intermediate output of
@@ -1559,6 +1562,7 @@ REGISTER_OP("_MklConv2DWithBias")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 MKL version of Conv2D and BiasAdd operator. Uses MKL DNN APIs to perform
 2D convolution and add Bias to the output of convolution.
@@ -1681,6 +1685,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+#ifdef INTEL_MKL_ML
 REGISTER_OP("_MklConv2DWithBiasBackpropBias")
     .Input("out_backprop: T")
     .Input("mkl_out_backprop: uint8")
@@ -1697,6 +1702,7 @@ gradients of convolution with respect to the bias.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+#endif
 
 REGISTER_OP("_MklConv2DBackpropInput")
     .Input("input_sizes: int32")
@@ -2154,6 +2160,7 @@ REGISTER_OP("_MklToTf")
     .Output("output: T")
     .Attr("T: {half, float, double}")
     .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 MKL operator to convert a tensor from MKL layout to TensorFlow layout.
 
@@ -2175,6 +2182,7 @@ REGISTER_OP("_MklInputConversion")
         "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
         "complex64, complex128}")
     .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 MKL operator to process the inputs to an elementwise MKL op. Both inputs
 need to be either in TF or in MKL format. This op is added before every

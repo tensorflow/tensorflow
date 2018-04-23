@@ -741,7 +741,13 @@ class Literal {
     int64 size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
 
     // Returns the number of elements in this piece's array.
-    int64 element_count() const { return ShapeUtil::ElementsIn(subshape()); }
+    int64 element_count() const {
+      // If this is a sparse array, use the number of elements represented by
+      // the indices in the associated SparseIndexArray.
+      return LayoutUtil::IsSparseArray(subshape())
+                 ? sparse_indices()->index_count()
+                 : ShapeUtil::ElementsIn(subshape());
+    }
 
     // Copy the data from 'src' into this piece's buffer. Shapes of this piece
     // and src must be compatible.
@@ -853,8 +859,7 @@ tensorflow::gtl::ArraySlice<NativeT> Literal::Piece::data() const {
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
   return tensorflow::gtl::ArraySlice<NativeT>(
-      reinterpret_cast<const NativeT*>(buffer()),
-      ShapeUtil::ElementsIn(subshape()));
+      reinterpret_cast<const NativeT*>(buffer()), element_count());
 }
 
 template <typename NativeT>
@@ -867,7 +872,7 @@ tensorflow::gtl::MutableArraySlice<NativeT> Literal::Piece::data() {
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
   return tensorflow::gtl::MutableArraySlice<NativeT>(
-      reinterpret_cast<NativeT*>(buffer()), ShapeUtil::ElementsIn(subshape()));
+      reinterpret_cast<NativeT*>(buffer()), element_count());
 }
 
 template <typename NativeT>
@@ -1282,12 +1287,13 @@ void Literal::PopulateSparse(SparseIndexArray indices,
   CHECK_LE(num_elements, max_elements);
   CHECK_EQ(num_elements, indices.index_count());
   auto root_data = root_piece().data<NativeT>();
-  root_data.remove_suffix(max_elements - values.size());
+  // Piece::data() returns an ArraySlice of size equal to the number of indices
+  // in the SparseIndexArray. So there is no need to adjust the size of the data
+  // here. It is enough to just copy the incoming values into the data buffer.
   std::copy(values.begin(), values.end(), root_data.begin());
   *this->root_piece().sparse_indices() = std::move(indices);
   if (sort) {
     auto root_data = this->root_piece().data<NativeT>();
-    root_data.remove_suffix(root_data.size() - num_elements);
     this->root_piece().sparse_indices()->SortWithValues(root_data);
   }
   DCHECK(this->root_piece().sparse_indices()->Validate(shape()));

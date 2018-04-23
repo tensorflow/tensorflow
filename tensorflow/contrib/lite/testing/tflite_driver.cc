@@ -42,6 +42,10 @@ template <>
 uint8_t Value(const TfLitePtrUnion& data, int index) {
   return data.uint8[index];
 }
+template <>
+bool Value(const TfLitePtrUnion& data, int index) {
+  return data.b[index];
+}
 
 template <typename T>
 void SetTensorData(const std::vector<T>& values, TfLitePtrUnion* data) {
@@ -79,6 +83,8 @@ class TfLiteDriver::Expectation {
         return TypedCheck<int64_t>(verbose, tensor);
       case kTfLiteUInt8:
         return TypedCheck<uint8_t>(verbose, tensor);
+      case kTfLiteBool:
+        return TypedCheck<bool>(verbose, tensor);
       default:
         fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
         return false;
@@ -143,7 +149,6 @@ void TfLiteDriver::AllocateTensors() {
 
 void TfLiteDriver::LoadModel(const string& bin_file_path) {
   if (!IsValid()) return;
-  std::cout << std::endl << "Loading model: " << bin_file_path << std::endl;
 
   model_ = FlatBufferModel::BuildFromFile(GetFullPath(bin_file_path).c_str());
   if (!model_) {
@@ -204,6 +209,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, &tensor->data);
       break;
     }
+    case kTfLiteBool: {
+      const auto& values = testing::Split<bool>(csv_values, ",");
+      if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
+      SetTensorData(values, &tensor->data);
+      break;
+    }
     default:
       fprintf(stderr, "Unsupported type %d in SetInput\n", tensor->type);
       Invalidate("Unsupported tensor data type");
@@ -231,6 +242,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteUInt8:
       expected_output_[id]->SetData<uint8_t>(csv_values);
+      break;
+    case kTfLiteBool:
+      expected_output_[id]->SetData<bool>(csv_values);
       break;
     default:
       fprintf(stderr, "Unsupported type %d in SetExpectation\n", tensor->type);

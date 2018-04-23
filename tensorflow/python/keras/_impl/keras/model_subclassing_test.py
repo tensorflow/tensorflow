@@ -607,12 +607,6 @@ class CustomCallSignatureTests(test.TestCase):
     self.assertAllClose(10. * expected_output, self.evaluate(output))
     output = model(first, second=second, training=False)
     self.assertAllClose(expected_output, self.evaluate(output))
-    if not context.executing_eagerly():
-      six.assertCountEqual(self, [first, second], model.inputs)
-    with self.assertRaises(TypeError):
-      # tf.layers.Layer expects an "inputs" argument, so all-keywords doesn't
-      # work at the moment.
-      model(first=first, second=second, fiddle_with_output='yes')
 
   @test_util.run_in_graph_and_eager_modes()
   def test_inputs_in_signature(self):
@@ -622,10 +616,14 @@ class CustomCallSignatureTests(test.TestCase):
       def call(self, inputs, some_other_arg, training=False):
         return inputs
 
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
     model = HasInputsAndOtherPositional()
     with self.assertRaisesRegexp(
         TypeError, 'everything else as a keyword argument'):
-      model(array_ops.ones([]), array_ops.ones([]))
+      x1, x2 = keras.Input((1, 1)), keras.Input((1, 1))
+      model(x1, x2)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_kwargs_in_signature(self):
@@ -649,13 +647,14 @@ class CustomCallSignatureTests(test.TestCase):
       def call(self, x, *args, **kwargs):
         return [x] + list(args)
 
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
     model = HasArgs()
-    arg1 = array_ops.ones([])
-    arg2 = array_ops.ones([])
-    arg3 = array_ops.ones([])
-    model(arg1, arg2, arg3, a=3)
+    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
+    model(x1, x2, x3, a=3)
     if not context.executing_eagerly():
-      six.assertCountEqual(self, [arg1, arg2, arg3], model.inputs)
+      six.assertCountEqual(self, [x1, x2, x3], model.inputs)
 
   def test_args_and_keywords_in_signature(self):
 
@@ -666,11 +665,9 @@ class CustomCallSignatureTests(test.TestCase):
 
     with context.graph_mode():
       model = HasArgs()
-      arg1 = array_ops.ones([])
-      arg2 = array_ops.ones([])
-      arg3 = array_ops.ones([])
+      x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
       with self.assertRaisesRegexp(TypeError, 'args and arguments with'):
-        model(arg1, arg2, arg3, a=3)
+        model(x1, x2, x3, a=3)
 
   def test_training_no_default(self):
 
@@ -694,11 +691,9 @@ class CustomCallSignatureTests(test.TestCase):
 
     with context.graph_mode():
       model = TrainingNoDefaultWithPositional()
-      arg1 = array_ops.ones([])
-      arg2 = array_ops.ones([])
-      arg3 = array_ops.ones([])
+      x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
       with self.assertRaisesRegexp(TypeError, 'after a non-input'):
-        model(arg1, arg2, arg3)
+        model(x1, x2, x3)
 
 if __name__ == '__main__':
   test.main()

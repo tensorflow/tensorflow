@@ -30,7 +30,6 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib.summary import summary_ops as contrib_summary
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
@@ -57,6 +56,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import summary_ops_v2 as contrib_summary
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -2054,6 +2054,16 @@ class TPUEstimator(estimator_lib.Estimator):
                   },
                   every_n_secs=30)
           ] + input_hooks
+          chief_hooks = []
+          if (self._config.save_checkpoints_secs or
+              self._config.save_checkpoints_steps):
+            chief_hooks.append(
+                training.CheckpointSaverHook(
+                    self.model_dir,
+                    save_secs=self._config.save_checkpoints_secs,
+                    save_steps=self._config.save_checkpoints_steps,
+                    steps_per_run=self._config.tpu_config.iterations_per_loop,
+                    scaffold=scaffold))
           summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
           with ops.control_dependencies([loss]):
             update_ops = _sync_variables_ops()
@@ -2067,6 +2077,7 @@ class TPUEstimator(estimator_lib.Estimator):
           return model_fn_lib.EstimatorSpec(
               mode,
               loss=loss,
+              training_chief_hooks=chief_hooks,
               training_hooks=hooks,
               train_op=train_op,
               scaffold=scaffold)

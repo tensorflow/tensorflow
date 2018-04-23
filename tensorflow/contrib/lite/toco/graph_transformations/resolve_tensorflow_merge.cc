@@ -32,7 +32,7 @@ bool ResolveTensorFlowMerge::Run(Model* model, std::size_t op_index) {
   }
 
   // We need to yield until this Merge node has only 1 input, which will mean
-  // that that is the selected input. Other graph transformations on other nodes
+  // that is the selected input. Other graph transformations on other nodes
   // such as ResolveTensorFlowSwitch, will take care of trimming the
   // non-selected inputs, so that at some point there will be only 1 input left.
   if (merge_op->inputs.size() > 1) {

@@ -130,12 +130,123 @@ int MatchingArraySize(const ArrayType1& array1, int index1,
   return MatchingArraySize(array1, index1, args...);
 }
 
-inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
+template <int N>
+inline int FlatSize(const Dims<N>& dims) {
   int max_offset = 0;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < N; i++) {
     max_offset += (dims.sizes[i] - 1) * dims.strides[i];
   }
   return max_offset + 1;
+}
+
+// Deprecated. Prefer FlatSize.
+inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
+  return FlatSize(dims);
+}
+
+// Flat size calculation, checking that dimensions match with one or more other
+// arrays.
+template <int N>
+inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0) {
+  for (int i = 0; i < N; i++) {
+    TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
+  }
+  return FlatSize(dims);
+}
+
+template <int N>
+inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
+                            const Dims<N>& check_dims_1) {
+  for (int i = 0; i < N; i++) {
+    TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
+  }
+  return MatchingFlatSize(dims, check_dims_1);
+}
+
+template <int N>
+inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
+                            const Dims<N>& check_dims_1,
+                            const Dims<N>& check_dims_2) {
+  for (int i = 0; i < N; i++) {
+    TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
+  }
+  return FlatSize(dims, check_dims_1, check_dims_2);
+}
+
+template <int N>
+inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
+                            const Dims<N>& check_dims_1,
+                            const Dims<N>& check_dims_2,
+                            const Dims<N>& check_dims_3) {
+  for (int i = 0; i < N; i++) {
+    TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
+  }
+  return FlatSize(dims, check_dims_1, check_dims_2, check_dims_3);
+}
+
+// Data is required to be contiguous, and so many operators can use either the
+// full array flat size or the flat size with one dimension skipped (commonly
+// the depth).
+template <int N>
+inline int FlatSizeSkipDim(const Dims<N>& dims, int skip_dim) {
+  TFLITE_DCHECK(skip_dim >= 0 && skip_dim < N);
+  int flat_size = 1;
+  for (int i = 0; i < N; i++) {
+    flat_size *= (i == skip_dim) ? 1 : dims.sizes[i];
+  }
+  return flat_size;
+}
+
+// A combination of MatchingFlatSize() and FlatSizeSkipDim().
+template <int N>
+inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
+                                   const Dims<N>& check_dims_0) {
+  for (int i = 0; i < N; i++) {
+    if (i != skip_dim) {
+      TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
+    }
+  }
+  return FlatSizeSkipDim(dims, skip_dim);
+}
+
+template <int N>
+inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
+                                   const Dims<N>& check_dims_0,
+                                   const Dims<N>& check_dims_1) {
+  for (int i = 0; i < N; i++) {
+    if (i != skip_dim) {
+      TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
+    }
+  }
+  return MatchingFlatSizeSkipDim(dims, skip_dim, check_dims_1);
+}
+
+template <int N>
+inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
+                                   const Dims<N>& check_dims_0,
+                                   const Dims<N>& check_dims_1,
+                                   const Dims<N>& check_dims_2) {
+  for (int i = 0; i < N; i++) {
+    if (i != skip_dim) {
+      TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
+    }
+  }
+  return MatchingFlatSizeSkipDim(dims, skip_dim, check_dims_1, check_dims_2);
+}
+
+template <int N>
+inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
+                                   const Dims<N>& check_dims_0,
+                                   const Dims<N>& check_dims_1,
+                                   const Dims<N>& check_dims_2,
+                                   const Dims<N>& check_dims_3) {
+  for (int i = 0; i < N; i++) {
+    if (i != skip_dim) {
+      TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
+    }
+  }
+  return MatchingFlatSizeSkipDim(dims, skip_dim, check_dims_1, check_dims_2,
+                                 check_dims_3);
 }
 
 template <int N>

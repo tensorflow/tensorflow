@@ -52,14 +52,11 @@ class LoopOptimizer : public GraphOptimizer {
 
   // Granular control for loop optimizer stages.
   struct LoopOptimizerOptions {
-    bool enable_loop_invariant_node_motion = false;
+    bool enable_loop_invariant_node_motion = true;
     bool enable_stack_push_removal = true;
 
     static LoopOptimizerOptions Default(RewriterConfig::Toggle opt_level) {
       LoopOptimizerOptions options;
-      if (opt_level == RewriterConfig::AGGRESSIVE) {
-        options.enable_loop_invariant_node_motion = true;
-      }
       return options;
     }
   };

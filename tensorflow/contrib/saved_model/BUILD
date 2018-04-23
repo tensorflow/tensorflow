@@ -48,6 +48,22 @@ py_library(
     ],
 )
 
+py_library(
+    name = "reader",
+    srcs = ["python/saved_model/reader.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    visibility = ["//visibility:public"],
+    deps = [
+        ":saved_model_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:tag_constants",
+    ],
+)
+
 py_test(
     name = "reader_test",
     size = "small",
@@ -56,13 +72,8 @@ py_test(
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
     deps = [
-        ":saved_model_py",
+        ":reader",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/saved_model:builder",
-        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 

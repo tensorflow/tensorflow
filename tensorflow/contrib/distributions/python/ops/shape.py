@@ -439,7 +439,7 @@ class _DistributionShape(object):
           if self._batch_ndims_is_0 and expand_batch_dim:
             squeeze_dims += [1]
           if squeeze_dims:
-            x = array_ops.squeeze(x, squeeze_dims=squeeze_dims)
+            x = array_ops.squeeze(x, axis=squeeze_dims)
             # x.shape: [prod(S)]+B+E
         _, batch_shape, event_shape = self.get_shape(x)
       else:

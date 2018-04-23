@@ -2217,6 +2217,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, ClzU32s) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR1<uint32>(
+      {0, 1, 0x10, 0x10000, 0x700000, 0x12345678, 0xF2345678});
+  builder.Clz(a);
+
+  ComputeAndCompareR1<uint32>(&builder, {32, 31, 27, 15, 9, 3, 0}, {});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, AddChainFoldLeft) {
   // a ------ (add) --------- (add)
   //         /               /

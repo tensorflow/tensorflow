@@ -41,9 +41,6 @@ limitations under the License.
 namespace xla {
 namespace interpreter {
 
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::interpreter;
-
 Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
 
@@ -96,7 +93,7 @@ InterpreterCompiler::CompileAheadOfTime(
 }
 
 se::Platform::Id InterpreterCompiler::PlatformId() const {
-  return sep::kInterpreterPlatformId;
+  return se::interpreter::kXlaInterpreterPlatformId;
 }
 
 HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
@@ -109,11 +106,12 @@ static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
 }
 
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(sep::kInterpreterPlatformId, []() {
-    return xla::MakeUnique<xla::interpreter::InterpreterCompiler>();
-  });
-  xla::ComputationPlacer::RegisterComputationPlacer(sep::kInterpreterPlatformId,
-                                                    &CreateComputationPlacer);
+  xla::Compiler::RegisterCompilerFactory(
+      se::interpreter::kXlaInterpreterPlatformId, []() {
+        return xla::MakeUnique<xla::interpreter::InterpreterCompiler>();
+      });
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      se::interpreter::kXlaInterpreterPlatformId, &CreateComputationPlacer);
   return true;
 }
 

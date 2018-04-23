@@ -364,6 +364,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

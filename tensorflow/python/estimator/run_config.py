@@ -27,11 +27,13 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.estimator import util
 from tensorflow.python.util import compat_internal
 from tensorflow.python.util.tf_export import tf_export
 
 
 _USE_DEFAULT = object()
+_VALID_DEVICE_FN_ARGS = set(['op'])
 
 # A list of the property names in RunConfig that the user is allowed to change.
 _DEFAULT_REPLACEABLE_LIST = [
@@ -44,7 +46,8 @@ _DEFAULT_REPLACEABLE_LIST = [
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
     'log_step_count_steps',
-    'train_distribute'
+    'train_distribute',
+    'device_fn'
 ]
 
 _SAVE_CKPT_ERR = (
@@ -279,6 +282,11 @@ def _validate_properties(run_config):
   _validate('tf_random_seed', lambda seed: isinstance(seed, six.integer_types),
             message='tf_random_seed must be integer.')
 
+  _validate('device_fn', lambda device_fn: six.callable(device_fn) and
+            set(util.fn_args(device_fn)) == _VALID_DEVICE_FN_ARGS,
+            message='device_fn must be callable with exactly'
+                    ' one argument "op".')
+
 
 class TaskType(object):
   MASTER = 'master'
@@ -302,7 +310,8 @@ class RunConfig(object):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                log_step_count_steps=100,
-               train_distribute=None):
+               train_distribute=None,
+               device_fn=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -316,7 +325,7 @@ class RunConfig(object):
     a list of task addresses.
 
     `task` has two attributes: `type` and `index`, where `type` can be any of
-    the task types in `cluster`. ` When `TF_CONFIG` contains said information,
+    the task types in `cluster`. When `TF_CONFIG` contains said information,
     the following properties are set on this class:
 
     * `cluster_spec` is parsed from `TF_CONFIG['cluster']`. Defaults to {}. If
@@ -430,6 +439,10 @@ class RunConfig(object):
         `tf.contrib.distribute.DistributionStrategy`. If specified,
         then Estimator will distribute the user's model during training,
         according to the policy specified by that strategy.
+      device_fn: A callable invoked for every `Operation` that takes the
+        `Operation` and returns the device string. If `None`, defaults to
+        the device function returned by `tf.train.replica_device_setter`
+        with round-robin strategy.
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -466,7 +479,8 @@ class RunConfig(object):
         keep_checkpoint_max=keep_checkpoint_max,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         log_step_count_steps=log_step_count_steps,
-        train_distribute=train_distribute)
+        train_distribute=train_distribute,
+        device_fn=device_fn)
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
@@ -567,6 +581,16 @@ class RunConfig(object):
   @property
   def cluster_spec(self):
     return self._cluster_spec
+
+  @property
+  def device_fn(self):
+    """Returns the device_fn.
+
+    If device_fn is not `None`, it overrides the default
+    device function used in `Estimator`.
+    Otherwise the default one is used.
+    """
+    return self._device_fn
 
   @property
   def evaluation_master(self):
@@ -697,7 +721,8 @@ class RunConfig(object):
       - `keep_checkpoint_max`,
       - `keep_checkpoint_every_n_hours`,
       - `log_step_count_steps`,
-      - `train_distribute`.
+      - `train_distribute`,
+      - `device_fn`.
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

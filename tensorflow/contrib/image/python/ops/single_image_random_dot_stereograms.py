@@ -45,7 +45,7 @@ def single_image_random_dot_stereograms(depth_values,
   Given the 2-D tensor 'depth_values' with encoded Z values, this operation
   will encode 3-D data into a 2-D image.  The output of this Op is suitable
   for the encode_PNG/JPG ops.  Be careful with image compression as this may
-  corrupt the encode 3-D data witin the image.
+  corrupt the encode 3-D data within the image.
 
   Based upon [this
   paper](http://www.learningace.com/doc/4331582/b6ab058d1e206d68ab60e4e1ead2fe6e/sirds-paper).

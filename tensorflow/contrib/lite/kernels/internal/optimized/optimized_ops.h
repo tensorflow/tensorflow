@@ -30,6 +30,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
+#include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
@@ -1200,6 +1201,142 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                  filter_offset, bias_data, bias_dims, output_offset,
                  output_multiplier, output_shift, output_activation_min,
                  output_activation_max, output_data, output_dims, gemm_context);
+}
+
+inline void ExperimentalShuffledFullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims,
+    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
+    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    int16* output_data, const Dims<4>& output_dims,
+    gemmlowp::GemmContext* gemm_context) {
+  gemmlowp::ScopedProfilingLabel label(
+      "ExperimentalShuffledFullyConnected/8bit");
+  (void)gemm_context;  // only used in optimized code.
+  TFLITE_DCHECK_EQ(output_activation_min, -32768);
+  TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  // TODO(benoitjacob): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                      ArraySize(output_dims, 3);
+  const int output_depth = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  const int accum_depth = ArraySize(weights_dims, 0);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
+  // The experimental shuffling is an optimization for matrix*vector product.
+  // We aren't interested in supporting non-matrix*vector-product cases, i.e.
+  // batches>1.
+  TFLITE_DCHECK_EQ(batches, 1);
+  // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+  // so that just reinterpreting them as int8 values is equivalent to
+  // subtracting 128 from them, thus implementing for free the subtraction of
+  // the zero_point value 128.
+  const int8* shuffled_weights_ptr =
+      reinterpret_cast<const int8*>(shuffled_weights_data);
+#if defined USE_NEON
+  // We'll only need to xor signbit to the input activation values, as
+  // that xor-ing is pre-built into the shuffled weights values.
+  const uint8x16_t signbit = vdupq_n_u8(0x80);
+  const int right_shift = output_shift > 0 ? output_shift : 0;
+  const int left_shift = output_shift > 0 ? 0 : -output_shift;
+  for (int c = 0; c < output_depth; c += 4) {
+    // Accumulation loop.
+    int32x4_t row_accum0 = vdupq_n_s32(0);
+    int32x4_t row_accum1 = vdupq_n_s32(0);
+    int32x4_t row_accum2 = vdupq_n_s32(0);
+    int32x4_t row_accum3 = vdupq_n_s32(0);
+    for (int d = 0; d < accum_depth; d += 16) {
+      int8x16_t weights0 = vld1q_s8(shuffled_weights_ptr + 0);
+      int8x16_t weights1 = vld1q_s8(shuffled_weights_ptr + 16);
+      int8x16_t weights2 = vld1q_s8(shuffled_weights_ptr + 32);
+      int8x16_t weights3 = vld1q_s8(shuffled_weights_ptr + 48);
+      shuffled_weights_ptr += 64;
+      int8x16_t input =
+          vreinterpretq_s8_u8(veorq_u8(signbit, vld1q_u8(input_data + d)));
+      int16x8_t local_accum0 =
+          vmull_s8(vget_low_s8(weights0), vget_low_s8(input));
+      int16x8_t local_accum1 =
+          vmull_s8(vget_low_s8(weights1), vget_low_s8(input));
+      int16x8_t local_accum2 =
+          vmull_s8(vget_low_s8(weights2), vget_low_s8(input));
+      int16x8_t local_accum3 =
+          vmull_s8(vget_low_s8(weights3), vget_low_s8(input));
+      local_accum0 =
+          vmlal_s8(local_accum0, vget_high_s8(weights0), vget_high_s8(input));
+      local_accum1 =
+          vmlal_s8(local_accum1, vget_high_s8(weights1), vget_high_s8(input));
+      local_accum2 =
+          vmlal_s8(local_accum2, vget_high_s8(weights2), vget_high_s8(input));
+      local_accum3 =
+          vmlal_s8(local_accum3, vget_high_s8(weights3), vget_high_s8(input));
+      row_accum0 = vpadalq_s16(row_accum0, local_accum0);
+      row_accum1 = vpadalq_s16(row_accum1, local_accum1);
+      row_accum2 = vpadalq_s16(row_accum2, local_accum2);
+      row_accum3 = vpadalq_s16(row_accum3, local_accum3);
+    }
+    // Horizontally reduce accumulators
+    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
+        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
+    pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(row_accum0), vget_high_s32(row_accum0));
+    pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(row_accum1), vget_high_s32(row_accum1));
+    pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(row_accum2), vget_high_s32(row_accum2));
+    pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(row_accum3), vget_high_s32(row_accum3));
+    const int32x2_t reduced_lo =
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+    const int32x2_t reduced_hi =
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+    // Add bias values.
+    int32x4_t bias_vec = vld1q_s32(bias_data + c);
+    reduced = vaddq_s32(reduced, bias_vec);
+    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
+    // Multiply by the fixed-point multiplier.
+    reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+    // Rounding-shift-right.
+    using gemmlowp::RoundingDivideByPOT;
+    reduced = RoundingDivideByPOT(reduced, right_shift);
+    // Narrow values down to 16 bit signed.
+    const int16x4_t res16 = vqmovn_s32(reduced);
+    vst1_s16(output_data + c, res16);
+  }
+#else
+  for (int c = 0; c < output_depth; c += 4) {
+    // Internal accumulation.
+    // Initialize accumulator with the bias-value.
+    int32 accum[4] = {0};
+    // Accumulation loop.
+    for (int d = 0; d < accum_depth; d += 16) {
+      for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 16; j++) {
+          int8 input_val = input_data[d + j] - 128;
+          int8 weights_val = *shuffled_weights_ptr++;
+          accum[i] += weights_val * input_val;
+        }
+      }
+    }
+    for (int i = 0; i < 4; i++) {
+      // Add bias value
+      int acc = accum[i] + bias_data[c + i];
+      // Down-scale the final int32 accumulator to the scale used by our
+      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
+      // multiplier and shift here have been pre-computed offline
+      // (e.g. by toco).
+      acc =
+          MultiplyByQuantizedMultiplier(acc, output_multiplier, -output_shift);
+      // Saturate, cast to int16, and store to output array.
+      acc = std::max(acc, output_activation_min);
+      acc = std::min(acc, output_activation_max);
+      output_data[c + i] = acc;
+    }
+  }
+#endif
 }
 
 template <typename T>
@@ -3937,7 +4074,7 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-  gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
+gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -4135,6 +4272,7 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
 // optimized yet.
 inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
                        float* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("LogSoftmax");
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -4168,6 +4306,94 @@ inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+// Currently just a copy of the reference code.
+inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
+                       int32 input_multiplier, int32 input_left_shift,
+                       int32 reverse_scaling_divisor,
+                       int32 reverse_scaling_right_shift, int diff_min,
+                       uint8* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
+  // The representation chosen for the input to the exp() function is Q5.26.
+  // We need to leave extra space since values that we skip might be as large as
+  // -32 before multiplying by input_beta_multiplier, and therefore as large as
+  // -16 afterwards.  Note that exp(-8) is definitely not insignificant to
+  // accumulation, but exp(-16) definitely is.
+  static constexpr int kScaledDiffIntegerBits = 5;
+  static constexpr int kAccumulationIntegerBits = 12;
+  static constexpr int kOutputIntegerBits = 4;
+  using FixedPointScaledDiff =
+      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
+  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
+  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+
+  for (int i = 0; i < outer_size; ++i) {
+    uint8 max_in_row = 0;
+    for (int c = 0; c < depth; ++c) {
+      max_in_row = std::max(max_in_row, input_data[i * depth + c]);
+    }
+
+    FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
+    for (int c = 0; c < depth; ++c) {
+      int32 input_diff =
+          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      if (input_diff >= diff_min) {
+        const int32 input_diff_rescaled =
+            MultiplyByQuantizedMultiplierGreaterThanOne(
+                input_diff, input_multiplier, input_left_shift);
+        const FixedPointScaledDiff scaled_diff_f8 =
+            FixedPointScaledDiff::FromRaw(input_diff_rescaled);
+        sum_of_exps = sum_of_exps + gemmlowp::Rescale<kAccumulationIntegerBits>(
+                                        exp_on_negative_values(scaled_diff_f8));
+      }
+    }
+
+    // TODO(b/77858996): Implement fixed-point log().
+    // Not a fully-quantized implementation: floating-point log().
+    const float float_log_sum_of_exps =
+        std::log(static_cast<float>(sum_of_exps.raw()) /
+                 (1 << (31 - kAccumulationIntegerBits)));
+    const int32 fixed_log_sum_of_exps = static_cast<int32>(TfLiteRound(
+        float_log_sum_of_exps * (1 << (31 - kScaledDiffIntegerBits))));
+
+    // rescaled_diff_min is smallest representable in
+    // Q(kScaledDiffIntegerBits).(31-kScaledDiffIntegerBits) plus the
+    // log-sub-exps that will be subtracted in the loop.
+    //
+    // The thresholds diff_min, etc are negative.
+    const int rescaled_diff_min =
+        fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
+    const int adjusted_diff_min =
+        std::max(diff_min - 1,  // Note use of > below instead of >= above.
+                 MultiplyByQuantizedMultiplierSmallerThanOne(
+                     rescaled_diff_min, reverse_scaling_divisor,
+                     reverse_scaling_right_shift));
+
+    for (int c = 0; c < depth; ++c) {
+      int32 input_diff =
+          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      if (input_diff > adjusted_diff_min) {
+        const int32 input_diff_rescaled =
+            MultiplyByQuantizedMultiplierGreaterThanOne(
+                input_diff, input_multiplier, input_left_shift);
+        int32 unsat_output =
+            gemmlowp::RoundingDivideByPOT(
+                (input_diff_rescaled - fixed_log_sum_of_exps),
+                31 - kScaledDiffIntegerBits - kOutputIntegerBits) +
+            255;
+
+        output_data[i * depth + c] = static_cast<uint8>(
+            std::max(std::min(unsat_output, static_cast<int32>(255)), 0));
+      } else {
+        // Set output to smallest value.
+        output_data[i * depth + c] = 0;
+      }
+    }
+  }
+}
+
 inline void Logistic(const float* input_data, const Dims<4>& input_dims,
                      float* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Logistic");
@@ -4181,7 +4407,7 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
                      int32 input_zero_point, int32 input_range_radius,
                      int32 input_multiplier, int input_left_shift,
                      uint8* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Logistic");
+  gemmlowp::ScopedProfilingLabel label("Logistic/Uint8");
   /* batches */ MatchingArraySize(input_dims, 3, output_dims, 3);
   /* height */ MatchingArraySize(input_dims, 2, output_dims, 2);
   /* width */ MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -4661,66 +4887,23 @@ inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
 }
 
 inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
-                      float rmin, float rmax, float* output_data,
+                      float rmin, float rmax, int num_bits, float* output_data,
                       const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("FakeQuant");
 
   // 0 should always be a representable value. Let's assume that the initial
   // min,max range contains 0.
-  TFLITE_DCHECK_LE(rmin, 0.);
-  TFLITE_DCHECK_GE(rmax, 0.);
+  TFLITE_DCHECK_LE(rmin, 0.0f);
+  TFLITE_DCHECK_GE(rmax, 0.0f);
+  TFLITE_DCHECK_LT(rmin, rmax);
 
-  // Determine quantization parameters: zero_point, scale.
-  using Integer = uint8;
-  const Integer qmin = std::numeric_limits<Integer>::min();
-  const Integer qmax = std::numeric_limits<Integer>::max();
-  const float qmin_float = qmin;
-  const float qmax_float = qmax;
-  int32 zero_point = 0;
-  float scale = 0.f;
-  // If rmin==rmax, both must be zero per the above assertion,
-  // so we are done.
-  if (rmin != rmax) {
-    // First determine the scale.
-    scale = (rmax - rmin) / (qmax_float - qmin_float);
-
-    // Zero-point computation.
-    // First the initial floating-point computation. The zero-point can be
-    // determined from solving an affine equation for any known pair
-    // (real value, corresponding quantized value).
-    // We know two such pairs: (rmin, qmin) and (rmax, qmax).
-    // The arithmetic error on the zero point computed from either pair
-    // will be roughly machine_epsilon * (sum of absolute values of terms)
-    // so we want to use the variant that adds the smaller terms.
-    const float zero_point_from_min = qmin_float - rmin / scale;
-    const float zero_point_from_max = qmax_float - rmax / scale;
-    const float zero_point_from_min_error =
-        std::abs(qmin_float) + std::abs(rmin / scale);
-    const float zero_point_from_max_error =
-        std::abs(qmax_float) + std::abs(rmax / scale);
-
-    const float zero_point_float =
-        zero_point_from_min_error < zero_point_from_max_error
-            ? zero_point_from_min
-            : zero_point_from_max;
-
-    // Now we need to nudge the zero point to be an integer
-    // (our zero points are integer, and this is motivated by the requirement
-    // to be able to represent the real value "0" exactly as a quantized value,
-    // which is required in multiple places, for example in Im2col with SAME
-    // padding).
-    if (zero_point_float < qmin_float) {
-      zero_point = qmin;
-    } else if (zero_point_float > qmax_float) {
-      zero_point = qmax;
-    } else {
-      zero_point = static_cast<int32>(TfLiteRound(zero_point_float));
-    }
-    // The zero point should always be in the range of quantized value,
-    // [qmin, qmax].
-    TFLITE_DCHECK_GE(zero_point, qmin);
-    TFLITE_DCHECK_LE(zero_point, qmax);
-  }
+  // Code matches tensorflow's FakeQuantWithMinMaxArgsFunctor.
+  int quant_min = 0;
+  int quant_max = (1 << num_bits) - 1;
+  float nudged_min, nudged_max, nudged_scale;
+  NudgeQuantizationRange(rmin, rmax, quant_min, quant_max, &nudged_min,
+                         &nudged_max, &nudged_scale);
+  const float inv_nudged_scale = 1.0f / nudged_scale;
 
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
@@ -4731,11 +4914,12 @@ inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
       for (int x = 0; x < width; ++x) {
         for (int c = 0; c < depth; ++c) {
           const float src_val = input_data[Offset(input_dims, c, x, y, b)];
-          const float unclamped_quantized_val =
-              TfLiteRound(zero_point + src_val / scale);
-          const float quantized_val = std::min(
-              qmax_float, std::max(qmin_float, unclamped_quantized_val));
-          const float dst_val = scale * (quantized_val - zero_point);
+          const float clamped =
+              std::min(nudged_max, std::max(nudged_min, src_val));
+          const float clamped_shifted = clamped - nudged_min;
+          const float dst_val =
+              TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
+              nudged_min;
           output_data[Offset(output_dims, c, x, y, b)] = dst_val;
         }
       }
@@ -5164,6 +5348,7 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
                            const int32* paddings_data,
                            const Dims<4>& paddings_dims, T* output_data,
                            const Dims<4>& output_dims) {
+  // Unoptimized - Straight copy from reference ops.
   gemmlowp::ScopedProfilingLabel label("SpaceToBatchND");
 
   const int output_batch_size = ArraySize(output_dims, 3);
@@ -5205,29 +5390,76 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
+// Helper methods for BatchToSpaceND.
+// `spatial_index_dim` specifies post-crop offset index in this spatial
+// dimension, i.e. spatial offset introduced by flattening batch to spatial
+// dimension minus the crop size at beginning. `block_shape_dim` is the block
+// size in current dimension. `input_dim` and `output_dim` are input and output
+// size of BatchToSpaceND operation in current dimension.
+// Output start index is inclusive and end index is exclusive.
+inline void GetIndexRange(int spatial_index_dim, int block_shape_dim,
+                          int input_dim, int output_dim, int* start_index,
+                          int* end_index) {
+  // (*start_index) * block_shape_dim is effectively rounded up to the next
+  // multiple of block_shape_dim by the integer division.
+  *start_index =
+      std::max(0, (-spatial_index_dim + block_shape_dim - 1) / block_shape_dim);
+  // Similarly, (*end_index) * block_shape_dim is rounded up too (note that
+  // end_index is exclusive).
+  *end_index = std::min(
+      input_dim,
+      (output_dim - spatial_index_dim + block_shape_dim - 1) / block_shape_dim);
+}
+
 template <typename T>
 inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
                            const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims, T* output_data,
-                           const Dims<4>& output_dims) {
+                           const Dims<4>& block_shape_dims,
+                           const int32* crops_data, const Dims<4>& crops_dims,
+                           T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
 
   const int output_batch_size = ArraySize(output_dims, 3);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   const int input_batch_size = ArraySize(input_dims, 3);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int depth = ArraySize(input_dims, 0);
   const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
+  const int crops_top = crops_data[0];
+  const int crops_left = crops_data[2];
 
   for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      for (int in_w = 0; in_w < input_width; ++in_w) {
-        int out_batch = in_batch % output_batch_size;
-        int out_w = in_w * block_shape_width +
-                    (in_batch / output_batch_size) % block_shape_width;
-        int out_h = in_h * block_shape_height +
-                    (in_batch / output_batch_size) / block_shape_width;
+    const int out_batch = in_batch % output_batch_size;
+    const int spatial_offset = in_batch / output_batch_size;
+
+    int in_h_start = 0;
+    int in_h_end = 0;
+    // GetIndexRange ensures start and end indices are in [0, output_height).
+    GetIndexRange(spatial_offset / block_shape_width - crops_top,
+                  block_shape_height, input_height, output_height, &in_h_start,
+                  &in_h_end);
+
+    for (int in_h = in_h_start; in_h < in_h_end; ++in_h) {
+      const int out_h = in_h * block_shape_height +
+                        spatial_offset / block_shape_width - crops_top;
+      TFLITE_DCHECK_GE(out_h, 0);
+      TFLITE_DCHECK_LT(out_h, output_height);
+
+      int in_w_start = 0;
+      int in_w_end = 0;
+      // GetIndexRange ensures start and end indices are in [0, output_width).
+      GetIndexRange(spatial_offset % block_shape_width - crops_left,
+                    block_shape_width, input_width, output_width, &in_w_start,
+                    &in_w_end);
+
+      for (int in_w = in_w_start; in_w < in_w_end; ++in_w) {
+        const int out_w = in_w * block_shape_width +
+                          spatial_offset % block_shape_width - crops_left;
+        TFLITE_DCHECK_GE(out_w, 0);
+        TFLITE_DCHECK_LT(out_w, output_width);
         T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_batch);
         const T* in = input_data + Offset(input_dims, 0, in_w, in_h, in_batch);
         memcpy(out, in, depth * sizeof(T));
@@ -5240,7 +5472,7 @@ template <typename T>
 inline void Pad(const T* input_data, const Dims<4>& input_dims,
                 const std::vector<int>& left_paddings,
                 const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims) {
+                const Dims<4>& output_dims, const int32_t pad_value) {
   gemmlowp::ScopedProfilingLabel label("Pad");
   const int output_batch = ArraySize(output_dims, 3);
   const int output_height = ArraySize(output_dims, 2);
@@ -5260,27 +5492,27 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   const int input_depth = ArraySize(input_dims, 0);
 
   if (left_b_padding != 0) {
-    memset(output_data, 0,
+    memset(output_data, pad_value,
            left_b_padding * output_height * output_width * output_depth *
                sizeof(T));
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), 0,
+      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), pad_value,
              left_h_padding * output_width * output_depth * sizeof(T));
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), 0,
+        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), pad_value,
                left_w_padding * output_depth * sizeof(T));
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
-          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b), 0,
-                 left_d_padding * sizeof(T));
+          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b),
+                 pad_value, left_d_padding * sizeof(T));
         }
 
         T* out = output_data +
@@ -5294,20 +5526,21 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
           memset(
               output_data + Offset(output_dims, output_depth - right_d_padding,
                                    out_w, out_h, out_b),
-              0, right_d_padding * sizeof(T));
+              pad_value, right_d_padding * sizeof(T));
         }
       }
       if (right_w_padding != 0) {
         memset(
             output_data + Offset(output_dims, 0, output_width - right_w_padding,
                                  out_h, out_b),
-            0, right_w_padding * output_depth * sizeof(T));
+            pad_value, right_w_padding * output_depth * sizeof(T));
       }
     }
     if (right_h_padding != 0) {
       memset(output_data + Offset(output_dims, 0, 0,
                                   output_height - right_h_padding, out_b),
-             0, right_h_padding * output_width * output_depth * sizeof(T));
+             pad_value,
+             right_h_padding * output_width * output_depth * sizeof(T));
     }
   }
   if (right_b_padding != 0) {
@@ -5320,42 +5553,135 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
+inline void Pad(const T* input_data, const Dims<4>& input_dims,
+                const std::vector<int>& left_paddings,
+                const std::vector<int>& right_paddings, T* output_data,
+                const Dims<4>& output_dims) {
+  Pad(input_data, input_dims, left_paddings, right_paddings, output_data,
+      output_dims, 0);
+}
+
+// UNOPTIMIZED COPY of StridedSlice from reference_ops.h (see comments there).
+
+// Use until std::clamp() is available from C++17.
+inline int Clamp(const int v, const int lo, const int hi) {
+  TFLITE_DCHECK(!(hi < lo));
+  if (hi < v) return hi;
+  if (v < lo) return lo;
+  return v;
+}
+
+inline int StartForAxis(int begin_mask, const std::vector<int>& start_indices,
+                        const std::vector<int>& strides,
+                        const Dims<4>& input_shape, int axis) {
+  // Begin with the specified index
+  int start = start_indices[axis];
+
+  // begin_mask override
+  if (begin_mask & 1 << axis) {
+    if (strides[axis] > 0) {
+      // Forward iteration - use the first element. These values will get
+      // clamped below (Note: We could have set them to 0 and axis_size-1, but
+      // use lowest() and max() to maintain symmetry with StopForAxis())
+      start = std::numeric_limits<int>::lowest();
+    } else {
+      // Backward iteration - use the last element.
+      start = std::numeric_limits<int>::max();
+    }
+  }
+
+  // Handle negative indices
+  int axis_size = input_shape.sizes[axis];
+  if (start < 0) {
+    start += axis_size;
+  }
+
+  // Clamping
+  start = Clamp(start, 0, axis_size - 1);
+
+  return start;
+}
+
+inline int StopForAxis(int end_mask, const std::vector<int>& stop_indices,
+                       const std::vector<int>& strides,
+                       const Dims<4>& input_shape, int axis) {
+  // Begin with the specified index
+  int stop = stop_indices[axis];
+
+  // end_mask override
+  if (end_mask & (1 << axis)) {
+    if (strides[axis] > 0) {
+      // Forward iteration - use the last element. These values will get
+      // clamped below
+      stop = std::numeric_limits<int>::max();
+    } else {
+      // Backward iteration - use the first element.
+      stop = std::numeric_limits<int>::lowest();
+    }
+  }
+
+  // Handle negative indices
+  int axis_size = input_shape.sizes[axis];
+  if (stop < 0) {
+    stop += axis_size;
+  }
+
+  // Clamping
+  // Because the end index points one past the last element, we need slightly
+  // different clamping ranges depending on the direction.
+  if (strides[axis] > 0) {
+    // Forward iteration
+    stop = Clamp(stop, 0, axis_size);
+  } else {
+    // Backward iteration
+    stop = Clamp(stop, -1, axis_size - 1);
+  }
+
+  return stop;
+}
+
+inline bool LoopCondition(int index, int stop, int stride) {
+  // True when we have reached the end of an axis and should loop.
+  return stride > 0 ? index >= stop : index <= stop;
+}
+
+template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask,
-                         const std::vector<int>& starts,
-                         const std::vector<int>& stops,
+                         const std::vector<int>& start_indices,
+                         const std::vector<int>& stop_indices,
                          const std::vector<int>& strides, T* output_data,
                          const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("StridedSlice");
-  const int start_b = (begin_mask & 8) ? 0 : starts[3];
-  const int stop_b = (end_mask & 8) ? input_dims.sizes[3] : stops[3];
-  const int start_h = (begin_mask & 4) ? 0 : starts[2];
-  const int stop_h = (end_mask & 4) ? input_dims.sizes[2] : stops[2];
-  const int start_w = (begin_mask & 2) ? 0 : starts[1];
-  const int stop_w = (end_mask & 2) ? input_dims.sizes[1] : stops[1];
-  const int start_d = (begin_mask & 1) ? 0 : starts[0];
-  const int stop_d = (end_mask & 1) ? input_dims.sizes[0] : stops[0];
+  TFLITE_DCHECK_EQ(start_indices.size(), 4);
+  TFLITE_DCHECK_EQ(stop_indices.size(), 4);
+  TFLITE_DCHECK_EQ(strides.size(), 4);
+  const int start_b =
+      StartForAxis(begin_mask, start_indices, strides, input_dims, 3);
+  const int stop_b =
+      StopForAxis(end_mask, stop_indices, strides, input_dims, 3);
+  const int start_h =
+      StartForAxis(begin_mask, start_indices, strides, input_dims, 2);
+  const int stop_h =
+      StopForAxis(end_mask, stop_indices, strides, input_dims, 2);
+  const int start_w =
+      StartForAxis(begin_mask, start_indices, strides, input_dims, 1);
+  const int stop_w =
+      StopForAxis(end_mask, stop_indices, strides, input_dims, 1);
+  const int start_d =
+      StartForAxis(begin_mask, start_indices, strides, input_dims, 0);
+  const int stop_d =
+      StopForAxis(end_mask, stop_indices, strides, input_dims, 0);
 
   T* out_ptr = output_data;
-  if (strides[0] == 0) {
-    for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-      for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-        for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-          const int len = stop_d - start_d;
-          memcpy(out_ptr,
-                 input_data + Offset(input_dims, start_d, in_w, in_h, in_b),
-                 len * sizeof(T));
-          out_ptr += len;
-        }
-      }
-    }
-  } else {
-    for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-      for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-        for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-          for (int in_d = start_d; in_d < stop_d; in_d += strides[0]) {
-            *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
-          }
+  for (int in_b = start_b; !LoopCondition(in_b, stop_b, strides[3]);
+       in_b += strides[3]) {
+    for (int in_h = start_h; !LoopCondition(in_h, stop_h, strides[2]);
+         in_h += strides[2]) {
+      for (int in_w = start_w; !LoopCondition(in_w, stop_w, strides[1]);
+           in_w += strides[1]) {
+        for (int in_d = start_d; !LoopCondition(in_d, stop_d, strides[0]);
+             in_d += strides[0]) {
+          *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
         }
       }
     }
