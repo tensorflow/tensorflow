@@ -69,7 +69,7 @@ static StatusOr<bool> TryRemoveConditional(HloInstruction* conditional) {
         conditional->shape(), {conditional->mutable_operand(2)},
         conditional->false_computation()));
   }
-
+  conditional->SetupDerivedInstruction(call_op);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
   TF_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
 

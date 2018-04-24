@@ -689,24 +689,16 @@ class Estimator(object):
 
   def _get_features_and_labels_from_input_fn(self, input_fn, mode):
     """Extracts the `features` and labels from return values of `input_fn`."""
-    result = self._call_input_fn(input_fn, mode)
-    # TODO(anjalisridhar): What about the default DistributionStrategy? Perhaps
-    # using any input is alright in that case. There is also a
-    # has_dataset_or_queue_runner function that we may want to extend and use.
-    if (self._distribution is not None and
-        not isinstance(result, dataset_ops.Dataset) and
-        mode == model_fn_lib.ModeKeys.TRAIN):
-      raise ValueError('input_fn() must return a tf.data.Dataset when using a '
-                       'DistributionStrategy.')
     input_hooks = []
-    if isinstance(result, dataset_ops.Dataset):
-      if self._distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
-        # TODO(josh11b): This is currently using a one-shot iterator, we
-        # will update this to an initializeable iterator once the
-        # necessory support for creating an initializable iterator is
-        # available.
-        result = self._distribution.distribute_dataset(result).get_next()
-      else:
+    if self._distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
+      result = self._distribution.distribute_dataset(
+          lambda: self._call_input_fn(input_fn, mode))
+      iterator = result.make_initializable_iterator()
+      input_hooks.append(_DatasetInitializerHook(iterator))
+      result = iterator.get_next()
+    else:
+      result = self._call_input_fn(input_fn, mode)
+      if isinstance(result, dataset_ops.Dataset):
         iterator = result.make_initializable_iterator()
         input_hooks.append(_DatasetInitializerHook(iterator))
         result = iterator.get_next()
@@ -1265,7 +1257,8 @@ def _dict_to_str(dictionary):
     A `str` representing the `dictionary`.
   """
   return ', '.join('%s = %s' % (k, v)
-                   for k, v in sorted(six.iteritems(dictionary)))
+                   for k, v in sorted(six.iteritems(dictionary))
+                   if not isinstance(v, six.binary_type))
 
 
 def _write_dict_to_summary(output_dir,

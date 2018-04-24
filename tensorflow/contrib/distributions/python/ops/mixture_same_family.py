@@ -131,7 +131,7 @@ class MixtureSameFamily(distribution.Distribution):
         `components_distribution` rightmost batch shape.
     """
     parameters = locals()
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       self._mixture_distribution = mixture_distribution
       self._components_distribution = components_distribution
       self._runtime_assertions = []

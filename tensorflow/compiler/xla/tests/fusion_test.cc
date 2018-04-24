@@ -50,8 +50,6 @@ limitations under the License.
 
 using tensorflow::gtl::ArraySlice;
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace {
 
@@ -796,19 +794,19 @@ void BM_ParallelFusion(int num_iters) {
   // Transfer literals to device.
   auto param0_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param0_dim0, param0_dim1);
-  std::unique_ptr<ShapedBuffer> buffer0 =
+  ShapedBuffer buffer0 =
       client->LiteralToShapedBuffer(*param0_literal, device_ordinal)
           .ConsumeValueOrDie();
 
   auto param1_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param1_dim0, param1_dim1);
-  std::unique_ptr<ShapedBuffer> buffer1 =
+  ShapedBuffer buffer1 =
       client->LiteralToShapedBuffer(*param1_literal, device_ordinal)
           .ConsumeValueOrDie();
 
   auto param2_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param2_dim0, param2_dim1);
-  std::unique_ptr<ShapedBuffer> buffer2 =
+  ShapedBuffer buffer2 =
       client->LiteralToShapedBuffer(*param2_literal, device_ordinal)
           .ConsumeValueOrDie();
 
@@ -816,8 +814,8 @@ void BM_ParallelFusion(int num_iters) {
   std::unique_ptr<LocalExecutable> executable =
       client
           ->Compile(computation,
-                    {&buffer0->on_host_shape(), &buffer1->on_host_shape(),
-                     &buffer2->on_host_shape()},
+                    {&buffer0.on_host_shape(), &buffer1.on_host_shape(),
+                     &buffer2.on_host_shape()},
                     ExecutableBuildOptions())
           .ConsumeValueOrDie();
 
@@ -838,8 +836,7 @@ void BM_ParallelFusion(int num_iters) {
   // Run some warm-up executions.
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result =
-        executable->Run({buffer0.get(), buffer1.get(), buffer2.get()}, options);
+    auto result = executable->Run({&buffer0, &buffer1, &buffer2}, options);
     ASSERT_TRUE(result.ok());
   }
 
@@ -852,8 +849,7 @@ void BM_ParallelFusion(int num_iters) {
   tensorflow::testing::UseRealTime();
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result =
-        executable->Run({buffer0.get(), buffer1.get(), buffer2.get()}, options);
+    auto result = executable->Run({&buffer0, &buffer1, &buffer2}, options);
     ASSERT_TRUE(result.ok());
   }
 }

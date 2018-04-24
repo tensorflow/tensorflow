@@ -253,13 +253,13 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
 
   WorkerSession* sess = session();
   Device* src_device;
-  Status s = sess->device_mgr->LookupDevice(parsed.src_device, &src_device);
+  Status s = sess->device_mgr()->LookupDevice(parsed.src_device, &src_device);
   if (!s.ok()) {
     done(s);
     return;
   }
   Device* dst_device;
-  s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+  s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
   if (!s.ok()) {
     done(s);
     return;

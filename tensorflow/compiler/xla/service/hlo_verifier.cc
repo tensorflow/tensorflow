@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <set>
 
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -174,30 +175,13 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   TF_RETURN_IF_ERROR(CheckShape(broadcast, broadcast->shape()));
   TF_RET_CHECK(ShapeUtil::Rank(operand_shape) ==
                broadcast->dimensions().size());
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
-    int64 output_dimension = broadcast->dimensions()[i];
+  for (int64 operand_dimension = 0;
+       operand_dimension < ShapeUtil::Rank(operand_shape);
+       ++operand_dimension) {
+    int64 output_dimension = broadcast->dimensions()[operand_dimension];
     TF_RET_CHECK(broadcast->shape().dimensions(output_dimension) ==
-                 operand_shape.dimensions(i))
+                 operand_shape.dimensions(operand_dimension))
         << broadcast->ToString() << " operand shape " << operand_shape;
-  }
-  return tensorflow::Status::OK();
-}
-
-Status ShapeVerifier::HandleBroadcastDimOne(HloInstruction* broadcastDimOne) {
-  const Shape& operand_shape = broadcastDimOne->operand(0)->shape();
-  int64 operand_rank = ShapeUtil::Rank(operand_shape);
-  const Shape& output_shape = broadcastDimOne->shape();
-  // Check for mixed precision.
-  TF_RETURN_IF_ERROR(CheckShape(broadcastDimOne, output_shape));
-  TF_RET_CHECK(operand_rank == ShapeUtil::Rank(output_shape));
-  for (int64 i = 0; i < operand_rank; ++i) {
-    int64 operand_dimension = operand_shape.dimensions(i);
-    int64 output_dimension = output_shape.dimensions(i);
-    TF_RET_CHECK(operand_dimension == 1 ||
-                 operand_dimension == output_dimension)
-        << "Dimension " << i << " of broadcastDimOne "
-        << broadcastDimOne->ToString() << " is " << operand_dimension
-        << ", expected 1 or " << output_dimension;
   }
   return tensorflow::Status::OK();
 }
@@ -748,6 +732,73 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
   return tensorflow::Status::OK();
 }
 
+Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
+  auto* while_cond = instruction->while_condition();
+  auto* while_body = instruction->while_body();
+  if (while_cond->num_parameters() != 1) {
+    return FailedPrecondition(
+        "While condition must have exactly 1 parameter; had %lld : %s",
+        while_cond->num_parameters(), while_cond->ToString().c_str());
+  }
+  if (while_body->num_parameters() != 1) {
+    return FailedPrecondition(
+        "While body must have exactly 1 parameter; had %lld : %s",
+        while_body->num_parameters(), while_body->ToString().c_str());
+  }
+  if (instruction->operand_count() != 1) {
+    return FailedPrecondition(
+        "While loop must have exactly one operand; had %lld : %s",
+        instruction->operand_count(), instruction->ToString().c_str());
+  }
+  auto* init = instruction->operand(0);
+  auto* cond_param = while_cond->parameter_instruction(0);
+  if (!ShapeUtil::Compatible(init->shape(), cond_param->shape())) {
+    return FailedPrecondition(
+        "While condition's parameter must have the same shape as the "
+        "loop's 'init'. init: %s, param: %s",
+        init->ToString().c_str(), cond_param->ToString().c_str());
+  }
+  auto* cond_root = while_cond->root_instruction();
+  if (!ShapeUtil::Compatible(cond_root->shape(),
+                             ShapeUtil::MakeShape(PRED, {}))) {
+    return FailedPrecondition("While condition should have shape PRED: %s",
+                              cond_root->ToString().c_str());
+  }
+  auto* body_param = while_body->parameter_instruction(0);
+  if (!ShapeUtil::Compatible(init->shape(), body_param->shape())) {
+    return FailedPrecondition(
+        "While body's parameter must have the same shape as the loop's"
+        " 'init'. init: %s, param: %s",
+        init->ToString().c_str(), body_param->ToString().c_str());
+  }
+  auto* body_root = while_body->root_instruction();
+  if (!ShapeUtil::Compatible(init->shape(), body_root->shape())) {
+    return FailedPrecondition(
+        "While body should have same shape as the loop's 'init'."
+        "init: %s, body: %s",
+        init->ToString().c_str(), body_root->ToString().c_str());
+  }
+  return tensorflow::Status::OK();
+}
+
+Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
+  const Shape& out_shape = instruction->shape();
+  for (HloInstruction* operand : instruction->operands()) {
+    const Shape& operand_shape = operand->shape();
+    if (!ShapeUtil::IsScalar(operand_shape) &&
+        !ShapeUtil::CompatibleIgnoringElementType(operand_shape, out_shape)) {
+      return FailedPrecondition(
+          "Implicit broadcast is not allowed in HLO."
+          "Found non-compatible shapes for instruction %s.\n"
+          "output: %s\noperand: %s\n",
+          HloOpcodeString(instruction->opcode()).c_str(),
+          ShapeUtil::HumanString(out_shape).c_str(),
+          ShapeUtil::HumanString(operand_shape).c_str());
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
 
@@ -788,39 +839,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
             << instruction->dimensions().size()
             << " != " << ShapeUtil::Rank(instruction->operand(0)->shape());
       } else if (instruction->opcode() == HloOpcode::kWhile) {
-        auto* while_cond = instruction->while_condition();
-        auto* while_body = instruction->while_body();
-        TF_RET_CHECK(while_cond->num_parameters() == 1)
-            << "While condition must have exactly 1 parameter; had "
-            << while_cond->num_parameters() << ": " << while_cond->ToString();
-        TF_RET_CHECK(while_body->num_parameters() == 1)
-            << "While body must have exactly 1 parameter; had "
-            << while_body->num_parameters() << ": " << while_body->ToString();
-        TF_RET_CHECK(instruction->operand_count() == 1)
-            << "While loop must have exactly one operand; had "
-            << instruction->operand_count() << ": " << instruction->ToString();
-
-        auto* init = instruction->operand(0);
-        auto* cond_param = while_cond->parameter_instruction(0);
-        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), cond_param->shape()))
-            << "While condition's parameter must have the same shape as the "
-               "loop's 'init'. init: "
-            << init->ToString() << ", param: " << cond_param->ToString();
-        auto* cond_root = while_cond->root_instruction();
-        TF_RET_CHECK(ShapeUtil::Compatible(cond_root->shape(),
-                                           ShapeUtil::MakeShape(PRED, {})))
-            << "While condition should have shape PRED: "
-            << cond_root->ToString();
-
-        auto* body_param = while_body->parameter_instruction(0);
-        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_param->shape()))
-            << "While body's parameter must have the same shape as the loop's "
-               "'init'. init: "
-            << init->ToString() << ", param: " << body_param->ToString();
-        auto* body_root = while_body->root_instruction();
-        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_root->shape()))
-            << "While body should have same shape as the loop's 'init'. init: "
-            << init->ToString() << ", body: " << body_root->ToString();
+        TF_RETURN_IF_ERROR(CheckWhileInstruction(instruction));
+      } else if (instruction->IsElementwise()) {
+        TF_RETURN_IF_ERROR(CheckElementwiseInstruction(instruction));
       }
 
       auto previous = instructions.find(instruction->name());

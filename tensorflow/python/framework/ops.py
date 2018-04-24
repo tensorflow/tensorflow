@@ -1385,6 +1385,22 @@ def register_tensor_conversion_function(base_type,
     if not callable(conversion_func):
       raise TypeError("conversion_func must be callable.")
 
+    # context._context is checked so that we don't inadvertently create it.
+    # This is because enable_eager_execution will fail when called from the main
+    # function if the context._context is already created, and the
+    # register_tensor_conversion_function calls happen when the module is
+    # imported.
+    if context._context is not None and context.executing_eagerly(
+    ) and isinstance(base_type, six.integer_types + (
+        float,
+        np.ndarray,
+    )):
+      # TODO(nareshmodi): consider setting a context variable which disables the
+      # fastpath instead.
+      raise TypeError(
+          "Cannot register conversions for numpy arrays, python number types "
+          "when executing eagerly.")
+
     try:
       funcs_at_priority = _tensor_conversion_func_registry[priority]
     except KeyError:

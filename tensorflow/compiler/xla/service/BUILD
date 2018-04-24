@@ -755,6 +755,7 @@ cc_library(
         ":hlo",
         ":hlo_execution_profile",
         ":hlo_graph_dumper",
+        ":hlo_proto",
         ":pool",
         ":session_proto",
         ":shaped_buffer",
@@ -1217,6 +1218,23 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_creation_utils_test",
+    srcs = ["hlo_creation_utils_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_evaluator",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -1936,10 +1954,12 @@ cc_library(
     deps = [
         ":computation_layout",
         ":hlo",
+        ":hlo_dce",
         ":hlo_graph_dumper",
         ":hlo_pass",
         ":logical_buffer",
         ":tuple_points_to_analysis",
+        ":tuple_simplifier",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -2015,6 +2035,7 @@ cc_library(
     srcs = ["hlo_verifier.cc"],
     hdrs = ["hlo_verifier.h"],
     deps = [
+        ":hlo",
         ":hlo_pass",
         ":shape_inference",
         "//tensorflow/compiler/xla:status_macros",
@@ -2415,6 +2436,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
 )

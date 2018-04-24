@@ -21,8 +21,6 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib.distribute.python import values
-from tensorflow.contrib.eager.python import datasets
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -62,11 +60,8 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.colocate_with(colocate_with):
       return next_creator(*args, **kwargs)
 
-  def distribute_dataset(self, dataset):
-    if context.executing_eagerly():
-      return datasets.Iterator(dataset)
-    else:
-      return dataset.make_one_shot_iterator()
+  def distribute_dataset(self, dataset_fn):
+    return self._call_dataset_fn(dataset_fn)
 
   def _broadcast(self, tensor, destinations):
     return tensor

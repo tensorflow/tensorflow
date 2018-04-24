@@ -1700,7 +1700,7 @@ TEST_F(CApiGradientsTest, OpWithNoGradientRegistered_NoGradInputs) {
   TestGradientsError(false);
 }
 
-// REGISTER_OP for CApiTestAttributesTest test cases.
+// REGISTER_OP for CApiAttributesTest test cases.
 // Registers two ops, each with a single attribute called 'v'.
 // The attribute in one op will have a type 'type', the other
 // will have list(type).

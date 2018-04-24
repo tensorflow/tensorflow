@@ -87,7 +87,7 @@ class XlaComputationLaunchContext {
   // Given the XLA output in `output`, populate all outputs of `ctx`.
   void PopulateOutputs(OpKernelContext* ctx,
                        const XlaCompiler::CompilationResult* kernel,
-                       std::unique_ptr<xla::ScopedShapedBuffer> output);
+                       xla::ScopedShapedBuffer output);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.
