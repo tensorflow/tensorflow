@@ -79,6 +79,7 @@ See the @{$python/nn} guide.
 @@weighted_cross_entropy_with_logits
 @@embedding_lookup
 @@embedding_lookup_sparse
+@@safe_embedding_lookup_sparse
 @@dynamic_rnn
 @@bidirectional_dynamic_rnn
 @@raw_rnn
