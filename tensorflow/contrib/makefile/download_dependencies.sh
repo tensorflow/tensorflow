@@ -37,6 +37,8 @@ RE2_URL="$(grep -o 'https://mirror.bazel.build/github.com/google/re2/.*tar\.gz' 
 FFT2D_URL="$(grep -o 'http.*fft\.tgz' "${BZL_FILE_PATH}" | grep -v mirror.bazel | head -n1)"
 ABSL_URL="$(grep -o 'https://github.com/abseil/abseil-cpp/.*tar.gz' "${BZL_FILE_PATH}" | head -n1)"
 CUB_URL="$(grep -o 'https.*cub/archive.*zip' "${BZL_FILE_PATH}" | grep -v mirror.bazel | head -n1)"
+FARMHASH_URL="https://mirror.bazel.build/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz"
+HIGHWAYHASH_URL="https://mirror.bazel.build/github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz"
 
 # TODO(petewarden): Some new code in Eigen triggers a clang bug with iOS arm64,
 #                   so work around it by patching the source.
@@ -91,6 +93,8 @@ download_and_extract "${RE2_URL}" "${DOWNLOADS_DIR}/re2"
 download_and_extract "${FFT2D_URL}" "${DOWNLOADS_DIR}/fft2d"
 download_and_extract "${ABSL_URL}" "${DOWNLOADS_DIR}/absl"
 download_and_extract "${CUB_URL}" "${DOWNLOADS_DIR}/cub/external/cub_archive"
+download_and_extract "${FARMHASH_URL}" "${DOWNLOADS_DIR}/farmhash"
+download_and_extract "${HIGHWAYHASH_URL}" "${DOWNLOADS_DIR}/highwayhash"
 
 replace_by_sed 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
   "${DOWNLOADS_DIR}/eigen/Eigen/src/Core/arch/NEON/Complex.h"
