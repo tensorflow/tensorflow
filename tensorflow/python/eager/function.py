@@ -80,7 +80,7 @@ def capture_value(tensor_map, value, dtype, name):
       if handle_data is not None and handle_data.is_set:
         # pylint: disable=protected-access
         if ops._USE_C_SHAPES:
-          pywrap_tensorflow.TFE_SetResourceHandleShapeAndType(
+          pywrap_tensorflow.SetResourceHandleShapeAndType(
               captured_value.graph._c_graph, captured_value._as_tf_output(),
               handle_data.SerializeToString())
         else:

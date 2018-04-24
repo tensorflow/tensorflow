@@ -703,7 +703,15 @@ class _FuncGraph(ops.Graph):
     with ops.control_dependencies(None):
       ph = array_ops.placeholder(tensor.dtype, shape=tensor.get_shape())
     # pylint: disable=protected-access
-    ph._handle_data = tensor._handle_data
+    if ops._USE_C_SHAPES:
+      handle_data = c_api.GetResourceHandleShapeAndType(tensor.graph._c_graph,
+                                                        tensor._as_tf_output())
+      if handle_data:
+        c_api.SetResourceHandleShapeAndType(ph.graph._c_graph,
+                                            ph._as_tf_output(),
+                                            compat.as_bytes(handle_data))
+    else:
+      ph._handle_data = tensor._handle_data
     # pylint: enable=protected-access
     self._captured[tensor] = ph
     self.extra_args.append(ph)
