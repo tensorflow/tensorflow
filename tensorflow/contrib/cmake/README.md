@@ -4,7 +4,7 @@ TensorFlow CMake build
 This directory contains CMake files for building TensorFlow on Microsoft
 Windows and Linux. [CMake](https://cmake.org) is a cross-platform tool that can
 generate build scripts for multiple build systems, including Microsoft
-Visual Studio and GCC. The method suppose could work on MacOS, but not tested yet.
+Visual Studio and GCC. "The method has not been tested on Mac OS X.
 
 **N.B.** We provide Linux build instructions primarily for the purpose of
 testing the build. We recommend using the standard Bazel-based build on
@@ -14,12 +14,12 @@ Current Status
 --------------
 
 CMake can be used to build TensorFlow on all platforms. See the [getting started documentation](https://www.tensorflow.org/install/install_windows)
-for instructions on how to install a pre-built TensorFlow package on Windows and Linux. Procedure in MacOS is similar to the Linux build.
+for instructions on how to install a pre-built TensorFlow package on Windows and Linux. The procedure in MacOS is similar to the Linux build.
 
 ### Current known limitations
 * It is not possible to load a custom Op library.
 * GCS file system is not supported.
-* Debug build is not available since python no longer release debug library.
+* Debug build is not available since Python for Windows is no longer distributed with a debug library.
 
 ## Building with CMake
 
