@@ -192,51 +192,51 @@ string SnakeToCamelCase(const string& str, bool upper = false) {
 bool FindAndCut(re2::StringPiece* input, const RE2& expr,
     re2::StringPiece* before_match, re2::StringPiece* ret_match = nullptr) {
   re2::StringPiece match;
-  bool matches =
-      expr.Match(*input, 0, input->size(), RE2::UNANCHORED, &match, 1);
-  if (matches) {
-    before_match->set(input->data(), match.begin() - input->begin());
-    input->remove_prefix(match.end() - before_match->begin());
-    if (ret_match != nullptr) {
-      *ret_match = match;
-    }
-  } else {
-    *before_match = *input;
-    if (ret_match != nullptr) {
-      ret_match->set(nullptr, 0);
-    }
+  if (!expr.Match(*input, 0, input->size(), RE2::UNANCHORED, &match, 1)) {
+    return false;
   }
-  return matches;
+  before_match->set(input->data(), match.begin() - input->begin());
+  input->remove_prefix(match.end() - before_match->begin());
+  if (ret_match != nullptr) {
+    *ret_match = match;
+  }
+  return true;
 }
 
-string ParseDocumentation(const string& mdtext) {
+string ParseDocumentation(re2::StringPiece input) {
+  // TODO(karllessard) This is a very minimalist utility method for converting
+  // markdown syntax, as found in ops descriptions, to Javadoc/html tags. Check
+  // for alternatives to increase the level of support for markups.
   std::stringstream javadoc_text;
-  re2::StringPiece input(mdtext);
-  re2::StringPiece text;
   bool in_list = false;
-  do {
+  const RE2 markup_expr(
+      "\n+\\*[[:blank:]]+|\n{2,}|`{3,}|`{1,2}|\\*{1,2}\\b|\\[");
+  while (true) {
+    re2::StringPiece text;
     re2::StringPiece markup;
-    FindAndCut(&input,
-        "\n+\\*[[:blank:]]+|\n{2,}|`{3,}|`{1,2}|\\*{1,2}\\b|\\[",
-        &text, &markup);
-    javadoc_text << text;
-    if (markup.empty()) {
-      break;  // we are done parsing
+    if (!FindAndCut(&input, markup_expr, &text, &markup)) {
+      javadoc_text << input;
+      break;  // end of loop
     }
+    javadoc_text << text;
     if (markup.starts_with("\n")) {
       javadoc_text << "\n";
       if (markup.contains("* ")) {
+        // starts a list item
         javadoc_text << (in_list ? "</li>\n" : "<ul>\n") << "<li>\n";
         in_list = true;
       } else if (markup.starts_with("\n\n")) {
         if (in_list) {
+          // ends the current list
           javadoc_text << "</li>\n</ul>\n";
           in_list = false;
         } else if (!input.starts_with("```")) {
+          // starts new paragraph (not required if a <pre> block follows)
           javadoc_text << "<p>\n";
         }
       }
     } else if (markup.starts_with("```") && text.empty()) {
+      // create a multiline code block
       re2::StringPiece language;
       RE2::Consume(&input, "[\\w\\+]+", &language);
       if (FindAndCut(&input, markup.ToString() + "\n*", &text)) {
@@ -245,34 +245,41 @@ string ParseDocumentation(const string& mdtext) {
         javadoc_text << markup << language;
       }
     } else if (markup.starts_with("`")) {
+      // write inlined code
       if (FindAndCut(&input, markup, &text)) {
         javadoc_text << "{@code " << text << "}";
       } else {
         javadoc_text << markup;
       }
     } else if (markup == "**") {
+      // emphase text (strong)
       if (FindAndCut(&input, "\\b\\*{2}", &text)) {
-        javadoc_text << "<b>" << text << "</b>";
+        javadoc_text << "<b>" << ParseDocumentation(text) << "</b>";
       } else {
         javadoc_text << markup;
       }
     } else if (markup == "*") {
+      // emphase text (light)
       if (FindAndCut(&input, "\\b\\*{1}", &text)) {
-        javadoc_text << "<i>" << text << "</i>";
+        javadoc_text << "<i>" << ParseDocumentation(text) << "</i>";
       } else {
         javadoc_text << markup;
       }
     } else if (markup == "[") {
+      // add an external link
       string label;
       string link;
       if (RE2::Consume(&input, "([^\\[]+)\\]\\((http.+)\\)", &label, &link)) {
-        javadoc_text << "<a href=\"" << link << "\">" << label << "</a>";
+        javadoc_text << "<a href=\"" << link << "\">"
+            << ParseDocumentation(label)
+            << "</a>";
       } else {
         javadoc_text << markup;
       }
+    } else {
+      javadoc_text << markup;
     }
-  } while (!input.empty());
-
+  }
   return javadoc_text.str();
 }
 
