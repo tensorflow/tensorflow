@@ -116,23 +116,47 @@ There are a few options to install TensorFlow on your machine:
 <a name="InstallingVirtualenv"></a>
 ### Use `pip` in a virtual environment
 
-This is the *recommended* install method. The
-[Virtualenv](https://virtualenv.pypa.io/en/stable/) tool creates virtual Python
-environments that are isolated from other Python development on the same machine.
-In this scenario, you install TensorFlow and its dependencies within a virtual
-environment that is available when *activated*. Virtualenv provides a reliable
-way to install and run TensorFlow while avoiding conflicts with the rest of the
-system.
+Key Point: Using a virtual environment is the recommended install method.
 
-1\. On Ubuntu, install the `pip` and `virtualenv` packages:
+The [Virtualenv](https://virtualenv.pypa.io/en/stable/) tool creates virtual
+Python environments that are isolated from other Python development on the same
+machine. In this scenario, you install TensorFlow and its dependencies within a
+virtual environment that is available when *activated*. Virtualenv provides a
+reliable way to install and run TensorFlow while avoiding conflicts with the rest
+of the system.
+
+##### 1. Install Python, `pip`, and `virtualenv`.
+
+On Ubuntu, Python is automatically installed and `pip` is *usually* installed.
+Confirm the `python` and `pip` versions:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">python -V</code>
+  <code class="devsite-terminal">pip -V  # or: pip3 -V</code>
+</pre>
+
+To install these packages on Ubuntu:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">sudo apt-get install python-pip python-dev python-virtualenv   # for Python 2.7</code>
   <code class="devsite-terminal">sudo apt-get install python3-pip python3-dev python-virtualenv # for Python 3.n</code>
 </pre>
 
-2\. Create a directory for the virtual environment and choose a Python
-interpreter:
+We *recommend* using `pip` version 8.1 or higher. If using a release before
+version 8.1,  upgrade `pip`:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">sudo pip install -U pip</code>
+</pre>
+
+If not using Ubuntu and [setuptools](https://pypi.org/project/setuptools/) is
+installed, use `easy_install` to install `pip`:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">easy_install -U pip</code>
+</pre>
+
+##### 2. Create a directory for the virtual environment and choose a Python interpreter.
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">mkdir ~/tensorflow  # somewhere to work out of</code>
@@ -142,7 +166,9 @@ interpreter:
   <code class="devsite-terminal">virtualenv --system-site-packages -p python3 <var>venv</var> # Use Python 3.n</code>
 </pre>
 
-3\. Activate the Virtualenv environment using one of these shell commands:
+##### 3. Activate the Virtualenv environment.
+
+Use one of these shell-specific commands to activate the virtual environment:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">source ~/tensorflow/<var>venv</var>/bin/activate      # bash, sh, ksh, or zsh</code>
@@ -152,25 +178,31 @@ interpreter:
 
 When the Virtualenv is activated, the shell prompt displays as `(venv) $`.
 
-4\. Upgrade `pip` in your virtual environment:
+##### 4. Upgrade `pip` in the virtual environment.
 
-See the [pip installation guide](https://pip.pypa.io/en/stable/installing/) for
-instructions, or use `easy_install`:
-
-<pre class="prettyprint lang-bsh">
-(venv)$ easy_install -U pip
-</pre>
-
-5\. Within an active Virtualenv environment, use one of the following `pip`
-commands to install the TensorFlow package:
+Within the active virtual environment, upgrade `pip`:
 
 <pre class="prettyprint lang-bsh">
-(venv)$ pip install --upgrade tensorflow      # for Python 2.7</code>
-(venv)$ pip3 install --upgrade tensorflow     # for Python 3.n</code>
-(venv)$ pip install --upgrade tensorflow-gpu  # for Python 2.7 and GPU</code>
+(venv)$ pip install -U pip
 </pre>
 
-Success! TensorFlow is now installed.
+You can install other Python packages within the virtual environment without
+affecting packages outside the `virtualenv`.
+
+##### 5. Install TensorFlow in the virtual environment.
+
+Choose one of the available TensorFlow packages for installation:
+
+* `tensorflow` —Current release for CPU
+* `tensorflow-gpu` —Current release with GPU support
+* `tf-nightly` —Nightly build for CPU
+* `tf-nightly-gpu` —Nightly build with GPU support
+
+Within an active Virtualenv environment, use `pip` to install the package:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">pip install -U tensorflow</code>
+</pre>
 
 Use `pip list` to show the packages installed in the virtual environment.
 [Validate the install](#ValidateYourInstallation) and test the version:
@@ -178,6 +210,8 @@ Use `pip list` to show the packages installed in the virtual environment.
 <pre class="prettyprint lang-bsh">
 (venv)$ python -c "import tensorflow as tf; print(tf.__version__)"
 </pre>
+
+Success: TensorFlow is now installed.
 
 Use the `deactivate` command to stop the Python virtual environment.
 
@@ -222,10 +256,9 @@ environment, a system `pip` install is straightforward.
 
 See the
 [REQUIRED_PACKAGES section of setup.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/pip_package/setup.py)
-for a list of TensorFlow packages that `pip` installs or upgrade`.
+for a list of packages that TensorFlow installs.
 
-
-#### Install Python and `pip`
+##### 1. Install Python, `pip`, and `virtualenv`.
 
 On Ubuntu, Python is automatically installed and `pip` is *usually* installed.
 Confirm the `python` and `pip` versions:
@@ -235,28 +268,42 @@ Confirm the `python` and `pip` versions:
   <code class="devsite-terminal">pip -V  # or: pip3 -V</code>
 </pre>
 
-We *strongly recommend* `pip` or `pip3` version 8.1 or higher. If using a release
-before version 8.1,  upgrade `pip`:
+To install these packages on Ubuntu:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">sudo apt-get install python-pip python-dev   # for Python 2.7</code>
   <code class="devsite-terminal">sudo apt-get install python3-pip python3-dev # for Python 3.n</code>
 </pre>
 
-
-#### Install TensorFlow
-
-Install one of the available TensorFlow packages:
+We *recommend* using `pip` version 8.1 or higher. If using a release before
+version 8.1,  upgrade `pip`:
 
 <pre class="prettyprint lang-bsh">
-  <code># Select one:</code>
-  <code class="devsite-terminal">sudo pip install tensorflow      # Python 2.7 CPU (no GPU support)</code>
-  <code class="devsite-terminal">sudo pip3 install tensorflow     # Python 3.n CPU (no GPU support)</code>
-  <code class="devsite-terminal">sudo pip install tensorflow-gpu  # Python 2.7 GPU support</code>
-  <code class="devsite-terminal">sudo pip3 install tensorflow-gpu # Python 3.n GPU support</code>
+  <code class="devsite-terminal">sudo pip install -U pip</code>
 </pre>
 
-Success! TensorFlow is now installed.
+If not using Ubuntu and [setuptools](https://pypi.org/project/setuptools/) is
+installed, use `easy_install` to install `pip`:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">easy_install -U pip</code>
+</pre>
+
+##### 2. Install TensorFlow on system.
+
+Choose one of the available TensorFlow packages for installation:
+
+* `tensorflow` —Current release for CPU
+* `tensorflow-gpu` —Current release with GPU support
+* `tf-nightly` —Nightly build for CPU
+* `tf-nightly-gpu` —Nightly build with GPU support
+
+And use `pip` to install the package for Python 2 or 3:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">sudo pip install -U tensorflow   # Python 2.7</code>
+  <code class="devsite-terminal">sudo pip3 install -U tensorflow  # Python 3.n</code>
+</pre>
 
 Use `pip list` to show the packages installed on the system.
 [Validate the install](#ValidateYourInstallation) and test the version:
@@ -264,6 +311,8 @@ Use `pip list` to show the packages installed on the system.
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">python -c "import tensorflow as tf; print(tf.__version__)"</code>
 </pre>
+
+Success: TensorFlow is now installed.
 
 #### Problems
 
