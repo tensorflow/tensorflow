@@ -891,6 +891,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "ApplyAdagradDA"
@@ -21784,6 +21791,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
   is_stateful: true
 }
 op {
@@ -23148,6 +23162,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_stateful: true
@@ -27185,6 +27206,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
