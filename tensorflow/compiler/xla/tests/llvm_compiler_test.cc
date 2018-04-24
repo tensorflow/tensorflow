@@ -43,7 +43,7 @@ class LLVMCompilerTest : public ::testing::Test {
   ~LLVMCompilerTest() override {}
 
  protected:
-  using Platform = ::perftools::gputools::Platform;
+  using Platform = se::Platform;
 
   explicit LLVMCompilerTest(string platform_name)
       : platform_name_(std::move(platform_name)) {}
@@ -95,7 +95,7 @@ class LLVMCompilerTest : public ::testing::Test {
     modules.push_back(hlo_module->Clone());
     modules.push_back(std::move(hlo_module));
 
-    std::vector<std::vector<perftools::gputools::StreamExecutor *>> executors;
+    std::vector<std::vector<se::StreamExecutor *>> executors;
     executors.push_back({backend_->default_stream_executor()});
     executors.push_back({backend_->default_stream_executor()});
 

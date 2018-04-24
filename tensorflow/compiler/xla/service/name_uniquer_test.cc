@@ -57,9 +57,16 @@ TEST_F(NameUniquerTest, NumericSuffixes) {
   EXPECT_EQ("foo.55", uniquer.GetUniqueName("foo"));
   EXPECT_EQ("foo.55.1", uniquer.GetUniqueName("foo.55.1"));
   EXPECT_EQ("foo.55.2", uniquer.GetUniqueName("foo.55.1"));
-  EXPECT_EQ("bar", uniquer.GetUniqueName("bar.-1000"));
+  EXPECT_EQ("bar.0", uniquer.GetUniqueName("bar.-1000"));
   EXPECT_EQ("bar.1", uniquer.GetUniqueName("bar.-2000"));
   EXPECT_EQ("bar.2", uniquer.GetUniqueName("bar.1"));
+}
+
+TEST_F(NameUniquerTest, PrefixHasSuffix) {
+  NameUniquer uniquer(".");
+
+  EXPECT_EQ("foo.11.0", uniquer.GetUniqueName("foo.11.0"));
+  EXPECT_EQ("foo.11", uniquer.GetUniqueName("foo.11"));
 }
 
 TEST_F(NameUniquerTest, Sanitize) {
@@ -73,7 +80,7 @@ TEST_F(NameUniquerTest, Sanitize) {
   EXPECT_EQ("foo_55", uniquer.GetUniqueName("foo"));
 
   // Invalid characters will be replaced with '_'.
-  EXPECT_EQ("bar", uniquer.GetUniqueName("bar<-1000"));
+  EXPECT_EQ("bar_0", uniquer.GetUniqueName("bar<-1000"));
   EXPECT_EQ("bar_1", uniquer.GetUniqueName("bar<-2000"));
   EXPECT_EQ("bar_2", uniquer.GetUniqueName("bar_1"));
 

@@ -266,7 +266,7 @@ one_device_strategy = NamedDistribution(
     "OneDeviceCPU", one_device_strategy.OneDeviceStrategy("/cpu:0"),
     None)
 tpu_strategy = NamedDistribution(
-    "TPU", tpu_strategy.TpuStrategy(), required_tpu=True)
+    "TPU", tpu_strategy.TPUStrategy(), required_tpu=True)
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
     mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"]), 1)

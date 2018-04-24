@@ -75,15 +75,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuBlasPlugin);
 
 namespace wrap {
 
-#define PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(__name)                      \
+#define STREAM_EXECUTOR_CUBLAS_WRAP(__name)                         \
   struct WrapperShim__##__name {                                    \
     static const char *kName;                                       \
     template <typename... Args>                                     \
@@ -94,8 +93,8 @@ namespace wrap {
   } __name;                                                         \
   const char *WrapperShim__##__name::kName = #__name;
 
-#define PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(__name) \
-  PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(__name)
+#define STREAM_EXECUTOR_CUBLAS_V2_WRAP(__name) \
+  STREAM_EXECUTOR_CUBLAS_WRAP(__name)
 
 #define CUBLAS_BLAS_ROUTINE_EACH(__macro) \
   __macro(cublasSnrm2)                    \
@@ -269,28 +268,28 @@ namespace wrap {
   __macro(cublasCdgmm)                    \
   __macro(cublasZdgmm)
 
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasCreate)
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasDestroy)
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasSetStream)
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasSetPointerMode)
-PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP(cublasGetPointerMode)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSgemmBatched)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasDgemmBatched)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasCgemmBatched)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasZgemmBatched)
-CUBLAS_BLAS_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasCreate)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasDestroy)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasSetStream)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasSetPointerMode)
+STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasGetPointerMode)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasSgemmBatched)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasDgemmBatched)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasCgemmBatched)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasZgemmBatched)
+CUBLAS_BLAS_ROUTINE_EACH(STREAM_EXECUTOR_CUBLAS_V2_WRAP)
 
 #if CUDA_VERSION >= 7050
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSgemmEx)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasSgemmEx)
 #endif
 
 #if CUDA_VERSION >= 8000
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasGemmEx)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasGemmEx)
 #endif
 
 #if CUDA_VERSION >= 9000
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasGetMathMode)
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSetMathMode)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasGetMathMode)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasSetMathMode)
 #endif
 
 }  // namespace wrap
@@ -2803,46 +2802,39 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
 
 }  // namespace cuda
 
-namespace gpu = ::perftools::gputools;
-
 void initialize_cublas() {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::BlasFactory>(
-              gpu::cuda::kCudaPlatformId, gpu::cuda::kCuBlasPlugin, "cuBLAS",
-              [](gpu::internal::StreamExecutorInterface
-                     *parent) -> gpu::blas::BlasSupport * {
-                gpu::cuda::CUDAExecutor *cuda_executor =
-                    dynamic_cast<gpu::cuda::CUDAExecutor *>(parent);
-                if (cuda_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the cuBLAS "
-                      << "support library with a non-CUDA StreamExecutor";
-                  return nullptr;
-                }
+  port::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
+          cuda::kCudaPlatformId, cuda::kCuBlasPlugin, "cuBLAS",
+          [](internal::StreamExecutorInterface *parent) -> blas::BlasSupport * {
+            cuda::CUDAExecutor *cuda_executor =
+                dynamic_cast<cuda::CUDAExecutor *>(parent);
+            if (cuda_executor == nullptr) {
+              LOG(ERROR)
+                  << "Attempting to initialize an instance of the cuBLAS "
+                  << "support library with a non-CUDA StreamExecutor";
+              return nullptr;
+            }
 
-                gpu::cuda::CUDABlas *blas =
-                    new gpu::cuda::CUDABlas(cuda_executor);
-                if (!blas->Init()) {
-                  // Note: Init() will log a more specific error.
-                  delete blas;
-                  return nullptr;
-                }
-                return blas;
-              });
+            cuda::CUDABlas *blas = new cuda::CUDABlas(cuda_executor);
+            if (!blas->Init()) {
+              // Note: Init() will log a more specific error.
+              delete blas;
+              return nullptr;
+            }
+            return blas;
+          });
 
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuBLAS factory: "
                << status.error_message();
   }
 
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,
-                                                     gpu::PluginKind::kBlas,
-                                                     gpu::cuda::kCuBlasPlugin);
+  PluginRegistry::Instance()->SetDefaultFactory(
+      cuda::kCudaPlatformId, PluginKind::kBlas, cuda::kCuBlasPlugin);
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(register_cublas,
-                            { perftools::gputools::initialize_cublas(); });
+                            { stream_executor::initialize_cublas(); });

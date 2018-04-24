@@ -67,6 +67,8 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
     dev_resolver_->ClearTask(task);
   }
 
+  BufRendezvous* buf_rendezvous() override { return &buf_rendezvous_; }
+
   // Copy utility that always copies bytes from src to dst even if
   // they are on the same device, unlike CopyTensor::ViaDMA which will
   // just change the dst buffer pointer in that case.

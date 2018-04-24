@@ -83,6 +83,13 @@ REGISTER_OP("GeneratorDataset")
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("UnbatchDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ZipDataset")
     .Input("input_datasets: N * variant")
     .Output("handle: variant")
@@ -158,6 +165,14 @@ REGISTER_OP("LatencyStatsDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &tag_shape));
       return shape_inference::ScalarShape(c);
     });
+
+REGISTER_OP("SetStatsAggregatorDataset")
+    .Input("input_dataset: variant")
+    .Input("stats_aggregator: resource")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("MapDataset")
     .Input("input_dataset: variant")
@@ -603,11 +618,6 @@ REGISTER_OP("StatsAggregatorHandle")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''");
 
-REGISTER_OP("IteratorSetStatsAggregator")
-    .Input("iterator_handle: resource")
-    .Input("stats_aggregator_handle: resource")
-    .SetShapeFn(shape_inference::NoOutputs);
-
 REGISTER_OP("StatsAggregatorSummary")
     .Input("iterator: resource")
     .Output("summary: string")
@@ -641,6 +651,12 @@ REGISTER_OP("EnqueueInQueueDataset")
     .SetIsStateful()  // To avoid CSE on multiple calls to Enqueue.
     // TODO(ebrevdo): SetShapeFn to test input dtypes and shapes by
     // reading from queue handle (is that even possible?).
+    .SetShapeFn(shape_inference::NoOutputs);
+
+REGISTER_OP("DatasetToTFRecord")
+    .Input("input_dataset: variant")
+    .Input("filename: string")
+    .Input("compression_type: string")
     .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow

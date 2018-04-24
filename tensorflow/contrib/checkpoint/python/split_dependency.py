@@ -1,4 +1,4 @@
-"""Utilities for working with Checkpointable objects."""
+"""Utility for creating multiple dependencies with synchronized save/restore."""
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,7 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.training import checkpointable as core_checkpointable
+from tensorflow.python.training import checkpointable as checkpointable
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -43,7 +43,7 @@ class _CallbackSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
     return self._restore_callback(tensor)
 
 
-class _SplitDependency(core_checkpointable.CheckpointableBase):
+class _SplitDependency(checkpointable.CheckpointableBase):
   """Looks like a regular variable while synchronizing save/restores."""
 
   def __init__(self, save_buffer, restore_buffer, name, dtype, num_components,
@@ -83,7 +83,7 @@ class _SplitDependency(core_checkpointable.CheckpointableBase):
   def _gather_saveables_for_checkpoint(self):
     """Looks to Checkpointable like a regular variable."""
     return {
-        core_checkpointable.VARIABLE_VALUE_KEY:
+        checkpointable.VARIABLE_VALUE_KEY:
         functools.partial(_CallbackSaveable,
                           dtype=self._dtype,
                           save_callback=self._save,

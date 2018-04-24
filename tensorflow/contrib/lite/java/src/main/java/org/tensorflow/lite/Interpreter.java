@@ -137,17 +137,19 @@ public final class Interpreter implements AutoCloseable {
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
     if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
     Tensor[] tensors = wrapper.run(inputs);
     if (outputs == null || tensors == null || outputs.size() > tensors.length) {
-      throw new IllegalArgumentException("Outputs do not match with model outputs.");
+      throw new IllegalArgumentException("Output error: Outputs do not match with model outputs.");
     }
     final int size = tensors.length;
     for (Integer idx : outputs.keySet()) {
       if (idx == null || idx < 0 || idx >= size) {
         throw new IllegalArgumentException(
-            String.format("Invalid index of output %d (should be in range [0, %d))", idx, size));
+            String.format(
+                "Output error: Invalid index of output %d (should be in range [0, %d))",
+                idx, size));
       }
       tensors[idx].copyTo(outputs.get(idx));
     }
@@ -160,7 +162,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public void resizeInput(int idx, @NonNull int[] dims) {
     if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
     wrapper.resizeInput(idx, dims);
   }
@@ -173,7 +175,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public int getInputIndex(String opName) {
     if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
     return wrapper.getInputIndex(opName);
   }
@@ -186,7 +188,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public int getOutputIndex(String opName) {
     if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
     return wrapper.getOutputIndex(opName);
   }
@@ -198,7 +200,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public Long getLastNativeInferenceDurationNanoseconds() {
     if (wrapper == null) {
-      throw new IllegalStateException("The interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The interpreter has already been closed.");
     }
     return wrapper.getLastNativeInferenceDurationNanoseconds();
   }
@@ -208,7 +210,8 @@ public final class Interpreter implements AutoCloseable {
     if (wrapper != null) {
       wrapper.setUseNNAPI(useNNAPI);
     } else {
-      throw new IllegalStateException("NativeInterpreterWrapper has already been closed.");
+      throw new IllegalStateException(
+          "Internal error: NativeInterpreterWrapper has already been closed.");
     }
   }
 

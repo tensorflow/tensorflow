@@ -360,6 +360,47 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoObjectName) {
             fs.NewRandomAccessFile("gs://bucket/", &file).code());
 }
 
+TEST(GcsFileSystemTest, NewRandomAccessFile_InconsistentRead) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "random_access.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"6\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-5\n"
+           "Timeouts: 5 1 20\n",
+           "012")});
+
+  // Set stat_cache_max_age to 1000s so that StatCache could work.
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   1e3 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay */, kTestTimeoutConfig,
+                   nullptr /* gcs additional header */);
+
+  // Stat the file first so that the file stats are cached.
+  FileStatistics stat;
+  TF_ASSERT_OK(fs.Stat("gs://bucket/random_access.txt", &stat));
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  char scratch[6];
+  StringPiece result;
+
+  EXPECT_EQ(errors::Code::INTERNAL,
+            file->Read(0, sizeof(scratch), &result, scratch).code());
+}
+
 TEST(GcsFileSystemTest, NewWritableFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(

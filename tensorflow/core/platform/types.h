@@ -60,4 +60,12 @@ typedef uint64 Fprint;
 
 }  // namespace tensorflow
 
+// Alias namespace ::stream_executor as ::tensorflow::se.
+namespace stream_executor {}
+namespace tensorflow {
+// TODO(b/77980417): Uncomment this once all namespace aliases named 'se' are
+// removed in ::xla.
+// namespace se = ::stream_executor;
+}  // namespace tensorflow
+
 #endif  // TENSORFLOW_PLATFORM_TYPES_H_

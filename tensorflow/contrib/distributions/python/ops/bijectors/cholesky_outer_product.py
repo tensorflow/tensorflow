@@ -170,7 +170,7 @@ class CholeskyOuterProduct(bijector.Bijector):
     sum_weighted_log_diag = array_ops.squeeze(
         math_ops.matmul(math_ops.log(diag),
                         exponents[..., array_ops.newaxis]),
-        squeeze_dims=-1)
+        axis=-1)
     fldj = p_float * np.log(2.) + sum_weighted_log_diag
 
     return fldj

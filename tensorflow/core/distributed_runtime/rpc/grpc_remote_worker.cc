@@ -72,10 +72,12 @@ class GrpcRemoteWorker : public WorkerInterface {
     IssueRequest(request, response, createworkersession_, std::move(done));
   }
 
-  void DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
+  void DeleteWorkerSessionAsync(CallOptions* call_opts,
+                                const DeleteWorkerSessionRequest* request,
                                 DeleteWorkerSessionResponse* response,
                                 StatusCallback done) override {
-    IssueRequest(request, response, deleteworkersession_, std::move(done));
+    IssueRequest(request, response, deleteworkersession_, std::move(done),
+                 call_opts);
   }
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,

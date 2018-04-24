@@ -45,14 +45,13 @@ class AllocationTracker {
   // Registers a shaped buffer of device memory, and returns a corresponding
   // handle that can be used for talking to XLA clients. The given shaped buffer
   // will be treated as the buffer corresponding to the only replica.
-  StatusOr<GlobalDataHandle> Register(
-      std::unique_ptr<ShapedBuffer> shaped_buffer, const string& tag);
+  StatusOr<GlobalDataHandle> Register(ShapedBuffer shaped_buffer,
+                                      const string& tag);
 
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
   StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
-      std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
-      const string& tag);
+      std::vector<ShapedBuffer> replicated_buffers, const string& tag);
 
   // Unregister the allocation for the given data handle.
   Status Unregister(const GlobalDataHandle& data);
@@ -77,7 +76,7 @@ class AllocationTracker {
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    perftools::gputools::DeviceMemoryBase device_memory;
+    se::DeviceMemoryBase device_memory;
 
     // The device that the memory is allocated on.
     int device_ordinal;
@@ -95,21 +94,21 @@ class AllocationTracker {
   // Internal helper which registers a vector of shaped buffers, one per
   // replica.
   StatusOr<GlobalDataHandle> RegisterInternal(
-      std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
-      const string& tag) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      std::vector<ShapedBuffer> replicated_buffers, const string& tag)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Resets the shaped buffers corresponding to the given handle.
   Status Reset(const GlobalDataHandle& data) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Adds the given device address to the allocation tracker, or if it already
   // exists, then increment it's reference count.
-  void AddAllocationOrIncrementRefCount(
-      perftools::gputools::DeviceMemoryBase device_memory, int device_ordinal)
+  void AddAllocationOrIncrementRefCount(se::DeviceMemoryBase device_memory,
+                                        int device_ordinal)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Decrements the reference count of the given device memory. Then, if it is
   // zero, deallocate the memory.
-  Status DecrementRefCount(perftools::gputools::DeviceMemoryBase device_memory,
+  Status DecrementRefCount(se::DeviceMemoryBase device_memory,
                            int device_ordinal) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // A map from device memory opaque value to allocation. One such map is
@@ -132,6 +131,9 @@ class AllocationTracker {
 
   // A map from data handle to a vector of shaped buffers that represent the
   // buffers for different replicas.
+  //
+  // The ShapedBuffers in this map's vectors need to be unique_ptrs, because our
+  // public API returns pointers to them.
   tensorflow::gtl::FlatMap<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
       handle_to_shaped_buffers_ GUARDED_BY(mutex_);
 

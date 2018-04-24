@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.eager.python import checkpointable_utils
+from tensorflow.contrib.checkpoint.python import split_dependency
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
@@ -318,7 +318,7 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         dependencies too (typically the cuDNN `Layer`).
       dtype: The dtype for the canonical parameter Tensors.
     """
-    split_dependencies = checkpointable_utils.split_dependency(
+    split_dependencies = split_dependency.split_dependency(
         component_names=self._param_names,
         component_dtypes=(dtype,) * len(self._param_names),
         fill_save_buffer_fn=self._checkpointable_save,
