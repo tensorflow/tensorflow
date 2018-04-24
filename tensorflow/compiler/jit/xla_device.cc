@@ -234,7 +234,6 @@ Status XlaDevice::CreateAndSetGpuDeviceInfo() {
     gpu_device_info_->stream = stream;
     gpu_device_info_->default_context =
         new XlaDeviceContext(stream, client(), transfer_as_literal_);
-    gpu_device_info_->default_context->Ref();
     set_tensorflow_gpu_device_info(gpu_device_info_.get());
   }
 
