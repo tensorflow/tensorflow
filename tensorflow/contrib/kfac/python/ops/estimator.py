@@ -85,9 +85,9 @@ class FisherEstimator(object):
     """Create a FisherEstimator object.
 
     Args:
-      variables: A list of the variables for which to estimate the Fisher. This
-          must match the variables registered in layer_collection (if it is not
-          None).
+      variables: A `list` of variables or `callable` which returns the variables
+          for which to estimate the Fisher. This must match the variables
+          registered in layer_collection (if it is not None).
       cov_ema_decay: The decay factor used when calculating the covariance
           estimate moving averages.
       damping: float. The damping factor used to stabilize training due to
@@ -147,7 +147,10 @@ class FisherEstimator(object):
 
   @property
   def variables(self):
-    return self._variables
+    if callable(self._variables):
+      return self._variables()
+    else:
+      return self._variables
 
   @property
   def damping(self):

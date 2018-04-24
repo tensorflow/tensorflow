@@ -25,17 +25,7 @@ limitations under the License.
 #include "grpc++/impl/codegen/stub_options.h"
 #include "grpc++/impl/codegen/sync_stream.h"
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
 #include "tensorflow/core/protobuf/master.pb.h"
-
-// Contains potentially large GraphDef.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::CreateSessionRequest);
-// Contains potentially large GraphDef.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::ExtendSessionRequest);
-// Contains potentially large TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunStepRequest);
-// Contains potentially large StepStats, TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunStepResponse);
 
 namespace grpc {
 class CompletionQueue;
@@ -79,6 +69,15 @@ class MasterService final {
     virtual ::grpc::Status Reset(::grpc::ClientContext* context,
                                  const ResetRequest& request,
                                  ResetResponse* response) = 0;
+    virtual ::grpc::Status MakeCallable(::grpc::ClientContext* context,
+                                        const MakeCallableRequest& request,
+                                        MakeCallableResponse* response) = 0;
+    virtual ::grpc::Status RunCallable(::grpc::ClientContext* context,
+                                       const RunCallableRequest& request,
+                                       RunCallableResponse* response) = 0;
+    virtual ::grpc::Status ReleaseCallable(
+        ::grpc::ClientContext* context, const ReleaseCallableRequest& request,
+        ReleaseCallableResponse* response) = 0;
   };
   class Stub final : public StubInterface {
    public:
@@ -104,6 +103,15 @@ class MasterService final {
     ::grpc::Status Reset(::grpc::ClientContext* context,
                          const ResetRequest& request,
                          ResetResponse* response) override;
+    ::grpc::Status MakeCallable(::grpc::ClientContext* context,
+                                const MakeCallableRequest& request,
+                                MakeCallableResponse* response) override;
+    ::grpc::Status RunCallable(::grpc::ClientContext* context,
+                               const RunCallableRequest& request,
+                               RunCallableResponse* response) override;
+    ::grpc::Status ReleaseCallable(::grpc::ClientContext* context,
+                                   const ReleaseCallableRequest& request,
+                                   ReleaseCallableResponse* response) override;
 
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
@@ -114,6 +122,9 @@ class MasterService final {
     const ::grpc::internal::RpcMethod rpcmethod_CloseSession_;
     const ::grpc::internal::RpcMethod rpcmethod_ListDevices_;
     const ::grpc::internal::RpcMethod rpcmethod_Reset_;
+    const ::grpc::internal::RpcMethod rpcmethod_MakeCallable_;
+    const ::grpc::internal::RpcMethod rpcmethod_RunCallable_;
+    const ::grpc::internal::RpcMethod rpcmethod_ReleaseCallable_;
   };
   static std::unique_ptr<Stub> NewStub(
       const std::shared_ptr< ::grpc::ChannelInterface>& channel,
@@ -177,6 +188,30 @@ class MasterService final {
         ::grpc::CompletionQueue* new_call_cq,
         ::grpc::ServerCompletionQueue* notification_cq, void* tag) {
       ::grpc::Service::RequestAsyncUnary(6, context, request, response,
+                                         new_call_cq, notification_cq, tag);
+    }
+    void RequestMakeCallable(
+        ::grpc::ServerContext* context, MakeCallableRequest* request,
+        ::grpc::ServerAsyncResponseWriter<MakeCallableResponse>* response,
+        ::grpc::CompletionQueue* new_call_cq,
+        ::grpc::ServerCompletionQueue* notification_cq, void* tag) {
+      ::grpc::Service::RequestAsyncUnary(7, context, request, response,
+                                         new_call_cq, notification_cq, tag);
+    }
+    void RequestRunCallable(
+        ::grpc::ServerContext* context, RunCallableRequest* request,
+        ::grpc::ServerAsyncResponseWriter<RunCallableResponse>* response,
+        ::grpc::CompletionQueue* new_call_cq,
+        ::grpc::ServerCompletionQueue* notification_cq, void* tag) {
+      ::grpc::Service::RequestAsyncUnary(8, context, request, response,
+                                         new_call_cq, notification_cq, tag);
+    }
+    void RequestReleaseCallable(
+        ::grpc::ServerContext* context, ReleaseCallableRequest* request,
+        ::grpc::ServerAsyncResponseWriter<ReleaseCallableResponse>* response,
+        ::grpc::CompletionQueue* new_call_cq,
+        ::grpc::ServerCompletionQueue* notification_cq, void* tag) {
+      ::grpc::Service::RequestAsyncUnary(9, context, request, response,
                                          new_call_cq, notification_cq, tag);
     }
   };

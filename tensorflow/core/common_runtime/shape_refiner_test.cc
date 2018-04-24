@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -143,8 +144,8 @@ TEST_F(ShapeRefinerTest, BadShapes) {
   // an error.
   Status s = m.AddNode(mm.node());
   ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(StringPiece(s.error_message())
-                  .contains("Dimensions must be equal, but are 1 and 2"));
+  ASSERT_TRUE(str_util::StrContains(
+      s.error_message(), "Dimensions must be equal, but are 1 and 2"));
 }
 
 TEST_F(ShapeRefinerTest, SetShape) {
@@ -1032,8 +1033,8 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
   TF_ASSERT_OK(m.AddNode(pack.node()));
-  EXPECT_TRUE(
-      StringPiece(m.AddNode(result).error_message()).contains("but is rank 2"));
+  EXPECT_TRUE(str_util::StrContains(m.AddNode(result).error_message(),
+                                    "but is rank 2"));
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_Concat) {

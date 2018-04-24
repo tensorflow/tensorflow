@@ -36,7 +36,7 @@ namespace {
 
 class ConvertTest : public ClientLibraryTestBase {
  public:
-  explicit ConvertTest(perftools::gputools::Platform* platform = nullptr)
+  explicit ConvertTest(se::Platform* platform = nullptr)
       : ClientLibraryTestBase(platform) {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
@@ -217,6 +217,43 @@ XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
   ComputationBuilder builder(client_, TestName());
   std::vector<int32> arg{0, 1, 0x1000, -1, -0x1000};
   std::unique_ptr<Literal> arg_literal = Literal::CreateR1<int32>({arg});
+  auto arg_param = builder.Parameter(0, arg_literal->shape(), "arg_param");
+  std::unique_ptr<GlobalData> arg_data =
+      client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
+
+  builder.ConvertElementType(arg_param, S64);
+
+  std::vector<int64> expected(arg.size());
+  for (int64 i = 0; i < arg.size(); ++i) {
+    expected[i] = static_cast<int64>(arg[i]);
+  }
+  ComputeAndCompareR1<int64>(&builder, expected, {arg_data.get()});
+}
+
+XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
+  ComputationBuilder builder(client_, TestName());
+  // Test cases from compiler_rt library.
+  std::vector<float> arg{0.0f,
+                         0.5f,
+                         0.99f,
+                         1.0f,
+                         1.5f,
+                         1.99f,
+                         2.0f,
+                         2.01f,
+                         2147483648.f,
+                         -0.5f,
+                         -0.99f,
+                         -1.0f,
+                         -1.5f,
+                         -1.99f,
+                         -2.0f,
+                         -2.01f,
+                         0x1.FFFFFEp+62F,
+                         0x1.FFFFFCp+62F,
+                         -0x1.FFFFFEp+62F,
+                         -0x1.FFFFFCp+62F};
+  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<float>({arg});
   auto arg_param = builder.Parameter(0, arg_literal->shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
       client_->TransferToServer(*arg_literal).ConsumeValueOrDie();

@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import os.path
 import re
+import sys
 import time
 import uuid
 
@@ -30,8 +31,10 @@ import six
 
 from google.protobuf import text_format
 
+from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -1340,6 +1343,9 @@ class Saver(object):
       self._check_saver_def()
       self._write_version = self.saver_def.version
     self._save_relative_paths = save_relative_paths
+    # For compatibility with object-based checkpoints, we may build a second
+    # Saver to read the renamed keys.
+    self._object_restore_saver = None
 
   def build(self):
     if context.executing_eagerly():
@@ -1795,11 +1801,63 @@ class Saver(object):
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
     logging.info("Restoring parameters from %s", save_path)
-    if context.executing_eagerly():
-      self._build_eager(save_path, build_save=False, build_restore=True)
-    else:
-      sess.run(self.saver_def.restore_op_name,
-               {self.saver_def.filename_tensor_name: save_path})
+    try:
+      if context.executing_eagerly():
+        self._build_eager(save_path, build_save=False, build_restore=True)
+      else:
+        sess.run(self.saver_def.restore_op_name,
+                 {self.saver_def.filename_tensor_name: save_path})
+    except errors.NotFoundError:
+      exception_type, exception_value, exception_traceback = sys.exc_info()
+      # The checkpoint would not be loaded successfully as is. Try to parse it
+      # as an object-based checkpoint.
+      try:
+        reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+        object_graph_string = reader.get_tensor(
+            checkpointable.OBJECT_GRAPH_PROTO_KEY)
+      except errors.NotFoundError:
+        # This is not an object-based checkpoint, or the checkpoint doesn't
+        # exist. Re-raise the original exception.
+        six.reraise(exception_type, exception_value, exception_traceback)
+      del exception_traceback  # avoid reference cycles
+
+      # This is an object-based checkpoint. We'll print a warning and then do
+      # the restore.
+      logging.warning(
+          "Restoring an object-based checkpoint using a name-based saver. This "
+          "may be somewhat fragile, and will re-build the Saver. Instead, "
+          "consider loading object-based checkpoints using "
+          "tf.train.Checkpoint().")
+      self._restore_from_object_based_checkpoint(
+          sess=sess, save_path=save_path,
+          object_graph_string=object_graph_string)
+
+  def _restore_from_object_based_checkpoint(self, sess, save_path,
+                                            object_graph_string):
+    """A compatibility mode for reading object-based checkpoints."""
+    object_graph_proto = (
+        checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+    object_graph_proto.ParseFromString(object_graph_string)
+    names_to_keys = {}
+    for node in object_graph_proto.nodes:
+      for attribute in node.attributes:
+        names_to_keys[attribute.full_name] = attribute.checkpoint_key
+    saveables = self._builder._ValidateAndSliceInputs(self._var_list)  # pylint: disable=protected-access
+    for saveable in saveables:
+      for spec in saveable.specs:
+        if spec.name not in names_to_keys:
+          raise errors.NotFoundError(
+              None, None,
+              message=("Attempting to load an object-based checkpoint using "
+                       "variable names, but could not find %s in the "
+                       "checkpoint.") % spec.name)
+        spec.name = names_to_keys[spec.name]
+    if self._object_restore_saver is None:
+      # Cache the Saver so multiple restore() calls don't pollute the graph when
+      # graph building. This assumes keys are consistent (i.e. this is the same
+      # type of object-based checkpoint we saw previously).
+      self._object_restore_saver = Saver(saveables)
+    self._object_restore_saver.restore(sess=sess, save_path=save_path)
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):

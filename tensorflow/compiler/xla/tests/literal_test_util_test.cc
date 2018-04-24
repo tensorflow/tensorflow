@@ -89,7 +89,7 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
       EXPECT_EQ("2", literal->ToString());
     } else if (result.find("actual") != string::npos) {
       EXPECT_EQ("4", literal->ToString());
-    } else if (result.find("miscompares") != string::npos) {
+    } else if (result.find("mismatches") != string::npos) {
       EXPECT_EQ("true", literal->ToString());
     } else {
       FAIL() << "unknown file in temporary directory: " << result;

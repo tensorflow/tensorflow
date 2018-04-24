@@ -59,12 +59,12 @@ class ParallelCpuExecutable : public Executable {
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~ParallelCpuExecutable() override {}
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  StatusOr<ShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
+  StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
@@ -89,17 +89,16 @@ class ParallelCpuExecutable : public Executable {
   // assignment. Each vector element corresponds to a particular Index. If
   // a vector element already contains a non-null DeviceMemoryBase, then no
   // buffer is assigned for this element.
-  Status AllocateBuffers(
-      DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-      std::vector<perftools::gputools::DeviceMemoryBase>* buffers);
+  Status AllocateBuffers(DeviceMemoryAllocator* memory_allocator,
+                         int device_ordinal,
+                         std::vector<se::DeviceMemoryBase>* buffers);
 
   // Calls the generated functions in 'function_names_', performing the
   // computation with the given arguments using the supplied buffers.
   Status ExecuteComputeFunctions(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
+      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
       HloExecutionProfile* hlo_execution_profile);
 
   // Returns the points-to set of the root instruction of the entry

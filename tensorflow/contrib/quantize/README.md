@@ -2,14 +2,17 @@
 
 tf.contrib.quantize provides tools for transforming graphs to include ops to
 model quantization of weights, biases and activations during both training and
-inference. This is done using the
+inference. The details of the transformation implemented in this package is
+described here [1].
+
+This is done using the
 [fake quantization op](https://www.tensorflow.org/versions/r0.12/api_docs/python/array_ops/fake_quantization).
 
-Recent literature has shown that fixed point networks provide comparable
-performance to floating point networks [1]. This is achieved by modeling the
-quantization operation during training in both the forward and backward passes.
+Literature has shown that fixed point networks provide comparable performance to
+floating point networks [2]. This is achieved by modeling the quantization
+operation during training in both the forward and backward passes.
 The fake quantization operator achieves this by modeling the quantizer as a pass
-through estimator [2]. Note that during back propagation, the parameters are
+through estimator [3]. Note that during back propagation, the parameters are
 updated at high precision as this is needed to ensure sufficient precision in
 accumulating tiny adjustments to the parameters. However, for the forward pass,
 the parameters and activations are quantized to the desired lower precision.
@@ -61,9 +64,11 @@ These rewrites are an active area of research and experimentation, so the
 rewrites and quantized training will likely not work across all models, though
 we hope to work towards generalizing these techniques.
 
+[1] B.Jacob et al., "Quantization and Training of Neural Networks for Efficient
+Integer-Arithmetic-Only Inference", https://arxiv.org/abs/1712.05877
 
-[1] P.Gysel, "HARDWARE-ORIENTED APPROXIMATION OF CONVOLUTIONAL
+[2] P.Gysel et al., "HARDWARE-ORIENTED APPROXIMATION OF CONVOLUTIONAL
 NEURAL NETWORKS", https://arxiv.org/pdf/1604.03168.pdf
 
-[2] Y.Bengio, "Estimating or Propagating Gradients Through Stochastic Neurons
-for Conditional Computation", https://arxiv.org/abs/1308.3432
+[3] Y.Bengio et al., "Estimating or Propagating Gradients Through Stochastic
+Neurons for Conditional Computation", https://arxiv.org/abs/1308.3432

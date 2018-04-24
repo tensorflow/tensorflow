@@ -189,6 +189,39 @@ class BackendUtilsTest(test.TestCase):
     for y in ys:
       self.assertEqual(y.op.name[:12], 'StopGradient')
 
+  def test_function_tf_feed_symbols(self):
+    with self.test_session():
+      # Test feeding a resource variable to `function`.
+      x1 = keras.backend.placeholder(shape=())
+      x2 = keras.backend.placeholder(shape=())
+      lr = keras.backend.learning_phase()  # Include a placeholder_with_default.
+
+      y1 = keras.backend.variable(10.)
+      y2 = 3
+
+      f = keras.backend.function(
+          inputs=[x1, x2, lr],
+          outputs=[x1 + 1,
+                   keras.backend.in_train_phase(x2 + 2, x2 - 1)])
+      outs = f([y1, y2, None])  # Use default learning_phase value.
+      self.assertEqual(outs, [11., 2.])
+      outs = f([y1, y2, 1])  # Set learning phase value.
+      self.assertEqual(outs, [11., 5.])
+
+      # Test triggering a callable refresh by changing the input.
+      y3 = keras.backend.constant(20.)  # Test with tensor
+      outs = f([y3, y2, None])
+      self.assertEqual(outs, [21., 2.])
+
+      y4 = 4  # Test with non-symbol
+      outs = f([y4, y2, None])
+      self.assertEqual(outs, [5., 2.])
+
+      # Test with a different dtype
+      y5 = keras.backend.constant(10., dtype='float64')
+      outs = f([y5, y2, None])
+      self.assertEqual(outs, [11., 2.])
+
   def test_function_tf_fetches(self):
     # Additional operations can be passed to tf.Session().run() via its
     # `fetches` arguments. In contrast to `updates` argument of
@@ -206,8 +239,9 @@ class BackendUtilsTest(test.TestCase):
                                  updates=[(x, x_placeholder + 1.)],
                                  fetches=[keras.backend.update(y, 5.)])
       output = f([10., 20.])
-      assert output == [30.]
-      assert keras.backend.get_session().run(fetches=[x, y]) == [11., 5.]
+      self.assertEqual(output, [30.])
+      self.assertEqual(
+          keras.backend.get_session().run(fetches=[x, y]), [11., 5.])
 
   def test_function_tf_feed_dict(self):
     # Additional substitutions can be passed to `tf.Session().run()` via its
@@ -229,14 +263,16 @@ class BackendUtilsTest(test.TestCase):
                                  feed_dict=feed_dict,
                                  fetches=fetches)
       output = f([10.])
-      assert output == [11.]
-      assert keras.backend.get_session().run(fetches=[x, y]) == [20., 30.]
+      self.assertEqual(output, [11.])
+      self.assertEqual(
+          keras.backend.get_session().run(fetches=[x, y]), [20., 30.])
 
       # updated value in feed_dict will be modified within the K.function()
       feed_dict[y_placeholder] = 4.
       output = f([20.])
-      assert output == [21.]
-      assert keras.backend.get_session().run(fetches=[x, y]) == [30., 40.]
+      self.assertEqual(output, [21.])
+      self.assertEqual(
+          keras.backend.get_session().run(fetches=[x, y]), [30., 40.])
 
 
 class BackendVariableTest(test.TestCase):

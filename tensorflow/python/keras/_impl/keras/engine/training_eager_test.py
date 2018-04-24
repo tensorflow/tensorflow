@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
@@ -212,7 +212,7 @@ class TrainingTest(test.TestCase):
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
     loss_weights = [1., 0.5]
-    metrics = ['mae']
+    metrics = ['acc', 'mae']
     model.compile(
         optimizer,
         loss,
@@ -231,20 +231,20 @@ class TrainingTest(test.TestCase):
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=0)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.evaluate(
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=1)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.evaluate(
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=2)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.test_on_batch([input_a_np, input_b_np],
                               [output_d_np, output_e_np])
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
 
     # Test evaluate with dictionary inputs
     model.evaluate(
@@ -307,6 +307,100 @@ class TrainingTest(test.TestCase):
     with self.assertRaises(ValueError):
       model.compile(loss=None,
                     optimizer='rms')
+
+  def test_model_methods_with_eager_tensors_multi_io(self):
+    a = keras.layers.Input(shape=(3,), name='input_a')
+    b = keras.layers.Input(shape=(3,), name='input_b')
+
+    dense = keras.layers.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+    model = keras.models.Model([a, b], [d, e])
+
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    loss = 'mse'
+    loss_weights = [1., 0.5]
+    metrics = ['mae']
+    model.compile(
+        optimizer,
+        loss,
+        metrics=metrics,
+        loss_weights=loss_weights,
+        sample_weight_mode=None)
+
+    input_a = keras.backend.zeros(shape=(10, 3))
+    input_b = keras.backend.zeros(shape=(10, 3))
+    target_d = keras.backend.zeros(shape=(10, 4))
+    target_e = keras.backend.zeros(shape=(10, 4))
+
+    model.fit(
+        [input_a, input_b], [target_d, target_e],
+        epochs=1,
+        batch_size=5,
+        verbose=0)
+    # Test: no shuffle.
+    model.fit(
+        [input_a, input_b], [target_d, target_e],
+        epochs=1,
+        batch_size=5,
+        verbose=0,
+        shuffle=False)
+    # Test: validation data.
+    model.fit([input_a, input_b], [target_d, target_e],
+              epochs=1, batch_size=2, verbose=0,
+              validation_data=([input_a, input_b], [target_d, target_e]))
+    model.train_on_batch([input_a, input_b], [target_d, target_e])
+    model.predict([input_a, input_b], batch_size=5)
+    model.evaluate([input_a, input_b], [target_d, target_e],
+                   batch_size=2, verbose=0)
+    model.test_on_batch([input_a, input_b], [target_d, target_e])
+
+    # Test: mix np and tensors.
+    input_b = np.zeros(shape=(10, 3)).astype('float32')
+    target_e = np.zeros(shape=(10, 4)).astype('float32')
+    model.fit(
+        [input_a, input_b], [target_d, target_e],
+        epochs=1,
+        batch_size=5,
+        verbose=0)
+    model.fit([input_a, input_b], [target_d, target_e],
+              epochs=1, batch_size=2, verbose=0,
+              validation_data=([input_a, input_b], [target_d, target_e]))
+    model.fit(
+        [input_a, input_b], [target_d, target_e],
+        epochs=1,
+        batch_size=5,
+        verbose=0,
+        shuffle=False)
+    model.train_on_batch([input_a, input_b], [target_d, target_e])
+    model.predict([input_a, input_b], batch_size=5)
+    model.evaluate([input_a, input_b], [target_d, target_e],
+                   batch_size=2, verbose=0)
+    model.test_on_batch([input_a, input_b], [target_d, target_e])
+
+  def test_model_methods_with_eager_tensors_single_io(self):
+    x = keras.layers.Input(shape=(3,), name='input')
+    y = keras.layers.Dense(4, name='dense')(x)
+    model = keras.Model(x, y)
+
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    loss = 'mse'
+    metrics = ['mae']
+    model.compile(optimizer, loss, metrics=metrics)
+
+    inputs = keras.backend.zeros(shape=(10, 3))
+    targets = keras.backend.zeros(shape=(10, 4))
+
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=0)
+    model.fit(inputs, targets, epochs=1, batch_size=3, verbose=0, shuffle=False)
+    model.fit(inputs, targets, epochs=1, batch_size=4, verbose=0,
+              validation_data=(inputs, targets))
+    model.evaluate(inputs, targets, batch_size=2, verbose=0)
+    model.predict(inputs, batch_size=2)
+    model.train_on_batch(inputs, targets)
+    model.test_on_batch(inputs, targets)
 
 
 class LossWeightingTest(test.TestCase):
@@ -531,16 +625,29 @@ class LossWeightingTest(test.TestCase):
       bad_w_np = np.random.random((10, 2, 2))
       model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
 
+class CorrectnessTest(test.TestCase):
+
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_loss_correctness(self):
+    # Test that training loss is the same in eager and graph
+    # (by comparing it to a reference value in a deterministic case)
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(3,
+                                 activation='relu',
+                                 input_dim=4,
+                                 kernel_initializer='ones'))
+    model.add(keras.layers.Dense(2,
+                                 activation='softmax',
+                                 kernel_initializer='ones'))
+    model.compile(loss='sparse_categorical_crossentropy',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001))
+    x = np.ones((100, 4))
+    np.random.seed(123)
+    y = np.random.randint(0, 1, size=(100, 1))
+    history = model.fit(x, y, epochs=1, batch_size=10)
+    self.assertEqual(
+        np.around(history.history['loss'][-1], decimals=4), 0.6173)
 
 if __name__ == '__main__':
-  # Bazel sets these environment variables to very long paths.
-  # Tempfile uses them to create long paths, and in turn multiprocessing
-  # library tries to create sockets named after paths. Delete whatever bazel
-  # writes to these to avoid tests failing due to socket addresses being too
-  # long.
-  for var in ('TMPDIR', 'TMP', 'TEMP'):
-    if var in os.environ:
-      del os.environ[var]
-
   ops.enable_eager_execution()
   test.main()

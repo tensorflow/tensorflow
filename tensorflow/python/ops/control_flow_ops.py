@@ -609,13 +609,13 @@ def _EnforceShapeInvariant(merge_var, next_var):
   """Check if the shapes of the loops variables are invariants.
 
   Args:
-    merge_vars: The list of tensors representing the initial values of the
+    merge_var: The list of tensors representing the initial values of the
       loop variables.
-    next_vars: The list of tensors representing the values of the loop
+    next_var: The list of tensors representing the values of the loop
       variables after one loop iteration.
 
   Raises:
-    ValueError: If any tensor in `merge_vars` has a more specific shape than
+    ValueError: If any tensor in `merge_var` has a more specific shape than
       its correspnding tensor in `next_var`.
   """
   if isinstance(merge_var, ops.Tensor):
@@ -833,7 +833,7 @@ class GradLoopState(object):
     if outer_grad_state:
       outer_forward_ctxt = outer_grad_state.forward_context
     else:
-      if not hasattr(forward_ctxt, 'outer_context'):
+      if not hasattr(forward_ctxt, "outer_context"):
         raise ValueError("Failed to call gradients on a while loop without"
                          "properly serializing graph via MetaGraphDef")
       outer_forward_ctxt = forward_ctxt.outer_context
@@ -1597,6 +1597,16 @@ class ControlFlowContext(object):
     graph = ops.get_default_graph()
     last_context = self._context_stack.pop()
     graph._set_control_flow_context(last_context)
+
+  def EnterGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.EnterGradientColocation(op, gradient_uid)
+
+  def ExitGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.ExitGradientColocation(op, gradient_uid)
 
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
@@ -2369,7 +2379,15 @@ class WhileContext(ControlFlowContext):
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
     result = val
-    if val.name not in self._values:
+    new_value = val.name not in self._values
+    # Don't treat ops in this context as new values. Usually all known values
+    # are in self._values, except when we're importing a while loop inside this
+    # WhileContext. Since there's a cycle in this case, `val` may be part of the
+    # imported while loop but not yet processed by this context and added to
+    # self._values in _AddOpInternal. We only want to process external input
+    # tensors to the while loop here.
+    new_value &= val.op._control_flow_context is not self  # pylint: disable=protected-access
+    if new_value:
       self._values.add(val.name)
 
       # If we are in a grad context and val is from its forward context,
@@ -2955,7 +2973,7 @@ class WhileContext(ControlFlowContext):
     packed_exit_vars = nest.pack_sequence_as(
         structure=original_body_result,
         flat_sequence=exit_vars_with_tensor_arrays)
-    return (packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars)
+    return packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars
 
   def _FixControlInputsAndContext(self, enters):
     graph = ops.get_default_graph()
@@ -3184,12 +3202,18 @@ def while_loop(cond,
         body = lambda i, lv: (i + 1, orig_body(*lv))
 
     if context.executing_eagerly():
+      try_to_pack = len(loop_vars) == 1
+      packed = False  # whether the body result was packed into a 1-item tuple
+
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
+        if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
+          packed = True
+          loop_vars = (loop_vars,)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:
-        return loop_vars
+        return loop_vars[0] if packed else loop_vars
 
     if shape_invariants is not None:
       if maximum_iterations is not None:

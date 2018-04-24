@@ -44,6 +44,7 @@ py_test(
     name = "builtins_test",
     srcs = ["builtins_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",
@@ -84,6 +85,7 @@ py_test(
     name = "py_func_test",
     srcs = ["py_func_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",

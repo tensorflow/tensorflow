@@ -103,7 +103,9 @@ class Tracing {
   friend class ScopedAnnotation;
   friend class TraceMe;
 
-  static std::atomic<Tracing::Engine*> tracing_engine_;
+  // TODO: TF_EXPORT is for building //tensorflow/contrib/data:_dataset_ops.so
+  //       on Windows. Figure out a way to remove TF_EXPORT here.
+  TF_EXPORT static std::atomic<Tracing::Engine*> tracing_engine_;
   static Tracing::Engine* engine() {
     return tracing_engine_.load(std::memory_order_acquire);
   }

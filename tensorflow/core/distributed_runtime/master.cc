@@ -167,13 +167,16 @@ class DeviceFinder {
     }
     // Enumerates all known workers' target. A target name is a
     // prefix of a device name. E.g., /job:mnist/replica:0/task:10.
+    CHECK_GT(env_->local_devices.size(), 0) << "No local devices provided.";
+    const string& local_device_name = env_->local_devices[0]->name();
     std::vector<string> workers;
     worker_cache->ListWorkers(&workers);
     if (filters_.empty()) {
       std::swap(workers, targets_);
     } else {
       for (const string& name : workers) {
-        if (MatchFilters(name)) {
+        if (MatchFilters(name) ||
+            DeviceNameUtils::IsSameAddressSpace(name, local_device_name)) {
           targets_.push_back(name);
         }
       }
@@ -417,9 +420,13 @@ void Master::CreateSession(const CreateSessionRequest* req,
     SessionOptions options;
     options.config = req->config();
 
+    std::vector<string> filtered_worker_list;
+    DeviceFinder::GetRemoteWorkers(req->config().device_filters(), env_,
+                                   worker_cache, &filtered_worker_list);
+
     MasterSession* session = env_->master_session_factory(
         options, env_, std::move(remote_devices), std::move(worker_cache_ptr),
-        std::move(device_set));
+        std::move(device_set), std::move(filtered_worker_list));
 
     GraphDef* gdef =
         const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
@@ -609,6 +616,57 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
     }
     done(s);
   });
+}
+
+void Master::MakeCallable(const MakeCallableRequest* req,
+                          MakeCallableResponse* resp, MyClosure done) {
+  auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
+
+  SchedClosure(std::bind(
+      [this, session, req, resp](MyClosure done) {
+        Status s = session->MakeCallable(*req, resp);
+        session->Unref();
+        done(s);
+      },
+      std::move(done)));
+}
+
+void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
+                         RunCallableResponse* resp, MyClosure done) {
+  auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
+
+  SchedClosure(std::bind(
+      [this, session, opts, req, resp](MyClosure done) {
+        Status s = session->RunCallable(opts, *req, resp);
+        session->Unref();
+        done(s);
+      },
+      std::move(done)));
+}
+
+void Master::ReleaseCallable(const ReleaseCallableRequest* req,
+                             ReleaseCallableResponse* resp, MyClosure done) {
+  auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
+
+  SchedClosure(std::bind(
+      [this, session, req, resp](MyClosure done) {
+        Status s = session->ReleaseCallable(*req, resp);
+        session->Unref();
+        done(s);
+      },
+      std::move(done)));
 }
 
 }  // end namespace tensorflow

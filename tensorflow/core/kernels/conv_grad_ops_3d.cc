@@ -79,13 +79,18 @@ typedef Eigen::GpuDevice GPUDevice;
       context, out_depth == GetTensorDim(out_backprop, data_format_, 'C'),     \
       errors::InvalidArgument(                                                 \
           label, ": filter and out_backprop must have the same out_depth"));   \
+  const std::array<int64, 3> dilations = {                                     \
+      {GetTensorDim(dilation_, data_format_, '0'),                             \
+       GetTensorDim(dilation_, data_format_, '1'),                             \
+       GetTensorDim(dilation_, data_format_, '2')}};                           \
   const std::array<int64, 3> strides = {                                       \
       {GetTensorDim(stride_, data_format_, '0'),                               \
        GetTensorDim(stride_, data_format_, '1'),                               \
        GetTensorDim(stride_, data_format_, '2')}};                             \
   std::array<int64, 3> out, padding;                                           \
-  OP_REQUIRES_OK(context, Get3dOutputSize(input_size, filter_size, strides,    \
-                                          padding_, &out, &padding));          \
+  OP_REQUIRES_OK(                                                              \
+      context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,  \
+                                 padding_, &out, &padding));                   \
   OP_REQUIRES(context, output_planes == out[0],                                \
               errors::InvalidArgument(                                         \
                   label,                                                       \
@@ -150,6 +155,26 @@ class Conv3DBackpropInputOp : public OpKernel {
           errors::InvalidArgument(
               "Conv3DBackpropInputOpV2 only supports NDHWC on the CPU."));
     }
+
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES(context, dilation_.size() == 5,
+                errors::InvalidArgument("Dilation rates field must "
+                                        "specify 5 dimensions"));
+    OP_REQUIRES(context,
+                (GetTensorDim(dilation_, data_format_, 'C') == 1 &&
+                 GetTensorDim(dilation_, data_format_, 'N') == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilation rates in the batch and depth dimensions."));
+
+    // TODO(yangzihao): Add CPU version of dilated conv 3D.
+    OP_REQUIRES(context,
+                (GetTensorDim(dilation_, data_format_, '0') == 1 &&
+                 GetTensorDim(dilation_, data_format_, '1') == 1 &&
+                 GetTensorDim(dilation_, data_format_, '2') == 1),
+                errors::InvalidArgument(
+                    "Current CPU implementation does not yet support "
+                    "dilation rates larger than 1."));
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
@@ -223,6 +248,7 @@ class Conv3DBackpropInputOp : public OpKernel {
   }
 
  private:
+  std::vector<int32> dilation_;
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
@@ -260,6 +286,26 @@ class Conv3DBackpropFilterOp : public OpKernel {
           errors::InvalidArgument(
               "Conv3DBackpropFilterOpV2 only supports NDHWC on the CPU."));
     }
+
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES(context, dilation_.size() == 5,
+                errors::InvalidArgument("Dilation rates field must "
+                                        "specify 5 dimensions"));
+    OP_REQUIRES(context,
+                (GetTensorDim(dilation_, data_format_, 'C') == 1 &&
+                 GetTensorDim(dilation_, data_format_, 'N') == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilation rates in the batch and depth dimensions."));
+
+    // TODO(yangzihao): Add CPU version of dilated conv 3D.
+    OP_REQUIRES(context,
+                (GetTensorDim(dilation_, data_format_, '0') == 1 &&
+                 GetTensorDim(dilation_, data_format_, '1') == 1 &&
+                 GetTensorDim(dilation_, data_format_, '2') == 1),
+                errors::InvalidArgument(
+                    "Current CPU implementation does not yet support "
+                    "dilation rates larger than 1."));
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
@@ -370,6 +416,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
   }
 
  private:
+  std::vector<int32> dilation_;
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
@@ -438,6 +485,22 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     }
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES(context, dilation_.size() == 5,
+                errors::InvalidArgument("Dilation rates field must "
+                                        "specify 5 dimensions"));
+    OP_REQUIRES(context,
+                (GetTensorDim(dilation_, data_format_, 'C') == 1 &&
+                 GetTensorDim(dilation_, data_format_, 'N') == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilation rates in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context,
+        (GetTensorDim(dilation_, data_format_, '0') > 0 &&
+         GetTensorDim(dilation_, data_format_, '1') > 0 &&
+         GetTensorDim(dilation_, data_format_, '2') > 0),
+        errors::InvalidArgument("Dilated rates should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
@@ -448,6 +511,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
          GetTensorDim(stride_, data_format_, 'N') == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context,
+        (GetTensorDim(stride_, data_format_, '0') > 0 &&
+         GetTensorDim(stride_, data_format_, '1') > 0 &&
+         GetTensorDim(stride_, data_format_, '2') > 0),
+        errors::InvalidArgument("Spatial strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
@@ -471,6 +540,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     if (filter_size[0] == 1 && filter_size[1] == 1 && filter_size[2] == 1 &&
+        dilation_[0] == 1 && dilation_[1] == 1 && dilation_[2] == 1 &&
         stride_[0] == 1 && stride_[1] == 1 && stride_[2] == 1 &&
         data_format_ == FORMAT_NHWC) {
       const uint64 m = batch * input_size[0] * input_size[1] * input_size[2];
@@ -580,7 +650,10 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         .set_input_feature_map_count(in_depth)
         .set_output_feature_map_count(out_depth);
     perftools::gputools::dnn::ConvolutionDescriptor conv_desc(3);
-    conv_desc.set_filter_stride(DimIndex::X, strides[2])
+    conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
+        .set_dilation_rate(DimIndex::Y, dilations[1])
+        .set_dilation_rate(DimIndex::Z, dilations[0])
+        .set_filter_stride(DimIndex::X, strides[2])
         .set_filter_stride(DimIndex::Y, strides[1])
         .set_filter_stride(DimIndex::Z, strides[0])
         .set_zero_padding(DimIndex::X, padding_cols / 2)
@@ -645,9 +718,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         {{input_size[0], input_size[1], input_size[2]}},
         out_depth,
         {{filter_size[0], filter_size[1], filter_size[2]}},
-        // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
-        // conv is supported.
-        /*dilation=*/{{1, 1, 1}},
+        {{dilations[0], dilations[1], dilations[2]}},
         {{strides[0], strides[1], strides[2]}},
         {{padding_planes, padding_rows, padding_cols}},
         dtype,
@@ -662,7 +733,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                                    conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
-          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+              stream->parent()),
+          &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
@@ -753,6 +826,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
   }
 
  private:
+  std::vector<int32> dilation_;
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
@@ -782,6 +856,22 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     }
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES(context, dilation_.size() == 5,
+                errors::InvalidArgument("Dilation rates field must "
+                                        "specify 5 dimensions"));
+    OP_REQUIRES(context,
+                (GetTensorDim(dilation_, data_format_, 'C') == 1 &&
+                 GetTensorDim(dilation_, data_format_, 'N') == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilation rates in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context,
+        (GetTensorDim(dilation_, data_format_, '0') > 0 &&
+         GetTensorDim(dilation_, data_format_, '1') > 0 &&
+         GetTensorDim(dilation_, data_format_, '2') > 0),
+        errors::InvalidArgument("Dilated rates should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
@@ -792,6 +882,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
          GetTensorDim(stride_, data_format_, 'N') == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context,
+        (GetTensorDim(stride_, data_format_, '0') > 0 &&
+         GetTensorDim(stride_, data_format_, '1') > 0 &&
+         GetTensorDim(stride_, data_format_, '2') > 0),
+        errors::InvalidArgument("Spatial strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
@@ -818,6 +914,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     if (filter_size[1] == 1 && filter_size[2] == 1 && filter_size[0] == 1 &&
+        dilations[2] == 1 && dilations[1] == 1 && dilations[0] == 1 &&
         strides[2] == 1 && strides[1] == 1 && strides[0] == 1 &&
         data_format_ == FORMAT_NHWC) {
       const uint64 m = in_depth;
@@ -941,7 +1038,10 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         .set_input_feature_map_count(in_depth)
         .set_output_feature_map_count(out_depth);
     perftools::gputools::dnn::ConvolutionDescriptor conv_desc(3);
-    conv_desc.set_filter_stride(DimIndex::X, strides[2])
+    conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
+        .set_dilation_rate(DimIndex::Y, dilations[1])
+        .set_dilation_rate(DimIndex::Z, dilations[0])
+        .set_filter_stride(DimIndex::X, strides[2])
         .set_filter_stride(DimIndex::Y, strides[1])
         .set_filter_stride(DimIndex::Z, strides[0])
         .set_zero_padding(DimIndex::X, padding_cols / 2)
@@ -1014,7 +1114,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         {{input_size[0], input_size[1], input_size[2]}},
         out_depth,
         {{filter_size[0], filter_size[1], filter_size[2]}},
-        {{1, 1, 1}},
+        {{dilations[0], dilations[1], dilations[2]}},
         {{strides[0], strides[1], strides[2]}},
         {{padding_planes, padding_rows, padding_cols}},
         dtype,
@@ -1029,7 +1129,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                                    conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
-          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+              stream->parent()),
+          &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
@@ -1098,6 +1200,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
   }
 
  private:
+  std::vector<int32> dilation_;
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;

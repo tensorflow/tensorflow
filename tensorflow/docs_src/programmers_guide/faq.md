@@ -121,7 +121,7 @@ dimensions:
   devices, which makes it possible to speed up
   @{$deep_cnn$CIFAR-10 training using multiple GPUs}.
 * The Session API allows multiple concurrent steps (i.e. calls to
-  @{tf.Session.run} in parallel. This
+  @{tf.Session.run} in parallel). This
   enables the runtime to get higher throughput, if a single step does not use
   all of the resources in your computer.
 

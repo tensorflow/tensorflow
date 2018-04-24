@@ -37,6 +37,14 @@ def MakePlaceholder(x):
 
 class MatrixTriangularSolveOpTest(XLATestCase):
 
+  #  MatrixTriangularSolve defined for float64, float32, complex64, complex128
+  # (https://www.tensorflow.org/api_docs/python/tf/matrix_triangular_solve)
+  @property
+  def float_types(self):
+    return set(super(MatrixTriangularSolveOpTest,
+                     self).float_types).intersection(
+                         (np.float64, np.float32, np.complex64, np.complex128))
+
   def _VerifyTriangularSolveBase(self, sess, placeholder_a, placeholder_ca,
                                  placeholder_b, a, clean_a, b, verification,
                                  atol):

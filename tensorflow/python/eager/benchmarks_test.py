@@ -201,6 +201,9 @@ class MicroBenchmarks(test.Benchmark):
     m = self._m_2
     self._run(lambda: gen_array_ops.identity(m), 30000)
 
+  def benchmark_slowpath_tf_identity(self):
+    self._run(lambda: gen_array_ops.identity(1), 30000)
+
   def benchmark_tfe_py_execute_identity(self):
     m = self._m_2
     ctx_handle = context.context()._handle
@@ -214,10 +217,11 @@ class MicroBenchmarks(test.Benchmark):
     self._run(f, 30000)
 
   def benchmark_tf_gradient_function_identity(self):
-    m = self._m_2
-    self._run(
-        lambda: backprop.gradients_function(gen_array_ops.identity, [0])(m),
-        30000)
+    with context.device(CPU):
+      m = gen_array_ops.identity(self._m_2)
+      self._run(
+          lambda: backprop.gradients_function(gen_array_ops.identity, [0])(m),
+          30000)
 
   def benchmark_tf_gradient_forward_identity(self):
     with backprop.GradientTape() as tape:
@@ -233,10 +237,11 @@ class MicroBenchmarks(test.Benchmark):
     self._run(f, 30000)
 
   def benchmark_tf_gradient_function_no_op(self):
-    m = self._m_2
-    self._run(
-        lambda: backprop.gradients_function(lambda x: x, [0])(m),
-        30000)
+    with context.device(CPU):
+      m = gen_array_ops.identity(self._m_2)
+      self._run(
+          lambda: backprop.gradients_function(lambda x: x, [0])(m),
+          30000)
 
   def _benchmark_np_matmul(self, m, transpose_b, num_iters):
     a = m.cpu().numpy()
@@ -268,11 +273,12 @@ class MicroBenchmarks(test.Benchmark):
     # pylint: disable=protected-access
     ctx_handle = context.context()._handle
     # pylint: enable=protected-access
+    device = context.context().device_name
     attrs = ("transpose_a", False, "transpose_b", transpose_b, "T",
              m.dtype.as_datatype_enum)
     def func():
-      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, None, "MatMul", inputs,
-                                       attrs, 1)
+      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, device, "MatMul",
+                                       inputs, attrs, 1)
 
     self._run(func, num_iters)
 

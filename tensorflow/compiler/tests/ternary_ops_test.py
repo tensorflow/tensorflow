@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
@@ -118,6 +119,23 @@ class TernaryOpsTest(XLATestCase):
           np.array([0, 1], dtype=np.int32),
           np.array([2, 1], dtype=np.int32),
           expected=np.array([[2], [5]], dtype=dtype))
+
+  def testClipByValue(self):
+    # TODO(b/78258593): enable integer types here too.
+    for dtype in self.float_types:
+      test_cases = [
+          (np.array([2, 4, 5], dtype=dtype), dtype(7)),  #
+          (dtype(1), np.array([2, 4, 5], dtype=dtype)),  #
+          (np.array([-2, 7, 7], dtype=dtype), np.array([-2, 9, 8], dtype=dtype))
+      ]
+      x = np.array([-2, 10, 6], dtype=dtype)
+      for lower, upper in test_cases:
+        self._testTernary(
+            gen_math_ops._clip_by_value,
+            x,
+            lower,
+            upper,
+            expected=np.minimum(np.maximum(x, lower), upper))
 
 
 if __name__ == "__main__":

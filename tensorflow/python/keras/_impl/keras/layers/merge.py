@@ -23,6 +23,9 @@ from __future__ import print_function
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -127,7 +130,7 @@ class _Merge(Layer):
         for x in inputs:
           x_ndim = K.ndim(x)
           for _ in range(max_ndim - x_ndim):
-            x = K.expand_dims(x, 1)
+            x = array_ops.expand_dims(x, axis=1)
           reshaped_inputs.append(x)
         return self._merge_function(reshaped_inputs)
       else:
@@ -137,19 +140,22 @@ class _Merge(Layer):
         for x in inputs:
           x_ndim = K.ndim(x)
           if x_ndim is None:
-            x_shape = K.shape(x)
+            x_shape = array_ops.shape(x)
             batch_size = x_shape[0]
-            new_shape = K.concatenate([x_shape[1:], K.expand_dims(batch_size)])
-            x_transposed = K.reshape(x,
-                                     K.stack([batch_size,
-                                              K.prod(x_shape[1:])]))
-            x_transposed = K.permute_dimensions(x_transposed, (1, 0))
-            x_transposed = K.reshape(x_transposed, new_shape)
+            new_shape = K.concatenate(
+                [x_shape[1:],
+                 array_ops.expand_dims(batch_size, axis=-1)])
+            x_transposed = array_ops.reshape(
+                x,
+                array_ops.stack(
+                    [batch_size, math_ops.reduce_prod(x_shape[1:])], axis=0))
+            x_transposed = array_ops.transpose(x_transposed, perm=(1, 0))
+            x_transposed = array_ops.reshape(x_transposed, new_shape)
             reshaped_inputs.append(x_transposed)
             transposed = True
           elif x_ndim > 1:
             dims = list(range(1, x_ndim)) + [0]
-            reshaped_inputs.append(K.permute_dimensions(x, dims))
+            reshaped_inputs.append(array_ops.transpose(x, perm=dims))
             transposed = True
           else:
             # We don't transpose inputs if they are 1D vectors or scalars.
@@ -159,17 +165,18 @@ class _Merge(Layer):
         if transposed:
           # If inputs have been transposed, we have to transpose the output too.
           if y_ndim is None:
-            y_shape = K.shape(y)
-            y_ndim = K.shape(y_shape)[0]
+            y_shape = array_ops.shape(y)
+            y_ndim = array_ops.shape(y_shape)[0]
             batch_size = y_shape[y_ndim - 1]
-            new_shape = K.concatenate(
-                [K.expand_dims(batch_size), y_shape[:y_ndim - 1]])
-            y = K.reshape(y, (-1, batch_size))
-            y = K.permute_dimensions(y, (1, 0))
-            y = K.reshape(y, new_shape)
+            new_shape = K.concatenate([
+                array_ops.expand_dims(batch_size, axis=-1), y_shape[:y_ndim - 1]
+            ])
+            y = array_ops.reshape(y, (-1, batch_size))
+            y = array_ops.transpose(y, perm=(1, 0))
+            y = array_ops.reshape(y, new_shape)
           elif y_ndim > 1:
             dims = [y_ndim - 1] + list(range(y_ndim - 1))
-            y = K.permute_dimensions(y, dims)
+            y = array_ops.transpose(y, perm=dims)
         return y
     else:
       return self._merge_function(inputs)
@@ -207,7 +214,7 @@ class _Merge(Layer):
                        'should have the same length.')
     if all([m is None for m in mask]):
       return None
-    masks = [K.expand_dims(m, 0) for m in mask if m is not None]
+    masks = [array_ops.expand_dims(m, axis=0) for m in mask if m is not None]
     return K.all(K.concatenate(masks, axis=0), axis=0, keepdims=False)
 
 
@@ -325,7 +332,7 @@ class Maximum(_Merge):
   def _merge_function(self, inputs):
     output = inputs[0]
     for i in range(1, len(inputs)):
-      output = K.maximum(output, inputs[i])
+      output = math_ops.maximum(output, inputs[i])
     return output
 
 
@@ -340,7 +347,7 @@ class Minimum(_Merge):
   def _merge_function(self, inputs):
     output = inputs[0]
     for i in range(1, len(inputs)):
-      output = K.minimum(output, inputs[i])
+      output = math_ops.minimum(output, inputs[i])
     return output
 
 
@@ -418,10 +425,10 @@ class Concatenate(_Merge):
     for input_i, mask_i in zip(inputs, mask):
       if mask_i is None:
         # Input is unmasked. Append all 1s to masks,
-        masks.append(K.ones_like(input_i, dtype='bool'))
+        masks.append(array_ops.ones_like(input_i, dtype='bool'))
       elif K.ndim(mask_i) < K.ndim(input_i):
         # Mask is smaller than the input, expand it
-        masks.append(K.expand_dims(mask_i))
+        masks.append(array_ops.expand_dims(mask_i, axis=-1))
       else:
         masks.append(mask_i)
     concatenated = K.concatenate(masks, axis=self.axis)
@@ -511,8 +518,8 @@ class Dot(_Merge):
         else:
           axes.append(self.axes[i])
     if self.normalize:
-      x1 = K.l2_normalize(x1, axis=axes[0])
-      x2 = K.l2_normalize(x2, axis=axes[1])
+      x1 = nn.l2_normalize(x1, axis=axes[0])
+      x2 = nn.l2_normalize(x2, axis=axes[1])
     output = K.batch_dot(x1, x2, axes)
     return output
 

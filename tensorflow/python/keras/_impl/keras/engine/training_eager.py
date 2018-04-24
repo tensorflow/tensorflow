@@ -31,9 +31,8 @@ from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras import losses
 from tensorflow.python.keras._impl.keras import metrics as metrics_module
 from tensorflow.python.keras._impl.keras.engine import training_utils
-from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
-from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
-from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.keras._impl.keras.utils import generic_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -101,7 +100,7 @@ def _eager_metrics_fn(model, outputs, targets):
         metric_names.append(metric_name)
         metric_results.append(backend.mean(metric_result))
 
-  return metric_names, metric_results
+  return metric_results
 
 
 def _model_loss(model, inputs, targets, sample_weights=None, training=False):
@@ -151,8 +150,13 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
       weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
       with backend.name_scope(model.output_names[i] + '_loss'):
         output_loss = weighted_masked_fn(
-            outs[i], targets[i], weights, mask=mask)
-      loss_metrics.append(backend.mean(output_loss))
+            targets[i], outs[i], weights, mask=mask)
+      # If the number of outputs is 1 then we don't append the loss metric
+      # associated with each model output. When there are multiple outputs
+      # associated with a model, each output's loss is calculated and returned
+      # as part of the loss_metrics.
+      if len(model.outputs) > 1:
+        loss_metrics.append(backend.mean(output_loss))
 
       loss_weight = model.loss_weights_list[i]
       if total_loss is None:
@@ -171,6 +175,41 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
       total_loss += sum(custom_losses)
 
   return outs, total_loss, loss_metrics
+
+
+def slice_arrays(arrays, indices, contiguous=True):
+  """Slices batches out of provided arrays (workaround for eager tensors).
+
+  Unfortunately eager tensors don't have the same slicing behavior as
+  Numpy arrays (they folow  the same slicing behavior as symbolic TF tensors),
+  hence we cannot use `generic_utils.slice_arrays` directly
+  and we have to implement this workaround based on `concat`. This has a
+  performance cost.
+
+  Arguments:
+    arrays: Single array or list of arrays.
+    indices: List of indices in the array that should be included in the output
+      batch.
+    contiguous: Boolean flag indicating whether the indices are contiguous.
+
+  Returns:
+    Slice of data (either single array or list of arrays).
+  """
+  if any(tensor_util.is_tensor(x) for x in arrays):
+    converted_to_list = False
+    if not isinstance(arrays, list):
+      converted_to_list = True
+      arrays = [arrays]
+    if not contiguous:
+      entries = [[x[i:i + 1] for i in indices] for x in arrays]
+      slices = [array_ops.concat(x, axis=0) for x in entries]
+    else:
+      slices = [x[indices[0]:indices[-1] + 1] for x in arrays]
+    if converted_to_list:
+      slices = slices[0]
+    return slices
+  else:
+    return generic_utils.slice_arrays(arrays, indices)
 
 
 def _process_single_batch(model,
@@ -240,7 +279,7 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
       model, inputs, targets, sample_weights=sample_weights, training=True)
   if not isinstance(outs, list):
     outs = [outs]
-  _, metrics_results = _eager_metrics_fn(
+  metrics_results = _eager_metrics_fn(
       model, outs, targets)
   if not isinstance(loss, list):
     loss = [loss]
@@ -270,9 +309,8 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
       model, inputs, targets, sample_weights=sample_weights, training=False)
   if not isinstance(outs, list):
     outs = [outs]
-  metric_names, metrics_results = _eager_metrics_fn(
+  metrics_results = _eager_metrics_fn(
       model, outs, targets)
-  model.metrics_names.append(metric_names)
   if not isinstance(loss, list):
     loss = [loss]
   return loss + loss_metrics + metrics_results
@@ -328,6 +366,12 @@ def fit_loop(
   Raises:
     ValueError: In case of invalid argument values.
   """
+  if not batch_size:
+    raise ValueError('With eager execution, `batch_size` should be specified.')
+  if steps_per_epoch or validation_steps:
+    raise ValueError('With eager execution, `steps_per_epoch` and '
+                     '`validation_steps` are not valid arguments '
+                     '(set `batch_size` instead).')
   # Required for Eager mode
   with backend.learning_phase_scope(1):
     do_validation = False
@@ -410,15 +454,18 @@ def fit_loop(
       elif shuffle:
         np.random.shuffle(index_array)
 
-      batches = make_batches(num_train_samples, batch_size)
+      batches = generic_utils.make_batches(num_train_samples, batch_size)
 
       for batch_index, (batch_start, batch_end) in enumerate(batches):
         batch_ids = index_array[batch_start:batch_end]
         try:
-          inputs_batch = slice_arrays(inputs, batch_ids)
-          targets_batch = slice_arrays(targets, batch_ids)
+          inputs_batch = slice_arrays(inputs, batch_ids,
+                                      contiguous=not shuffle)
+          targets_batch = slice_arrays(targets, batch_ids,
+                                       contiguous=not shuffle)
           if sample_weights:
-            sample_weights_batch = slice_arrays(sample_weights, batch_ids)
+            sample_weights_batch = slice_arrays(sample_weights, batch_ids,
+                                                contiguous=not shuffle)
           else:
             sample_weights_batch = None
         except TypeError:
@@ -456,34 +503,12 @@ def fit_loop(
         for l, o in zip(out_labels, outs):
           batch_logs[l] = o
         # Required for Eager mode
-        metrics_names, metrics_results = _eager_metrics_fn(
-            model, outs, targets_batch)
+        metrics_results = _eager_metrics_fn(model, outs, targets_batch)
         batch_logs['loss'] = tensor_util.constant_value(backend.mean(loss))
-
-        # TODO(anjalisridhar): Move this to compile to avoid duplicate code.
-        # In graph mode we set the metric names in compile. However in
-        # Eager mode we calculate the metrics for each batch in fit_loop.
-        # We could calculate the metric names and functions in compile.
-        # This would avoid setting the callback parameters separately.
-        # We need to do this for the first iteration alone
-        for m in metrics_names:
-          if m not in callback_metrics:
-            callback_metrics.append(m)
-
-        callbacks.set_params({
-            'batch_size': batch_size,
-            'epochs': epochs,
-            'steps': steps_per_epoch,
-            'samples': num_train_samples,
-            'verbose': verbose,
-            'do_validation': do_validation,
-            'metrics': callback_metrics or [],
-        })
 
         for k, v in zip(model.metrics_names,
                         [backend.mean(loss)] + loss_metrics + metrics_results):
           batch_logs[k] = tensor_util.constant_value(v)
-
         callbacks.on_batch_end(batch_index, batch_logs)
         if callback_model.stop_training:
           break
@@ -539,8 +564,8 @@ def test_loop(model, inputs, targets,
         feed_data, batch_size=batch_size, steps=steps, steps_name='steps')
     outs = []
     if verbose == 1:
-      progbar = Progbar(target=num_samples)
-    batches = make_batches(num_samples, batch_size)
+      progbar = generic_utils.Progbar(target=num_samples)
+    batches = generic_utils.make_batches(num_samples, batch_size)
     index_array = np.arange(num_samples)
     for batch_index, (batch_start, batch_end) in enumerate(batches):
       batch_ids = index_array[batch_start:batch_end]
@@ -569,7 +594,7 @@ def test_loop(model, inputs, targets,
           targets_batch,
           sample_weights=sample_weights_batch,
           training=False)
-      _, metrics_results = _eager_metrics_fn(model, loss_outs, targets_batch)
+      metrics_results = _eager_metrics_fn(model, loss_outs, targets_batch)
       batch_outs = []
       for _, v in zip(model.metrics_names,
                       [backend.mean(loss)] + loss_metrics + metrics_results):
@@ -620,12 +645,12 @@ def predict_loop(model, inputs,
         inputs, batch_size, steps, 'steps')
     if verbose == 1:
       if steps is not None:
-        progbar = Progbar(target=steps)
+        progbar = generic_utils.Progbar(target=steps)
       else:
-        progbar = Progbar(target=num_samples)
+        progbar = generic_utils.Progbar(target=num_samples)
 
     outs = []
-    batches = make_batches(num_samples, batch_size)
+    batches = generic_utils.make_batches(num_samples, batch_size)
     index_array = np.arange(num_samples)
     for batch_index, (batch_start, batch_end) in enumerate(batches):
       batch_ids = index_array[batch_start:batch_end]

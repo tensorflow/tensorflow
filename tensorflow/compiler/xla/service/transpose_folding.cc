@@ -159,6 +159,7 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
 
   auto new_conv = HloInstruction::CreateConvolve(
       convolution.shape(), new_lhs, new_rhs, convolution.window(), new_dnums);
+  convolution.SetupDerivedInstruction(new_conv.get());
   TF_CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 

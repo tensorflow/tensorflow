@@ -38,6 +38,16 @@ void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
   const int input_height = input_shape.dims(1);
   const int batch = input_shape.dims(0);
 
+  CHECK_GE(input_width, 1);
+  CHECK_GE(input_height, 1);
+  CHECK_GE(batch, 1);
+  CHECK_GE(kwidth, 1);
+  CHECK_GE(kheight, 1);
+  CHECK_GE(stride_width, 1);
+  CHECK_GE(stride_height, 1);
+  CHECK_GE(dilation_width_factor, 1);
+  CHECK_GE(dilation_height_factor, 1);
+
   int dilated_kwidth = dilation_width_factor * (kwidth - 1) + 1;
   int dilated_kheight = dilation_height_factor * (kheight - 1) + 1;
 
@@ -392,8 +402,7 @@ void ProcessSpaceToDepthOperator(Model* model, SpaceToDepthOperator* op) {
                          depth * block_size * block_size}));
 }
 
-void ProcessFillOperator(Model* model, FillOperator* op) {
-  CHECK_EQ(op->inputs.size(), 2);
+void ProcessOpWithShapeInput(Model* model, Operator* op) {
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
@@ -1051,16 +1060,14 @@ void ProcessBatchToSpaceNDOperator(Model* model, BatchToSpaceNDOperator* op) {
   }
   QCHECK(crops_array.data_type == ArrayDataType::kInt32);
   const auto& crops_data = crops_array.GetBuffer<ArrayDataType::kInt32>().data;
-  // We don't support crops now.
-  QCHECK_EQ(crops_data[0], 0);
-  QCHECK_EQ(crops_data[1], 0);
-  QCHECK_EQ(crops_data[2], 0);
-  QCHECK_EQ(crops_data[3], 0);
-
+  const int crops_top = crops_data[0];
+  const int crops_bottom = crops_data[1];
+  const int crops_left = crops_data[2];
+  const int crops_right = crops_data[3];
+  const int output_height =
+      input_height * block_height - crops_top - crops_bottom;
+  const int output_width = input_width * block_width - crops_left - crops_right;
   QCHECK_EQ(input_shape.dims(0) % (block_height * block_width), 0);
-
-  int output_height = input_height * block_height;
-  int output_width = input_width * block_width;
 
   model->GetArray(op->outputs[0])
       .copy_shape(Shape({input_shape.dims(0) / (block_height * block_width),
@@ -1246,6 +1253,83 @@ void ProcessStackOperator(Model* model, StackOperator* op) {
   output_array.copy_shape(*stacked_shape);
 }
 
+// These StridedSlice utility functions are essentially a COPY of those in
+// reference_ops.h. See comments there.
+
+// Use until std::clamp() is available from C++17.
+int Clamp(const int v, const int lo, const int hi) {
+  if (hi < v) return hi;
+  if (v < lo) return lo;
+  return v;
+}
+
+int StartForAxis(StridedSliceOperator const& op, Shape const& input_shape,
+                 int axis) {
+  // Begin with the specified index
+  int start = op.start_indices[axis];
+
+  // begin_mask override
+  if (op.begin_mask & 1 << axis) {
+    if (op.strides[axis] > 0) {
+      // Forward iteration - use the first element. These values will get
+      // clamped below (Note: We could have set them to 0 and axis_size-1, but
+      // use lowest() and max() to maintain symmetry with StopForAxis())
+      start = std::numeric_limits<int>::lowest();
+    } else {
+      // Backward iteration - use the last element.
+      start = std::numeric_limits<int>::max();
+    }
+  }
+
+  // Handle negative indices
+  int axis_size = input_shape.dims(axis);
+  if (start < 0) {
+    start += axis_size;
+  }
+
+  // Clamping
+  start = Clamp(start, 0, axis_size - 1);
+
+  return start;
+}
+
+int StopForAxis(StridedSliceOperator const& op, Shape const& input_shape,
+                int axis) {
+  // Begin with the specified index
+  int stop = op.stop_indices[axis];
+
+  // end_mask override
+  if (op.end_mask & (1 << axis)) {
+    if (op.strides[axis] > 0) {
+      // Forward iteration - use the last element. These values will get
+      // clamped below
+      stop = std::numeric_limits<int>::max();
+    } else {
+      // Backward iteration - use the first element.
+      stop = std::numeric_limits<int>::lowest();
+    }
+  }
+
+  // Handle negative indices
+  int axis_size = input_shape.dims(axis);
+  if (stop < 0) {
+    stop += axis_size;
+  }
+
+  // Clamping
+  // Because the end index points one past the last element, we need slightly
+  // different clamping ranges depending on the direction.
+  if (op.strides[axis] > 0) {
+    // Forward iteration
+    stop = Clamp(stop, 0, axis_size);
+  } else {
+    // Backward iteration
+    stop = Clamp(stop, -1, axis_size - 1);
+  }
+
+  return stop;
+}
+
 void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
@@ -1283,43 +1367,46 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
     return;
   }
 
-  int dim_count = input_array.shape().dimensions_count();
-  CHECK(op->start_indices.size() == dim_count)
-      << ": Incorrect number of start indices supplied to StridedSlice op with "
-         "output \""
-      << op->outputs[0] << "\". Op requires " << dim_count << " start indices";
-  CHECK(op->stop_indices.size() == dim_count)
-      << ": Incorrect number of stop indices supplied to StridedSlice op with "
-         "output \""
-      << op->outputs[0] << "\". Op requires " << dim_count << " stop indices";
-  CHECK(op->strides.size() == dim_count)
-      << ": Incorrect number of strides supplied to StridedSlice op with "
-         " output \""
-      << op->outputs[0] << "\". Op requires " << dim_count << " strides";
+  int num_input_axes = input_array.shape().dimensions_count();
+  CHECK_LE(op->start_indices.size(), num_input_axes)
+      << "StridedSlice op with output \"" << op->outputs[0]
+      << "\", requires no more than " << num_input_axes << " start indices";
+  CHECK_LE(op->stop_indices.size(), num_input_axes)
+      << "StridedSlice op with output \"" << op->outputs[0]
+      << "\", requires no more than " << num_input_axes << " stop indices";
+  CHECK_LE(op->strides.size(), num_input_axes)
+      << "StridedSlice op with output \"" << op->outputs[0]
+      << "\", requires no more than " << num_input_axes << " strides";
+  for (int i = 0; i < op->strides.size(); i++) {
+    CHECK_NE(op->strides[i], 0) << "Strides must be non-zero. Axis " << i
+                                << " has stride=" << op->strides[i] << ".";
+  }
+
+  // The TensorFlow documentation is not explicit on how it handles fewer
+  // supplied indices than dimensions, but they are accepted. We emulate TF's
+  // behavior by fully iterating over each "forgotten" dimension.
+  op->PadIndices(num_input_axes);
 
   // Create output shape
   std::vector<int>* dims = output_array.mutable_shape()->mutable_dims();
 
   // Compute output shape
-  for (int i = 0; i < dim_count; ++i) {
-    const int mask = 1 << i;
-    int start = (op->begin_mask & mask) ? 0 : op->start_indices[i];
-    if (start < 0) {
-      // handle negative indices
-      start += input_array.shape().dims(i);
-    }
-    int stop = (op->end_mask & mask) ? input_array.shape().dims(i)
-                                     : op->stop_indices[i];
-    if (stop < 0) {
-      // handle negative indices
-      stop += input_array.shape().dims(i);
-    }
+  for (int axis = 0; axis < num_input_axes; ++axis) {
+    int start_index = StartForAxis(*op, input_array.shape(), axis);
+    int stop_index = StopForAxis(*op, input_array.shape(), axis);
+    int dim_size =
+        ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
 
-    int dim_size = ceil((stop - start) / static_cast<float>(op->strides[i]));
-    dim_size = dim_size < 0 ? 0 : dim_size;
-    if (op->shrink_axis_mask & mask) {
-      CHECK_EQ(dim_size, 1) << "Output size for an axis must compute to 1 when "
-                               "shrinking that axis";
+    CHECK_GT(dim_size, 0)
+        << "Output size for an axis must be greater than 0. Axis " << axis
+        << " computes to size " << dim_size
+        << " for StridedSlice op with output \"" << op->outputs[0] << "\".";
+    if (op->shrink_axis_mask & (1 << axis)) {
+      CHECK_EQ(dim_size, 1)
+          << "Output size for an axis must compute to 1 when shrinking an "
+             "axis. Axis "
+          << axis << " computes to size " << dim_size
+          << " for StridedSlice op with output \"" << op->outputs[0] << "\".";
     } else {
       dims->push_back(dim_size);
     }
@@ -1429,10 +1516,7 @@ void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
     return;
   }
 
-  // The current ArgMax implementation only supports 4-dimensional inputs with
-  // the last dimension as the axis to perform ArgMax for.
   const std::vector<int>& input_dims = input_array.shape().dims();
-  CHECK_EQ(input_dims.size(), 4);
   std::vector<int> output_dims;
 
   output_dims.reserve(input_dims.size() - 1);
@@ -1470,6 +1554,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kPRelu:
     case OperatorType::kSoftmax:
     case OperatorType::kLogSoftmax:
+    case OperatorType::kLog:
     case OperatorType::kLogistic:
     case OperatorType::kTanh:
     case OperatorType::kLocalResponseNormalization:
@@ -1529,7 +1614,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
                                   static_cast<SpaceToDepthOperator*>(op));
       break;
     case OperatorType::kFill:
-      ProcessFillOperator(model, static_cast<FillOperator*>(op));
+      CHECK_EQ(op->inputs.size(), 2);
+      ProcessOpWithShapeInput(model, op);
       break;
     case OperatorType::kFullyConnected:
       ProcessFullyConnectedOperator(model,
@@ -1658,6 +1744,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       // DynamicPartition/DynamicStitch are currently only supported for
       // transforms that remove them, so we avoid propagating shapes through
       // them and let things settle once they've been removed.
+      break;
+    case OperatorType::kRandomUniform:
+      CHECK_EQ(op->inputs.size(), 1);
+      ProcessOpWithShapeInput(model, op);
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

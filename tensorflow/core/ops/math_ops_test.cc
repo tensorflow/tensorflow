@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -239,20 +240,21 @@ TEST(MathOpsTest, Select_ShapeFn) {
 
   // Expect an error when the shapes can't be merged.
   handle_data[2]->at(0).first = shape_proto({2, 2});
-  EXPECT_TRUE(StringPiece(run_inference_for_handles().error_message())
-                  .contains("must be equal, but are 1 and 2"));
+  EXPECT_TRUE(str_util::StrContains(run_inference_for_handles().error_message(),
+                                    "must be equal, but are 1 and 2"));
   handle_data[2]->at(0).first = i1;  // restore to valid
 
   // Expect an error when the types can't be merged.
   handle_data[2]->at(1).second = DT_INT64;
-  EXPECT_TRUE(StringPiece(run_inference_for_handles().error_message())
-                  .contains("pointing to different dtypes"));
+  EXPECT_TRUE(str_util::StrContains(run_inference_for_handles().error_message(),
+                                    "pointing to different dtypes"));
   handle_data[2]->at(1).second = DT_INT32;  // restore to valid
 
   // Expect an error when different numbers of tensors are merged.
   handle_data[2]->push_back({i1, DT_FLOAT});
-  EXPECT_TRUE(StringPiece(run_inference_for_handles().error_message())
-                  .contains("pointing to different numbers of tensors"));
+  EXPECT_TRUE(
+      str_util::StrContains(run_inference_for_handles().error_message(),
+                            "pointing to different numbers of tensors"));
   handle_data[2]->pop_back();  // restore to valid.
 }
 

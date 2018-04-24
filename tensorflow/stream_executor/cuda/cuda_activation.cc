@@ -19,8 +19,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 CudaContext* ExtractCudaContext(CUDAExecutor *cuda_exec);
@@ -40,5 +39,4 @@ ScopedActivateExecutorContext::~ScopedActivateExecutorContext() {
 }
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

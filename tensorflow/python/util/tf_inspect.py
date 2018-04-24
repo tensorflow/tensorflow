@@ -17,11 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import inspect as _inspect
 
 from tensorflow.python.util import tf_decorator
 
 ArgSpec = _inspect.ArgSpec
+
+
+if hasattr(_inspect, 'FullArgSpec'):
+  FullArgSpec = _inspect.FullArgSpec  # pylint: disable=invalid-name
+else:
+  FullArgSpec = namedtuple('FullArgSpec', [
+      'args', 'varargs', 'varkw', 'defaults', 'kwonlyargs', 'kwonlydefaults',
+      'annotations'
+  ])
 
 
 def currentframe():
@@ -55,13 +65,36 @@ def getfullargspec(obj):  # pylint: disable=redefined-builtin
     obj: A callable, possibly decorated.
 
   Returns:
-    The `FullArgSpec` (`ArgSpec` in Python 2) that describes the signature of
+    The `FullArgSpec` that describes the signature of
     the outermost decorator that changes the callable's signature. If the
-    callable is not decorated, `inspect.getfullargspec()`
-    (`inspect.getargspec()` in Python 2) will be called directly on the
-    callable.
+    callable is not decorated, `inspect.getfullargspec()` will be called
+    directly on the callable.
   """
-  spec_fn = getattr(_inspect, 'getfullargspec', getattr(_inspect, 'getargspec'))
+  if hasattr(_inspect, 'getfullargspec'):
+    spec_fn = _inspect.getfullargspec
+  else:
+    def spec_fn(target):
+      """Spec function that adding default value from FullArgSpec.
+
+      It is used when getfullargspec is not available (eg in PY2).
+
+      Args:
+        target: the target object to inspect.
+      Returns:
+        The full argument specs with empty kwonlyargs, kwonlydefaults and
+        annotations.
+      """
+      argspecs = _inspect.getargspec(target)
+      fullargspecs = FullArgSpec(
+          args=argspecs.args,
+          varargs=argspecs.varargs,
+          varkw=argspecs.keywords,
+          defaults=argspecs.defaults,
+          kwonlyargs=[],
+          kwonlydefaults=None,
+          annotations={})
+      return fullargspecs
+
   decorators, target = tf_decorator.unwrap(obj)
   return next((d.decorator_argspec for d in decorators
                if d.decorator_argspec is not None), spec_fn(target))

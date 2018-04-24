@@ -356,20 +356,15 @@ class TPUClusterResolverTest(test.TestCase):
     tpu_cluster_resolver = TPUClusterResolver(tpu='/bns/foo/bar')
     self.assertEqual(
         compat.as_bytes('/bns/foo/bar'), tpu_cluster_resolver.master())
-    self.assertEqual(
-        server_lib.ClusterSpec({}), tpu_cluster_resolver.cluster_spec())
+    self.assertEqual(None, tpu_cluster_resolver.cluster_spec())
 
   def testGkeEnvironment(self):
     os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'] = 'grpc://10.120.27.5:8470'
     self.assertTrue('KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS' in os.environ)
-    tpu_cluster_resolver = TPUClusterResolver()
-    self.assertTrue(tpu_cluster_resolver._inGke())
+    self.assertTrue(TPUClusterResolver._inGke())
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470'),
-        compat.as_bytes(tpu_cluster_resolver._gkeMaster()))
-    self.assertEqual(
-        compat.as_bytes('grpc://10.120.27.5:8470'),
-        compat.as_bytes(tpu_cluster_resolver.get_master()))
+        compat.as_bytes(TPUClusterResolver._gkeMaster()))
     del os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS']
 
 

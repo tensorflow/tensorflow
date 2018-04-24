@@ -20,7 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "src/nccl.h"
+#include "third_party/nccl/nccl.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"

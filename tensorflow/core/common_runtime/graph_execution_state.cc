@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -237,6 +239,50 @@ void GraphExecutionState::RestoreStatefulNodes(Graph* graph) {
   }
 }
 
+namespace {
+
+class TensorConnectionPruneRewrite : public subgraph::PruneRewrite {
+ public:
+  TensorConnectionPruneRewrite(const string* endpoint_name,
+                               NodeBuilder::NodeOut from_tensor)
+      : subgraph::PruneRewrite(endpoint_name, nullptr /* device_info */),
+        from_tensor_(std::move(from_tensor)) {}
+
+  Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
+                 Node** out_node) override {
+    Status s;
+    auto check_no_cycle_fn = [this, feed_tensor, &s](Node* n) {
+      if (n == feed_tensor.node) {
+        s.Update(errors::InvalidArgument(
+            "Requested Tensor connection between nodes \"",
+            feed_tensor.node->name(), "\" and \"", from_tensor_.node->name(),
+            "\" would create a cycle."));
+      }
+    };
+    ReverseDFSFrom(*g, {from_tensor_.node}, std::move(check_no_cycle_fn),
+                   nullptr);
+    TF_RETURN_IF_ERROR(s);
+
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(strings::StrCat("_identity_", feed_tensor.node->name(), "_",
+                                    feed_tensor.index),
+                    "Identity")
+            .Input(from_tensor_)
+            .Attr("T",
+                  BaseType(from_tensor_.node->output_type(from_tensor_.index)))
+            .Finalize(g, out_node));
+
+    (*out_node)->set_assigned_device_name(
+        feed_tensor.node->assigned_device_name());
+    return Status::OK();
+  }
+
+ private:
+  NodeBuilder::NodeOut from_tensor_;
+};
+
+}  // namespace
+
 Status GraphExecutionState::PruneGraph(
     const BuildGraphOptions& options, Graph* graph,
     subgraph::RewriteGraphMetadata* out_rewrite_metadata) {
@@ -265,12 +311,48 @@ Status GraphExecutionState::PruneGraph(
           new subgraph::SendFetchRewrite(&fetch, device_info));
     }
   }
+
+  for (const TensorConnection& tensor_connection :
+       options.callable_options.tensor_connection()) {
+    Node* from_node = nullptr;
+    TensorId from_id(ParseTensorName(tensor_connection.from_tensor()));
+
+    for (Node* n : graph->nodes()) {
+      if (n->name() == from_id.first) {
+        from_node = n;
+        break;
+      }
+    }
+    if (from_node == nullptr) {
+      return errors::InvalidArgument(
+          "Requested tensor connection from unknown node: \"",
+          tensor_connection.to_tensor(), "\".");
+    }
+    if (from_id.second >= from_node->num_outputs()) {
+      return errors::InvalidArgument(
+          "Requested tensor connection from unknown edge: \"",
+          tensor_connection.to_tensor(),
+          "\" (actual number of outputs = ", from_node->num_outputs(), ").");
+    }
+
+    feed_rewrites.emplace_back(new TensorConnectionPruneRewrite(
+        &tensor_connection.to_tensor(), {from_node, from_id.second}));
+  }
+
   std::vector<string> target_node_names(
       options.callable_options.target().begin(),
       options.callable_options.target().end());
-  return subgraph::RewriteGraphForExecution(graph, feed_rewrites,
-                                            fetch_rewrites, target_node_names,
-                                            out_rewrite_metadata);
+  TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
+      graph, feed_rewrites, fetch_rewrites, target_node_names,
+      out_rewrite_metadata));
+
+  CHECK_EQ(out_rewrite_metadata->feed_types.size(),
+           options.callable_options.feed_size() +
+               options.callable_options.tensor_connection_size());
+  for (int i = 0; i < options.callable_options.tensor_connection_size(); ++i) {
+    out_rewrite_metadata->feed_types.pop_back();
+  }
+  return Status::OK();
 }
 
 Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
@@ -316,7 +398,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
 }
 
 Status GraphExecutionState::OptimizeGraph(
-    const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph) {
+    const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
+    std::unique_ptr<FunctionLibraryDefinition>* optimized_flib) {
 #ifndef IS_MOBILE_PLATFORM
   if (session_options_->config.graph_options().place_pruned_graph()) {
     return errors::InvalidArgument("Can't optimize a pruned graph");
@@ -340,12 +423,27 @@ Status GraphExecutionState::OptimizeGraph(
                       options.callable_options.target().begin(),
                       options.callable_options.target().end());
 
-    if (!options.callable_options.feed().empty()) {
+    for (const TensorConnection& tensor_connection :
+         options.callable_options.tensor_connection()) {
+      item.fetch.push_back(tensor_connection.from_tensor());
+    }
+
+    if (!(options.callable_options.feed().empty() &&
+          options.callable_options.tensor_connection().empty())) {
       std::unordered_set<string> feeds;
       for (const string& feed : options.callable_options.feed()) {
         TensorId id = ParseTensorName(feed);
         if (id.second != 0) {
           return errors::InvalidArgument("Unsupported feed: ", feed);
+        }
+        feeds.insert(id.first.ToString());
+      }
+      for (const TensorConnection& tensor_connection :
+           options.callable_options.tensor_connection()) {
+        TensorId id = ParseTensorName(tensor_connection.to_tensor());
+        if (id.second != 0) {
+          return errors::InvalidArgument("Unsupported feed: ",
+                                         tensor_connection.to_tensor());
         }
         feeds.insert(id.first.ToString());
       }
@@ -396,9 +494,17 @@ Status GraphExecutionState::OptimizeGraph(
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
         item, rewrite_options, cpu_device, &cluster, &new_graph));
+
+    // Merge optimized graph function library with an original library.
+    // Optimized graph might have new functions specialized for it's
+    // instantiation context (see Grappler function optimizer).
+    optimized_graph->reset(new Graph(OpRegistry::Global()));
+    optimized_flib->reset(new FunctionLibraryDefinition(OpRegistry::Global(),
+                                                        new_graph.library()));
+    TF_RETURN_IF_ERROR((*optimized_flib)->AddLibrary(*flib_def_));
+
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
-    optimized_graph->reset(new Graph(OpRegistry::Global()));
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToGraph(opts, new_graph, optimized_graph->get()));
     // The graph conversion sets the requested device names but not the assigned
@@ -427,18 +533,25 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
         "Attempted to prune a graph that has not been fully initialized.");
   }
 
-  std::unique_ptr<Graph> ng;
-  Status s = OptimizeGraph(options, &ng);
+  // Grappler optimization might change the structure of a graph itself, and
+  // also it can add/prune functions to/from the library.
+  std::unique_ptr<Graph> optimized_graph;
+  std::unique_ptr<FunctionLibraryDefinition> optimized_flib;
+
+  Status s = OptimizeGraph(options, &optimized_graph, &optimized_flib);
   if (!s.ok()) {
-    // Simply copy the original graph if we couldn't optimize it.
-    ng.reset(new Graph(flib_def_.get()));
-    CopyGraph(*graph_, ng.get());
+    // Simply copy the original graph and the function library if we couldn't
+    // optimize it.
+    optimized_graph.reset(new Graph(flib_def_.get()));
+    CopyGraph(*graph_, optimized_graph.get());
+    optimized_flib.reset(new FunctionLibraryDefinition(*flib_def_));
   }
 
   subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||
       !session_options_->config.graph_options().place_pruned_graph()) {
-    TF_RETURN_IF_ERROR(PruneGraph(options, ng.get(), &rewrite_metadata));
+    TF_RETURN_IF_ERROR(
+        PruneGraph(options, optimized_graph.get(), &rewrite_metadata));
   } else {
     // This GraphExecutionState represents a graph that was
     // pruned when this was constructed, so we copy the metadata from
@@ -452,15 +565,11 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   CHECK_EQ(options.callable_options.fetch_size(),
            rewrite_metadata.fetch_types.size());
 
-  // Make a fresh copy of the function library for the client graph.
-  std::unique_ptr<FunctionLibraryDefinition> flib(
-      new FunctionLibraryDefinition(*flib_def_));
-
   // TODO(andydavis): Clarify optimization pass requirements around CostModel.
   GraphOptimizationPassOptions optimization_options;
   optimization_options.session_options = session_options_;
-  optimization_options.graph = &ng;
-  optimization_options.flib_def = flib.get();
+  optimization_options.graph = &optimized_graph;
+  optimization_options.flib_def = optimized_flib.get();
   optimization_options.device_set = device_set_;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -470,9 +579,9 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
   std::unique_ptr<ClientGraph> dense_copy(
-      new ClientGraph(std::move(flib), rewrite_metadata.feed_types,
+      new ClientGraph(std::move(optimized_flib), rewrite_metadata.feed_types,
                       rewrite_metadata.fetch_types));
-  CopyGraph(*ng, &dense_copy->graph);
+  CopyGraph(*optimized_graph, &dense_copy->graph);
 
   // TODO(vrv): We should check invariants of the graph here.
 

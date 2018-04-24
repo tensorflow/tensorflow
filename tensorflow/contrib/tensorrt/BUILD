@@ -11,6 +11,7 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -52,7 +53,6 @@ tf_custom_op_library(
         "ops/trt_engine_op.cc",
     ],
     deps = [
-        ":trt_engine_op_kernel",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
@@ -140,6 +140,7 @@ tf_custom_op_py_library(
     ]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:resources",
     ],
@@ -174,6 +175,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":wrap_conversion",
+        "//tensorflow/python:tf_optimizer",
     ],
 )
 
@@ -183,6 +185,7 @@ tf_py_wrap_cc(
     copts = tf_copts(),
     deps = [
         ":trt_conversion",
+        ":trt_engine_op_kernel",
         "//tensorflow/core:framework_lite",
         "//util/python:python_headers",
     ],
@@ -270,5 +273,21 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+py_test(
+    name = "tf_trt_integration_test",
+    srcs = ["test/tf_trt_integration_test.py"],
+    main = "test/tf_trt_integration_test.py",
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":init_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )

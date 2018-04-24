@@ -117,6 +117,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DepthwiseConv2D"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Dot"
     mtype: "<type \'type\'>"
   }

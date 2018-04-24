@@ -36,12 +36,12 @@ DeviceMemoryAllocator* ExecutableRunOptions::allocator() const {
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_stream(
-    perftools::gputools::Stream* stream) {
+    stream_executor::Stream* stream) {
   stream_ = stream;
   return *this;
 }
 
-perftools::gputools::Stream* ExecutableRunOptions::stream() const {
+stream_executor::Stream* ExecutableRunOptions::stream() const {
   return stream_;
 }
 
@@ -86,5 +86,12 @@ ExecutableRunOptions& ExecutableRunOptions::set_device_assignment(
 const DeviceAssignment* ExecutableRunOptions::device_assignment() const {
   return device_assignment_;
 }
+
+ExecutableRunOptions& ExecutableRunOptions::set_rng_seed(int rng_seed) {
+  rng_seed_ = rng_seed;
+  return *this;
+}
+
+int ExecutableRunOptions::rng_seed() const { return rng_seed_; }
 
 }  // namespace xla

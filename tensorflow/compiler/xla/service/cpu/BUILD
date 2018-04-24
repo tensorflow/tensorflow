@@ -18,6 +18,10 @@ load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -170,6 +174,7 @@ cc_library(
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_matmul",
+        ":runtime_matmul_mkl",
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_matmul",
         "@llvm//:execution_engine",
@@ -539,6 +544,22 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_matmul_mkl",
+    srcs = ["runtime_matmul_mkl.cc"],
+    hdrs = ["runtime_matmul_mkl.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
+    ] + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
+    ]),
+)
+
+cc_library(
     name = "runtime_single_threaded_conv2d",
     srcs = [
         "runtime_conv2d_impl.h",
@@ -584,10 +605,12 @@ cc_library(
 tf_cc_test(
     name = "cpu_runtime_test",
     srcs = ["cpu_runtime_test.cc"],
+    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":cpu_runtime",
         ":runtime_matmul",
+        ":runtime_matmul_mkl",
         ":runtime_single_threaded_matmul",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:types",

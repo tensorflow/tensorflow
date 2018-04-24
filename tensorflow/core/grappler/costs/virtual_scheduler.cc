@@ -44,6 +44,8 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
 
   Costs result = left;
   result.execution_time += right.execution_time;
+  result.compute_time += right.compute_time;
+  result.memory_time += right.memory_time;
   if (right.inaccurate) {
     result.inaccurate = true;
   }
@@ -841,6 +843,8 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
 Costs VirtualScheduler::Summary() const {
   // Print out basic execution summary.
   VLOG(1) << "Expected execution time: " << graph_costs_.execution_time.count();
+  VLOG(1) << "Expected compute time: " << graph_costs_.compute_time.count();
+  VLOG(1) << "Expected memory time: " << graph_costs_.memory_time.count();
   VLOG(1) << "Expected max memory: " << graph_costs_.max_memory;
   VLOG(1) << "Expected max per-op buffers: " << graph_costs_.max_per_op_buffers;
   VLOG(1) << "Expected max per-op streaming buffers: "

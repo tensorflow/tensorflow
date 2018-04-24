@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(skyewm): this is necessary to make the single_threaded_cpu_device.h
+// include work. Some other include must be including eigen without defining
+// this. Consider defining in this in a BUILD rule.
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/common_runtime/graph_runner.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -20,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/single_threaded_cpu_device.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -35,18 +41,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-std::unique_ptr<Device> GetCPUDevice(Env* env) {
-  std::vector<Device*> devices;
-  SessionOptions session_options;
-  session_options.env = env;
-  Status s = DeviceFactory::GetFactory(DEVICE_CPU)
-                 ->CreateDevices(session_options, "", &devices);
-  if (s.ok() && !devices.empty()) {
-    return std::unique_ptr<Device>(devices[0]);
-  }
-  return nullptr;
-}
 
 // A simple rendezvous class.
 // Assumes a single sender and a single receiver, no duplicate sends, and no
@@ -98,7 +92,8 @@ class SimpleRendezvous : public Rendezvous {
 }  // namespace
 
 GraphRunner::GraphRunner(Env* env)
-    : device_deleter_(GetCPUDevice(env)), device_(device_deleter_.get()) {}
+    : device_deleter_(new SingleThreadedCpuDevice(env)),
+      device_(device_deleter_.get()) {}
 GraphRunner::GraphRunner(Device* device) : device_(device) {}
 
 GraphRunner::~GraphRunner() {}

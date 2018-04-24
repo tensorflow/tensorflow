@@ -22,11 +22,13 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":prefetching_ops_v2",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:checkpointable",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:device_util",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -51,6 +53,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python:device_util",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:model_fn",
     ],
@@ -66,6 +69,8 @@ py_library(
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:device",
+        "//tensorflow/python:device_util",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:training",
@@ -84,9 +89,9 @@ py_library(
         ":values",
         "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -104,6 +109,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:training",
@@ -125,6 +131,7 @@ py_library(
     deps = [
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":tpu_strategy",
         "//tensorflow/contrib/optimizer_v2:training",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
@@ -156,8 +163,8 @@ py_test(
     deps = [
         ":mirrored_strategy",
         ":strategy_test_lib",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -186,10 +193,10 @@ cuda_py_test(
         ":mirrored_strategy",
         ":values",
         ":strategy_test_lib",
+        "//tensorflow/python:distribute",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",
-        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_test_lib",
@@ -219,21 +226,50 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "minimize_loss_test",
-    srcs = ["minimize_loss_test.py"],
-    additional_deps = [
-        ":combinations",
-        ":single_loss_example",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
+py_library(
+    name = "tpu_strategy",
+    srcs = ["tpu_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":one_device_strategy",
+        ":values",
+        "//tensorflow/contrib/tpu",
+        "//tensorflow/contrib/tpu:tpu_py",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "minimize_loss_test_lib",
+    testonly = 1,
+    srcs = ["minimize_loss_test.py"],
+    deps = [
+        ":combinations",
+        ":mirrored_strategy",
+        ":single_loss_example",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "minimize_loss_test",
+    srcs = ["minimize_loss_test.py"],
+    additional_deps = [
+        ":minimize_loss_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",
@@ -291,6 +327,7 @@ py_library(
     srcs = ["single_loss_example.py"],
     deps = [
         ":step_fn",
+        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",

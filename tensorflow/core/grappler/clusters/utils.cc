@@ -54,7 +54,7 @@ DeviceProperties GetLocalCPUInfo() {
 
   int64 free_mem = port::AvailableRam();
   if (free_mem < INT64_MAX) {
-    device.set_memory_size(free_mem * 1024);
+    device.set_memory_size(free_mem);
   }
 
   (*device.mutable_environment())["cpu_instruction_set"] =

@@ -41,7 +41,7 @@ def main(args):
 
   strategy = tf.contrib.distribute.MirroredStrategy(
       ['/device:GPU:0', '/device:GPU:1'])
-  config = tf.estimator.RunConfig(distribute=strategy)
+  config = tf.estimator.RunConfig(train_distribute=strategy)
   optimizer = tf.train.GradientDescentOptimizer(0.2)
 
   model = tf.keras.Sequential()

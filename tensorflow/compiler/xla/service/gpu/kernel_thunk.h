@@ -47,20 +47,21 @@ class KernelThunk : public Thunk {
   //
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
   KernelThunk(tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
-              const string& kernel_name, const HloInstruction* hlo_instruction);
+              const string& kernel_name, const HloInstruction* hlo_instruction,
+              int unroll_factor);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
 
   const string& kernel_name() const { return kernel_name_; }
+  int unroll_factor() const { return unroll_factor_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
   tensorflow::Status Initialize(const GpuExecutable& executable) override;
 
   // Executes the kernel for the thunk on "stream", which must be non-null.
   tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
 
  private:
   // Buffers passed to the kernel as arguments.
@@ -69,6 +70,10 @@ class KernelThunk : public Thunk {
   // Entry kernel name for the computation.
   const string kernel_name_;
 
+  // The number of times this kernel should be unrolled. This works as a
+  // multiplier on the number of elements produced by a GPU thread.
+  const int unroll_factor_;
+
   // The thread and block dimension used to launch the kernel.
   // Will be set by IrEmitterUnnested.
   LaunchDimensions launch_dimensions_;
@@ -76,13 +81,11 @@ class KernelThunk : public Thunk {
   // Describes how to load this kernel. ExecuteOnStream reuses this loader
   // specification for all executions.
   mutable tensorflow::mutex mutex_;
-  std::unique_ptr<perftools::gputools::MultiKernelLoaderSpec> loader_spec_
-      GUARDED_BY(mutex_);
+  std::unique_ptr<se::MultiKernelLoaderSpec> loader_spec_ GUARDED_BY(mutex_);
 
   // Loaded kernels for each `StreamExecutor`
-  std::unordered_map<perftools::gputools::StreamExecutor*,
-                     perftools::gputools::KernelBase>
-      kernel_cache_ GUARDED_BY(mutex_);
+  std::unordered_map<se::StreamExecutor*, se::KernelBase> kernel_cache_
+      GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

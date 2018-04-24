@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -109,14 +111,14 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
 
 XLA_TEST_F(ClientTest,
         DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(ExecuteParallel))) {
-  Computation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
+  XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> const_arg,
       client_->TransferToServer(*Literal::CreateR2<int32>({{5, 6}, {7, 8}})));
 
-  ComputationBuilder b(client_, TestName() + ".add");
+  XlaBuilder b(TestName() + ".add");
   b.Add(b.Parameter(0, shape, "param_0"),
         b.ConstantR2<int32>({{1, 2}, {3, 4}}));
   TF_ASSERT_OK_AND_ASSIGN(add_with_one_arg, b.Build());
@@ -124,14 +126,14 @@ XLA_TEST_F(ClientTest,
   // We can't really test parallel execution on CPU since all of the cores in a
   // CPU are presented as a single device.  So for now we test "parallel"
   // execution on a single device.
-  std::vector<Client::ComputationInstance> computation_instances;
+  std::vector<Client::XlaComputationInstance> computation_instances;
   TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
                           client_->GetDeviceHandles(1));
   ASSERT_EQ(devices.size(), 1);
 
   ExecutionOptions options = execution_options_;
   *options.add_device_handles() = devices[0];
-  computation_instances.push_back(Client::ComputationInstance(
+  computation_instances.push_back(Client::XlaComputationInstance(
       add_with_one_arg, {const_arg.get()}, options, nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
