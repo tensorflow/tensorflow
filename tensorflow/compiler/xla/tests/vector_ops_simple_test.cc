@@ -348,6 +348,17 @@ XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstantNonzeroLower) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
+XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {
+  ComputationBuilder builder(client_, TestName());
+  auto zero = builder.ConstantR0<int64>(0);
+  auto one = builder.ConstantR0<int64>(10);
+  auto x = builder.ConstantR1<int64>({-3, 3, 9, 13});
+  auto clamp = builder.Clamp(zero, x, one);
+
+  std::vector<int64> expected = {0, 3, 9, 10};
+  ComputeAndCompareR1<int64>(&builder, expected, {});
+}
+
 XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
   Computation add_half;
   {
