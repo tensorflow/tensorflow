@@ -2528,7 +2528,6 @@ TEST_F(ConstantFoldingTest, PartialFolding_IdentityN) {
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
-  LOG(INFO) << output.DebugString();
   TF_EXPECT_OK(status);
   EXPECT_EQ(8, output.node_size());
   for (const auto& node : output.node()) {
