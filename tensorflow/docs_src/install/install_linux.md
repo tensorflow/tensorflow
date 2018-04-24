@@ -1,106 +1,25 @@
 # Installing TensorFlow on Ubuntu
 
-This guide explains how to install TensorFlow on Ubuntu. Although these
-instructions might also work on other Linux variants, we have only
-tested (and we only support) these instructions on machines meeting the
-following requirements:
+This guide explains how to install TensorFlow on Ubuntu Linux. While these
+instructions may work on other Linux variants, they are tested and supported with
+the following system requirements:
 
-  * 64-bit desktops or laptops
-  * Ubuntu 16.04 or higher
+* 64-bit desktops or laptops
+* Ubuntu 16.04 or higher
 
 
-## Determine which TensorFlow to install
+## Choose which TensorFlow to install
 
-You must choose one of the following types of TensorFlow to install:
+The following TensorFlow variants are available for installation:
 
-  * **TensorFlow with CPU support only**. If your system does not have a
-    NVIDIA® GPU, you must install this version. Note that this version of
-    TensorFlow is typically much easier to install (typically,
-    in 5 or 10 minutes), so even if you have an NVIDIA GPU, we recommend
-    installing this version first.
-  * **TensorFlow with GPU support**. TensorFlow programs typically run
-    significantly faster on a GPU than on a CPU. Therefore, if your
-    system has a NVIDIA® GPU meeting the prerequisites shown below and you
-    need to run performance-critical applications, you should ultimately
-    install this version.
-
-<a name="NVIDIARequirements"></a>
-### NVIDIA requirements to run TensorFlow with GPU support
-
-If you are installing TensorFlow with GPU support using one of the
-mechanisms described in this guide, then the following NVIDIA software
-must be installed on your system:
-
-  * [CUDA Toolkit 9.0](http://nvidia.com/cuda). For details, see
-    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
-    Ensure that you append the relevant CUDA pathnames to the
-    `LD_LIBRARY_PATH` environment variable as described in the
-    NVIDIA documentation.
-  * [cuDNN SDK v7](http://developer.nvidia.com/cudnn). For details, see
-    [NVIDIA's documentation](http://docs.nvidia.com/deeplearning/sdk/cudnn-install/).
-    Ensure that you create the `CUDA_HOME` environment variable as
-    described in the NVIDIA documentation.
-  * GPU card with CUDA Compute Capability 3.0 or higher for building
-    from source and 3.5 or higher for our binaries. See
-    [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for
-    a list of supported GPU cards.
-  * [GPU drivers](http://nvidia.com/driver) supporting your version of the CUDA
-    Toolkit.
-  * The libcupti-dev library, which is the NVIDIA CUDA Profile Tools Interface.
-    This library provides advanced profiling support. To install this library,
-    issue the following command for CUDA Toolkit >= 8.0:
-
-    <pre>
-    $ <b>sudo apt-get install cuda-command-line-tools</b>
-    </pre>
-
-    and add its path to your `LD_LIBRARY_PATH` environment variable:
-
-    <pre>
-    $ <b>export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</b>
-    </pre>
-
-    For CUDA Toolkit <= 7.5 do:
-
-    <pre>
-    $ <b>sudo apt-get install libcupti-dev</b>
-    </pre>
-
-  * **[OPTIONAL]**  For optimized inferencing performance, you can also install
-    **NVIDIA TensorRT 3.0**. The minimal set of TensorRT runtime components needed
-    for use with the pre-built `tensorflow-gpu` package can be installed as follows:
-
-    <pre>
-    $ <b>wget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1404/x86_64/nvinfer-runtime-trt-repo-ubuntu1404-3.0.4-ga-cuda9.0_1.0-1_amd64.deb</b>
-    $ <b>sudo dpkg -i nvinfer-runtime-trt-repo-ubuntu1404-3.0.4-ga-cuda9.0_1.0-1_amd64.deb</b>
-    $ <b>sudo apt-get update</b>
-    $ <b>sudo apt-get install -y --allow-downgrades libnvinfer-dev libcudnn7-dev=7.0.5.15-1+cuda9.0 libcudnn7=7.0.5.15-1+cuda9.0</b>
-    </pre>
-
-    **IMPORTANT:** For compatibility with the pre-built `tensorflow-gpu`
-    package, please use the Ubuntu **14.04** package of TensorRT as shown above,
-    even when installing onto an Ubuntu 16.04 system.<br/>
-    <br/>
-    To build the TensorFlow-TensorRT integration module from source rather than
-    using pre-built binaries, see the [module documentation](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tensorrt#using-tensorrt-in-tensorflow).
-    For detailed TensorRT installation instructions, see [NVIDIA's TensorRT documentation](http://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html).<br/>
-    <br/>
-    To avoid cuDNN version conflicts during later system upgrades, you can hold
-    the cuDNN version at 7.0.5:
-
-    <pre>
-    $ <b> sudo apt-mark hold libcudnn7 libcudnn7-dev</b>
-    </pre>
-
-    To later allow upgrades, you can remove the hold:
-
-    <pre>
-    $ <b> sudo apt-mark unhold libcudnn7 libcudnn7-dev</b>
-    </pre>
-
-If you have an earlier version of the preceding packages, please upgrade to
-the specified versions. If upgrading is not possible, then you may still run
-TensorFlow with GPU support, if you @{$install_sources$install TensorFlow from Sources}.
+* __TensorFlow with CPU support only__. If your system does not have a
+  NVIDIA®&nbsp;GPU, you must install this version. This version of TensorFlow is
+  usually easier to install, so even if you have an NVIDIA GPU, we recommend
+  installing this version first.
+* __TensorFlow with GPU support__. TensorFlow programs usually run much faster on
+  a GPU instead of a CPU. If you run performance-critical applications and your
+  system has an NVIDIA®&nbsp;GPU that meets the prerequisites, you should install
+  this version. See [TensorFlow GPU support](#NVIDIARequirements) for details.
 
 
 ## How to install TensorFlow
@@ -131,8 +50,8 @@ On Ubuntu, Python is automatically installed and `pip` is *usually* installed.
 Confirm the `python` and `pip` versions:
 
 <pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">python -V</code>
-  <code class="devsite-terminal">pip -V  # or: pip3 -V</code>
+  <code class="devsite-terminal">python -V  # or: python3 -V</code>
+  <code class="devsite-terminal">pip -V     # or: pip3 -V</code>
 </pre>
 
 To install these packages on Ubuntu:
@@ -264,8 +183,8 @@ On Ubuntu, Python is automatically installed and `pip` is *usually* installed.
 Confirm the `python` and `pip` versions:
 
 <pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">python -V</code>
-  <code class="devsite-terminal">pip -V  # or: pip3 -V</code>
+  <code class="devsite-terminal">python -V  # or: python3 -V</code>
+  <code class="devsite-terminal">pip -V     # or: pip3 -V</code>
 </pre>
 
 To install these packages on Ubuntu:
@@ -576,6 +495,85 @@ If you are new to machine learning, we recommend the following:
 
 *  [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course)
 *  @{$get_started/eager}
+
+
+<a name="NVIDIARequirements"></a>
+## TensorFlow GPU support
+
+To install TensorFlow with GPU support, configure the following NVIDIA® software
+on your system:
+
+* [CUDA Toolkit 9.0](http://nvidia.com/cuda). For details, see
+  [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
+  Append the relevant CUDA pathnames to the `LD_LIBRARY_PATH` environmental
+  variable as described in the NVIDIA documentation.
+* [cuDNN SDK v7](http://developer.nvidia.com/cudnn). For details, see
+  [NVIDIA's documentation](http://docs.nvidia.com/deeplearning/sdk/cudnn-install/).
+  Create the `CUDA_HOME` environment variable as described in the NVIDIA
+  documentation.
+* A GPU card with CUDA Compute Capability 3.0 or higher for building TensorFlow
+  from source. To use the TensorFlow binaries, version 3.5 or higher is required.
+  See the [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
+  list of supported GPU cards.
+* [GPU drivers](http://nvidia.com/driver) that support your version of the CUDA
+  Toolkit.
+* The `libcupti-dev` library is the NVIDIA CUDA Profile Tools Interface. This
+  library provides advanced profiling support. To install this library,
+  use the following command for CUDA Toolkit >= 8.0:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools</code>
+</pre>
+
+Add this path to the `LD_LIBRARY_PATH` environmental variable:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</code>
+</pre>
+
+For CUDA Toolkit <= 7.5 use:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">sudo apt-get install libcupti-dev</code>
+</pre>
+
+* *OPTIONAL*:  For optimized performance during inference, install
+  *NVIDIA&nbsp;TensorRT&nbsp;3.0*. To install the minimal amount of TensorRT
+  runtime components required to use with the pre-built `tensorflow-gpu` package:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">wget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1404/x86_64/nvinfer-runtime-trt-repo-ubuntu1404-3.0.4-ga-cuda9.0_1.0-1_amd64.deb</code>
+  <code class="devsite-terminal">sudo dpkg -i nvinfer-runtime-trt-repo-ubuntu1404-3.0.4-ga-cuda9.0_1.0-1_amd64.deb</code>
+  <code class="devsite-terminal">sudo apt-get update</code>
+  <code class="devsite-terminal">sudo apt-get install -y --allow-downgrades libnvinfer-dev libcudnn7-dev=7.0.5.15-1+cuda9.0 libcudnn7=7.0.5.15-1+cuda9.0</code>
+</pre>
+
+Note: For compatibility with the pre-built `tensorflow-gpu` package, use the
+Ubuntu *14.04* package of TensorRT (shown above). Use this even when installing
+on an Ubuntu 16.04 system.
+
+To build the TensorFlow-TensorRT integration module from source instead of using
+the pre-built binaries, see the
+[module documentation](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tensorrt#using-tensorrt-in-tensorflow).
+For detailed TensorRT installation instructions, see
+[NVIDIA's TensorRT documentation](http://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html).
+
+To avoid cuDNN version conflicts during later system upgrades, hold the cuDNN
+version at 7.0.5:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">sudo apt-mark hold libcudnn7 libcudnn7-dev</code>
+</pre>
+
+To allow upgrades, remove the this hold:
+
+<pre class="prettyprint lang-bsh">
+  <code class="devsite-terminal">sudo apt-mark unhold libcudnn7 libcudnn7-dev</code>
+</pre>
+
+If you have an earlier version of the preceding packages, upgrade to the
+specified versions. If upgrading is not possible, you can still run TensorFlow
+with GPU support by @{$install_sources}.
 
 
 ## Common installation problems
