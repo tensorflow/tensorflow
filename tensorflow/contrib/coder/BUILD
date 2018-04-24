@@ -54,19 +54,27 @@ tf_gen_op_libs(
     ],
 )
 
+cc_library(
+    name = "range_coder_ops_util",
+    srcs = ["kernels/range_coder_ops_util.cc"],
+    hdrs = ["kernels/range_coder_ops_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "range_coder_ops",
     srcs = [
         "kernels/range_coder_ops.cc",
-        "kernels/range_coder_ops_util.cc",
-    ],
-    hdrs = [
-        "kernels/range_coder_ops_util.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":coder_ops_op_lib",
         ":range_coder",
+        ":range_coder_ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
