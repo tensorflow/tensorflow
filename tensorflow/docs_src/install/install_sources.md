@@ -393,9 +393,9 @@ If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Star
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-## Common installation problems
+## Common build and installation problems
 
-The installation problems you encounter typically depend on the
+The build and installation problems you encounter typically depend on the
 operating system.  See the "Common installation problems" section
 of one of the following guides:
 
@@ -446,6 +446,11 @@ Stack Overflow and specify the `tensorflow` tag.
   @local_config_cc//:cc-compiler-darwin_x86_64: Xcode version must be specified
   to use an Apple CROSSTOOL.</pre>
   </td>
+</tr>
+
+<tr>
+  <td><a href="https://stackoverflow.com/q/47080760">47080760</a></td>
+  <td><pre>undefined reference to `cublasGemmEx@libcublas.so.9.0'</pre></td>
 </tr>
 
 </table>
