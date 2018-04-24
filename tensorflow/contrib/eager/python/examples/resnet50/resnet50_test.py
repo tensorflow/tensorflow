@@ -169,7 +169,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
   def _train_batch_sizes(self):
     """Choose batch sizes based on GPU capability."""
     for device in device_lib.list_local_devices():
-      if 'GPU:0' in device.name:
+      if tf.DeviceSpec.from_string(device.name).device_type == 'GPU':
         # Avoid OOM errors with larger batch sizes, which seem to cause errors
         # later on even if caught.
         #
@@ -180,6 +180,11 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           return (16,)
         if 'P100' in device.physical_device_desc:
           return (16, 32, 64)
+
+      if tf.DeviceSpec.from_string(device.name).device_type == 'TPU':
+        # TODO(iga): Training fails with batch size of 16, probably because of
+        # no layout optimizations with op-by-op mode. Investigate more.
+        return (8,)
     return (16, 32)
 
   def _report(self, label, start, num_iters, device, batch_size, data_format):
@@ -267,7 +272,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           self._force_device_sync()
           self._report(label, start, num_iters, device, batch_size, data_format)
 
-  def benchmark_eager_train(self):
+  def benchmark_eager_train_sync(self):
     self._benchmark_eager_train('eager_train', MockIterator, defun=False)
 
   def benchmark_eager_train_async(self):
