@@ -84,7 +84,7 @@ if (NOT WIN32)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
-    set (systmelib_ZLIB ON)
+    set (systemlib_ZLIB ON)
   endif (systemlib_ALL)
 endif()
 
