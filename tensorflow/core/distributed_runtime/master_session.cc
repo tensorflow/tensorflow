@@ -89,6 +89,10 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   ~ReffedClientGraph() override {
     if (should_deregister_) {
       DeregisterPartitions();
+    } else {
+      for (Part& part : partitions_) {
+        worker_cache_->ReleaseWorker(part.name, part.worker);
+      }
     }
   }
 
@@ -1174,14 +1178,8 @@ Status MasterSession::Create(GraphDef* graph_def,
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
         graph_def, execution_options, &execution_state_));
   }
-  // TODO(b/36574172): Remove these conditions when ClusterSpec
-  // propagation is supported in all servers.
-  if (options.cluster_def != nullptr ||
-      session_opts_.config.isolate_session_state()) {
-    should_delete_worker_sessions_ = true;
-    return CreateWorkerSessions(options);
-  }
-  return Status::OK();
+  should_delete_worker_sessions_ = true;
+  return CreateWorkerSessions(options);
 }
 
 Status MasterSession::CreateWorkerSessions(
