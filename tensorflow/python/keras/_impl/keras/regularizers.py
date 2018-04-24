@@ -23,6 +23,7 @@ import six
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -55,9 +56,9 @@ class L1L2(Regularizer):
   def __call__(self, x):
     regularization = 0.
     if self.l1:
-      regularization += K.sum(self.l1 * K.abs(x))
+      regularization += math_ops.reduce_sum(self.l1 * math_ops.abs(x))
     if self.l2:
-      regularization += K.sum(self.l2 * K.square(x))
+      regularization += math_ops.reduce_sum(self.l2 * math_ops.square(x))
     return regularization
 
   def get_config(self):

@@ -155,6 +155,9 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == gpu::host::kHostPlatformId);
   options.device_allocator = xla_allocator;
+  // TODO(b/77671268): We don't set variable_representation_shape_fn here. This
+  // is restricted to Variables, but we need something like this to apply to
+  // normal Tensors too.
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
@@ -179,8 +182,10 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   run_options.set_stream(stream);
   run_options.set_allocator(xla_allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
+  run_options.set_rng_seed(ctx->step_id());
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
+
   auto run_result = executable->Run(launch_context.arguments(), run_options);
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 

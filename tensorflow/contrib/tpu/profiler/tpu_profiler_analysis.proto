@@ -7,13 +7,15 @@ message NewProfileSessionRequest {
   ProfileRequest request = 1;
   string repository_root = 2;
   repeated string hosts = 3;
+  string session_id = 4;
 }
 
 message NewProfileSessionResponse {
   // Auxiliary error_message.
   string error_message = 1;
-  // If success, return session identifier for future reference.
-  string session_id = 2;
+
+  // Whether all hosts had returned a empty trace.
+  bool empty_trace = 2;
 }
 
 message EnumProfileSessionsAndToolsRequest {

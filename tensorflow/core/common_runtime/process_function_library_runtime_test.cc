@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -132,7 +133,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                    });
     done2.WaitForNotification();
     EXPECT_TRUE(errors::IsNotFound(status));
-    EXPECT_TRUE(StringPiece(status.error_message()).contains("not found."));
+    EXPECT_TRUE(str_util::StrContains(status.error_message(), "not found."));
 
     return Status::OK();
   }

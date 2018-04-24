@@ -304,19 +304,15 @@ void ComputeComputationPostOrder(
     HloComputation* computation,
     tensorflow::gtl::FlatSet<HloComputation*>* visited,
     std::list<HloComputation*>* post_order) {
-  if (visited->count(computation) > 0) {
-    return;
-  }
-
-  for (auto* instruction : computation->instructions()) {
-    for (HloComputation* called_computation :
-         instruction->called_computations()) {
-      ComputeComputationPostOrder(called_computation, visited, post_order);
+  if (visited->insert(computation).second) {
+    for (auto* instruction : computation->instructions()) {
+      for (HloComputation* called_computation :
+           instruction->called_computations()) {
+        ComputeComputationPostOrder(called_computation, visited, post_order);
+      }
     }
+    post_order->push_back(computation);
   }
-
-  visited->insert(computation);
-  post_order->push_back(computation);
 }
 
 }  // namespace

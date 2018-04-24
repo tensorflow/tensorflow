@@ -557,6 +557,18 @@ class HloInstruction {
   // 'instruction'.
   Status RemoveControlDependencyTo(HloInstruction* instruction);
 
+  // Drops all control predecessors and successors from this HLO instruction.
+  Status DropAllControlDeps();
+
+  // Copies the control predecessors and successors on this HLO instruction to
+  // `inst`.  Does not do a deep copy so this makes sense only if `inst` and
+  // this HLO are in the same module.
+  //
+  // Depending on the use cases we see in practice, in the future we may
+  // consider folding the logic here into Clone, CloneWithNewOperands and
+  // ReplaceAllUsesWith by treating control dependencies like data dependencies.
+  Status CopyAllControlDepsFrom(const HloInstruction* inst);
+
   // Returns the set of control predecessors (successors) of this
   // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
@@ -928,6 +940,13 @@ class HloInstruction {
   const HloSharding& sharding_or_default(const HloSharding& default_) const {
     return sharding_ ? *sharding_ : default_;
   }
+  // Returns the sharding unique device, if any.
+  tensorflow::gtl::optional<int64> sharding_unique_device() const {
+    if (sharding_ == nullptr || !sharding_->HasUniqueDevice()) {
+      return tensorflow::gtl::optional<int64>();
+    }
+    return sharding_->UniqueDevice().ValueOrDie();
+  }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
@@ -937,6 +956,21 @@ class HloInstruction {
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
   bool has_sharding() const { return sharding_ != nullptr; }
+  // Checks whether the instruction has compatible sharding with the other
+  // instruction.
+  bool has_compatible_sharding(const HloInstruction* other) const {
+    if (!has_sharding()) {
+      return !other->has_sharding();
+    }
+    return other->has_sharding() ? sharding() == other->sharding() : false;
+  }
+
+  // When creating a new instruction which either replaces, or shifts up (kCopy
+  // insertion case), another instruction, we need to make sure the certain
+  // properties of the new instruction are copied into the derived one. As of
+  // today, the metadata and sharding will be propagated to the derived
+  // instruction.
+  void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
 
   // Adds a new operand the fusion instruction.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
@@ -1134,17 +1168,17 @@ class HloInstruction {
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
-  // the instruction to form the name of the cloned instruction.
-  // If the module pointer is not nullptr, it will be the module where
-  // the cloned computations will be added to (in order to support deep
-  // cloning).
+  // the instruction to form the name of the cloned instruction.  If the module
+  // pointer is not nullptr, it will be the module where the cloned computations
+  // will be added to (in order to support deep cloning).  Ignores the control
+  // predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone",
                                         HloModule* module = nullptr) const;
 
-  // Clones the HLO instruction as above but with new shape and operands.
-  // If the module pointer is not nullptr, it will be the module where
-  // the cloned computations will be added to (in order to support deep
-  // cloning).
+  // Clones the HLO instruction as above but with new shape and operands.  If
+  // the module pointer is not nullptr, it will be the module where the cloned
+  // computations will be added to (in order to support deep cloning).  Ignores
+  // the control predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloModule* module = nullptr) const;
@@ -1435,7 +1469,7 @@ class HloInstruction {
   string channel_name_;
 
   // Estimate of the duration of a host computation in nanoseconds.
-  int64 cost_estimate_ns_;
+  int64 cost_estimate_ns_ = 0;
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;

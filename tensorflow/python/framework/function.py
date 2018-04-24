@@ -30,7 +30,6 @@ from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -275,8 +274,7 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     if self._c_func:
       with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          c_api.TF_FunctionToFunctionDef(self._c_func, buf, status)
+        c_api.TF_FunctionToFunctionDef(self._c_func.func, buf)
         fdef = function_pb2.FunctionDef()
         proto_data = c_api.TF_GetBuffer(buf)
         fdef.ParseFromString(compat.as_bytes(proto_data))
@@ -399,18 +397,17 @@ class _DefinedFunction(object):
                       if self._out_names else [])
       description = self._func.__doc__ or None
       # pylint: disable=protected-access
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._c_func = c_api.TF_GraphToFunction_wrapper(
-            temp_graph._c_graph,
-            base_func_name,
-            self._func_name is None,  # append_hash_to_fn_name
-            None,  # opers
-            [t._as_tf_output() for t in inputs],
-            [t._as_tf_output() for t in outputs],
-            output_names,
-            None,  # opts
-            description,
-            status)
+      c_func = c_api.TF_GraphToFunction_wrapper(
+          temp_graph._c_graph,
+          base_func_name,
+          self._func_name is None,  # append_hash_to_fn_name
+          None,  # opers
+          [t._as_tf_output() for t in inputs],
+          [t._as_tf_output() for t in outputs],
+          output_names,
+          None,  # opts
+          description)
+      self._c_func = c_api_util.ScopedTFFunction(c_func)
       # pylint: enable=protected-access
       self._set_c_attrs(kwargs_attr)
 
@@ -433,9 +430,8 @@ class _DefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use the same status.
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.TF_FunctionSetAttrValueProto(self._c_func, compat.as_str(name),
-                                           serialized, status)
+      c_api.TF_FunctionSetAttrValueProto(self._c_func.func, compat.as_str(name),
+                                         serialized)
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
     """Creates an 8-character string unique to this input.
@@ -830,8 +826,8 @@ def _from_definition(fdef, grad_func=None):
   # pylint: disable=protected-access
   if ops._USE_C_API:
     serialized = fdef.SerializeToString()
-    with errors.raise_exception_on_not_ok_status() as status:
-      result._c_func = c_api.TF_FunctionImportFunctionDef(serialized, status)
+    c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+    result._c_func = c_api_util.ScopedTFFunction(c_func)
     result._extra_inputs = []
   else:
     result._definition = fdef

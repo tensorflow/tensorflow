@@ -76,8 +76,9 @@ class BuiltinsTest(test.TestCase):
     def range(x):  # pylint:disable=redefined-builtin
       return x
 
-    # Functions that just have the names of builtins are ignored.
-    self.assertEqual(builtins.dynamic_builtin(range, 1), 1)
+    # Functions that just have the names of builtins are rejected.
+    with self.assertRaises(ValueError):
+      self.assertEqual(builtins.dynamic_builtin(range, 1), 1)
     if six.PY2:
       self.assertListEqual(
           list(builtins.dynamic_builtin(xrange, 3)), [0, 1, 2])

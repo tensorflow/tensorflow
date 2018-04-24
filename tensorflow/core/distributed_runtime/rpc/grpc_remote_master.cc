@@ -95,6 +95,28 @@ class GrpcRemoteMaster : public MasterInterface {
                 &MasterServiceStub::Reset);
   }
 
+  Status MakeCallable(CallOptions* call_options,
+                      const MakeCallableRequest* request,
+                      MakeCallableResponse* response) override {
+    ::grpc::ClientContext ctx;
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::MakeCallable);
+  }
+  Status RunCallable(CallOptions* call_options,
+                     const RunCallableRequest* request,
+                     RunCallableResponse* response) override {
+    ::grpc::ClientContext ctx;
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::RunCallable);
+  }
+  Status ReleaseCallable(CallOptions* call_options,
+                         const ReleaseCallableRequest* request,
+                         ReleaseCallableResponse* response) override {
+    ::grpc::ClientContext ctx;
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::ReleaseCallable);
+  }
+
  private:
   // Start tracing, attaching a unique ID to both the trace and the RPC.
   port::Tracing::TraceMe TraceRpc(StringPiece name,

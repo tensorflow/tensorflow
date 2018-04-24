@@ -134,9 +134,9 @@ class CustomCallClientAPITest : public ClientLibraryTestBase {};
 // When using the client API, CustomCall targets can't begin with '$' -- these
 // are reserved for internal use.
 XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
-  ComputationBuilder builder(client_, TestName());
-  auto call = builder.CustomCall("$illegal", /*operands=*/{},
-                                 ShapeUtil::MakeShape(F32, {1}));
+  XlaBuilder builder(TestName());
+  builder.CustomCall("$illegal", /*operands=*/{},
+                     ShapeUtil::MakeShape(F32, {1}));
 
   StatusOr<std::unique_ptr<GlobalData>> result =
       Execute(&builder, /*arguments=*/{});

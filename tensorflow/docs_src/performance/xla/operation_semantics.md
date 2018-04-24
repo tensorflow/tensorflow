@@ -854,12 +854,13 @@ calculation of 'start_indices') is currently implementation-defined.
 | `operand`       | `ComputationDataHandle` | N dimensional array of type T    |
 | `update`        | `ComputationDataHandle` | N dimensional array of type T    |
 :                 :                         : containing the slice update.     :
-:                 :                         : Each dimension of update shape    :
+:                 :                         : Each dimension of update shape   :
 :                 :                         : must be strictly greater than    :
 :                 :                         : zero, and start + update must be :
-:                 :                         : less than operand size for each  :
-:                 :                         : dimension to avoid generating    :
-:                 :                         : out-of-bounds update indices.    :
+:                 :                         : less than or equal to the operand:
+:                 :                         : size for each dimension to avoid :
+:                 :                         : generating out-of-bounds update  :
+:                 :                         : indices.                         :
 | `start_indices` | `ComputationDataHandle` | Rank 1 array of N integers       |
 :                 :                         : containing the starting indices  :
 :                 :                         : of the slice for each dimension. :
@@ -1416,12 +1417,12 @@ Applies a reduction function to an array.
 | `dimensions`  | `int64` array           | unordered array of dimensions to |
 :               :                         : reduce                           :
 
-Conceptually, this operation reduces one or more dimensions in the input array
-into scalars. The rank of the result array is `rank(operand) - len(dimensions)`.
-`init_value` is the initial value used for every reduction and may also be
-inserted anywhere during computation if the back-end chooses to do so. So in
-most cases `init_value` should be an identity of the reduction function (for
-example, 0 for addition).
+This operation reduces one or more dimensions of the input array into scalars.
+The rank of the returned array is `rank(operand) - len(dimensions)`.
+`init_value` is the initial value used for every reduction and may be inserted
+anywhere during computation by the back-end. In most cases, `init_value` is an
+identity of the reduction function (for example, 0 for addition). The applied
+`computation` is always passed the `init_value` on the left-hand side.
 
 The evaluation order of the reduction function is arbitrary and may be
 non-deterministic. Therefore, the reduction function should not be overly
@@ -1441,8 +1442,7 @@ could be computed as
 
 but there are also many other possibilities, e.g.
 
-`f(init_value, f(f(10, f(init_value, 11)), f(f(init_value, 12), f(13,
-init_value))))`
+`f(init_value, f(f(10, f(init_value, 11)), f(f(init_value, 12), f(init_value, 13))))`
 
 The following is a rough pseudo-code example of how reduction could be
 implemented, using summation as the reduction computation with an initial value
@@ -1560,7 +1560,9 @@ See also
 Applies a reduction function to all elements in each window of the input
 multi-dimensional array, producing an output multi-dimensional array with the
 same number of elements as the number of valid positions of the window. A
-pooling layer can be expressed as a `ReduceWindow`.
+pooling layer can be expressed as a `ReduceWindow`. Similar to
+[`Reduce`](#reduce), the applied `computation` is always passed the `init_value`
+on the left-hand side.
 
 <b> `ReduceWindow(operand, init_value, computation, window_dimensions,
 window_strides, padding)` </b>

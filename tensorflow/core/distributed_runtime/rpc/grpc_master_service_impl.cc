@@ -36,6 +36,9 @@ static const char* grpcMasterService_method_names[] = {
     "/tensorflow.MasterService/CloseSession",
     "/tensorflow.MasterService/ListDevices",
     "/tensorflow.MasterService/Reset",
+    "/tensorflow.MasterService/MakeCallable",
+    "/tensorflow.MasterService/RunCallable",
+    "/tensorflow.MasterService/ReleaseCallable",
 };
 
 std::unique_ptr<MasterService::Stub> MasterService::NewStub(
@@ -64,7 +67,14 @@ MasterService::Stub::Stub(
       rpcmethod_ListDevices_(grpcMasterService_method_names[5],
                              ::grpc::internal::RpcMethod::NORMAL_RPC, channel),
       rpcmethod_Reset_(grpcMasterService_method_names[6],
-                       ::grpc::internal::RpcMethod::NORMAL_RPC, channel) {}
+                       ::grpc::internal::RpcMethod::NORMAL_RPC, channel),
+      rpcmethod_MakeCallable_(grpcMasterService_method_names[7],
+                              ::grpc::internal::RpcMethod::NORMAL_RPC, channel),
+      rpcmethod_RunCallable_(grpcMasterService_method_names[8],
+                             ::grpc::internal::RpcMethod::NORMAL_RPC, channel),
+      rpcmethod_ReleaseCallable_(grpcMasterService_method_names[9],
+                                 ::grpc::internal::RpcMethod::NORMAL_RPC,
+                                 channel) {}
 
 ::grpc::Status MasterService::Stub::CreateSession(
     ::grpc::ClientContext* context, const CreateSessionRequest& request,
@@ -115,8 +125,29 @@ MasterService::Stub::Stub(
                                              context, request, response);
 }
 
+::grpc::Status MasterService::Stub::MakeCallable(
+    ::grpc::ClientContext* context, const MakeCallableRequest& request,
+    MakeCallableResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_MakeCallable_, context, request, response);
+}
+
+::grpc::Status MasterService::Stub::RunCallable(
+    ::grpc::ClientContext* context, const RunCallableRequest& request,
+    RunCallableResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_RunCallable_, context, request, response);
+}
+
+::grpc::Status MasterService::Stub::ReleaseCallable(
+    ::grpc::ClientContext* context, const ReleaseCallableRequest& request,
+    ReleaseCallableResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_ReleaseCallable_, context, request, response);
+}
+
 MasterService::AsyncService::AsyncService() {
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < 10; ++i) {
     AddMethod(new ::grpc::internal::RpcServiceMethod(
         grpcMasterService_method_names[i],
         ::grpc::internal::RpcMethod::NORMAL_RPC, nullptr));

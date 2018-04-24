@@ -103,7 +103,7 @@ class Uniform(distribution.Distribution):
       InvalidArgumentError: if `low >= high` and `validate_args=False`.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[low, high]):
+    with ops.name_scope(name, values=[low, high]) as name:
       with ops.control_dependencies([
           check_ops.assert_less(
               low, high, message="uniform not defined when low >= high.")
@@ -166,7 +166,8 @@ class Uniform(distribution.Distribution):
     return self.low + self.range() * samples
 
   def _prob(self, x):
-    broadcasted_x = x * array_ops.ones(self.batch_shape_tensor())
+    broadcasted_x = x * array_ops.ones(
+        self.batch_shape_tensor(), dtype=x.dtype)
     return array_ops.where(
         math_ops.is_nan(broadcasted_x),
         broadcasted_x,

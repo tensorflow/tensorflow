@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
 
 
@@ -104,16 +106,15 @@ class KerasMetricsTest(test.TestCase):
             The total number of true positives seen this epoch at the
                 completion of the batch.
         """
-        y_true = keras.backend.cast(y_true, 'int32')
-        y_pred = keras.backend.cast(keras.backend.round(y_pred), 'int32')
-        correct_preds = keras.backend.cast(
-            keras.backend.equal(y_pred, y_true), 'int32')
-        true_pos = keras.backend.cast(
-            keras.backend.sum(correct_preds * y_true), 'int32')
+        y_true = math_ops.cast(y_true, 'int32')
+        y_pred = math_ops.cast(math_ops.round(y_pred), 'int32')
+        correct_preds = math_ops.cast(math_ops.equal(y_pred, y_true), 'int32')
+        true_pos = math_ops.cast(
+            math_ops.reduce_sum(correct_preds * y_true), 'int32')
         current_true_pos = self.true_positives * 1
-        self.add_update(keras.backend.update_add(self.true_positives,
-                                                 true_pos),
-                        inputs=[y_true, y_pred])
+        self.add_update(
+            state_ops.assign_add(self.true_positives, true_pos),
+            inputs=[y_true, y_pred])
         return current_true_pos + true_pos
 
     metric_fn = BinaryTruePositives()

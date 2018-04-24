@@ -42,9 +42,10 @@ def load_op_library(path):
     plugin.
   """
   if os.name == 'nt':
-    # To avoid makeing every user_ops aware of windows, re-write
-    # the file extension from .so to .dll.
-    path = re.sub(r'\.so$', '.dll', path)
+    # To avoid making every user_ops aware of windows, re-write
+    # the file extension from .so to .dll if .so file doesn't exist.
+    if not os.path.exists(path):
+      path = re.sub(r'\.so$', '.dll', path)
 
     # Currently we have only some user_ops as dlls on windows - don't try
     # to load them if the dll is not found.

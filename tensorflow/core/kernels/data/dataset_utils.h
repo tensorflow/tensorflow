@@ -28,6 +28,8 @@ Status MakeIteratorFromInputElement(
     int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator);
 
+IteratorContext MakeIteratorContext(OpKernelContext* ctx);
+
 }  // namespace dataset
 
 }  // namespace tensorflow

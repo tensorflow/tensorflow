@@ -137,7 +137,7 @@ class TrainSpec(
           * A tuple (features, labels): Where features is a `Tensor` or a
             dictionary of string feature name to `Tensor` and labels is a
             `Tensor` or a dictionary of string label name to `Tensor`.
-            
+
       max_steps: Int. Positive number of total steps for which to train model.
         If `None`, train forever. The training `input_fn` is not expected to
         generate `OutOfRangeError` or `StopIteration` exceptions. See the
@@ -334,7 +334,8 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   can read and write). The only extra work to do is setting the environment
   variable `TF_CONFIG` properly for each worker correspondingly.
 
-  Also see: https://www.tensorflow.org/deploy/distributed
+  Also see
+  [Distributed TensorFlow](https://www.tensorflow.org/deploy/distributed).
 
   Setting environment variable depends on the platform. For example, on Linux,
   it can be done as follows (`$` is the shell prompt):

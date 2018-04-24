@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tflite {
 
-class AllocationInfo;
+struct AllocationInfo;
 
 // A memory planner that makes all the allocations using arenas.
 //

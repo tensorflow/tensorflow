@@ -202,6 +202,7 @@ struct ParsedModelFlags {
   Arg<toco::IntList> input_shape;
   Arg<toco::StringMapList> rnn_states;
   Arg<toco::StringMapList> model_checks;
+  Arg<bool> change_concat_input_ranges = Arg<bool>(true);
   // Debugging output options.
   // TODO(benoitjacob): these shouldn't be ModelFlags.
   Arg<string> graphviz_first_array;
@@ -211,6 +212,7 @@ struct ParsedModelFlags {
   Arg<bool> allow_nonexistent_arrays = Arg<bool>(false);
   Arg<bool> allow_nonascii_arrays = Arg<bool>(false);
   Arg<string> arrays_extra_info_file;
+  Arg<string> model_flags_file;
 };
 
 // Flags that describe the operation you would like to do (what conversion
@@ -225,6 +227,8 @@ struct ParsedTocoFlags {
   // TODO(aselle): command_line_flags  doesn't support doubles
   Arg<float> default_ranges_min = Arg<float>(0.);
   Arg<float> default_ranges_max = Arg<float>(0.);
+  Arg<float> default_int16_ranges_min = Arg<float>(0.);
+  Arg<float> default_int16_ranges_max = Arg<float>(0.);
   Arg<string> inference_type;
   Arg<string> inference_input_type;
   Arg<bool> drop_fake_quant = Arg<bool>(false);
@@ -235,6 +239,8 @@ struct ParsedTocoFlags {
   Arg<string> input_types;
   Arg<bool> debug_disable_recurrent_cell_fusion = Arg<bool>(false);
   Arg<bool> drop_control_dependency = Arg<bool>(false);
+  Arg<bool> propagate_fake_quant_num_bits = Arg<bool>(false);
+  Arg<bool> allow_nudging_weights_to_use_fast_gemm_kernel = Arg<bool>(false);
 };
 
 }  // namespace toco

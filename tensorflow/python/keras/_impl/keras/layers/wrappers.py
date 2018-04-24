@@ -23,11 +23,12 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
+from tensorflow.python.keras._impl.keras.engine import base_layer
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
-from tensorflow.python.layers import utils as tf_layers_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -209,11 +210,11 @@ class TimeDistributed(Wrapper):
       # We can go with reshape-based implementation for performance.
       input_length = input_shape[1]
       if not input_length:
-        input_length = K.shape(inputs)[1]
+        input_length = array_ops.shape(inputs)[1]
       # Shape: (num_samples * timesteps, ...). And track the
       # transformation in self._input_map.
-      input_uid = tf_layers_util.object_list_uid(inputs)
-      inputs = K.reshape(inputs, (-1,) + input_shape[2:])
+      input_uid = base_layer.object_list_uid(inputs)
+      inputs = array_ops.reshape(inputs, (-1,) + input_shape[2:])
       self._input_map[input_uid] = inputs
       # (num_samples * timesteps, ...)
       y = self.layer.call(inputs, **kwargs)
@@ -221,7 +222,7 @@ class TimeDistributed(Wrapper):
         uses_learning_phase = y._uses_learning_phase
       # Shape: (num_samples, timesteps, ...)
       output_shape = self.compute_output_shape(input_shape).as_list()
-      y = K.reshape(y, (-1, input_length) + tuple(output_shape[2:]))
+      y = array_ops.reshape(y, (-1, input_length) + tuple(output_shape[2:]))
 
     # Apply activity regularizer if any:
     if (hasattr(self.layer, 'activity_regularizer') and

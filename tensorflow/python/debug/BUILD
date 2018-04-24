@@ -913,6 +913,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 py_test(
@@ -920,6 +921,7 @@ py_test(
     size = "small",
     srcs = ["cli/profile_analyzer_cli_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":debugger_cli_common",
         ":profile_analyzer_cli",

@@ -39,27 +39,18 @@ from tensorflow.python.util import nest
 from tensorflow.python.summary import summary
 
 
-def time_series_regression_head(model,
-                                state_manager,
-                                optimizer,
-                                input_statistics_generator=None):
-  """Creates a `_Head` for time series regression.
+class _NoStatePredictOutput(export_lib.PredictOutput):
 
-  Args:
-    model: A model for time series regression.
-    state_manager: A state manager.
-    optimizer: An optimizer.
-    input_statistics_generator: A input statistics generator.
-
-  Returns:
-    An instance of `_Head` for time series regression.
-  """
-  return _TimeSeriesRegressionHead(model, state_manager, optimizer,
-                                   input_statistics_generator)
+  def as_signature_def(self, receiver_tensors):
+    no_state_receiver_tensors = {
+        key: value for key, value in receiver_tensors.items()
+        if not key.startswith(feature_keys.State.STATE_PREFIX)}
+    return super(_NoStatePredictOutput, self).as_signature_def(
+        receiver_tensors=no_state_receiver_tensors)
 
 
-class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
-  """See `time_series_regression_head`."""
+class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
+  """Determines input and output signatures for a time series model."""
 
   def __init__(self,
                model,
@@ -67,6 +58,15 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                optimizer,
                input_statistics_generator=None,
                name=None):
+    """Creates a `_Head` for time series regression.
+
+    Args:
+      model: A model for time series regression.
+      state_manager: A state manager.
+      optimizer: An optimizer.
+      input_statistics_generator: A input statistics generator.
+      name: An optional name for the model.
+    """
     self.model = model
     self.state_manager = state_manager
     self.optimizer = optimizer
@@ -167,7 +167,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                 export_lib.PredictOutput(
                     state_to_dictionary(filtering_outputs.end_state)),
             feature_keys.SavedModelLabels.COLD_START_FILTER:
-                export_lib.PredictOutput(
+                _NoStatePredictOutput(
                     state_to_dictionary(cold_filtering_outputs.end_state))
         },
         # Likely unused, but it is necessary to return `predictions` to satisfy
@@ -253,6 +253,58 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
         # serving. We want to return two graphs: one for filtering (state + data
         # -> state) and one for predicting (state -> prediction).
         return self._serving_ops(features)
+
+
+class OneShotPredictionHead(TimeSeriesRegressionHead):
+  """A time series head which exports a single stateless serving signature.
+
+  The serving default signature exported by this head expects `times`, `values`,
+  and any exogenous features, but no state. `values` has shape `[batch_size,
+  filter_length, num_features]` and `times` has shape `[batch_size,
+  total_length]`, where `total_length > filter_length`. Any exogenous features
+  must have their shapes prefixed by the shape of the `times` feature.
+
+  When serving, first performs filtering on the series up to `filter_length`
+  starting from the default start state for the model, then computes predictions
+  on the remainder of the series, returning them.
+
+  Model state is neither accepted nor returned, so filtering must be performed
+  each time predictions are requested when using this head.
+  """
+
+  def _serving_ops(self, features):
+    """Add ops for serving to the graph."""
+    with variable_scope.variable_scope("model", use_resource=True):
+      filtering_features = {}
+      prediction_features = {}
+      values_length = array_ops.shape(
+          features[feature_keys.FilteringFeatures.VALUES])[1]
+      for key, value in features.items():
+        if key == feature_keys.State.STATE_TUPLE:
+          # Ignore state input. The model's default start state is replicated
+          # across the batch.
+          continue
+        if key == feature_keys.FilteringFeatures.VALUES:
+          filtering_features[key] = value
+        else:
+          filtering_features[key] = value[:, :values_length]
+          prediction_features[key] = value[:, values_length:]
+      cold_filtering_outputs = self.model.define_loss(
+          features=filtering_features, mode=estimator_lib.ModeKeys.EVAL)
+      prediction_features[feature_keys.State.STATE_TUPLE] = (
+          cold_filtering_outputs.end_state)
+    with variable_scope.variable_scope("model", reuse=True):
+      prediction_outputs = self.model.predict(
+          features=prediction_features)
+    return estimator_lib.EstimatorSpec(
+        mode=estimator_lib.ModeKeys.PREDICT,
+        export_outputs={
+            feature_keys.SavedModelLabels.PREDICT:
+                _NoStatePredictOutput(prediction_outputs),
+        },
+        # Likely unused, but it is necessary to return `predictions` to satisfy
+        # the Estimator's error checking.
+        predictions={})
 
 
 def _check_feature_shapes_compatible_with(features,

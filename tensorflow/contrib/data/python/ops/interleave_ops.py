@@ -17,7 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib import stateless
+from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
+from tensorflow.contrib.data.python.ops import gen_dataset_ops
+from tensorflow.contrib.data.python.ops import random_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 
 
@@ -140,3 +151,92 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
         prefetch_input_elements=None)
 
   return _apply_fn
+
+
+class DirectedInterleaveDataset(dataset_ops.Dataset):
+  """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
+
+  def __init__(self, selector_input, data_inputs):
+    self._selector_input = selector_input
+    self._data_inputs = list(data_inputs)
+
+    for data_input in data_inputs[1:]:
+      if (data_input.output_types != data_inputs[0].output_types or
+          data_input.output_classes != data_inputs[0].output_classes):
+        raise TypeError("All datasets must have the same type.")
+
+  def _as_variant_tensor(self):
+    # pylint: disable=protected-access
+    return gen_dataset_ops.directed_interleave_dataset(
+        self._selector_input._as_variant_tensor(),
+        [data_input._as_variant_tensor() for data_input in self._data_inputs],
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
+        output_types=nest.flatten(
+            sparse.as_dense_types(self.output_types, self.output_classes)))
+    # pylint: enable=protected-access
+
+  @property
+  def output_classes(self):
+    return self._data_inputs[0].output_classes
+
+  @property
+  def output_shapes(self):
+    ret = self._data_inputs[0].output_shapes
+    for data_input in self._data_inputs[1:]:
+      ret = nest.pack_sequence_as(ret, [
+          ts1.most_specific_compatible_shape(ts2) for (ts1, ts2) in zip(
+              nest.flatten(ret), nest.flatten(data_input.output_shapes))
+      ])
+    return ret
+
+  @property
+  def output_types(self):
+    return self._data_inputs[0].output_types
+
+
+def sample_from_datasets(datasets, weights=None, seed=None):
+  """Samples elements at random from the datasets in `datasets`.
+
+  Args:
+    datasets: A list of @{tf.data.Dataset} objects with compatible structure.
+    weights: (Optional.) A list of `len(datasets)` floating-point values where
+      `weights[i]` represents the probability with which an element should be
+      sampled from `datasets[i]`, or a @{tf.data.Dataset} object where each
+      element is such a list. Defaults to a uniform distribution across
+      `datasets`.
+    seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+      random seed that will be used to create the distribution. See
+      @{tf.set_random_seed} for behavior.
+
+  Returns:
+    A dataset that interleaves elements from `datasets` at random, according to
+    `weights` if provided, otherwise with uniform probability.
+
+  Raises:
+    TypeError: If the `datasets` or `weights` arguments have the wrong type.
+    ValueError: If the `weights` argument is specified and does not match the
+      length of the `datasets` element.
+  """
+  num_datasets = len(datasets)
+  if weights is None:
+    weights = dataset_ops.Dataset.from_tensors([1.0] * num_datasets).repeat()
+  elif not isinstance(weights, dataset_ops.Dataset):
+    weights = ops.convert_to_tensor(weights, name="weights")
+    if weights.dtype not in (dtypes.float32, dtypes.float64):
+      raise TypeError("`weights` must be convertible to a tensor of "
+                      "`tf.float32` or `tf.float64` elements.")
+    if not weights.shape.is_compatible_with([num_datasets]):
+      raise ValueError("`weights` must be a vector of length `len(datasets)`.")
+    weights = dataset_ops.Dataset.from_tensors(weights).repeat()
+
+  # The `stateless_multinomial()` op expects log-probabilities, as opposed to
+  # weights.
+  logits_ds = weights.map(lambda *p: math_ops.log(p, name="logits"))
+  def select_dataset(logits, seed):
+    return array_ops.squeeze(
+        stateless.stateless_multinomial(logits, 1, seed=seed), axis=[0, 1])
+  selector_input = dataset_ops.Dataset.zip(
+      (logits_ds, random_ops.RandomDataset(seed).batch(2))).map(select_dataset)
+
+  return DirectedInterleaveDataset(selector_input, datasets)

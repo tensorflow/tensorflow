@@ -345,7 +345,7 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
         if k == _DEFAULT_SERVING_KEY:
           key = head_name
         else:
-          key = '%s/%s' % (k, head_name)
+          key = '%s/%s' % (head_name, k)
         export_outputs[key] = v
         if (k == head_lib._PREDICT_SERVING_KEY and  # pylint:disable=protected-access
             isinstance(v, export_output_lib.PredictOutput)):

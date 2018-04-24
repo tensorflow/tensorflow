@@ -85,6 +85,7 @@ cc_library(
         ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
     ],
@@ -263,6 +264,7 @@ tf_cc_test(
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

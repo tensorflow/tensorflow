@@ -3380,6 +3380,138 @@ class RecallAtPrecisionTest(test.TestCase):
       self.assertAlmostEqual(target_recall, recall.eval())
 
 
+class PrecisionAtRecallTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.precision_at_recall(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        target_recall=0.7)
+    _assert_metric_variables(self,
+                             ('precision_at_recall/true_positives:0',
+                              'precision_at_recall/false_negatives:0',
+                              'precision_at_recall/false_positives:0',
+                              'precision_at_recall/true_negatives:0'))
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    mean, _ = metrics.precision_at_recall(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        target_recall=0.7,
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [mean])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.precision_at_recall(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        target_recall=0.7,
+        updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = random_ops.random_uniform(
+        (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
+    labels = random_ops.random_uniform(
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=1)
+    precision, update_op = metrics.precision_at_recall(
+        labels, predictions, target_recall=0.7)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_precision = precision.eval()
+      for _ in range(10):
+        self.assertAlmostEqual(initial_precision, precision.eval(), places=5)
+
+  def testAllCorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+    labels = constant_op.constant(inputs)
+    precision, update_op = metrics.precision_at_recall(
+        labels, predictions, target_recall=0.7)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertEqual(1, sess.run(update_op))
+      self.assertEqual(1, precision.eval())
+
+  def testAllIncorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+    labels = 1.0 - predictions
+    label_prior = math_ops.reduce_mean(labels)
+    precision, update_op = metrics.precision_at_recall(
+        labels, predictions, target_recall=0.2)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertEqual(sess.run(label_prior), sess.run(update_op))
+      self.assertEqual(sess.run(label_prior), precision.eval())
+
+  def testSomeCorrectHighRecall(self):
+    predictions_values = [0.1, 0.2, 0.5, 0.3, 0.0, 0.1, 0.45, 0.5, 0.8, 0.9]
+    labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+
+    predictions = constant_op.constant(
+        predictions_values, dtype=dtypes_lib.float32)
+    labels = constant_op.constant(labels_values)
+    precision, update_op = metrics.precision_at_recall(
+        labels, predictions, target_recall=0.8)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.8, sess.run(update_op))
+      self.assertAlmostEqual(0.8, precision.eval())
+
+  def testSomeCorrectLowRecall(self):
+    predictions_values = [0.1, 0.2, 0.7, 0.3, 0.0, 0.1, 0.45, 0.5, 0.6, 0.9]
+    labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+
+    predictions = constant_op.constant(
+        predictions_values, dtype=dtypes_lib.float32)
+    labels = constant_op.constant(labels_values)
+    precision, update_op = metrics.precision_at_recall(
+        labels, predictions, target_recall=0.4)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(2.0/3, sess.run(update_op))
+      self.assertAlmostEqual(2.0/3, precision.eval())
+
+  def testWeighted_multipleLabelDtypes(self):
+    for label_dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions_values = [
+          0.0, 0.1, 0.2, 0.3, 0.4, 0.1, 0.22, 0.25, 0.31, 0.35]
+      labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+      weights_values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+      predictions = constant_op.constant(
+          predictions_values, dtype=dtypes_lib.float32)
+      labels = math_ops.cast(labels_values, dtype=label_dtype)
+      weights = constant_op.constant(weights_values)
+      precision, update_op = metrics.precision_at_recall(
+          labels, predictions, target_recall=0.8, weights=weights)
+
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(34.0/43, sess.run(update_op))
+        self.assertAlmostEqual(34.0/43, precision.eval())
+
+
 class StreamingFNRThresholdsTest(test.TestCase):
 
   def setUp(self):

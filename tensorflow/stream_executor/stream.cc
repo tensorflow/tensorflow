@@ -28,8 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 namespace {
 // Code to turn parameters to functions on stream into strings that
@@ -4795,7 +4794,8 @@ Stream &Stream::ThenRnnForward(
     const dnn::RnnStateTensorDescriptor &output_c_desc,
     DeviceMemory<Eigen::half> *output_c_data, bool is_training,
     ScratchAllocator *reserve_space_allocator,
-    ScratchAllocator *workspace_allocator) {
+    ScratchAllocator *workspace_allocator,
+    dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -4803,7 +4803,8 @@ Stream &Stream::ThenRnnForward(
           this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
           input_c_desc, input_c_data, params, output_desc, output_data,
           output_h_desc, output_h_data, output_c_desc, output_c_data,
-          is_training, reserve_space_allocator, workspace_allocator));
+          is_training, reserve_space_allocator, workspace_allocator,
+          output_profile_result));
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnForward without DNN support";
@@ -4827,7 +4828,8 @@ Stream &Stream::ThenRnnForward(
     const dnn::RnnStateTensorDescriptor &output_c_desc,
     DeviceMemory<float> *output_c_data, bool is_training,
     ScratchAllocator *reserve_space_allocator,
-    ScratchAllocator *workspace_allocator) {
+    ScratchAllocator *workspace_allocator,
+    dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -4835,7 +4837,8 @@ Stream &Stream::ThenRnnForward(
           this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
           input_c_desc, input_c_data, params, output_desc, output_data,
           output_h_desc, output_h_data, output_c_desc, output_c_data,
-          is_training, reserve_space_allocator, workspace_allocator));
+          is_training, reserve_space_allocator, workspace_allocator,
+          output_profile_result));
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnForward without DNN support";
@@ -4860,7 +4863,8 @@ Stream &Stream::ThenRnnForward(
     const dnn::RnnStateTensorDescriptor &output_c_desc,
     DeviceMemory<double> *output_c_data, bool is_training,
     ScratchAllocator *reserve_space_allocator,
-    ScratchAllocator *workspace_allocator) {
+    ScratchAllocator *workspace_allocator,
+    dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -4868,7 +4872,8 @@ Stream &Stream::ThenRnnForward(
           this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
           input_c_desc, input_c_data, params, output_desc, output_data,
           output_h_desc, output_h_data, output_c_desc, output_c_data,
-          is_training, reserve_space_allocator, workspace_allocator));
+          is_training, reserve_space_allocator, workspace_allocator,
+          output_profile_result));
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnForward without DNN support";
@@ -4900,7 +4905,8 @@ Stream &Stream::ThenRnnBackward(
     DeviceMemory<Eigen::half> *input_c_backprop_data,
     DeviceMemory<Eigen::half> *params_backprop_data,
     DeviceMemory<uint8> *reserve_space_data,
-    ScratchAllocator *workspace_allocator) {
+    ScratchAllocator *workspace_allocator,
+    dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -4910,7 +4916,8 @@ Stream &Stream::ThenRnnBackward(
           output_h_desc, output_h_data, output_c_desc, output_c_data,
           output_backprop_data, output_h_backprop_data, output_c_backprop_data,
           input_backprop_data, input_h_backprop_data, input_c_backprop_data,
-          params_backprop_data, reserve_space_data, workspace_allocator));
+          params_backprop_data, reserve_space_data, workspace_allocator,
+          output_profile_result));
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnBackward without DNN support";
@@ -4941,7 +4948,8 @@ Stream &Stream::ThenRnnBackward(
     DeviceMemory<float> *input_c_backprop_data,
     DeviceMemory<float> *params_backprop_data,
     DeviceMemory<uint8> *reserve_space_data,
-    ScratchAllocator *workspace_allocator) {
+    ScratchAllocator *workspace_allocator,
+    dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -4951,7 +4959,8 @@ Stream &Stream::ThenRnnBackward(
           output_h_desc, output_h_data, output_c_desc, output_c_data,
           output_backprop_data, output_h_backprop_data, output_c_backprop_data,
           input_backprop_data, input_h_backprop_data, input_c_backprop_data,
-          params_backprop_data, reserve_space_data, workspace_allocator));
+          params_backprop_data, reserve_space_data, workspace_allocator,
+          output_profile_result));
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnBackward without DNN support";
@@ -4983,7 +4992,8 @@ Stream &Stream::ThenRnnBackward(
     DeviceMemory<double> *input_c_backprop_data,
     DeviceMemory<double> *params_backprop_data,
     DeviceMemory<uint8> *reserve_space_data,
-    ScratchAllocator *workspace_allocator) {
+    ScratchAllocator *workspace_allocator,
+    dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -4993,7 +5003,8 @@ Stream &Stream::ThenRnnBackward(
           output_h_desc, output_h_data, output_c_desc, output_c_data,
           output_backprop_data, output_h_backprop_data, output_c_backprop_data,
           input_backprop_data, input_h_backprop_data, input_c_backprop_data,
-          params_backprop_data, reserve_space_data, workspace_allocator));
+          params_backprop_data, reserve_space_data, workspace_allocator,
+          output_profile_result));
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnBackward without DNN support";
@@ -5180,5 +5191,4 @@ port::Status Stream::BlockHostUntilDone() {
   return first_error;
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

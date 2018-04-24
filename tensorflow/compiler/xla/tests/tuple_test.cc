@@ -535,8 +535,7 @@ TEST_F(TupleHloTest,
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::MakeTupleOwned(Literal::CreateR1<float>({1, 2, 3}));
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          ExecuteNoHloPasses(std::move(module), {param.get()}));
+  auto result = ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *result,
       *Literal::MakeTupleOwned(Literal::CreateR2<float>({{1, 2, 3}}))));

@@ -22,10 +22,23 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import types
 
 import six
 
 from tensorflow.python.util import tf_inspect
+
+
+def isbuiltin(f):
+  # Note these return false for isinstance(f, types.BuiltinFunctionType) so we
+  # need to specifically check for them.
+  if f in (range, int, float):
+    return True
+  if isinstance(f, types.BuiltinFunctionType):
+    return True
+  if tf_inspect.isbuiltin(f):
+    return True
+  return False
 
 
 def getnamespace(f):
@@ -48,6 +61,29 @@ def getnamespace(f):
     for name, cell in zip(freevars, closure):
       namespace[name] = cell.cell_contents
   return namespace
+
+
+def _get_unbound_function(m):
+  # TODO(mdan): Figure out why six.get_unbound_function fails in some cases.
+  # The failure case is for tf.keras.Model.
+  if hasattr(m, 'im_func'):
+    return m.im_func
+  return m
+
+
+def getdefiningclass(m, owner_class):
+  """Resolves the class (e.g. one of the superclasses) that defined a method."""
+  # Normalize bound functions to their respective unbound versions.
+  m = _get_unbound_function(m)
+  for superclass in owner_class.__bases__:
+    if hasattr(superclass, m.__name__):
+      superclass_m = getattr(superclass, m.__name__)
+      if _get_unbound_function(superclass_m) is m:
+        return superclass
+      elif hasattr(m, '__self__') and m.__self__ == owner_class:
+        # Python 3 class methods only work this way it seems :S
+        return superclass
+  return owner_class
 
 
 def getmethodclass(m):
@@ -73,6 +109,12 @@ def getmethodclass(m):
   Raises:
     ValueError: if the class could not be resolved for any unexpected reason.
   """
+
+  # Callable objects: return their own class.
+  if (not hasattr(m, '__name__') and hasattr(m, '__class__') and
+      hasattr(m, '__call__')):
+    if isinstance(m.__class__, six.class_types):
+      return m.__class__
 
   # Instance method and class methods: should be bound to a non-null "self".
   # If self is a class, then it's a class method.

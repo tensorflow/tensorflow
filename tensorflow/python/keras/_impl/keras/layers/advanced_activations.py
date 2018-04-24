@@ -26,6 +26,7 @@ from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -146,7 +147,7 @@ class PReLU(Layer):
     if K.backend() == 'theano':
       neg = (
           K.pattern_broadcast(self.alpha, self.param_broadcast) *
-          (inputs - K.abs(inputs)) * 0.5)
+          (inputs - math_ops.abs(inputs)) * 0.5)
     else:
       neg = -self.alpha * K.relu(-inputs)
     return pos + neg
@@ -232,7 +233,8 @@ class ThresholdedReLU(Layer):
     self.theta = K.cast_to_floatx(theta)
 
   def call(self, inputs, mask=None):
-    return inputs * K.cast(K.greater(inputs, self.theta), K.floatx())
+    return inputs * math_ops.cast(
+        math_ops.greater(inputs, self.theta), K.floatx())
 
   def get_config(self):
     config = {'theta': float(self.theta)}

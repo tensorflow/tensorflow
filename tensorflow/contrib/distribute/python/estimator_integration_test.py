@@ -61,7 +61,7 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
           mode=['graph'],
           distribution=[
               combinations.one_device_strategy,
-              combinations.mirrored_strategy_without_prefetch
+              combinations.mirrored_strategy_with_gpu_and_cpu
           ]))
   def test_complete_flow_with_mode(self, distribution):
     label_dimension = 2
@@ -95,7 +95,7 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
         # TODO(isaprykin): Work around the colocate_with error.
         dnn_optimizer=adagrad.AdagradOptimizer(0.001),
         linear_optimizer=adagrad.AdagradOptimizer(0.001),
-        config=run_config.RunConfig(distribute=distribution))
+        config=run_config.RunConfig(train_distribute=distribution))
 
     num_steps = 10
     estimator.train(train_input_fn, steps=num_steps)

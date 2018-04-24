@@ -313,6 +313,27 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
     if (!ShapeUtil::Compatible(send_shape, recv_shape)) {
       return FailedPrecondition("send/recv shapes do not match");
     }
+    const HloModule* send_module = channel.send->parent()->parent();
+    const HloModule* send_done_module = channel.send_done->parent()->parent();
+    if (send_module != send_done_module) {
+      return FailedPrecondition(
+          "send and send-done (channel=%lld) must be on the same device: %lld "
+          "vs. %lld",
+          channel.id, GetModuleId(send_module), GetModuleId(send_done_module));
+    }
+    const HloModule* recv_module = channel.recv->parent()->parent();
+    const HloModule* recv_done_module = channel.recv_done->parent()->parent();
+    if (recv_module != recv_done_module) {
+      return FailedPrecondition(
+          "recv and recv-done (channel=%lld) must be on the same device: %lld "
+          "vs. %lld",
+          channel.id, GetModuleId(recv_module), GetModuleId(recv_done_module));
+    }
+    if (send_module == recv_module) {
+      return FailedPrecondition(
+          "send and recv (channel=%lld) must be on different devices: %lld",
+          channel.id, GetModuleId(send_module));
+    }
   }
 
   // Check if channel instructions are used only in allowed computations.
