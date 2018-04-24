@@ -56,6 +56,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   struct ArithmeticOptimizerOptions {
     // TODO(ezhulenev): flag do disable TrySimplifyAndReplaceUses in tests.
     // Remove when all optimizers will be migrated to separate stages.
+    bool dedup_computations = true;
     bool enable_try_simplify_and_replace = true;
     bool combine_add_to_addn = true;
     bool hoist_common_factor_out_of_aggregation = true;
@@ -64,12 +65,16 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
     bool remove_negation = true;
+    bool hoist_unary_out_of_concat = false;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
     static ArithmeticOptimizerOptions Default(
         RewriterConfig::Toggle opt_level) {
       ArithmeticOptimizerOptions options;
+      if (opt_level == RewriterConfig::AGGRESSIVE) {
+        options.hoist_unary_out_of_concat = true;
+      }
       return options;
     }
   };
