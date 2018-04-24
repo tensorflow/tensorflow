@@ -161,7 +161,7 @@ exports_files(["ops/ops.pbtxt"])
 # Note that some protos are in neither additional_core_proto_srcs nor this
 # filegroup; e.g.  ones with individual proto_library targets.
 # LINT.IfChange
-CORE_PROTO_SRCS = [
+COMMON_PROTO_SRCS = [
     "example/example.proto",
     "example/feature.proto",
     "framework/allocation_description.proto",
@@ -189,7 +189,6 @@ CORE_PROTO_SRCS = [
     "framework/types.proto",
     "framework/variable.proto",
     "framework/versions.proto",
-    "lib/core/error_codes.proto",
     "protobuf/config.proto",
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
@@ -202,7 +201,13 @@ CORE_PROTO_SRCS = [
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
 ]
+
+ERROR_CODES_PROTO_SRCS = [
+    "lib/core/error_codes.proto",
+]
 # LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
+
+CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
 # Protos which are not needed on mobile builds, but should be included in
 # protos_all.
@@ -224,12 +229,16 @@ ADDITIONAL_CORE_PROTO_SRCS = [
 
 tf_proto_library(
     name = "protos_all",
-    srcs = CORE_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
+    srcs = [],
     cc_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
+    protodeps = [
+        ":protos_all_proto",
+        ":error_codes_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -1134,7 +1143,8 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        ":proto_text_srcs_all",
+        ":protos_all_proto_text_srcs",
+        ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
     ] + glob(
         [
@@ -1930,15 +1940,58 @@ cc_library(
     ],
 )
 
-proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
-    name = "proto_text_srcs_all",
-    srcs = CORE_PROTO_SRCS,
+tf_proto_library(
+    name = "error_codes_proto",
+    srcs = ERROR_CODES_PROTO_SRCS,
+    cc_api_version = 2,
+    default_header = True,
+    j2objc_api_version = 1,
+    java_api_version = 2,
+    js_api_version = 2,
+)
+
+tf_generate_proto_text_sources(
+    name = "error_codes_proto_text",
+    srcs = ERROR_CODES_PROTO_SRCS,
+    protodeps = [],
     srcs_relative_dir = "tensorflow/core/",
+    deps = [
+        ":error_codes_proto_cc",
+        ":lib_internal",
+    ],
+)
+
+tf_proto_library(
+    name = "protos_all_proto",
+    srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
+    cc_api_version = 2,
+    default_header = True,
+    j2objc_api_version = 1,
+    java_api_version = 2,
+    js_api_version = 2,
+    protodeps = [
+        ":error_codes_proto",
+    ],
+)
+
+tf_generate_proto_text_sources(
+    name = "protos_all_proto_text",
+    srcs = COMMON_PROTO_SRCS,
+    protodeps = ERROR_CODES_PROTO_SRCS,
+    srcs_relative_dir = "tensorflow/core/",
+    deps = [
+        ":error_codes_proto_text",
+        ":lib_internal",
+        ":protos_all_proto_cc",
+    ],
 )
 
 cc_library(
     name = "proto_text",
-    hdrs = proto_text_hdrs_and_srcs.hdrs,
+    hdrs = [
+        ":error_codes_proto_text_hdrs",
+        ":protos_all_proto_text_hdrs",
+    ],
     deps = [
         ":lib",
         ":lib_internal",
@@ -2083,7 +2136,7 @@ tf_cuda_library(
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
         ],
-    }) + proto_text_hdrs_and_srcs.srcs + tf_additional_framework_srcs(),
+    }) + tf_additional_framework_srcs(),
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
@@ -2097,7 +2150,8 @@ tf_cuda_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":proto_text",
+        ":protos_all_proto_text",
+        ":error_codes_proto_text",
         ":protos_all_cc",
         ":version_lib",
         "//tensorflow/core/platform/default/build_config:platformlib",
