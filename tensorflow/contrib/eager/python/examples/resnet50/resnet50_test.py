@@ -36,8 +36,8 @@ def device_and_data_format():
                                                               'channels_last')
 
 
-def random_batch(batch_size):
-  _, data_format = device_and_data_format()
+def random_batch(batch_size, device_and_format=None):
+  _, data_format = device_and_format or device_and_data_format()
 
   shape = (3, 224, 224) if data_format == 'channels_first' else (224, 224, 3)
   shape = (batch_size,) + shape
@@ -184,22 +184,23 @@ class ResNet50Benchmarks(tf.test.Benchmark):
 
   def _report(self, label, start, num_iters, device, batch_size, data_format):
     avg_time = (time.time() - start) / num_iters
-    dev = 'cpu' if 'cpu' in device else 'gpu'
+    dev = tf.DeviceSpec.from_string(device).device_type.lower()
     name = '%s_%s_batch_%d_%s' % (label, dev, batch_size, data_format)
     extras = {'examples_per_sec': batch_size / avg_time}
     self.report_benchmark(
         iters=num_iters, wall_time=avg_time, name=name, extras=extras)
 
-  def _force_gpu_sync(self):
-    # If this function is called in the context of a GPU device
+  def _force_device_sync(self):
+    # If this function is called in the context of a non-CPU device
     # (e.g., inside a 'with tf.device("/gpu:0")' block)
-    # then this will force a copy from CPU->GPU->CPU, which forces
-    # a sync. This is a roundabout way, yes.
+    # then this will force a copy from CPU->NON_CPU_DEVICE->CPU,
+    # which forces a sync. This is a roundabout way, yes.
     tf.constant(1.).cpu()
 
-  def _benchmark_eager_apply(self, label, defun=False, execution_mode=None):
+  def _benchmark_eager_apply(self, label, defun=False, execution_mode=None,
+                             device_and_format=None):
     with tfe.execution_mode(execution_mode):
-      device, data_format = device_and_data_format()
+      device, data_format = device_and_format or device_and_data_format()
       model = resnet50.ResNet50(data_format)
       if defun:
         model.call = tfe.defun(model.call)
@@ -207,7 +208,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       num_burn = 5
       num_iters = 30
       with tf.device(device):
-        images, _ = random_batch(batch_size)
+        images, _ = random_batch(batch_size, device_and_format)
         for _ in xrange(num_burn):
           model(images, training=False).cpu()
         if execution_mode:
@@ -220,7 +221,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           tfe.async_wait()
         self._report(label, start, num_iters, device, batch_size, data_format)
 
-  def benchmark_eager_apply(self):
+  def benchmark_eager_apply_sync(self):
     self._benchmark_eager_apply('eager_apply', defun=False)
 
   def benchmark_eager_apply_async(self):
@@ -234,11 +235,12 @@ class ResNet50Benchmarks(tf.test.Benchmark):
                              label,
                              make_iterator,
                              defun=False,
-                             execution_mode=None):
+                             execution_mode=None,
+                             device_and_format=None):
     with tfe.execution_mode(execution_mode):
-      device, data_format = device_and_data_format()
+      device, data_format = device_and_format or device_and_data_format()
       for batch_size in self._train_batch_sizes():
-        (images, labels) = random_batch(batch_size)
+        (images, labels) = random_batch(batch_size, device_and_format)
         num_burn = 3
         num_iters = 10
         model = resnet50.ResNet50(data_format)
@@ -253,7 +255,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
             train_one_step(model, images, labels, optimizer)
           if execution_mode:
             tfe.async_wait()
-          self._force_gpu_sync()
+          self._force_device_sync()
           gc.collect()
 
           start = time.time()
@@ -262,7 +264,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
             train_one_step(model, images, labels, optimizer)
           if execution_mode:
             tfe.async_wait()
-          self._force_gpu_sync()
+          self._force_device_sync()
           self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_train(self):
