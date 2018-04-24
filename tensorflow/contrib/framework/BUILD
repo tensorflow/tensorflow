@@ -93,6 +93,7 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
