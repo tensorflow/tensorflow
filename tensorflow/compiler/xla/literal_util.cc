@@ -44,8 +44,16 @@ namespace {
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
-// Converts between little and big endian, assuming elements in the array are 16
-// bits long.
+// Converts between little and big endian.
+//
+// Precondition: size % 2 == 0 (elements in the array are 16 bits long)
+void ConvertEndianShort(string* bytes) {
+  CHECK_EQ(bytes->size() / 2, 0);
+  for (int64 i = 0; i < bytes->size(); i += 2) {
+    std::swap((*bytes)[i], (*bytes)[i + 1]);
+  }
+}
+
 void ConvertEndianShort(char* bytes, int64 size) {
   CHECK_EQ(size / 2, 0);
   for (int64 i = 0; i < size; i += 2) {
@@ -1930,16 +1938,14 @@ void Literal::Piece::WriteToProto(LiteralProto* proto) const {
       *proto->mutable_f16s() = string(
           reinterpret_cast<const char*>(data<half>().data()), size_bytes());
       if (!kLittleEndian) {
-        ConvertEndianShort(const_cast<char*>(proto->mutable_f16s()->data()),
-                           proto->f16s().size());
+        ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
       *proto->mutable_bf16s() = string(
           reinterpret_cast<const char*>(data<bfloat16>().data()), size_bytes());
       if (!kLittleEndian) {
-        ConvertEndianShort(const_cast<char*>(proto->mutable_bf16s()->data()),
-                           proto->bf16s().size());
+        ConvertEndianShort(proto->mutable_bf16s());
       }
       break;
     case F32:

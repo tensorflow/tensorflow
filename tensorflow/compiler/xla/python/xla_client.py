@@ -166,14 +166,14 @@ class LocalBuffer(object):
     self._delete = c_api.DeleteLocalShapedBuffer
 
   @staticmethod
-  def from_py(npval, layout_fn=None):
-    npval = require_numpy_array_layout(npval)
+  def from_pyval(pyval, layout_fn=None):
+    pyval = require_numpy_array_layout(pyval)
     if layout_fn:
-      shape = Shape.from_numpy(npval)
+      shape = Shape.from_pyval(pyval)
       shape = shape.map_leaves(layout_fn)
     else:
       shape = None
-    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(npval, shape))
+    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(pyval, shape))
 
   def to_py(self):
     return self.c_local_shaped_buffer.ToLiteral()
@@ -191,52 +191,103 @@ class LocalBuffer(object):
 
 
 class Shape(object):
-  """XLA shape.
+  """Represents an XLA shape.
 
-  Represents an XLA shape by a corresponding Python/Numpy type and a
-  list of dimensions, which are themselves Shapes in case this one
-  represents an XLA tuple.
+  A shape is either an array shape, having rank-many integer
+  dimensions and an element type (represented by a Numpy dtype), or it
+  is a tuple shape, having a shape for every tuple component:
+
+    type shape =
+        TupleShape of shape list
+      | ArrayShape of { dimensions: int list; element_type: dtype }
+
+  Callers are expected to instantiate this class only via the static
+  constructors: tuple_shape, array_shape, and from_pyval.
   """
 
-  def __init__(self, np_dtype, dimensions, minor_to_major=None):
+  @staticmethod
+  def tuple_shape(tuple_shapes):
+    """Construct a tuple shape."""
+    if (not isinstance(tuple_shapes, (tuple, list)) or
+        not all(isinstance(t, Shape) for t in tuple_shapes)):
+      raise TypeError('tuple_shapes must be a tuple of Shapes')
+    return Shape(tuple_shapes, tuple)
+
+  @staticmethod
+  def array_shape(element_type, dimensions, minor_to_major=None):
+    """Construct an array shape."""
+    if (not isinstance(dimensions, tuple) or
+        not all(isinstance(i, int) for i in dimensions)):
+      dimensions = tuple(int(i) for i in dimensions)
+    return Shape(dimensions, np.dtype(element_type),
+                 minor_to_major=minor_to_major)
+
+  @staticmethod
+  def from_pyval(pyval):
+    def convert(pyval):
+      if isinstance(pyval, tuple):
+        return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
+      else:
+        pyval = require_numpy_array_layout(pyval)
+        return Shape.array_shape(pyval.dtype, np.shape(pyval))
+    return convert(pyval)
+
+  def __init__(self, dimensions, dtype, minor_to_major=None):
     assert isinstance(dimensions, tuple)
-    self.np_dtype = np_dtype
     self._dimensions = dimensions
+    self._dtype = dtype
+    self._is_tuple = dtype == tuple
     self._minor_to_major = minor_to_major
     self._check_minor_to_major()
 
   def __eq__(self, other):
     # pylint: disable=protected-access
-    return (self.np_dtype == other.np_dtype and
+    return (self._dtype == other._dtype and
             self._dimensions == other._dimensions and
             self._minor_to_major == other._minor_to_major)
 
   def __repr__(self):
-    return ('xla_client.Shape(np_dtype={!r}, dimensions={!r}, '
-            'minor_to_major={!r})').format(self.np_dtype, self._dimensions,
-                                           self._minor_to_major)
-
-  def element_type(self):
-    return DTYPE_TO_XLA_ELEMENT_TYPE[str(self.np_dtype)]
+    return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
+            '_is_tuple={!r}), _minor_to_major={!r}').format(
+                self._dtype, self._dimensions, self._is_tuple,
+                self._minor_to_major)
 
   def is_tuple(self):
-    return self.element_type() == xla_data_pb2.TUPLE
+    return self._is_tuple
 
-  def dimensions(self):
-    if self.is_tuple():
-      raise ValueError('Tuple shape has no dimensions')
-    return self._dimensions
-
-  def minor_to_major(self):
-    return self._minor_to_major
+  def is_array(self):
+    return not self._is_tuple
 
   def tuple_shapes(self):
     if not self.is_tuple():
-      raise ValueError('Shape is not a tuple shape')
+      raise ValueError('not a tuple shape')
+    return self._dimensions
+
+  def numpy_dtype(self):
+    """Like element_type(), but returns dtype('O') in case of a tuple shape."""
+    if self.is_tuple():
+      return np.dtype(np.object)
+    else:
+      return self.element_type()
+
+  def xla_element_type(self):
+    return DTYPE_TO_XLA_ELEMENT_TYPE[str(self.numpy_dtype())]
+
+  def element_type(self):
+    if not self.is_array():
+      raise ValueError('not an array shape')
+    return self._dtype
+
+  def dimensions(self):
+    if not self.is_array():
+      raise ValueError('not an array shape')
     return self._dimensions
 
   def rank(self):
     return len(self.dimensions())
+
+  def minor_to_major(self):
+    return self._minor_to_major
 
   def map_leaves(self, f):
     """Map f over each leaf-level array subshape.
@@ -250,7 +301,7 @@ class Shape(object):
     """
     if self.is_tuple():
       children = tuple(child.map_leaves(f) for child in self.tuple_shapes())
-      return Shape(np.dtype('O'), children)
+      return Shape.tuple_shape(children)
     else:
       mapped = f(self)
       return self if mapped is None else mapped
@@ -264,30 +315,24 @@ class Shape(object):
       assert sorted(mtm) == range(len(mtm)), self
 
   def update_minor_to_major(self, minor_to_major):
+    if not self.is_array():
+      raise ValueError('not an array shape')
     if not isinstance(minor_to_major, tuple):
       raise TypeError('minor_to_major must be a tuple')
-    updated = Shape(self.np_dtype, tuple(self.dimensions()), minor_to_major)
+    updated = Shape.array_shape(
+        self.element_type(), self.dimensions(), minor_to_major)
     updated._check_minor_to_major()  # pylint: disable=protected-access
     return updated
-
-  @staticmethod
-  def from_numpy(npval):
-
-    def convert(npval):
-      if isinstance(npval, tuple):
-        return Shape(np.dtype('O'), tuple(convert(elt) for elt in npval))
-      else:
-        return Shape(npval.dtype, np.shape(npval))
-
-    return convert(require_numpy_array_layout(npval))
 
 
 def _wrap_shape(shape_info):
   dtype, dims = shape_info
   element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(dtype)]
   if element_type == xla_data_pb2.TUPLE:
-    dims = tuple(_wrap_shape(subshape_info) for subshape_info in dims)
-  return Shape(dtype, dims)
+    shapes = tuple(_wrap_shape(subshape_info) for subshape_info in dims)
+    return Shape.tuple_shape(shapes)
+  else:
+    return Shape.array_shape(dtype, dims)
 
 
 def _wrap_data_handle(handle):
@@ -420,7 +465,7 @@ class LocalComputation(object):
                                   compile_options=None,
                                   layout_fn=None):
     return self.Compile(
-        argument_shapes=[Shape.from_numpy(arg) for arg in arguments],
+        argument_shapes=[Shape.from_pyval(arg) for arg in arguments],
         compile_options=compile_options,
         layout_fn=layout_fn)
 
@@ -428,7 +473,7 @@ class LocalComputation(object):
     """Execute with Python values as arguments and return value."""
     if not self.is_compiled:
       raise ValueError('Cannot execute an uncompiled local XLA computation.')
-    argument_shapes = [Shape.from_numpy(arg) for arg in arguments]
+    argument_shapes = [Shape.from_pyval(arg) for arg in arguments]
     if layout_fn:
       argument_shapes = [
           shape.map_leaves(layout_fn) for shape in argument_shapes
@@ -607,7 +652,7 @@ class ComputationBuilder(object):
       A ComputationDataHandle message.
     """
     return self.ParameterWithShape(
-        Shape.from_numpy(value), name=name, parameter_num=parameter_num)
+        Shape.from_pyval(value), name=name, parameter_num=parameter_num)
 
   def Broadcast(self, operand, sizes):
     """Enqueues a broadcast operation onto the computation.
@@ -968,7 +1013,7 @@ class ComputationBuilder(object):
 
     Returns: a ComputationDataHandle to the generated array of F32 values.
     """
-    shape = Shape(self.GetShape(mu).np_dtype, dims)
+    shape = Shape.array_shape(self.GetShape(mu).element_type(), dims)
     return _wrap_data_handle(
         self._client.RngNormal(
             _unwrap_data_handle(mu), _unwrap_data_handle(sigma), shape))
@@ -988,7 +1033,7 @@ class ComputationBuilder(object):
     Returns: a ComputationDataHandle to the generated array of values with the
       same numeric type (F32, S32, or U32) as the arguments a and b.
     """
-    shape = Shape(self.GetShape(a).np_dtype, dims)
+    shape = Shape.array_shape(self.GetShape(a).element_type(), dims)
     return _wrap_data_handle(
         self._client.RngUniform(
             _unwrap_data_handle(a), _unwrap_data_handle(b), shape))

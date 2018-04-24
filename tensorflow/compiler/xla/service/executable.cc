@@ -163,4 +163,24 @@ Status Executable::DumpSessionModule() {
                                        result);
 }
 
+/* static */ Status Executable::DumpToDirectory(const string& directory_path,
+                                                string filename,
+                                                const HloSession& hlo_session) {
+  tensorflow::Env* env = tensorflow::Env::Default();
+  if (!env->IsDirectory(directory_path).ok()) {
+    // NB! CreateDir does not work reliably with multiple XLA threads -- two
+    // threads can race to observe the absence of the dump directory and
+    // simultaneously try to create it, causing the "losing" thread to get a
+    // "directory already exists" error.
+    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
+  }
+  filename = SanitizeFileName(std::move(filename));
+  string file_path = tensorflow::io::JoinPath(directory_path, filename);
+  string result;
+  TF_RET_CHECK(
+      tensorflow::SerializeToStringDeterministic(hlo_session, &result));
+  return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
+                                       result);
+}
+
 }  // namespace xla

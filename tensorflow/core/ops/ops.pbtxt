@@ -5651,6 +5651,19 @@ op {
       }
     }
   }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
   deprecation {
     version: 10
     explanation: "Use Conv3DBackpropFilterV2"
@@ -5771,6 +5784,19 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
       }
     }
   }

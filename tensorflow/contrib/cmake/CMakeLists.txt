@@ -214,6 +214,7 @@ include(protobuf)
 include(re2)
 include(cub)
 include(sqlite)
+include(double_conversion)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -234,6 +235,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${protobuf_STATIC_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
+    ${double_conversion_STATIC_LIBRARIES}
 )
 
 if (systemlib_ZLIB)
@@ -261,6 +263,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     fft2d
     re2
     sqlite_copy_headers_to_destination
+    double_conversion
 )
 
 include_directories(
@@ -283,6 +286,7 @@ include_directories(
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
     ${sqlite_INCLUDE_DIR}
+    ${double_conversion_INCLUDE_DIR}
 )
 
 if(tensorflow_ENABLE_SSL_SUPPORT)

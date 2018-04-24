@@ -308,7 +308,10 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
         computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
   } else {
-    computation_layout->mutable_result_layout()->Clear();
+    // TODO(b/78356948): We are forcing the default layout here. We should fix
+    // clients which expect a default layout, to be explicit about it, by
+    // passing the proper ExecutionOptions with shape_with_output_layout set.
+    computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }
 
   config->set_replica_count(options_.number_of_replicas());

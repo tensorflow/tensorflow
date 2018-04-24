@@ -210,8 +210,9 @@ class RunConfig(run_config_lib.RunConfig):
         raise ValueError(
             'You cannot provide a ClusterResolver and '
             'session_config.cluster_def.')
-      self._session_config.cluster_def.CopyFrom(
-          self._cluster_spec.as_cluster_def())
+      if self._cluster_spec:
+        self._session_config.cluster_def.CopyFrom(
+            self._cluster_spec.as_cluster_def())
 
   @property
   def evaluation_master(self):

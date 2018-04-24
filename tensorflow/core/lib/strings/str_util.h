@@ -223,6 +223,11 @@ std::vector<string> Split(StringPiece text, char delims, Predicate p) {
   return Split(text, StringPiece(&delims, 1), p);
 }
 
+// Returns the length of the given null-terminated byte string 'str'.
+// Returns 'string_max_len' if the null character was not found in the first
+// 'string_max_len' bytes of 'str'.
+size_t Strnlen(const char* str, const size_t string_max_len);
+
 }  // namespace str_util
 }  // namespace tensorflow
 
