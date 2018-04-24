@@ -621,8 +621,8 @@ ClientLibraryTestBase::ComputeValueAndReference(
   return std::make_pair(std::move(reference), std::move(result));
 }
 
-Computation ClientLibraryTestBase::CreateScalarRelu() {
-  ComputationBuilder builder(client_, "relu");
+XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
+  XlaBuilder builder("relu");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
   auto z_value = builder.Parameter(0, shape, "z_value");
   auto zero = use_bfloat16_

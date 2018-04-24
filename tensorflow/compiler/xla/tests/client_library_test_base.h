@@ -255,7 +255,7 @@ class ClientLibraryTestBase : public ::testing::Test {
                          ErrorSpec error);
 
   // Create scalar operations for use in reductions.
-  Computation CreateScalarRelu();
+  XlaComputation CreateScalarRelu();
   Computation CreateScalarMax();
   Computation CreateScalarReluSensitivity();
 
