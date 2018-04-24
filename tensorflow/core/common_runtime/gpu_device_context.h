@@ -63,8 +63,8 @@ class GPUDeviceContext : public DeviceContext {
                              Device* device, Tensor* cpu_tensor,
                              StatusCallback done) override;
 
-  void MaintainLifetimeOnStream(
-      const Tensor* t, perftools::gputools::Stream* stream) const override {}
+  void MaintainLifetimeOnStream(const Tensor* t,
+                                se::Stream* stream) const override {}
 
  private:
   int stream_id_;

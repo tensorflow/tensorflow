@@ -277,20 +277,19 @@ REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
 #undef FFT_LABEL
 
 #if GOOGLE_CUDA
-namespace gpu = ::perftools::gputools;
 
 namespace {
 template <typename T>
-gpu::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  gpu::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
-  gpu::DeviceMemory<T> typed(wrapped);
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+  se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 
 template <typename T>
-gpu::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
-  gpu::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
-  gpu::DeviceMemory<T> typed(wrapped);
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
+  se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 
@@ -299,19 +298,19 @@ gpu::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 // the kernel finishes.
 // TODO(yangzihao): Refactor redundant code in subclasses of ScratchAllocator
 // into base class.
-class CufftScratchAllocator : public gpu::ScratchAllocator {
+class CufftScratchAllocator : public se::ScratchAllocator {
  public:
   ~CufftScratchAllocator() override {}
   CufftScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes(gpu::Stream* stream) override {
+  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
     return memory_limit_;
   }
-  gpu::port::StatusOr<gpu::DeviceMemory<uint8>> AllocateBytes(
-      gpu::Stream* stream, int64 byte_size) override {
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      se::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
     if (byte_size > memory_limit_) {
-      return gpu::port::StatusOr<gpu::DeviceMemory<uint8>>();
+      return se::port::StatusOr<se::DeviceMemory<uint8>>();
     }
     AllocationAttributes allocation_attr;
     allocation_attr.no_retry_on_failure = true;
@@ -319,13 +318,13 @@ class CufftScratchAllocator : public gpu::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return gpu::port::StatusOr<gpu::DeviceMemory<uint8>>();
+      return se::port::StatusOr<se::DeviceMemory<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return gpu::port::StatusOr<gpu::DeviceMemory<uint8>>(
+    return se::port::StatusOr<se::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }
@@ -394,9 +393,9 @@ class FFTGPUBase : public FFTBase {
 
     constexpr bool kInPlaceFft = false;
     const auto kFftType =
-        IsReal() ? (IsForward() ? gpu::fft::Type::kR2C : gpu::fft::Type::kC2R)
-                 : (IsForward() ? gpu::fft::Type::kC2CForward
-                                : gpu::fft::Type::kC2CInverse);
+        IsReal() ? (IsForward() ? se::fft::Type::kR2C : se::fft::Type::kC2R)
+                 : (IsForward() ? se::fft::Type::kC2CForward
+                                : se::fft::Type::kC2CInverse);
 
     CufftScratchAllocator scratch_allocator(CufftScratchSize, ctx);
     auto plan =

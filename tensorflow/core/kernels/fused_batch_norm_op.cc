@@ -251,7 +251,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     Tensor x_maybe_transformed = x;
     Tensor x_transformed;
     Tensor y_transformed;
-    perftools::gputools::DeviceMemory<T> y_ptr;
+    se::DeviceMemory<T> y_ptr;
 
     if (tensor_format == FORMAT_NCHW) {
       y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*y);
@@ -279,19 +279,19 @@ struct FusedBatchNorm<GPUDevice, T, U> {
       return;
     }
 
-    perftools::gputools::dnn::BatchDescriptor x_desc;
+    se::dnn::BatchDescriptor x_desc;
     x_desc.set_count(batch_size)
         .set_feature_map_count(channels)
         .set_height(height)
         .set_width(width)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::BatchDescriptor scale_offset_desc;
+    se::dnn::BatchDescriptor scale_offset_desc;
     scale_offset_desc.set_count(1)
         .set_feature_map_count(channels)
         .set_height(1)
         .set_width(1)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
     auto x_ptr = StreamExecutorUtil::AsDeviceMemory<T>(x_maybe_transformed);
     auto scale_ptr = StreamExecutorUtil::AsDeviceMemory<U>(scale);
@@ -308,7 +308,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
         StreamExecutorUtil::AsDeviceMemory<U>(*saved_inv_var);
 
     GPUDevice d = context->eigen_device<GPUDevice>();
-    using perftools::gputools::DeviceMemory;
+    using se::DeviceMemory;
     Tensor inv_var;
     OP_REQUIRES_OK(
         context, context->allocate_temp(DataTypeToEnum<U>::value,
@@ -390,7 +390,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
 
     // Outputs
     Tensor x_backprop_transformed;
-    perftools::gputools::DeviceMemory<T> x_backprop_ptr;
+    se::DeviceMemory<T> x_backprop_ptr;
 
     if (tensor_format == FORMAT_NCHW) {
       x_backprop_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*x_backprop);
@@ -433,19 +433,19 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
       return;
     }
 
-    perftools::gputools::dnn::BatchDescriptor x_desc;
+    se::dnn::BatchDescriptor x_desc;
     x_desc.set_count(batch_size)
         .set_feature_map_count(channels)
         .set_height(height)
         .set_width(width)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::BatchDescriptor scale_offset_desc;
+    se::dnn::BatchDescriptor scale_offset_desc;
     scale_offset_desc.set_count(1)
         .set_feature_map_count(channels)
         .set_height(1)
         .set_width(1)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
     auto y_backprop_ptr =
         StreamExecutorUtil::AsDeviceMemory<T>(y_backprop_maybe_transformed);

@@ -40,8 +40,7 @@ int64* NewMask(int64 word) {
 int64* before_mask = NewMask(0xabababababababab);
 int64* after_mask = NewMask(0xcdcdcdcdcdcdcdcd);
 
-bool CheckMask(perftools::gputools::StreamExecutor* exec, void* ptr,
-               int64* mask) {
+bool CheckMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
   gpu::DeviceMemory<int64> gpu_ptr{gpu::DeviceMemoryBase{ptr, MASK_BYTES}};
   int64 tmp[MASK_WORDS];
 
@@ -62,8 +61,7 @@ bool CheckMask(perftools::gputools::StreamExecutor* exec, void* ptr,
   return ok;
 }
 
-void InitMask(perftools::gputools::StreamExecutor* exec, void* ptr,
-              int64* mask) {
+void InitMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
   gpu::DeviceMemory<int64> gpu_ptr{gpu::DeviceMemoryBase{ptr, MASK_BYTES}};
   if (!exec->SynchronousMemcpy(&gpu_ptr, mask, MASK_BYTES)) {
     LOG(FATAL) << "Could not copy debug mask";

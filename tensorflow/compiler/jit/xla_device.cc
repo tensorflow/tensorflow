@@ -51,8 +51,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
-namespace se = ::perftools::gputools;
-
 namespace tensorflow {
 
 // Caches a XlaDeviceAllocator per <backend, device ordinal> pair. A

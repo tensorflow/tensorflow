@@ -297,9 +297,8 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     }
     scratch_.push_back(static_cast<char*>(scratch_buffer));
 
-    perftools::gputools::DeviceMemory<char> mem(
-        perftools::gputools::DeviceMemoryBase(scratch_buffer,
-                                              scratch_buffer_size));
+    se::DeviceMemory<char> mem(
+        se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
 
     bool ok = executor_->SynchronousMemZero(
         &mem, Eigen::kCudaScratchSize + sizeof(unsigned int));

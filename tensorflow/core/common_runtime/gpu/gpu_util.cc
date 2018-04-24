@@ -55,19 +55,15 @@ limitations under the License.
 const tensorflow::int64 FLAGS_brain_gpu_util_debug_string_maxlen = 128;
 extern bool FLAGS_brain_gpu_record_mem_types;
 
-using perftools::gputools::DeviceMemoryBase;
-using perftools::gputools::Stream;
-
 namespace tensorflow {
 
-// TODO(b/77980417): Remove this and use the regular tensorflow::se alias once
-// that's available.
-namespace gpu = ::stream_executor;
+using se::DeviceMemoryBase;
+using se::Stream;
 
 Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
                    const Tensor* dst,
                    const DeviceBase::GpuDeviceInfo** dev_info,
-                   gpu::Stream** stream) {
+                   se::Stream** stream) {
   if (device == nullptr) {
     return errors::Internal("Unexpected null device.");
   }
@@ -122,7 +118,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
                               StatusCallback done) {
   VLOG(1) << "SetProtoFromGPU device_context " << device_context;
   const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
-  gpu::Stream* send_stream = nullptr;
+  se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(dev, device_context, tensor, nullptr, &dev_info,
                          &send_stream);
   if (!s.ok()) {
@@ -197,7 +193,7 @@ void GPUUtil::DeviceToDeviceCopy(DeviceContext* send_dev_context,
                                  const Tensor* input, Tensor* output,
                                  StatusCallback done) {
   const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
-  gpu::Stream* send_stream = nullptr;
+  se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
                          &send_stream);
   if (!s.ok()) {
@@ -264,7 +260,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
                                  StatusCallback done) {
   VLOG(1) << "CopyGPUTensorToCPU";
   const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
-  gpu::Stream* send_stream = nullptr;
+  se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(gpu_device, device_context, *gpu_tensor, cpu_tensor,
                          &dev_info, &send_stream);
   if (!s.ok()) {
@@ -309,7 +305,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  StatusCallback done) {
   VLOG(1) << "CopyCPUTensorToGPU";
   const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
-  gpu::Stream* recv_stream = nullptr;
+  se::Stream* recv_stream = nullptr;
   Status s = PrepareCopy(gpu_device, device_context, *cpu_tensor, gpu_tensor,
                          &dev_info, &recv_stream);
   if (!s.ok()) {
@@ -432,7 +428,7 @@ void GPUUtil::CopyGPUTensorToSameGPU(Device* gpu_device,
                                      StatusCallback done) {
   VLOG(1) << "CopyGPUTensorToSameGPU";
   const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
-  gpu::Stream* send_stream = nullptr;
+  se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(gpu_device, device_context, *src_gpu_tensor,
                          dst_gpu_tensor, &dev_info, &send_stream);
   if (!s.ok()) {

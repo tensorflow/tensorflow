@@ -78,7 +78,7 @@ using CPUDevice = Eigen::ThreadPoolDevice;
 #if GOOGLE_CUDA
 
 using GPUDevice = Eigen::GpuDevice;
-using ::perftools::gputools::StreamExecutor;
+using se::StreamExecutor;
 
 template <typename Device, typename T, typename Index>
 class CudnnRNNParamsSizeOp;
@@ -102,21 +102,21 @@ enum class TFRNNInputMode {
 };
 
 namespace {
-using ::perftools::gputools::DeviceMemory;
-using ::perftools::gputools::DeviceMemoryBase;
-using ::perftools::gputools::ScratchAllocator;
-using ::perftools::gputools::Stream;
-using ::perftools::gputools::dnn::AlgorithmConfig;
-using ::perftools::gputools::dnn::AlgorithmDesc;
-using ::perftools::gputools::dnn::ProfileResult;
-using ::perftools::gputools::dnn::RnnDescriptor;
-using ::perftools::gputools::dnn::RnnDirectionMode;
-using ::perftools::gputools::dnn::RnnInputMode;
-using ::perftools::gputools::dnn::RnnMode;
-using ::perftools::gputools::dnn::RnnSequenceTensorDescriptor;
-using ::perftools::gputools::dnn::RnnStateTensorDescriptor;
-using ::perftools::gputools::dnn::ToDataType;
-using ::perftools::gputools::port::StatusOr;
+using se::DeviceMemory;
+using se::DeviceMemoryBase;
+using se::ScratchAllocator;
+using se::Stream;
+using se::dnn::AlgorithmConfig;
+using se::dnn::AlgorithmDesc;
+using se::dnn::ProfileResult;
+using se::dnn::RnnDescriptor;
+using se::dnn::RnnDirectionMode;
+using se::dnn::RnnInputMode;
+using se::dnn::RnnMode;
+using se::dnn::RnnSequenceTensorDescriptor;
+using se::dnn::RnnStateTensorDescriptor;
+using se::dnn::ToDataType;
+using se::port::StatusOr;
 
 Status ParseRNNMode(const string& str, RnnMode* rnn_mode) {
   if (str == "rnn_relu") {
@@ -213,7 +213,7 @@ DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
   return DeviceMemoryBase(offset_ptr, size);
 }
 
-inline Status FromExecutorStatus(const perftools::gputools::port::Status& s) {
+inline Status FromExecutorStatus(const se::port::Status& s) {
   return s.ok() ? Status::OK()
                 : Status(static_cast<tensorflow::error::Code>(
                              static_cast<int>(s.code())),
@@ -221,17 +221,15 @@ inline Status FromExecutorStatus(const perftools::gputools::port::Status& s) {
 }
 
 template <typename T>
-inline Status FromExecutorStatus(
-    const perftools::gputools::port::StatusOr<T>& s) {
+inline Status FromExecutorStatus(const se::port::StatusOr<T>& s) {
   return FromExecutorStatus(s.status());
 }
 
-inline perftools::gputools::port::Status ToExecutorStatus(const Status& s) {
-  return s.ok() ? perftools::gputools::port::Status::OK()
-                : perftools::gputools::port::Status(
-                      static_cast<perftools::gputools::port::error::Code>(
-                          static_cast<int>(s.code())),
-                      s.error_message());
+inline se::port::Status ToExecutorStatus(const Status& s) {
+  return s.ok() ? se::port::Status::OK()
+                : se::port::Status(static_cast<se::port::error::Code>(
+                                       static_cast<int>(s.code())),
+                                   s.error_message());
 }
 
 template <typename>
@@ -503,7 +501,7 @@ Status CreateForwardAndBackwardIODescriptors(
     std::unique_ptr<RnnStateTensorDescriptor>* state_desc,
     std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc) {
   StreamExecutor* executor = context->op_device_context()->stream()->parent();
-  ::perftools::gputools::dnn::DataType data_type = ToDataType<T>::value;
+  se::dnn::DataType data_type = ToDataType<T>::value;
 
   const TensorShape& input_shape = model_shapes.input_shape;
   const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
@@ -773,7 +771,7 @@ class CudnnRNNKernelCommon : public OpKernel {
                              ScratchAllocator* dropout_state_allocator,
                              std::unique_ptr<RnnDescriptor>* rnn_desc) {
     StreamExecutor* executor = context->op_device_context()->stream()->parent();
-    ::perftools::gputools::dnn::DataType data_type = ToDataType<T>::value;
+    se::dnn::DataType data_type = ToDataType<T>::value;
     auto rnn_desc_s = executor->createRnnDescriptor(
         model_shapes.num_layers, model_shapes.num_units,
         model_shapes.input_size, input_mode, rnn_direction_mode(), rnn_mode(),
