@@ -30,7 +30,7 @@ limitations under the License.
 #ifdef SWIG
 #define TF_CAPI_EXPORT
 #else
-#if defined(COMPILER_MSVC)
+#if defined(_WIN32)
 #ifdef TF_COMPILE_LIBRARY
 #define TF_CAPI_EXPORT __declspec(dllexport)
 #else
@@ -38,7 +38,7 @@ limitations under the License.
 #endif  // TF_COMPILE_LIBRARY
 #else
 #define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // COMPILER_MSVC
+#endif  // _WIN32
 #endif  // SWIG
 
 #ifdef __cplusplus

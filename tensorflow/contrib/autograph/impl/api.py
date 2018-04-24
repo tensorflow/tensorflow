@@ -49,7 +49,7 @@ def convert(recursive=False, verbose=False, arg_types=None):
   function is called. This means the parameter values are known at compilation.
 
   Args:
-    recursive: Whether to recusrively convert any functions that the decorator
+    recursive: Whether to recursively convert any functions that the decorator
         function may call.
     verbose: Whether to output the compiled code in the logs.
     arg_types: See to_graph.
@@ -215,7 +215,7 @@ def to_graph(e,
 
   Args:
     e: A Python entity.
-    recursive: Whether to recusrively convert any functions that the decorator
+    recursive: Whether to recursively convert any functions that the decorator
         function may call.
     verbose: Whether to output the compiled code in the logs.
     arg_values: A dict containing value hints for symbols like function

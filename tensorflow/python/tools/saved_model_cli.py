@@ -41,6 +41,7 @@ from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.platform import app  # pylint: disable=unused-import
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import loader
 from tensorflow.python.tools import saved_model_utils
 
@@ -543,7 +544,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(filename)
+    data = np.load(file_io.FileIO(filename, mode='r'))
 
     # When a variable_name key is specified for the input file
     if variable_name:

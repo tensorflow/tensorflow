@@ -1155,7 +1155,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
   Returns:
     A `Tensor` with the same type as `value`.
-    Output shape with `'VALID`` padding is:
+    Output shape with `'VALID'` padding is:
 
         [batch, height - 2 * (filter_width - 1),
          width - 2 * (filter_height - 1), out_channels].
@@ -1458,10 +1458,10 @@ def conv3d_transpose(
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [5] if reached this point.
-      if not filter.get_shape()[3].is_compatible_with(output_shape[4]):
+      if not filter.get_shape()[3].is_compatible_with(output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[4],
+            "{} != {}".format(output_shape[axis],
                               filter.get_shape()[3]))
 
     if padding != "VALID" and padding != "SAME":
@@ -1986,7 +1986,7 @@ def sparse_softmax_cross_entropy_with_logits(
   must provide a single specific index for the true class for each row of
   `logits` (each minibatch entry).  For soft softmax classification with
   a probability distribution for each entry, see
-  `softmax_cross_entropy_with_logits`.
+  `softmax_cross_entropy_with_logits_v2`.
 
   **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the

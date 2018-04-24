@@ -2834,7 +2834,9 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       name=name)
 
 
-@deprecated(None, 'Please switch to tf.metrics.mean.')
+@deprecated(None,
+            'Please switch to tf.metrics.mean_absolute_error. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_mean_absolute_error(predictions,
                                   labels,
                                   weights=None,
@@ -2953,7 +2955,9 @@ def streaming_mean_relative_error(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None,
+            'Please switch to tf.metrics.mean_squared_error. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_mean_squared_error(predictions,
                                  labels,
                                  weights=None,
@@ -3011,7 +3015,10 @@ def streaming_mean_squared_error(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(
+    None,
+    'Please switch to tf.metrics.root_mean_squared_error. Note that the '
+    'order of the labels and predictions arguments has been switched.')
 def streaming_root_mean_squared_error(predictions,
                                       labels,
                                       weights=None,
@@ -3351,7 +3358,7 @@ def streaming_mean_cosine_distance(predictions,
   radial_diffs = math_ops.reduce_sum(
       radial_diffs, reduction_indices=[
           dim,
-      ], keep_dims=True)
+      ], keepdims=True)
   mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,
                                             name or 'mean_cosine_distance')
   mean_distance = math_ops.subtract(1.0, mean_distance)

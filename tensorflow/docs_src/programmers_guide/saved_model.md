@@ -485,31 +485,7 @@ portion of the signature.  That is, when writing a
 to expect and how to map them to your model's expected inputs.
 By contrast, the *output* portion of the signature is determined by the model.
 
-
-### Perform the export
-
-To export your trained Estimator, call
-@{tf.estimator.Estimator.export_savedmodel} with the export base path and
-the `serving_input_receiver_fn`.
-
-```py
-estimator.export_savedmodel(export_dir_base, serving_input_receiver_fn,
-                            strip_default_attrs=True)
-```
-
-This method builds a new graph by first calling the
-`serving_input_receiver_fn()` to obtain feature `Tensor`s, and then calling
-this `Estimator`'s `model_fn()` to generate the model graph based on those
-features. It starts a fresh `Session`, and, by default, restores the most recent
-checkpoint into it.  (A different checkpoint may be passed, if needed.)
-Finally it creates a time-stamped export directory below the given
-`export_dir_base` (i.e., `export_dir_base/<timestamp>`), and writes a
-SavedModel into it containing a single `MetaGraphDef` saved from this
-Session.
-
-> Note: It is your responsibility to garbage-collect old exports.
-> Otherwise, successive exports will accumulate under `export_dir_base`.
-
+<a name="specify_outputs"></a>
 ### Specify the outputs of a custom model
 
 When writing a custom `model_fn`, you must populate the `export_outputs` element
@@ -541,6 +517,30 @@ using [`signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`](https://www.tens
 indicating which `SignatureDef` will be served when an inference request
 does not specify one.
 
+<a name="perform_export"></a>
+### Perform the export
+
+To export your trained Estimator, call
+@{tf.estimator.Estimator.export_savedmodel} with the export base path and
+the `serving_input_receiver_fn`.
+
+```py
+estimator.export_savedmodel(export_dir_base, serving_input_receiver_fn,
+                            strip_default_attrs=True)
+```
+
+This method builds a new graph by first calling the
+`serving_input_receiver_fn()` to obtain feature `Tensor`s, and then calling
+this `Estimator`'s `model_fn()` to generate the model graph based on those
+features. It starts a fresh `Session`, and, by default, restores the most recent
+checkpoint into it.  (A different checkpoint may be passed, if needed.)
+Finally it creates a time-stamped export directory below the given
+`export_dir_base` (i.e., `export_dir_base/<timestamp>`), and writes a
+SavedModel into it containing a single `MetaGraphDef` saved from this
+Session.
+
+> Note: It is your responsibility to garbage-collect old exports.
+> Otherwise, successive exports will accumulate under `export_dir_base`.
 
 ### Serve the exported model locally
 

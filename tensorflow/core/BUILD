@@ -145,6 +145,7 @@ load(
     "if_static",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
@@ -245,6 +246,15 @@ tf_nano_proto_library(
     generate_intdefs = 1,
     visibility = ["//visibility:public"],
     deps = [":protos_all_cc"],
+)
+
+proto_library(
+    name = "example_protos",
+    srcs = [
+        "example/example.proto",
+        "example/feature.proto",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 exports_files([
@@ -4065,4 +4075,10 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
+)
+
+closure_proto_library(
+    name = "example_protos_closure",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
 )

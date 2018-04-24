@@ -243,6 +243,7 @@ cc_library(
     deps = [
         ":graph_optimizer",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

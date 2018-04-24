@@ -456,7 +456,7 @@ def _get_local_devices(device_type):
 
 
 def _split_batch(features, labels, number_of_shards, device):
-  """Split input features and labes into batches."""
+  """Split input features and labels into batches."""
 
   def ensure_divisible_by_shards(sequence):
     batch_size = ops_lib.convert_to_tensor(sequence).get_shape()[0]
@@ -602,7 +602,7 @@ def _local_device_setter(worker_device, ps_devices, ps_strategy):
 
 
 def _scale_tower_loss(tower_spec, loss_reduction, number_of_towers):
-  """Produce an EstimatorSpec with approproriately scaled loss."""
+  """Produce an EstimatorSpec with appropriately scaled loss."""
   if tower_spec.loss is None:
     return tower_spec
 

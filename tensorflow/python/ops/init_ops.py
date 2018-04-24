@@ -39,9 +39,9 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import linalg_ops_impl
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -529,7 +529,7 @@ class Orthogonal(Initializer):
     # Generate a random matrix
     a = random_ops.random_normal(flat_shape, dtype=dtype, seed=self.seed)
     # Compute the qr factorization
-    q, r = linalg_ops.qr(a, full_matrices=False)
+    q, r = gen_linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
     d = array_ops.diag_part(r)
     q *= math_ops.sign(d)
@@ -577,7 +577,7 @@ class ConvolutionDeltaOrthogonal(Initializer):
     a = random_ops.random_normal([shape[-1], shape[-1]],
                                  dtype=dtype, seed=self.seed)
     # Compute the qr factorization
-    q, r = linalg_ops.qr(a, full_matrices=False)
+    q, r = gen_linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
     d = array_ops.diag_part(r)
     q *= math_ops.sign(d)
@@ -636,7 +636,7 @@ class ConvolutionOrthogonal(Initializer):
     a = random_ops.random_normal([n, n], dtype=self.dtype, seed=self.seed)
     if self.seed:
       self.seed += 1
-    q, r = linalg_ops.qr(a)
+    q, r = gen_linalg_ops.qr(a)
     d = array_ops.diag_part(r)
     # make q uniform
     q *= math_ops.sign(d)
@@ -723,7 +723,7 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       raise ValueError("The dimension of the matrices must be the same.")
     n = p1.shape.as_list()[0]
     kernel2x2 = {}
-    eye = linalg_ops.eye(n, dtype=self.dtype)
+    eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel2x2[0, 0] = math_ops.matmul(p1, p2)
     kernel2x2[0, 1] = math_ops.matmul(p1, (eye - p2))
     kernel2x2[1, 0] = math_ops.matmul((eye - p1), p2)
@@ -848,7 +848,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
     """
     n = projection_matrix.shape.as_list()[0]
     kernel = {}
-    eye = linalg_ops.eye(n, dtype=self.dtype)
+    eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel[0] = projection_matrix
     kernel[1] = eye - projection_matrix
     return kernel
@@ -976,7 +976,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     if p1_shape != p2.shape.as_list() or p1_shape != p3.shape.as_list():
       raise ValueError("The dimension of the matrices must be the same.")
     n = p1_shape[0]
-    eye = linalg_ops.eye(n, dtype=self.dtype)
+    eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel2x2x2 = {}
     def matmul(p1, p2, p3):
       return math_ops.matmul(math_ops.matmul(p1, p2), p3)
@@ -1084,7 +1084,7 @@ class Identity(Initializer):
           "Identity matrix initializer can only be used for 2D matrices.")
     if dtype is None:
       dtype = self.dtype
-    initializer = linalg_ops.eye(*full_shape, dtype=dtype)
+    initializer = linalg_ops_impl.eye(*full_shape, dtype=dtype)
     if partition_info is not None:
       initializer = array_ops.slice(initializer, partition_info.var_offset,
                                     shape)

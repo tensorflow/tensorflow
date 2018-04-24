@@ -815,7 +815,7 @@ class _Transformer(object):
   """
 
   def __init__(self, columns_to_tensors):
-    """Initializes transfomer.
+    """Initializes transformer.
 
     Args:
       columns_to_tensors: A mapping from feature columns to tensors. 'string'
@@ -908,7 +908,7 @@ def _gather_feature_columns(feature_columns):
 
 
 def _check_forbidden_sequence_columns(feature_columns):
-  """Recursively cecks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
+  """Recursively checks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
   all_feature_columns = _gather_feature_columns(feature_columns)
   for feature_column in all_feature_columns:
     if isinstance(feature_column, _FORBIDDEN_SEQUENCE_COLUMNS):
