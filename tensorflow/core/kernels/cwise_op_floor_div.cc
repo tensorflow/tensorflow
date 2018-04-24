@@ -22,8 +22,8 @@ REGISTER3(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, double);
 
 #if GOOGLE_CUDA
-REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
-          int64);
+REGISTER5(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int8,
+          int16, int64);
 REGISTER3(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, double);
 #endif
