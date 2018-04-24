@@ -2563,6 +2563,19 @@ tf_cuda_library(
 
 cc_library(
     name = "gpu_id",
+    hdrs = [
+        "common_runtime/gpu/gpu_id.h",
+        "common_runtime/gpu/gpu_id_manager.h",
+    ],
+    deps = [
+        ":lib",
+    ] + if_static([
+        ":gpu_id_impl",
+    ]),
+)
+
+cc_library(
+    name = "gpu_id_impl",
     srcs = ["common_runtime/gpu/gpu_id_manager.cc"],
     hdrs = [
         "common_runtime/gpu/gpu_id.h",
@@ -2612,7 +2625,7 @@ tf_cuda_library(
         ":core_cpu_lib",
         ":framework",
         ":framework_internal",
-        ":gpu_id",
+        ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
         ":graph",
