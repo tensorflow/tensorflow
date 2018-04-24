@@ -9602,6 +9602,14 @@ func ResourceApplyAdagradUseLocking(value bool) ResourceApplyAdagradAttr {
 	}
 }
 
+// ResourceApplyAdagradUpdateSlots sets the optional update_slots attribute to value.
+// If not specified, defaults to true
+func ResourceApplyAdagradUpdateSlots(value bool) ResourceApplyAdagradAttr {
+	return func(m optionalAttr) {
+		m["update_slots"] = value
+	}
+}
+
 // Update '*var' according to the adagrad scheme.
 //
 // accum += grad * grad
@@ -10673,6 +10681,14 @@ type ResourceSparseApplyAdagradAttr func(optionalAttr)
 func ResourceSparseApplyAdagradUseLocking(value bool) ResourceSparseApplyAdagradAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
+	}
+}
+
+// ResourceSparseApplyAdagradUpdateSlots sets the optional update_slots attribute to value.
+// If not specified, defaults to true
+func ResourceSparseApplyAdagradUpdateSlots(value bool) ResourceSparseApplyAdagradAttr {
+	return func(m optionalAttr) {
+		m["update_slots"] = value
 	}
 }
 
