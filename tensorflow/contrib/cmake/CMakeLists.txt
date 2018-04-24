@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 # Project
-project(tensorflow VERSION 1.7.0 LANGUAGES C CXX)
+project(tensorflow VERSION 1.8.0 LANGUAGES C CXX)
 
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
@@ -69,7 +69,7 @@ if (NOT WIN32)
     # option's default value is OFF. Fill it with real default values
     set(tensorflow_CUDNN_INCLUDE /usr/include)
   endif (NOT tensorflow_CUDNN_INCLUDE)
-  option(tensorflow_NCCL_INCLUDE "nccl.h headher install path" /usr/include/)
+  option(tensorflow_NCCL_INCLUDE "nccl.h header install path" /usr/include/)
   if (NOT tensorflow_NCCL_INCLUDE)
     # option's default value is OFF. Fill it with real default values
     set(tensorflow_NCCL_INCLUDE /usr/include)
