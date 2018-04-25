@@ -305,10 +305,11 @@ void RenderInterfaceImpl(const OpSpec& op, RenderMode mode,
   }
 }
 
-void RenderOptionsClass(const OpSpec& op, SourceWriter* writer) {
+void RenderOptionsClass(const OpSpec& op, const Type& op_class,
+    SourceWriter* writer) {
   Type options_class = Type::Class("Options");
   Javadoc options_doc = Javadoc::Create(
-      "Class holding optional attributes of this operation");
+      "Optional attributes for {@link " + op_class.full_name() + "}");
   writer->BeginInnerType(options_class, PUBLIC | STATIC, &options_doc);
   for (const AttributeSpec& attribute : op.optional_attributes()) {
     Method setter = Method::Create(attribute.var().name(), options_class)
@@ -410,7 +411,7 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
       .EndLine()
       .BeginType(op_class, PUBLIC|FINAL, &dependencies, &op_javadoc);
   if (!op.optional_attributes().empty()) {
-    RenderOptionsClass(op, &writer);
+    RenderOptionsClass(op, op_class, &writer);
   }
   RenderFactoryMethod(op, op_class, &writer);
   RenderGettersAndSetters(op, &writer);
