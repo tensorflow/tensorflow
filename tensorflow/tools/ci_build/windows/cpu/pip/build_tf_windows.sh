@@ -87,12 +87,16 @@ create_python_test_dir "${PY_TEST_DIR}"
 PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
+# NUMBER_OF_PROCESSORS is predefined on Windows
+N_JOBS="${NUMBER_OF_PROCESSORS}"
+
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 bazel test -c opt -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_oss \
   --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \
+  --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
   //${PY_TEST_DIR}/tensorflow/python/... \
   //${PY_TEST_DIR}/tensorflow/contrib/...
