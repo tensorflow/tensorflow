@@ -168,7 +168,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       sparse_ids, sparse_weights = self._ids_and_weights_2d()
 
       embedding_weights[1] = embedding_weights[1].astype(np.float64)
-      self.assertRaises(TypeError, embedding_ops.safe_embedding_lookup_sparse,
+      self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids)
       embedding_weights = [
           constant_op.constant(w, dtype=dtypes.float64)
@@ -245,7 +245,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       sparse_ids, sparse_weights = self._ids_and_weights_3d()
 
       embedding_weights[1] = embedding_weights[1].astype(np.float64)
-      self.assertRaises(TypeError, embedding_ops.safe_embedding_lookup_sparse,
+      self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids)
       embedding_weights = [
           constant_op.constant(w, dtype=dtypes.float64)
