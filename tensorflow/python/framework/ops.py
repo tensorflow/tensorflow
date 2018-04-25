@@ -4998,7 +4998,7 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
     default_graph = get_default_graph()
     if isinstance(op, EagerTensor):
       if default_graph.building_function:
-        op = internal_convert_to_tensor(op)
+        return default_graph.device(op.device)
       else:
         raise ValueError("Encountered an Eager-defined Tensor during graph "
                          "construction, but a function was not being built.")
