@@ -222,7 +222,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Compare the result of the computation to a strings. In XLA strings are
   // represented using rank-1 U8 shapes.
   void ComputeAndCompareR1U8(
-      ComputationBuilder* builder, tensorflow::StringPiece expected,
+      XlaBuilder* builder, tensorflow::StringPiece expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
   // Convenience method for running a built computation, transferring the
@@ -256,7 +256,7 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   // Create scalar operations for use in reductions.
   XlaComputation CreateScalarRelu();
-  Computation CreateScalarMax();
+  XlaComputation CreateScalarMax();
   Computation CreateScalarReluSensitivity();
 
   // Special case convenience functions for creating filled arrays.

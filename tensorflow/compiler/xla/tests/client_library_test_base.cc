@@ -466,7 +466,7 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(
-    ComputationBuilder* builder, tensorflow::StringPiece expected,
+    XlaBuilder* builder, tensorflow::StringPiece expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
@@ -640,8 +640,8 @@ XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
   return computation_status.ConsumeValueOrDie();
 }
 
-Computation ClientLibraryTestBase::CreateScalarMax() {
-  ComputationBuilder builder(client_, "max");
+XlaComputation ClientLibraryTestBase::CreateScalarMax() {
+  XlaBuilder builder("max");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
   auto x = builder.Parameter(0, shape, "x");
   auto y = builder.Parameter(1, shape, "y");
