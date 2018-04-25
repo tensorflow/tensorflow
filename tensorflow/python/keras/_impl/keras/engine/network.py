@@ -239,6 +239,8 @@ class Network(base_layer.Layer):
     self._layers = layers
     self._layers_by_depth = layers_by_depth
 
+    self._track_layers(layers)
+
     # Create the node linking internal inputs to internal outputs.
     base_layer.Node(
         outbound_layer=self,
@@ -297,6 +299,23 @@ class Network(base_layer.Layer):
     self.outputs = None
     self.inputs = None
     self.built = False
+
+  def _track_layers(self, layers):
+    """Add Checkpointable dependencies on a list of Layers."""
+    weight_layer_index = 0
+    for layer_index, layer in enumerate(layers):
+      if layer.weights:
+        # Keep a separate index for layers which have weights. This allows users
+        # to insert Layers without weights anywhere in the network without
+        # breaking checkpoints.
+        self._track_checkpointable(
+            layer, name='layer_with_weights-%d' % weight_layer_index,
+            overwrite=True)
+        weight_layer_index += 1
+      # Even if it doesn't have weights, we should still track everything in
+      # case it has/will have Checkpointable dependencies.
+      self._track_checkpointable(
+          layer, name='layer-%d' % layer_index, overwrite=True)
 
   def __setattr__(self, name, value):
     if isinstance(value, (base_layer.Layer, Network)):
@@ -1153,14 +1172,15 @@ class Network(base_layer.Layer):
           - For every weight in the layer, a dataset
               storing the weight value, named after the weight tensor.
 
-    Currently the TensorFlow format is only supported for user-defined classes
-    inheriting from `tf.keras.Model`, and not for networks constructed from
-    inputs and outputs (using `tf.keras.Model(inputs, outputs)`).
-
     When saving in TensorFlow format, all objects referenced by the network are
-    saved in the same format as `tf.train.Checkpoint`, including any `Layer`s or
-    `Optimizer`s assigned to attributes in the constructor. See
-    `tf.train.Checkpoint`'s documentation for details.
+    saved in the same format as `tf.train.Checkpoint`, including any `Layer`
+    instances or `Optimizer` instances assigned to object attributes. For
+    networks constructed from inputs and outputs using `tf.keras.Model(inputs,
+    outputs)`, `Layer` instances used by the network are tracked/saved
+    automatically. For user-defined classes which inherit from `tf.keras.Model`,
+    `Layer` instances must be assigned to object attributes, typically in the
+    constructor. See the documentation of `tf.train.Checkpoint` and
+    `tf.keras.Model` for details.
 
     Arguments:
         filepath: String, path to the file to save the weights to. When saving
@@ -1169,12 +1189,9 @@ class Network(base_layer.Layer):
             weights to be saved in HDF5 format.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
-        save_format: Either 'tf' or 'h5'. If `None`, defaults to 'tf' for
-            user-defined classes inheriting from `tf.keras.Model` and 'h5' for
-            networks constructed from inputs and outputs. `filepath`s ending in
-            '.h5' or '.keras' always default to HDF5. Currently only 'h5' is
-            supported for networks constructed from inputs and outputs. Once
-            supported, the default for all networks will switch to 'tf'.
+        save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
+            '.keras' will default to HDF5 if `save_format` is `None`. Otherwise
+            `None` defaults to 'tf'.
 
     Raises:
         ImportError: If h5py is not available when attempting to save in HDF5
@@ -1186,13 +1203,7 @@ class Network(base_layer.Layer):
       if filepath_is_h5:
         save_format = 'h5'
       else:
-        if self._is_graph_network:
-          # TODO(allenl): Handle loading by weight index and fix dependencies,
-          # then enable 'tensorflow' format by default for graph networks.
-          save_format = 'h5'
-        else:
-          # Subclassed models save in TensorFlow format by default.
-          save_format = 'tf'
+        save_format = 'tf'
     else:
       user_format = save_format.lower().strip()
       if user_format in ('tensorflow', 'tf'):
@@ -1214,10 +1225,6 @@ class Network(base_layer.Layer):
       raise ImportError(
           '`save_weights` requires h5py when saving in hdf5.')
     if save_format == 'tf':
-      if self._is_graph_network:
-        raise NotImplementedError(
-            'Networks constructed from inputs and outputs do not yet support '
-            'saving weights in the TensorFlow ("tf") save_format.')
       check_filepath = filepath + '.index'
     else:
       check_filepath = filepath
@@ -1273,19 +1280,12 @@ class Network(base_layer.Layer):
         ImportError: If h5py is not available and the weight file is in HDF5
             format.
     """
-    if self._is_graph_network:
-      # Graph networks do not currently support TensorFlow formatted weight
-      # files.
+    try:
+      pywrap_tensorflow.NewCheckpointReader(filepath)
+      save_format = 'tf'
+    except errors_impl.DataLossError:
+      # The checkpoint is not readable in TensorFlow format. Try HDF5.
       save_format = 'h5'
-    else:
-      save_format = None
-    if save_format is None:
-      try:
-        pywrap_tensorflow.NewCheckpointReader(filepath)
-        save_format = 'tf'
-      except errors_impl.DataLossError:
-        # The checkpoint is not readable in TensorFlow format. Try HDF5.
-        save_format = 'h5'
     if save_format == 'tf':
       status = self._checkpointable_saver.restore(filepath)
       if by_name:

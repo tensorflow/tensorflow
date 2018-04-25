@@ -84,6 +84,11 @@ class _CheckpointRestoreCoordinator(object):
     # (as objects with deferred dependencies will generally have references to
     # this object).
     self.object_by_proto_id = weakref.WeakValueDictionary()
+    # A set of all Python objects we've seen as dependencies, even if we didn't
+    # use them (for example because of inconsistent references when
+    # loading). Used to make status assertions fail when loading checkpoints
+    # that don't quite match.
+    self.all_python_objects = weakref.WeakSet()
     self.save_path = save_path
     self.dtype_map = dtype_map
     # When graph building, contains a list of ops to run to restore objects from
@@ -446,6 +451,14 @@ class CheckpointLoadStatus(_LoadStatus):
           ("Unused attributes in these objects (the attributes exist in the "
            "checkpoint but not in the objects): %s") % (
                self._checkpoint.unused_attributes.items(),))
+    unused_python_objects = (
+        set(self._checkpoint.all_python_objects)
+        - set(self._checkpoint.object_by_proto_id.values()))
+    if unused_python_objects:
+      raise AssertionError(
+          ("Some Python objects were not bound to checkpointed values, likely "
+           "due to changes in the Python program: %s")
+          % (unused_python_objects,))
     return self
 
   def run_restore_ops(self, session=None):

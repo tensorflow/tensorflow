@@ -67,8 +67,10 @@ class TestWeightSavingAndLoading(test.TestCase):
       self.addCleanup(shutil.rmtree, temp_dir)
 
       no_extension_path = os.path.join(temp_dir, 'test')
-      with self.assertRaises(NotImplementedError):
-        model.save_weights(no_extension_path, save_format='tensorflow')
+      model.save_weights(no_extension_path, save_format='tf')
+      model.load_weights(no_extension_path)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
 
       if h5py is None:
         return  # Skip rest of test if H5py isn't available.
@@ -80,11 +82,6 @@ class TestWeightSavingAndLoading(test.TestCase):
       self.assertAllClose(ref_y, y)
 
       model.load_weights(h5_path, by_name=True)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      model.save_weights(no_extension_path)
-      model.load_weights(no_extension_path)
       y = model.predict(x)
       self.assertAllClose(ref_y, y)
 
@@ -490,8 +487,6 @@ class SubclassedModel(training.Model):
     return self.b_layer(self.x_layer(a))
 
 
-# TODO(allenl): The graph model tests in this TestCase are still saving in
-# hdf5. Get them to save in tensorflow format.
 class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
@@ -545,7 +540,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       if not executing_eagerly:
         session.run([v.initializer for v in model.variables])
       ref_y = self.evaluate(ref_y_tensor)
-      model.save_weights(prefix)
+      model.save_weights(prefix, save_format='tf')
       for v in model.variables:
         self.evaluate(
             v.assign(random_ops.random_normal(shape=array_ops.shape(v))))
@@ -572,9 +567,6 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       b = keras.layers.Dense(1)(x)
       return keras.models.Model(a, b)
 
-    if h5py is None:
-      self.skipTest('This test only works with h5py.')
-
     self._weight_loading_test_template(_make_graph_model)
 
   @test_util.run_in_graph_and_eager_modes()
@@ -582,7 +574,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     self._weight_loading_test_template(SubclassedModel)
 
   def _new_layer_weight_loading_test_template(
-      self, first_model_fn, second_model_fn, restore_init_fn, by_name):
+      self, first_model_fn, second_model_fn, restore_init_fn):
     with self.test_session() as session:
       model = first_model_fn()
       temp_dir = self.get_temp_dir()
@@ -602,12 +594,12 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       self.addCleanup(shutil.rmtree, temp_dir)
 
       second_model = second_model_fn()
-      second_model.load_weights(prefix, by_name=by_name)
+      second_model.load_weights(prefix)
       second_model(x)
       self.evaluate(restore_init_fn(second_model))
       second_model.save_weights(prefix)
       # Check that the second model's checkpoint loads into the original model
-      model.load_weights(prefix, by_name=by_name)
+      model.load_weights(prefix)
       y = self.evaluate(model(x))
       self.assertAllClose(ref_y, y)
 
@@ -627,12 +619,9 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     def _restore_init_fn(restore_model):
       return [v.initializer for v in restore_model.layers[-1].variables]
 
-    if h5py is None:
-      self.skipTest('This test only works with h5py.')
-
     self._new_layer_weight_loading_test_template(
         _save_graph_model, _restore_graph_model,
-        _restore_init_fn, by_name=True)
+        _restore_init_fn)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_weight_loading_graph_model_added_no_weight_layer(self):
@@ -650,12 +639,10 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     def _restore_init_fn(restore_model):
       del restore_model  # unused
       return []
-    if h5py is None:
-      self.skipTest('This test only works with h5py.')
 
     self._new_layer_weight_loading_test_template(
         _save_graph_model, _restore_graph_model,
-        _restore_init_fn, by_name=False)
+        _restore_init_fn)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_weight_loading_subclassed_model_added_layer(self):
@@ -676,7 +663,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
     self._new_layer_weight_loading_test_template(
         SubclassedModel, SubclassedModelRestore,
-        _restore_init_fn, by_name=False)
+        _restore_init_fn)
 
 if __name__ == '__main__':
   test.main()

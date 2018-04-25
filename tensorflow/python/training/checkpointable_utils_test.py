@@ -808,13 +808,16 @@ class CheckpointingTests(test.TestCase):
     save_path = checkpointable_utils.CheckpointableSaver(save_root).save(
         os.path.join(checkpoint_directory, "ckpt"))
     load_root = checkpointable.Checkpointable()
-    checkpointable_utils.CheckpointableSaver(load_root).restore(save_path)
+    status = checkpointable_utils.CheckpointableSaver(load_root).restore(
+        save_path)
     load_root.dep_one = checkpointable.Checkpointable()
     load_root.dep_two = checkpointable.Checkpointable()
     load_root.dep_one.dep_three = checkpointable.Checkpointable()
-    with self.assertRaisesRegexp(AssertionError,
-                                 "resolved to different objects"):
-      load_root.dep_two.dep_three = checkpointable.Checkpointable()
+    load_root.dep_two.dep_three = checkpointable.Checkpointable()
+    checkpointable_utils.add_variable(
+        load_root.dep_one.dep_three, name="var", initializer=0.)
+    with self.assertRaises(AssertionError):
+      status.assert_consumed()
 
   @test_util.run_in_graph_and_eager_modes()
   def testObjectsCombined(self):
