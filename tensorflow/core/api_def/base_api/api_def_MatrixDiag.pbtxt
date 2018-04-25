@@ -18,7 +18,7 @@ Given a `diagonal`, this operation returns a tensor with the `diagonal` and
 everything else padded with zeros. The diagonal is computed as follows:
 
 Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+tensor of rank `k+1` with dimensions `[I, J, K, ..., N, N]` where:
 
 `output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
 

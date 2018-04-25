@@ -9,7 +9,7 @@ END
   in_arg {
     name: "values"
     description: <<END
-Same shape as `tags.  Values for the summary.
+Same shape as `tags`.  Values for the summary.
 END
   }
   out_arg {

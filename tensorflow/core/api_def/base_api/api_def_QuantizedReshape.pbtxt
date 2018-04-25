@@ -33,5 +33,6 @@ END
   summary: "Reshapes a quantized tensor as per the Reshape op."
   description: <<END
 ```
+```
 END
 }
