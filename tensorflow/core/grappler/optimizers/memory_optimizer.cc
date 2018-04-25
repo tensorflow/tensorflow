@@ -951,7 +951,7 @@ static bool IdentifySwappingCandidates(
     VLOG(1) << "Failed to infer memory usage: " << s.error_message();
     return false;
   }
-
+  const float elastic_percentage = 0.80;
   bool updated_graph = false;
   for (const auto& device : devices) {
     const string& name = device.first;
@@ -963,12 +963,14 @@ static bool IdentifySwappingCandidates(
       VLOG(1) << "Peak memory usage unknown for device " << name;
       continue;
     }
+
     const GraphMemory::MemoryUsage& mem_usage = memory.GetPeakMemoryUsage(name);
 
-    if (mem_usage.used_memory <= prop.memory_size()) {
+    float swap_threshold = elastic_percentage * prop.memory_size();
+    if (mem_usage.used_memory <= swap_threshold) {
       continue;
     }
-    int64 required_savings = mem_usage.used_memory - prop.memory_size();
+    int64 required_savings = mem_usage.used_memory - swap_threshold;
 
     std::unordered_map<string, Costs::NanoSeconds> op_completion_times;
     {
