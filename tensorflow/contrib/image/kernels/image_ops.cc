@@ -70,7 +70,6 @@ class ImageProjectiveTransform : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& images_t = ctx->input(0);
     const Tensor& transform_t = ctx->input(1);
-    const Tensor& output_dim = ctx->input(2);
     OP_REQUIRES(ctx, images_t.shape().dims() == 4,
                 errors::InvalidArgument("Input images must have rank 4"));
     OP_REQUIRES(ctx,
@@ -84,11 +83,7 @@ class ImageProjectiveTransform : public OpKernel {
     auto images = images_t.tensor<T, 4>();
     auto transform = transform_t.matrix<float>();
     Tensor* output_t;
-    // Image is NHWC format.
-    auto output_shape = images_t.shape();
-    output_shape.set_dim(1, output_dim.vec<int>()(0));
-    output_shape.set_dim(2, output_dim.vec<int>()(1));
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_t));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, images_t.shape(), &output_t));
     auto output = output_t->tensor<T, 4>();
     (FillProjectiveTransform<Device, T>(interpolation_))(
         ctx->eigen_device<Device>(), &output, images, transform);
