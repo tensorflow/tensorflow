@@ -106,7 +106,7 @@ class Ordered(bijector.Bijector):
     #          exp(y_i) if 1<i<=K
     # which gives the absolute Jacobian determinant:
     # |det(Jac)| = prod_{i=1}^{K} exp(y[i]).
-    # (1) - Stan Modeling Language User’s Guide and Reference Manual
+    # (1) - Stan Modeling Language User's Guide and Reference Manual
     #       Version 2.17.0 session 35.2
     return math_ops.reduce_sum(y[..., 1:], axis=-1)
 
