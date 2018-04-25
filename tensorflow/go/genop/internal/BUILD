@@ -13,7 +13,6 @@ go_library(
     importpath = "github.com/tensorflow/tensorflow/go/genop/internal",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework_go_proto:go_default_library",
         "@com_github_golang_protobuf//proto:go_default_library",
     ],
 )
@@ -23,7 +22,6 @@ go_test(
     srcs = ["genop_test.go"],
     embed = [":go_default_library"],
     deps = [
-        "//tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework_go_proto:go_default_library",
         "@com_github_golang_protobuf//proto:go_default_library",
     ],
 )
