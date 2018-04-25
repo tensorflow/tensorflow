@@ -303,6 +303,11 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
     }
   }
 
+  bool IsInPreserveSet(const NodeDef& node) const {
+    return ctx().nodes_to_preserve->find(node.name()) !=
+           ctx().nodes_to_preserve->end();
+  }
+
  private:
   // Extended context required for ArithmeticOptimizer.
   const ArithmeticOptimizerContext ctx_ext_;
@@ -473,11 +478,6 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
   bool IsOnTheSameDevice(const OptimizedNodesGroup& group,
                          const NodeDef& node) const {
     return group.root_node->device() == node.device();
-  }
-
-  bool IsInPreserveSet(const NodeDef& node) const {
-    return ctx().nodes_to_preserve->find(node.name()) !=
-           ctx().nodes_to_preserve->end();
   }
 
   bool IsAlreadyOptimized(const NodeDef& node) const {
@@ -1346,6 +1346,7 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
 // Exp(Sin(Concat([x, y, z]))).
 // TODO(rmlarsen): Support casting. We would have to change the type attribute
 // on the concat node.
+// TODO(rmlarsen): Handle Enter/Exit.
 class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
  public:
   explicit HoistCWiseUnaryFromConcatStage(
@@ -1356,7 +1357,9 @@ class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
   ~HoistCWiseUnaryFromConcatStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    if (!IsConcat(*node)) return false;
+    if (!IsConcat(*node) || IsInPreserveSet(*node)) {
+      return false;
+    }
     const int n = node->attr().at("N").i();
     return n > 1;
   }
@@ -1368,6 +1371,11 @@ class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(
         FindCommonUnaryOpPrefix(*concat_node, &prefix_length, &ctrl_inputs));
     if (prefix_length > 0) {
+      LOG(INFO) << "Found prefix of length " << prefix_length << " for node:\n"
+                << concat_node->DebugString();
+      for (auto foo : ctrl_inputs) {
+        LOG(INFO) << "ctrl_input = " << foo;
+      }
       TF_RETURN_IF_ERROR(
           HoistUnaryOpPrefix(prefix_length, &ctrl_inputs, concat_node));
       AddToOptimizationQueue(concat_node);
@@ -1413,6 +1421,7 @@ class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
                                  std::set<string>* ctrl_inputs) const {
     *prefix_length = 0;
     const int n = concat_node.attr().at("N").i();
+    const string& concat_device = concat_node.device();
     // Follow the chains backwards from each concat input as long as all the
     // following conditions hold:
     //   1. The ops in all chains are the same.
@@ -1438,8 +1447,10 @@ class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
       if (!IsUnaryElementWise(*tail0)) break;
       for (int chain = 0; chain < n; ++chain) {
         // TODO(rmlarsen): Allow and hoist outgoing control edges.
-        if (tail[chain]->op() != tail0->op() ||
-            ctx().node_map->GetOutputs(tail[chain]->name()).size() > 1) {
+        if (tail[chain]->device() != concat_device ||
+            tail[chain]->op() != tail0->op() ||
+            ctx().node_map->GetOutputs(tail[chain]->name()).size() > 1 ||
+            IsInPreserveSet(*tail[chain])) {
           stop = true;
           break;
         }

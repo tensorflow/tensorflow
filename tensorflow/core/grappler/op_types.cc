@@ -506,10 +506,13 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Atan2",
           "Atanh",
           "Ceil",
+          "CheckNumerics",
           "ComplexAbs",
           "Conj",
           "Cos",
           "Cosh",
+          "DebugGradientIdentity",
+          "DeepCopy"
           "Digamma",
           "Elu"
           "Erf",
@@ -517,36 +520,37 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Exp",
           "Expm1",
           "Floor",
+          "Identity",
           "Inv",
           "Invert",
-          "Isinf",
-          "Isnan",
-          "Isfinite",
           "Lgamma",
           "Log",
           "Log1p",
           "LogicalNot",
           "Neg",
+          "PreventGradient",
+          "Print",
           "Reciprocal",
           "Relu",
           "Relu6",
           "Rint",
           "Round",
-          "Selu",
           "Rsqrt",
+          "Selu",
           "Sigmoid",
           "Sign",
           "Sin",
           "SinH",
+          "Snapshot",
           "Softplus",
           "Softsign",
           "Sqrt",
           "Square",
+          "StopGradient",
           "Tan"
           "Tanh",
       }));
-  return element_wise_ops->count(node.op()) > 0 ||
-         (!IsIdentityN(node) && IsValueAndOrderPreserving(node));
+  return element_wise_ops->find(node.op()) != element_wise_ops->end();
 }
 
 bool HasOpDef(const NodeDef& node) {
