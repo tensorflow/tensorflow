@@ -1,11 +1,13 @@
 licenses(["restricted"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 
 STREAM_EXECUTOR_HEADERS = glob([
     "*.h",
     "cuda/*.h",
+    "rocm/*.h",
     "host/*.h",
     "lib/*.h",
     "lib/gtl/*.h",
@@ -19,6 +21,7 @@ cc_library(
             "*.cc",
             "host/*.cc",
             "cuda/cuda_platform_id.cc",
+            "rocm/rocm_platform_id.cc",
             "lib/*.cc",
             "platform/default/*.cc",
         ],
@@ -36,6 +39,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -48,6 +52,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/compiler/xla:statusor",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_rocm//rocm:rocm_headers",
     ] + if_static([":stream_executor_impl"]),
 )
 
@@ -85,6 +90,35 @@ cc_library(
         "@local_config_cuda//cuda:cudnn",
         "@local_config_cuda//cuda:cufft",
         "@local_config_cuda//cuda:curand",
+    ]),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "rocm_platform",
+    srcs = if_rocm_is_configured(
+        glob(
+            [
+                "rocm/*.cc",
+            ],
+            exclude = ["rocm/rocm_platform_id.cc"],
+        ),
+    ),
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":stream_executor",
+        "//tensorflow/core:lib",
+        "@local_config_rocm//rocm:rocm_headers",
+    ] + if_rocm_is_configured([
+        "//tensorflow/core:rocm",
+        "@local_config_rocm//rocm:hiprand",
+        "@local_config_rocm//rocm:rocfft",
+        "@local_config_rocm//rocm:hipblas",
+        "@local_config_rocm//rocm:miopen",
     ]),
     alwayslink = 1,
 )
