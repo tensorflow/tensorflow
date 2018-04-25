@@ -158,7 +158,7 @@ struct Processor<DimensionHandle> {
 template <typename Handle>
 class DisjointSet {
  public:
-  DisjointSet(const Processor<Handle>& processor) : processor_(processor) {}
+  DisjointSet() {}
   ~DisjointSet() {
     for (auto rep : nodes_) {
       delete rep.second;
@@ -840,7 +840,7 @@ class SymbolicShapeRefiner {
 // dims, and consolidate the information globally.
 class SymbolicShapeManager {
  public:
-  SymbolicShapeManager() : shapes_(shape_processor_), dims_(dim_processor_) {}
+  SymbolicShapeManager() {}
 
   Status Merge(ShapeHandle s1, ShapeHandle s2) {
     if (!s1.IsSet() || !s2.IsSet()) {
@@ -880,9 +880,7 @@ class SymbolicShapeManager {
   }
 
  private:
-  Processor<ShapeHandle> shape_processor_;
   DisjointSet<shape_inference::ShapeHandle> shapes_;
-  Processor<DimensionHandle> dim_processor_;
   DisjointSet<shape_inference::DimensionHandle> dims_;
 };
 

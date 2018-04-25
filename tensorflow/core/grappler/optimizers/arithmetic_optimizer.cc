@@ -208,8 +208,7 @@ bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
       graph_properties.GetOutputProperties(reshape.name());
   const std::vector<OpInfo::TensorProperties>& input_props =
       graph_properties.GetOutputProperties(input.name());
-  if (reshape_props.empty() || input_props.empty() ||
-      input_props.size() <= output_pos) {
+  if (reshape_props.empty() || input_props.size() <= output_pos) {
     return false;
   }
 
