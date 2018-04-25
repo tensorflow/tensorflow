@@ -1482,14 +1482,16 @@ def main():
 
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
+  # ROCM TODO: restore these flags to default ones after we get a successful
+  # build
   set_build_var(environ_cp, 'TF_NEED_GCP', 'Google Cloud Platform',
-                'with_gcp_support', True, 'gcp')
+                'with_gcp_support', False, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
-                'with_hdfs_support', True, 'hdfs')
+                'with_hdfs_support', False, 'hdfs')
   set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
-                'with_s3_support', True, 's3')
+                'with_s3_support', False, 's3')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
-                'with_kafka_support', True, 'kafka')
+                'with_kafka_support', False, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
@@ -1506,6 +1508,12 @@ def main():
       set_computecpp_toolkit_path(environ_cp)
     else:
       set_trisycl_include_dir(environ_cp)
+
+  set_action_env_var(environ_cp, 'TF_NEED_ROCM', 'ROCm', True)
+  if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
+      'LD_LIBRARY_PATH') != '1':
+    write_action_env_to_bazelrc('LD_LIBRARY_PATH',
+                                environ_cp.get('LD_LIBRARY_PATH'))
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and

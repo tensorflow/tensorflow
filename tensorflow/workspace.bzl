@@ -1,6 +1,7 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party:nccl/nccl_configure.bzl", "nccl_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
@@ -35,6 +36,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   nccl_configure(name="local_config_nccl")
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
+  rocm_configure(name="local_config_rocm")
   python_configure(name="local_config_python")
 
   # For windows bazel build
@@ -104,6 +106,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
      build_file = clean_dep("//third_party:com_google_absl.BUILD"),
   )
 
+  # ROCM TODO: need to update Eigen patch
   tf_http_archive(
       name = "eigen_archive",
       urls = [

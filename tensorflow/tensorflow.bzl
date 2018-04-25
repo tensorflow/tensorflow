@@ -20,6 +20,11 @@ load(
     "cuda_default_copts",
 )
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+    "rocm_default_copts",
+)
+load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
     "if_mkl_lnx_x64"
