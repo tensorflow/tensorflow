@@ -18,6 +18,8 @@
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.core.protobuf import config_pb2
 
+import time
+
 
 def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None):
   """Create the IPU options for an IPU model device.
@@ -71,10 +73,12 @@ def extract_all_strings_from_event_trace(events):
   for e in events:
     evt = IpuTraceEvent.FromString(e)
 
-    result = result + ("-" * 70) + "\n==> Event @" + str(evt.timestamp) + ": "
+    result = result + ("-" * 70) + "\n=> @ " + \
+             time.strftime('%F %T %z', time.localtime(evt.timestamp)) + ": "
 
     if evt.type == IpuTraceEvent.COMPILE:
-      evt_str = "Compile: " + evt.module_name + "\n" + evt.data_str
+      evt_str = "Compile: " + evt.module_name + "\n" + \
+                "Duration: " + str(evt.data_int) + " us\n" + evt.data_str
     elif evt.type == IpuTraceEvent.HOST_TO_DEVICE_TRANSFER:
       evt_str = "Host->Device\nHandle = " + evt.data_str + "\n"
                 #"Bytes = " + str(evt.data_int)
