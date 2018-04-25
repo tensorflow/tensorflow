@@ -731,9 +731,6 @@ xla_test(
         "cpu": [
             "--xla_cpu_multi_thread_eigen=false",
         ],
-        "cpu_parallel": [
-            "--xla_cpu_multi_thread_eigen=false",
-        ],
     },
     shard_count = 20,
     tags = ["optonly"],
@@ -836,7 +833,6 @@ xla_test(
     backend_tags = {
         # TODO(b/31436974): Fix msan failure. Failed on 2016-09-12.
         "cpu": ["nomsan"],
-        "cpu_parallel": ["nomsan"],
     },
     shard_count = 30,
     deps = [

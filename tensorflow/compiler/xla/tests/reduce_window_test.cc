@@ -861,8 +861,7 @@ INSTANTIATE_TEST_CASE_P(
 class R4ReduceWindowAnyDimsTest : public R4ReduceWindowTest {};
 
 // TODO(b/72234705): Fix the test cases failed on CPU and GPU.
-XLA_TEST_P(R4ReduceWindowAnyDimsTest,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt)))) {
+XLA_TEST_P(R4ReduceWindowAnyDimsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt))) {
   DoIt();
 }
 
@@ -1151,7 +1150,7 @@ class R2ReduceWindowFailingCpuGpuBf16Test : public R2ReduceWindowTest {};
 
 // TODO(b/72234705): Fix the test cases failed on CPU and GPU.
 XLA_TEST_P(R2ReduceWindowFailingCpuGpuBf16Test,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt)))) {
+           DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt))) {
   DoIt();
 }
 

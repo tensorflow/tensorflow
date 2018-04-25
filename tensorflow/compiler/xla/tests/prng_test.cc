@@ -81,8 +81,7 @@ XLA_TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
 XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32>(5, 24, {12}); }
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
-XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
-                         DISABLED_ON_CPU(ScalarBF16Tests)))) {
+XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(ScalarBF16Tests))) {
   for (int64 seed = 0; seed < 100; ++seed) {
     // The largest negative number smaller than zero in bf16 that's not
     // denormalized.
@@ -105,8 +104,7 @@ XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
 }
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
-XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(
-                         DISABLED_ON_CPU_PARALLEL(ScalarBF16CountTests)))) {
+XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(ScalarBF16CountTests))) {
   // There are 3 BF16 values in the range of [32.25, 33): 32.25, 32.5, 32.75,
   // they should get similar counts.
   bfloat16 low = static_cast<bfloat16>(32.25);

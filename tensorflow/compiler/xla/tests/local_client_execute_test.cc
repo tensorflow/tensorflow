@@ -453,9 +453,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
   }
 }
 
-// TODO(b/66968986): Test times out on CPU parallel backend. Disabled
-// 2017-09-26.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU_PARALLEL(LargeNestedTuple)) {
+XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
   // Construct and run a computation which takes a two-level nested tuple
   // parameter with a large fanout.
   const int kFanout = 40;
@@ -853,8 +851,7 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 
 // TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
 // 2017-10-18.
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(InfeedOutfeedTest))) {
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(InfeedOutfeedTest)) {
   ComputationBuilder builder(local_client_, TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = builder.Infeed(shape);
