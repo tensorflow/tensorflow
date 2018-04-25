@@ -61,6 +61,11 @@ ClientLibraryTestBase::ClientLibraryTestBase(
     : client_(GetOrCreateLocalClientOrDie(client_options)),
       execution_options_(CreateDefaultExecutionOptions()) {
   CHECK_EQ(platform, client_options.platform());
+
+  LocalClientOptions ref_options;
+  ref_options.set_platform(GetReferencePlatform());
+  ref_client_ = GetOrCreateLocalClientOrDie(ref_options);
+
   // Disabling constant_folding so that tests (usually written using Constants)
   // will exercise the intended code paths, instead of being constant folded.
   //
@@ -152,6 +157,7 @@ ClientLibraryTestBase::ExecuteAndTransferReference(
     *execution_options.mutable_shape_with_output_layout() =
         *shape_with_output_layout;
   }
+  execution_options.clear_device_handles();
   return ref_client_->ExecuteAndTransfer(computation, arguments,
                                          &execution_options);
 }
