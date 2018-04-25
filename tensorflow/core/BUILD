@@ -1631,6 +1631,18 @@ tf_proto_library_cc(
     ],
 )
 
+tf_proto_library_cc(
+    name = "eager_service_proto",
+    srcs = ["protobuf/eager_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_stubby_versions = ["2"],
+    protodeps = tf_additional_all_protos(),
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
 LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
     [
         "lib/**/*.h",
