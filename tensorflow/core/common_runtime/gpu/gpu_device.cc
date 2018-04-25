@@ -1333,7 +1333,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
 
     auto executor = GpuIdUtil::ExecutorForCudaGpuId(gpu_manager, cuda_gpu_id);
     if (!executor.ok()) {
-      return StreamExecutorUtil::ConvertStatus(executor.status());
+      return executor.status();
     }
 
     auto stream_exec = executor.ValueOrDie();

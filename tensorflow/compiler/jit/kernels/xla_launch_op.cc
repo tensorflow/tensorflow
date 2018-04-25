@@ -69,7 +69,7 @@ Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
 
   auto platform = se::MultiPlatformManager::PlatformWithId(platform_id_);
   if (!platform.ok()) {
-    return StreamExecutorUtil::ConvertStatus(platform.status());
+    return platform.status();
   }
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform.ValueOrDie());

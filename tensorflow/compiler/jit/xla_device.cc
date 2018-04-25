@@ -120,7 +120,7 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
 
   auto platform = se::MultiPlatformManager::PlatformWithName(platform_name);
   if (!platform.ok()) {
-    return StreamExecutorUtil::ConvertStatus(platform.status());
+    return platform.status();
   }
 
   const DeviceAttributes attrs = Device::BuildDeviceAttributes(

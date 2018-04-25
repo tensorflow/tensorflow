@@ -29,12 +29,7 @@ limitations under the License.
 namespace tensorflow {
 
 Status ValidateGPUMachineManager() {
-  auto result = se::MultiPlatformManager::PlatformWithName("CUDA");
-  if (!result.ok()) {
-    return StreamExecutorUtil::ConvertStatus(result.status());
-  }
-
-  return Status::OK();
+  return se::MultiPlatformManager::PlatformWithName("CUDA").status();
 }
 
 se::Platform* GPUMachineManager() {
