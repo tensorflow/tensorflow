@@ -411,11 +411,9 @@ class VarianceScalingInitializationTest(test.TestCase):
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution='normal')
     with self.test_session(use_gpu=True):
-      x = variable_scope.get_variable("x", shape=shape, initializer=init)
-      x.initializer.run()
-      x_val = x.eval()
-      self.assertNear(np.mean(x_val), expect_mean, 1e-2)
-      self.assertNear(np.var(x_val), expect_var, 1e-2)
+      x = init(shape).eval()
+      self.assertNear(np.mean(x), expect_mean, err=1e-2)
+      self.assertNear(np.var(x), expect_var, err=1e-2)
 
   def testUniformDistribution(self):
     shape = [100, 100]
@@ -423,11 +421,9 @@ class VarianceScalingInitializationTest(test.TestCase):
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution='uniform')
     with self.test_session(use_gpu=True):
-      x = variable_scope.get_variable("x", shape=shape, initializer=init)
-      x.initializer.run()
-      x_val = x.eval()
-      self.assertNear(np.mean(x_val), expect_mean, 1e-2)
-      self.assertNear(np.var(x_val), expect_var, 1e-2)
+      x = init(shape).eval()
+      self.assertNear(np.mean(x), expect_mean, err=1e-2)
+      self.assertNear(np.var(x), expect_var, err=1e-2)
 
 
 # TODO(vrv): move to sequence_ops_test?
