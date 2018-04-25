@@ -86,7 +86,7 @@ def set_global_constants(init_covariances_at_zero=None,
                          eigenvalue_clipping_threshold=None,
                          max_num_outer_products_per_cov_row=None,
                          sub_sample_outer_products=None,
-                         inputs_to_extract_ptaches_factor=None,
+                         inputs_to_extract_patches_factor=None,
                          sub_sample_inputs=None,
                          tower_strategy=None):
   """Sets various global constants used by the classes in this module."""
@@ -112,8 +112,8 @@ def set_global_constants(init_covariances_at_zero=None,
     _MAX_NUM_OUTER_PRODUCTS_PER_COV_ROW = max_num_outer_products_per_cov_row
   if sub_sample_outer_products is not None:
     _SUB_SAMPLE_OUTER_PRODUCTS = sub_sample_outer_products
-  if inputs_to_extract_ptaches_factor is not None:
-    _INPUTS_TO_EXTRACT_PATCHES_FACTOR = inputs_to_extract_ptaches_factor
+  if inputs_to_extract_patches_factor is not None:
+    _INPUTS_TO_EXTRACT_PATCHES_FACTOR = inputs_to_extract_patches_factor
   if sub_sample_inputs is not None:
     _SUB_SAMPLE_INPUTS = sub_sample_inputs
   if tower_strategy is not None:
