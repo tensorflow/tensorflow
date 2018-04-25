@@ -25,10 +25,7 @@ namespace tensorflow {
 
 // On the open-source platform, stream_executor currently uses
 // tensorflow::Status
-inline Status FromStreamExecutorStatus(
-    const perftools::gputools::port::Status& s) {
-  return s;
-}
+inline Status FromStreamExecutorStatus(const se::port::Status& s) { return s; }
 
 }  // namespace tensorflow
 

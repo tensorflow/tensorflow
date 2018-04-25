@@ -29,7 +29,7 @@ limitations under the License.
 // interface. Sample API usage:
 //
 //   port::StatusOr<Platform*> platform_status =
-//      gpu::MultiPlatformManager::PlatformWithName("OpenCL");
+//      se::MultiPlatformManager::PlatformWithName("OpenCL");
 //   if (!platform_status.ok()) { ... }
 //   Platform* platform = platform_status.ValueOrDie();
 //   LOG(INFO) << platform->VisibleDeviceCount() << " devices visible";

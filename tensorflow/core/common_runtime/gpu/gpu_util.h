@@ -27,10 +27,6 @@ namespace tensorflow {
 class RecvTensorResponse;
 class TensorProto;
 
-// TODO(b/77980417): Remove this and use the regular tensorflow::se alias once
-// that's available.
-namespace gpu = ::stream_executor;
-
 class GPUUtil {
  public:
   // "tensor" is GPU-local.  "dev" is the hosting GPU.
