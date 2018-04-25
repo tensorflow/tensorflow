@@ -172,10 +172,9 @@ def get_git_version(git_base_path, git_tag_override):
              "but got '%s'") % val)
       # There might be "-" in the tag name. But we can be sure that the final
       # two "-" are those inserted by the git describe command.
-      commits_ahead_of_tag = split_val[-2]
       abbrev_commit = split_val[-1]
       val = bytes(
-          "-".join([git_tag_override, commits_ahead_of_tag, abbrev_commit]))
+          "-".join([git_tag_override, "0", abbrev_commit]))
     return val if val else unknown_label
   except subprocess.CalledProcessError:
     return unknown_label
@@ -257,7 +256,7 @@ def generate(arglist, git_tag_override=None):
   write_version_info(dest_file, git_version)
 
 
-def raw_generate(output_file, git_tag_override=None):
+def raw_generate(output_file, source_dir, git_tag_override=None):
   """Simple generator used for cmake/make build systems.
 
   This does not create any symlinks. It requires the build system
@@ -265,12 +264,13 @@ def raw_generate(output_file, git_tag_override=None):
 
   Args:
     output_file: Output filename for the version info cc
+    source_dir: Base path of the source code
     git_tag_override: Override the value for the git tag. This is useful for
       releases where we want to build the release before the git tag is
       created.
   """
 
-  git_version = get_git_version(".", git_tag_override)
+  git_version = get_git_version(source_dir, git_tag_override)
   write_version_info(output_file, git_version)
 
 
@@ -308,6 +308,11 @@ parser.add_argument(
     type=str,
     help="Generate version_info.cc (simpler version used for cmake/make)")
 
+parser.add_argument(
+    "--source_dir",
+    type=str,
+    help="Base path of the source code (used for cmake/make)")
+
 args = parser.parse_args()
 
 if args.configure is not None:
@@ -317,7 +322,10 @@ if args.configure is not None:
 elif args.generate is not None:
   generate(args.generate, args.git_tag_override)
 elif args.raw_generate is not None:
-  raw_generate(args.raw_generate, args.git_tag_override)
+  source_path = "."
+  if args.source_dir is not None:
+    source_path = args.source_dir
+  raw_generate(args.raw_generate, source_path, args.git_tag_override)
 else:
   raise RuntimeError("--configure or --generate or --raw_generate "
                      "must be used")
