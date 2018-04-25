@@ -113,8 +113,8 @@ class Ordered(bijector.Bijector):
   def _forward_log_det_jacobian(self, x):
     x = self._maybe_assert_valid_x(x)
     return -math_ops.reduce_sum(
-      math_ops.log(x[..., 1:] - x[..., :-1]),
-      axis=-1)
+        math_ops.log(x[..., 1:] - x[..., :-1]),
+        axis=-1)
 
   def _maybe_assert_valid_x(self, x):
     if not self.validate_args:

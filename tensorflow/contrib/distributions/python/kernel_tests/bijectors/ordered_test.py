@@ -34,7 +34,7 @@ class OrderedBijectorTest(test.TestCase):
   """Tests correctness of the ordered transformation."""
 
   def setUp(self):
-      self._rng = np.random.RandomState(42)
+    self._rng = np.random.RandomState(42)
 
   @test_util.run_in_graph_and_eager_modes()
   def testBijectorVector(self):
