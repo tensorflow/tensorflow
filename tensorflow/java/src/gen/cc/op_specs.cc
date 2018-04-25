@@ -204,13 +204,21 @@ bool FindAndCut(re2::StringPiece* input, const RE2& expr,
 }
 
 string ParseDocumentation(re2::StringPiece input) {
+  std::stringstream javadoc_text;
+
   // TODO(karllessard) This is a very minimalist utility method for converting
   // markdown syntax, as found in ops descriptions, to Javadoc/html tags. Check
   // for alternatives to increase the level of support for markups.
-  std::stringstream javadoc_text;
+  std::vector<string> markups_subexpr;
+  markups_subexpr.push_back("\n+\\*\\s+");  // lists
+  markups_subexpr.push_back("\n{2,}");  // paragraphs
+  markups_subexpr.push_back("`{3,}\\s*[^\\s\n]*\\s*\n");  // code blocks
+  markups_subexpr.push_back("`+");  // inlined code and code blocks
+  markups_subexpr.push_back("\\*{1,2}\\b");  // text emphasis
+  markups_subexpr.push_back("\\[");  // hyperlinks
+  const RE2 markup_expr(str_util::Join(markups_subexpr, "|"));
+
   bool in_list = false;
-  const RE2 markup_expr(
-      "\n+\\*[[:blank:]]+|\n{2,}|`{3,}|`{1,2}|\\*{1,2}\\b|\\[");
   while (true) {
     re2::StringPiece text;
     re2::StringPiece markup;
@@ -221,52 +229,48 @@ string ParseDocumentation(re2::StringPiece input) {
     javadoc_text << text;
     if (markup.starts_with("\n")) {
       javadoc_text << "\n";
-      if (markup.contains("* ")) {
-        // starts a list item
+      if (markup.contains("*")) {
+        // new list item
         javadoc_text << (in_list ? "</li>\n" : "<ul>\n") << "<li>\n";
         in_list = true;
-      } else if (markup.starts_with("\n\n")) {
-        if (in_list) {
-          // ends the current list
-          javadoc_text << "</li>\n</ul>\n";
-          in_list = false;
-        } else if (!input.starts_with("```")) {
-          // starts new paragraph (not required if a <pre> block follows)
-          javadoc_text << "<p>\n";
-        }
+      } else if (in_list) {
+        // end of list
+        javadoc_text << "</li>\n</ul>\n";
+        in_list = false;
+      } else if (!input.starts_with("```")) {
+        // new paragraph (not required if a <pre> block follows)
+        javadoc_text << "<p>\n";
       }
-    } else if (markup.starts_with("```") && text.empty()) {
-      // create a multiline code block
-      re2::StringPiece language;
-      RE2::Consume(&input, "[\\w\\+]+", &language);
-      if (FindAndCut(&input, markup.ToString() + "\n*", &text)) {
-        javadoc_text << "<pre>\n{@code" << text << "}\n</pre>\n";
+    } else if (markup.starts_with("```")) {
+      // code blocks
+      if (FindAndCut(&input, "```\\s*\n*", &text)) {
+        javadoc_text << "<pre>{@code\n" << text << "}</pre>\n";
       } else {
-        javadoc_text << markup << language;
+        javadoc_text << markup;
       }
     } else if (markup.starts_with("`")) {
-      // write inlined code
+      // inlined code
       if (FindAndCut(&input, markup, &text)) {
         javadoc_text << "{@code " << text << "}";
       } else {
         javadoc_text << markup;
       }
     } else if (markup == "**") {
-      // emphase text (strong)
+      // text emphasis (strong)
       if (FindAndCut(&input, "\\b\\*{2}", &text)) {
         javadoc_text << "<b>" << ParseDocumentation(text) << "</b>";
       } else {
         javadoc_text << markup;
       }
     } else if (markup == "*") {
-      // emphase text (light)
+      // text emphasis (normal)
       if (FindAndCut(&input, "\\b\\*{1}", &text)) {
         javadoc_text << "<i>" << ParseDocumentation(text) << "</i>";
       } else {
         javadoc_text << markup;
       }
-    } else if (markup == "[") {
-      // add an external link
+    } else if (markup.starts_with("[")) {
+      // hyperlinks
       string label;
       string link;
       if (RE2::Consume(&input, "([^\\[]+)\\]\\((http.+)\\)", &label, &link)) {
@@ -277,6 +281,7 @@ string ParseDocumentation(re2::StringPiece input) {
         javadoc_text << markup;
       }
     } else {
+      // safe fallback
       javadoc_text << markup;
     }
   }
