@@ -28,6 +28,7 @@ else()
   set(grpc_STATIC_LIBRARIES
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libaddress_sorting.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/cares/cares/lib/libcares.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/zlib/libz.a)
@@ -53,8 +54,6 @@ ExternalProject_Add(grpc
         -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
         -DgRPC_SSL_PROVIDER:STRING=NONE
-        # -DCMAKE_ASM_NASM_COMPILER:STRING=${CMAKE_ASM_NASM_COMPILER}
-        # -DGO_EXECUTABLE:STRING=${GO_EXECUTABLE}
 )
 
 # grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.

@@ -28,20 +28,22 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
-#ifdef PLATFORM_GOOGLE
-#include "cuda/include/cuda.h"
-#include "cuda/include/device_functions.h"
-#else
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#ifdef _WIN32
 #include "cuda.h"
 #include "device_functions.h"
+#else
+#include "cuda/include/cuda.h"
+#include "cuda/include/device_functions.h"
 #endif
 #include "tensorflow/core/platform/types.h"
 
 #if CUDA_VERSION >= 7050
-#ifdef PLATFORM_GOOGLE
-#include "cuda/include/cuda_fp16.h"
-#else
+#ifdef _WIN32
 #include "cuda_fp16.h"
+#else
+#include "cuda/include/cuda_fp16.h"
 #endif
 #endif  // CUDA_VERSION >= 7050
 
