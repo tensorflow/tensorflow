@@ -47,7 +47,10 @@ class GFile(_FileIO):
 
 @tf_export('gfile.FastGFile')
 class FastGFile(_FileIO):
-  """File I/O wrappers without thread locking."""
+  """File I/O wrappers without thread locking.
+
+  Exactly the same implementation as GFile. Use GFile instead.
+  """
 
   def __init__(self, name, mode='r'):
     super(FastGFile, self).__init__(name=name, mode=mode)
