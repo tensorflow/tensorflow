@@ -514,7 +514,6 @@ TfLiteStatus Interpreter::Invoke() {
     return kTfLiteError;
   }
 
-  TfLiteStatus status = kTfLiteOk;
   if (nnapi_delegate_) {
     if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
@@ -566,9 +565,7 @@ TfLiteStatus Interpreter::Invoke() {
     }
 
     EnsureTensorsVectorCapacity();
-    if (OpInvoke(registration, &node) == kTfLiteError) {
-      status = kTfLiteError;
-    }
+    TfLiteStatus status = OpInvoke(registration, &node);
   }
 
   if (!allow_buffer_handle_output_) {
