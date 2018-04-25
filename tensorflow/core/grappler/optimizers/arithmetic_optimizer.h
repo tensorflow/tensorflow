@@ -65,13 +65,16 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
     bool remove_negation = true;
-    bool hoist_unary_out_of_concat = true;
+    bool hoist_unary_out_of_concat = false;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
     static ArithmeticOptimizerOptions Default(
         RewriterConfig::Toggle opt_level) {
       ArithmeticOptimizerOptions options;
+      if (opt_level == RewriterConfig::AGGRESSIVE) {
+        options.hoist_unary_out_of_concat = true;
+      }
       return options;
     }
   };
