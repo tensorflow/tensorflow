@@ -51,6 +51,8 @@ def load_data():
 
   fpath = os.path.join(path, 'test_batch')
   x_test, y_test = load_batch(fpath)
+  x_test = x_test.astype(x_train.dtype)
+  y_test = np.array(y_test, dtype=y_train.dtype)
 
   y_train = np.reshape(y_train, (len(y_train), 1))
   y_test = np.reshape(y_test, (len(y_test), 1))
