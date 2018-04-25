@@ -1566,6 +1566,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
     grpc_enabled = True,
     tags = ["no_windows"],

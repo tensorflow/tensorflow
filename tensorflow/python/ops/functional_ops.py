@@ -927,6 +927,9 @@ def For(start,
     output_attr.list.i.extend(hostmem)
     ret[0].op._set_attr("_output_hostmem", output_attr)  # pylint: disable=protected-access
   return ret
-
-
 # pylint: enable=invalid-name,protected-access
+
+
+def partitioned_call(args, f):
+  return gen_functional_ops.partitioned_call(
+      args=args, Tout=[o.type for o in f.definition.signature.output_arg], f=f)
