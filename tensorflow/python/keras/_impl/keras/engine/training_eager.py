@@ -96,7 +96,7 @@ def _eager_metrics_fn(model, outputs, targets):
           model.metrics_names.append(metric_name)
 
       with backend.name_scope(metric_name):
-        metric_result = metric_fn(outputs[i], targets[i])
+        metric_result = metric_fn(targets[i], outputs[i])
         metric_names.append(metric_name)
         metric_results.append(backend.mean(metric_result))
 
