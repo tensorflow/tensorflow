@@ -264,12 +264,16 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   const poplar::Device& dev = poplarExecutor->GetPoplarDevice();
 
+  std::lock_guard <std::mutex> g(static_mu_);
+
   poplar::Graph graph(dev);
   graph.addCodelets(GetPathToGraphProgFile());
   popconv::addCodelets(graph);
   popnn::addCodelets(graph);
   popops::addCodelets(graph);
   poprand::addCodelets(graph);
+
+  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   CompilerResources resources(module->config().seed() + 1,
                               poplarExecutor->GetRandomGenMode());
@@ -339,7 +343,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       auto rep = engine->getGraphReport(opts);
       rep.printSummary(stream);
 
-      poplarExecutor->AddCompilerReport(stream.str());
+      uint64 duration = tensorflow::Env::Default()->NowMicros() - start_micros;
+
+      poplarExecutor->AddEventRecord(tensorflow::IpuTraceEvent::COMPILE,
+                                     module->name(), stream.str(), duration);
     }
   }
 
@@ -405,6 +412,8 @@ HloCostAnalysis::ShapeSizeFunction
 PoplarCompiler::ShapeSizeBytesFunction() const {
   return PoplarExecutable::ShapeSizeBytes;
 }
+
+std::mutex PoplarCompiler::static_mu_;
 
 }  // namespace poplarplugin
 }  // namespace xla

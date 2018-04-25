@@ -137,14 +137,14 @@ port::Status PoplarPlatform::ClosePoplarDevice(int ordinal) {
 }
 
 port::Status
-PoplarPlatform::GetCompilerReports(std::list<tensorflow::IpuTraceEvent>& out) {
+PoplarPlatform::GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out) {
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
     StreamExecutor* executor;
     TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
     auto* e = static_cast<PoplarExecutor*>(executor->implementation());
 
-    TF_RETURN_IF_ERROR(e->GetCompilerReports(out));
+    TF_RETURN_IF_ERROR(e->GetCompilerEvents(out));
   }
 
   return port::Status::OK();

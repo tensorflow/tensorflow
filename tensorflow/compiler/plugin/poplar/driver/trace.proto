@@ -19,9 +19,13 @@ message IpuTraceEvent {
   };
   Type type = 3;
 
+  // The name of the module associated with the event
+  bytes module_name = 4;
+
   // Arbitrary string/byte event data
-  bytes data_str = 4;
+  bytes data_str = 5;
 
   // Arbitrary integer event data
-  int64 data_int = 5;
+  int64 data_int = 6;
+
 };

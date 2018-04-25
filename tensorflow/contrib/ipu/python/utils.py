@@ -74,7 +74,7 @@ def extract_all_strings_from_event_trace(events):
     result = result + ("-" * 70) + "\n==> Event @" + str(evt.timestamp) + ": "
 
     if evt.type == IpuTraceEvent.COMPILE:
-      evt_str = "Compile\n" + evt.data_str
+      evt_str = "Compile: " + evt.module_name + "\n" + evt.data_str
     elif evt.type == IpuTraceEvent.HOST_TO_DEVICE_TRANSFER:
       evt_str = "Host->Device\nHandle = " + evt.data_str + "\n"
                 #"Bytes = " + str(evt.data_int)
@@ -82,7 +82,7 @@ def extract_all_strings_from_event_trace(events):
       evt_str = "Device->Host\nHandle = " + evt.data_str + "\n"
                 #"Bytes = " + str(evt.data_int)
     elif evt.type == IpuTraceEvent.LOAD_ENGINE:
-      evt_str = "Load engine"
+      evt_str = "Load engine: " + evt.module_name + "\n"
     elif evt.type == IpuTraceEvent.EXECUTE:
       evt_str = "Execute\n" + evt.data_str
     else:

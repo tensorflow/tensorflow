@@ -106,6 +106,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
             result, rep = sess.run([out2, report], fd)
             self.assertAllClose(result, [[1.,0.],[-2.,-2.]])
 
+            # 2x compile, 2x load engine
             self.assertTrue(len(rep) == 4)
 
     def testIpuModelDeviceMultipleIPUs(self):
@@ -134,10 +135,10 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
             self.assertAllClose(result, np.zeros([480]))
             self.assertTrue(len(rep) == 2)
 
-            #s = tu.extract_all_strings_from_event_trace(rep[1:2])
-            #l = s.split("\n")
-            #l = [x for x in l if re.search("Num tiles computing:  8", x)]
-            #self.assertTrue(len(l) == 1)
+            s = tu.extract_all_strings_from_event_trace(rep)
+            l = s.split("\n")
+            l = [x for x in l if re.search(" *Num tiles computing *: *8", x)]
+            self.assertTrue(len(l) == 1)
 
 if __name__ == "__main__":
     googletest.main()

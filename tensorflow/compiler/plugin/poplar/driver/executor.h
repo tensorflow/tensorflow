@@ -48,6 +48,12 @@ limitations under the License.
 
 #include <poprand/RandomGen.hpp>
 
+namespace xla {
+namespace poplarplugin {
+class PoplarExecutable;
+}
+}
+
 namespace perftools {
 namespace gputools {
 namespace poplarplugin {
@@ -215,19 +221,17 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   bool CompilerReportingEnabled() const { return profile_compilation_; }
 
-  void AddCompilerReport(const std::string& report);
+  void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
+                      const std::string& module_name,
+                      const std::string& content, int value);
 
-  port::Status GetCompilerReports(std::list<tensorflow::IpuTraceEvent>& out);
+  port::Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 
   port::StatusOr<DeviceMemoryBase>
   ExecuteEngine(perftools::gputools::StreamExecutor* executor,
-                const std::shared_ptr<poplar::Engine>&,
+                const xla::poplarplugin::PoplarExecutable&,
                 xla::DeviceMemoryAllocator* allocator,
-                const xla::Shape&,
-                const Args&,
-                const OutputMap&,
-                const std::vector<xla::Shape>&,
-                bool);
+                const Args&);
 
   port::StatusOr<DeviceMemoryBase>
   GetTupleBufferByIndex(const DeviceMemoryBase& base, int64 value);
@@ -274,9 +278,6 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
             const Args&);
 
   port::Status MoveDeviceToHost(TensorControl* tc);
-
-  void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
-                      const std::string& content, int value);
 
   int ordinal_;
 

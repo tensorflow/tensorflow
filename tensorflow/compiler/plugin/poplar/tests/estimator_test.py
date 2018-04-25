@@ -98,6 +98,7 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
         if val.tag == "compile_summary":
           compile_count += len(val.tensor.string_val)
 
+    # COMPILE, EXECUTE
     self.assertTrue(compile_count == 2)
 
 

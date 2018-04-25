@@ -44,7 +44,7 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
   auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
 
   std::list<tensorflow::IpuTraceEvent> out;
-  OP_REQUIRES_OK(ctx, p->GetCompilerReports(out));
+  OP_REQUIRES_OK(ctx, p->GetCompilerEvents(out));
 
   int num = out.size();
 

@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
@@ -302,19 +303,17 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
 }
 
 void PoplarExecutor::AddEventRecord(tensorflow::IpuTraceEvent::Type type,
+                                    const std::string& module_name,
                                     const std::string& content, int value) {
   uint64 now = tensorflow::Env::Default()->NowMicros();
   tensorflow::IpuTraceEvent evt;
   evt.set_timestamp(static_cast<double>(now) / 1000000.0);
   evt.set_type(type);
   evt.set_ordinal(ordinal_);
+  evt.set_module_name(std::move(module_name));
   evt.set_data_str(std::move(content));
   evt.set_data_int(value);
   reports_.push_back(evt);
-}
-
-void PoplarExecutor::AddCompilerReport(const std::string& report) {
-  AddEventRecord(tensorflow::IpuTraceEvent::COMPILE, report, 0);
 }
 
 const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
@@ -331,7 +330,7 @@ const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
 }
 
 port::Status
-PoplarExecutor::GetCompilerReports(std::list<tensorflow::IpuTraceEvent>& out) {
+PoplarExecutor::GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out) {
   std::lock_guard <std::recursive_mutex> g(mutex_);
   out.splice(out.end(), std::move(reports_));
   reports_.clear();
@@ -470,7 +469,7 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
     current_engine_->readTensor(tc->output_handle, buf);
   }
   if (profile_io_) {
-    AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER,
+    AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
                    tc->output_handle, 0);
   }
   tc->on_device = false;
@@ -491,14 +490,15 @@ PoplarExecutor::GetTupleBufferByIndex(const se::DeviceMemoryBase& base,
 }
 
 port::StatusOr<se::DeviceMemoryBase>
-PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
-                              const std::shared_ptr<poplar::Engine>& engine,
-                              xla::DeviceMemoryAllocator* allocator,
-                              const xla::Shape& output_shape,
-                              const Args& args,
-                              const OutputMap& output_map,
-                              const std::vector<xla::Shape>& parameter_shapes,
-                              bool dump_report_) {
+PoplarExecutor::ExecuteEngine(
+    perftools::gputools::StreamExecutor* executor,
+    const xla::poplarplugin::PoplarExecutable& executable,
+    xla::DeviceMemoryAllocator* allocator,
+    const Args& args) {
+
+  const auto& output_map = executable.OutputMap();
+  const auto& output_shape = executable.result_shape();
+  const auto& engine = executable.Engine();
 
   perftools::gputools::DeviceMemoryBase retbuf;
   int64 tensor_count;
@@ -514,7 +514,12 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
               RemapArgs(output_shape, 0, output_map, args);
     } else {
       ArgsHandleMap arg_map;
-      CreateArgsHandleMap(arg_map, args, parameter_shapes);
+      CreateArgsHandleMap(arg_map, args, executable.ParameterShapes());
+
+      std::string name("");
+      if (executable.has_module()) {
+        name = executable.module().name();
+      }
 
       // Pull previous execution output back from device if:
       // a) the engine is changing
@@ -546,7 +551,7 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
         // TODO Load new engine
 
         if (profile_io_) {
-          AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE, "", 0);
+          AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE, name, "", 0);
         }
       }
 
@@ -573,7 +578,7 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
           tc->input_handle = mem.first;
           if (profile_io_) {
             AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
-                           mem.first, 0);
+                           "", mem.first, 0);
           }
         }
       }
@@ -585,7 +590,7 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
       engine->run(0);
 
       try {
-        if (profile_execution_ && dump_report_) {
+        if (profile_execution_ && executable.DumpReport()) {
 
           poplar::OptionFlags opts;
           opts.set("doLayerWiseBreakdown", "true");
@@ -593,8 +598,11 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
           std::stringstream stream;
           auto rep = engine->getExecutionReport(opts);
           rep.printSummary(stream);
-          AddEventRecord(tensorflow::IpuTraceEvent::EXECUTE,
-                         stream.str(), 0);
+
+          engine->reportIntervals(stream);
+
+          AddEventRecord(tensorflow::IpuTraceEvent::EXECUTE, "", stream.str(),
+                         0);
         }
       } catch (std::logic_error e) {
         VLOG(2) << "Error producing execution report: " << e.what();

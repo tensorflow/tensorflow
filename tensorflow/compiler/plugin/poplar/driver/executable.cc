@@ -71,13 +71,9 @@ PoplarExecutable::ExecuteOnStream(
   se::DeviceMemoryBase result;
   TF_ASSIGN_OR_RETURN(result,
                       poplarExecutor->ExecuteEngine(executor,
-                                                    poplar_engine_,
+                                                    *this,
                                                     memory_allocator,
-                                                    result_shape(),
-                                                    argument_buffers,
-                                                    output_map_,
-                                                    parameter_shapes_,
-                                                    first_execution_));
+                                                    argument_buffers));
 
   first_execution_ = false;
 
@@ -99,7 +95,7 @@ PoplarExecutable::ExecuteOnStream(
   // the respective location in ShapedBuffer which is returned to the caller.
 
   TF_RETURN_IF_ERROR(result_buffer->buffers().ForEachMutableElementWithStatus(
-              [&result, &result_buffer, poplarExecutor](
+              [&result, poplarExecutor](
                       const ShapeIndex& index,
                       se::DeviceMemoryBase* device_memory) {
                 se::DeviceMemoryBase buffer = result;

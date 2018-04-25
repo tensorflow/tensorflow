@@ -79,7 +79,7 @@ class PoplarPlatform : public Platform {
 
   port::Status ClosePoplarDevice(int ordinal);
 
-  port::Status GetCompilerReports(std::list<tensorflow::IpuTraceEvent>& out);
+  port::Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 
  private:
   // This platform's name.

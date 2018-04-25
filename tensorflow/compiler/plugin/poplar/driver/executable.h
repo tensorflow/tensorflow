@@ -62,6 +62,16 @@ class PoplarExecutable : public Executable {
 
   static int64 ShapeSizeBytes(const Shape& shape);
 
+  bool DumpReport() const { return first_execution_; }
+
+  const std::vector<Shape> ParameterShapes() const { return parameter_shapes_; }
+
+  const sep::OutputMap& OutputMap() const { return output_map_; }
+
+  const std::shared_ptr<poplar::Engine>& Engine() const {
+    return poplar_engine_;
+  }
+
  private:
   friend class GraphCompileIoMapTest;
 

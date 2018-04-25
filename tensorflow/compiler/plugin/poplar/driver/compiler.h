@@ -65,6 +65,8 @@ class PoplarCompiler : public Compiler {
 
  private:
 
+  static std::mutex static_mu_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarCompiler);
 };
 
