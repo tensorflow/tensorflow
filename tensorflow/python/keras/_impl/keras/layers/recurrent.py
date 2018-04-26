@@ -503,6 +503,7 @@ class RNN(Layer):
       self.state_spec = [InputSpec(shape=(None, dim)) for dim in state_size]
     if self.stateful:
       self.reset_states()
+    self.built = True
 
   def get_initial_state(self, inputs):
     # build an all-zero tensor of shape (samples, output_dim)
@@ -1417,7 +1418,15 @@ class GRUCell(Layer):
 
       if 0. < self.recurrent_dropout < 1.:
         h_tm1 *= rec_dp_mask[0]
-      matrix_inner = K.dot(h_tm1, self.recurrent_kernel[:, :2 * self.units])
+
+      if self.reset_after:
+        # hidden state projected by all gate matrices at once
+        matrix_inner = K.dot(h_tm1, self.recurrent_kernel)
+        if self.use_bias:
+          matrix_inner = K.bias_add(matrix_inner, self.recurrent_bias)
+      else:
+        # hidden state projected separately for update/reset and new
+        matrix_inner = K.dot(h_tm1, self.recurrent_kernel[:, :2 * self.units])
 
       recurrent_z = matrix_inner[:, :self.units]
       recurrent_r = matrix_inner[:, self.units:2 * self.units]

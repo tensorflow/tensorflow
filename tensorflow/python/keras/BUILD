@@ -188,6 +188,7 @@ py_library(
         "_impl/keras/layers/convolutional.py",
         "_impl/keras/layers/convolutional_recurrent.py",
         "_impl/keras/layers/core.py",
+        "_impl/keras/layers/cudnn_recurrent.py",
         "_impl/keras/layers/embeddings.py",
         "_impl/keras/layers/local.py",
         "_impl/keras/layers/merge.py",
@@ -206,6 +207,7 @@ py_library(
     deps = [
         ":engine",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
@@ -474,6 +476,19 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
+)
+
+cuda_py_test(
+    name = "cudnn_recurrent_test",
+    size = "large",
+    srcs = ["_impl/keras/layers/cudnn_recurrent_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 2,
 )
 
 py_test(
@@ -845,6 +860,7 @@ py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
