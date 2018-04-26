@@ -18,7 +18,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
@@ -3393,7 +3393,7 @@ cuda_py_tests(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
     hdrs = ["client/tf_session_helper.h"],
@@ -3785,7 +3785,7 @@ py_library(
 )
 
 # Just used by tests.
-tf_cuda_library(
+tf_gpu_library(
     name = "construction_fails_op",
     srcs = ["client/test_construction_fails_op.cc"],
     deps = [

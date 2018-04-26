@@ -1,7 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
 
 cc_library(
     name = "op_types",
@@ -43,11 +43,11 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "devices",
     srcs = ["devices.cc"],
     hdrs = ["devices.h"],
-    cuda_deps = [
+    gpu_deps = [
         "//tensorflow/core:gpu_init",
         "//tensorflow/core:stream_executor",
     ],

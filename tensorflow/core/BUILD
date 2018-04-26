@@ -84,7 +84,7 @@ load(
     "tf_copts",
     "tf_cc_test",
     "tf_cc_tests",
-    "tf_cuda_library",
+    "tf_gpu_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
@@ -525,7 +525,7 @@ cc_library(
 # purposefully omits the definitions of many declared symbols, which are
 # included in //tensorflow:libtensorflow_framework.so. Using tf_cc_test and tf_cc_binary
 # will include the necessary symbols.
-tf_cuda_library(
+tf_gpu_library(
     name = "framework",
     hdrs = [
         "example/feature_util.h",
@@ -929,7 +929,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "core_cpu",
     hdrs = [
         "common_runtime/device.h",
@@ -1044,7 +1044,7 @@ cc_library(
     ]),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "tensorflow_opensource",
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -1114,7 +1114,7 @@ cc_library(
 
 # This is a link-only library to provide a DirectSession
 # implementation of the Session interface.
-tf_cuda_library(
+tf_gpu_library(
     name = "direct_session",
     copts = tf_copts(),
     linkstatic = 1,
@@ -2074,7 +2074,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "util/tensor_slice_util.h",
 ] + tf_additional_framework_hdrs()
 
-tf_cuda_library(
+tf_gpu_library(
     name = "framework_internal",
     srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS,
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
@@ -2112,7 +2112,7 @@ cc_header_only_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "framework_internal_impl",
     srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + [
         "platform/variant_coding.cc",
@@ -2201,7 +2201,7 @@ cc_header_only_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "stream_executor",
     srcs = ["platform/stream_executor.h"],
     hdrs = [
@@ -2227,7 +2227,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "cuda_device_functions",
     hdrs = ["util/cuda_device_functions.h"],
     visibility = ["//visibility:public"],
@@ -2270,7 +2270,7 @@ GRAPH_HDRS = [
     "graph/while_context.h",
 ]
 
-tf_cuda_library(
+tf_gpu_library(
     name = "graph",
     srcs = [
         "graph/algorithm.cc",
@@ -2305,7 +2305,7 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "common_runtime/function.h",
 ]
 
-tf_cuda_library(
+tf_gpu_library(
     name = "core_cpu_base",
     srcs = [
         "common_runtime/eval_const_tensor.cc",
@@ -2385,7 +2385,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
 
-tf_cuda_library(
+tf_gpu_library(
     name = "core_cpu_impl",
     srcs = [
         "common_runtime/accumulate_n_optimizer.cc",
@@ -2462,7 +2462,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "core_cpu_lib",
     hdrs = CORE_CPU_LIB_HEADERS,
     deps = [
@@ -2472,7 +2472,7 @@ tf_cuda_library(
     ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "core_cpu_internal",
     srcs = [
         "common_runtime/graph_execution_state.cc",
@@ -2519,7 +2519,7 @@ cc_library(
     deps = [":lib_internal"],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = [
@@ -2561,14 +2561,14 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     hdrs = [
         "platform/device_tracer.h",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    gpu_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
     deps = [
         ":core_cpu_internal",
         ":lib",
@@ -2618,7 +2618,7 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu_device_context.h",
 ]
 
-tf_cuda_library(
+tf_gpu_library(
     name = "gpu_runtime_impl",
     srcs = [
         "common_runtime/gpu/gpu_bfc_allocator.cc",
@@ -2653,7 +2653,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "gpu_runtime",
     hdrs = GPU_RUNTIME_HEADERS,
     linkstatic = 1,
@@ -2669,7 +2669,7 @@ tf_cuda_library(
     ] + if_static([":gpu_runtime_impl"]),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "gpu_init",
     hdrs = [
         "common_runtime/gpu/gpu_init.h",
@@ -2685,7 +2685,7 @@ tf_cuda_library(
     ),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "gpu_init_impl",
     srcs = [
         "common_runtime/gpu/gpu_init.cc",

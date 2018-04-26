@@ -14,7 +14,7 @@ load(
     "py_test",
     "tf_cc_test",
     "tf_copts",
-    "tf_cuda_library",
+    "tf_gpu_library",
     "tf_custom_op_library",
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_libs",
@@ -60,7 +60,7 @@ tf_custom_op_library(
     ]),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "trt_shape_function",
     srcs = ["shape_fn/trt_shfn.cc"],
     hdrs = ["shape_fn/trt_shfn.h"],
@@ -107,7 +107,7 @@ tf_gen_op_libs(
     ]),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "trt_logging",
     srcs = ["log/trt_logger.cc"],
     hdrs = ["log/trt_logger.h"],
@@ -191,7 +191,7 @@ tf_py_wrap_cc(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "trt_resources",
     srcs = [
         "resources/trt_int8_calibrator.cc",
@@ -213,7 +213,7 @@ tf_cuda_library(
 )
 
 # Library for the node-level conversion portion of TensorRT operation creation
-tf_cuda_library(
+tf_gpu_library(
     name = "trt_conversion",
     srcs = [
         "convert/convert_graph.cc",

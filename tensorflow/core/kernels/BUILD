@@ -32,7 +32,7 @@ load(
     "tf_cc_tests",
     "tf_cc_binary",
     "tf_copts",
-    "tf_cuda_library",
+    "tf_gpu_library",
     "tf_opts_nortti_if_android",
     "tf_kernel_library",
     "tf_mkl_kernel_library",
@@ -248,12 +248,12 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "ops_testutil",
     testonly = 1,
     srcs = ["ops_testutil.cc"],
     hdrs = ["ops_testutil.h"],
-    cuda_deps = [
+    gpu_deps = [
         "//tensorflow/core:gpu_lib",
         "//tensorflow/core:gpu_runtime",
     ],

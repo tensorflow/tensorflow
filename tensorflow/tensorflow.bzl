@@ -939,19 +939,19 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
+def tf_gpu_library(deps=None, gpu_deps=None, copts=tf_copts(), **kwargs):
   """Generate a cc_library with a conditional set of CUDA dependencies.
 
   When the library is built with --config=cuda:
 
-  - Both deps and cuda_deps are used as dependencies.
+  - Both deps and gpu_deps are used as dependencies.
   - The cuda runtime is added as a dependency (if necessary).
   - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
   - In addition, when the library is also built with TensorRT enabled, it
       additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
 
   Args:
-  - cuda_deps: BUILD dependencies which will be linked if and only if:
+  - gpu_deps: BUILD dependencies which will be linked if and only if:
       '--config=cuda' is passed to the bazel command line.
   - deps: dependencies which will always be linked.
   - copts: copts always passed to the cc_library.
@@ -959,8 +959,8 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   """
   if not deps:
     deps = []
-  if not cuda_deps:
-    cuda_deps = []
+  if not gpu_deps:
+    gpu_deps = []
 
   if 'linkstatic' not in kwargs or kwargs['linkstatic'] != 1:
     enable_text_relocation_linkopt = select({
@@ -972,7 +972,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
     else:
       kwargs['linkopts'] = enable_text_relocation_linkopt
   native.cc_library(
-      deps=deps + if_cuda(cuda_deps + [
+      deps=deps + if_cuda(gpu_deps + [
           clean_dep("//tensorflow/core:cuda"),
           "@local_config_cuda//cuda:cuda_headers"
       ]),
@@ -981,7 +981,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
       **kwargs)
 
 register_extension_info(
-    extension_name = "tf_cuda_library",
+    extension_name = "tf_gpu_library",
     label_regex_for_dep = "{extension_name}",
 )
 
@@ -997,7 +997,7 @@ def tf_kernel_library(name,
                       **kwargs):
   """A rule to build a TensorFlow OpKernel.
 
-  May either specify srcs/hdrs or prefix.  Similar to tf_cuda_library,
+  May either specify srcs/hdrs or prefix.  Similar to tf_gpu_library,
   but with alwayslink=1 by default.  If prefix is specified:
     * prefix*.cc (except *.cu.cc) is added to srcs
     * prefix*.h (except *.cu.h) is added to hdrs
@@ -1036,7 +1036,7 @@ def tf_kernel_library(name,
     hdrs = hdrs + native.glob(
         [prefix + "*.h"], exclude=[prefix + "*test*", prefix + "*.cu.h"])
 
-  cuda_deps = [clean_dep("//tensorflow/core:gpu_lib")]
+  gpu_deps = [clean_dep("//tensorflow/core:gpu_lib")]
   if gpu_srcs:
     for gpu_src in gpu_srcs:
       if gpu_src.endswith(".cc") and not gpu_src.endswith(".cu.cc"):
@@ -1044,13 +1044,13 @@ def tf_kernel_library(name,
              format(gpu_src))
     tf_gpu_kernel_library(
         name=name + "_gpu", srcs=gpu_srcs, deps=deps, **kwargs)
-    cuda_deps.extend([":" + name + "_gpu"])
-  tf_cuda_library(
+    gpu_deps.extend([":" + name + "_gpu"])
+  tf_gpu_library(
       name=name,
       srcs=srcs,
       hdrs=hdrs,
       copts=copts,
-      cuda_deps=cuda_deps,
+      gpu_deps=gpu_deps,
       linkstatic=1,  # Needed since alwayslink is broken in bazel b/27630669
       alwayslink=alwayslink,
       deps=deps,
