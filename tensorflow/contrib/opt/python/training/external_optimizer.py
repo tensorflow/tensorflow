@@ -522,24 +522,26 @@ class SklearnRidgeInterface:
       **run_kwargs: kwargs to pass into `session.run`.
     
     """
-      session = session or ops.get_default_session()
-      feed_dict = feed_dict or {}
+    session = session or ops.get_default_session()
+    feed_dict = feed_dict or {}
 
-      initial_values = [session.run(self.X, feed_dict=feed_dict), session.run(self.y, feed_dict=feed_dict)]
+    initial_values = [session.run(self.X, feed_dict=feed_dict), session.run(self.y, feed_dict=feed_dict)]
 
-      var_vals = self._minimize(
-          initial_values)
+    var_vals = self._minimize(
+        initial_values)
 
-      session.run(
-          self._var_updates,
-          feed_dict=dict(zip(self._update_placeholders, var_vals)),
-          **run_kwargs)
+    session.run(
+        self._var_updates,
+        feed_dict=dict(zip(self._update_placeholders, var_vals)),
+        **run_kwargs)
 
 
   def _minimize(self, initial_values):
-      import sklearn.linear_model  # pylint: disable=g-import-not-at-top
-      clf = sklearn.linear_model.Ridge(**self.optimizer_kwargs)
-      clf.fit(initial_values[0], initial_values[1], optimizer_kwargs['sample_weight'])
 
-      return clf.coef_, clf.intercept_
+    _sample_weight = self.optimizer_kwargs.pop('sample_weight', None)
+    import sklearn.linear_model  # pylint: disable=g-import-not-at-top
+    clf = sklearn.linear_model.Ridge(**self.optimizer_kwargs)
+    clf.fit(initial_values[0], initial_values[1], _sample_weight)
+
+    return clf.coef_, clf.intercept_
 
