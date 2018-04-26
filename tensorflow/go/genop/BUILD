@@ -5,7 +5,7 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/tensorflow/tensorflow/go/genop",
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/tensorflow/go/genop/internal:go_default_library"],
+    deps = ["//tensorflow/go/genop/internal:go_default_library"],
 )
 
 go_binary(
