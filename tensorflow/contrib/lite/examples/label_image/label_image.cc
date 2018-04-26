@@ -107,7 +107,7 @@ void RunInference(Settings* s) {
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
 
-  tflite::InterpreterBuilder (*model, resolver)(&interpreter);
+  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
     LOG(FATAL) << "Failed to construct interpreter\n";
     exit(-1);
