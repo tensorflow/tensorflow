@@ -336,6 +336,7 @@ py_test(
     size = "large",
     srcs = ["_impl/keras/applications/densenet_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nomsan"],  # times out, http://b/78650237
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
