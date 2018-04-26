@@ -66,6 +66,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_cast = true;
     bool remove_negation = true;
     bool hoist_unary_out_of_concat = false;
+    bool convert_sqrt_div_to_rsqrt_mul = false;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.

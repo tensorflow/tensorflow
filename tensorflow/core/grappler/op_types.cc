@@ -289,6 +289,8 @@ bool IsReverse(const NodeDef& node) {
 
 bool IsReverseV2(const NodeDef& node) { return node.op() == "ReverseV2"; }
 
+bool IsRsqrt(const NodeDef& node) { return node.op() == "Rsqrt"; }
+
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 
 bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
@@ -316,6 +318,8 @@ bool IsSoftsignGrad(const NodeDef& node) { return node.op() == "SoftsignGrad"; }
 bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
 
 bool IsSplitV(const NodeDef& node) { return node.op() == "SplitV"; }
+
+bool IsSqrt(const NodeDef& node) { return node.op() == "Sqrt"; }
 
 bool IsSqrtGrad(const NodeDef& node) { return node.op() == "SqrtGrad"; }
 
