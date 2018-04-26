@@ -42,6 +42,17 @@ source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
 source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
   || { echo "Failed to source bazel_test_lib.sh" >&2; exit 1; }
 
+# Recreate an empty bazelrc file under source root
+export TMP_BAZELRC=.tmp.bazelrc
+rm -f "${TMP_BAZELRC}"
+touch "${TMP_BAZELRC}"
+
+function cleanup {
+  # Remove all options in .tmp.bazelrc
+  echo "" > "${TMP_BAZELRC}"
+}
+trap cleanup EXIT
+
 skip_test=0
 
 for ARG in "$@"; do
@@ -50,12 +61,17 @@ for ARG in "$@"; do
   fi
 done
 
-run_configure_for_cpu_build
+set_gcs_remote_cache_options
 
 # --define=override_eigen_strong_inline=true speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
 # by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
-BUILD_OPTS="--define=override_eigen_strong_inline=true"
-bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
+echo "build --define=override_eigen_strong_inline=true" >> "${TMP_BAZELRC}"
+
+echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
+
+run_configure_for_cpu_build
+
+bazel build -c opt tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$skip_test" == 1 ]]; then
   exit 0
@@ -73,7 +89,7 @@ reinstall_tensorflow_pip ${PIP_NAME}
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-bazel test -c opt $BUILD_OPTS -k --test_output=errors \
+bazel test -c opt -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_oss \
   --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \
