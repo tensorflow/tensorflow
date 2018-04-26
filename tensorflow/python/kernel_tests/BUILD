@@ -1566,6 +1566,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
     grpc_enabled = True,
     tags = ["no_windows"],
@@ -2903,11 +2904,8 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    shard_count = 10,
-    tags = [
-        "no_windows_gpu",
-        "noasan",
-    ],
+    shard_count = 20,
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(

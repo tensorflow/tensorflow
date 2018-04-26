@@ -63,14 +63,14 @@ class Executable {
   // enabled.
   //
   // Returns a shaped buffer containing the result of the computation.
-  virtual StatusOr<ShapedBuffer> ExecuteOnStream(
+  virtual StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
 
   // Same as ExecuteOnStream(), but this call is non-blocking and returns as
   // soon as all of the operations are enqueued for launch on the stream.
-  virtual StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
+  virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) = 0;
 
@@ -78,7 +78,7 @@ class Executable {
   // streams. arguments[i] contains the arguments to the execution on
   // run_options[i]->stream() and the returned value is at index i of the
   // returned vector.
-  virtual StatusOr<std::vector<ShapedBuffer>> ExecuteOnStreams(
+  virtual StatusOr<std::vector<ScopedShapedBuffer>> ExecuteOnStreams(
       tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions>
           run_options,
       tensorflow::gtl::ArraySlice<
@@ -98,7 +98,7 @@ class Executable {
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
-  StatusOr<ShapedBuffer> ExecuteOnStreamWrapper(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
@@ -156,9 +156,9 @@ class Executable {
   static Status DumpToDirectory(const string& directory_path, string filename,
                                 const SessionModule& session_module);
 
-  // Dump hlo_session to directory_path/filename.
+  // Dump hlo snapshot to directory_path/filename.
   static Status DumpToDirectory(const string& directory_path, string filename,
-                                const HloSession& hlo_session);
+                                const HloSnapshot& hlo_session);
 
  protected:
   mutable tensorflow::mutex mutex_;

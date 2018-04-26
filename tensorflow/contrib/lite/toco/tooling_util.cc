@@ -1405,20 +1405,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     }
     input_minmax.min = (qmin - mean_value) / std_value;
     input_minmax.max = (qmax - mean_value) / std_value;
-    if (input_array.minmax) {
-      if (input_array_proto.has_mean_value() ||
-          input_array_proto.has_std_value()) {
-        const double width = input_minmax.max - input_minmax.min;
-        const double kMinMaxAllowedDiff = 1e-6 * width;
-        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
-                  kMinMaxAllowedDiff &&
-              std::abs(input_minmax.max - input_array.minmax->max) <
-                  kMinMaxAllowedDiff)
-            << input_minmax.min << ", " << input_minmax.max
-            << " != " << input_array.minmax->min << ", "
-            << input_array.minmax->max;
-      }
-    } else {
+    if (!input_array.minmax) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }

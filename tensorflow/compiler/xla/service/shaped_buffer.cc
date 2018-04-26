@@ -117,7 +117,7 @@ ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
     : ShapedBuffer(std::move(shaped_buffer)), allocator_(allocator) {}
 
 ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)
-    : ShapedBuffer(std::move(s)), allocator_(s.allocator_) {
+    : ShapedBuffer(static_cast<ShapedBuffer&&>(s)), allocator_(s.allocator_) {
   // Null out s.allocator_ so it doesn't try to free anything in its destructor.
   s.allocator_ = nullptr;
 }
@@ -151,7 +151,7 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
 }
 
 ShapedBuffer ScopedShapedBuffer::release() {
-  ShapedBuffer shaped_buffer(std::move(*this));
+  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
   buffers_ = ShapeTree<se::DeviceMemoryBase>();
   return shaped_buffer;
 }

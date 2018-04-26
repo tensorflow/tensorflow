@@ -1321,10 +1321,6 @@ void BM_WhileLoop(int num_iters) {
   }
 }
 
-// TODO(b/32470510): Benchmark fails on parallel CPU backend.
-#ifndef XLA_TEST_BACKEND_CPU_PARALLEL
 BENCHMARK(BM_WhileLoop);
-#endif
-
 }  // namespace
 }  // namespace xla

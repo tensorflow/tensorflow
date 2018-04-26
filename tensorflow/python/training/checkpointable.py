@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
@@ -119,6 +120,7 @@ class _CheckpointPosition(object):
       AssertionError: If another object is already bound to the `Object` proto.
     """
     checkpoint = self.checkpoint
+    checkpoint.all_python_objects.add(checkpointable)
     current_assignment = checkpoint.object_by_proto_id.get(self._proto_id, None)
     if current_assignment is None:
       checkpoint.object_by_proto_id[self._proto_id] = checkpointable
@@ -157,12 +159,12 @@ class _CheckpointPosition(object):
       # consistent (if the dependency DAG is not a tree then there are
       # multiple paths to the same object).
       if current_assignment is not checkpointable:
-        raise AssertionError(
-            ("Unable to load the checkpoint into this object graph. Either "
-             "the Checkpointable object references in the Python program "
-             "have changed in an incompatible way, or the checkpoint was "
-             "generated in an incompatible program.\n\nTwo checkpoint "
-             "references resolved to different objects (%s and %s).")
+        logging.warning(
+            ("Inconsistent references when loading the checkpoint into this "
+             "object graph. Either the Checkpointable object references in the "
+             "Python program have changed in an incompatible way, or the "
+             "checkpoint was generated in an incompatible program.\n\nTwo "
+             "checkpoint references resolved to different objects (%s and %s).")
             % (current_assignment, checkpointable))
       return False  # Not a new assignment
 

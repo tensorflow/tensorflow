@@ -84,6 +84,11 @@ class _CheckpointRestoreCoordinator(object):
     # (as objects with deferred dependencies will generally have references to
     # this object).
     self.object_by_proto_id = weakref.WeakValueDictionary()
+    # A set of all Python objects we've seen as dependencies, even if we didn't
+    # use them (for example because of inconsistent references when
+    # loading). Used to make status assertions fail when loading checkpoints
+    # that don't quite match.
+    self.all_python_objects = weakref.WeakSet()
     self.save_path = save_path
     self.dtype_map = dtype_map
     # When graph building, contains a list of ops to run to restore objects from
@@ -336,19 +341,19 @@ def _serialize_object_graph(root_checkpointable):
       slot_variables=slot_variables)
 
 
-def gather_initializers(root_checkpointable):
-  """Traverse the object graph and find initialization ops.
+def list_objects(root_checkpointable):
+  """Traverse the object graph and list all accessible objects.
 
   Looks for `Checkpointable` objects which are dependencies of
-  `root_checkpointable` and which have an `initializer` property. Includes
-  initializers for slot variables only if the variable they are slotting for and
-  the optimizer are dependencies of `root_checkpointable` (i.e. if they would be
-  saved with a checkpoint).
+  `root_checkpointable`. Includes slot variables only if the variable they are
+  slotting for and the optimizer are dependencies of `root_checkpointable`
+  (i.e. if they would be saved with a checkpoint).
 
   Args:
-    root_checkpointable: A `Checkpointable` object to gather initializers for.
+    root_checkpointable: A `Checkpointable` object whose dependencies should be
+      flattened.
   Returns:
-    A list of initialization ops.
+    A flat list of objects.
   """
   # TODO(allenl): Extract out gathering logic so the naming logic doesn't have
   # to run.
@@ -363,6 +368,24 @@ def gather_initializers(root_checkpointable):
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
       object_names=object_names)
+  return checkpointable_objects
+
+
+def gather_initializers(root_checkpointable):
+  """Traverse the object graph and find initialization ops.
+
+  Looks for `Checkpointable` objects which are dependencies of
+  `root_checkpointable` and which have an `initializer` property. Includes
+  initializers for slot variables only if the variable they are slotting for and
+  the optimizer are dependencies of `root_checkpointable` (i.e. if they would be
+  saved with a checkpoint).
+
+  Args:
+    root_checkpointable: A `Checkpointable` object to gather initializers for.
+  Returns:
+    A list of initialization ops.
+  """
+  checkpointable_objects = list_objects(root_checkpointable)
   return [c.initializer for c in checkpointable_objects
           if hasattr(c, "initializer") and c.initializer is not None]
 
@@ -414,9 +437,10 @@ class CheckpointLoadStatus(_LoadStatus):
   See `Saver.restore` for usage examples.
   """
 
-  def __init__(self, checkpoint, feed_dict):
+  def __init__(self, checkpoint, feed_dict, root_checkpointable):
     self._checkpoint = checkpoint
     self._feed_dict = feed_dict
+    self._root_checkpointable = root_checkpointable
 
   def assert_consumed(self):
     """Asserts that all objects in the checkpoint have been created/matched.
@@ -446,6 +470,16 @@ class CheckpointLoadStatus(_LoadStatus):
           ("Unused attributes in these objects (the attributes exist in the "
            "checkpoint but not in the objects): %s") % (
                self._checkpoint.unused_attributes.items(),))
+    for checkpointable_object in list_objects(self._root_checkpointable):
+      self._checkpoint.all_python_objects.add(checkpointable_object)
+    unused_python_objects = (
+        set(self._checkpoint.all_python_objects)
+        - set(self._checkpoint.object_by_proto_id.values()))
+    if unused_python_objects:
+      raise AssertionError(
+          ("Some Python objects were not bound to checkpointed values, likely "
+           "due to changes in the Python program: %s")
+          % (unused_python_objects,))
     return self
 
   def run_restore_ops(self, session=None):
@@ -457,17 +491,35 @@ class CheckpointLoadStatus(_LoadStatus):
     session.run(self._checkpoint.restore_ops, feed_dict=self._feed_dict)
 
   def initialize_or_restore(self, session=None):
-    """Alias for `run_restore_ops`.
+    """Run operations to initialize or restore objects in the dependency graph.
+
+    Any objects in the dependency graph which have initializers but are not in
+    the checkpoint will have those initializers run, unless those variables are
+    being restored by a later call to `tf.train.Checkpoint.restore()`.
 
     This method has a sibling in `InitializationOnlyStatus` which instead
     initializes variables. That type is returned if no checkpoint is specified
     in `Saver.restore`.
 
     Args:
-      session: The session to run restore ops in. If `None`, uses the default
-        session.
+      session: The session to run init/restore ops in. If `None`, uses the
+        default session.
     """
+    if context.executing_eagerly():
+      return  # Initialization and restoration ops are run eagerly
+    if session is None:
+      session = ops.get_default_session()
+    all_objects = list_objects(self._root_checkpointable)
+    already_initialized_objects = set(
+        self._checkpoint.object_by_proto_id.values())
+    initializers_for_non_restored_variables = [
+        c.initializer for c in all_objects
+        if hasattr(c, "initializer")
+        and c not in already_initialized_objects
+        and (getattr(c, "_update_uid", self._checkpoint.restore_uid - 1)
+             < self._checkpoint.restore_uid)]
     self.run_restore_ops(session=session)
+    session.run(initializers_for_non_restored_variables)
 
 
 class InitializationOnlyStatus(_LoadStatus):
@@ -480,7 +532,8 @@ class InitializationOnlyStatus(_LoadStatus):
   otherwise.
   """
 
-  def __init__(self, root_checkpointable):
+  def __init__(self, root_checkpointable, restore_uid):
+    self._restore_uid = restore_uid
     self._root_checkpointable = root_checkpointable
 
   def assert_consumed(self):
@@ -504,8 +557,9 @@ class InitializationOnlyStatus(_LoadStatus):
   def initialize_or_restore(self, session=None):
     """Runs initialization ops for variables.
 
-    Only objects which would be saved by `Saver.save` will be initialized. See
-    `gather_initializers` for details.
+    Objects which would be saved by `Saver.save` will be initialized, unless
+    those variables are being restored by a later call to
+    `tf.train.Checkpoint.restore()`.
 
     This method does nothing when executing eagerly (initializers get run
     eagerly).
@@ -518,7 +572,13 @@ class InitializationOnlyStatus(_LoadStatus):
       return  # run eagerly
     if session is None:
       session = ops.get_default_session()
-    session.run(gather_initializers(self._root_checkpointable))
+    checkpointable_objects = list_objects(self._root_checkpointable)
+    initializers = [
+        c.initializer for c in checkpointable_objects
+        if hasattr(c, "initializer") and c.initializer is not None
+        and (getattr(c, "_update_uid", self._restore_uid - 1)
+             < self._restore_uid)]
+    session.run(initializers)
 
 
 _DEPRECATED_RESTORE_INSTRUCTIONS = (
@@ -616,11 +676,10 @@ class CheckpointableSaver(object):
     # Allow passing in a weak reference to avoid reference cycles when
     # `Checkpointable` objects save themselves.
     self._root_checkpointable_ref = root_checkpointable
-    if not context.executing_eagerly():
-      with ops.device("/cpu:0"):
-        self._file_prefix_placeholder = constant_op.constant("model")
-    else:
-      self._file_prefix_placeholder = None
+    # The file prefix placeholder is created lazily when graph building (and not
+    # at all when executing eagerly) to avoid creating ops in the constructor
+    # (when they may never be necessary).
+    self._file_prefix_placeholder = None
 
     # Op caching for save
     self._object_graph_feed_tensor = None
@@ -775,9 +834,12 @@ class CheckpointableSaver(object):
       object is returned which runs restore ops from a name-based saver.
     """
     if save_path is None:
-      return InitializationOnlyStatus(self._root_checkpointable)
+      return InitializationOnlyStatus(self._root_checkpointable, ops.uid())
     in_graph_mode = not context.executing_eagerly()
     if in_graph_mode:
+      if self._file_prefix_placeholder is None:
+        with ops.device("/cpu:0"):
+          self._file_prefix_placeholder = constant_op.constant("model")
       file_prefix_tensor = self._file_prefix_placeholder
       file_prefix_feed_dict = {self._file_prefix_placeholder: save_path}
     else:
@@ -819,7 +881,9 @@ class CheckpointableSaver(object):
     checkpointable_lib._CheckpointPosition(  # pylint: disable=protected-access
         checkpoint=checkpoint, proto_id=0).restore(self._root_checkpointable)
     load_status = CheckpointLoadStatus(
-        checkpoint, feed_dict=file_prefix_feed_dict)
+        checkpoint,
+        root_checkpointable=self._root_checkpointable,
+        feed_dict=file_prefix_feed_dict)
     return load_status
 
 

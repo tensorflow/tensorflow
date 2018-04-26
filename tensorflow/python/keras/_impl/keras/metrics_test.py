@@ -75,74 +75,75 @@ class KerasMetricsTest(test.TestCase):
       self.assertEqual(result, 0.)
 
   def test_stateful_metrics(self):
-    np.random.seed(1334)
+    with self.test_session():
+      np.random.seed(1334)
 
-    class BinaryTruePositives(keras.layers.Layer):
-      """Stateful Metric to count the total true positives over all batches.
+      class BinaryTruePositives(keras.layers.Layer):
+        """Stateful Metric to count the total true positives over all batches.
 
-      Assumes predictions and targets of shape `(samples, 1)`.
+        Assumes predictions and targets of shape `(samples, 1)`.
 
-      Arguments:
-          threshold: Float, lower limit on prediction value that counts as a
-              positive class prediction.
-          name: String, name for the metric.
-      """
-
-      def __init__(self, name='true_positives', **kwargs):
-        super(BinaryTruePositives, self).__init__(name=name, **kwargs)
-        self.true_positives = keras.backend.variable(value=0, dtype='int32')
-
-      def reset_states(self):
-        keras.backend.set_value(self.true_positives, 0)
-
-      def __call__(self, y_true, y_pred):
-        """Computes the number of true positives in a batch.
-
-        Args:
-            y_true: Tensor, batch_wise labels
-            y_pred: Tensor, batch_wise predictions
-
-        Returns:
-            The total number of true positives seen this epoch at the
-                completion of the batch.
+        Arguments:
+            threshold: Float, lower limit on prediction value that counts as a
+                positive class prediction.
+            name: String, name for the metric.
         """
-        y_true = math_ops.cast(y_true, 'int32')
-        y_pred = math_ops.cast(math_ops.round(y_pred), 'int32')
-        correct_preds = math_ops.cast(math_ops.equal(y_pred, y_true), 'int32')
-        true_pos = math_ops.cast(
-            math_ops.reduce_sum(correct_preds * y_true), 'int32')
-        current_true_pos = self.true_positives * 1
-        self.add_update(
-            state_ops.assign_add(self.true_positives, true_pos),
-            inputs=[y_true, y_pred])
-        return current_true_pos + true_pos
 
-    metric_fn = BinaryTruePositives()
-    config = keras.metrics.serialize(metric_fn)
-    metric_fn = keras.metrics.deserialize(
-        config, custom_objects={'BinaryTruePositives': BinaryTruePositives})
+        def __init__(self, name='true_positives', **kwargs):
+          super(BinaryTruePositives, self).__init__(name=name, **kwargs)
+          self.true_positives = keras.backend.variable(value=0, dtype='int32')
 
-    # Test on simple model
-    inputs = keras.Input(shape=(2,))
-    outputs = keras.layers.Dense(1, activation='sigmoid')(inputs)
-    model = keras.Model(inputs, outputs)
-    model.compile(optimizer='sgd',
-                  loss='binary_crossentropy',
-                  metrics=['acc', metric_fn])
+        def reset_states(self):
+          keras.backend.set_value(self.true_positives, 0)
 
-    # Test fit, evaluate
-    samples = 1000
-    x = np.random.random((samples, 2))
-    y = np.random.randint(2, size=(samples, 1))
-    model.fit(x, y, epochs=1, batch_size=10)
-    outs = model.evaluate(x, y, batch_size=10)
-    preds = model.predict(x)
+        def __call__(self, y_true, y_pred):
+          """Computes the number of true positives in a batch.
 
-    def ref_true_pos(y_true, y_pred):
-      return np.sum(np.logical_and(y_pred > 0.5, y_true == 1))
+          Args:
+              y_true: Tensor, batch_wise labels
+              y_pred: Tensor, batch_wise predictions
 
-    # Test correctness (e.g. updates should have been run)
-    self.assertAllClose(outs[2], ref_true_pos(y, preds), atol=1e-5)
+          Returns:
+              The total number of true positives seen this epoch at the
+                  completion of the batch.
+          """
+          y_true = math_ops.cast(y_true, 'int32')
+          y_pred = math_ops.cast(math_ops.round(y_pred), 'int32')
+          correct_preds = math_ops.cast(math_ops.equal(y_pred, y_true), 'int32')
+          true_pos = math_ops.cast(
+              math_ops.reduce_sum(correct_preds * y_true), 'int32')
+          current_true_pos = self.true_positives * 1
+          self.add_update(
+              state_ops.assign_add(self.true_positives, true_pos),
+              inputs=[y_true, y_pred])
+          return current_true_pos + true_pos
+
+      metric_fn = BinaryTruePositives()
+      config = keras.metrics.serialize(metric_fn)
+      metric_fn = keras.metrics.deserialize(
+          config, custom_objects={'BinaryTruePositives': BinaryTruePositives})
+
+      # Test on simple model
+      inputs = keras.Input(shape=(2,))
+      outputs = keras.layers.Dense(1, activation='sigmoid')(inputs)
+      model = keras.Model(inputs, outputs)
+      model.compile(optimizer='sgd',
+                    loss='binary_crossentropy',
+                    metrics=['acc', metric_fn])
+
+      # Test fit, evaluate
+      samples = 1000
+      x = np.random.random((samples, 2))
+      y = np.random.randint(2, size=(samples, 1))
+      model.fit(x, y, epochs=1, batch_size=10)
+      outs = model.evaluate(x, y, batch_size=10)
+      preds = model.predict(x)
+
+      def ref_true_pos(y_true, y_pred):
+        return np.sum(np.logical_and(y_pred > 0.5, y_true == 1))
+
+      # Test correctness (e.g. updates should have been run)
+      self.assertAllClose(outs[2], ref_true_pos(y, preds), atol=1e-5)
 
 
 if __name__ == '__main__':

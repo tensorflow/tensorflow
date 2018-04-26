@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import critical_section_ops
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -329,6 +331,25 @@ class CriticalSectionTest(test.TestCase):
         lambda i: i < 10, lambda i: cs.execute(lambda j: v + j + 1, i), [0])
     self.evaluate(v.initializer)
     self.assertEqual(10, self.evaluate(out))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testInsideFunction(self):
+    cs = critical_section_ops.CriticalSection()
+    v = resource_variable_ops.ResourceVariable(1)
+    def fn():
+      return v.read_value()
+
+    # map() creates a TensorFlow function.
+    ds = dataset_ops.Dataset.range(1).map(lambda _: cs.execute(fn))
+
+    def get_first():
+      if context.executing_eagerly():
+        return self.evaluate(ds.make_one_shot_iterator().get_next())
+      itr = ds.make_initializable_iterator()
+      self.evaluate([v.initializer, itr.initializer])
+      return self.evaluate(itr.get_next())
+
+    self.assertEqual(1, get_first())
 
   # TODO(ebrevdo): Re-enable once CriticalSection is in core.
   #

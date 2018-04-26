@@ -18,9 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -54,7 +53,7 @@ class LocalClientExecuteTest : public LocalClientTestBase {
 };
 
 XLA_TEST_F(LocalClientExecuteTest, Constant) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto y = builder.ConstantR0<float>(123.0f);
 
   ScopedShapedBuffer result =
@@ -64,7 +63,7 @@ XLA_TEST_F(LocalClientExecuteTest, Constant) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddScalars) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
   auto y = builder.ConstantR0<float>(123.0f);
   builder.Add(x, y);
@@ -77,7 +76,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddScalars) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddZeroElementVectors) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {0}), "x");
   auto y = builder.ConstantR1<float>({});
   builder.Add(x, y);
@@ -90,7 +89,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddZeroElementVectors) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddVectors) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
@@ -104,7 +103,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectors) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
@@ -122,7 +121,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   builder.Add(x, y);
@@ -155,7 +154,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   builder.Add(x, y);
@@ -192,7 +191,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   builder.Tuple({x, y, x});
@@ -220,7 +219,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   auto inner_tuple = builder.Tuple({x, y, x});
@@ -254,7 +253,7 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
 
 XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
   // Verify setting the result layout of a computation with a tuple output.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   builder.Tuple({x, y});
@@ -291,7 +290,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
 
   // Computation adds the respective array and vector elements from each tuple
   // argument and returns the results as a tuple.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, tuple_shape0, "x");
   auto y = builder.Parameter(1, tuple_shape1, "y");
   auto x_0 = builder.GetTupleElement(x, 0);
@@ -338,7 +337,7 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
 
   // Computation negates the array element and sums the two vector elements in
   // the nested tuple. The resulting array and vector are returned as a tuple.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto param = builder.Parameter(0, nested_tuple_shape, "param");
   auto inner_tuple = builder.GetTupleElement(param, 0);
   auto inner_array = builder.GetTupleElement(inner_tuple, 0);
@@ -376,7 +375,7 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({array_shape, array_shape});
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto param = builder.Parameter(0, tuple_shape, "param");
   auto element_0 = builder.GetTupleElement(param, 0);
   auto element_1 = builder.GetTupleElement(param, 1);
@@ -420,11 +419,11 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
   std::vector<Shape> element_shapes(kElementCount, element_shape);
   const Shape tuple_shape = ShapeUtil::MakeTupleShape(element_shapes);
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto param = builder.Parameter(0, tuple_shape, "param");
 
   // Add each element's tuple index value to every element.
-  std::vector<ComputationDataHandle> result_elements;
+  std::vector<XlaOp> result_elements;
   for (int i = 0; i < kElementCount; ++i) {
     auto element = builder.GetTupleElement(param, i);
     result_elements.push_back(
@@ -453,9 +452,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
   }
 }
 
-// TODO(b/66968986): Test times out on CPU parallel backend. Disabled
-// 2017-09-26.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU_PARALLEL(LargeNestedTuple)) {
+XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
   // Construct and run a computation which takes a two-level nested tuple
   // parameter with a large fanout.
   const int kFanout = 40;
@@ -467,15 +464,15 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU_PARALLEL(LargeNestedTuple)) {
   std::vector<Shape> inner_tuple_shapes(kFanout, inner_tuple_shape);
   const Shape tuple_shape = ShapeUtil::MakeTupleShape(inner_tuple_shapes);
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto param = builder.Parameter(0, tuple_shape, "param");
 
   // The computation increments each leaf value by an amount equal to the leaf's
   // ordinal position in a traversal of the tuple.
-  std::vector<ComputationDataHandle> result_elements;
+  std::vector<XlaOp> result_elements;
   for (int i = 0; i < kFanout; ++i) {
     auto outer_element = builder.GetTupleElement(param, i);
-    std::vector<ComputationDataHandle> inner_result_elements;
+    std::vector<XlaOp> inner_result_elements;
     for (int j = 0; j < kFanout; ++j) {
       auto inner_element = builder.GetTupleElement(outer_element, j);
       inner_result_elements.push_back(builder.Add(
@@ -522,7 +519,7 @@ XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
     shape = ShapeUtil::MakeTupleShape({shape});
   }
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto element = builder.Parameter(0, shape, "param");
   for (int i = 0; i < kTupleDepth; ++i) {
     element = builder.GetTupleElement(element, 0);
@@ -556,7 +553,7 @@ XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
 
 XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
   // Test passing in an invalid number of arguments.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {3}), "y");
   builder.Add(x, y);
@@ -573,7 +570,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
 
 XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
   // Test passing in an argument with the wrong shape.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   builder.Neg(x);
 
@@ -590,7 +587,7 @@ XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
 
 XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
   // Test passing in an invalid result layout parameter.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   builder.Neg(x);
 
@@ -613,7 +610,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
 XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
   // Try to run a trivial computation on every device on the system. If a
   // specific device is not supported, check that the right error is returned.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
   auto computation = builder.Build().ConsumeValueOrDie();
   for (int d = 0; d < local_client_->device_count(); ++d) {
@@ -640,7 +637,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
 XLA_TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
   // Try running computations on devices with device ordinal values which do not
   // exist.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
   auto computation = builder.Build().ConsumeValueOrDie();
 
@@ -657,7 +654,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
 
 XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
   // Run a computation on a specific stream on each device on the system.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
   auto computation = builder.Build().ConsumeValueOrDie();
 
@@ -693,7 +690,7 @@ XLA_TEST_F(LocalClientExecuteTest,
   se::Stream wrong_stream(wrong_platform->ExecutorForDevice(0).ValueOrDie());
   wrong_stream.Init();
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
   auto execute_status = ExecuteLocally(
       builder.Build().ValueOrDie(), {}, DefaultExecutableBuildOptions(),
@@ -710,7 +707,7 @@ XLA_TEST_F(LocalClientExecuteTest,
           .ValueOrDie();
   TestAllocator allocator(wrong_platform);
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto y = builder.ConstantR0<float>(123.0f);
 
   auto execute_status = ExecuteLocally(
@@ -723,7 +720,7 @@ XLA_TEST_F(LocalClientExecuteTest,
 
 XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
   // Try to run a computation on a stream that has not been initialized.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
 
   LOG(INFO) << "default device = " << local_client_->default_device_ordinal();
@@ -743,7 +740,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, SelectBetweenTuples) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::initializer_list<float> vec1 = {1.f, 2.f, 3.f};
   std::initializer_list<float> vec2 = {2.f, 4.f, 6.f};
@@ -763,7 +760,7 @@ XLA_TEST_F(LocalClientExecuteTest, SelectBetweenTuples) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
@@ -853,9 +850,8 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 
 // TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
 // 2017-10-18.
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(InfeedOutfeedTest))) {
-  ComputationBuilder builder(local_client_, TestName());
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(InfeedOutfeedTest)) {
+  XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = builder.Infeed(shape);
   auto constant = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f});
@@ -893,7 +889,7 @@ void BM_LocalClientOverhead(int num_iters) {
   int device_ordinal = client->default_device_ordinal();
 
   // Use a tiny add operation as the computation.
-  ComputationBuilder builder(client, "Add");
+  XlaBuilder builder("Add");
   auto shape = ShapeUtil::MakeShape(F32, {2, 3});
   auto x = builder.Parameter(0, shape, "x");
   builder.Add(x, x);

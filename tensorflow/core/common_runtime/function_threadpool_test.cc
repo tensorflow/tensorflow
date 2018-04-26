@@ -144,19 +144,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
     FunctionLibraryRuntime::Options opts;
-    status = Run(flr, handle, opts, args, rets, add_runner);
-    if (!status.ok()) return status;
-
-    // Release the handle and try running again. It should not succeed.
-    status = flr->ReleaseHandle(handle);
-    if (!status.ok()) return status;
-
-    Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsInvalidArgument(status2));
-    EXPECT_TRUE(
-        str_util::StrContains(status2.error_message(), "remote execution."));
-
-    return status;
+    return Run(flr, handle, opts, args, std::move(rets), add_runner);
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,

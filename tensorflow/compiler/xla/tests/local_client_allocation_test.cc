@@ -15,9 +15,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -38,7 +37,7 @@ class LocalClientAllocationTest : public LocalClientTestBase {
 };
 
 XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.ConstantR1<float>({0.0f, 1.0f, 2.0f});
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
@@ -74,7 +73,7 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
 XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
   // Run a computation on every device on the system. Verify that allocation
   // occurs on the proper device.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.ConstantR1<float>({0.0f, 1.0f, 2.0f});
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);

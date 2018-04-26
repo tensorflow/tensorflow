@@ -93,8 +93,6 @@ IrEmitter::IrEmitter(
       computation_to_profile_idx_(std::move(computation_to_profile_idx)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
-      parallel_cpu_backend_(
-          options::CpuParallelBackendRequested(hlo_module_config_)),
       is_top_level_computation_(false),
       target_machine_features_(target_machine),
       external_constant_pool_(external_constant_pool) {
@@ -2163,8 +2161,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
-  if (!computation->root_instruction()->outer_dimension_partitions().empty() &&
-      !parallel_cpu_backend_) {
+  if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
     // ParallelTaskAssignment assigned partitions, emit call to
     // ParallelForkJoin.
     std::vector<llvm::Value*> call_args = GetArrayFunctionCallArguments(
@@ -2549,22 +2546,6 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
       profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
     }
   };
-
-  // For the parallel cpu backend, we record the total for each embedded
-  // computation callee with its caller kCall HLO.
-  if (parallel_cpu_backend_ && is_top_level_computation_) {
-    auto* computation = root->parent();
-    auto* entry_computation = computation->parent()->entry_computation();
-    if (computation != entry_computation) {
-      for (HloInstruction* instruction : entry_computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCall &&
-            instruction->to_apply()->root_instruction() == root) {
-          record_complete_computation(GetProfileCounterFor(*instruction));
-          return Status::OK();
-        }
-      }
-    }
-  }
 
   // For the entry computation this increment is cumulative of embedded
   // computations since it includes cycles spent in computations invoked by

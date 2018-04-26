@@ -572,7 +572,14 @@ def import_graph_def(graph_def,
         if node.name in name_to_op:
           raise ValueError('Duplicate name \'%s\' in GraphDef.' % node.name)
         if node.op not in op_dict:
-          raise ValueError('No op named %s in defined operations.' % node.op)
+          raise ValueError(
+              'No op named %s in defined operations. If the Graph you are '
+              'importing uses custom ops or any parts of tf.contrib, you '
+              'should explicitly import the libraries defining those ops '
+              'before loading the Graph. Note that tf.contrib is lazily loaded '
+              'when accessed, so simply referencing (e.g.) '
+              '`tf.contrib.resampler` will cause those ops to be made '
+              'available.' % node.op)
         op_def = op_dict[node.op]
 
         output_types = _OutputTypes(node, op_dict)

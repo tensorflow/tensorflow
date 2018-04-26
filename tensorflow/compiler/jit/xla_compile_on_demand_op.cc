@@ -58,7 +58,7 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
 
   launch_context.PopulateInputs(ctx, result, variables);
 
-  perftools::gputools::Stream* stream =
+  se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   TF_RET_CHECK(stream);
 
