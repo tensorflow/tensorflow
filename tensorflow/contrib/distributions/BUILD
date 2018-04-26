@@ -709,6 +709,7 @@ cuda_py_test(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["noasan"],  # times out, http://b/78588814
 )
 
 cuda_py_test(
