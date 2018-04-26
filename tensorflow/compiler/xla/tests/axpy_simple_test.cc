@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -42,7 +41,7 @@ TEST_F(AxpySimpleTest, AxTenValues) {
 }
 
 XLA_TEST_F(AxpySimpleTest, AxpyZeroValues) {
-  ComputationBuilder builder(client_, "axpy_10");
+  XlaBuilder builder("axpy_10");
   auto alpha = builder.ConstantR0<float>(3.1415926535);
   auto x = builder.ConstantR1<float>({});
   auto y = builder.ConstantR1<float>({});
@@ -54,7 +53,7 @@ XLA_TEST_F(AxpySimpleTest, AxpyZeroValues) {
 }
 
 TEST_F(AxpySimpleTest, AxpyTenValues) {
-  ComputationBuilder builder(client_, "axpy_10");
+  XlaBuilder builder("axpy_10");
   auto alpha = builder.ConstantR0<float>(3.1415926535);
   auto x = builder.ConstantR1<float>(
       {-1.0, 1.0, 2.0, -2.0, -3.0, 3.0, 4.0, -4.0, -5.0, 5.0});

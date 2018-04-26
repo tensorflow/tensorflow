@@ -23,22 +23,21 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
-namespace gpu = ::perftools::gputools;
 
 // Utility methods for translation between Tensorflow GPU ids and CUDA GPU ids.
 class GpuIdUtil {
  public:
   // Convenient methods for getting the associated executor given a TfGpuId or
   // CudaGpuId.
-  static gpu::port::StatusOr<gpu::StreamExecutor*> ExecutorForCudaGpuId(
-      gpu::Platform* gpu_manager, CudaGpuId cuda_gpu_id) {
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForCudaGpuId(
+      se::Platform* gpu_manager, CudaGpuId cuda_gpu_id) {
     return gpu_manager->ExecutorForDevice(cuda_gpu_id.value());
   }
-  static gpu::port::StatusOr<gpu::StreamExecutor*> ExecutorForCudaGpuId(
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForCudaGpuId(
       CudaGpuId cuda_gpu_id) {
     return ExecutorForCudaGpuId(GPUMachineManager(), cuda_gpu_id);
   }
-  static gpu::port::StatusOr<gpu::StreamExecutor*> ExecutorForTfGpuId(
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForTfGpuId(
       TfGpuId tf_gpu_id) {
     return ExecutorForCudaGpuId(GpuIdManager::TfToCudaGpuId(tf_gpu_id));
   }

@@ -247,8 +247,9 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     dist = mirrored_strategy.MirroredStrategy(
         ["/device:GPU:0", "/device:CPU:0"])
-    features = dataset_ops.Dataset.from_tensors([[1.]]).repeat(10)
-    features = dist.distribute_dataset(features).get_next()
+    features = dist.distribute_dataset(
+        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10)
+    ).make_one_shot_iterator().get_next()
 
     with dist.scope():
       result = dist.call_for_each_tower(

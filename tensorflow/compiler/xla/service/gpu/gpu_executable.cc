@@ -34,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 namespace {
@@ -252,7 +250,7 @@ Status GpuExecutable::ExecuteThunks(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -299,13 +297,13 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
-  auto shaped_buffer = MakeUnique<ShapedBuffer>(
-      root->shape(), root->shape(), executor->platform(), device_ordinal);
+  ScopedShapedBuffer shaped_buffer(root->shape(), root->shape(),
+                                   memory_allocator, device_ordinal);
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
-  TF_RETURN_IF_ERROR(shaped_buffer->buffers().ForEachMutableElementWithStatus(
+  TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
       [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
@@ -324,7 +322,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
             this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
         CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-        perftools::gputools::DeviceMemoryBase src_base =
+        se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
         *device_memory = src_base;
@@ -337,7 +335,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
   return std::move(shaped_buffer);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.

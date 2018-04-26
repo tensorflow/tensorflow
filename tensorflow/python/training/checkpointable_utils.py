@@ -38,6 +38,7 @@ from tensorflow.python.training import checkpointable as checkpointable_lib
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
 _ESCAPE_CHAR = "."  # For avoiding conflicts with user-specified names.
@@ -83,6 +84,11 @@ class _CheckpointRestoreCoordinator(object):
     # (as objects with deferred dependencies will generally have references to
     # this object).
     self.object_by_proto_id = weakref.WeakValueDictionary()
+    # A set of all Python objects we've seen as dependencies, even if we didn't
+    # use them (for example because of inconsistent references when
+    # loading). Used to make status assertions fail when loading checkpoints
+    # that don't quite match.
+    self.all_python_objects = weakref.WeakSet()
     self.save_path = save_path
     self.dtype_map = dtype_map
     # When graph building, contains a list of ops to run to restore objects from
@@ -335,19 +341,19 @@ def _serialize_object_graph(root_checkpointable):
       slot_variables=slot_variables)
 
 
-def gather_initializers(root_checkpointable):
-  """Traverse the object graph and find initialization ops.
+def list_objects(root_checkpointable):
+  """Traverse the object graph and list all accessible objects.
 
   Looks for `Checkpointable` objects which are dependencies of
-  `root_checkpointable` and which have an `initializer` property. Includes
-  initializers for slot variables only if the variable they are slotting for and
-  the optimizer are dependencies of `root_checkpointable` (i.e. if they would be
-  saved with a checkpoint).
+  `root_checkpointable`. Includes slot variables only if the variable they are
+  slotting for and the optimizer are dependencies of `root_checkpointable`
+  (i.e. if they would be saved with a checkpoint).
 
   Args:
-    root_checkpointable: A `Checkpointable` object to gather initializers for.
+    root_checkpointable: A `Checkpointable` object whose dependencies should be
+      flattened.
   Returns:
-    A list of initialization ops.
+    A flat list of objects.
   """
   # TODO(allenl): Extract out gathering logic so the naming logic doesn't have
   # to run.
@@ -362,6 +368,24 @@ def gather_initializers(root_checkpointable):
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
       object_names=object_names)
+  return checkpointable_objects
+
+
+def gather_initializers(root_checkpointable):
+  """Traverse the object graph and find initialization ops.
+
+  Looks for `Checkpointable` objects which are dependencies of
+  `root_checkpointable` and which have an `initializer` property. Includes
+  initializers for slot variables only if the variable they are slotting for and
+  the optimizer are dependencies of `root_checkpointable` (i.e. if they would be
+  saved with a checkpoint).
+
+  Args:
+    root_checkpointable: A `Checkpointable` object to gather initializers for.
+  Returns:
+    A list of initialization ops.
+  """
+  checkpointable_objects = list_objects(root_checkpointable)
   return [c.initializer for c in checkpointable_objects
           if hasattr(c, "initializer") and c.initializer is not None]
 
@@ -413,9 +437,10 @@ class CheckpointLoadStatus(_LoadStatus):
   See `Saver.restore` for usage examples.
   """
 
-  def __init__(self, checkpoint, feed_dict):
+  def __init__(self, checkpoint, feed_dict, root_checkpointable):
     self._checkpoint = checkpoint
     self._feed_dict = feed_dict
+    self._root_checkpointable = root_checkpointable
 
   def assert_consumed(self):
     """Asserts that all objects in the checkpoint have been created/matched.
@@ -445,6 +470,16 @@ class CheckpointLoadStatus(_LoadStatus):
           ("Unused attributes in these objects (the attributes exist in the "
            "checkpoint but not in the objects): %s") % (
                self._checkpoint.unused_attributes.items(),))
+    for checkpointable_object in list_objects(self._root_checkpointable):
+      self._checkpoint.all_python_objects.add(checkpointable_object)
+    unused_python_objects = (
+        set(self._checkpoint.all_python_objects)
+        - set(self._checkpoint.object_by_proto_id.values()))
+    if unused_python_objects:
+      raise AssertionError(
+          ("Some Python objects were not bound to checkpointed values, likely "
+           "due to changes in the Python program: %s")
+          % (unused_python_objects,))
     return self
 
   def run_restore_ops(self, session=None):
@@ -456,17 +491,35 @@ class CheckpointLoadStatus(_LoadStatus):
     session.run(self._checkpoint.restore_ops, feed_dict=self._feed_dict)
 
   def initialize_or_restore(self, session=None):
-    """Alias for `run_restore_ops`.
+    """Run operations to initialize or restore objects in the dependency graph.
+
+    Any objects in the dependency graph which have initializers but are not in
+    the checkpoint will have those initializers run, unless those variables are
+    being restored by a later call to `tf.train.Checkpoint.restore()`.
 
     This method has a sibling in `InitializationOnlyStatus` which instead
     initializes variables. That type is returned if no checkpoint is specified
     in `Saver.restore`.
 
     Args:
-      session: The session to run restore ops in. If `None`, uses the default
-        session.
+      session: The session to run init/restore ops in. If `None`, uses the
+        default session.
     """
+    if context.executing_eagerly():
+      return  # Initialization and restoration ops are run eagerly
+    if session is None:
+      session = ops.get_default_session()
+    all_objects = list_objects(self._root_checkpointable)
+    already_initialized_objects = set(
+        self._checkpoint.object_by_proto_id.values())
+    initializers_for_non_restored_variables = [
+        c.initializer for c in all_objects
+        if hasattr(c, "initializer")
+        and c not in already_initialized_objects
+        and (getattr(c, "_update_uid", self._checkpoint.restore_uid - 1)
+             < self._checkpoint.restore_uid)]
     self.run_restore_ops(session=session)
+    session.run(initializers_for_non_restored_variables)
 
 
 class InitializationOnlyStatus(_LoadStatus):
@@ -479,7 +532,8 @@ class InitializationOnlyStatus(_LoadStatus):
   otherwise.
   """
 
-  def __init__(self, root_checkpointable):
+  def __init__(self, root_checkpointable, restore_uid):
+    self._restore_uid = restore_uid
     self._root_checkpointable = root_checkpointable
 
   def assert_consumed(self):
@@ -503,8 +557,9 @@ class InitializationOnlyStatus(_LoadStatus):
   def initialize_or_restore(self, session=None):
     """Runs initialization ops for variables.
 
-    Only objects which would be saved by `Saver.save` will be initialized. See
-    `gather_initializers` for details.
+    Objects which would be saved by `Saver.save` will be initialized, unless
+    those variables are being restored by a later call to
+    `tf.train.Checkpoint.restore()`.
 
     This method does nothing when executing eagerly (initializers get run
     eagerly).
@@ -517,7 +572,13 @@ class InitializationOnlyStatus(_LoadStatus):
       return  # run eagerly
     if session is None:
       session = ops.get_default_session()
-    session.run(gather_initializers(self._root_checkpointable))
+    checkpointable_objects = list_objects(self._root_checkpointable)
+    initializers = [
+        c.initializer for c in checkpointable_objects
+        if hasattr(c, "initializer") and c.initializer is not None
+        and (getattr(c, "_update_uid", self._restore_uid - 1)
+             < self._restore_uid)]
+    session.run(initializers)
 
 
 _DEPRECATED_RESTORE_INSTRUCTIONS = (
@@ -615,11 +676,10 @@ class CheckpointableSaver(object):
     # Allow passing in a weak reference to avoid reference cycles when
     # `Checkpointable` objects save themselves.
     self._root_checkpointable_ref = root_checkpointable
-    if not context.executing_eagerly():
-      with ops.device("/cpu:0"):
-        self._file_prefix_placeholder = constant_op.constant("model")
-    else:
-      self._file_prefix_placeholder = None
+    # The file prefix placeholder is created lazily when graph building (and not
+    # at all when executing eagerly) to avoid creating ops in the constructor
+    # (when they may never be necessary).
+    self._file_prefix_placeholder = None
 
     # Op caching for save
     self._object_graph_feed_tensor = None
@@ -774,9 +834,12 @@ class CheckpointableSaver(object):
       object is returned which runs restore ops from a name-based saver.
     """
     if save_path is None:
-      return InitializationOnlyStatus(self._root_checkpointable)
+      return InitializationOnlyStatus(self._root_checkpointable, ops.uid())
     in_graph_mode = not context.executing_eagerly()
     if in_graph_mode:
+      if self._file_prefix_placeholder is None:
+        with ops.device("/cpu:0"):
+          self._file_prefix_placeholder = constant_op.constant("model")
       file_prefix_tensor = self._file_prefix_placeholder
       file_prefix_feed_dict = {self._file_prefix_placeholder: save_path}
     else:
@@ -818,34 +881,98 @@ class CheckpointableSaver(object):
     checkpointable_lib._CheckpointPosition(  # pylint: disable=protected-access
         checkpoint=checkpoint, proto_id=0).restore(self._root_checkpointable)
     load_status = CheckpointLoadStatus(
-        checkpoint, feed_dict=file_prefix_feed_dict)
+        checkpoint,
+        root_checkpointable=self._root_checkpointable,
+        feed_dict=file_prefix_feed_dict)
     return load_status
 
 
+@tf_export("train.Checkpoint")
 class Checkpoint(checkpointable_lib.Checkpointable):
-  """A utility class which groups `Checkpointable` objects.
+  """Groups checkpointable objects, saving and restoring them.
 
-  Accepts arbitrary keyword arguments to its constructor and saves those values
-  with a checkpoint. Maintains a `save_counter` for numbering checkpoints.
+  `Checkpoint`'s constructor accepts keyword arguments whose values are types
+  that contain checkpointable state, such as `tf.train.Optimizer`
+  implementations, `tf.Variable`, `tf.keras.Layer` implementations, or
+  `tf.keras.Model` implementations. It saves these values with a checkpoint, and
+  maintains a `save_counter` for numbering checkpoints.
 
-  Example usage:
+  Example usage when graph building:
 
   ```python
   import tensorflow as tf
-  import tensorflow.contrib.eager as tfe
   import os
 
   checkpoint_directory = "/tmp/training_checkpoints"
   checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
 
-  root = tfe.Checkpoint(optimizer=optimizer, model=model)
-  root.restore(tf.train.latest_checkpoint(checkpoint_directory))
-  for _ in range(num_training_steps):
-    optimizer.minimize( ... )
-  root.save(file_prefix=checkpoint_prefix)
+  checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+  status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_directory))
+  train_op = optimizer.minimize( ... )
+  status.assert_consumed()  # Optional sanity checks.
+  with tf.Session() as session:
+    # Use the Session to restore variables, or initialize them if
+    # tf.train.latest_checkpoint returned None.
+    status.initialize_or_restore(session)
+    for _ in range(num_training_steps):
+      session.run(train_op)
+    checkpoint.save(file_prefix=checkpoint_prefix)
   ```
 
-  For more manual control over saving, use `tfe.CheckpointableSaver` directly.
+  Example usage with eager execution enabled:
+
+  ```python
+  import tensorflow as tf
+  import os
+
+  tf.enable_eager_execution()
+
+  checkpoint_directory = "/tmp/training_checkpoints"
+  checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+
+  checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+  status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_directory))
+  for _ in range(num_training_steps):
+    optimizer.minimize( ... )  # Variables will be restored on creation.
+  status.assert_consumed()  # Optional sanity checks.
+  checkpoint.save(file_prefix=checkpoint_prefix)
+  ```
+
+  `Checkpoint.save` and `Checkpoint.restore` write and read object-based
+  checkpoints, in contrast to `tf.train.Saver` which writes and reads
+  `variable.name` based checkpoints. Object-based checkpointing saves a graph of
+  dependencies between Python objects (`Layer`s, `Optimizer`s, `Variable`s,
+  etc.) with named edges, and this graph is used to match variables when
+  restoring a checkpoint. It can be more robust to changes in the Python
+  program, and helps to support restore-on-create for variables when executing
+  eagerly. Prefer `tf.train.Checkpoint` over `tf.train.Saver` for new code.
+
+  `Checkpoint` objects have dependencies on the objects passed as keyword
+  arguments to their constructors, and each dependency is given a name that is
+  identical to the name of the keyword argument for which it was created.
+  TensorFlow classes like `Layer`s and `Optimizer`s will automatically add
+  dependencies on their variables (e.g. "kernel" and "bias" for
+  `tf.keras.layers.Dense`). Inheriting from `tf.keras.Model` makes managing
+  dependencies easy in user-defined classes, since `Model` hooks into attribute
+  assignment. For example:
+
+  ```python
+  class Regress(tf.keras.Model):
+
+    def __init__(self):
+      super(Regress, self).__init__()
+      self.input_transform = tf.keras.layers.Dense(10)
+      # ...
+
+    def call(self, inputs):
+      x = self.input_transform(inputs)
+      # ...
+  ```
+
+  This `Model` has a dependency named "input_transform" on its `Dense` layer,
+  which in turn depends on its variables. As a result, saving an instance of
+  `Regress` using `tf.train.Checkpoint` will also save all the variables created
+  by the `Dense` layer.
 
   Attributes:
     save_counter: Incremented when `save()` is called. Used to number
@@ -857,17 +984,19 @@ class Checkpoint(checkpointable_lib.Checkpointable):
 
     Args:
       **kwargs: Keyword arguments are set as attributes of this object, and are
-        saved with the checkpoint. Attribute values must derive from
-        `CheckpointableBase`.
+        saved with the checkpoint. Values must be checkpointable objects.
     Raises:
-      ValueError: If objects in `kwargs` are not Checkpointable.
+      ValueError: If objects in `kwargs` are not checkpointable.
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
       if not isinstance(v, checkpointable_lib.CheckpointableBase):
         raise ValueError(
-            ("`Checkpoint` was expecting an object derived from "
-             "`CheckpointableBase`, got %s.") % (v,))
+            ("`Checkpoint` was expecting a checkpointable object (an object "
+             "derived from `CheckpointableBase`), got %s. If you believe this "
+             "object should be checkpointable (i.e. it is part of the "
+             "TensorFlow Python API and manages state), please open an issue.")
+            % (v,))
       setattr(self, k, v)
     self._save_counter = None  # Created lazily for restore-on-create.
     self._saver = CheckpointableSaver(weakref.ref(self))
@@ -893,7 +1022,23 @@ class Checkpoint(checkpointable_lib.Checkpointable):
     return self._save_counter
 
   def save(self, file_prefix, session=None):
-    """Save a checkpoint. Wraps `tfe.CheckpointableSaver.save`."""
+    """Save a training checkpoint.
+
+    The saved checkpoint includes variables created by this object and any
+    checkpointable objects it depends on at the time `Checkpoint.save()` is
+    called.
+
+    Args:
+      file_prefix: A prefix to use for the checkpoint filenames
+        (/path/to/directory/and_a_prefix). Names are generated based on this
+        prefix and `Checkpoint.save_counter`.
+      session: The session to evaluate variables in. Ignored when executing
+        eagerly. If not provided when graph building, the default session is
+        used.
+
+    Returns:
+      The full path to the checkpoint.
+    """
     in_graph_mode = not context.executing_eagerly()
     if in_graph_mode:
       if session is None:
@@ -913,7 +1058,81 @@ class Checkpoint(checkpointable_lib.Checkpointable):
         session=session)
 
   def restore(self, save_path):
-    """Restore a checkpoint. Wraps `tfe.CheckpointableSaver.restore`."""
+    """Restore a training checkpoint.
+
+    Restores this `Checkpoint` and any objects it depends on.
+
+    When executing eagerly, either assigns values immediately if variables to
+    restore have been created already, or defers restoration until the variables
+    are created. Dependencies added after this call will be matched if they have
+    a corresponding object in the checkpoint (the restore request will queue in
+    any checkpointable object waiting for the expected dependency to be added).
+
+    When graph building, restoration ops are added to the graph but not run
+    immediately.
+
+    To ensure that loading is complete and no more assignments will take place,
+    use the `assert_consumed()` method of the status object returned by
+    `restore`:
+
+    ```python
+    checkpoint = tf.train.Checkpoint( ... )
+    checkpoint.restore(path).assert_consumed()
+    ```
+
+    An exception will be raised if any Python objects in the dependency graph
+    were not found in the checkpoint, or if any checkpointed values do not have
+    a matching Python object.
+
+    When graph building, `assert_consumed()` indicates that all of the restore
+    ops that will be created for this checkpoint have been created. They can be
+    run via the `run_restore_ops()` method of the status object:
+
+    ```python
+    checkpoint.restore(path).assert_consumed().run_restore_ops()
+    ```
+
+    If the checkpoint has not been consumed completely, then the list of restore
+    ops will grow as more objects are added to the dependency graph.
+
+    Name-based `tf.train.Saver` checkpoints can be loaded using this
+    method. There is no deferred loading, and names are used to match
+    variables. No restore ops are created/run until `run_restore_ops()` or
+    `initialize_or_restore()` are called on the returned status object, even
+    when executing eagerly. Re-encode name-based checkpoints using
+    `tf.train.Checkpoint.save` as soon as possible.
+
+    Args:
+      save_path: The path to the checkpoint, as returned by `save` or
+        `tf.train.latest_checkpoint`. If None (as when there is no latest
+        checkpoint for `tf.train.latest_checkpoint` to return), returns an
+        object which may run initializers for objects in the dependency
+        graph. If the checkpoint was written by the name-based `tf.train.Saver`,
+        names are used to match variables.
+
+    Returns:
+      A load status object, which can be used to make assertions about the
+      status of a checkpoint restoration and run initialization/restore ops.
+
+      The returned status object has the following methods:
+      - `assert_consumed()`:
+          Raises an exception if any variables/objects are unmatched: either
+          checkpointed values which don't have a matching Python object or
+          Python objects in the dependency graph with no values in the
+          checkpoint. This method returns the status object, and so may be
+          chained with `initialize_or_restore` or `run_restore_ops`.
+      - `initialize_or_restore(session=None)`:
+          When graph building, runs variable initializers if `save_path` is
+          `None`, but otherwise runs restore operations. If no `session` is
+          explicitly specified, the default session is used. No effect for
+          object-based checkpoints when executing eagerly (variables are
+          initialized or restored eagerly).
+      - `run_restore_ops(session=None)`:
+          When graph building, runs restore operations. If no `session` is
+          explicitly specified, the default session is used. No effect for
+          object-based checkpoints when executing eagerly (restore operations
+          are run eagerly). May only be called when `save_path` is not `None`.
+    """
     status = self._saver.restore(save_path=save_path)
     # Create the save counter now so it gets initialized with other variables
     # when graph building. Creating it earlier would lead to double

@@ -117,7 +117,6 @@ from tensorflow.python.ops import nn_ops as _nn_ops
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
 # pylint: enable=unused-import
-from tensorflow.python.util.all_util import remove_undocumented
 
 # Bring more nn-associated functionality into this package.
 # go/tf-wildcard-import
@@ -128,22 +127,3 @@ from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
 # pylint: enable=wildcard-import,unused-import
-
-
-# TODO(cwhipkey): sigmoid and tanh should not be exposed from tf.nn.
-_allowed_symbols = [
-    "zero_fraction",  # documented in training.py
-    # Modules whitelisted for reference through tf.nn.
-    # TODO(cwhipkey): migrate callers to use the submodule directly.
-    # Symbols whitelisted for export without documentation.
-    # TODO(cwhipkey): review these and move to contrib or expose through
-    # documentation.
-    "all_candidate_sampler",  # Excluded in gen_docs_combined.
-    "lrn",  # Excluded in gen_docs_combined.
-    "relu_layer",  # Excluded in gen_docs_combined.
-    "xw_plus_b",  # Excluded in gen_docs_combined.
-    "rnn_cell",  # rnn_cell is a submodule of tf.nn.
-]
-
-remove_undocumented(__name__, _allowed_symbols,
-                    [_sys.modules[__name__], _ctc_ops, _nn_ops, _nn_grad])

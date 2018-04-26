@@ -1385,6 +1385,22 @@ def register_tensor_conversion_function(base_type,
     if not callable(conversion_func):
       raise TypeError("conversion_func must be callable.")
 
+    # context._context is checked so that we don't inadvertently create it.
+    # This is because enable_eager_execution will fail when called from the main
+    # function if the context._context is already created, and the
+    # register_tensor_conversion_function calls happen when the module is
+    # imported.
+    if context._context is not None and context.executing_eagerly(
+    ) and isinstance(base_type, six.integer_types + (
+        float,
+        np.ndarray,
+    )):
+      # TODO(nareshmodi): consider setting a context variable which disables the
+      # fastpath instead.
+      raise TypeError(
+          "Cannot register conversions for numpy arrays, python number types "
+          "when executing eagerly.")
+
     try:
       funcs_at_priority = _tensor_conversion_func_registry[priority]
     except KeyError:
@@ -2541,8 +2557,8 @@ def _set_shape_and_handle_data_for_outputs_c_api(op):
     output._shape_val = output._c_api_shape()
     # Set the resource handle data for compatibility with the Python shape
     # inference code.
-    serialized = c_api.ResourceHandleShapeAndType(
-        op._graph._c_graph, output._as_tf_output())
+    serialized = c_api.GetResourceHandleShapeAndType(op._graph._c_graph,
+                                                     output._as_tf_output())
     if serialized:
       output._handle_data = (
           cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData
@@ -4982,7 +4998,7 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
     default_graph = get_default_graph()
     if isinstance(op, EagerTensor):
       if default_graph.building_function:
-        op = internal_convert_to_tensor(op)
+        return default_graph.device(op.device)
       else:
         raise ValueError("Encountered an Eager-defined Tensor during graph "
                          "construction, but a function was not being built.")

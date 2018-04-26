@@ -231,15 +231,14 @@ py_library(
     srcs = ["tpu_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/distribute/python:one_device_strategy",
-        "//tensorflow/contrib/eager/python:datasets",
-        "//tensorflow/contrib/optimizer_v2:training",
+        ":one_device_strategy",
+        ":values",
         "//tensorflow/contrib/tpu",
-        "//tensorflow/python:array_ops",
+        "//tensorflow/contrib/tpu:tpu_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/eager:context",
-        "@six_archive//:six",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -249,9 +248,13 @@ py_library(
     srcs = ["minimize_loss_test.py"],
     deps = [
         ":combinations",
+        ":mirrored_strategy",
         ":single_loss_example",
+        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
@@ -324,6 +327,7 @@ py_library(
     srcs = ["single_loss_example.py"],
     deps = [
         ":step_fn",
+        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",

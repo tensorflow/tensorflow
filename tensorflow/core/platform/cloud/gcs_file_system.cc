@@ -840,7 +840,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
 
   throttle_.RecordResponse(bytes_read);
 
-  if (bytes_read < block_size()) {
+  if (bytes_read < n) {
     // Check stat cache to see if we encountered an interrupted read.
     FileStatistics stat;
     if (stat_cache_->Lookup(filename, &stat)) {
@@ -857,14 +857,20 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   return Status::OK();
 }
 
+void GcsFileSystem::ClearFileCaches(const string& fname) {
+  file_block_cache_->RemoveFile(fname);
+  stat_cache_->Delete(fname);
+  // TODO(rxsang): Remove the patterns that matche the file in
+  // MatchingPathsCache as well.
+}
+
 Status GcsFileSystem::NewWritableFile(const string& fname,
                                       std::unique_ptr<WritableFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
-  result->reset(new GcsWritableFile(
-      bucket, object, this, &timeouts_,
-      [this, fname]() { file_block_cache_->RemoveFile(fname); },
-      initial_retry_delay_usec_));
+  result->reset(new GcsWritableFile(bucket, object, this, &timeouts_,
+                                    [this, fname]() { ClearFileCaches(fname); },
+                                    initial_retry_delay_usec_));
   return Status::OK();
 }
 
@@ -904,8 +910,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
       bucket, object, this, old_content_filename, &timeouts_,
-      [this, fname]() { file_block_cache_->RemoveFile(fname); },
-      initial_retry_delay_usec_));
+      [this, fname]() { ClearFileCaches(fname); }, initial_retry_delay_usec_));
   return Status::OK();
 }
 
@@ -1277,7 +1282,7 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
   request->SetDeleteRequest();
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when deleting ", fname);
-  file_block_cache_->RemoveFile(fname);
+  ClearFileCaches(fname);
   return Status::OK();
 }
 

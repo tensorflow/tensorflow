@@ -528,6 +528,16 @@ bool IsInt32(T x) {
   // value is implementation-defined."
   return static_cast<int32>(x) == x;
 }
+
+template <typename T>
+Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+  // c_find returns a const_iterator which does not seem to work on gcc 4.8.4,
+  // and this breaks the ubuntu/xla_gpu build bot.
+  auto it = std::find(container->begin(), container->end(), value);
+  TF_RET_CHECK(it != container->end());
+  container->erase(it);
+  return Status::OK();
+}
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \

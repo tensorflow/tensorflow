@@ -28,7 +28,6 @@ import six
 
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import prefetching_ops_v2
-from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -510,6 +509,10 @@ class PerDeviceDataIterator(object):
     self._devices = devices
     self._prefetch_on_device = prefetch_on_device
 
+  @property
+  def initializer(self):
+    return self._iterator.initializer
+
   def get_next(self, name=None):
     """Scatter the input across devices."""
     if self._prefetch_on_device:
@@ -545,7 +548,8 @@ class PerDeviceDataset(object):
         "Prefetching is only supported in graph mode currently")
 
     if self._prefetch_on_device:
-      self._dataset = dataset
+      self._dataset = dataset.apply(
+          prefetching_ops_v2.prefetch_to_devices(self._devices))
     else:
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
@@ -555,17 +559,70 @@ class PerDeviceDataset(object):
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerDeviceDataset."""
-    if self._prefetch_on_device:
-      on_device_dataset = self._dataset.apply(
-          prefetching_ops_v2.prefetch_to_devices(self._devices))
-      dataset_iterator = on_device_dataset.make_one_shot_iterator()
-    elif context.executing_eagerly():
-      dataset_iterator = datasets.Iterator(self._dataset)
-    else:
-      dataset_iterator = self._dataset.make_one_shot_iterator()
-
+    dataset_iterator = self._dataset.make_one_shot_iterator()
     return PerDeviceDataIterator(
         dataset_iterator, self._devices, self._prefetch_on_device)
+
+  def make_initializable_iterator(self):
+    """Get an initializable iterator for the distributed PerDeviceDataset."""
+    dataset_iterator = self._dataset.make_initializable_iterator()
+    return PerDeviceDataIterator(
+        dataset_iterator, self._devices, self._prefetch_on_device)
+
+
+class PerIteration(object):
+  """Holds input for multiple iterations at once."""
+
+  def __init__(self, index):
+    self._index = index
+
+  def get(self, iteration):
+    return array_ops.gather(self._index, iteration)
+
+  def get_shape(self):
+    return self._index[-1][-1].get_shape()
+
+  def get_dtype(self):
+    return self._index[-1][-1].dtype
+
+
+class MultiIterator(object):
+  """Iterator that returns results of multiple get_next()s."""
+
+  def __init__(self, dataset_iterator, iterations, batches_per_iteration):
+    self._dataset_iterator = dataset_iterator
+    self._iterations = iterations
+    self._batches_per_iteration = batches_per_iteration
+
+  def get_next(self, name=None):
+    return PerIteration([[
+        self._dataset_iterator.get_next(name=name)
+        for _ in range(self._batches_per_iteration)
+    ]
+                         for _ in range(self._iterations)])
+
+  @property
+  def initializer(self):
+    return self._dataset_iterator.initializer
+
+
+class PerIterationDataset(object):
+  """A dataset that returns MultiIterators."""
+
+  def __init__(self, dataset, iterations, batches_per_iteration):
+    self._dataset = dataset
+    self._iterations = iterations
+    self._batches_per_iteration = batches_per_iteration
+
+  def make_one_shot_iterator(self):
+    iterator = self._dataset.make_one_shot_iterator()
+    return MultiIterator(iterator, self._iterations,
+                         self._batches_per_iteration)
+
+  def make_initializable_iterator(self):
+    iterator = self._dataset.make_initializable_iterator()
+    return MultiIterator(iterator, self._iterations,
+                         self._batches_per_iteration)
 
 
 class MapOutput(object):

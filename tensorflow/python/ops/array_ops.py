@@ -935,9 +935,9 @@ def stack(values, axis=0, name="stack"):
     except (TypeError, ValueError):
       pass  # Input list contains non-constant tensors
 
-  value_shape = ops.convert_to_tensor(values[0], name=name).get_shape()
-  if value_shape.ndims is not None:
-    expanded_num_dims = value_shape.ndims + 1
+  value_shape = ops.convert_to_tensor(values[0], name=name)._shape_tuple()  # pylint: disable=protected-access
+  if value_shape is not None:
+    expanded_num_dims = len(value_shape) + 1
     if axis < -expanded_num_dims or axis >= expanded_num_dims:
       raise ValueError("axis = %d not in [%d, %d)" % (axis, -expanded_num_dims,
                                                       expanded_num_dims))
@@ -1057,9 +1057,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
     `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
   Etc.
 
-  This is the opposite of stack.  The numpy equivalent is
-
-      tf.unstack(x, n) = np.unstack(x)
+  This is the opposite of stack.
 
   Args:
     value: A rank `R > 0` `Tensor` to be unstacked.
@@ -1232,7 +1230,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   def _apply_mask_1d(reshaped_tensor, mask, axis=None):
     """Mask tensor along dimension 0 with a 1-D mask."""
-    indices = squeeze(where(mask), squeeze_dims=[1])
+    indices = squeeze(where(mask), axis=[1])
     return gather(reshaped_tensor, indices, axis=axis)
 
   with ops.name_scope(name, values=[tensor, mask]):
