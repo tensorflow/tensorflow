@@ -42,6 +42,8 @@ cc_library(
     deps = [
         ":utils",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

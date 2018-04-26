@@ -367,6 +367,7 @@ py_library(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:model_fn",

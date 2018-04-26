@@ -247,7 +247,7 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 };
 
 #if GOOGLE_CUDA
-namespace dnn = ::perftools::gputools::dnn;
+namespace dnn = se::dnn;
 
 // A dummy type to group forward convolution autotune results together.
 struct ConvBiasActivationAutoTuneGroup {

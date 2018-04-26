@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/graph_to_functiondef.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -111,7 +111,7 @@ string NodeNameMapping::Renormalize(const string& name) const {
 }  // anonymous namespace
 
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
-// code in third_party/tensorflow/python/framework/function.py.
+// code in tensorflow/python/framework/function.py.
 
 Status GraphToFunctionDef(const Graph& graph, const string& name,
                           FunctionDef* fdef) {

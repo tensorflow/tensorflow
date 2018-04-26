@@ -134,6 +134,85 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
   def testFoldConv2d(self):
     self._RunTestOverParameters(self._TestFoldConv2d)
 
+  def testMultipleLayerConv2d(self,
+                              relu=nn_ops.relu,
+                              relu_op_name='Relu',
+                              has_scaling=True,
+                              fused_batch_norm=False,
+                              freeze_batch_norm_delay=None):
+    """Tests folding cases for a network with multiple layers.
+
+    Args:
+      relu: Callable that returns an Operation, a factory method for the Relu*.
+      relu_op_name: String, name of the Relu* operation.
+      has_scaling: Bool, when true the batch norm has scaling.
+      fused_batch_norm: Bool, when true the batch norm is fused.
+      freeze_batch_norm_delay: None or the number of steps after which training
+      switches to using frozen mean and variance
+    """
+    g = ops.Graph()
+    with g.as_default():
+      batch_size, height, width = 5, 128, 128
+      inputs = array_ops.zeros((batch_size, height, width, 3))
+      out_depth = 3
+      stride = 1
+      activation_fn = relu
+      scope = 'network/expanded_conv_1/conv'
+      layer1 = conv2d(
+          inputs,
+          out_depth, [5, 5],
+          stride=stride,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=activation_fn,
+          normalizer_fn=batch_norm,
+          normalizer_params=self._BatchNormParams(
+              scale=has_scaling, fused=fused_batch_norm),
+          scope=scope)
+      # Add another layer
+      scope = 'network/expanded_conv_2/conv'
+
+      _ = conv2d(
+          layer1,
+          2 * out_depth, [5, 5],
+          stride=stride,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=activation_fn,
+          normalizer_fn=batch_norm,
+          normalizer_params=self._BatchNormParams(
+              scale=has_scaling, fused=fused_batch_norm),
+          scope=scope)
+
+      fold_batch_norms.FoldBatchNorms(
+          g, is_training=True, freeze_batch_norm_delay=freeze_batch_norm_delay)
+    folded_mul = g.get_operation_by_name(scope + '/mul_fold')
+    self.assertEqual(folded_mul.type, 'Mul')
+    self._AssertInputOpsAre(folded_mul, [
+        scope + '/correction_mult',
+        self._BatchNormMultiplierName(scope, has_scaling, fused_batch_norm)
+    ])
+    self._AssertOutputGoesToOps(folded_mul, g, [scope + '/Conv2D_Fold'])
+
+    folded_conv = g.get_operation_by_name(scope + '/Conv2D_Fold')
+    self.assertEqual(folded_conv.type, 'Conv2D')
+    # Remove :0 at end of name for tensor prior to comparison
+    self._AssertInputOpsAre(folded_conv,
+                            [scope + '/mul_fold', layer1.name[:-2]])
+    self._AssertOutputGoesToOps(folded_conv, g, [scope + '/post_conv_mul'])
+
+    folded_add = g.get_operation_by_name(scope + '/add_fold')
+    self.assertEqual(folded_add.type, 'Add')
+    self._AssertInputOpsAre(folded_add, [
+        scope + '/correction_add',
+        self._BathNormBiasName(scope, fused_batch_norm)
+    ])
+    output_op_names = [scope + '/' + relu_op_name]
+    self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
+
   def _TestFoldConv2dUnknownShape(self, relu, relu_op_name, with_bypass,
                                   has_scaling, fused_batch_norm,
                                   freeze_batch_norm_delay):
