@@ -33,8 +33,7 @@ tensorflow::Status SequentialThunk::Initialize(
 }
 
 tensorflow::Status SequentialThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream) {
   for (const auto& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
   }

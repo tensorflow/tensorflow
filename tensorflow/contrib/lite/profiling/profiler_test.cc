@@ -30,7 +30,7 @@ namespace {
 void AssertDurationOfEventAroundMs(const ProfileEvent* event,
                                    double expected_ms, double eps_ms) {
   double duration_ms =
-      (event->end_timestamp_ms - event->begin_timestamp_ms) / 1e3;
+      (event->end_timestamp_us - event->begin_timestamp_us) / 1e3;
   EXPECT_NEAR(expected_ms, duration_ms, eps_ms);
 }
 

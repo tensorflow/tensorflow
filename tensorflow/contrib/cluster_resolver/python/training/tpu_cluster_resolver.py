@@ -245,7 +245,7 @@ class TPUClusterResolver(ClusterResolver):
     else:
       if not self._tpu.startswith(compat.as_bytes('grpc://')):
         # Case 3.
-        return server_lib.ClusterSpec({})
+        return None
       # Case 2.
       cluster_spec = {self._job_name: [self._tpu[len(
           compat.as_bytes('grpc://')):]]}

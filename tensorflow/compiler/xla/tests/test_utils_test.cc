@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -28,7 +28,7 @@ namespace {
 class TestUtilsTest : public LocalClientTestBase {};
 
 XLA_TEST_F(TestUtilsTest, UnusedParam) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   // Make the reduction lambda.
   Shape single_float = ShapeUtil::MakeShape(F32, {});
   builder.Parameter(0, single_float, "unused");

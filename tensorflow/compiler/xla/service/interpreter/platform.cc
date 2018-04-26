@@ -28,11 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::interpreter;
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace interpreter {
 
 XlaInterpreterPlatform::XlaInterpreterPlatform() : name_("Interpreter") {}
@@ -75,8 +71,8 @@ port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
-  auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<XlaInterpreterExecutor>(config.plugin_config));
+  auto executor = MakeUnique<StreamExecutor>(
+      this, MakeUnique<XlaInterpreterExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
@@ -99,16 +95,16 @@ void XlaInterpreterPlatform::UnregisterTraceListener(TraceListener* listener) {
 }
 
 static void InitializeXlaInterpreterPlatform() {
-  std::unique_ptr<se::Platform> platform(new sep::XlaInterpreterPlatform);
-  SE_CHECK_OK(se::MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  std::unique_ptr<Platform> platform(new XlaInterpreterPlatform);
+  SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace interpreter
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(interpreter_platform,
-                            sep::InitializeXlaInterpreterPlatform());
+REGISTER_MODULE_INITIALIZER(
+    interpreter_platform,
+    stream_executor::interpreter::InitializeXlaInterpreterPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 

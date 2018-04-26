@@ -34,10 +34,13 @@ limitations under the License.
 inline void* loadLibrary(const char* name) {
   // TODO: change RTLD_LOCAL? Assumes there can be multiple instances of nn
   // api RT
-  void* handle = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
+  void* handle = nullptr;
+#ifdef __ANDROID__
+  handle = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
   if (handle == nullptr) {
     NNAPI_LOG("nnapi error: unable to open library %s", name);
   }
+#endif
   return handle;
 }
 

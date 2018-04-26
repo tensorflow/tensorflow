@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
@@ -85,25 +84,53 @@ class StatsAggregator(object):
     """
     return gen_dataset_ops.stats_aggregator_summary(self._resource)
 
-  def subscribe(self, iterator):
-    """Returns a @{tf.Operation} to associate this aggregator with `iterator`.
 
-    Note: Each @{tf.data.Iterator} can be associated with at most one
-    `StatsAggregator`. After running the operation that this function
-    returns, all statistics recorded in the iteration of `iterator`
-    will be stored in `stats_aggregator`.
+class _SetStatsAggregatorDataset(dataset_ops.Dataset):
+  """A `Dataset` that acts as an identity, and sets given stats_aggregator."""
 
-    Args:
-      iterator: A @{tf.data.Iterator} object.
+  def __init__(self, input_dataset, stats_aggregator):
+    super(_SetStatsAggregatorDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._stats_aggregator = stats_aggregator
 
-    Returns:
-      A @{tf.Operation} that, when run, associates this aggregator with
-      `iterator`.
-    """
-    if not isinstance(iterator, iterator_ops.Iterator):
-      raise TypeError("`iterator` must be a `tf.data.Iterator` object.")
-    return gen_dataset_ops.iterator_set_stats_aggregator(
-        iterator._iterator_resource, self._resource)  # pylint: disable=protected-access
+  def _as_variant_tensor(self):
+    return gen_dataset_ops.set_stats_aggregator_dataset(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._stats_aggregator._resource,  # pylint: disable=protected-access
+        output_types=nest.flatten(
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
+
+  @property
+  def output_classes(self):
+    return self._input_dataset.output_classes
+
+
+# TODO(shivaniagrawal): Expose these methods in `tf.contrib.data`.
+def set_stats_aggregator(stats_aggregator):
+  """Set the given stats_aggregator for aggregating the input dataset stats.
+
+  Args:
+    stats_aggregator: A `StatsAggregator` object.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    @{tf.data.Dataset.apply}.
+  """
+
+  def _apply_fn(dataset):
+    return _SetStatsAggregatorDataset(dataset, stats_aggregator)
+
+  return _apply_fn
 
 
 def bytes_produced_stats(tag):

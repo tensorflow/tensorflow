@@ -233,7 +233,12 @@ bool ResolveConstantBinaryOperator::Run(Model* model, std::size_t op_index) {
   }
 
   // Check that input data types agree.
-  CHECK(input0_array.data_type == input1_array.data_type);
+  CHECK(input0_array.data_type == input1_array.data_type)
+      << "Dissimilar data types given to op outputting \""
+      << binary_op->outputs[0] << "\". 0:\"" << binary_op->inputs[0] << "\"("
+      << static_cast<int>(input0_array.data_type) << ")   1:\""
+      << binary_op->inputs[1] << "\"("
+      << static_cast<int>(input1_array.data_type) << ").";
 
   // Do the actual constants propagation
   EvaluateBinaryOperatorOnConstantInputs(model, binary_op);

@@ -39,6 +39,21 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 
 
+class LabeledTensorMock(object):
+  """Mock class emulating LabeledTensor."""
+
+  def __init__(self):
+    self.tensor = constant_op.constant([1])
+
+
+def _convert_labeled_tensor_mock_to_tensor(value, *args, **kwargs):
+  return ops.internal_convert_to_tensor(value.tensor, *args, **kwargs)
+
+
+ops.register_tensor_conversion_function(LabeledTensorMock,
+                                        _convert_labeled_tensor_mock_to_tensor)
+
+
 class ExportTest(test_util.TensorFlowTestCase):
 
   def test_serving_input_receiver_constructor(self):
@@ -134,6 +149,11 @@ class ExportTest(test_util.TensorFlowTestCase):
     receiver_tensor = array_ops.placeholder(dtypes.string)
     with self.assertRaises(ValueError):
       _ = export.ServingInputReceiver(feature, receiver_tensor)
+
+  def test_feature_labeled_tensor(self):
+    feature = LabeledTensorMock()
+    receiver_tensor = array_ops.placeholder(dtypes.string)
+    _ = export.ServingInputReceiver(feature, receiver_tensor)
 
   def test_receiver_wrong_type(self):
     feature = constant_op.constant(5)

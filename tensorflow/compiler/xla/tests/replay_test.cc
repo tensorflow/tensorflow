@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -38,17 +38,17 @@ class ReplayTest : public ClientLibraryTestBase {};
 
 TEST_F(ReplayTest, TwoPlusTwoReplay) {
   // Make 2+2 computation.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto two = builder.ConstantR0<int32>(2);
   builder.Add(two, two);
-  Computation computation = builder.Build().ConsumeValueOrDie();
+  XlaComputation computation = builder.Build().ConsumeValueOrDie();
 
   // Serialize it out.
-  std::unique_ptr<SessionModule> module =
+  std::unique_ptr<HloSnapshot> module =
       computation.Snapshot().ConsumeValueOrDie();
 
   // Replay it.
-  Computation replayed = client_->LoadSnapshot(*module).ConsumeValueOrDie();
+  XlaComputation replayed = client_->LoadSnapshot(*module).ConsumeValueOrDie();
 
   // Check signature is the same.
   std::unique_ptr<ProgramShape> original_shape =
@@ -69,18 +69,18 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
 
 XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
   // Make computation.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(S32, {}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(S32, {}), "y");
   builder.Add(x, y);
-  Computation computation = builder.Build().ConsumeValueOrDie();
+  XlaComputation computation = builder.Build().ConsumeValueOrDie();
 
   // Serialize it out.
-  std::unique_ptr<SessionModule> module =
+  std::unique_ptr<HloSnapshot> module =
       computation.Snapshot().ConsumeValueOrDie();
 
   // Replay it.
-  Computation replayed = client_->LoadSnapshot(*module).ConsumeValueOrDie();
+  XlaComputation replayed = client_->LoadSnapshot(*module).ConsumeValueOrDie();
 
   // Check signature is the same.
   std::unique_ptr<ProgramShape> original_shape =
@@ -109,24 +109,24 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
 
 TEST_F(ReplayTest, MapPlusTwoOverR1) {
   // As above, but with map(+2) over some constant array.
-  ComputationBuilder plus_two_builder(client_, "plus two");
+  XlaBuilder plus_two_builder("plus two");
   auto input =
       plus_two_builder.Parameter(0, ShapeUtil::MakeShape(S32, {}), "input");
   plus_two_builder.Add(input, plus_two_builder.ConstantR0<int32>(2));
-  Computation plus_two = plus_two_builder.Build().ConsumeValueOrDie();
+  XlaComputation plus_two = plus_two_builder.Build().ConsumeValueOrDie();
 
-  ComputationBuilder mapper_builder(client_, TestName());
+  XlaBuilder mapper_builder(TestName());
   auto original = mapper_builder.ConstantR1<int32>({1, 2, 3});
   mapper_builder.Map({original}, plus_two, {0});
 
-  Computation computation = mapper_builder.Build().ConsumeValueOrDie();
+  XlaComputation computation = mapper_builder.Build().ConsumeValueOrDie();
 
   // Serialize it out.
-  std::unique_ptr<SessionModule> module =
+  std::unique_ptr<HloSnapshot> module =
       computation.Snapshot().ConsumeValueOrDie();
 
   // Replay it.
-  Computation replayed = client_->LoadSnapshot(*module).ConsumeValueOrDie();
+  XlaComputation replayed = client_->LoadSnapshot(*module).ConsumeValueOrDie();
 
   // Check signature is the same.
   std::unique_ptr<ProgramShape> original_shape =
@@ -134,10 +134,6 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).ConsumeValueOrDie();
   ASSERT_TRUE(protobuf_util::ProtobufEquals(*original_shape, *replayed_shape));
-
-  // Destroy the originals.
-  computation.Reset();
-  plus_two.Reset();
 
   // Run it.
   std::unique_ptr<Literal> literal =

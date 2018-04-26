@@ -53,7 +53,7 @@ class XlaLocalLaunchOp : public OpKernel {
   // Number of resource variable arguments.
   int num_resource_args_;
 
-  perftools::gputools::Platform::Id platform_id_;
+  se::Platform::Id platform_id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaLocalLaunchOp);
 };

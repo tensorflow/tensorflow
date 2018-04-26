@@ -466,8 +466,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener_counts)
 
@@ -490,8 +490,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener_counts)
 
@@ -523,8 +523,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener1_counts)
     self.assertEqual(listener1_counts, listener2_counts)
@@ -706,6 +706,7 @@ class CheckpointSaverHookTest(test.TestCase):
       with session_lib.Session() as sess:
         sess.run(self.scaffold.init_op)
         mon_sess = monitored_session._HookedSession(sess, [hook])
+        hook.after_create_session(sess, None)
         mon_sess.run(self.train_op)
       summary_writer.assert_summaries(
           test_case=self,
@@ -717,6 +718,124 @@ class CheckpointSaverHookTest(test.TestCase):
           ])
 
     fake_summary_writer.FakeSummaryWriter.uninstall()
+
+  def test_save_checkpoint_before_first_train_step(self):
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      hook.begin()
+      self.scaffold.finalize()
+      with session_lib.Session() as sess:
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        sess.run(self.scaffold.init_op)
+        hook.after_create_session(sess, None)
+        # Verifies that checkpoint is saved at step 0.
+        self.assertEqual(0,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        # Verifies that no checkpoint is saved after one training step.
+        mon_sess.run(self.train_op)
+        self.assertEqual(0,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        # Verifies that checkpoint is saved after save_steps.
+        mon_sess.run(self.train_op)
+        self.assertEqual(2,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+
+
+class CheckpointSaverHookMultiStepTest(test.TestCase):
+
+  def setUp(self):
+    self.model_dir = tempfile.mkdtemp()
+    self.graph = ops.Graph()
+    self.steps_per_run = 5
+    with self.graph.as_default():
+      self.scaffold = monitored_session.Scaffold()
+      self.global_step = variables.get_or_create_global_step()
+      self.train_op = training_util._increment_global_step(self.steps_per_run)
+
+  def tearDown(self):
+    shutil.rmtree(self.model_dir, ignore_errors=True)
+
+  def test_save_steps_saves_in_first_step(self):
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir,
+          save_steps=2*self.steps_per_run,
+          scaffold=self.scaffold,
+          steps_per_run=self.steps_per_run)
+      hook.begin()
+      self.scaffold.finalize()
+      with session_lib.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)
+        self.assertEqual(5,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+
+  def test_save_steps_saves_periodically(self):
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir,
+          save_steps=2*self.steps_per_run,
+          scaffold=self.scaffold,
+          steps_per_run=self.steps_per_run)
+      hook.begin()
+      self.scaffold.finalize()
+      with session_lib.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)
+        # Saved (step=5)
+        self.assertEqual(5,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+
+        mon_sess.run(self.train_op)
+        # Not saved (step=10)
+        self.assertEqual(5,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+
+        mon_sess.run(self.train_op)
+        # Saved (step=15)
+        self.assertEqual(15,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+
+        mon_sess.run(self.train_op)
+        # Not saved (step=20)
+        self.assertEqual(15,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+
+        mon_sess.run(self.train_op)
+        # Saved (step=25)
+        self.assertEqual(25,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+
+  def test_save_steps_saves_at_end(self):
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir,
+          save_steps=2*self.steps_per_run,
+          scaffold=self.scaffold,
+          steps_per_run=self.steps_per_run)
+      hook.begin()
+      self.scaffold.finalize()
+      with session_lib.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)
+        mon_sess.run(self.train_op)
+        hook.end(sess)
+        self.assertEqual(10,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
 
 
 class ResourceCheckpointSaverHookTest(test.TestCase):

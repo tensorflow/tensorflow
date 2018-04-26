@@ -34,6 +34,13 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
 
 
+def GenerateNumpyRandomRGB(shape):
+  # Only generate floating points that are fractions like n / 256, since they
+  # are RGB pixels. Some low-precision floating point types in this test can't
+  # handle arbitrary precision floating points well.
+  return np.random.randint(0, 256, shape) / 256.
+
+
 class RGBToHSVTest(XLATestCase):
 
   def testBatch(self):
@@ -43,7 +50,7 @@ class RGBToHSVTest(XLATestCase):
     shape = (batch_size, 2, 7, 3)
 
     for nptype in self.float_types:
-      inp = np.random.rand(*shape).astype(nptype)
+      inp = GenerateNumpyRandomRGB(shape).astype(nptype)
 
       # Convert to HSV and back, as a batch and individually
       with self.test_session() as sess:
@@ -83,7 +90,7 @@ class RGBToHSVTest(XLATestCase):
   def testRGBToHSVNumpy(self):
     """Tests the RGB to HSV conversion matches a reference implementation."""
     for nptype in self.float_types:
-      rgb_flat = np.random.random(64 * 3).reshape((64, 3)).astype(nptype)
+      rgb_flat = GenerateNumpyRandomRGB((64, 3)).astype(nptype)
       rgb_np = rgb_flat.reshape(4, 4, 4, 3)
       hsv_np = np.array([
           colorsys.rgb_to_hsv(

@@ -160,7 +160,7 @@ class ReduceJoinTest(UnicodeTestCase):
             separator=separator)
       if not reduction_indices:
         truth = constant_op.constant(truth)
-      truth_squeezed = array_ops.squeeze(truth, squeeze_dims=reduction_indices)
+      truth_squeezed = array_ops.squeeze(truth, axis=reduction_indices)
       output_array = output.eval()
       output_keep_dims_array = output_keep_dims.eval()
       truth_array = truth.eval()

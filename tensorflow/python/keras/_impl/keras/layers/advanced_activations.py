@@ -25,7 +25,7 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -64,7 +64,7 @@ class LeakyReLU(Layer):
     base_config = super(LeakyReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -119,7 +119,7 @@ class PReLU(Layer):
     else:
       self.shared_axes = list(shared_axes)
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     param_shape = list(input_shape[1:])
     self.param_broadcast = [False] * len(param_shape)
@@ -162,7 +162,7 @@ class PReLU(Layer):
     base_config = super(PReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -201,7 +201,7 @@ class ELU(Layer):
     base_config = super(ELU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -241,7 +241,7 @@ class ThresholdedReLU(Layer):
     base_config = super(ThresholdedReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -275,6 +275,6 @@ class Softmax(Layer):
     base_config = super(Softmax, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape

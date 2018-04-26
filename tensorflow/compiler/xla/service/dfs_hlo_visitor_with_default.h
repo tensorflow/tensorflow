@@ -158,9 +158,6 @@ class DfsHloVisitorWithDefaultBase
   Status HandleBroadcast(HloInstructionPtr broadcast) override {
     return DefaultAction(broadcast);
   }
-  Status HandleBroadcastDimOne(HloInstructionPtr broadcastDimOne) override {
-    return DefaultAction(broadcastDimOne);
-  }
   Status HandlePad(HloInstructionPtr pad) override {
     return DefaultAction(pad);
   }
