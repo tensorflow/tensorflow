@@ -643,7 +643,10 @@ py_test(
     size = "medium",
     srcs = ["_impl/keras/layers/wrappers_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "noasan",  # http://b/78599823
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
