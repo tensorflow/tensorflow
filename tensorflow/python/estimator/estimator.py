@@ -256,7 +256,6 @@ class Estimator(object):
 
     return public_model_fn
 
-  # TODO(ispir): support a list of names
   def get_variable_value(self, name):
     """Returns value of the variable given by name.
 
@@ -269,8 +268,17 @@ class Estimator(object):
     Raises:
       ValueError: If the Estimator has not produced a checkpoint yet.
     """
+    def _check_string_or_not(name):
+      if isinstance(name, six.string_types):
+        return name
+      e = "This function takes an input of type string or a list of strings"
+      raise TypeError(e)
+
     _check_checkpoint_available(self.model_dir)
-    return training.load_variable(self.model_dir, name)
+    if isinstance(name, six.string_types):
+      return training.load_variable(self.model_dir, name)
+    return {v: training.load_variable(self.model_dir, _check_string_or_not(v))\
+            for v in name}
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
