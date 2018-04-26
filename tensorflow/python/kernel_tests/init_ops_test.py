@@ -322,34 +322,19 @@ class UniformUnitScalingInitializationTest(test.TestCase):
 
   def testInitializerIdentical(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      init1 = init_ops.uniform_unit_scaling_initializer(seed=1, dtype=dtype)
-      init2 = init_ops.uniform_unit_scaling_initializer(seed=1, dtype=dtype)
+      init1 = init_ops.uniform_unit_scaling_initializer(
+          1.5, seed=1, dtype=dtype)
+      init2 = init_ops.uniform_unit_scaling_initializer(
+          1.5, seed=1, dtype=dtype)
       self.assertTrue(identicaltest(self, init1, init2))
-      init3 = init_ops.uniform_unit_scaling_initializer(
-          1.5, seed=1, dtype=dtype)
-      init4 = init_ops.uniform_unit_scaling_initializer(
-          1.5, seed=1, dtype=dtype)
-      self.assertTrue(identicaltest(self, init3, init4))
 
   def testInitializerDifferent(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      init1 = init_ops.uniform_unit_scaling_initializer(seed=1, dtype=dtype)
-      init2 = init_ops.uniform_unit_scaling_initializer(seed=2, dtype=dtype)
-      init3 = init_ops.uniform_unit_scaling_initializer(
+      init1 = init_ops.uniform_unit_scaling_initializer(
           1.5, seed=1, dtype=dtype)
+      init2 = init_ops.uniform_unit_scaling_initializer(
+          1.5, seed=2, dtype=dtype)
       self.assertFalse(identicaltest(self, init1, init2))
-      self.assertFalse(identicaltest(self, init1, init3))
-      self.assertFalse(identicaltest(self, init2, init3))
-
-  def testZeroSize(self):
-    shape = [0, 2]
-    with self.test_session():
-      x = variable_scope.get_variable(
-          "x",
-          shape=shape,
-          initializer=init_ops.uniform_unit_scaling_initializer())
-      variables.global_variables_initializer().run()
-      self.assertAllEqual(shape, x.eval().shape)
 
   def testDuplicatedInitializer(self):
     init = init_ops.uniform_unit_scaling_initializer()
@@ -361,39 +346,29 @@ class UniformUnitScalingInitializationTest(test.TestCase):
         init_ops.uniform_unit_scaling_initializer,
         dtype=dtypes.string)
 
+  def testZeroSize(self):
+    shape = [0, 2]
+    init = init_ops.uniform_unit_scaling_initializer()
+
+    with self.test_session(use_gpu=True):
+      x = init(shape).eval()
+
+    self.assertAllEqual(shape, x.shape)
+
 
 class VarianceScalingInitializationTest(test.TestCase):
 
   def testInitializerIdentical(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      init1 = init_ops.variance_scaling_initializer(seed=1, dtype=dtype)
-      init2 = init_ops.variance_scaling_initializer(seed=1, dtype=dtype)
+      init1 = init_ops.variance_scaling_initializer(1.5, seed=1, dtype=dtype)
+      init2 = init_ops.variance_scaling_initializer(1.5, seed=1, dtype=dtype)
       self.assertTrue(identicaltest(self, init1, init2))
-      init3 = init_ops.variance_scaling_initializer(
-          1.5, seed=1, dtype=dtype)
-      init4 = init_ops.variance_scaling_initializer(
-          1.5, seed=1, dtype=dtype)
-      self.assertTrue(identicaltest(self, init3, init4))
 
   def testInitializerDifferent(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      init1 = init_ops.variance_scaling_initializer(seed=1, dtype=dtype)
-      init2 = init_ops.variance_scaling_initializer(seed=2, dtype=dtype)
-      init3 = init_ops.variance_scaling_initializer(
-          1.5, seed=1, dtype=dtype)
+      init1 = init_ops.variance_scaling_initializer(1.5, seed=1, dtype=dtype)
+      init2 = init_ops.variance_scaling_initializer(1.5, seed=2, dtype=dtype)
       self.assertFalse(identicaltest(self, init1, init2))
-      self.assertFalse(identicaltest(self, init1, init3))
-      self.assertFalse(identicaltest(self, init2, init3))
-
-  def testZeroSize(self):
-    shape = [0, 2]
-    with self.test_session():
-      x = variable_scope.get_variable(
-          "x",
-          shape=shape,
-          initializer=init_ops.variance_scaling_initializer())
-      x.initializer.run()
-      self.assertAllEqual(shape, x.eval().shape)
 
   def testDuplicatedInitializer(self):
     init = init_ops.variance_scaling_initializer()
@@ -405,25 +380,38 @@ class VarianceScalingInitializationTest(test.TestCase):
         init_ops.variance_scaling_initializer,
         dtype=dtypes.string)
 
+  def testZeroSize(self):
+    shape = [0, 2]
+    init = init_ops.variance_scaling_initializer()
+
+    with self.test_session(use_gpu=True):
+      x = init(shape).eval()
+
+    self.assertAllEqual(shape, x.shape)
+
   def testNormalDistribution(self):
     shape = [100, 100]
     expect_mean = 0.
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution='normal')
+
     with self.test_session(use_gpu=True):
       x = init(shape).eval()
-      self.assertNear(np.mean(x), expect_mean, err=1e-2)
-      self.assertNear(np.var(x), expect_var, err=1e-2)
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
 
   def testUniformDistribution(self):
     shape = [100, 100]
     expect_mean = 0.
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution='uniform')
+
     with self.test_session(use_gpu=True):
       x = init(shape).eval()
-      self.assertNear(np.mean(x), expect_mean, err=1e-2)
-      self.assertNear(np.var(x), expect_var, err=1e-2)
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
 
 
 # TODO(vrv): move to sequence_ops_test?
