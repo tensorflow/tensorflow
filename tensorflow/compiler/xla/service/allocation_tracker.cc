@@ -31,52 +31,51 @@ limitations under the License.
 namespace xla {
 
 StatusOr<GlobalDataHandle> AllocationTracker::Register(
-    std::unique_ptr<ShapedBuffer> shaped_buffer, const string& tag) {
+    ShapedBuffer shaped_buffer, const string& tag) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "Register";
-  std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers;
+  std::vector<ShapedBuffer> replicated_buffers;
   replicated_buffers.emplace_back(std::move(shaped_buffer));
   return RegisterInternal(std::move(replicated_buffers), tag);
 }
 
 StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
-    std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
-    const string& tag) {
+    std::vector<ShapedBuffer> replicated_buffers, const string& tag) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "RegisterReplicatedBuffers";
   return RegisterInternal(std::move(replicated_buffers), tag);
 }
 
 StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
-    std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
-    const string& tag) {
+    std::vector<ShapedBuffer> replicated_buffers, const string& tag) {
   VLOG(2) << "RegisterInternal("
           << "tag: \"" << tag << "\" with " << replicated_buffers.size()
           << " shaped_buffers.";
   for (const auto& shaped_buffer : replicated_buffers) {
-    VLOG(2) << "shaped_buffer:" << *shaped_buffer;
-    if (shaped_buffer->platform() != backend_->platform()) {
+    VLOG(2) << "shaped_buffer:" << shaped_buffer;
+    if (shaped_buffer.platform() != backend_->platform()) {
       return InvalidArgument(
           "AllocationTracker for platform %s cannot register buffer from "
           "platform %s",
           backend_->platform()->Name().c_str(),
-          shaped_buffer->platform()->Name().c_str());
+          shaped_buffer.platform()->Name().c_str());
     }
   }
 
   int64 handle = next_handle_++;
   for (auto& shaped_buffer : replicated_buffers) {
     std::vector<ShapeIndex> shape_indices;
-    ShapeUtil::ForEachSubshape(shaped_buffer->on_device_shape(),
+    ShapeUtil::ForEachSubshape(shaped_buffer.on_device_shape(),
                                [this, &shape_indices](const Shape& /*subshape*/,
                                                       const ShapeIndex& index) {
                                  shape_indices.push_back(index);
                                });
     for (const ShapeIndex& index : shape_indices) {
-      AddAllocationOrIncrementRefCount(shaped_buffer->buffer(index),
-                                       shaped_buffer->device_ordinal());
+      AddAllocationOrIncrementRefCount(shaped_buffer.buffer(index),
+                                       shaped_buffer.device_ordinal());
     }
-    handle_to_shaped_buffers_[handle].emplace_back(std::move(shaped_buffer));
+    handle_to_shaped_buffers_[handle].emplace_back(
+        MakeUnique<ShapedBuffer>(std::move(shaped_buffer)));
   }
 
   GlobalDataHandle result;
@@ -146,13 +145,13 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   for (int i = 0;
        i < ShapeUtil::TupleElementCount(shaped_buffer->on_device_shape());
        ++i) {
-    auto element_buffer = MakeUnique<ShapedBuffer>(
+    auto element_buffer = ShapedBuffer(
         ShapeUtil::GetTupleElementShape(shaped_buffer->on_host_shape(), i),
         ShapeUtil::GetTupleElementShape(shaped_buffer->on_device_shape(), i),
         shaped_buffer->platform(), shaped_buffer->device_ordinal());
-    element_buffer->set_buffer(shaped_buffer->buffer(/*index=*/{i}),
-                               /*index=*/{});
-    std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers;
+    element_buffer.set_buffer(shaped_buffer->buffer(/*index=*/{i}),
+                              /*index=*/{});
+    std::vector<ShapedBuffer> replicated_buffers;
     replicated_buffers.emplace_back(std::move(element_buffer));
     TF_ASSIGN_OR_RETURN(
         GlobalDataHandle element_handle,
@@ -204,7 +203,7 @@ StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::ResolveInternal(
 }
 
 void AllocationTracker::AddAllocationOrIncrementRefCount(
-    perftools::gputools::DeviceMemoryBase device_memory, int device_ordinal) {
+    se::DeviceMemoryBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   if (it == allocation_map.end()) {
@@ -215,8 +214,8 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
   }
 }
 
-Status AllocationTracker::DecrementRefCount(
-    perftools::gputools::DeviceMemoryBase device_memory, int device_ordinal) {
+Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
+                                            int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   TF_RET_CHECK(it != allocation_map.end());

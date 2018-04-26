@@ -172,8 +172,18 @@ py_library(
     srcs = ["interleave_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":contrib_op_loader",
+        ":gen_dataset_ops",
+        ":random_ops",
+        "//tensorflow/contrib/stateless",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
     ],
 )
 
@@ -270,6 +280,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "writers",
+    srcs = [
+        "writers.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
 tf_gen_op_wrapper_py(
     name = "gen_dataset_ops",
     out = "gen_dataset_ops.py",
@@ -332,6 +354,7 @@ py_library(
         ":stats_ops",
         ":threadpool",
         ":unique",
+        ":writers",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",

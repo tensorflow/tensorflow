@@ -7,7 +7,6 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "estimator_py",
@@ -25,7 +24,6 @@ py_library(
         ":linear",
         ":model_fn",
         ":parsing_utils",
-        ":replicate_model_fn",
         ":run_config",
         ":training",
         "//tensorflow/python:util",
@@ -207,6 +205,7 @@ py_test(
         "no_pip",
         "noasan",  # test flakily times out in asan mode.
         "notsan",  # b/67510291
+        "optonly",  # flakily times out in fastbuild
     ],
     deps = [
         ":baseline",
@@ -907,70 +906,5 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
-    ],
-)
-
-py_library(
-    name = "replicate_model_fn",
-    srcs = [
-        "replicate_model_fn.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":export_output",
-        ":model_fn",
-        ":util",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:device",
-        "//tensorflow/python:device_lib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/ops/losses",
-        "@six_archive//:six",
-    ],
-)
-
-cuda_py_test(
-    name = "replicate_model_fn_test",
-    size = "medium",
-    srcs = ["replicate_model_fn_test.py"],
-    additional_deps = [
-        "//tensorflow/python/estimator",
-        ":dnn",
-        ":export_export",
-        ":export_output",
-        ":model_fn",
-        ":numpy_io",
-        ":optimizers",
-        ":prediction_keys",
-        "//tensorflow/python/feature_column",
-        "//tensorflow/python/ops/losses",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        ":replicate_model_fn",
-    ],
-    tags = [
-        "multi_gpu",
-        "noasan",  # flaky time outs
-        "notsan",  # flaky
     ],
 )

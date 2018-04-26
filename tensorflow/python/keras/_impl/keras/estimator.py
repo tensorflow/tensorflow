@@ -29,12 +29,14 @@ from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import models
 from tensorflow.python.keras._impl.keras import optimizers
 from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
 from tensorflow.python.keras._impl.keras.engine.network import Network
 from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.ops import variables as variables_module
@@ -53,6 +55,17 @@ def _cast_tensor_to_floatx(x):
     return x
   else:
     return math_ops.cast(x, K.floatx())
+
+
+def _convert_tensor(x):
+  """Create or cast tensor if needed."""
+  if not tensor_util.is_tensor(x):
+    # x is a numpy array
+    x = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(x)
+  if check_ops.is_numeric_tensor(x):
+    # is_numeric_tensor returns False if provided with a numpy array
+    x = _cast_tensor_to_floatx(x)
+  return x
 
 
 def _any_variable_initalized():
@@ -86,7 +99,7 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
   if isinstance(estimator_io, (list, tuple)):
     # Case currently not supported by most built-in input_fn,
     # but it's good to have for sanity
-    return [_cast_tensor_to_floatx(x) for x in estimator_io]
+    return [_convert_tensor(x) for x in estimator_io]
   elif isinstance(estimator_io, dict):
     if is_input:
       if keras_model._is_graph_network:
@@ -108,12 +121,12 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
             'It needs to match one '
             'of the following: %s' % ('input' if is_input else 'output', key,
                                       ', '.join(keras_io_names)))
-      tensors = [_cast_tensor_to_floatx(estimator_io[io_name])
+      tensors = [_convert_tensor(estimator_io[io_name])
                  for io_name in keras_io_names]
     return tensors
   else:
     # Plain array.
-    return _cast_tensor_to_floatx(estimator_io)
+    return _convert_tensor(estimator_io)
 
 
 def _in_place_subclassed_model_reset(model):
@@ -274,8 +287,7 @@ def _clone_and_build_model(mode,
                                         is_input=False)
   else:
     target_tensors = [
-        _cast_tensor_to_floatx(
-            sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(labels))
+        _convert_tensor(labels)
     ]
 
   if keras_model._is_graph_network:

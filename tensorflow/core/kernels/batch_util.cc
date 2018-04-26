@@ -78,14 +78,44 @@ Status HandleElementToSlice<Variant>(Tensor element, Tensor* parent,
   return Status::OK();
 }
 
-// TODO(jsimsa): Add HandleElementToSlice<variant> specialization that moves
-// the data when possible.
+// TODO(b/78245576): Consider removing this overload.
+template <typename T>
+void HandleSliceToElement(const Tensor& parent, Tensor* element, int64 index) {
+  element->flat<T>() = parent.flat_outer_dims<T>().chip(index, 0);
+}
 
 template <typename T>
-static Status HandleSliceToElement(const Tensor& parent, Tensor* element,
-                                   int64 index) {
-  element->flat<T>() = parent.flat_outer_dims<T>().chip(index, 0);
-  return Status::OK();
+void HandleSliceToElement(Tensor* parent, Tensor* element, int64 index,
+                          bool can_move) {
+  element->flat<T>() = parent->flat_outer_dims<T>().chip(index, 0);
+}
+
+template <>
+void HandleSliceToElement<string>(Tensor* parent, Tensor* element, int64 index,
+                                  bool can_move) {
+  auto parent_as_matrix = parent->flat_outer_dims<string>();
+  auto element_flat = element->flat<string>();
+  if (can_move) {
+    for (int64 i = 0; i < element->NumElements(); ++i) {
+      element_flat(i) = std::move(parent_as_matrix(index, i));
+    }
+  } else {
+    element_flat = parent_as_matrix.chip(index, 0);
+  }
+}
+
+template <>
+void HandleSliceToElement<Variant>(Tensor* parent, Tensor* element, int64 index,
+                                   bool can_move) {
+  auto parent_as_matrix = parent->flat_outer_dims<Variant>();
+  auto element_flat = element->flat<Variant>();
+  if (can_move) {
+    for (int64 i = 0; i < element->NumElements(); ++i) {
+      element_flat(i) = std::move(parent_as_matrix(index, i));
+    }
+  } else {
+    element_flat = parent_as_matrix.chip(index, 0);
+  }
 }
 
 }  // namespace
@@ -115,9 +145,10 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index) {
 Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index) {
   TF_RETURN_IF_ERROR(ValidateInput(parent, *element, index));
 
-#define HANDLE_TYPE(T)                                      \
-  case DataTypeToEnum<T>::value: {                          \
-    return HandleSliceToElement<T>(parent, element, index); \
+#define HANDLE_TYPE(T)                               \
+  case DataTypeToEnum<T>::value: {                   \
+    HandleSliceToElement<T>(parent, element, index); \
+    return Status::OK();                             \
   }
 
   switch (parent.dtype()) {
@@ -127,6 +158,30 @@ Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index) {
     default:
       return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
                                    element->dtype());
+  }
+}
+
+// Copies the index^th slice of parent (in the 0th dimension) into element.
+//
+// NOTE(mrry): The implementation may be able to optimize the copy to a move.
+// This is particularly important for DT_STRING tensors.
+Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index) {
+  TF_RETURN_IF_ERROR(ValidateInput(*parent, *element, index));
+  bool can_move = parent->RefCountIsOne();
+
+#define HANDLE_TYPE(T)                                         \
+  case DataTypeToEnum<T>::value: {                             \
+    HandleSliceToElement<T>(parent, element, index, can_move); \
+    return Status::OK();                                       \
+  }
+
+  switch (parent->dtype()) {
+    TF_CALL_ALL_TYPES(HANDLE_TYPE);
+    TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
+#undef HANDLE_TYPE
+    default:
+      return errors::Unimplemented(
+          "MaybeMoveSliceToElement Unhandled data type: ", element->dtype());
   }
 }
 

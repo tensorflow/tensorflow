@@ -38,6 +38,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -69,9 +70,22 @@ def capture_value(tensor_map, value, dtype, name):
     captured_value = graph_placeholder(
         dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes_module.resource:
-      handle_data = value._handle_data  # pylint: disable=protected-access
-      captured_value._handle_data = handle_data  # pylint: disable=protected-access
+      if ops._USE_C_SHAPES:  # pylint: disable=protected-access
+        if isinstance(value, ops.EagerTensor):
+          handle_data = value._handle_data  # pylint: disable=protected-access
+        else:
+          handle_data = resource_variable_ops.get_resource_handle_data(value)
+      else:
+        handle_data = value._handle_data  # pylint: disable=protected-access
       if handle_data is not None and handle_data.is_set:
+        # pylint: disable=protected-access
+        if ops._USE_C_SHAPES:
+          pywrap_tensorflow.TFE_SetResourceHandleShapeAndType(
+              captured_value.graph._c_graph, captured_value._as_tf_output(),
+              handle_data.SerializeToString())
+        else:
+          captured_value._handle_data = handle_data
+        # pylint: enable=protected-access
         # Ensure that shapes and dtypes are propagated.
         shapes, types = zip(*[(pair.shape, pair.dtype)
                               for pair in handle_data.shape_and_type])

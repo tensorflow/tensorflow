@@ -319,7 +319,7 @@ class LocalBufferTest(LocalComputationTest):
 
   def _Execute(self, c, arguments):
     compiled_c = c.Build().CompileWithExampleArguments(arguments)
-    arg_buffers = [xla_client.LocalBuffer.from_py(arg) for arg in arguments]
+    arg_buffers = [xla_client.LocalBuffer.from_pyval(arg) for arg in arguments]
     result_buffer = compiled_c.ExecuteWithLocalBuffers(arg_buffers)
     return result_buffer.to_py()
 
@@ -350,7 +350,7 @@ class LocalBufferTest(LocalComputationTest):
     c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)), c.ConstantF32Scalar(3.14))
     arg = NumpyArrayF32(1.11)
     compiled_c = c.Build().CompileWithExampleArguments([arg])
-    arg_buffer = xla_client.LocalBuffer.from_py(arg)
+    arg_buffer = xla_client.LocalBuffer.from_pyval(arg)
     arg_buffer.delete()
     with self.assertRaises(ValueError):
       compiled_c.ExecuteWithLocalBuffers([arg_buffer])
@@ -1161,7 +1161,6 @@ class EmbeddedComputationsTest(LocalComputationTest):
           c, expected=np.sum(input_array, axis=tuple(dims)))
 
     _ReduceAndTest(0)
-    _ReduceAndTest(0)
     _ReduceAndTest(0, 1)
     _ReduceAndTest(0, 2)
     _ReduceAndTest(1, 2)
@@ -1288,7 +1287,7 @@ class EmbeddedComputationsTest(LocalComputationTest):
   def testInfeedS32Values(self):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    c.Infeed(xla_client.Shape.from_numpy(to_infeed[0]))
+    c.Infeed(xla_client.Shape.from_pyval(to_infeed[0]))
     compiled_c = c.Build().CompileWithExampleArguments()
     for item in to_infeed:
       xla_client.transfer_to_infeed(item)
@@ -1300,7 +1299,7 @@ class EmbeddedComputationsTest(LocalComputationTest):
   def testInfeedThenOutfeedS32(self):
     to_round_trip = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    x = c.Infeed(xla_client.Shape.from_numpy(to_round_trip[0]))
+    x = c.Infeed(xla_client.Shape.from_pyval(to_round_trip[0]))
     c.Outfeed(x)
 
     compiled_c = c.Build().CompileWithExampleArguments()
@@ -1310,7 +1309,7 @@ class EmbeddedComputationsTest(LocalComputationTest):
       execution.start()
       xla_client.transfer_to_infeed(want)
       got = xla_client.transfer_from_outfeed(
-          xla_client.Shape.from_numpy(to_round_trip[0]))
+          xla_client.Shape.from_pyval(to_round_trip[0]))
       execution.join()
       self.assertEqual(want, got)
 

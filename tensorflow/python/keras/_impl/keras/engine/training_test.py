@@ -23,13 +23,17 @@ import unittest
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
   import scipy.sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
@@ -1684,15 +1688,101 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.train_on_batch([input_a_np, input_b_np],
                            [output_a_np, output_b_np])
 
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_metric_names_are_identical_in_graph_and_eager(self):
+    a = keras.layers.Input(shape=(3,), name='input_a')
+    b = keras.layers.Input(shape=(3,), name='input_b')
+
+    dense = keras.layers.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+    model = keras.models.Model([a, b], [d, e])
+
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    loss = 'mse'
+    loss_weights = [1., 0.5]
+    metrics = ['mae', 'acc']
+    model.compile(optimizer, loss, metrics=metrics, loss_weights=loss_weights)
+    reference_metric_names = ['loss', 'dense_loss', 'dropout_loss',
+                              'dense_mean_absolute_error',
+                              'dense_acc',
+                              'dropout_mean_absolute_error',
+                              'dropout_acc']
+    self.assertEqual(reference_metric_names, model.metrics_names)
+
+
+class TestTrainingWithDatasetIterators(test.TestCase):
+
+  def test_training_and_eval_methods_on_iterators_single_io(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((10, 3))
+      targets = np.zeros((10, 4))
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+      iterator = dataset.make_one_shot_iterator()
+
+      model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=0)
+      model.evaluate(iterator, steps=2, verbose=0)
+      model.predict(iterator, steps=2)
+      model.train_on_batch(iterator)
+      model.test_on_batch(iterator)
+      # Test with validation data
+      model.fit(iterator,
+                epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=iterator, validation_steps=2)
+      # Test with validation split
+      with self.assertRaisesRegexp(ValueError,
+                                   'you cannot use `validation_split`'):
+        model.fit(iterator,
+                  epochs=1, steps_per_epoch=2, verbose=0,
+                  validation_split=0.5, validation_steps=2)
+
+      # Test invalid usage
+      with self.assertRaisesRegexp(ValueError,
+                                   'Instead, pass an `Iterator`'):
+        model.fit(dataset,
+                  epochs=1, steps_per_epoch=2, verbose=0)
+      with self.assertRaisesRegexp(ValueError,
+                                   'you should not specify a target'):
+        model.fit(iterator, iterator,
+                  epochs=1, steps_per_epoch=2, verbose=0)
+
+  def test_iterators_running_out_of_data(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((10, 3))
+      targets = np.zeros((10, 4))
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.repeat(2)
+      dataset = dataset.batch(10)
+      iterator = dataset.make_one_shot_iterator()
+
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.fit(iterator, epochs=1, steps_per_epoch=3, verbose=0)
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'dataset iterator ran out of data')
+
 
 if __name__ == '__main__':
-  # Bazel sets these environment variables to very long paths.
-  # Tempfile uses them to create long paths, and in turn multiprocessing
-  # library tries to create sockets named after paths. Delete whatever bazel
-  # writes to these to avoid tests failing due to socket addresses being too
-  # long.
-  for var in ('TMPDIR', 'TMP', 'TEMP'):
-    if var in os.environ:
-      del os.environ[var]
-
   test.main()

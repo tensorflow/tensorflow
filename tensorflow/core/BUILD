@@ -160,6 +160,7 @@ exports_files(["ops/ops.pbtxt"])
 #
 # Note that some protos are in neither additional_core_proto_srcs nor this
 # filegroup; e.g.  ones with individual proto_library targets.
+# LINT.IfChange
 CORE_PROTO_SRCS = [
     "example/example.proto",
     "example/feature.proto",
@@ -201,6 +202,7 @@ CORE_PROTO_SRCS = [
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
 ]
+# LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
 
 # Protos which are not needed on mobile builds, but should be included in
 # protos_all.
@@ -351,7 +353,9 @@ cc_library(
         "lib/bfloat16/bfloat16.h",
     ] + tf_additional_proto_hdrs() + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
-    deps = tf_lib_proto_parsing_deps(),
+    deps = tf_lib_proto_parsing_deps() + [
+        "@double_conversion//:double-conversion",
+    ],
 )
 
 # This build rule (along with :lib_internal, :framework, and
@@ -561,6 +565,7 @@ tf_cuda_library(
         "framework/selective_registration.h",
         "framework/session_state.h",
         "framework/shape_inference.h",
+        "framework/stats_aggregator.h",
         "framework/tensor.h",
         "framework/tensor_shape.h",
         "framework/tensor_slice.h",
@@ -1244,6 +1249,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1283,6 +1289,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1346,6 +1353,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1368,6 +1376,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1764,6 +1773,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
         "@zlib_archive//:zlib",
+        "@double_conversion//:double-conversion",
         "@protobuf_archive//:protobuf",
     ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
 )
@@ -2269,6 +2279,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/allocator_retry.h",
     "common_runtime/base_collective_executor.h",
     "common_runtime/bfc_allocator.h",
+    "common_runtime/broadcaster.h",
     "common_runtime/buf_rendezvous.h",
     "common_runtime/build_graph_options.h",
     "common_runtime/collective_executor_mgr.h",
@@ -2316,6 +2327,7 @@ tf_cuda_library(
         "common_runtime/allocator_retry.cc",
         "common_runtime/base_collective_executor.cc",
         "common_runtime/bfc_allocator.cc",
+        "common_runtime/broadcaster.cc",
         "common_runtime/buf_rendezvous.cc",
         "common_runtime/build_graph_options.cc",
         "common_runtime/collective_executor_mgr.cc",
@@ -2773,7 +2785,6 @@ tf_cc_tests(
         "lib/monitoring/sampler_test.cc",
         "lib/random/distribution_sampler_test.cc",
         "lib/random/philox_random_test.cc",
-        "lib/random/random_distributions_test.cc",
         "lib/random/random_test.cc",
         "lib/random/simple_philox_test.cc",
         "lib/strings/base64_test.cc",
@@ -2792,6 +2803,21 @@ tf_cc_tests(
         "platform/stacktrace_handler_test.cc",
         "platform/subprocess_test.cc",
     ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "lib_random_random_distributions_test",
+    srcs = ["lib/random/random_distributions_test.cc"],
+    tags = ["optonly"],
     deps = [
         ":lib",
         ":lib_internal",
@@ -3116,6 +3142,34 @@ tf_cc_tests_gpu(
     size = "medium",
     srcs = [
         "common_runtime/ring_reducer_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":all_kernels",
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":protos_test_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+    ],
+)
+
+tf_cc_tests_gpu(
+    name = "broadcaster_test",
+    size = "small",
+    srcs = [
+        "common_runtime/broadcaster_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),

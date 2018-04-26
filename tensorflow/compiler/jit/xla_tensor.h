@@ -64,9 +64,9 @@ class XlaTensor {
     return *shaped_buffer_;
   }
   // Mutates the TensorInfo to set the ShapedBuffer.
-  void set_shaped_buffer(
-      std::unique_ptr<xla::ScopedShapedBuffer> shaped_buffer) {
-    shaped_buffer_ = std::move(shaped_buffer);
+  void set_shaped_buffer(xla::ScopedShapedBuffer shaped_buffer) {
+    shaped_buffer_ =
+        xla::MakeUnique<xla::ScopedShapedBuffer>(std::move(shaped_buffer));
   }
 
   // Some tensors on the device may have known values on the host. We use these

@@ -59,6 +59,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           l1=0.0,
           l2=0.0,
           tree_complexity=0.0,
+          min_node_weight=0,
           max_splits=max_splits)
 
       self.assertAllEqual([[1, 2], [1, 2]], sess.run(node_ids_list))
@@ -106,6 +107,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           l1=0.0,
           l2=0.1,
           tree_complexity=0.0,
+          min_node_weight=0,
           max_splits=max_splits)
 
       self.assertAllEqual([[1, 2], [1, 2]], sess.run(node_ids_list))
@@ -154,6 +156,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           l1=l1,
           l2=0.0,
           tree_complexity=0.0,
+          min_node_weight=0,
           max_splits=max_splits)
 
       self.assertAllEqual([[0, 1], [1, 1]], sess.run(thresholds_list))
@@ -205,6 +208,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           l1=0.0,
           l2=l2,
           tree_complexity=tree_complexity,
+          min_node_weight=0,
           max_splits=max_splits)
 
       self.assertAllEqual([[1, 2], [1, 2]], sess.run(node_ids_list))
@@ -218,6 +222,53 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([[[0.], [.485294]], [[-.5], [-.6]]],
                           sess.run(left_node_contribs_list))
       self.assertAllClose([[[-.424658], [-.6]], [[-.043478], [.485294]]],
+                          sess.run(right_node_contribs_list))
+
+  def testCalculateBestGainsWithMinNodeWEight(self):
+    """Testing Gain calculation without any regularization."""
+    with self.test_session() as sess:
+      max_splits = 7
+      node_id_range = [1, 3]  # node 1 through 2 will be processed.
+      stats_summary_list = [
+          [
+              [[0., 0.], [.08, .09], [0., 0.], [0., 0.]],  # node 0; ignored
+              [[0., 0.], [.15, .036], [.06, .07], [.1, .2]],  # node 1
+              [[0., 0.], [-.33, .68], [0., 0.], [.3, .4]],  # node 2
+              [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 3; ignored
+              [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
+              [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
+              [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
+          ],  # feature 0
+          [
+              [[0., 0.], [0., 0.], [.08, .09], [0., 0.]],  # node 0; ignored
+              [[0., 0.], [.3, .5], [-.05, .6], [.06, .07]],  # node 1
+              [[.1, .1], [.2, .03], [-.4, .05], [.07, .08]],  # node 2
+              [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 3; ignored
+              [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
+              [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
+              [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
+          ],  # feature 1
+      ]  # num_features * shape=[max_splits, num_buckets, 2]
+
+      (node_ids_list, gains_list, thresholds_list, left_node_contribs_list,
+       right_node_contribs_list
+      ) = boosted_trees_ops.calculate_best_gains_per_feature(
+          node_id_range,
+          stats_summary_list,
+          l1=0.0,
+          l2=0.0,
+          tree_complexity=0.0,
+          min_node_weight=1,
+          max_splits=max_splits)
+
+      # We can't split node 1 on feature 1 and node 2 on feature 2 because of
+      # the min node weight.
+      self.assertAllEqual([[2], [1]], sess.run(node_ids_list))
+      self.assertAllClose([[0.384314], [0.098013]], sess.run(gains_list))
+      self.assertAllEqual([[1], [1]], sess.run(thresholds_list))
+      self.assertAllClose([[[0.4852941]], [[-.6]]],
+                          sess.run(left_node_contribs_list))
+      self.assertAllClose([[[-0.75]], [[-0.014925]]],
                           sess.run(right_node_contribs_list))
 
   def testMakeStatsSummarySimple(self):

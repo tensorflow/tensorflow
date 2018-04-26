@@ -182,7 +182,10 @@ class GraphOptimizerStage {
     return ::tensorflow::grappler::AddEmptyNode(ctx_, name);
   }
 
- protected:  // Data members
+ protected:
+  const GraphOptimizerContext& ctx() const { return ctx_; }
+
+ private:  // Data members
   const string optimizer_name_;
   const string stage_name_;
   const GraphOptimizerContext ctx_;
@@ -238,6 +241,14 @@ class GraphOptimizerStagePipeline {
   }
 
   std::size_t NumStages() { return stages_.size(); }
+
+  std::vector<string> StageNames() {
+    std::vector<string> names;
+    for (const auto& stage : stages_) {
+      names.push_back(stage->stage_name());
+    }
+    return names;
+  }
 
  private:
   std::vector<std::unique_ptr<GraphOptimizerStage<Result>>> stages_;

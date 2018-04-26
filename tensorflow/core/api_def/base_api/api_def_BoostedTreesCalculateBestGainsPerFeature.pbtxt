@@ -13,6 +13,30 @@ END
 A list of Rank 3 tensor (#shape=[max_splits, bucket, 2]) for accumulated stats summary (gradient/hessian) per node per buckets for each feature. The first dimension of the tensor is the maximum number of splits, and thus not all elements of it will be used, but only the indexes specified by node_ids will be used.
 END
   }
+  in_arg {
+    name: "l1"
+    description: <<END
+l1 regularization factor on leaf weights, per instance based.
+END
+  }
+  in_arg {
+    name: "l2"
+    description: <<END
+l2 regularization factor on leaf weights, per instance based.
+END
+  }
+  in_arg {
+    name: "tree_complexity"
+    description: <<END
+adjustment to the gain, per leaf based.
+END
+  }
+  in_arg {
+    name: "min_node_weight"
+    description: <<END
+mininum avg of hessians in a node before required for the node to be considered for splitting.
+END
+  }
   out_arg {
     name: "node_ids_list"
     description: <<END
@@ -41,24 +65,6 @@ END
     name: "right_node_contribs_list"
     description: <<END
 A list of Rank 2 tensors, with the same shape/conditions as left_node_contribs_list, but just that the value is for the right node.
-END
-  }
-  attr {
-    name: "l1"
-    description: <<END
-l1 regularization factor on leaf weights, per instance based.
-END
-  }
-  attr {
-    name: "l2"
-    description: <<END
-l2 regularization factor on leaf weights, per instance based.
-END
-  }
-  attr {
-    name: "tree_complexity"
-    description: <<END
-adjustment to the gain, per leaf based.
 END
   }
   attr {

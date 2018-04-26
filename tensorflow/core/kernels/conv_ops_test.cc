@@ -22,20 +22,28 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
 
-#include "tensorflow/core/kernels/conv_ops_gpu.h"
-
 namespace tensorflow {
 
 #if GOOGLE_CUDA
 
+struct ConvParametersPeer {
+  template <typename T>
+  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() {
+    return params.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
+  }
+
+  ConvParameters params;
+};
+
 TEST(ConvParameters, WinogradNonfusedAlgoSize) {
-  ConvParameters conv_params_small = {
+  ConvParametersPeer conv_params_small = {{
       1,         // batch
       32,        // in_depths
       {{300,     // in_rows
@@ -51,10 +59,11 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
         0}},     // padding_cols
       DT_FLOAT,  // tensor datatype
       0,         // device_id
-  };
-  EXPECT_TRUE(conv_params_small.ShouldIncludeWinogradNonfusedAlgo<float>());
+  }};
+  EXPECT_TRUE(
+      conv_params_small.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
 
-  ConvParameters conv_params_large = {
+  ConvParametersPeer conv_params_large = {{
       1,         // batch
       128,       // in_depths
       {{300,     // in_rows
@@ -70,8 +79,9 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
         0}},     // padding_cols
       DT_FLOAT,  // tensor datatype
       0,         // device_id
-  };
-  EXPECT_FALSE(conv_params_large.ShouldIncludeWinogradNonfusedAlgo<float>());
+  }};
+  EXPECT_FALSE(
+      conv_params_large.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
 }
 
 #endif  // GOOGLE_CUDA

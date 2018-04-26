@@ -4,16 +4,14 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-package(
-    default_visibility = [
-        "//engedu/ml/tf_from_scratch:__pkg__",
-        "//tensorflow:internal",
-        "//tensorflow/contrib/lite/toco/python:__pkg__",
-        "//tensorflow_models:__subpackages__",
-        # TODO(aselle): to pass open source test.
-        "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
-    ],
-)
+package(default_visibility = [
+    "//engedu/ml/tf_from_scratch:__pkg__",
+    "//tensorflow:internal",
+    "//tensorflow/contrib/lite/toco/python:__pkg__",
+    "//tensorflow_models:__subpackages__",
+    # TODO(aselle): to pass open source test.
+    "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -1795,6 +1793,16 @@ py_library(
 )
 
 py_library(
+    name = "cudnn_rnn_grad",
+    srcs = ["ops/cudnn_rnn_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        "//tensorflow/python:cudnn_rnn_ops_gen",
+    ],
+)
+
+py_library(
     name = "data_flow_grad",
     srcs = ["ops/data_flow_grad.py"],
     srcs_version = "PY2AND3",
@@ -1937,7 +1945,8 @@ py_library(
         ":array_ops",
         ":constant_op",
         ":dtypes",
-        ":linalg_ops",
+        ":linalg_ops_gen",
+        ":linalg_ops_impl",
         ":math_ops",
         ":nn_ops",
         ":random_ops",
@@ -1988,7 +1997,22 @@ py_library(
         ":array_ops",
         ":dtypes",
         ":framework_ops",
+        ":functional_ops",
         ":linalg_ops_gen",
+        ":linalg_ops_impl",
+        ":math_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "linalg_ops_impl",
+    srcs = ["ops/linalg_ops_impl.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":dtypes",
+        ":framework_ops",
         ":math_ops",
         "//third_party/py/numpy",
     ],
@@ -2467,6 +2491,7 @@ py_library(
         ":clip_ops",
         ":confusion_matrix",
         ":control_flow_ops",
+        ":cudnn_rnn_grad",
         ":data_flow_grad",
         ":data_flow_ops",
         ":framework_for_generated_wrappers",
@@ -2793,7 +2818,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/image_ops_test.py"],
     additional_deps = [
         ":array_ops",
@@ -3039,6 +3064,7 @@ py_library(
         ":state_ops",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/data",
         "//tensorflow/python/ops/losses",
     ],
 )
@@ -3482,6 +3508,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/eager:python_eager_op_gen",
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
@@ -4324,7 +4351,7 @@ py_test(
 
 tf_py_test(
     name = "input_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/input_test.py"],
     additional_deps = [
         ":array_ops",

@@ -1193,6 +1193,10 @@ XlaOp XlaBuilder::Sign(const XlaOp& operand) {
   return UnaryOp(HloOpcode::kSign, operand);
 }
 
+XlaOp XlaBuilder::Clz(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kClz, operand);
+}
+
 XlaOp XlaBuilder::Cos(const XlaOp& operand) {
   return UnaryOp(HloOpcode::kCos, operand);
 }

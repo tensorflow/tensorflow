@@ -49,8 +49,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace cpu {
 
@@ -325,7 +323,7 @@ const void** Executor::GetOperandBuffers(HloInstruction* instruction) {
 
 Status ParallelCpuExecutable::AllocateBuffers(
     DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* buffers) {
+    std::vector<se::DeviceMemoryBase>* buffers) {
   CHECK_EQ(buffers->size(), assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
           << " allocations for module " << module().name();
@@ -449,7 +447,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
+StatusOr<ShapedBuffer> ParallelCpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -461,7 +459,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
 
-  auto result_buffer = MakeUnique<ShapedBuffer>(
+  ShapedBuffer result_buffer(
       /*on_host_shape=*/result_shape(), /*on_device_shape=*/result_shape(),
       stream->parent()->platform(), stream->parent()->device_ordinal());
 
@@ -474,7 +472,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   // Copy DeviceMemoryBase values which into the respective location in
   // ShapedBuffer which is returned to the caller.
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
-  TF_RETURN_IF_ERROR(result_buffer->buffers().ForEachMutableElementWithStatus(
+  TF_RETURN_IF_ERROR(result_buffer.buffers().ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
 
@@ -513,8 +511,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   return std::move(result_buffer);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>>
-ParallelCpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ShapedBuffer> ParallelCpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.
