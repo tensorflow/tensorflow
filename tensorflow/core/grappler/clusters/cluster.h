@@ -95,9 +95,7 @@ class Cluster {
 
   // The DeviceSet is not always available, but when it is it contains a
   // superset of the devices listed in GetDevices/GetDeviceNames().
-  const DeviceSet* GetDeviceSet() const {
-    return device_set_;
-  }
+  const DeviceSet* GetDeviceSet() const { return device_set_; }
 
   // Enables collecting the allocator stats. Call with enable=true must be made
   // before Provision().
