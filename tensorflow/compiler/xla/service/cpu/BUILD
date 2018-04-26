@@ -169,6 +169,7 @@ cc_library(
         ":orc_jit_memory_mapper",
         ":runtime_fp16",
         ":runtime_conv2d",
+        ":runtime_conv2d_mkl",
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_matmul",
@@ -468,6 +469,27 @@ cc_library(
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ],
+)
+
+cc_library(
+    name = "runtime_conv2d_mkl",
+    srcs = [
+        "runtime_conv2d_mkl.cc",
+    ],
+    hdrs = ["runtime_conv2d_mkl.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_conv2d",
+        ":runtime_single_threaded_conv2d",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/kernels:eigen_helpers",
+        "//third_party/eigen3",
+    ] + if_mkl([
+        "@mkl_dnn",
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 cc_library(
