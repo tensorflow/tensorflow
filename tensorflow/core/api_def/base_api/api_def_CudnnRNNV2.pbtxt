@@ -1,12 +1,13 @@
 op {
-  graph_op_name: "CudnnRNN"
+  graph_op_name: "CudnnRNNV2"
+  visibility: HIDDEN
   summary: "A RNN backed by cuDNN."
   description: <<END
 Computes the RNN from the input and initial states, with respect to the params
-buffer.
+buffer. Produces one extra output "host_reserved" than CudnnRNN.
 
 rnn_mode: Indicates the type of the RNN model.
-input_mode: Indicate whether there is a linear projection between the input and
+input_mode: Indicates whether there is a linear projection between the input and
   the actual computation before the first layer. 'skip_input' is only allowed
   when input_size == num_units; 'auto_select' implies 'skip_input' when
   input_size == num_units; otherwise, it implies 'linear_input'.
@@ -31,6 +32,9 @@ output_c: The same shape as input_c for LSTM. An empty tensor for other models.
 is_training: Indicates whether this operation is used for inferenece or
   training.
 reserve_space: An opaque tensor that can be used in backprop calculation. It
-  is only produced if is_training is false.
+  is only produced if is_training is true.
+host_reserved: An opaque tensor that can be used in backprop calculation. It is
+  only produced if is_training is true. It is output on host memory rather than
+  device memory.
 END
 }

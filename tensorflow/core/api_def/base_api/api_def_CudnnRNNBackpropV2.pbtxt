@@ -1,11 +1,14 @@
 op {
-  graph_op_name: "CudnnRNNBackprop"
+  graph_op_name: "CudnnRNNBackpropV2"
+  visibility: HIDDEN
   summary: "Backprop step of CudnnRNN."
   description: <<END
-Compute the backprop of both data and weights in a RNN.
+Compute the backprop of both data and weights in a RNN. Takes an extra
+    "host_reserved" inupt than CudnnRNNBackprop, which is used to determine RNN
+    cudnnRNNAlgo_t and cudnnMathType_t.
 
 rnn_mode: Indicates the type of the RNN model.
-input_mode: Indicate whether there is a linear projection between the input and
+input_mode: Indicates whether there is a linear projection between the input and
     the actual computation before the first layer. 'skip_input' is only allowed
     when input_size == num_units; 'auto_select' implies 'skip_input' when
     input_size == num_units; otherwise, it implies 'linear_input'.
@@ -32,7 +35,8 @@ output_h_backprop: A 3-D tensor with the same shape as output_h in the forward
     pass.
 output_c_backprop: A 3-D tensor with the same shape as output_c in the forward
     pass.
-reserve_space: The same reserve_space produced in for forward operation.
+reserve_space: The same reserve_space produced in the forward operation.
+host_reserved: The same host_reserved produced in the forward operation.
 input_backprop: The backprop to input in the forward pass. Has the same shape
     as input.
 input_h_backprop: The backprop to input_h in the forward pass. Has the same
