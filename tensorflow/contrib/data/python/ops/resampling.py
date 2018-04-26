@@ -58,62 +58,7 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
 
     # Get initial distribution.
     if initial_dist is not None:
-      initial_dist_t = ops.convert_to_tensor(
-          initial_dist, name="initial_dist")
-      acceptance_dist = _calculate_acceptance_probs(initial_dist_t,
-                                                    target_dist_t)
-      initial_dist_ds = dataset_ops.Dataset.from_tensors(
-          initial_dist_t).repeat()
-      acceptance_dist_ds = dataset_ops.Dataset.from_tensors(
-          acceptance_dist).repeat()
-    else:
-      initial_dist_ds = _estimate_initial_dist_ds(
-          target_dist_t, class_values_ds)
-      acceptance_dist_ds = initial_dist_ds.map(
-          lambda initial: _calculate_acceptance_probs(initial, target_dist_t))
-    return _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds,
-                      class_values_ds, seed)
-
-  return _apply_fn
-
-
-def rejection_resample_v2(class_func, target_dist, initial_dist=None,
-                          seed=None):
-  """A transformation that resamples a dataset to achieve a target distribution.
-
-  This differs from v1 in that it will also sample from the original dataset
-  with some probability, so it makes strictly fewer data rejections. Due to an
-  implementation detail it must initialize a separate dataset initializer, so
-  the dataset becomes stateful after this transformation is applied
-  (`make_one_shot_iterator` won't work; users must use
-  `make_initializable_iterator`). This transformation is faster than the
-  original, except for overhead.
-
-  **NOTE** Resampling is performed via rejection sampling; some fraction
-  of the input values will be dropped.
-
-  Args:
-    class_func: A function mapping an element of the input dataset to a scalar
-      `tf.int32` tensor. Values should be in `[0, num_classes)`.
-    target_dist: A floating point type tensor, shaped `[num_classes]`.
-    initial_dist: (Optional.)  A floating point type tensor, shaped
-      `[num_classes]`.  If not provided, the true class distribution is
-      estimated live in a streaming fashion.
-    seed: (Optional.) Python integer seed for the resampler.
-
-  Returns:
-    A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
-  """
-  def _apply_fn(dataset):
-    """Function from `Dataset` to `Dataset` that applies the transformation."""
-    target_dist_t = ops.convert_to_tensor(target_dist, name="target_dist")
-    class_values_ds = dataset.map(class_func)
-
-    # Get initial distribution.
-    if initial_dist is not None:
-      initial_dist_t = ops.convert_to_tensor(
-          initial_dist, name="initial_dist")
+      initial_dist_t = ops.convert_to_tensor(initial_dist, name="initial_dist")
       acceptance_dist, prob_of_original = (
           _calculate_acceptance_probs_with_mixing(initial_dist_t,
                                                   target_dist_t))
@@ -133,17 +78,49 @@ def rejection_resample_v2(class_func, target_dist, initial_dist=None,
           lambda accept_prob, _: accept_prob)
       prob_of_original_ds = acceptance_and_original_prob_ds.map(
           lambda _, prob_original: prob_original)
+      prob_of_original = None
     filtered_ds = _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds,
                              class_values_ds, seed)
     # Prefetch filtered dataset for speed.
     filtered_ds = filtered_ds.prefetch(3)
 
-    return interleave_ops.sample_from_datasets(
-        [dataset_ops.Dataset.zip((class_values_ds, dataset)), filtered_ds],
-        weights=prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)]),
-        seed=seed)
+    prob_original_static = _get_prob_original_static(
+        initial_dist, target_dist_t) if initial_dist is not None else None
+    if prob_original_static == 1:
+      return dataset_ops.Dataset.zip((class_values_ds, dataset))
+    elif prob_original_static == 0:
+      return filtered_ds
+    else:
+      return interleave_ops.sample_from_datasets(
+          [dataset_ops.Dataset.zip((class_values_ds, dataset)), filtered_ds],
+          weights=prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)]),
+          seed=seed)
 
   return _apply_fn
+
+
+def _get_prob_original_static(initial_dist_t, target_dist_t):
+  """Returns the static probability of sampling from the original.
+
+  For some reason, `tensor_util.constant_value(prob_of_original)` of a ratio
+  of two constant Tensors isn't a constant. We have some custom logic to avoid
+  this.
+
+  Args:
+    initial_dist_t: A tensor of the initial distribution.
+    target_dist_t: A tensor of the target distribution.
+
+  Returns:
+    The probability of sampling from the original distribution as a constant,
+    if it is a constant, or `None`.
+  """
+  init_static = tensor_util.constant_value(initial_dist_t)
+  target_static = tensor_util.constant_value(target_dist_t)
+
+  if init_static is None or target_static is None:
+    return None
+  else:
+    return np.min(target_static / init_static)
 
 
 def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
@@ -216,54 +193,6 @@ def _get_target_to_initial_ratio(initial_probs, target_probs):
   return target_probs / denom
 
 
-def _calculate_acceptance_probs(initial_probs, target_probs):
-  """Calculate the per-class acceptance rates.
-
-  Args:
-    initial_probs: The class probabilities of the data.
-    target_probs: The desired class proportion in minibatches.
-  Returns:
-    A list of the per-class acceptance probabilities.
-
-  This method is based on solving the following analysis:
-
-  Let F be the probability of a rejection (on any example).
-  Let p_i be the proportion of examples in the data in class i (init_probs)
-  Let a_i is the rate the rejection sampler should *accept* class i
-  Let t_i is the target proportion in the minibatches for class i (target_probs)
-
-  ```
-  F = sum_i(p_i * (1-a_i))
-    = 1 - sum_i(p_i * a_i)     using sum_i(p_i) = 1
-  ```
-
-  An example with class `i` will be accepted if `k` rejections occur, then an
-  example with class `i` is seen by the rejector, and it is accepted. This can
-  be written as follows:
-
-  ```
-  t_i = sum_k=0^inf(F^k * p_i * a_i)
-      = p_i * a_j / (1 - F)    using geometric series identity, since 0 <= F < 1
-      = p_i * a_i / sum_j(p_j * a_j)        using F from above
-  ```
-
-  Note that the following constraints hold:
-  ```
-  0 <= p_i <= 1, sum_i(p_i) = 1
-  0 <= a_i <= 1
-  0 <= t_i <= 1, sum_i(t_i) = 1
-  ```
-
-  A solution for a_i in terms of the other variables is the following:
-    ```a_i = (t_i / p_i) / max_i[t_i / p_i]```
-  """
-  ratio_l = _get_target_to_initial_ratio(initial_probs, target_probs)
-
-  # Calculate list of acceptance probabilities.
-  max_ratio = math_ops.reduce_max(ratio_l)
-  return ratio_l / max_ratio
-
-
 def _estimate_data_distribution(c, num_examples_per_class_seen):
   """Estimate data distribution as labels are seen.
 
@@ -298,6 +227,39 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
   rejection sampling is done on a per-class basis, with `a_i` representing the
   probability of accepting data from class `i`.
 
+  This method is based on solving the following analysis for the reshaped
+  distribution:
+
+  Let F be the probability of a rejection (on any example).
+  Let p_i be the proportion of examples in the data in class i (init_probs)
+  Let a_i is the rate the rejection sampler should *accept* class i
+  Let t_i is the target proportion in the minibatches for class i (target_probs)
+
+  ```
+  F = sum_i(p_i * (1-a_i))
+    = 1 - sum_i(p_i * a_i)     using sum_i(p_i) = 1
+  ```
+
+  An example with class `i` will be accepted if `k` rejections occur, then an
+  example with class `i` is seen by the rejector, and it is accepted. This can
+  be written as follows:
+
+  ```
+  t_i = sum_k=0^inf(F^k * p_i * a_i)
+      = p_i * a_j / (1 - F)    using geometric series identity, since 0 <= F < 1
+      = p_i * a_i / sum_j(p_j * a_j)        using F from above
+  ```
+
+  Note that the following constraints hold:
+  ```
+  0 <= p_i <= 1, sum_i(p_i) = 1
+  0 <= a_i <= 1
+  0 <= t_i <= 1, sum_i(t_i) = 1
+  ```
+
+  A solution for a_i in terms of the other variables is the following:
+    ```a_i = (t_i / p_i) / max_i[t_i / p_i]```
+
   If we try to minimize the amount of data rejected, we get the following:
 
   M_max = max_i [ t_i / p_i ]
@@ -311,8 +273,6 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
   rather than the filtered one:
 
   m = M_min
-
-  See the docstring for `_calculate_acceptance_probs` for more details.
 
   Args:
     initial_probs: A Tensor of the initial probability distribution, given or

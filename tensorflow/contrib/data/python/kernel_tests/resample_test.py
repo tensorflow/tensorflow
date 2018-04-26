@@ -34,14 +34,12 @@ from tensorflow.python.util import compat
 
 
 def _time_resampling(
-    test_obj, data_np, target_dist, init_dist, use_v2, num_to_sample):
+    test_obj, data_np, target_dist, init_dist, num_to_sample):
   dataset = dataset_ops.Dataset.from_tensor_slices(data_np).repeat()
 
   # Reshape distribution via rejection sampling.
-  apply_fn = (resampling.rejection_resample_v2 if use_v2 else
-              resampling.rejection_resample)
   dataset = dataset.apply(
-      apply_fn(
+      resampling.rejection_resample(
           class_func=lambda x: x,
           target_dist=target_dist,
           initial_dist=init_dist,
@@ -61,20 +59,17 @@ def _time_resampling(
 class ResampleTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ("InitialnDistributionKnown", True, False),
-      ("InitialDistributionUnknown", False, False),
-      ("InitialDistributionKnownV2", True, True),
-      ("InitialDistributionUnknownV2", False, True))
-  def testDistribution(self, initial_known, use_v2):
+      ("InitialnDistributionKnown", True),
+      ("InitialDistributionUnknown", False))
+  def testDistribution(self, initial_known):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
     initial_dist = [0.2] * 5 if initial_known else None
     dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
         200, seed=21).map(lambda c: (c, string_ops.as_string(c))).repeat()
-    apply_fn = (resampling.rejection_resample_v2 if use_v2 else
-                resampling.rejection_resample)
+
     get_next = dataset.apply(
-        apply_fn(
+        resampling.rejection_resample(
             target_dist=target_dist,
             initial_dist=initial_dist,
             class_func=lambda c, _: c,
@@ -96,11 +91,39 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
     returned_dist = class_counts / total_returned
     self.assertAllClose(target_dist, returned_dist, atol=1e-2)
 
+  @parameterized.named_parameters(
+      ("OnlyInitial", True),
+      ("NotInitial", False))
+  def testEdgeCasesSampleFromInitialDataset(self, only_initial_dist):
+    init_dist = [0.5, 0.5]
+    target_dist = [0.5, 0.5] if only_initial_dist else [0.0, 1.0]
+    num_classes = len(init_dist)
+    # We don't need many samples to test that this works.
+    num_samples = 100
+    data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
+
+    # Reshape distribution.
+    dataset = dataset.apply(
+        resampling.rejection_resample(
+            class_func=lambda x: x,
+            target_dist=target_dist,
+            initial_dist=init_dist))
+
+    get_next = dataset.make_one_shot_iterator().get_next()
+
+    with self.test_session() as sess:
+      returned = []
+      with self.assertRaises(errors.OutOfRangeError):
+        while True:
+          returned.append(sess.run(get_next))
+
   def testRandomClasses(self):
     init_dist = [0.25, 0.25, 0.25, 0.25]
     target_dist = [0.0, 0.0, 0.0, 1.0]
     num_classes = len(init_dist)
-    # We don't need many samples to test a dirac-delta target distribution
+    # We don't need many samples to test a dirac-delta target distribution.
     num_samples = 100
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
@@ -134,26 +157,8 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(target_dist, bincount, atol=1e-2)
 
-  @parameterized.named_parameters(
-      ("SmallSkewManySamples", [0.1, 0.1, 0.1, 0.7], 1000),
-      ("BigSkewManySamples", [0.01, 0.01, 0.01, 0.97], 1000),
-      ("SmallSkewFewSamples", [0.1, 0.1, 0.1, 0.7], 100),
-      ("BigSkewFewSamples", [0.01, 0.01, 0.01, 0.97], 100))
-  def testNewResampleIsFaster(self, target_dist, num_to_sample):
-    init_dist = [0.25, 0.25, 0.25, 0.25]
-    num_classes = len(init_dist)
-    num_samples = 1000
-    data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
-    fast_time = _time_resampling(self, data_np, target_dist, init_dist,
-                                 use_v2=True, num_to_sample=num_to_sample)
-    slow_time = _time_resampling(self, data_np, target_dist, init_dist,
-                                 use_v2=False, num_to_sample=num_to_sample)
-
-    self.assertLess(fast_time, slow_time)
-
-
-class MapDatasetBenchmark(test.Benchmark):
+class ResampleDatasetBenchmark(test.Benchmark):
 
   def benchmarkResamplePerformance(self):
     init_dist = [0.25, 0.25, 0.25, 0.25]
@@ -164,24 +169,10 @@ class MapDatasetBenchmark(test.Benchmark):
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
     resample_time = _time_resampling(
-        self, data_np, target_dist, init_dist, use_v2=False, num_to_sample=1000)
+        self, data_np, target_dist, init_dist, num_to_sample=1000)
 
     self.report_benchmark(
         iters=1000, wall_time=resample_time, name="benchmark_resample")
-
-  def benchmarkResampleAndBatchPerformance(self):
-    init_dist = [0.25, 0.25, 0.25, 0.25]
-    target_dist = [0.0, 0.0, 0.0, 1.0]
-    num_classes = len(init_dist)
-    # We don't need many samples to test a dirac-delta target distribution
-    num_samples = 1000
-    data_np = np.random.choice(num_classes, num_samples, p=init_dist)
-
-    resample_time = _time_resampling(
-        self, data_np, target_dist, init_dist, use_v2=True, num_to_sample=1000)
-
-    self.report_benchmark(
-        iters=1000, wall_time=resample_time, name="benchmark_resample_v2")
 
 
 if __name__ == "__main__":
