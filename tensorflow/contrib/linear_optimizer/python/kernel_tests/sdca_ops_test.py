@@ -39,8 +39,8 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import googletest
 
 _MAX_ITERATIONS = 100
-_SHARD_NUMBERS = [None, 1, 3, 10]
-_NUM_LOSS_PARTITIONS = [2, 4]
+_SHARD_NUMBERS = [None, 1, 3]
+_NUM_LOSS_PARTITIONS = [4]
 
 
 def make_example_proto(feature_dict, target, value=1.0):
