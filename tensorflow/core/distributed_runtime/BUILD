@@ -145,6 +145,7 @@ tf_cc_test(
     deps = [
         ":session_mgr",
         ":worker_env",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",

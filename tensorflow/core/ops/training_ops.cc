@@ -253,6 +253,7 @@ REGISTER_OP("ApplyAdagrad")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, false /* sparse */);
     });
@@ -264,6 +265,7 @@ REGISTER_OP("ResourceApplyAdagrad")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, false /* sparse */);
     });
@@ -320,6 +322,7 @@ REGISTER_OP("SparseApplyAdagrad")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, true /* sparse */);
     });
@@ -333,6 +336,7 @@ REGISTER_OP("ResourceSparseApplyAdagrad")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, true /* sparse */);
     });

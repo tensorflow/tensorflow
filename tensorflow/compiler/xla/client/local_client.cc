@@ -166,12 +166,8 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   if (executable_->dumping()) {
     return ExecuteAndDump(&service_options, arguments);
   }
-  TF_ASSIGN_OR_RETURN(
-      ShapedBuffer result,
-      executable_->ExecuteOnStreamWrapper(
-          &service_options, run_options.execution_profile(), arguments));
-
-  return ScopedShapedBuffer(std::move(result), run_options.allocator());
+  return executable_->ExecuteOnStreamWrapper(
+      &service_options, run_options.execution_profile(), arguments);
 }
 
 StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
@@ -181,12 +177,12 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
       backend_->platform()->Name());
   TF_RETURN_IF_ERROR(RecordArguments(arguments, executable_->session_module()));
   TF_ASSIGN_OR_RETURN(
-      ShapedBuffer result,
+      ScopedShapedBuffer result,
       executable_->ExecuteOnStream(run_options, arguments,
                                    /*hlo_execution_profile=*/nullptr));
   TF_RETURN_IF_ERROR(RecordResult(&result, executable_->session_module()));
   TF_RETURN_IF_ERROR(executable_->DumpSessionModule());
-  return ScopedShapedBuffer(std::move(result), run_options->allocator());
+  return std::move(result);
 }
 
 tensorflow::Status LocalExecutable::RecordArguments(

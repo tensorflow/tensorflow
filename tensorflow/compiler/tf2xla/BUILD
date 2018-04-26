@@ -412,7 +412,6 @@ cc_library(
     hdrs = ["functionalize_control_flow.h"],
     deps = [
         ":tf2xla_util",
-        "//tensorflow/compiler/jit:graph_to_functiondef",
         "//tensorflow/compiler/jit:union_find",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",

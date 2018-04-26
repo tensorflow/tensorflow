@@ -359,6 +359,7 @@ cc_library(
         ":hlo",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -755,6 +756,7 @@ cc_library(
         ":hlo",
         ":hlo_execution_profile",
         ":hlo_graph_dumper",
+        ":hlo_proto",
         ":pool",
         ":session_proto",
         ":shaped_buffer",
@@ -2032,6 +2034,7 @@ cc_library(
     srcs = ["hlo_verifier.cc"],
     hdrs = ["hlo_verifier.h"],
     deps = [
+        ":hlo",
         ":hlo_pass",
         ":shape_inference",
         "//tensorflow/compiler/xla:status_macros",

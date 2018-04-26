@@ -31,11 +31,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops.gen_sdca_ops import *
 # pylint: enable=wildcard-import
 
-from tensorflow.python.util.all_util import remove_undocumented
-
 ops.NotDifferentiable("SdcaFprint")
 ops.NotDifferentiable("SdcaOptimizer")
 ops.NotDifferentiable("SdcaShrinkL1")
-
-
-remove_undocumented(__name__)

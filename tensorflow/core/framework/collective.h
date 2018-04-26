@@ -80,7 +80,7 @@ struct CollInstanceParams {
   // Task name prefix of corresponding device name.
   std::vector<string> task_names;
   // True if every task has the same number of devices.
-  bool same_num_devices_per_task;
+  bool same_num_devices_per_task = false;
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -99,9 +99,9 @@ struct CollectiveParams {
   CollInstanceParams instance;
   CollTaskParams task;
 
-  string name;       // node name used only for log or error messages
-  int default_rank;  // index of this op within device_names
-  bool is_source;    // broadcast only
+  string name;             // node name used only for log or error messages
+  int default_rank;        // index of this op within device_names
+  bool is_source = false;  // broadcast only
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
   std::unique_ptr<OpKernel> merge_op;  // reduction only

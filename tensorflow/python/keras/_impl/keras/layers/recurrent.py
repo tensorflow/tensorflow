@@ -31,8 +31,8 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
-from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
+from tensorflow.python.keras._impl.keras.utils import generic_utils
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -107,7 +107,7 @@ class StackedRNNCells(Layer):
     # Call the cells in order and store the returned states.
     new_nested_states = []
     for cell, states in zip(self.cells, nested_states):
-      if has_arg(cell.call, 'constants'):
+      if generic_utils.has_arg(cell.call, 'constants'):
         inputs, states = cell.call(inputs, states, constants=constants,
                                    **kwargs)
       else:
@@ -122,14 +122,14 @@ class StackedRNNCells(Layer):
       states += cell_states
     return inputs, states
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     if isinstance(input_shape, list):
       constants_shape = input_shape[1:]
       input_shape = input_shape[0]
     for cell in self.cells:
       if isinstance(cell, Layer):
-        if has_arg(cell.call, 'constants'):
+        if generic_utils.has_arg(cell.call, 'constants'):
           cell.build([input_shape] + constants_shape)
         else:
           cell.build(input_shape)
@@ -429,7 +429,7 @@ class RNN(Layer):
   def states(self, states):
     self._states = states
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
@@ -461,7 +461,7 @@ class RNN(Layer):
     else:
       return output_mask
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Note input_shape will be list of shapes of initial states and
     # constants if these are passed in __call__.
@@ -609,11 +609,11 @@ class RNN(Layer):
                        'or `batch_shape` argument to your Input layer.')
 
     kwargs = {}
-    if has_arg(self.cell.call, 'training'):
+    if generic_utils.has_arg(self.cell.call, 'training'):
       kwargs['training'] = training
 
     if constants:
-      if not has_arg(self.cell.call, 'constants'):
+      if not generic_utils.has_arg(self.cell.call, 'constants'):
         raise ValueError('RNN cell does not support constants')
 
       def step(inputs, states):
@@ -884,7 +884,7 @@ class SimpleRNNCell(Layer):
     self._dropout_mask = None
     self._recurrent_dropout_mask = None
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     self.kernel = self.add_weight(
         shape=(input_shape[-1], self.units),
@@ -1287,7 +1287,7 @@ class GRUCell(Layer):
     self._dropout_mask = None
     self._recurrent_dropout_mask = None
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     input_dim = input_shape[-1]
     self.kernel = self.add_weight(
@@ -1824,7 +1824,7 @@ class LSTMCell(Layer):
     self._dropout_mask = None
     self._recurrent_dropout_mask = None
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     input_dim = input_shape[-1]
     self.kernel = self.add_weight(
@@ -2388,7 +2388,7 @@ class Recurrent(Layer):
     self.dropout = 0
     self.recurrent_dropout = 0
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]

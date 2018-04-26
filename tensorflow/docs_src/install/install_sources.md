@@ -354,10 +354,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.8.0rc0 on Linux:
+for TensorFlow 1.8.0rc1 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.8.0rc0-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.8.0rc1-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation
@@ -393,9 +393,9 @@ If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Star
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-## Common installation problems
+## Common build and installation problems
 
-The installation problems you encounter typically depend on the
+The build and installation problems you encounter typically depend on the
 operating system.  See the "Common installation problems" section
 of one of the following guides:
 
@@ -446,6 +446,11 @@ Stack Overflow and specify the `tensorflow` tag.
   @local_config_cc//:cc-compiler-darwin_x86_64: Xcode version must be specified
   to use an Apple CROSSTOOL.</pre>
   </td>
+</tr>
+
+<tr>
+  <td><a href="https://stackoverflow.com/q/47080760">47080760</a></td>
+  <td><pre>undefined reference to `cublasGemmEx@libcublas.so.9.0'</pre></td>
 </tr>
 
 </table>

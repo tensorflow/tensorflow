@@ -308,7 +308,12 @@ TfLiteStatus Interpreter::CheckTensorIndices(const char* label,
 
   for (int i = 0; i < length; i++) {
     int index = indices[i];
-    if (index < kOptionalTensor || index >= context_.tensors_size) {
+    // Continue if index == kOptionalTensor before additional comparisons below,
+    // size_t(-1) is always >= context_tensors_size.
+    if (index == kOptionalTensor) {
+      continue;
+    }
+    if (index < 0 || static_cast<size_t>(index) >= context_.tensors_size) {
       ReportError(&context_, "Invalid tensor index %d in %s\n", index, label);
       consistent_ = false;
       return kTfLiteError;
@@ -318,7 +323,7 @@ TfLiteStatus Interpreter::CheckTensorIndices(const char* label,
 }
 
 TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
-                                        int dims_size, size_t* bytes) {
+                                        size_t dims_size, size_t* bytes) {
   // TODO(aselle): Check for overflow here using overflow.h in TensorFlow
   // MultiplyWithoutOverflow.
   TF_LITE_ENSURE(&context_, bytes != nullptr);
@@ -645,7 +650,7 @@ TfLiteStatus Interpreter::GetNodeAndRegistration(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
-    int tensor_index, TfLiteType type, const char* name, const int rank,
+    int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
   if (state_ == kStateInvokableAndImmutable) {
@@ -691,7 +696,7 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 // bytes. The lifetime of buffer must be ensured to be greater or equal
 // to Interpreter.
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
-    int tensor_index, TfLiteType type, const char* name, const int rank,
+    int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantizationParams quantization) {
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
