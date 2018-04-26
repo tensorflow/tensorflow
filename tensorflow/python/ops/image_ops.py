@@ -91,13 +91,3 @@ from tensorflow.python.ops.image_ops_impl import *
 from tensorflow.python.ops.image_ops_impl import _Check3DImage
 from tensorflow.python.ops.image_ops_impl import _ImageDimensions
 # pylint: enable=unused-import
-
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = [
-    # ResizeMethod is not documented, but is documented in functions
-    # that use it.
-    'ResizeMethod',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

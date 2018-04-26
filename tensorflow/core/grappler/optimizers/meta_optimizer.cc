@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
@@ -30,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
-#include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -63,15 +61,15 @@ int NumIterations(const RewriterConfig& cfg) {
 }
 
 // Check if optimizer is allowed to run only once.
-int IsRunOnceOptimizer(const string& name) { return name == "layout"; }
+bool IsRunOnceOptimizer(const string& name) { return name == "layout"; }
 
 }  // namespace
 
-std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
-    const string& optimizer) const {
 #define MK_OPT(NAME, VALUE) \
   if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
 
+std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
+    const string& optimizer) const {
   MK_OPT("pruning", new ModelPruner());
   MK_OPT("function", new FunctionOptimizer(cfg_.function_optimization()));
   MK_OPT("constfold", new ConstantFolding(cpu_device_));
@@ -84,8 +82,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("debug_stripper", new DebugStripper());
 
   return std::unique_ptr<GraphOptimizer>();
-#undef MK_OPT
 }
+
+#undef MK_OPT
 
 Status MetaOptimizer::InitializeOptimizers(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
@@ -161,14 +160,18 @@ Status MetaOptimizer::InitializeOptimizersByName(
 
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
-  VLOG(2) << "Optimize GrapplerItem: item.id=" << item.id;
-
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  bool register_by_name = !cfg_.optimizers().empty();
-  TF_RETURN_IF_ERROR(register_by_name ? InitializeOptimizersByName(&optimizers)
-                                      : InitializeOptimizers(&optimizers));
+  if (cfg_.optimizers().empty()) {
+    TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
+  } else {
+    TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
+  }
+
+  VLOG(2) << "Optimize GrapplerItem: item.id=" << item.id
+          << " num_optimizers=" << optimizers.size();
 
   if (optimizers.empty()) {
+    VLOG(3) << "Skip graph optimization, no optimizers registered";
     *optimized_graph = item.graph;
     return Status::OK();
   }
@@ -178,6 +181,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   GrapplerItem optimized_item = item;
   optimized_graph->Swap(&optimized_item.graph);
 
+  bool is_optimized = false;
   GraphOptimizationResult optimization_result(item.id);
 
   for (int iteration = 0; iteration < NumIterations(cfg_); ++iteration) {
@@ -201,7 +205,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         optimized_graph->Swap(&optimized_item.graph);
         result = status.ToString();
       } else {
-        optimization_result.is_optimized = true;
+        is_optimized = true;
         float duration_ms = (end_us - start_us) / 1000.0f;
         result = strings::StrCat(
             PrintSizesBeforeAfter(optimized_item.graph, *optimized_graph),
@@ -217,7 +221,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   // Record graph optimization result.
   optimization_results_.push_back(optimization_result);
 
-  if (optimization_result.is_optimized) {
+  if (is_optimized) {
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     ReassignColocation(optimized_graph);
     // Make sure that the optimizers preserved the graph version.
@@ -231,71 +235,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
   optimization_results_.clear();
-
-  // 1. Optimize main graph
   TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
-
-  // 2. Optimize function library
-  FunctionLibraryDefinition flib(OpRegistry::Global(),
-                                 optimized_graph->library());
-
-  // Optimize each function only once.
-  std::unordered_set<string> optimized_funcs;
-  bool optimize_function_library = true;
-
-  // TODO(ezhulenev): turn it on after fixing ranklab: tune_tf_test.
-  cfg_.set_constant_folding(RewriterConfig::OFF);
-  cfg_.set_arithmetic_optimization(RewriterConfig::OFF);
-
-  while (optimize_function_library) {
-    optimize_function_library = false;
-
-    for (const FunctionDef& func : optimized_graph->library().function()) {
-      const string& func_name = func.signature().name();
-
-      // Skip already optimized functions.
-      if (optimized_funcs.find(func_name) != optimized_funcs.end()) continue;
-
-      // Skip parametrized functions (function type or body is defined only at
-      // function call time by caller node attributes).
-      if (IsParametrized(func)) continue;
-
-      VLOG(3) << "Optimize function: function=" << func_name;
-
-      // Function optimization might specialize nested function calls, so we
-      // have to reset the flag and do at least one more pass over the library.
-      optimize_function_library = true;
-      optimized_funcs.insert(func_name);
-
-      // Make a GrapplerItem from a FunctionDef.
-      GrapplerFunctionItem func_item;
-      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, flib, &func_item));
-
-      // Optimize function body graph.
-      GraphDef optimized_func_graph;
-      TF_RETURN_IF_ERROR(
-          OptimizeGraph(cluster, func_item, &optimized_func_graph));
-
-      // Function body optimization might have created new specialized
-      // functions, add them to the library.
-      TF_RETURN_IF_ERROR(flib.AddLibrary(optimized_func_graph.library()));
-
-      // Convert optimized graph back to FunctionDef.
-      FunctionDef optimized_func;
-      func_item.SwapFunctionBody(std::move(optimized_func_graph));
-      TF_RETURN_IF_ERROR(MakeFunctionDef(func_item, flib, &optimized_func));
-
-      // Replace optimized function with a new FunctionDef.
-      TF_RETURN_IF_ERROR(flib.RemoveFunction(func_name));
-      TF_RETURN_IF_ERROR(flib.AddFunctionDef(optimized_func));
-    }
-
-    // If optimized at least one function, update the graph library.
-    if (optimize_function_library) {
-      *optimized_graph->mutable_library() = flib.ToProto();
-    }
-  }
-
   return Status::OK();
 }
 
@@ -303,8 +243,7 @@ void MetaOptimizer::PrintResult() {
   for (const GraphOptimizationResult& graph_result : optimization_results_) {
     LOG(INFO) << "Optimization results for grappler item: " << graph_result.id;
     for (const OptimizerResult& result : graph_result.results) {
-      LOG(INFO) << "Return status of optimizer " << result.optimizer_name
-                << ": " << result.result;
+      LOG(INFO) << "  " << result.optimizer_name << ": " << result.result;
     }
   }
 }

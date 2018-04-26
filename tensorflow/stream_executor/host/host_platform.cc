@@ -66,8 +66,8 @@ port::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<HostExecutor>(config.plugin_config));
+  auto executor = MakeUnique<StreamExecutor>(
+      this, MakeUnique<HostExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{

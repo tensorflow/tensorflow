@@ -331,8 +331,8 @@ def embedding_lookup_sparse(params,
       representing sharded embedding tensors.  Alternatively, a
       `PartitionedVariable`, created by partitioning along dimension 0. Each
       element must be appropriately sized for the given `partition_strategy`.
-    sp_ids: N x M `SparseTensor` of int64 ids (typically from FeatureValueToId),
-      where N is typically batch size and M is arbitrary.
+    sp_ids: N x M `SparseTensor` of int64 ids where N is typically batch size
+      and M is arbitrary.
     sp_weights: either a `SparseTensor` of float / double weights, or `None` to
       indicate all weights should be taken to be 1. If specified, `sp_weights`
       must have exactly the same shape and indices as `sp_ids`.

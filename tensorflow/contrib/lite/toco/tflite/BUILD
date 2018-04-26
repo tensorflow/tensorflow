@@ -54,6 +54,7 @@ cc_library(
         "types.h",
     ],
     deps = [
+        "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:model",
     ],

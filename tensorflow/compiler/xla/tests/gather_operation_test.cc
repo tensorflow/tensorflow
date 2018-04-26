@@ -401,10 +401,7 @@ ENTRY main {
 
 class GatherClientLibraryTest : public ClientLibraryTestBase {};
 
-// TODO(b/30671675): Asynchronous execution on stream is not yet supported on
-// GPU and CPU_PARALLEL.
-XLA_TEST_F(GatherClientLibraryTest,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(Basic))) {
+XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   // We create this HLO, but using the XlaBuilder API.
   //
   // ENTRY main {
