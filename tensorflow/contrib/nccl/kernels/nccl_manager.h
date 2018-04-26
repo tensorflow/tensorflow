@@ -23,8 +23,8 @@ limitations under the License.
 #ifdef WIN32
 #include "nccl.h"
 #else
-"third_party/nccl/nccl.h"
-#else
+#include "third_party/nccl/nccl.h"
+#endif
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
