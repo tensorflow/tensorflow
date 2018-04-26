@@ -303,14 +303,18 @@ bool HloParser::ParseComputations() {
     // set the layouts to what the hlo text says.
     for (int p = 0; p < computation->num_parameters(); p++) {
       const Shape& param_shape = computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module_->mutable_entry_computation_layout()
-                      ->mutable_parameter_layout(p)
-                      ->CopyLayoutFromShape(param_shape));
+      if (param_shape.has_layout()) {
+        module_->mutable_entry_computation_layout()
+            ->mutable_parameter_layout(p)
+            ->ResetLayout(param_shape.layout());
+      }
     }
     const Shape& result_shape = computation->root_instruction()->shape();
-    TF_CHECK_OK(module_->mutable_entry_computation_layout()
-                    ->mutable_result_layout()
-                    ->CopyLayoutFromShape(result_shape));
+    if (result_shape.has_layout()) {
+      module_->mutable_entry_computation_layout()
+          ->mutable_result_layout()
+          ->ResetLayout(result_shape.layout());
+    }
   }
 
   return true;
