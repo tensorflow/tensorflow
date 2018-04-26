@@ -1970,7 +1970,7 @@ void ConvertTopKV2Operator(const NodeDef& node,
     op->inputs.push_back(node.input(1));
   }
   // The op has two outputs.
-  op->outputs.push_back(node.name() + ":0");
+  op->outputs.push_back(node.name());
   op->outputs.push_back(node.name() + ":1");
   model->operators.emplace_back(op.release());
 }
