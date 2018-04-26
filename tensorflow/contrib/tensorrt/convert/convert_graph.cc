@@ -449,7 +449,8 @@ tensorflow::Status ConvertAfterShapes(
       Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
       if (!s.ok()) {
         LOG(ERROR)
-            << "Cuda device identification failed, using device 0. Error= " << s;
+            << "Cuda device identification failed, using device 0. Error= "
+            << s;
       } else {
         cuda_device_id = cuda_gpu_id.value();
       }

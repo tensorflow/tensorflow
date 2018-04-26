@@ -15,12 +15,12 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
+#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -67,17 +67,20 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
 }
 
 void TRTEngineOp::Compute(OpKernelContext* context) {
-  if(!trt_execution_context_ptr_){
-    tensorflow::TfGpuId tf_gpu_id(context->device()->tensorflow_gpu_device_info()->gpu_id);
+  if (!trt_execution_context_ptr_) {
+    IRuntime* infer = nvinfer1::createInferRuntime(logger);
+#if NV_TENSORRT_MAJOR > 3
+    tensorflow::TfGpuId tf_gpu_id(
+        context->device()->tensorflow_gpu_device_info()->gpu_id);
     tensorflow::GPUOptions gpuoptions;
     auto pm = tensorflow::ProcessState::singleton();
     auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
-    IRuntime* infer = nvinfer1::createInferRuntime(logger);
-    if(!dev_allocator){
-      LOG(FATAL)<<"Can't find device allocator for gpu device"<<tf_gpu_id;
+    if (!dev_allocator) {
+      LOG(FATAL) << "Can't find device allocator for gpu device" << tf_gpu_id;
     }
     allocator_ = std::make_shared<TRTDeviceAllocator>(dev_allocator);
     infer->setGpuAllocator(allocator_.get());
+#endif
     trt_engine_ptr_.reset(infer->deserializeCudaEngine(
         serialized_engine_.c_str(), serialized_engine_.size(), nullptr));
     trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
@@ -167,7 +170,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
   VLOG(2) << "enqueue returns: " << ret;
   // sync should be done by TF.
 }
-TRTEngineOp::~TRTEngineOp(){
+TRTEngineOp::~TRTEngineOp() {
   // Order matters!
   trt_execution_context_ptr_.reset();
   trt_engine_ptr_.reset();
