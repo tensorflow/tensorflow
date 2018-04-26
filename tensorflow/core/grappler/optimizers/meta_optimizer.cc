@@ -39,7 +39,7 @@ namespace grappler {
 
 namespace {
 
-constexpr int kDefaultNumberOfIterations = 1;
+constexpr int kDefaultNumberOfIterations = 2;
 
 int64 NumEdges(const GraphDef& graph) {
   int64 num_edges = 0;
@@ -63,7 +63,10 @@ int NumIterations(const RewriterConfig& cfg) {
 }
 
 // Check if optimizer is allowed to run only once.
-bool IsRunOnceOptimizer(const string& name) { return name == "layout"; }
+bool IsRunOnceOptimizer(const string& name) {
+  return name == "layout" || name == "memory_optimizer" ||
+         name == "arithmetic_optimizer" || name == "loop_optimizer";
+}
 
 }  // namespace
 
