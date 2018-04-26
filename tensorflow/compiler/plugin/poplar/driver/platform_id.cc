@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 
-namespace perftools {
-namespace gputools {
+namespace xla {
 namespace poplarplugin {
 
 PLATFORM_DEFINE_ID(kPoplarPlatformId);
 
-}  // namespace poplarplugin
-}  // namespace gputools
-}  // namespace perftools
+}
+}

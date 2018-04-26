@@ -18,14 +18,10 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform.h"
 
-namespace perftools {
-namespace gputools {
+namespace xla {
 namespace poplarplugin {
-
-extern const Platform::Id kPoplarPlatformId;
-
-}  // namespace poplarplugin
-}  // namespace gputools
-}  // namespace perftools
+extern const stream_executor::Platform::Id kPoplarPlatformId;
+}
+}
 
 #endif

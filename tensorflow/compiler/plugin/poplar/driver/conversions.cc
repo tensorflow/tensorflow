@@ -1,7 +1,6 @@
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 
-namespace perftools {
-namespace gputools {
+namespace xla {
 namespace poplarplugin {
 
 std::vector<char> ConvInt64ToInt32(const void *src, int64 ssize, int64 dsize) {
@@ -33,7 +32,7 @@ std::vector<char> ConvInt32ToInt64(const void *src, int64 ssize, int64 dsize) {
   return result;
 }
 
-sep::ConversionFn GetInputConversionFunction(const xla::Shape &shape) {
+ConversionFn GetInputConversionFunction(const xla::Shape &shape) {
   switch (shape.element_type()) {
     case xla::S64:
     case xla::U64:
@@ -43,7 +42,7 @@ sep::ConversionFn GetInputConversionFunction(const xla::Shape &shape) {
   }
 }
 
-sep::ConversionFn GetOutputConversionFunction(const xla::Shape &shape) {
+ConversionFn GetOutputConversionFunction(const xla::Shape &shape) {
   switch (shape.element_type()) {
     case xla::S64:
     case xla::U64:
@@ -53,6 +52,5 @@ sep::ConversionFn GetOutputConversionFunction(const xla::Shape &shape) {
   }
 }
 
-}
 }
 }

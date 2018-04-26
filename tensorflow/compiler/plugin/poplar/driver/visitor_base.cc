@@ -44,7 +44,7 @@ limitations under the License.
 #include <poplar/Engine.hpp>
 #include <poplar/exceptions.hpp>
 
-namespace se = ::perftools::gputools;
+namespace se = ::stream_executor;
 
 namespace xla {
 namespace poplarplugin {
@@ -87,7 +87,7 @@ BaseVisitor::GetOutputShape(HloInstruction* inst) const {
 
 Status BaseVisitor::Unimplemented(HloInstruction* inst) {
   return Status(tensorflow::error::UNIMPLEMENTED,
-                port::StrCat(inst->name(), " not implemented"));
+                se::port::StrCat(inst->name(), " not implemented"));
 }
 
 Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
@@ -241,10 +241,6 @@ Status BaseVisitor::HandleBroadcast(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleBroadcastDimOne(HloInstruction* inst) {
-  return Unimplemented(inst);
-}
-
 Status BaseVisitor::HandleReshape(HloInstruction* inst) {
   return Unimplemented(inst);
 }
@@ -288,8 +284,8 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       return Status::OK();
     } else {
       return Status(tensorflow::error::FAILED_PRECONDITION,
-                    port::StrCat("Unrecognized special call op ", inst->name(),
-                                 ": ", name));
+                    se::port::StrCat("Unrecognized special call op ",
+                                     inst->name(), ": ", name));
     }
   } else {
     poplar::program::Program prog;

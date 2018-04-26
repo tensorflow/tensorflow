@@ -22,10 +22,10 @@
 #include <popops/Reduce.hpp>
 #include <popops/ElementWise.hpp>
 
+namespace se = ::stream_executor;
+
 namespace xla {
 namespace poplarplugin {
-
-
 
 static const std::string a_conn("a");
 static const std::string b_conn("b");
@@ -528,7 +528,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   std::vector<std::size_t> poplar_shape = operand.shape();
   poplar_shape.push_back(1);
 
-  auto name = port::StrCat(inst->name(), "_partial");
+  auto name = se::port::StrCat(inst->name(), "_partial");
   poplar::Tensor extended_operand = operand.reshape(poplar_shape);
   poplar::Tensor partial = graph.clone(extended_operand, name);
 

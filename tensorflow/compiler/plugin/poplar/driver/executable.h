@@ -33,8 +33,6 @@ limitations under the License.
 
 #include <poplar/Engine.hpp>
 
-namespace sep = ::perftools::gputools::poplarplugin;
-
 namespace xla {
 namespace poplarplugin {
 
@@ -47,16 +45,16 @@ class PoplarExecutable : public Executable {
                    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer,
                    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
                    std::shared_ptr<poplar::Engine> engine,
-                   const sep::OutputMap& output_map,
+                   const OutputMap& output_map,
                    const std::vector<Shape>& parameter_shapes);
   ~PoplarExecutable() override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  StatusOr<ShapedBuffer> ExecuteOnStream(
           const ServiceExecutableRunOptions* run_options,
           tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
           HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
+  StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
           const ServiceExecutableRunOptions* run_options,
           tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
@@ -66,7 +64,7 @@ class PoplarExecutable : public Executable {
 
   const std::vector<Shape> ParameterShapes() const { return parameter_shapes_; }
 
-  const sep::OutputMap& OutputMap() const { return output_map_; }
+  const OutputMap& OutputMap() const { return output_map_; }
 
   const std::shared_ptr<poplar::Engine>& Engine() const {
     return poplar_engine_;
@@ -76,7 +74,7 @@ class PoplarExecutable : public Executable {
   friend class GraphCompileIoMapTest;
 
   std::shared_ptr<poplar::Engine> poplar_engine_;
-  sep::OutputMap output_map_;
+  ::xla::poplarplugin::OutputMap output_map_;
   std::vector<Shape> parameter_shapes_;
   bool first_execution_;
 

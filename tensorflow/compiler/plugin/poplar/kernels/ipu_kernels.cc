@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
-namespace se = perftools::gputools;
-namespace sep = ::perftools::gputools::poplarplugin;
+namespace xp = ::xla::poplarplugin;
 
 namespace tensorflow {
 
@@ -41,7 +40,7 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, platform.ok(),
               StreamExecutorUtil::ConvertStatus(platform.status()));
 
-  auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
+  auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
 
   std::list<tensorflow::IpuTraceEvent> out;
   OP_REQUIRES_OK(ctx, p->GetCompilerEvents(out));
@@ -66,7 +65,6 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
 
 IpuSummaryOp::~IpuSummaryOp() {}
 
-REGISTER_KERNEL_BUILDER(Name("IpuEventTrace").Device(DEVICE_CPU),
-    IpuSummaryOp);
+REGISTER_KERNEL_BUILDER(Name("IpuEventTrace").Device(DEVICE_CPU), IpuSummaryOp);
 
 }  // namespace tensorflow

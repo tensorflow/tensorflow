@@ -21,13 +21,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
-namespace sep = ::perftools::gputools::poplarplugin;
-
 namespace xla {
 namespace poplarplugin {
 
 PoplarTransferManager::PoplarTransferManager()
-        : GenericTransferManager(sep::kPoplarPlatformId,
+        : GenericTransferManager(kPoplarPlatformId,
         /*pointer_size=*/sizeof(void *)) {}
 
 }
@@ -40,7 +38,7 @@ CreatePoplarTransferManager() {
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
-          sep::kPoplarPlatformId, &CreatePoplarTransferManager);
+      xla::poplarplugin::kPoplarPlatformId, &CreatePoplarTransferManager);
   return true;
 }
 

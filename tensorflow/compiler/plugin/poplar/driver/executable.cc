@@ -18,9 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::poplarplugin;
-
 namespace xla {
 namespace poplarplugin {
 
@@ -29,7 +26,7 @@ PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloProfilePrinterData> profile_printer,
         std::unique_ptr<HloProfileIndexMap> profile_index_map,
         std::shared_ptr<poplar::Engine> engine,
-        const sep::OutputMap& output_map,
+        const ::xla::poplarplugin::OutputMap& output_map,
         const std::vector<Shape>& parameter_shapes)
     : Executable(std::move(hlo_module),
                  std::move(profile_printer),
@@ -41,7 +38,7 @@ PoplarExecutable::PoplarExecutable(
 
 PoplarExecutable::~PoplarExecutable() {}
 
-StatusOr<std::unique_ptr<ShapedBuffer>>
+StatusOr<ShapedBuffer>
 PoplarExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
@@ -63,8 +60,8 @@ PoplarExecutable::ExecuteOnStream(
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   perftools::gputools::StreamExecutor* executor(stream->parent());
-  sep::PoplarExecutor* poplarExecutor(
-          static_cast<sep::PoplarExecutor*>(executor->implementation()));
+  PoplarExecutor* poplarExecutor(
+      static_cast<PoplarExecutor*>(executor->implementation()));
 
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
@@ -86,23 +83,21 @@ PoplarExecutable::ExecuteOnStream(
     execution_profile_.set_compute_cycle_count(1);
   }
 
-  auto result_buffer =
-          MakeUnique<ShapedBuffer>(result_shape(), result_shape(),
-                                   stream->parent()->platform(),
-                                   stream->parent()->device_ordinal());
+  auto result_buffer = ShapedBuffer(result_shape(), result_shape(),
+                                    stream->parent()->platform(),
+                                    stream->parent()->device_ordinal());
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.
 
-  TF_RETURN_IF_ERROR(result_buffer->buffers().ForEachMutableElementWithStatus(
-              [&result, poplarExecutor](
-                      const ShapeIndex& index,
-                      se::DeviceMemoryBase* device_memory) {
+  TF_RETURN_IF_ERROR(result_buffer.buffers().ForEachMutableElementWithStatus(
+              [&result, poplarExecutor](const ShapeIndex& index,
+                                        se::DeviceMemoryBase* device_memory) {
                 se::DeviceMemoryBase buffer = result;
                 for (auto i : index) {
                   TF_ASSIGN_OR_RETURN(
-                          buffer,
-                          poplarExecutor->GetTupleBufferByIndex(buffer, i));
+                      buffer,
+                      poplarExecutor->GetTupleBufferByIndex(buffer, i));
                 }
                 CHECK(!buffer.is_null() || buffer.size() == 0);
                 *device_memory = buffer;
@@ -112,7 +107,7 @@ PoplarExecutable::ExecuteOnStream(
   return std::move(result_buffer);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>>
+StatusOr<ShapedBuffer>
 PoplarExecutable::ExecuteAsyncOnStream(
         const ServiceExecutableRunOptions* run_options,
         tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {

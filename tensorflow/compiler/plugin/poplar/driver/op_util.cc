@@ -6,6 +6,8 @@
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
+namespace se = ::stream_executor;
+
 namespace xla {
 namespace poplarplugin {
 
@@ -34,8 +36,8 @@ FindInstructionInput(const TensorMap& map,
   OutVector outputs = FindInstructionOutputs(map, operand);
   if (outputs.size() == 0) {
     return Status(tensorflow::error::UNKNOWN,
-                  port::StrCat("[Poplar] Couldn't find input ", input, " for ",
-                               inst->name()));
+                  se::port::StrCat("[Poplar] Couldn't find input ", input,
+                                   " for ", inst->name()));
   }
   return outputs[0];
 }
@@ -70,8 +72,8 @@ AddOutputTensor(TensorMap& map,
   auto it = map.find(p);
   if (it != map.end()) {
     return Status(tensorflow::error::UNKNOWN,
-                  port::StrCat("[Poplar] Ouptut Tensor for ", inst->name(),
-                               " already exists"));
+                  se::port::StrCat("[Poplar] Ouptut Tensor for ", inst->name(),
+                                   " already exists"));
   }
   map[p] = tensor;
   return Status::OK();
@@ -111,8 +113,8 @@ Status SetVertexField(poplar::Graph &graph,
       break;
     default:
       return Status(tensorflow::error::FAILED_PRECONDITION,
-                    port::StrCat("Unrecognised type in SetVertexField: ",
-                                 literal.shape().element_type()));
+                    se::port::StrCat("Unrecognised type in SetVertexField: ",
+                                     literal.shape().element_type()));
   }
   return Status::OK();
 }

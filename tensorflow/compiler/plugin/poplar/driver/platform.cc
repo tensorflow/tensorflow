@@ -32,11 +32,9 @@ limitations under the License.
 
 #include <poplar/Device.hpp>
 
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::poplarplugin;
+namespace se = ::stream_executor;
 
-namespace perftools {
-namespace gputools {
+namespace xla {
 namespace poplarplugin {
 
 PoplarPlatform::PoplarPlatform() : name_("Poplar") {
@@ -53,61 +51,61 @@ PoplarPlatform::PoplarPlatform() : name_("Poplar") {
 
 PoplarPlatform::~PoplarPlatform() {}
 
-Platform::Id PoplarPlatform::id() const { return kPoplarPlatformId; }
+se::Platform::Id PoplarPlatform::id() const { return kPoplarPlatformId; }
 
 int PoplarPlatform::VisibleDeviceCount() const {
   return num_devices_;
 }
 
-const string& PoplarPlatform::Name() const { return name_; }
+const std::string& PoplarPlatform::Name() const { return name_; }
 
-port::StatusOr<StreamExecutor*> PoplarPlatform::ExecutorForDevice(int ordinal) {
-  StreamExecutorConfig config;
+StatusOr<se::StreamExecutor*> PoplarPlatform::ExecutorForDevice(int ordinal) {
+  se::StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.plugin_config = PluginConfig();
-  config.device_options = DeviceOptions::Default();
+  config.plugin_config = se::PluginConfig();
+  config.device_options = se::DeviceOptions::Default();
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*>
+StatusOr<se::StreamExecutor*>
 PoplarPlatform::ExecutorForDeviceWithPluginConfig(
-    int device_ordinal, const PluginConfig& plugin_config) {
-  StreamExecutorConfig config;
+    int device_ordinal, const se::PluginConfig& plugin_config) {
+  se::StreamExecutorConfig config;
   config.ordinal = device_ordinal;
   config.plugin_config = plugin_config;
-  config.device_options = DeviceOptions::Default();
+  config.device_options = se::DeviceOptions::Default();
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> PoplarPlatform::GetExecutor(
-    const StreamExecutorConfig& config) {
+StatusOr<se::StreamExecutor*> PoplarPlatform::GetExecutor(
+    const se::StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-port::StatusOr<std::unique_ptr<StreamExecutor>>
-PoplarPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<PoplarExecutor>());
+StatusOr<std::unique_ptr<se::StreamExecutor>>
+PoplarPlatform::GetUncachedExecutor(const se::StreamExecutorConfig& config) {
+  auto executor = se::port::MakeUnique<se::StreamExecutor>(
+      this, se::port::MakeUnique<PoplarExecutor>());
   TF_RETURN_IF_ERROR(executor->Init(config.ordinal, config.device_options));
 
   return std::move(executor);
 }
 
 void PoplarPlatform::RegisterTraceListener(
-    std::unique_ptr<TraceListener> listener) {
+    std::unique_ptr<se::TraceListener> listener) {
   LOG(FATAL) << "not yet implemented: register poplar trace listener";
 }
 
-void PoplarPlatform::UnregisterTraceListener(TraceListener* listener) {
+void PoplarPlatform::UnregisterTraceListener(se::TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister poplar trace listener";
 }
 
-port::Status
+Status
 PoplarPlatform::ConfigurePoplarDevices(const tensorflow::IPUOptions& opts) {
 
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
-    StreamExecutor *executor;
+    se::StreamExecutor *executor;
     TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
     auto *e = static_cast<PoplarExecutor *>(executor->implementation());
@@ -121,25 +119,25 @@ PoplarPlatform::ConfigurePoplarDevices(const tensorflow::IPUOptions& opts) {
     }
   }
 
-  return port::Status::OK();
+  return Status::OK();
 }
 
-port::Status PoplarPlatform::ClosePoplarDevice(int ordinal) {
+Status PoplarPlatform::ClosePoplarDevice(int ordinal) {
   if (ordinal >= VisibleDeviceCount()) {
-    return port::Status(port::error::UNKNOWN, "Invalid ordinal value");
+    return Status(tensorflow::error::UNKNOWN, "Invalid ordinal value");
   }
 
-  StreamExecutor *executor;
+  se::StreamExecutor *executor;
   TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
   auto *e = static_cast<PoplarExecutor *>(executor->implementation());
   return e->ClosePoplarDevice();
 }
 
-port::Status
+Status
 PoplarPlatform::GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out) {
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
-    StreamExecutor* executor;
+    se::StreamExecutor* executor;
     TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
     auto* e = static_cast<PoplarExecutor*>(executor->implementation());
@@ -147,22 +145,19 @@ PoplarPlatform::GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out) {
     TF_RETURN_IF_ERROR(e->GetCompilerEvents(out));
   }
 
-  return port::Status::OK();
+  return Status::OK();
 }
 
 static void InitializePoplarPlatform() {
-  std::unique_ptr<se::Platform> platform(new sep::PoplarPlatform);
+  std::unique_ptr<se::Platform> platform(new PoplarPlatform);
   SE_CHECK_OK(se::MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
-}  // namespace poplarplugin
-}  // namespace gputools
-}  // namespace perftools
+}
+}
 
 REGISTER_MODULE_INITIALIZER(
-    poplar_platform, sep::InitializePoplarPlatform());
+    poplar_platform, xla::poplarplugin::InitializePoplarPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
-// Note that module initialization sequencing is not supported in the
-// open-source project, so this will be a no-op there.
 REGISTER_MODULE_INITIALIZER_SEQUENCE(poplar_platform, multi_platform_manager);

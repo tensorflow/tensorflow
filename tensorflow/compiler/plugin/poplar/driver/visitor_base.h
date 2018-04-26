@@ -77,8 +77,6 @@ public:
 
   Status HandleBroadcast(HloInstruction* inst) override;
 
-  Status HandleBroadcastDimOne(HloInstruction* inst) override;
-
   Status HandleReshape(HloInstruction* inst) override;
 
   Status HandleTranspose(HloInstruction* inst) override;

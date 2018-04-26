@@ -12,9 +12,6 @@
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
-
-namespace port = ::perftools::gputools::port;
-
 namespace xla {
 
 class Shape;

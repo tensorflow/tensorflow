@@ -5,10 +5,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 
-namespace sep = ::perftools::gputools::poplarplugin;
-
-namespace perftools {
-namespace gputools {
+namespace xla {
 namespace poplarplugin {
 
 // NOTE: There is an assumption in executor.cc that the device representation
@@ -22,11 +19,9 @@ namespace poplarplugin {
 std::vector<char> ConvInt64ToInt32(const void *src, int64 ssize, int64 dsize);
 std::vector<char> ConvInt32ToInt64(const void *src, int64 ssize, int64 dsize);
 
-sep::ConversionFn GetInputConversionFunction(const xla::Shape &);
-sep::ConversionFn GetOutputConversionFunction(const xla::Shape &);
+ConversionFn GetInputConversionFunction(const xla::Shape &);
+ConversionFn GetOutputConversionFunction(const xla::Shape &);
 
-
-}
 }
 }
 

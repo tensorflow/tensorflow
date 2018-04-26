@@ -54,10 +54,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 #include <poplar/exceptions.hpp>
 #include <poputil/exceptions.hpp>
@@ -67,8 +67,9 @@ limitations under the License.
 #include <popops/codelets.hpp>
 #include <poprand/codelets.hpp>
 
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::poplarplugin;
+namespace se = ::stream_executor;
+
+using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace poplarplugin {
@@ -142,7 +143,7 @@ public:
       }
 
       graph_->createHostWrite(
-              sep::GetInputCopyHandle(inst->parameter_number(), i), out, opt);
+          GetInputCopyHandle(inst->parameter_number(), i), out, opt);
     }
     return Status::OK();
   }
@@ -174,7 +175,7 @@ public:
       }
 
       poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
-      graph_->createHostRead(sep::GetOutputCopyHandle(o), out, opt);
+      graph_->createHostRead(GetOutputCopyHandle(o), out, opt);
     }
 
     if (inst->opcode() == HloOpcode::kParameter) {
@@ -193,7 +194,7 @@ public:
     return Status::OK();
   }
 
-  sep::OutputMap output_map;
+  OutputMap output_map;
   std::vector<Shape> parameter_shapes;
 
   bool all_outputs_are_parameters;
@@ -259,8 +260,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                   "NULL stream pointer in poplar compiler");
   }
 
-  sep::PoplarExecutor* poplarExecutor(
-      static_cast<sep::PoplarExecutor*>(stream_exec->implementation()));
+  PoplarExecutor* poplarExecutor(
+      static_cast<PoplarExecutor*>(stream_exec->implementation()));
 
   const poplar::Device& dev = poplarExecutor->GetPoplarDevice();
 
@@ -316,7 +317,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
   catch (std::logic_error e) {
     return Status(tensorflow::error::UNKNOWN,
-                  port::StrCat("[Poplar Compile] ", e.what()));
+                  StrCat("[Poplar Compile] ", e.what()));
   }
 
   std::shared_ptr<poplar::Engine> engine;
@@ -333,7 +334,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
     catch (std::logic_error e) {
       return Status(tensorflow::error::UNKNOWN,
-                    port::StrCat("[Poplar Engine] ", e.what()));
+                    StrCat("[Poplar Engine] ", e.what()));
     }
 
     if (poplarExecutor->CompilerReportingEnabled()) {
@@ -405,7 +406,7 @@ PoplarCompiler::CompileAheadOfTime(
 }
 
 se::Platform::Id PoplarCompiler::PlatformId() const {
-  return sep::kPoplarPlatformId;
+  return kPoplarPlatformId;
 }
 
 HloCostAnalysis::ShapeSizeFunction
@@ -424,7 +425,7 @@ static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
 
 static bool RegisterComputationPlacer() {
   xla::ComputationPlacer::RegisterComputationPlacer(
-          se::poplarplugin::kPoplarPlatformId,
+          xla::poplarplugin::kPoplarPlatformId,
           &CreateComputationPlacer);
   return true;
 }
@@ -432,7 +433,8 @@ static bool RegisterComputationPlacer() {
 bool placer_registration = RegisterComputationPlacer();
 
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(se::poplarplugin::kPoplarPlatformId, []() {
+  xla::Compiler::RegisterCompilerFactory(xla::poplarplugin::kPoplarPlatformId,
+                                         []() {
     return xla::MakeUnique<xla::poplarplugin::PoplarCompiler>();
   });
   return true;

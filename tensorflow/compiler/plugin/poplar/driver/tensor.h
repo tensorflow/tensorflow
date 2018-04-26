@@ -14,10 +14,7 @@ namespace poplar {
   class Type;
 }
 
-namespace port = ::perftools::gputools::port;
-
 namespace xla {
-
 namespace poplarplugin {
 
 struct CompilerResources;

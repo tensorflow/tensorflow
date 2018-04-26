@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/kernels/no_op.h"
 
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::poplarplugin;
+namespace xp = ::xla::poplarplugin;
 
 namespace tensorflow {
 
@@ -54,7 +53,7 @@ class IpuDevice : public XlaDevice {
     if (!platform.ok()) {
       return;
     }
-    auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
+    auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
     p->ClosePoplarDevice(ordinal_);
   }
 
@@ -80,7 +79,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
     return StreamExecutorUtil::ConvertStatus(platform.status());
   }
 
-  auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
+  auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
   TF_RETURN_IF_ERROR(p->ConfigurePoplarDevices(options.config.ipu_options()));
 
   int visible_devices = p->VisibleDeviceCount();
@@ -95,7 +94,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
     se::StreamExecutor *executor;
     TF_ASSIGN_OR_RETURN(executor, p->ExecutorForDevice(ordinal));
-    auto *e = static_cast<sep::PoplarExecutor *>(executor->implementation());
+    auto *e = static_cast<xp::PoplarExecutor *>(executor->implementation());
     auto& t = e->GetPoplarDevice().getTarget();
 
     int64 mem = t.getNumIPUs() * t. getTilesPerIPU() * t.getBytesPerTile();

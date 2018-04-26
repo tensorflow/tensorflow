@@ -86,10 +86,9 @@ limitations under the License.
  *       engine repeatedly with the same set of weights/biases.
  *
  */
-namespace se = ::perftools::gputools;
+namespace se = ::stream_executor;
 
-namespace perftools {
-namespace gputools {
+namespace xla {
 namespace poplarplugin {
 
 std::string
@@ -102,9 +101,9 @@ GetOutputCopyHandle(int64 index) {
   return tensorflow::strings::Printf("%lld", index);
 }
 
-host::HostStream *AsPoplarStream(Stream *stream) {
+se::host::HostStream *AsPoplarStream(se::Stream *stream) {
   DCHECK(stream != nullptr);
-  return dynamic_cast<host::HostStream *>(stream->implementation());
+  return dynamic_cast<se::host::HostStream *>(stream->implementation());
 }
 
 PoplarExecutor::PoplarExecutor() :
@@ -133,13 +132,14 @@ void *PoplarExecutor::Allocate(uint64 size) {
   return allocated;
 }
 
-void *PoplarExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
-                                      uint64 offset_bytes, uint64 size_bytes) {
+void *PoplarExecutor::AllocateSubBuffer(se::DeviceMemoryBase *parent,
+                                        uint64 offset_bytes,
+                                        uint64 size_bytes) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(parent->opaque());
   return tc->data + offset_bytes;
 }
 
-void PoplarExecutor::Deallocate(DeviceMemoryBase *mem) {
+void PoplarExecutor::Deallocate(se::DeviceMemoryBase *mem) {
   if (!mem->is_sub_buffer()) {
     bool free = false;
     TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
@@ -157,26 +157,26 @@ void PoplarExecutor::Deallocate(DeviceMemoryBase *mem) {
   }
 }
 
-bool PoplarExecutor::Memcpy(Stream *stream, void *host_dst,
-                          const DeviceMemoryBase &pop_src, uint64 size) {
+bool PoplarExecutor::Memcpy(se::Stream *stream, void *host_dst,
+                            const se::DeviceMemoryBase &pop_src, uint64 size) {
   AsPoplarStream(stream)->EnqueueTask(
       [this, host_dst, pop_src, size]() {
-        port::Status ok = SynchronousMemcpy(host_dst, pop_src, size); });
+        Status ok = SynchronousMemcpy(host_dst, pop_src, size); });
   return true;
 }
 
-bool PoplarExecutor::Memcpy(Stream *stream, DeviceMemoryBase *pop_dst,
-                          const void *host_src, uint64 size) {
-  DeviceMemoryBase dst = *pop_dst;
+bool PoplarExecutor::Memcpy(se::Stream *stream, se::DeviceMemoryBase *pop_dst,
+                            const void *host_src, uint64 size) {
+  se::DeviceMemoryBase dst = *pop_dst;
   AsPoplarStream(stream)->EnqueueTask(
       [this, dst, host_src, size]() mutable {
-        port::Status ok = SynchronousMemcpy(&dst, host_src, size); });
+        Status ok = SynchronousMemcpy(&dst, host_src, size); });
   return true;
 }
 
-port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
-                                               const void *host_src,
-                                               uint64 size) {
+Status PoplarExecutor::SynchronousMemcpy(se::DeviceMemoryBase *pop_dst,
+                                         const void *host_src,
+                                         uint64 size) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
   memcpy(tc->data, host_src, size);
   {
@@ -184,12 +184,12 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
     tc->on_device = false;
     tc->input_handle.clear();
   }
-  return port::Status::OK();
+  return Status::OK();
 }
 
-port::Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
-                                               const DeviceMemoryBase &pop_src,
-                                               uint64 size) {
+Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
+                                         const se::DeviceMemoryBase &pop_src,
+                                         uint64 size) {
   const TensorControl* tc =
           reinterpret_cast<const TensorControl*>(pop_src.opaque());
   {
@@ -199,39 +199,40 @@ port::Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
     }
   }
   memcpy(host_dst, tc->data, size);
-  return port::Status::OK();
+  return Status::OK();
 }
 
-bool PoplarExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
+bool PoplarExecutor::HostCallback(se::Stream *stream,
+                                  std::function<void()> callback) {
   AsPoplarStream(stream)->EnqueueTask(callback);
   return true;
 }
 
-bool PoplarExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
+bool PoplarExecutor::CreateStreamDependency(se::Stream *dependent,
+                                            se::Stream *other) {
   AsPoplarStream(dependent)->EnqueueTask(
       [other]() { auto ok = other->BlockHostUntilDone(); });
   AsPoplarStream(dependent)->BlockUntilDone();
   return true;
 }
 
-bool PoplarExecutor::StartTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<host::HostTimer *>(timer->implementation())->Start(stream);
+bool PoplarExecutor::StartTimer(se::Stream *stream, se::Timer *timer) {
+  dynamic_cast<se::host::HostTimer *>(timer->implementation())->Start(stream);
   return true;
 }
 
-bool PoplarExecutor::StopTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<host::HostTimer *>(timer->implementation())->Stop(stream);
+bool PoplarExecutor::StopTimer(se::Stream *stream, se::Timer *timer) {
+  dynamic_cast<se::host::HostTimer *>(timer->implementation())->Stop(stream);
   return true;
 }
 
-port::Status PoplarExecutor::BlockHostUntilDone(Stream *stream)  {
+Status PoplarExecutor::BlockHostUntilDone(se::Stream *stream)  {
   AsPoplarStream(stream)->BlockUntilDone();
-  return port::Status::OK();
+  return Status::OK();
 }
 
-DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
-  internal::DeviceDescriptionBuilder builder;
+se::DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
+  se::internal::DeviceDescriptionBuilder builder;
 
   // This is never used
 
@@ -239,7 +240,7 @@ DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
   return built.release();
 }
 
-port::Status PoplarExecutor::InitializePoplarDevice(
+Status PoplarExecutor::InitializePoplarDevice(
     const tensorflow::IPUOptions::DeviceConfig& cfg) {
 
   TF_RETURN_IF_ERROR(ClosePoplarDevice());
@@ -252,8 +253,8 @@ port::Status PoplarExecutor::InitializePoplarDevice(
 
   switch (type) {
     case tensorflow::IPUOptions::DeviceConfig::IPU:
-      return port::Status{
-          port::error::INTERNAL,
+      return Status{
+          tensorflow::error::INTERNAL,
           tensorflow::strings::Printf(
               "IPU device type not supported on ordinal %d", ordinal_)};
     case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL:
@@ -277,8 +278,8 @@ port::Status PoplarExecutor::InitializePoplarDevice(
       poplar_device_ = poplar::Device::createCPUDevice();
       break;
     default:
-      return port::Status{
-          port::error::INTERNAL,
+      return Status{
+          tensorflow::error::INTERNAL,
           tensorflow::strings::Printf(
               "unrecognized poplar device type for ordinal %d: %d", ordinal_,
               type)};
@@ -287,10 +288,10 @@ port::Status PoplarExecutor::InitializePoplarDevice(
   random_type_ = cfg.random_type();
 
   device_open_ = true;
-  return port::Status::OK();
+  return Status::OK();
 }
 
-port::Status PoplarExecutor::ClosePoplarDevice() {
+Status PoplarExecutor::ClosePoplarDevice() {
   if (device_open_) {
     //poplar_device_.release();
     device_open_ = false;
@@ -299,7 +300,7 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
     profile_io_ = false;
     reports_.clear();
   }
-  return port::Status::OK();
+  return Status::OK();
 }
 
 void PoplarExecutor::AddEventRecord(tensorflow::IpuTraceEvent::Type type,
@@ -329,12 +330,12 @@ const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
   }
 }
 
-port::Status
+Status
 PoplarExecutor::GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out) {
   std::lock_guard <std::recursive_mutex> g(mutex_);
   out.splice(out.end(), std::move(reports_));
   reports_.clear();
-  return port::Status::OK();
+  return Status::OK();
 }
 
 void
@@ -458,7 +459,7 @@ PoplarExecutor::RemapArgs(const xla::Shape& shape,
   }
 }
 
-port::Status
+Status
 PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
   void* buf(static_cast<void*>(tc->data));
   if (tc->output_convertor) {
@@ -475,10 +476,10 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
   tc->on_device = false;
   tc->output_handle.clear();
   tc->input_handle.clear();
-  return port::Status::OK();
+  return Status::OK();
 }
 
-port::StatusOr<se::DeviceMemoryBase>
+StatusOr<se::DeviceMemoryBase>
 PoplarExecutor::GetTupleBufferByIndex(const se::DeviceMemoryBase& base,
                                       int64 value) {
   const TensorControl* tc =
@@ -489,7 +490,7 @@ PoplarExecutor::GetTupleBufferByIndex(const se::DeviceMemoryBase& base,
   return se::DeviceMemoryBase(bufs[value], size);
 }
 
-port::StatusOr<se::DeviceMemoryBase>
+StatusOr<se::DeviceMemoryBase>
 PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,
     const xla::poplarplugin::PoplarExecutable& executable,
@@ -613,6 +614,6 @@ PoplarExecutor::ExecuteEngine(
   return retbuf;
 }
 
-}  // namespace poplarplugin
-}  // namespace gputools
-}  // namespace perftools
+}
+}
+

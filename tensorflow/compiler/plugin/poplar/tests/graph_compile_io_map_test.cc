@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 
 namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::poplarplugin;
 
 namespace xla {
 namespace poplarplugin {
@@ -37,7 +36,7 @@ public:
   : ClientLibraryTestBase(platform) {
       mutable_debug_options()->add_xla_disable_hlo_passes("tuple-simplifier");
   }
-  const sep::OutputMap& GetMap(PoplarExecutable* e) {
+  const OutputMap& GetMap(PoplarExecutable* e) {
     return e->output_map_;
   }
 };
@@ -67,7 +66,7 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  auto *p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
@@ -112,7 +111,7 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  auto *p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
@@ -158,7 +157,7 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  auto *p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
@@ -217,7 +216,7 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  auto *p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
@@ -270,7 +269,7 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  auto *p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;

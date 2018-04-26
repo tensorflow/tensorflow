@@ -46,7 +46,7 @@ limitations under the License.
 #include <poplar/Engine.hpp>
 #include <poplar/exceptions.hpp>
 
-namespace se = ::perftools::gputools;
+namespace se = ::stream_executor;
 
 namespace xla {
 namespace poplarplugin {

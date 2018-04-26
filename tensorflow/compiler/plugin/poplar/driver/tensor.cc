@@ -22,21 +22,21 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/bcast.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/util/bcast.h"
+#include "tensorflow/stream_executor/lib/status.h"
 
 #include <poplar/Engine.hpp>
 #include <poplar/OptionFlags.hpp>
 #include <poputil/TileMapping.hpp>
 
-namespace sep = ::perftools::gputools::poplarplugin;
+using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace poplarplugin {
@@ -68,8 +68,8 @@ PoplarDataType(const xla::Shape& shape) {
       return poplar::FLOAT;
     default:
       return tensorflow::errors::FailedPrecondition(
-              port::StrCat("unsupported primitive type in poplar ",
-                           shape.element_type()));
+          StrCat("unsupported primitive type in poplar ",
+                 shape.element_type()));
   }
 }
 
@@ -171,7 +171,7 @@ AddConvolutionInput(poplar::Graph& graph,
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
-  auto name = port::StrCat(inst->name(), "_input");
+  auto name = StrCat(inst->name(), "_input");
   poplar::OptionFlags opts;
   poplar::Tensor out = popconv::createInput(graph, params, name, opts,
                                             &resources.convolution_cache);
@@ -187,7 +187,7 @@ AddConvolutionWeights(poplar::Graph& graph,
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
-  auto name = port::StrCat(inst->name(), "_weights");
+  auto name = StrCat(inst->name(), "_weights");
   poplar::OptionFlags opts;
   poplar::Tensor out = popconv::createWeights(graph, params, name, opts,
                                               &resources.convolution_cache);
@@ -206,7 +206,7 @@ AddLeftMatMul(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
-  auto name = port::StrCat(inst->name(), "_lhs");
+  auto name = StrCat(inst->name(), "_lhs");
   poplar::OptionFlags opts;
   return poplin::createMatMulInputLHS(graph,type,aShape,bShape, name, opts,
                                       &resources.dot_cache);
@@ -221,7 +221,7 @@ AddRightMatMul(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
-  auto name = port::StrCat(inst->name(), "_rhs");
+  auto name = StrCat(inst->name(), "_rhs");
   poplar::OptionFlags opts;
   return poplin::createMatMulInputRHS(graph,type,aShape,bShape, name, opts,
                                       &resources.dot_cache);
@@ -259,8 +259,8 @@ AddTensor(poplar::Graph& graph,
           }
           default:
             return tensorflow::errors::FailedPrecondition(
-                port::StrCat("invalid operand for tensor allocation on ",
-                             src.first->name()));
+                StrCat("invalid operand for tensor allocation on ",
+                       src.first->name()));
         }
         break;
       }
@@ -283,8 +283,8 @@ AddTensor(poplar::Graph& graph,
           }
           default:
             return tensorflow::errors::FailedPrecondition(
-                port::StrCat("invalid operand for tensor allocation on ",
-                             src.first->name()));
+                StrCat("invalid operand for tensor allocation on ",
+                       src.first->name()));
         }
         break;
       }
@@ -343,13 +343,13 @@ AddTensor(poplar::Graph& graph,
               }
               default:
                 return tensorflow::errors::FailedPrecondition(
-                    port::StrCat("invalid operand for tensor allocation on ",
-                                 src.first->name()));
+                    StrCat("invalid operand for tensor allocation on ",
+                           src.first->name()));
             }
           } else {
             return tensorflow::errors::FailedPrecondition(
-                port::StrCat("Unknown poplibs fusion for tensor ",
-                             src.first->name(), ": ", name));
+                StrCat("Unknown poplibs fusion for tensor ",
+                       src.first->name(), ": ", name));
           }
         } else {
           TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
@@ -358,8 +358,8 @@ AddTensor(poplar::Graph& graph,
       }
       default:
         return tensorflow::errors::FailedPrecondition(
-            port::StrCat("Unknown tensor target for ", src.first->name(),
-                         ": ", target->second.tgt->name()));
+            StrCat("Unknown tensor target for ", src.first->name(),
+                   ": ", target->second.tgt->name()));
     }
 
     // Now apply any transformations required by the path from the source to
@@ -450,7 +450,7 @@ Add64BitConstantTensor(poplar::Graph&graph,
   const void* data(static_cast<const void*>(literal.untyped_data()));
 
   std::vector<char> converted =
-          sep::ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);
+      ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);
 
   const int32* data32 = reinterpret_cast<const int32*>(converted.data());
 
@@ -487,7 +487,7 @@ Set64BitInitialTensorValue(poplar::Graph &graph,
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   const void* data(static_cast<const void*>(literal.untyped_data()));
   std::vector<char> converted =
-          sep::ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);
+      ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);
 
   const int32* data32 = reinterpret_cast<const int32*>(converted.data());
   graph.setInitialValue<int>(tensor, static_cast<const int*>(data32));

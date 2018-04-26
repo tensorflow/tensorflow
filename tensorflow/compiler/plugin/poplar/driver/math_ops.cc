@@ -27,6 +27,8 @@
 #include <poplin/MatMul.hpp>
 #include <popnn/NonLinearity.hpp>
 
+namespace se = ::stream_executor;
+
 namespace xla {
 namespace poplarplugin {
 
@@ -80,8 +82,8 @@ LookupUnaryFn(const HloInstruction* inst) {
   }
 
   return Status(tensorflow::error::UNKNOWN,
-                port::StrCat("[Poplar] Invalid opcode lookup ",
-                             HloOpcodeString(opcode)));
+                se::port::StrCat("[Poplar] Invalid opcode lookup ",
+                                 HloOpcodeString(opcode)));
 }
 
 StatusOr<popops::expr::BinaryOpType>
@@ -145,8 +147,8 @@ LookupBinaryFn(const HloInstruction* inst) {
   }
 
   return Status(tensorflow::error::UNKNOWN,
-                port::StrCat("[Poplar] Invalid opcode lookup ",
-                             HloOpcodeString(opcode)));
+                se::port::StrCat("[Poplar] Invalid opcode lookup ",
+                                 HloOpcodeString(opcode)));
 }
 
 StatusOr<popops_inplace_fn>
@@ -160,8 +162,8 @@ LookupBinaryInPlaceFn(const HloInstruction* inst) {
       break;
   }
   return Status(tensorflow::error::UNKNOWN,
-                port::StrCat("[Poplar] Invalid opcode lookup ",
-                             HloOpcodeString(opcode)));
+                se::port::StrCat("[Poplar] Invalid opcode lookup ",
+                                 HloOpcodeString(opcode)));
 }
 
 static std::string GetMatMulPass(const HloInstruction* inst) {
@@ -241,7 +243,8 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
       tensorflow::BCast bcast(shape1, shape2);
       if (!bcast.IsValid()) {
         return Status(tensorflow::error::FAILED_PRECONDITION,
-                      port::StrCat("Incompatible broadcast on ", inst->name()));
+                      se::port::StrCat("Incompatible broadcast on ",
+                                       inst->name()));
       }
 
       in0 = in0.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
@@ -291,7 +294,8 @@ CreateMatMulOp(poplar::Graph &graph,
 
   if (in0.rank() > 2 || in1.rank() > 2) {
     return Status(tensorflow::error::FAILED_PRECONDITION,
-                  port::StrCat("Unsupported Dot operation on ", inst->name()));
+                  se::port::StrCat("Unsupported Dot operation on ",
+                                   inst->name()));
   }
 
   if (in0.rank() == 1) {
@@ -328,7 +332,8 @@ CreateSelectOp(poplar::Graph &graph,
 
   if (in0.size() != in1.size()) {
     return Status(tensorflow::error::FAILED_PRECONDITION,
-                  port::StrCat("Mismatching tuple sizes on ", inst->name()));
+                  se::port::StrCat("Mismatching tuple sizes on ",
+                                   inst->name()));
   }
 
   poplar::program::Sequence seq;

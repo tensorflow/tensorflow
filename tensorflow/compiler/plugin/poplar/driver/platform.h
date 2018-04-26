@@ -36,15 +36,16 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
+namespace se = stream_executor;
+
 namespace tensorflow {
   class IpuTraceEvent;
 }
 
-namespace perftools {
-namespace gputools {
+namespace xla {
 namespace poplarplugin {
 
-class PoplarPlatform : public Platform {
+class PoplarPlatform : public se::Platform {
  public:
   PoplarPlatform();
   ~PoplarPlatform() override;
@@ -56,37 +57,37 @@ class PoplarPlatform : public Platform {
   // base::NumCPUs().
   int VisibleDeviceCount() const override;
 
-  const string& Name() const override;
+  const std::string& Name() const override;
 
-  port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  StatusOr<se::StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
-  port::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& config) override;
+  StatusOr<se::StreamExecutor*> ExecutorForDeviceWithPluginConfig(
+      int ordinal, const se::PluginConfig& config) override;
 
-  port::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) override;
+  StatusOr<se::StreamExecutor*> GetExecutor(
+      const se::StreamExecutorConfig& config) override;
 
-  port::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) override;
+  StatusOr<std::unique_ptr<se::StreamExecutor>> GetUncachedExecutor(
+      const se::StreamExecutorConfig& config) override;
 
-  void RegisterTraceListener(std::unique_ptr<TraceListener> listener) override;
+  void RegisterTraceListener(std::unique_ptr<se::TraceListener>) override;
 
-  void UnregisterTraceListener(TraceListener* listener) override;
+  void UnregisterTraceListener(se::TraceListener* listener) override;
 
   // Poplar specific interface
 
-  port::Status ConfigurePoplarDevices(const tensorflow::IPUOptions& opts);
+  Status ConfigurePoplarDevices(const tensorflow::IPUOptions& opts);
 
-  port::Status ClosePoplarDevice(int ordinal);
+  Status ClosePoplarDevice(int ordinal);
 
-  port::Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
+  Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 
  private:
   // This platform's name.
-  string name_;
+  std::string name_;
 
   // Cache of created StreamExecutors.
-  ExecutorCache executor_cache_;
+  se::ExecutorCache executor_cache_;
 
   // The number of poplar devices to be created
   int num_devices_;
@@ -94,8 +95,8 @@ class PoplarPlatform : public Platform {
   SE_DISALLOW_COPY_AND_ASSIGN(PoplarPlatform);
 };
 
-}  // namespace poplarplugin
-}  // namespace gputools
-}  // namespace perftools
+}
+}
+
 
 #endif
