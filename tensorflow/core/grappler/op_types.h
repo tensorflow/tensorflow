@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OP_TYPES_H_
-#define TENSORFLOW_GRAPPLER_OP_TYPES_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OP_TYPES_H_
+#define TENSORFLOW_CORE_GRAPPLER_OP_TYPES_H_
 
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -185,4 +185,4 @@ bool HasOpDef(const NodeDef& node);
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OP_TYPES_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OP_TYPES_H_

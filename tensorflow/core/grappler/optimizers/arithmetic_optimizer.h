@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
 
 #include <unordered_set>
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -109,7 +109,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   Status SimplifyArithmeticOps(bool can_use_shapes);
   // Tries to simplify the expression that roots at `node` and replaces the uses
   // of `node` to the simplified expression. Returns the name of the simplified
-  // tensor (e.g. "split:1") or an emtpy string if no simplification is
+  // tensor (e.g. "split:1") or an empty string if no simplification is
   // performed.
   //
   // `node_map` stores the mapping from node names to NodeDef*, and will be
@@ -138,4 +138,4 @@ class ArithmeticOptimizer : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
