@@ -1086,8 +1086,8 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
 void ProcessTopkV2Operator(Model* model, TopKV2Operator* op) {
   const auto& input_values = model->GetArray(op->inputs[0]);
   const auto& input_k = model->GetArray(op->inputs[1]);
-  auto& output_indexes = model->GetArray(op->outputs[0]);
-  auto& output_values = model->GetArray(op->outputs[1]);
+  auto& output_values = model->GetArray(op->outputs[0]);
+  auto& output_indexes = model->GetArray(op->outputs[1]);
 
   // Bail if we already know the output shape.
   if (output_indexes.has_shape()) {
