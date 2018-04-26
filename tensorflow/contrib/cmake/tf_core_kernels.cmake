@@ -177,6 +177,16 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
   )
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
+else(WIN32)
+  if(tensorflow_ENABLE_GPU)
+    file(GLOB_RECURSE tf_core_kernels_gpu_exclude_srcs
+        # temporarily disable nccl as it needs to be ported with gpu
+        "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_ops.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
+    )
+    list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_gpu_exclude_srcs})
+  endif(tensorflow_ENABLE_GPU)
 endif(WIN32)
 
 file(GLOB_RECURSE tf_core_gpu_kernels_srcs
