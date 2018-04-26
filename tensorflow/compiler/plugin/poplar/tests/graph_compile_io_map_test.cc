@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace poplarplugin {
 
