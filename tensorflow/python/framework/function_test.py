@@ -1050,6 +1050,29 @@ class FunctionTest(test.TestCase):
         self.assertEqual(44.0, sess.run(f_1))
         self.assertEqual((42.0, 44.0), sess.run((f_0, f_1)))
 
+  def testGuaranteedConstsAreCaptured(self):
+    var = variables.Variable(1.0)
+    const = array_ops.guarantee_const(var)
+    also_const = array_ops.identity(const)
+    still_const = array_ops.identity(also_const)
+    not_const = still_const + var
+    also_not_const = array_ops.placeholder(dtypes.float32)
+
+    @function.Defun()
+    def CapturesGuaranteedConst():
+      output = const + also_const + still_const + not_const + also_not_const
+      first, second, third, fourth, fifth = function.get_extra_args()
+      self.assertEqual("GuaranteeConst", first.consumers()[0].node_def.op)
+      self.assertEqual("GuaranteeConst", second.consumers()[0].node_def.op)
+      self.assertEqual("GuaranteeConst", third.consumers()[0].node_def.op)
+      self.assertNotEqual("GuaranteeConst", fourth.consumers()[0].node_def.op)
+      self.assertNotEqual("GuaranteeConst", fifth.consumers()[0].node_def.op)
+      return output
+
+    with self.test_session(use_gpu=False) as sess:
+      sess.run(var.initializer)
+      _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
+
 
 @test_util.with_c_shapes
 class FunctionsFromProtos(test.TestCase):
