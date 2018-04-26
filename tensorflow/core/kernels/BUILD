@@ -639,6 +639,7 @@ cc_library(
         ":pack_op",
         ":pad_op",
         ":quantize_and_dequantize_op",
+        ":repeat_op",
         ":reshape_op",
         ":reverse_op",
         ":reverse_sequence_op",
@@ -899,6 +900,12 @@ tf_kernel_library(
         "//third_party/mkl:intel_binary_blob",
         "@mkl_dnn",
     ]),
+)
+
+tf_kernel_library(
+    name = "repeat_op",
+    prefix = "repeat_op",
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
