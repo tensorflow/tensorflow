@@ -397,7 +397,7 @@ class GmmAlgorithm(object):
     # Compute the effective number of data points assigned to component k.
     with ops.control_dependencies(self._w):
       points_in_k = array_ops.squeeze(
-          math_ops.add_n(self._points_in_k), squeeze_dims=[0])
+          math_ops.add_n(self._points_in_k), axis=[0])
       # Update alpha.
       if 'w' in self._params:
         final_points_in_k = points_in_k / num_batches

@@ -1405,20 +1405,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     }
     input_minmax.min = (qmin - mean_value) / std_value;
     input_minmax.max = (qmax - mean_value) / std_value;
-    if (input_array.minmax) {
-      if (input_array_proto.has_mean_value() ||
-          input_array_proto.has_std_value()) {
-        const double width = input_minmax.max - input_minmax.min;
-        const double kMinMaxAllowedDiff = 1e-6 * width;
-        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
-                  kMinMaxAllowedDiff &&
-              std::abs(input_minmax.max - input_array.minmax->max) <
-                  kMinMaxAllowedDiff)
-            << input_minmax.min << ", " << input_minmax.max
-            << " != " << input_array.minmax->min << ", "
-            << input_array.minmax->max;
-      }
-    } else {
+    if (!input_array.minmax) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }
@@ -1470,28 +1457,6 @@ void CheckIsReadyForQuantization(const Model& model) {
           << "contain min/max information, or pass --default_ranges_min= and "
           << "--default_ranges_max= if you do not care about the accuracy of "
           << "results.";
-    }
-  }
-}
-
-void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
-                                 double default_ranges_max) {
-  for (const auto& op : model->operators) {
-    for (const auto& input : op->inputs) {
-      auto& input_array = model->GetArray(input);
-      if (!input_array.minmax && !input_array.buffer) {
-        auto& minmax = input_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
-    }
-    for (const auto& output : op->outputs) {
-      auto& output_array = model->GetArray(output);
-      if (!output_array.minmax && !output_array.buffer) {
-        auto& minmax = output_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
     }
   }
 }

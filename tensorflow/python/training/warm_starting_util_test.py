@@ -946,18 +946,20 @@ class WarmStartingUtilTest(test.TestCase):
         # emb_vocab should be correctly warm-started after vocab remapping.
         # Missing values are filled in with the EmbeddingColumn's initializer.
         self._assert_cols_to_vars(
-            cols_to_vars, {
+            cols_to_vars,
+            {
                 emb_vocab: [
-                    # embedding_weights part 0.
-                    np.array([[3., 3.3], [2., 2.2], [1., 1.1]]),
-                    # embedding_weights part 1.
-                    np.array([[0.5, 0.4], [0.42, 0.42], [0.42, 0.42]]),
                     # linear weights part 0.
                     np.array([[0.69]]),
                     # linear weights part 1.
-                    np.array([[0.71]])
+                    np.array([[0.71]]),
+                    # embedding_weights part 0.
+                    np.array([[3., 3.3], [2., 2.2], [1., 1.1]]),
+                    # embedding_weights part 1.
+                    np.array([[0.5, 0.4], [0.42, 0.42], [0.42, 0.42]])
                 ]
-            }, sess)
+            },
+            sess)
 
   def testErrorConditions(self):
     x = variable_scope.get_variable(

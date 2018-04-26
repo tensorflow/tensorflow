@@ -40,7 +40,6 @@ from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import math_ops as _math_ops
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -249,5 +248,3 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
       dct2 *= weights
 
     return dct2
-
-remove_undocumented(__name__)

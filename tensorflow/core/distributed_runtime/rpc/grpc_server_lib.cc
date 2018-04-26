@@ -222,10 +222,12 @@ Status GrpcServer::Init(
           SessionOptions options, const MasterEnv* env,
           std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
           std::unique_ptr<WorkerCacheInterface> worker_cache,
-          std::unique_ptr<DeviceSet> device_set) {
+          std::unique_ptr<DeviceSet> device_set,
+          std::vector<string> filtered_worker_list) {
         options.config.MergeFrom(config);
         return new MasterSession(options, env, std::move(remote_devs),
                                  std::move(worker_cache), std::move(device_set),
+                                 std::move(filtered_worker_list),
                                  stats_factory);
       };
   master_env_.worker_cache_factory =

@@ -47,16 +47,14 @@ ClientType client_types[] = {ClientType::kLocal, ClientType::kCompileOnly};
 
 class ComputeConstantTest : public ::testing::Test {
  public:
-  explicit ComputeConstantTest(
-      perftools::gputools::Platform* platform = nullptr)
+  explicit ComputeConstantTest(se::Platform* platform = nullptr)
       : platform_(platform) {}
 
   string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  Client* ClientOrDie(::perftools::gputools::Platform* platform,
-                      ClientType client_type) {
+  Client* ClientOrDie(se::Platform* platform, ClientType client_type) {
     if (client_type == ClientType::kLocal) {
       StatusOr<Client*> result =
           ClientLibrary::GetOrCreateLocalClient(platform);
@@ -107,7 +105,7 @@ class ComputeConstantTest : public ::testing::Test {
     return result.ok() ? result.ValueOrDie() : false;
   }
 
-  perftools::gputools::Platform* platform_;
+  se::Platform* platform_;
 };
 
 TEST_F(ComputeConstantTest, ScalarInt32Literal) {
