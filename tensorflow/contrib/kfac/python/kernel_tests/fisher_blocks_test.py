@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.kfac.python.ops import fisher_blocks as fb
 from tensorflow.contrib.kfac.python.ops import layer_collection as lc
+from tensorflow.contrib.kfac.python.ops import linear_operator as lo
 from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -46,8 +47,9 @@ class UtilsTest(test.TestCase):
   def testComputePiTracenorm(self):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
-      left_factor = array_ops.diag([1., 2., 0., 1.])
-      right_factor = array_ops.ones([2., 2.])
+      diag = ops.convert_to_tensor([1., 2., 0., 1.])
+      left_factor = lo.LinearOperatorDiag(diag)
+      right_factor = lo.LinearOperatorFullMatrix(array_ops.ones([2, 2]))
 
       # pi is the sqrt of the left trace norm divided by the right trace norm
       pi = fb.compute_pi_tracenorm(left_factor, right_factor)
@@ -245,7 +247,6 @@ class NaiveDiagonalFBTest(test.TestCase):
 
       full = sess.run(block.full_fisher_block())
       explicit = np.dot(np.linalg.inv(full + damping * np.eye(3)), v_flat)
-
       self.assertAllClose(output_flat, explicit)
 
 

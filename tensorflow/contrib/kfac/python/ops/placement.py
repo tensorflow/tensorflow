@@ -35,7 +35,7 @@ def _make_thunk_on_device(func, device):
 class RoundRobinPlacementMixin(object):
   """Implements round robin placement strategy for ops and variables."""
 
-  def __init__(self, cov_devices=None, inv_devices=None, *args, **kwargs):
+  def __init__(self, cov_devices=None, inv_devices=None, **kwargs):
     """Initializes the RoundRobinPlacementMixin class.
 
     Args:
@@ -45,11 +45,10 @@ class RoundRobinPlacementMixin(object):
       inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
         computations will be placed on these devices in a round-robin fashion.
         Can be None, which means that no devices are specified.
-      *args:
-      **kwargs:
+      **kwargs: Need something here?
 
     """
-    super(RoundRobinPlacementMixin, self).__init__(*args, **kwargs)
+    super(RoundRobinPlacementMixin, self).__init__(**kwargs)
     self._cov_devices = cov_devices
     self._inv_devices = inv_devices
 
