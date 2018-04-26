@@ -45,8 +45,7 @@ bool FLAGS_gpuexec_rocm_device_0_only = false;
 // matches the expected one.
 constexpr bool kVerifyROCmContext = false;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 namespace {
@@ -63,7 +62,7 @@ class CreatedContexts {
  public:
   // Returns whether context is a member of the live set.
   static bool Has(hipCtx_t context) {
-    shared_lock lock{mu_};
+    tf_shared_lock lock{mu_};
     return Live()->find(context) != Live()->end();
   }
 
@@ -914,19 +913,20 @@ ROCMDriver::ContextGetSharedMemConfig(ROCmContext* context) {
   return true;
 }
 
-/* static */ bool ROCMDriver::SynchronizeStream(ROCmContext* context,
+/* static */ port::Status ROCMDriver::SynchronizeStream(ROCmContext* context,
                                                 hipStream_t stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
   hipError_t res = hipStreamSynchronize(stream);
   if (res != hipSuccess) {
-    LOG(ERROR) << "could not synchronize on ROCM stream: " << ToString(res)
-               << " :: " << port::CurrentStackTrace();
-    return false;
+    port::Status status = port::InternalError(
+        port::StrCat("could not synchronize on ROCM stream: ", ToString(res)));
+    LOG(ERROR) << status << " :: " << port::CurrentStackTrace();
+    return status;
   }
   VLOG(2) << "successfully synchronized stream " << stream << " on context "
           << context;
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ bool ROCMDriver::IsStreamIdle(ROCmContext *context,
@@ -1431,5 +1431,4 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 }
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

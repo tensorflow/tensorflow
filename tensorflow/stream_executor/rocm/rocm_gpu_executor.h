@@ -35,8 +35,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 // ROCM-platform implementation of the platform-agnostic
@@ -150,7 +149,7 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
 
   Event::Status PollForEventStatus(Event *event) override;
 
-  bool BlockHostUntilDone(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return ROCMDriver::GetDeviceCount(); }
 
@@ -270,7 +269,6 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_GPU_EXECUTOR_H_

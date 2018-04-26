@@ -18,8 +18,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 // Opaque and unique identifier for the ROCm platform.
@@ -30,7 +29,6 @@ namespace rocm {
 extern const Platform::Id kROCmPlatformId;
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_ID_H_

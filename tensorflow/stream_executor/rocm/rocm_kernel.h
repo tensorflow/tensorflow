@@ -39,8 +39,7 @@ limitations under the License.
     "ROCM runtime being included into ROCM GPU executor; should be driver only."
 #endif
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 // Wraps a hipFunction_t to implement the platform-independent KernelInterface.
@@ -123,7 +122,6 @@ inline ROCMKernel *AsROCMKernel(KernelBase *kernel) {
 }
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_KERNEL_H_

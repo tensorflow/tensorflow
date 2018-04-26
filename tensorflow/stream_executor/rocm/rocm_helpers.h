@@ -26,8 +26,7 @@ limitations under the License.
 
 #include "rocm/include/hip/hip_complex.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 template <typename ElemT>
 class DeviceMemory;
@@ -100,7 +99,6 @@ inline hipDoubleComplex ROCMComplexValue(std::complex<double> val) {
 }
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_HELPERS_H_

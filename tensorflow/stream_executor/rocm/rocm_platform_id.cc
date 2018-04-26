@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 PLATFORM_DEFINE_ID(kROCmPlatformId);
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -31,8 +31,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocFftPlugin);
@@ -473,6 +472,11 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlanWithScratchAllocator(
   return std::move(fft_plan_ptr);
 }
 
+void ROCMFft::UpdatePlanWithScratchAllocator(
+    Stream *stream, fft::Plan *plan, ScratchAllocator *scratch_allocator) {
+  LOG(ERROR) << "update plan with scratch allocator not implemented";
+}
+
 template <typename FuncT, typename InputT, typename OutputT>
 bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
                             const DeviceMemory<InputT> &input,
@@ -560,10 +564,9 @@ PERFTOOLS_GPUTOOLS_ROCM_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 #undef PERFTOOLS_GPUTOOLS_ROCM_DEFINE_FFT
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
-namespace gpu = ::perftools::gputools;
+namespace gpu = ::stream_executor;
 
 REGISTER_MODULE_INITIALIZER(register_hipfft, {
   gpu::port::Status status =

@@ -24,8 +24,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 ROCmPlatform::ROCmPlatform()
@@ -128,23 +127,8 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDeviceWithPluginConfig(
 
 port::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
-  mutex_lock lock(mu_);
-
-  port::StatusOr<StreamExecutor*> status = executor_cache_.Get(config);
-  if (status.ok()) {
-    return status.ValueOrDie();
-  }
-
-  port::StatusOr<std::unique_ptr<StreamExecutor>> executor =
-      GetUncachedExecutor(config);
-  if (!executor.ok()) {
-    return executor.status();
-  }
-
-  StreamExecutor* naked_executor = executor.ValueOrDie().get();
-  SE_RETURN_IF_ERROR(
-      executor_cache_.Insert(config, executor.ConsumeValueOrDie()));
-  return naked_executor;
+  return executor_cache_.GetOrCreate(
+      config, [&]() { return GetUncachedExecutor(config); });
 }
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
@@ -177,16 +161,17 @@ void ROCmPlatform::UnregisterTraceListener(TraceListener* listener) {
 static void InitializeROCmPlatform() {
   // Disabling leak checking, MultiPlatformManager does not destroy its
   // registered platforms.
-  
-  std::unique_ptr<rocm::ROCmPlatform> platform(new rocm::ROCmPlatform);
-  SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  auto status = MultiPlatformManager::PlatformWithName("ROCM");
+  if (!status.ok()) {
+    std::unique_ptr<rocm::ROCmPlatform> platform(new rocm::ROCmPlatform);
+    SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  }
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(rocm_platform,
-                            perftools::gputools::InitializeROCmPlatform());
+                            stream_executor::InitializeROCmPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 // Note that module initialization sequencing is not supported in the

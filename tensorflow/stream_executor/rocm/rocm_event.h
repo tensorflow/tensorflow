@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/lib/status.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 // ROCMEvent wraps a hipEvent_t in the platform-independent EventInterface
@@ -58,7 +57,6 @@ class ROCMEvent : public internal::EventInterface {
 };
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_EVENT_H_

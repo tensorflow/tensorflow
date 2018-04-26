@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "rocm/include/hip/hip_runtime.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 // Identifies the memory space where an allocation resides. See
@@ -256,7 +255,7 @@ class ROCMDriver {
   // while another thread blocks like this, can you wind up waiting an unbounded
   // amount of time?
   //
-  static bool SynchronizeStream(ROCmContext* context, hipStream_t stream);
+  static port::Status SynchronizeStream(ROCmContext* context, hipStream_t stream);
 
   // Blocks the calling thread until the operations associated with the context
   // have been completed, via hipCtxSynchronize.
@@ -430,7 +429,6 @@ class ROCmContext {
 };
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_H_

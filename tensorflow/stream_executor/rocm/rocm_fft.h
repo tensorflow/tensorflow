@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "rocm/include/rocfft/hipfft.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 
@@ -128,7 +127,6 @@ class ROCMFft : public fft::FftSupport {
 };
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
