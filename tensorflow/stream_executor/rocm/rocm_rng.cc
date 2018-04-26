@@ -54,8 +54,7 @@ std::ostream &operator<<(std::ostream &in, const hiprandStatus_t &status) {
   }
 }
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kHipRandPlugin);
@@ -271,10 +270,9 @@ bool ROCMRng::SetSeed(Stream *stream, const uint8 *seed, uint64 seed_bytes) {
 }
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
-namespace gpu = ::perftools::gputools;
+namespace gpu = ::stream_executor;
 
 REGISTER_MODULE_INITIALIZER(register_hiprand, {
   gpu::port::Status status =

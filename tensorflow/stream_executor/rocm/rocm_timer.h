@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/rocm/rocm_driver.h"
 #include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 class ROCMExecutor;
@@ -60,13 +59,13 @@ class ROCMTimer : public internal::TimerInterface {
   // events.
   float GetElapsedMilliseconds() const;
 
-  // See perftools::gputools::Timer::Microseconds().
+  // See Timer::Microseconds().
   // TODO(leary) make this into an error code interface...
   uint64 Microseconds() const override {
     return GetElapsedMilliseconds() * 1e3;
   }
 
-  // See perftools::GPUTools::Timer::Nanoseconds().
+  // See Timer::Nanoseconds().
   uint64 Nanoseconds() const override { return GetElapsedMilliseconds() * 1e6; }
 
  private:
@@ -78,7 +77,6 @@ class ROCMTimer : public internal::TimerInterface {
 };
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_TIMER_H_

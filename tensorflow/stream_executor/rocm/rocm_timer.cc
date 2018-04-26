@@ -20,8 +20,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/rocm/rocm_stream.h"
 #include "tensorflow/stream_executor/lib/status.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 bool ROCMTimer::Init() {
@@ -84,5 +83,4 @@ bool ROCMTimer::Stop(ROCMStream *stream) {
 }
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

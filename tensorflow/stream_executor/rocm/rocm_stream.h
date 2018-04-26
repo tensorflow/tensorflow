@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 class ROCMExecutor;
@@ -89,7 +88,6 @@ ROCMStream *AsROCMStream(Stream *stream);
 hipStream_t AsROCMStreamValue(Stream *stream);
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_STREAM_H_

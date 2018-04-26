@@ -22,8 +22,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 // e.g. DriverVersion{346, 3, 4}
@@ -93,7 +92,6 @@ class Diagnostician {
 };
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DIAGNOSTICS_H_

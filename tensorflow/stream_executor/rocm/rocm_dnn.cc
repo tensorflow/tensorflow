@@ -57,8 +57,7 @@ NarrowT CheckedNarrowing(const WideT& wide) {
 
 }  // namespace
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 using dnn::BatchDescriptor;
 using dnn::FilterDescriptor;
@@ -201,8 +200,9 @@ miopenHandle_t ToHandle(void* opaque_handle) {
   return static_cast<miopenHandle_t>(opaque_handle);
 }
 
-miopenConvFwdAlgorithm_t ToConvForwardAlgo(dnn::AlgorithmType algorithm) {
-  miopenConvFwdAlgorithm_t algo = miopenConvFwdAlgorithm_t(algorithm);
+miopenConvFwdAlgorithm_t ToConvForwardAlgo(dnn::AlgorithmDesc algorithm) {
+  miopenConvFwdAlgorithm_t algo =
+      miopenConvFwdAlgorithm_t(algorithm.algo_id());
   switch (algo) {
     case miopenConvolutionFwdAlgoGEMM:
     case miopenConvolutionFwdAlgoDirect:
@@ -211,13 +211,14 @@ miopenConvFwdAlgorithm_t ToConvForwardAlgo(dnn::AlgorithmType algorithm) {
       return algo;
     default:
       LOG(FATAL) << "Unsupported MIOpen convolution forward algorithm: "
-                 << algorithm;
+                 << algorithm.algo_id();
   }
 }
 
 miopenConvBwdDataAlgorithm_t ToConvBackwardDataAlgo(
-    dnn::AlgorithmType algorithm) {
-  miopenConvBwdDataAlgorithm_t algo = miopenConvBwdDataAlgorithm_t(algorithm);
+    dnn::AlgorithmDesc algorithm) {
+  miopenConvBwdDataAlgorithm_t algo =
+      miopenConvBwdDataAlgorithm_t(algorithm.algo_id());
   switch (algo) {
     case miopenConvolutionBwdDataAlgoGEMM:
     case miopenConvolutionBwdDataAlgoDirect:
@@ -228,14 +229,14 @@ miopenConvBwdDataAlgorithm_t ToConvBackwardDataAlgo(
     default:
       LOG(FATAL)
           << "Unsupported MIOpen convolution backward algorithm for data: "
-          << algorithm;
+          << algorithm.algo_id();
   }
 }
 
 miopenConvBwdWeightsAlgorithm_t ToConvBackwardFilterAlgo(
-    dnn::AlgorithmType algorithm) {
+    dnn::AlgorithmDesc algorithm) {
   miopenConvBwdWeightsAlgorithm_t algo =
-      miopenConvBwdWeightsAlgorithm_t(algorithm);
+      miopenConvBwdWeightsAlgorithm_t(algorithm.algo_id());
   switch (algo) {
     case miopenConvolutionBwdWeightsAlgoGEMM:
     case miopenConvolutionBwdWeightsAlgoDirect:
@@ -243,7 +244,7 @@ miopenConvBwdWeightsAlgorithm_t ToConvBackwardFilterAlgo(
     default:
       LOG(FATAL)
           << "Unsupported MIOpen convolution backward algorithm for filter: "
-          << algorithm;
+          << algorithm.algo_id();
   }
 }
 
@@ -282,6 +283,12 @@ port::Status MIOpenSupport::Init() {
   return port::Status{port::error::INTERNAL,
                       port::StrCat("miopen library could not create a handle: ",
                                    ToString(status))};
+}
+
+port::StatusOr<perftools::gputools::dnn::VersionInfo>
+MIOpenSupport::GetVersion() {
+  // ROCM TODO: retrieve MIOpen version with its API
+  return perftools::gputools::dnn::VersionInfo(1, 3, 0);
 }
 
 // Turns a BatchDescriptor structure into a miopen tensor handle within a scope.
@@ -1399,7 +1406,9 @@ MIOpenSupport::createRnnDescriptor(int num_layers, int hidden_size,
                                   int input_size, dnn::RnnInputMode input_mode,
                                   dnn::RnnDirectionMode direction_mode,
                                   dnn::RnnMode rnn_mode,
-                                  dnn::DataType data_type, float dropout,
+                                  dnn::DataType data_type,
+                                  const dnn::AlgorithmConfig& algorithm_config, 
+                                  float dropout,
                                   uint64 seed,
                                   ScratchAllocator* state_allocator) {
   mutex_lock lock{dnn_handle_mutex_};
@@ -1448,6 +1457,28 @@ MIOpenSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
 bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
+    const DeviceMemory<Eigen::half>& input_data,
+    const dnn::RnnStateTensorDescriptor& input_h_desc,
+    const DeviceMemory<Eigen::half>& input_h_data,
+    const dnn::RnnStateTensorDescriptor& input_c_desc,
+    const DeviceMemory<Eigen::half>& input_c_data,
+    const DeviceMemory<Eigen::half>& params,
+    const dnn::RnnSequenceTensorDescriptor& output_desc,
+    DeviceMemory<Eigen::half>* output_data,
+    const dnn::RnnStateTensorDescriptor& output_h_desc,
+    DeviceMemory<Eigen::half>* output_h_data,
+    const dnn::RnnStateTensorDescriptor& output_c_desc,
+    DeviceMemory<Eigen::half>* output_c_data, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "miopen does not support half type yet";
+  return false;
+}
+
+bool MIOpenSupport::DoRnnForward(
+    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<float>& input_h_data,
@@ -1460,7 +1491,11 @@ bool MIOpenSupport::DoRnnForward(
     const dnn::RnnStateTensorDescriptor& output_c_desc,
     DeviceMemory<float>* output_c_data, bool is_training,
     ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
+
+  // ROCM TODO: output_profile_result is ignore for now
+
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -1481,6 +1516,57 @@ bool MIOpenSupport::DoRnnForward(
       input_h_data, miopen_input_c_desc, input_c_data, params, miopen_output_desc,
       output_data, miopen_output_h_desc, output_h_data, miopen_output_c_desc,
       output_c_data, is_training, reserve_space_allocator, workspace_allocator);
+}
+
+bool MIOpenSupport::DoRnnForward(
+    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor& input_desc,
+    const DeviceMemory<double>& input_data,
+    const dnn::RnnStateTensorDescriptor& input_h_desc,
+    const DeviceMemory<double>& input_h_data,
+    const dnn::RnnStateTensorDescriptor& input_c_desc,
+    const DeviceMemory<double>& input_c_data,
+    const DeviceMemory<double>& params,
+    const dnn::RnnSequenceTensorDescriptor& output_desc,
+    DeviceMemory<double>* output_data,
+    const dnn::RnnStateTensorDescriptor& output_h_desc,
+    DeviceMemory<double>* output_h_data,
+    const dnn::RnnStateTensorDescriptor& output_c_desc,
+    DeviceMemory<double>* output_c_data, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "miopen does not support double type RNN fwd yet";
+  return false;
+}
+
+bool MIOpenSupport::DoRnnBackward(
+    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor& input_desc,
+    const DeviceMemory<Eigen::half>& input_data,
+    const dnn::RnnStateTensorDescriptor& input_h_desc,
+    const DeviceMemory<Eigen::half>& input_h_data,
+    const dnn::RnnStateTensorDescriptor& input_c_desc,
+    const DeviceMemory<Eigen::half>& input_c_data,
+    const DeviceMemory<Eigen::half>& params,
+    const dnn::RnnSequenceTensorDescriptor& output_desc,
+    const DeviceMemory<Eigen::half>& output_data,
+    const dnn::RnnStateTensorDescriptor& output_h_desc,
+    const DeviceMemory<Eigen::half>& output_h_data,
+    const dnn::RnnStateTensorDescriptor& output_c_desc,
+    const DeviceMemory<Eigen::half>& output_c_data,
+    const DeviceMemory<Eigen::half>& output_backprop_data,
+    const DeviceMemory<Eigen::half>& output_h_backprop_data,
+    const DeviceMemory<Eigen::half>& output_c_backprop_data,
+    DeviceMemory<Eigen::half>* input_backprop_data,
+    DeviceMemory<Eigen::half>* input_h_backprop_data,
+    DeviceMemory<Eigen::half>* input_c_backprop_data,
+    DeviceMemory<Eigen::half>* params_backprop_data,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "miopen does not support half type RNN bwd yet";
+  return false;
 }
 
 bool MIOpenSupport::DoRnnBackward(
@@ -1505,7 +1591,11 @@ bool MIOpenSupport::DoRnnBackward(
     DeviceMemory<float>* input_c_backprop_data,
     DeviceMemory<float>* params_backprop_data,
     DeviceMemory<uint8>* reserve_space_data,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
+
+    // ROCM TODO: output_profile_result is ignore for now
+
     const MIOpenRnnDescriptor& miopen_rnn_desc =
         static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
     const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -1531,6 +1621,35 @@ bool MIOpenSupport::DoRnnBackward(
       workspace_allocator);
 }
 
+bool MIOpenSupport::DoRnnBackward(
+    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor& input_desc,
+    const DeviceMemory<double>& input_data,
+    const dnn::RnnStateTensorDescriptor& input_h_desc,
+    const DeviceMemory<double>& input_h_data,
+    const dnn::RnnStateTensorDescriptor& input_c_desc,
+    const DeviceMemory<double>& input_c_data,
+    const DeviceMemory<double>& params,
+    const dnn::RnnSequenceTensorDescriptor& output_desc,
+    const DeviceMemory<double>& output_data,
+    const dnn::RnnStateTensorDescriptor& output_h_desc,
+    const DeviceMemory<double>& output_h_data,
+    const dnn::RnnStateTensorDescriptor& output_c_desc,
+    const DeviceMemory<double>& output_c_data,
+    const DeviceMemory<double>& output_backprop_data,
+    const DeviceMemory<double>& output_h_backprop_data,
+    const DeviceMemory<double>& output_c_backprop_data,
+    DeviceMemory<double>* input_backprop_data,
+    DeviceMemory<double>* input_h_backprop_data,
+    DeviceMemory<double>* input_c_backprop_data,
+    DeviceMemory<double>* params_backprop_data,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "miopen does not support half type RNN bwd yet";
+  return false;
+}
+
 template <class T>
 bool MIOpenSupport::DoConvolveImpl(
     Stream* stream, int miopen_type,  // Actually miopenDataType_t.
@@ -1538,7 +1657,6 @@ bool MIOpenSupport::DoConvolveImpl(
     const FilterDescriptor& filter_descriptor,
     const DeviceMemory<T>& filter_data,
     const ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<T>& biases, dnn::ActivationMode activation_mode,
     const BatchDescriptor& output_descriptor, DeviceMemory<T>* output_data,
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
@@ -1567,7 +1685,7 @@ bool MIOpenSupport::DoConvolveImpl(
   std::pair<miopenConvFwdAlgorithm_t, size_t> algo_sz;
   DeviceMemory<uint8> scratch;
 
-  if (algorithm_config.algorithm() == dnn::kDefaultAlgorithm) {
+  if (algorithm_config.algorithm().is_default()) {
     // With the default algorithm, use MIOpen's heuristics.
     auto get_algorithm = [&]()
         SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) ->
@@ -1632,7 +1750,7 @@ bool MIOpenSupport::DoConvolveImpl(
         scratch = allocated.ValueOrDie();
       }
       if (scratch == nullptr) {
-        CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
+        CHECK(!algorithm_config.algorithm_no_scratch().is_default())
             << "The primary convolution algorithm failed memory allocation, "
                "while a secondary algorithm is not provided.";
         algo_sz.first = ToConvForwardAlgo(algorithm_config.algorithm_no_scratch());
@@ -1669,8 +1787,8 @@ bool MIOpenSupport::DoConvolveImpl(
       return false;
     }
     if (status == miopenStatusSuccess) {
-      output_profile_result->set_is_valid(true);
-      output_profile_result->set_algorithm(algo_sz.first);
+      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      output_profile_result->set_algorithm(algotype);
       output_profile_result->set_scratch_size(algo_sz.second);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
@@ -1691,44 +1809,69 @@ bool MIOpenSupport::DoConvolveImpl(
 }
 
 bool MIOpenSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType>* out_algorithms) {
+    // ROCM TODO: refactor cc_major / cc_minor
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
-      miopenConvolutionFwdAlgoGEMM,
-      miopenConvolutionFwdAlgoDirect,
-      miopenConvolutionFwdAlgoFFT,
-      miopenConvolutionFwdAlgoWinograd,
+      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoGEMM, false),
+      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoDirect, false),
+      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoFFT, false),
+      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoWinograd, false),
       // clang-format on
   });
   return true;
 }
 
+bool MIOpenSupport::GetRnnAlgorithms(
+    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // ROCM TODO: implement this with proper MIOpen API
+  return true;
+}
+
 bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType>* out_algorithms) {
+    // ROCM TODO: refactor cc_major / cc_minor
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
-      miopenConvolutionBwdDataAlgoGEMM,
-      miopenConvolutionBwdDataAlgoDirect,
-      miopenConvolutionBwdDataAlgoFFT,
-      miopenConvolutionBwdDataAlgoWinograd,
-      miopenTransposeBwdDataAlgoGEMM,
+      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoGEMM, false),
+      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoDirect, false),
+      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoFFT, false),
+      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoWinograd, false),
+      dnn::AlgorithmDesc(miopenTransposeBwdDataAlgoGEMM, false),
       // clang-format on
   });
   return true;
 }
 
 bool MIOpenSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType>* out_algorithms) {
+    // ROCM TODO: refactor cc_major / cc_minor
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
-      miopenConvolutionBwdWeightsAlgoGEMM,
-      miopenConvolutionBwdWeightsAlgoDirect,
+      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoGEMM, false),
+      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoDirect, false),
       // clang-format on
   });
   return true;
+}
+
+bool MIOpenSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::half>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
+    DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
+    DeviceMemory<float>* saved_inv_var, bool is_training,
+    std::function<const DeviceMemory<float>&()> var_to_inv_var,
+    std::function<void()> inv_var_to_var) {
+  LOG(ERROR) << "BN with x as half type not implemented yet";
+  return false;
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
@@ -1807,6 +1950,19 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
+    const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    DeviceMemory<Eigen::half>* x_backprop,
+    DeviceMemory<float>* scale_backprop,
+    DeviceMemory<float>* offset_backprop) {
+  LOG(ERROR) << "BN with y_backprop with half type not implemented yet";
+  return false;
+}
+
+bool MIOpenSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<float>& y_backprop,
     const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
     const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
@@ -1865,56 +2021,29 @@ bool MIOpenSupport::DoConvolve(
     const FilterDescriptor& filter_descriptor,
     const DeviceMemory<float>& filter_data,
     const ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
-    const BatchDescriptor& output_descriptor, DeviceMemory<float>* output_data,
+    const BatchDescriptor& output_descriptor,
+    DeviceMemory<float>* output_data,
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveImpl<float>(
       stream, miopenFloat, batch_descriptor, input_data, filter_descriptor,
-      filter_data, convolution_descriptor, biases, activation_mode,
-      output_descriptor, output_data, scratch_allocator, algorithm_config,
-      output_profile_result);
-}
-
-bool MIOpenSupport::DoConvolve(
-    Stream* stream, const BatchDescriptor& batch_descriptor,
-    const DeviceMemory<float>& input_data,
-    const FilterDescriptor& filter_descriptor,
-    const DeviceMemory<float>& filter_data,
-    const ConvolutionDescriptor& convolution_descriptor,
-    const BatchDescriptor& output_descriptor, DeviceMemory<float>* output_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
-    dnn::ProfileResult* output_profile_result) {
-  return DoConvolveImpl<float>(
-      stream, miopenFloat, batch_descriptor, input_data, filter_descriptor,
-      filter_data, convolution_descriptor, /*biases=*/nullptr,
-      dnn::ActivationMode::kNone, output_descriptor, output_data,
+      filter_data, convolution_descriptor,
+      output_descriptor, output_data,
       scratch_allocator, algorithm_config, output_profile_result);
 }
 
 bool MIOpenSupport::DoConvolve(
-    Stream* stream, const BatchDescriptor& batch_descriptor,
+    Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
     const DeviceMemory<double>& input_data,
-    const FilterDescriptor& filter_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
     const DeviceMemory<double>& filter_data,
-    const ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<double>& biases, dnn::ActivationMode activation_mode,
-    const BatchDescriptor& output_descriptor,
-    DeviceMemory<double>* output_data) {
-  LOG(ERROR) << "double-based DNN not yet implemented";
-  return false;
-}
-
-bool MIOpenSupport::DoConvolve(
-    Stream* stream, const BatchDescriptor& batch_descriptor,
-    const DeviceMemory<double>& input_data,
-    const FilterDescriptor& filter_descriptor,
-    const DeviceMemory<double>& filter_data,
-    const ConvolutionDescriptor& convolution_descriptor,
-    const BatchDescriptor& output_descriptor,
-    DeviceMemory<double>* output_data) {
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<double>* output_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
   LOG(ERROR) << "double-based DNN not yet implemented";
   return false;
 }
@@ -1925,27 +2054,83 @@ bool MIOpenSupport::DoConvolve(
     const FilterDescriptor& filter_descriptor,
     const DeviceMemory<Eigen::half>& filter_data,
     const ConvolutionDescriptor& convolution_descriptor,
+    const BatchDescriptor& output_descriptor,
+    DeviceMemory<Eigen::half>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "miopen does not support half type yet";
+  return false;
+}
+
+bool MIOpenSupport::DoFusedConvolve(
+    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+    const DeviceMemory<double>& conv_input_data, double conv_input_scale,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<double>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const DeviceMemory<double>& side_input_data, double side_input_scale,
+    const dnn::BatchDescriptor& bias_descriptor,
+    const DeviceMemory<double>& biases, dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "fused convolve not implemented yet";
+  return false;
+}
+
+bool MIOpenSupport::DoFusedConvolve(
+    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+    const DeviceMemory<float>& conv_input_data, float conv_input_scale,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<float>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const DeviceMemory<float>& side_input_data, float side_input_scale,
+    const dnn::BatchDescriptor& bias_descriptor,
+    const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "fused convolve not implemented yet";
+  return false;
+}
+
+bool MIOpenSupport::DoFusedConvolve(
+    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+    const DeviceMemory<Eigen::half>& conv_input_data,
+    float conv_input_scale,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<Eigen::half>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const DeviceMemory<Eigen::half>& side_input_data,
+    float side_input_scale,
+    const dnn::BatchDescriptor& bias_descriptor,
     const DeviceMemory<Eigen::half>& biases,
     dnn::ActivationMode activation_mode,
-    const BatchDescriptor& output_descriptor,
-    DeviceMemory<Eigen::half>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<Eigen::half>* output_data,
+    ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  LOG(ERROR) << "miopen does not support halt type yet";
+  LOG(ERROR) << "fused convolve not implemented yet";
   return false;
 }
 
-bool MIOpenSupport::DoConvolve(
-    Stream* stream, const BatchDescriptor& batch_descriptor,
-    const DeviceMemory<Eigen::half>& input_data,
-    const FilterDescriptor& filter_descriptor,
-    const DeviceMemory<Eigen::half>& filter_data,
-    const ConvolutionDescriptor& convolution_descriptor,
-    const BatchDescriptor& output_descriptor,
-    DeviceMemory<Eigen::half>* output_data, ScratchAllocator* scratch_allocator,
+bool MIOpenSupport::DoFusedConvolve(
+    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+    const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<int8>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const DeviceMemory<int8>& side_input_data, float side_input_scale,
+    const dnn::BatchDescriptor& bias_descriptor,
+    const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<int8>* output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  LOG(ERROR) << "miopen does not support halt type yet";
+  LOG(ERROR) << "fused convolve not implemented yet";
   return false;
 }
 
@@ -2066,7 +2251,7 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
   std::pair<miopenConvBwdDataAlgorithm_t, size_t> algo_sz;
   DeviceMemory<uint8> scratch;
 
-  if (algorithm_config.algorithm() == dnn::kDefaultAlgorithm) {
+  if (algorithm_config.algorithm().is_default()) {
     // With the default algorithm, use MIOpen's heuristics.
     auto get_algorithm = [&]() SHARED_LOCKS_REQUIRED(
         dnn_handle_mutex_) -> std::pair<miopenConvBwdDataAlgorithm_t, size_t> {
@@ -2133,7 +2318,7 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
         scratch = allocated.ValueOrDie();
       }
       if (scratch == nullptr) {
-        CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
+        CHECK(!algorithm_config.algorithm_no_scratch().is_default())
             << "The primary convolution algorithm failed memory allocation, "
                "while a secondary algorithm is not provided.";
         algo_sz.first = ToConvBackwardDataAlgo(algorithm_config.algorithm_no_scratch());
@@ -2170,8 +2355,8 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
   if (is_profiling) {
     timer->Stop(AsROCMStream(stream));
     if (status == miopenStatusSuccess) {
-      output_profile_result->set_is_valid(true);
-      output_profile_result->set_algorithm(algo_sz.first);
+      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      output_profile_result->set_algorithm(algotype);
       output_profile_result->set_scratch_size(algo_sz.second);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
@@ -2187,6 +2372,21 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
     return false;
   }
   return true;
+}
+
+bool MIOpenSupport::DoConvolveBackwardData(
+    Stream* stream, const FilterDescriptor& filter_descriptor,
+    const DeviceMemory<double>& filter_data,
+    const BatchDescriptor& output_descriptor_in,
+    DeviceMemory<double> backward_output_data,
+    const ConvolutionDescriptor& convolution_descriptor,
+    const BatchDescriptor& input_descriptor,
+    DeviceMemory<double>* backward_input_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "bwd data for double type not implemented yet";
+  return false;
 }
 
 bool MIOpenSupport::DoConvolveBackwardData(
@@ -2268,7 +2468,7 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
   std::pair<miopenConvBwdWeightsAlgorithm_t, size_t> algo_sz;
   DeviceMemory<uint8> scratch;
 
-  if (algorithm_config.algorithm() == dnn::kDefaultAlgorithm) {
+  if (algorithm_config.algorithm().is_default()) {
     // With the default algorithm, use MIOpen's heuristics.
     auto get_algorithm = [&]() SHARED_LOCKS_REQUIRED(
         dnn_handle_mutex_) -> std::pair<miopenConvBwdWeightsAlgorithm_t, size_t> {
@@ -2334,7 +2534,7 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
         scratch = allocated.ValueOrDie();
       }
       if (scratch == nullptr) {
-        CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
+        CHECK(!algorithm_config.algorithm_no_scratch().is_default())
             << "The primary convolution algorithm failed memory allocation, "
                "while a secondary algorithm is not provided.";
         algo_sz.first =
@@ -2370,8 +2570,8 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
   if (is_profiling) {
     timer->Stop(AsROCMStream(stream));
     if (status == miopenStatusSuccess) {
-      output_profile_result->set_is_valid(true);
-      output_profile_result->set_algorithm(algo_sz.first);
+      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      output_profile_result->set_algorithm(algotype);
       output_profile_result->set_scratch_size(algo_sz.second);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
@@ -2387,6 +2587,21 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
     return false;
   }
   return true;
+}
+
+bool MIOpenSupport::DoConvolveBackwardFilter(
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<double>& input_data,
+    const dnn::BatchDescriptor& output_descriptor_in,
+    DeviceMemory<double> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemory<double>* backward_filter_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  LOG(ERROR) << "bwd filter for double type not implemented yet";
+  return false;
 }
 
 bool MIOpenSupport::DoConvolveBackwardFilter(
@@ -3175,7 +3390,7 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
 
 }  // namespace rocm
 
-namespace gpu = ::perftools::gputools;
+namespace gpu = ::stream_executor;
 
 void initialize_miopen() {
   gpu::port::Status status =
@@ -3213,8 +3428,7 @@ void initialize_miopen() {
                                                      gpu::rocm::kMIOpenPlugin);
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(register_miopen,
-                            { perftools::gputools::initialize_miopen(); });
+                            { stream_executor::initialize_miopen(); });

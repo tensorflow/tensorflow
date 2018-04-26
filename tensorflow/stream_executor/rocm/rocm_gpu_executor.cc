@@ -56,8 +56,7 @@ limitations under the License.
     "ROCM runtime being included into ROCM GPU executor; should be driver only."
 #endif
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 static ROCMEvent *AsROCMEvent(Event *event) {
@@ -592,7 +591,7 @@ bool ROCMExecutor::StopTimer(Stream *stream, Timer *timer) {
   return AsROCMTimer(timer)->Stop(AsROCMStream(stream));
 }
 
-bool ROCMExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status ROCMExecutor::BlockHostUntilDone(Stream *stream) {
   return ROCMDriver::SynchronizeStream(context_, AsROCMStreamValue(stream));
 }
 
@@ -932,7 +931,7 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
     builder.set_name(device_name);
   }
 
-  for (size_t i = 0; i < ARRAYSIZE(kAllUnqueryableDeviceParams); i++) {
+  for (size_t i = 0; i < TF_ARRAYSIZE(kAllUnqueryableDeviceParams); i++) {
     const auto &params = kAllUnqueryableDeviceParams[i];
     if (params.version == version_) {
       builder.set_blocks_per_core_limit(params.blocks_per_core_limit);
@@ -973,17 +972,13 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
 
 }  // namespace rocm
 
-namespace gpu = ::perftools::gputools;
-
 void initialize_rocm_gpu_executor() {
-  *gpu::internal::MakeROCMExecutorImplementation() = [](
-      const gpu::PluginConfig &config) {
-    return new gpu::rocm::ROCMExecutor{config};
+  *internal::MakeROCMExecutorImplementation() = [](const PluginConfig &config) {
+    return new rocm::ROCMExecutor{config};
   };
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(
-    rocm_gpu_executor, {perftools::gputools::initialize_rocm_gpu_executor();});
+    rocm_gpu_executor, {stream_executor::initialize_rocm_gpu_executor();});

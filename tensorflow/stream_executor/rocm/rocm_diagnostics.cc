@@ -41,8 +41,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 string DriverVersionToString(DriverVersion version) {
@@ -237,5 +236,4 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
 
 
 }  // namespace rocm
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

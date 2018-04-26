@@ -54,8 +54,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rocm {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kHipBlasPlugin);
@@ -1969,6 +1968,124 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
   //    ROCMComplex(ROCMMemoryMutable(c)), ldc);
 }
 
+bool ROCMBlas::DoBlasGemvWithProfiling(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n, float alpha,
+    const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &x,
+    int incx, float beta, DeviceMemory<float> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
+                                     incx, beta, y, incy,
+                                     output_profile_result);
+}
+
+bool ROCMBlas::DoBlasGemvWithProfiling(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n, double alpha,
+    const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &x,
+    int incx, double beta, DeviceMemory<double> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
+                                     incx, beta, y, incy,
+                                     output_profile_result);
+}
+
+bool ROCMBlas::DoBlasGemvWithProfiling(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n,
+    std::complex<float> alpha, const DeviceMemory<std::complex<float>> &a,
+    int lda, const DeviceMemory<std::complex<float>> &x, int incx,
+    std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
+                                     incx, beta, y, incy,
+                                     output_profile_result);
+}
+
+bool ROCMBlas::DoBlasGemvWithProfiling(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n,
+    std::complex<double> alpha, const DeviceMemory<std::complex<double>> &a,
+    int lda, const DeviceMemory<std::complex<double>> &x, int incx,
+    std::complex<double> beta, DeviceMemory<std::complex<double>> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
+                                     incx, beta, y, incy,
+                                     output_profile_result);
+}
+
+bool ROCMBlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, float alpha, const DeviceMemory<Eigen::half> &a,
+    int lda, const DeviceMemory<Eigen::half> &b, int ldb, float beta,
+    DeviceMemory<Eigen::half> *c, int ldc,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+bool ROCMBlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
+    const DeviceMemory<float> &b, int ldb, float beta, DeviceMemory<float> *c,
+    int ldc, blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+bool ROCMBlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
+    const DeviceMemory<double> &b, int ldb, double beta,
+    DeviceMemory<double> *c, int ldc,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+bool ROCMBlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, std::complex<float> alpha,
+    const DeviceMemory<std::complex<float>> &a, int lda,
+    const DeviceMemory<std::complex<float>> &b, int ldb,
+    std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+bool ROCMBlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, std::complex<double> alpha,
+    const DeviceMemory<std::complex<double>> &a, int lda,
+    const DeviceMemory<std::complex<double>> &b, int ldb,
+    std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+template <typename T>
+bool ROCMBlas::DoBlasGemvWithProfilingImpl(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n, const T &alpha,
+    const DeviceMemory<T> &a, int lda, const DeviceMemory<T> &x, int incx,
+    const T &beta, DeviceMemory<T> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  // ROCM TODO: properly implement the interface
+  return false;
+}
+
+template <typename T, typename ParamType>
+bool ROCMBlas::DoBlasGemmWithProfilingImpl(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, const ParamType &alpha, const DeviceMemory<T> &a,
+    int lda, const DeviceMemory<T> &b, int ldb, const ParamType &beta,
+    DeviceMemory<T> *c, int ldc, blas::ProfileResult *output_profile_result) {
+  // ROCM TODO: properly implement the interface
+  return false;
+}
+
 template <typename InT, typename OutT, typename CompT>
 bool ROCMBlas::DoBlasGemmWithAlgorithmImpl(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
@@ -2647,7 +2764,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
 
 }  // namespace rocm
 
-namespace gpu = ::perftools::gputools;
+namespace gpu = ::stream_executor;
 
 void initialize_hipblas() {
   gpu::port::Status status =
@@ -2685,8 +2802,7 @@ void initialize_hipblas() {
                                                      gpu::rocm::kHipBlasPlugin);
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(register_hipblas,
-                            { perftools::gputools::initialize_hipblas(); });
+                            { stream_executor::initialize_hipblas(); });
