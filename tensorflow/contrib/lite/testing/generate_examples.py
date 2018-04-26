@@ -1772,6 +1772,19 @@ def make_strided_slice_tests(zip_path):
           "shrink_axis_mask": [None, 1, 2, 3, -1],
           "constant_indices": [False, True],
       },
+      # 1-D Exhaustive
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[4]],
+          "begin": [[-100], [-3], [-2], [-1], [0], [1], [2], [3], [100]],
+          "end": [[-100], [-3], [-2], [-1], [0], [1], [2], [3], [100]],
+          "strides": [-2, -1, 1, 2],
+          "begin_mask": [0, 1],
+          "end_mask": [0, 1],
+          "shrink_axis_mask": [0],
+          "constant_indices": [False],
+      },
       # Negative strides
       {
           "dtype": [tf.float32],

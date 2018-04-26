@@ -155,6 +155,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":quantization_util",
+        ":strided_slice_logic",
         ":types",
         ":round",
         "//third_party/eigen3",
@@ -230,6 +231,17 @@ cc_test(
 )
 
 cc_library(
+    name = "strided_slice_logic",
+    srcs = [],
+    hdrs = [
+        "strided_slice_logic.h",
+    ],
+    deps = [
+        ":types",
+    ],
+)
+
+cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
@@ -241,6 +253,7 @@ cc_library(
     deps = [
         ":quantization_util",
         ":round",
+        ":strided_slice_logic",
         ":types",
         "//third_party/eigen3",
         "@gemmlowp",
