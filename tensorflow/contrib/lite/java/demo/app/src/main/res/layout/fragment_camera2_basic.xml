@@ -14,8 +14,29 @@
  limitations under the License.
 -->
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:weightSum="60">
+
+        <FrameLayout
+            android:id="@+id/control"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentStart="true"
+            android:layout_weight="60"
+            android:background="#cc7700"
+            android:paddingLeft="20dp"
+            android:paddingStart="20dp">
+
+        </FrameLayout>
 
     <com.example.android.tflitecamerademo.AutoFitTextureView
         android:id="@+id/texture"
@@ -25,29 +46,43 @@
         android:layout_alignParentLeft="true"
         android:layout_alignParentTop="true" />
 
-    <FrameLayout
-        android:id="@+id/control"
-        android:layout_width="match_parent"
-        android:layout_height="135dp"
-        android:layout_alignParentBottom="true"
-        android:layout_alignParentStart="true"
-        android:layout_alignParentLeft="true"
-        android:layout_alignParentEnd="true"
-        android:layout_alignParentRight="true"
-        android:layout_marginEnd="150dp"
-        android:layout_marginRight="150dp"
-        android:background="@color/control_background">
-
         <TextView
             android:id="@+id/text"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingLeft="20dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_weight="20"
             android:textColor="#FFF"
             android:textSize="20sp"
             android:textStyle="bold" />
+    </LinearLayout>
 
-    </FrameLayout>
+    <RelativeLayout
+        android:id="@+id/control2"
+        android:layout_width="match_parent"
+        android:layout_height="135dp"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentStart="true"
+        android:layout_alignTop="@+id/control"
+        android:layout_marginLeft="300dp"
+        android:layout_marginStart="300dp"
+        android:background="#bb7700">
+
+        <ToggleButton
+            android:id="@+id/button"
+            android:textOff="@string/tflite"
+            android:textOn="@string/nnapi"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentStart="true" />
+
+        <NumberPicker
+            android:id="@+id/np"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/button"
+            android:visibility="visible" />
+    </RelativeLayout>
 
     <RelativeLayout
         android:id="@+id/control2"

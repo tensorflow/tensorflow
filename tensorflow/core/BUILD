@@ -145,6 +145,7 @@ load(
     "if_static",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
@@ -161,7 +162,7 @@ exports_files(["ops/ops.pbtxt"])
 # Note that some protos are in neither additional_core_proto_srcs nor this
 # filegroup; e.g.  ones with individual proto_library targets.
 # LINT.IfChange
-CORE_PROTO_SRCS = [
+COMMON_PROTO_SRCS = [
     "example/example.proto",
     "example/feature.proto",
     "framework/allocation_description.proto",
@@ -189,7 +190,6 @@ CORE_PROTO_SRCS = [
     "framework/types.proto",
     "framework/variable.proto",
     "framework/versions.proto",
-    "lib/core/error_codes.proto",
     "protobuf/config.proto",
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
@@ -202,7 +202,13 @@ CORE_PROTO_SRCS = [
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
 ]
+
+ERROR_CODES_PROTO_SRCS = [
+    "lib/core/error_codes.proto",
+]
 # LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
+
+CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
 # Protos which are not needed on mobile builds, but should be included in
 # protos_all.
@@ -224,12 +230,16 @@ ADDITIONAL_CORE_PROTO_SRCS = [
 
 tf_proto_library(
     name = "protos_all",
-    srcs = CORE_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
+    srcs = [],
     cc_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
+    protodeps = [
+        ":protos_all_proto",
+        ":error_codes_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -257,12 +267,6 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
-closure_proto_library(
-    name = "example_protos_closure",
-    visibility = ["//visibility:public"],
-    deps = [":example_protos"],
-)
-
 exports_files([
     "framework/types.proto",
 ])
@@ -287,7 +291,7 @@ PLATFORM_BASE_HDRS = [
     "platform/logging.h",
     "platform/macros.h",
     "platform/types.h",
-    "platform/cpu_info.h",
+    "platform/byte_order.h",
 ]
 
 PLATFORM_OTHER_HDRS = [
@@ -295,6 +299,7 @@ PLATFORM_OTHER_HDRS = [
     "platform/stacktrace.h",
     "platform/stacktrace_handler.h",
     "platform/context.h",
+    "platform/cpu_info.h",
     "platform/cpu_feature_guard.h",
     "platform/dynamic_annotations.h",
     "platform/env.h",
@@ -323,7 +328,6 @@ cc_library(
     srcs = glob([
         "platform/*/integral_types.h",
         "platform/*/logging.h",
-        "platform/*/cpu_info.h",
     ]),
     hdrs = PLATFORM_BASE_HDRS,
     deps = [
@@ -542,6 +546,7 @@ tf_cuda_library(
         "framework/device_base.h",
         "framework/function.h",
         "framework/graph_def_util.h",
+        "framework/graph_to_functiondef.h",
         "framework/kernel_def_builder.h",
         "framework/log_memory.h",
         "framework/lookup_interface.h",
@@ -674,6 +679,7 @@ cc_library(
         "framework/tensor_types.h",
         "framework/type_traits.h",
         "lib/bfloat16/bfloat16.h",
+        "platform/byte_order.h",
         "platform/default/dynamic_annotations.h",
         "platform/default/integral_types.h",
         "platform/default/logging.h",
@@ -995,6 +1001,7 @@ cc_library(
         "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
+        "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:remote_fused_graph_ops",
@@ -1139,7 +1146,8 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        ":proto_text_srcs_all",
+        ":protos_all_proto_text_srcs",
+        ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
     ] + glob(
         [
@@ -1624,6 +1632,18 @@ tf_proto_library_cc(
     ],
 )
 
+tf_proto_library_cc(
+    name = "eager_service_proto",
+    srcs = ["protobuf/eager_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_stubby_versions = ["2"],
+    protodeps = tf_additional_all_protos(),
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
 LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
     [
         "lib/**/*.h",
@@ -1919,6 +1939,7 @@ cc_library(
         "lib/core/casts.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
+        "platform/byte_order.h",
         "platform/cpu_info.h",
         "platform/default/integral_types.h",
         "platform/default/logging.h",
@@ -1934,15 +1955,58 @@ cc_library(
     ],
 )
 
-proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
-    name = "proto_text_srcs_all",
-    srcs = CORE_PROTO_SRCS,
+tf_proto_library(
+    name = "error_codes_proto",
+    srcs = ERROR_CODES_PROTO_SRCS,
+    cc_api_version = 2,
+    default_header = True,
+    j2objc_api_version = 1,
+    java_api_version = 2,
+    js_api_version = 2,
+)
+
+tf_generate_proto_text_sources(
+    name = "error_codes_proto_text",
+    srcs = ERROR_CODES_PROTO_SRCS,
+    protodeps = [],
     srcs_relative_dir = "tensorflow/core/",
+    deps = [
+        ":error_codes_proto_cc",
+        ":lib_internal",
+    ],
+)
+
+tf_proto_library(
+    name = "protos_all_proto",
+    srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
+    cc_api_version = 2,
+    default_header = True,
+    j2objc_api_version = 1,
+    java_api_version = 2,
+    js_api_version = 2,
+    protodeps = [
+        ":error_codes_proto",
+    ],
+)
+
+tf_generate_proto_text_sources(
+    name = "protos_all_proto_text",
+    srcs = COMMON_PROTO_SRCS,
+    protodeps = ERROR_CODES_PROTO_SRCS,
+    srcs_relative_dir = "tensorflow/core/",
+    deps = [
+        ":error_codes_proto_text",
+        ":lib_internal",
+        ":protos_all_proto_cc",
+    ],
 )
 
 cc_library(
     name = "proto_text",
-    hdrs = proto_text_hdrs_and_srcs.hdrs,
+    hdrs = [
+        ":error_codes_proto_text_hdrs",
+        ":protos_all_proto_text_hdrs",
+    ],
     deps = [
         ":lib",
         ":lib_internal",
@@ -2087,7 +2151,7 @@ tf_cuda_library(
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
         ],
-    }) + proto_text_hdrs_and_srcs.srcs + tf_additional_framework_srcs(),
+    }) + tf_additional_framework_srcs(),
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
@@ -2101,7 +2165,8 @@ tf_cuda_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":proto_text",
+        ":protos_all_proto_text",
+        ":error_codes_proto_text",
         ":protos_all_cc",
         ":version_lib",
         "//tensorflow/core/platform/default/build_config:platformlib",
@@ -2513,6 +2578,19 @@ tf_cuda_library(
 
 cc_library(
     name = "gpu_id",
+    hdrs = [
+        "common_runtime/gpu/gpu_id.h",
+        "common_runtime/gpu/gpu_id_manager.h",
+    ],
+    deps = [
+        ":lib",
+    ] + if_static([
+        ":gpu_id_impl",
+    ]),
+)
+
+cc_library(
+    name = "gpu_id_impl",
     srcs = ["common_runtime/gpu/gpu_id_manager.cc"],
     hdrs = [
         "common_runtime/gpu/gpu_id.h",
@@ -2562,7 +2640,7 @@ tf_cuda_library(
         ":core_cpu_lib",
         ":framework",
         ":framework_internal",
-        ":gpu_id",
+        ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
         ":graph",
@@ -2998,6 +3076,7 @@ tf_cc_tests(
         "framework/common_shape_fns_test.cc",
         "framework/function_test.cc",
         "framework/graph_def_util_test.cc",
+        "framework/graph_to_functiondef_test.cc",
         "framework/kernel_def_builder_test.cc",
         "framework/memory_types_test.cc",
         "framework/node_def_builder_test.cc",
@@ -3076,6 +3155,8 @@ tf_cc_tests(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/cc:while_loop",
@@ -4079,4 +4160,10 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
+)
+
+closure_proto_library(
+    name = "example_protos_closure",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
 )

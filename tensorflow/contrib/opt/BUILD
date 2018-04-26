@@ -25,6 +25,7 @@ py_library(
         "python/training/multitask_optimizer_wrapper.py",
         "python/training/nadam_optimizer.py",
         "python/training/powersign.py",
+        "python/training/reg_adagrad_optimizer.py",
         "python/training/sign_decay.py",
         "python/training/variable_clipping_optimizer.py",
     ],
@@ -150,6 +151,25 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "reg_adagrad_optimizer_test",
+    srcs = ["python/training/reg_adagrad_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

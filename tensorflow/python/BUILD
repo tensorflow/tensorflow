@@ -70,6 +70,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow/python/tools:__pkg__",
     ],
     deps = [
         ":array_ops",

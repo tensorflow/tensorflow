@@ -22,7 +22,7 @@ import numpy as np
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -69,7 +69,7 @@ class GaussianNoise(Layer):
     base_config = super(GaussianNoise, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -116,7 +116,7 @@ class GaussianDropout(Layer):
     base_config = super(GaussianDropout, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -188,6 +188,6 @@ class AlphaDropout(Layer):
     base_config = super(AlphaDropout, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape

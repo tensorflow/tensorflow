@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -312,7 +313,10 @@ CUDNN_DNN_ROUTINE_EACH_R5_WITH_STREAM(
 // clang-format off
 #if CUDNN_VERSION >= 6000
 #define CUDNN_DNN_ROUTINE_EACH_R6(__macro)                    \
-  __macro(cudnnSetRNNDescriptor_v6)
+  __macro(cudnnSetRNNDescriptor_v6)                           \
+  __macro(cudnnCreatePersistentRNNPlan)                       \
+  __macro(cudnnDestroyPersistentRNNPlan)                      \
+  __macro(cudnnSetPersistentRNNPlan)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R6(STREAM_EXECUTOR_CUDNN_WRAP)
@@ -1195,7 +1199,7 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
  public:
   CudnnRnnDescriptor(CUDAExecutor* parent, cudnnHandle_t cudnn_handle,
                      int num_layers, int hidden_size, int input_size,
-                     cudnnRNNInputMode_t input_mode,
+                     int batch_size, cudnnRNNInputMode_t input_mode,
                      cudnnDirectionMode_t direction_mode,
                      cudnnRNNMode_t rnn_mode, cudnnDataType_t data_type,
                      cudnnDataType_t compute_type,
@@ -1207,6 +1211,10 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
         num_layers_(num_layers),
         hidden_size_(hidden_size),
         input_size_(input_size),
+        batch_size_(batch_size),
+#if CUDNN_VERSION >= 6000
+        rnn_plan_(nullptr),
+#endif
         input_mode_(input_mode),
         direction_mode_(direction_mode),
         rnn_mode_(rnn_mode),
@@ -1226,12 +1234,26 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
     CUDNN_RETURN_IF_FAIL(status, "Unable to create RNN descriptor");
 #if CUDNN_VERSION >= 6000
     // TODO: allow the user to choose an algorithm.
-    cudnnRNNAlgo_t rnn_algo = ToCudnnRNNAlgo(algorithm_config_.algorithm());
+    rnn_algo_ = ToCudnnRNNAlgo(algorithm_config_.algorithm());
     status = wrap::cudnnSetRNNDescriptor_v6(
-        parent, cudnn_handle, rnn_desc_ /*rnnDesc*/, hidden_size /*hiddenSize*/,
-        num_layers /*numLayers*/, dropout_handle() /*dropoutDesc*/,
-        input_mode /*inputMode*/, direction_mode /*direction*/,
-        rnn_mode /*mode*/, rnn_algo /*algo*/, compute_type /*dataType*/);
+        parent, cudnn_handle, /*rnnDesc=*/rnn_desc_, /*hiddenSize=*/hidden_size,
+        /*numLayers=*/num_layers, /*dropoutDesc=*/dropout_handle(),
+        /*inputMode=*/input_mode, /*direction=*/direction_mode,
+        /*mode=*/rnn_mode, /*algo=*/rnn_algo_, /*dataType=*/compute_type);
+    CUDNN_RETURN_IF_FAIL(status, ::tensorflow::strings::Printf(
+                                     "Unable to update RNN descriptor with "
+                                     "algo_id: %d and compute_type: %d",
+                                     static_cast<int>(rnn_algo_),
+                                     static_cast<int>(compute_type)));
+
+    if (rnn_algo_ == CUDNN_RNN_ALGO_PERSIST_DYNAMIC) {
+      CHECK_GE(batch_size_, 0);
+      status = wrap::cudnnCreatePersistentRNNPlan(
+          parent, rnn_desc_, batch_size_, data_type_, &rnn_plan_);
+      CUDNN_RETURN_IF_FAIL(status, "Unable to create persistent RNN plan.");
+      status = wrap::cudnnSetPersistentRNNPlan(parent, rnn_desc_, rnn_plan_);
+      CUDNN_RETURN_IF_FAIL(status, "Unable to update persistent RNN plan.");
+    }
 #else
     CHECK(algorithm_config_.is_default())
         << "Non-default algorithm not supported for CUDA version < 6.0";
@@ -1240,8 +1262,8 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
         num_layers /*numLayers*/, dropout_handle() /*dropoutDesc*/,
         input_mode /*inputMode*/, direction_mode /*direction*/,
         rnn_mode /*mode*/, compute_type /*dataType*/);
-#endif
     CUDNN_RETURN_IF_FAIL(status, "Unable to update RNN descriptor");
+#endif
 
     // Create the params handle.
     cudnn_params_desc_.reset(
@@ -1254,8 +1276,14 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
   }
   ~CudnnRnnDescriptor() override {
     if (rnn_desc_) {
-      cudnnStatus_t status =
-          wrap::cudnnDestroyRNNDescriptor(parent_, rnn_desc_);
+      cudnnStatus_t status;
+#if CUDNN_VERSION >= 6000
+      if (rnn_algo_ == CUDNN_RNN_ALGO_PERSIST_DYNAMIC && rnn_plan_) {
+        status = wrap::cudnnDestroyPersistentRNNPlan(parent_, rnn_plan_);
+        CUDNN_RETURN_IF_FAIL(status, "Unable to destroy persistent RNN plan.");
+      }
+#endif
+      status = wrap::cudnnDestroyRNNDescriptor(parent_, rnn_desc_);
       CUDNN_RETURN_IF_FAIL(status, "Unable to destroy RNN descriptor");
     }
   }
@@ -1280,6 +1308,7 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
   int num_layers() const { return num_layers_; }
   int hidden_size() const { return hidden_size_; }
   int input_size() const { return input_size_; }
+  int batch_size() const { return batch_size_; }
   cudnnRNNInputMode_t input_mode() const { return input_mode_; }
   cudnnDirectionMode_t direction_mode() const { return direction_mode_; }
   cudnnRNNMode_t rnn_mode() const { return rnn_mode_; }
@@ -1314,6 +1343,13 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
   int num_layers_;
   int hidden_size_;
   int input_size_;
+  // batch_size_ is set to -1 when not using CUDNN_RNN_ALGO_PERSIST_DYNAMIC
+  // algorithm.
+  int batch_size_;
+#if CUDNN_VERSION >= 6000
+  cudnnRNNAlgo_t rnn_algo_;
+  cudnnPersistentRNNPlan_t rnn_plan_;
+#endif
   cudnnRNNInputMode_t input_mode_;
   cudnnDirectionMode_t direction_mode_;
   cudnnRNNMode_t rnn_mode_;
@@ -1970,22 +2006,20 @@ bool CudnnSupport::DoRnnBackwardImpl(
 #endif  // CUDNN_VERSION
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-CudnnSupport::createRnnDescriptor(int num_layers, int hidden_size,
-                                  int input_size, dnn::RnnInputMode input_mode,
-                                  dnn::RnnDirectionMode direction_mode,
-                                  dnn::RnnMode rnn_mode,
-                                  dnn::DataType data_type,
-                                  const dnn::AlgorithmConfig& algorithm_config,
-                                  float dropout, uint64 seed,
-                                  ScratchAllocator* state_allocator) {
+CudnnSupport::createRnnDescriptor(
+    int num_layers, int hidden_size, int input_size, int batch_size,
+    dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
+    dnn::RnnMode rnn_mode, dnn::DataType data_type,
+    const dnn::AlgorithmConfig& algorithm_config, float dropout, uint64 seed,
+    ScratchAllocator* state_allocator) {
 #if CUDNN_VERSION >= 5000
   mutex_lock lock{dnn_handle_mutex_};
   std::unique_ptr<CudnnRnnDescriptor> rnn_desc(new CudnnRnnDescriptor(
       parent_, ToHandle(dnn_handle_), num_layers, hidden_size, input_size,
-      ToCudnnRnnInputMode(input_mode), ToCudnnRnnDirectionMode(direction_mode),
-      ToCudnnRnnMode(rnn_mode), ToCudnnDataType(data_type),
-      GetRnnComputeType(data_type), algorithm_config, dropout, seed,
-      state_allocator));
+      batch_size, ToCudnnRnnInputMode(input_mode),
+      ToCudnnRnnDirectionMode(direction_mode), ToCudnnRnnMode(rnn_mode),
+      ToCudnnDataType(data_type), GetRnnComputeType(data_type),
+      algorithm_config, dropout, seed, state_allocator));
   if (!rnn_desc->ok()) {
     return rnn_desc->Status();
   }

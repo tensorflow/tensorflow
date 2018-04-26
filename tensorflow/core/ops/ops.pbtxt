@@ -685,6 +685,85 @@ op {
   }
 }
 op {
+  name: "ApplyAdaMax"
+  input_arg {
+    name: "var"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "m"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "beta1_power"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "ApplyAdadelta"
   input_arg {
     name: "var"
@@ -810,6 +889,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
@@ -4389,6 +4475,38 @@ op {
   }
 }
 op {
+  name: "BroadcastTo"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shape"
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "Bucketize"
   input_arg {
     name: "input"
@@ -6524,6 +6642,148 @@ op {
   is_stateful: true
 }
 op {
+  name: "CudnnRNNBackpropV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "params"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_h_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_c_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "reserve_space"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "host_reserved"
+    type: DT_INT8
+  }
+  output_arg {
+    name: "input_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_h_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_c_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "params_backprop"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "CudnnRNNCanonicalToParams"
   input_arg {
     name: "num_layers"
@@ -6843,6 +7103,127 @@ op {
       i: 0
     }
   }
+}
+op {
+  name: "CudnnRNNV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "params"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_h"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_c"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "reserve_space"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "host_reserved"
+    type: DT_INT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "Cumprod"
@@ -17319,6 +17700,31 @@ op {
   }
 }
 op {
+  name: "PartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+}
+op {
   name: "Placeholder"
   output_arg {
     name: "output"
@@ -21488,6 +21894,78 @@ op {
   }
 }
 op {
+  name: "ResourceApplyAdaMax"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "m"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "v"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "beta1_power"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "ResourceApplyAdadelta"
   input_arg {
     name: "var"
@@ -21599,6 +22077,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_stateful: true
@@ -22965,6 +23450,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_stateful: true
@@ -27004,6 +27496,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "SparseApplyAdagradDA"
@@ -30481,6 +30980,17 @@ op {
     default_value {
       b: true
     }
+  }
+}
+op {
+  name: "StringStrip"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
   }
 }
 op {

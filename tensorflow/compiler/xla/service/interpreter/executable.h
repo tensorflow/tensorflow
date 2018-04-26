@@ -43,12 +43,12 @@ class InterpreterExecutable : public Executable {
   InterpreterExecutable(std::unique_ptr<const HloModule> hlo_module);
   ~InterpreterExecutable() override;
 
-  StatusOr<ShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 

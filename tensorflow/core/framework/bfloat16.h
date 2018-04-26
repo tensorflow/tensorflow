@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_BFLOAT16_H_
 
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
