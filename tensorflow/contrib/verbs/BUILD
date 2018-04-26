@@ -7,7 +7,7 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
 
 exports_files(["LICENSE"])
 
@@ -102,7 +102,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "rdma_mgr",
     srcs = ["rdma_mgr.cc"],
     hdrs = ["rdma_mgr.h"],
@@ -120,7 +120,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "rdma",
     srcs = ["rdma.cc"],
     hdrs = ["rdma.h"],

@@ -9,7 +9,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
 load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
@@ -30,7 +30,7 @@ cc_library(
     deps = [],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "stream_executor",
     deps = [
         "//tensorflow/stream_executor",

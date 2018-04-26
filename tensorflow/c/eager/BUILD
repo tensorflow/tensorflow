@@ -7,10 +7,10 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tfe_xla_copts",
-    "tf_cuda_library",
+    "tf_gpu_library",
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "c_api",
     srcs = [
         "c_api.cc",
@@ -55,7 +55,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
     visibility = ["//tensorflow:internal"],
@@ -97,7 +97,7 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "runtime",
     srcs = ["runtime.cc"],
     hdrs = ["runtime.h"],

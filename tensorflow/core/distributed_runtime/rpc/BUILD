@@ -15,7 +15,7 @@ filegroup(
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
+    "tf_gpu_library",
     "tf_cc_test",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -157,7 +157,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "grpc_worker_service",
     srcs = ["grpc_worker_service.cc"],
     hdrs = ["grpc_worker_service.h"],
@@ -314,7 +314,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "grpc_testlib_ops",
     testonly = 1,
     srcs = ["grpc_testlib_ops.cc"],
@@ -351,7 +351,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "grpc_testlib",
     testonly = 1,
     srcs = ["grpc_testlib.cc"],

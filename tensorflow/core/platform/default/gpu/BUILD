@@ -1,10 +1,10 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
-    "tf_cuda_library",
+    "tf_gpu_library",
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "cupti_wrapper",
     srcs = [
         "cupti_wrapper.cc",
