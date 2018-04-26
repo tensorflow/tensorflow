@@ -31,7 +31,6 @@ tf_cuda_library(
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
-            "//tensorflow/core/common_runtime/eager:execute_node",
             "//tensorflow/core/common_runtime/eager:kernel_and_device",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core/common_runtime/eager:copy_to_device_node",
@@ -41,8 +40,6 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
-            # TODO(b/74620627): move this here
-            "//tensorflow/python:cpp_shape_inference_proto_cc",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -51,6 +48,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }) + [
+        "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -73,6 +71,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],

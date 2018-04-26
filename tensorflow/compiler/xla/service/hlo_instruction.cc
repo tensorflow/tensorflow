@@ -2451,12 +2451,6 @@ HloInstructionProto HloInstruction::ToProto() const {
     proto.add_fft_length(fft_len);
   }
 
-  if (gather_dimension_numbers_ != nullptr) {
-    *proto.mutable_gather_dimension_numbers() = *gather_dimension_numbers_;
-  }
-  for (int64 bound : gather_window_bounds_) {
-    proto.add_gather_window_bounds(bound);
-  }
   proto.set_channel_name(channel_name_);
   proto.set_cost_estimate_ns(cost_estimate_ns_);
 

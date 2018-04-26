@@ -269,7 +269,7 @@ XLA_TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesOnFalse)) {
+XLA_TEST_F(TupleTest, SelectBetweenTuplesOnFalse) {
   // Tests a selection between tuples with "false" path taken.
   XlaBuilder builder(TestName());
 
@@ -313,7 +313,7 @@ XLA_TEST_F(TupleTest, TuplesInAMap) {
   ComputeAndCompareR1<float>(&b, {-99.0f, 101.0f, 214.41f}, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesOnTrue)) {
+XLA_TEST_F(TupleTest, SelectBetweenTuplesOnTrue) {
   // Tests a selection between tuples with "true" path taken.
   XlaBuilder builder(TestName());
 
@@ -350,7 +350,7 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesElementResult) {
 }
 
 // Cascaded selects between tuple types.
-XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesCascaded)) {
+XLA_TEST_F(TupleTest, SelectBetweenTuplesCascaded) {
   //
   //                       vec1     vec2   vec2     vec1
   //                        |        |      |        |
@@ -390,8 +390,7 @@ XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesCascaded)) {
   ComputeAndCompareR1<float>(&builder, {3.f, 6.f, 9.f}, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest,
-           DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesReuseConstants)) {
+XLA_TEST_F(TupleTest, SelectBetweenTuplesReuseConstants) {
   // Similar to SelectBetweenTuples, but the constants are shared between the
   // input tuples.
   XlaBuilder builder(TestName());
@@ -516,10 +515,8 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 
 class TupleHloTest : public HloTestBase {};
 
-// Disabled on CPU parallel because that's broken and will be removed soon.
 // Disabled on the interpreter because bitcast doesn't exist on the interpreter.
-TEST_F(TupleHloTest,
-       DISABLED_ON_INTERPRETER(DISABLED_ON_CPU_PARALLEL(BitcastAfterGTE))) {
+TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   const char* testcase = R"(
     HloModule m
 

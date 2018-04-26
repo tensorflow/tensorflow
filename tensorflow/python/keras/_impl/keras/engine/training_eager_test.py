@@ -625,6 +625,7 @@ class LossWeightingTest(test.TestCase):
       bad_w_np = np.random.random((10, 2, 2))
       model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
 
+
 class CorrectnessTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes()
@@ -647,6 +648,27 @@ class CorrectnessTest(test.TestCase):
     history = model.fit(x, y, epochs=1, batch_size=10)
     self.assertEqual(
         np.around(history.history['loss'][-1], decimals=4), 0.6173)
+
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_metrics_correctness(self):
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(3,
+                                 activation='relu',
+                                 input_dim=4,
+                                 kernel_initializer='ones'))
+    model.add(keras.layers.Dense(1,
+                                 activation='sigmoid',
+                                 kernel_initializer='ones'))
+    model.compile(loss='mae',
+                  metrics=['acc'],
+                  optimizer=RMSPropOptimizer(learning_rate=0.001))
+    x = np.ones((100, 4))
+    y = np.ones((100, 1))
+    outs = model.evaluate(x, y)
+    self.assertEqual(outs[1], 1.)
+    y = np.zeros((100, 1))
+    outs = model.evaluate(x, y)
+    self.assertEqual(outs[1], 0.)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

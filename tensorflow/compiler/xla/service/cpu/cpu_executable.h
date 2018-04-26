@@ -55,12 +55,12 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<ShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
@@ -102,13 +102,13 @@ class CpuExecutable : public Executable {
       tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
       HloExecutionProfile* hlo_execution_profile);
 
-  // Creates a ShapedBuffer for holding the result of the computation. The
+  // Creates a ScopedShapedBuffer for holding the result of the computation. The
   // addresses (DeviceMemoryBases) are set according to buffer assignment.
   // 'buffers_in_result' should point to a vector of the same size as
   // 'allocated_buffers'. An element in buffers_in_result is set to true if the
   // corresponding buffer is live out of the computation (and thus contained in
   // the returned ShapedBuffer).
-  StatusOr<ShapedBuffer> CreateResultShapedBuffer(
+  StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> allocated_buffers,
       std::vector<bool>* buffers_in_result);

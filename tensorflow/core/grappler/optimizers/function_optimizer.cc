@@ -180,7 +180,7 @@ FunctionDefLibrary TrimFunctionLibrary(const FunctionLibraryDefinition& flib,
     const string& func_name = func->signature().name();
     keep_funcs.insert(func_name);
 
-    // Find all the functions that called from the function body.
+    // Find all the functions called from the function body.
     const auto& func_body = func->node_def();
     std::for_each(func_body.begin(), func_body.end(), add_node_to_func_queue);
 
@@ -541,7 +541,7 @@ Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
 
 Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
-  VLOG(2) << "Optimize function library: id=" << item.id;
+  VLOG(1) << "Optimize Grappler item: id=" << item.id;
 
   // Nothing to do here.
   if (item.graph.library().function_size() == 0) {

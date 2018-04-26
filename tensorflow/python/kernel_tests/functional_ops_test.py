@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -38,6 +39,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 # pylint: disable=invalid-name
@@ -69,6 +71,26 @@ class FunctionalOpsTest(test.TestCase):
           elems,
           initializer=10)
       self.assertAllEqual(880, self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testFoldl_SingleInputMultiOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array([1, -1.0])
+      r = functional_ops.foldl(lambda a, x: a + x, elems, initializer)
+      r_value = self.evaluate(r)
+
+      self.assertAllEqual(22, r_value[0])
+      self.assertAllEqual(20, r_value[1])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testFoldl_MultiInputSingleOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      r = functional_ops.foldl(lambda a, x: a + x[0] + x[1], (elems, -elems),
+                               initializer)
+      self.assertAllEqual(1, self.evaluate(r))
 
   def testFoldl_Scoped(self):
     with self.test_session() as sess:
@@ -104,6 +126,26 @@ class FunctionalOpsTest(test.TestCase):
           elems,
           initializer=10)
       self.assertAllEqual(1282, self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testFoldr_SingleInputMultiOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array([1, -1.0])
+      r = functional_ops.foldr(lambda a, x: a + x, elems, initializer)
+      r_value = self.evaluate(r)
+
+      self.assertAllEqual(22, r_value[0])
+      self.assertAllEqual(20, r_value[1])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testFoldr_MultiInputSingleOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      r = functional_ops.foldr(lambda a, x: a + x[0] + x[1], (elems, -elems),
+                               initializer)
+      self.assertAllEqual(1, self.evaluate(r))
 
   def testFoldr_Scoped(self):
     with self.test_session() as sess:
@@ -883,6 +925,110 @@ class FunctionalOpsTest(test.TestCase):
       bvals = [Poly(b), Grad(b)]
       self.assertAllEqual(sess.run(avals), [8., 4.])
       self.assertAllEqual(sess.run(bvals), [17., 16.])
+
+
+class PartitionedCallTest(test.TestCase):
+
+  def testBasicSingleDevice(self):
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(x, y):
+      with ops.device("/cpu:0"):
+        a = x + x
+        b = y + y
+        return a + b
+
+    output, = self.evaluate(
+        functional_ops.partitioned_call(
+            args=[constant_op.constant(1.),
+                  constant_op.constant(2.)], f=Body))
+    self.assertEqual(output, 6.)
+
+  def testBasicMultiDevice(self):
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(x, y):
+      # if x = 1, y = 2, ...
+      with ops.device("/cpu:0"):
+        # a:= 1 + 1 = 2
+        a = x + x
+      with ops.device("/cpu:1"):
+        # b:= 2 + 2 = 4
+        b = a + y
+      with ops.device("/cpu:2"):
+        # c:= 2 + 4 = 6
+        c = a + b
+      # a + b + c = 2 + 4 + 6 = 12
+      return a + b + c
+
+    with self.test_session(config=config):
+      output, = functional_ops.partitioned_call(
+          args=[constant_op.constant(1.),
+                constant_op.constant(2.)], f=Body)
+      self.assertEqual(output.eval(), 12.)
+
+  def testBasicMultiDeviceGPU(self):
+    if not test_util.is_gpu_available():
+      return
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(x, y):
+      with ops.device("/gpu:0"):
+        a = x + x
+        b = y + y
+      with ops.device("/cpu:0"):
+        c = a + b
+        return c
+
+    output, = self.evaluate(
+        functional_ops.partitioned_call(
+            args=[constant_op.constant(1.),
+                  constant_op.constant(2.)], f=Body))
+    self.assertEqual(output, 6.)
+
+  def testBasicNoDeviceAnnotations(self):
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(x, y):
+      a = x + x
+      b = y + y
+      return a + b
+
+    output, = self.evaluate(
+        functional_ops.partitioned_call(
+            args=[constant_op.constant(1.),
+                  constant_op.constant(2.)], f=Body))
+    self.assertEqual(output, 6.)
+
+  def testShardsRunOnRequestedDevices(self):
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+
+    @function.Defun()
+    def Body():
+      # Serialize DT_RESOURCE handles as DT_STRINGs, which encode the device on
+      # which the resource was created, so that we can verify that ops were
+      # actually run on the requested devices.
+      #
+      # TODO(akshayka): Provide a cleaner, more idiomatic API for obtaining the
+      # name of the device on which a resource lives / for determining the
+      # device on which an op ran.
+      with ops.device("/cpu:0"):
+        s1 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      with ops.device("/cpu:1"):
+        s2 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      with ops.device("/cpu:2"):
+        s3 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      return s1, s2, s3
+
+    with self.test_session(config=config):
+      outputs = functional_ops.partitioned_call(args=[], f=Body)
+      self.assertTrue(compat.as_bytes("CPU:0") in outputs[0].eval())
+      self.assertTrue(compat.as_bytes("CPU:1") in outputs[1].eval())
+      self.assertTrue(compat.as_bytes("CPU:2") in outputs[2].eval())
 
 
 if __name__ == "__main__":

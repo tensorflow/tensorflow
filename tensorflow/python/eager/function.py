@@ -80,7 +80,7 @@ def capture_value(tensor_map, value, dtype, name):
       if handle_data is not None and handle_data.is_set:
         # pylint: disable=protected-access
         if ops._USE_C_SHAPES:
-          pywrap_tensorflow.TFE_SetResourceHandleShapeAndType(
+          pywrap_tensorflow.SetResourceHandleShapeAndType(
               captured_value.graph._c_graph, captured_value._as_tf_output(),
               handle_data.SerializeToString())
         else:
@@ -405,7 +405,15 @@ class GraphModeFunction(object):
       c_known_ops = set()
       c_captured_tensors = set()
 
-      def add_op_internal(op):
+      existing_op_len = len(self._graph.get_operations())
+      filtered_outputs = [x for x in self._returns if x is not None]
+      self._out_grad_placeholders = [
+          graph_placeholder(x.dtype, x.shape) for x in filtered_outputs]
+      in_gradients = gradients_impl.gradients(
+          filtered_outputs,
+          self._input_placeholders,
+          grad_ys=self._out_grad_placeholders)
+      for op in self._graph.get_operations()[existing_op_len:]:
         if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
           raise ValueError("tfe.defun cannot capture variables created without "
                            "using tf.get_variable. Op: %s" % op)
@@ -413,17 +421,6 @@ class GraphModeFunction(object):
         for i in op.inputs:
           if i.op not in c_known_ops:
             c_captured_tensors.add(i)
-
-      c = HelperContext(add_op_internal)
-
-      with c:
-        filtered_outputs = [x for x in self._returns if x is not None]
-        self._out_grad_placeholders = [
-            graph_placeholder(x.dtype, x.shape) for x in filtered_outputs]
-        in_gradients = gradients_impl.gradients(
-            filtered_outputs,
-            self._input_placeholders,
-            grad_ys=self._out_grad_placeholders)
 
     backward_outputs = tuple(
         grad for grad in _flatten(in_gradients) if grad is not None)

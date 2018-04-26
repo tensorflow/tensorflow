@@ -19,8 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-# Bijectors must be directly imported because `remove_undocumented` prevents
-# individual file imports.
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
