@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -29,7 +30,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -48,7 +49,9 @@ struct SubGraphParams {
       const tensorflow::grappler::GraphProperties& current_graph_properties,
       std::unordered_map<string, std::pair<int, string>>* output_edges,
       tensorflow::NodeDef* constructed_trt_node,
-      int engine_precision_mode = FP32MODE)
+      int engine_precision_mode = FP32MODE, const string& device_name = "",
+      std::shared_ptr<nvinfer1::IGpuAllocator> allocator = 0,
+      int cuda_device_id = 0)
       : graph(inp_graph),
         subgraph_node_ids(subgraph_node_id_numbers),
         input_inds(input_indices),
@@ -58,7 +61,10 @@ struct SubGraphParams {
         graph_properties(current_graph_properties),
         output_edge_map(output_edges),
         trt_node(constructed_trt_node),
-        precision_mode(engine_precision_mode) {}
+        precision_mode(engine_precision_mode),
+        device_name_(device_name),
+        allocator_(allocator),
+        cuda_device_id_(cuda_device_id) {}
 
   tensorflow::Graph& graph;
   const std::set<int>& subgraph_node_ids;
@@ -70,6 +76,9 @@ struct SubGraphParams {
   std::unordered_map<string, std::pair<int, string>>* output_edge_map;
   tensorflow::NodeDef* trt_node;
   const int precision_mode;
+  const string device_name_;
+  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
+  const int cuda_device_id_;
 };
 
 // TODO(sami): Replace references with const reference or pointers

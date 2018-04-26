@@ -35,7 +35,7 @@ class SegmentTest : public ::testing::Test {
   TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                     TF_Status* s, const char* name);
 
-  std::function<bool(const Node*)> MakeCandidateFn(
+  std::function<bool(const tensorflow::Node*)> MakeCandidateFn(
       const std::set<string>& node_names);
 
  protected:
@@ -60,9 +60,9 @@ bool SegmentTest::GetGraphDef(TF_Graph* graph,
   return ret;
 }
 
-std::function<bool(const Node*)> SegmentTest::MakeCandidateFn(
+std::function<bool(const tensorflow::Node*)> SegmentTest::MakeCandidateFn(
     const std::set<string>& node_names) {
-  return [node_names](const Node* node) -> bool {
+  return [node_names](const tensorflow::Node* node) -> bool {
     return node_names.find(node->name()) != node_names.end();
   };
 }

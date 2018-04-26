@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorrt/include/NvInfer.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -36,7 +37,7 @@ class TRTEngineOp : public OpKernel {
   explicit TRTEngineOp(OpKernelConstruction* context);
 
   void Compute(OpKernelContext* context) override;
-
+  ~TRTEngineOp();
  private:
   template <typename T>
   struct Destroyer {
@@ -51,6 +52,8 @@ class TRTEngineOp : public OpKernel {
 
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
+  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
+  string serialized_engine_;
 };
 
 }  // namespace tensorrt

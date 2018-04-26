@@ -28,6 +28,7 @@ limitations under the License.
 #if GOOGLE_TENSORRT
 #include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 #include "tensorrt/include/NvInfer.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -47,6 +48,7 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
         << " Network    = " << std::hex << network_ << std::dec << std::endl
         << " Engine     = " << std::hex << engine_ << std::dec << std::endl
         << " Logger     = " << std::hex << logger_ << std::dec << std::endl
+        << " Allocator  = " << std::hex << allocator_.get()<< std::dec << std::endl
         << " Thread     = " << std::hex << thr_ << std::dec << std::endl;
     return oss.str();
   }
@@ -57,6 +59,7 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
   nvinfer1::IBuilder* builder_;
   nvinfer1::INetworkDefinition* network_;
   nvinfer1::ICudaEngine* engine_;
+  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
   tensorflow::tensorrt::Logger* logger_;
   // TODO(sami): Use threadpool threads!
   std::thread* thr_;
