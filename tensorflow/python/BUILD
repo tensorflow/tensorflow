@@ -1880,6 +1880,7 @@ py_library(
         ":platform",
         ":spectral_grad",
         ":util",
+        ":variable_scope",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
@@ -2776,6 +2777,7 @@ cuda_py_test(
         ":framework_test_lib",
         ":functional_ops",
         ":gradients",
+        ":layers",
         ":math_grad",
         ":math_ops",
         ":nn_grad",
@@ -2785,6 +2787,7 @@ cuda_py_test(
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
+        ":variable_scope",
         "//third_party/py/numpy",
     ],
 )
