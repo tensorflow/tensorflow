@@ -49,12 +49,14 @@ class StandardInputStep(Step):
   """Step with a standard implementation of input handling.
 
   Args:
-    input_dataset: a tf.data Dataset that provides input.
+    dataset_fn: a function that returns a tf.data Dataset that produces the
+      input for the model.
   """
 
-  def __init__(self, input_dataset, distribution):
+  def __init__(self, dataset_fn, distribution):
     Step.__init__(self, distribution)
-    self._distributed_input = distribution.distribute_dataset(input_dataset)
+    self._distributed_input = distribution.distribute_dataset(
+        dataset_fn).make_one_shot_iterator()
 
   def inputs(self):
     return self._distributed_input.get_next()
@@ -76,14 +78,15 @@ class StandardSingleLossStep(StandardInputStep):
   ```
 
   Args:
-    input_dataset: a tf.data Dataset that provides input.
+    dataset_fn: a function that returns a tf.data Dataset that produces the
+      input for the model.
     loss_fn: a function that returns loss.
     optimizer: an optimizer that implements an update rule.
     distribution: a `DistributionStrategy` object.
   """
 
-  def __init__(self, input_dataset, loss_fn, optimizer, distribution):
-    StandardInputStep.__init__(self, input_dataset, distribution)
+  def __init__(self, dataset_fn, loss_fn, optimizer, distribution):
+    StandardInputStep.__init__(self, dataset_fn, distribution)
     self._loss_fn = loss_fn
     self._optimizer = optimizer
     self._is_run_concurrently = False

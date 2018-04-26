@@ -31,8 +31,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 // Record used inside the TemporaryMemoryManager as metadata for a given device
@@ -147,7 +146,6 @@ TemporaryMemoryManager::AllocateArray(uint64 element_count) {
 }
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TEMPORARY_MEMORY_MANAGER_H_

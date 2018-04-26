@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -451,43 +452,101 @@ OPDEF_PROPERTY_HELPER(Aggregate, aggregate)
 OPDEF_PROPERTY_HELPER(Commutative, commutative)
 
 bool IsInvolution(const NodeDef& node) {
-  const std::unordered_set<string> involution_ops{
-      "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"};
-  return involution_ops.count(node.op()) > 0;
+  static const std::unordered_set<string>* involution_ops =
+      CHECK_NOTNULL((new std::unordered_set<string>{
+          "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"}));
+  return involution_ops->count(node.op()) > 0;
 }
 
 bool IsValueAndOrderPreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
-  const std::unordered_set<string> value_and_order_preserving_ops{
-      "CheckNumerics",
-      "DebugGradientIdentity",
-      "DeepCopy"
-      "Enter",
-      "Exit",
-      "ExpandDims",
-      "Identity",
-      "IdentityN",
-      "PreventGradient",
-      "Print",
-      "Reshape",
-      "Snapshot",
-      "Squeeze",
-      "StopGradient",
-  };
-  return value_and_order_preserving_ops.count(node.op()) > 0;
+  static const std::unordered_set<string>* value_and_order_preserving_ops =
+      CHECK_NOTNULL((new const std::unordered_set<string>{
+          "CheckNumerics",
+          "DebugGradientIdentity",
+          "DeepCopy"
+          "Enter",
+          "Exit",
+          "ExpandDims",
+          "Identity",
+          "IdentityN",
+          "PreventGradient",
+          "Print",
+          "Reshape",
+          "Snapshot",
+          "Squeeze",
+          "StopGradient",
+      }));
+  return value_and_order_preserving_ops->count(node.op()) > 0;
 }
 
 bool IsValuePreserving(const NodeDef& node) {
-  const std::unordered_set<string> value_preserving_ops{
-      "InvertPermutation",
-      "Reverse",
-      "Roll",
-      "Transpose",
-  };
+  static const std::unordered_set<string>* value_preserving_ops =
+      CHECK_NOTNULL((new std::unordered_set<string>{
+          "InvertPermutation",
+          "Reverse",
+          "Roll",
+          "Transpose",
+      }));
   return IsValueAndOrderPreserving(node) ||
-         value_preserving_ops.count(node.op()) > 0;
+         value_preserving_ops->count(node.op()) > 0;
+}
+
+bool IsUnaryElementWise(const NodeDef& node) {
+  static const std::unordered_set<string>* element_wise_ops =
+      CHECK_NOTNULL((new std::unordered_set<string>{
+          "Abs",
+          "Acos",
+          "Acosh",
+          "Asin",
+          "Asinh",
+          "Atan",
+          "Atan2",
+          "Atanh",
+          "Ceil",
+          "ComplexAbs",
+          "Conj",
+          "Cos",
+          "Cosh",
+          "Digamma",
+          "Elu"
+          "Erf",
+          "Erfc",
+          "Exp",
+          "Expm1",
+          "Floor",
+          "Inv",
+          "Invert",
+          "Isinf",
+          "Isnan",
+          "Isfinite",
+          "Lgamma",
+          "Log",
+          "Log1p",
+          "LogicalNot",
+          "Neg",
+          "Reciprocal",
+          "Relu",
+          "Relu6",
+          "Rint",
+          "Round",
+          "Selu",
+          "Rsqrt",
+          "Sigmoid",
+          "Sign",
+          "Sin",
+          "SinH",
+          "Softplus",
+          "Softsign",
+          "Sqrt",
+          "Square",
+          "Tan"
+          "Tanh",
+      }));
+  return element_wise_ops->count(node.op()) > 0 ||
+         (!IsIdentityN(node) && IsValueAndOrderPreserving(node));
 }
 
 bool HasOpDef(const NodeDef& node) {

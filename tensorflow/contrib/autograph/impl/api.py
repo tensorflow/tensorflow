@@ -241,7 +241,7 @@ def to_graph(e,
   module = gast.Module([])
   for import_line in config.COMPILED_IMPORT_STATEMENTS:
     module.body.extend(parser.parse_str(import_line).body)
-  for dep in conversion_map.dependency_cache.values():
+  for dep in reversed(conversion_map.dependency_cache.values()):
     module.body.append(dep)
   compiled_node, compiled_src = compiler.ast_to_object(module)
 

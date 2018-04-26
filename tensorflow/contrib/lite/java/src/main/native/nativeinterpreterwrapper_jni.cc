@@ -22,7 +22,7 @@ const int kBufferSize = 256;
 tflite::Interpreter* convertLongToInterpreter(JNIEnv* env, jlong handle) {
   if (handle == 0) {
     throwException(env, kIllegalArgumentException,
-                   "Invalid handle to Interpreter.");
+                   "Internal error: Invalid handle to Interpreter.");
     return nullptr;
   }
   return reinterpret_cast<tflite::Interpreter*>(handle);
@@ -30,7 +30,8 @@ tflite::Interpreter* convertLongToInterpreter(JNIEnv* env, jlong handle) {
 
 tflite::FlatBufferModel* convertLongToModel(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    throwException(env, kIllegalArgumentException, "Invalid handle to model.");
+    throwException(env, kIllegalArgumentException,
+                   "Internal error: Invalid handle to model.");
     return nullptr;
   }
   return reinterpret_cast<tflite::FlatBufferModel*>(handle);
@@ -39,7 +40,7 @@ tflite::FlatBufferModel* convertLongToModel(JNIEnv* env, jlong handle) {
 BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   if (handle == 0) {
     throwException(env, kIllegalArgumentException,
-                   "Invalid handle to ErrorReporter.");
+                   "Internal error: Invalid handle to ErrorReporter.");
     return nullptr;
   }
   return reinterpret_cast<BufferErrorReporter*>(handle);
@@ -51,7 +52,7 @@ std::vector<int> convertJIntArrayToVector(JNIEnv* env, jintArray inputs) {
   jint* ptr = env->GetIntArrayElements(inputs, nullptr);
   if (ptr == nullptr) {
     throwException(env, kIllegalArgumentException,
-                   "Empty dimensions of input array.");
+                   "Array has empty dimensions.");
     return {};
   }
   for (int i = 0; i < size; ++i) {
@@ -113,7 +114,7 @@ TfLiteStatus checkInputs(JNIEnv* env, tflite::Interpreter* interpreter,
                          jobjectArray sizes) {
   if (input_size != interpreter->inputs().size()) {
     throwException(env, kIllegalArgumentException,
-                   "Expected num of inputs is %d but got %d",
+                   "Input error: Expected num of inputs is %d but got %d",
                    interpreter->inputs().size(), input_size);
     return kTfLiteError;
   }
@@ -121,8 +122,9 @@ TfLiteStatus checkInputs(JNIEnv* env, tflite::Interpreter* interpreter,
       input_size != env->GetArrayLength(nums_of_bytes) ||
       input_size != env->GetArrayLength(values)) {
     throwException(env, kIllegalArgumentException,
-                   "Arrays in arguments should be of the same length, but got "
-                   "%d sizes, %d data_types, %d nums_of_bytes, and %d values",
+                   "Internal error: Arrays in arguments should be of the same "
+                   "length, but got %d sizes, %d data_types, %d nums_of_bytes, "
+                   "and %d values",
                    input_size, env->GetArrayLength(data_types),
                    env->GetArrayLength(nums_of_bytes),
                    env->GetArrayLength(values));
@@ -136,8 +138,8 @@ TfLiteStatus checkInputs(JNIEnv* env, tflite::Interpreter* interpreter,
     int num_dims = static_cast<int>(env->GetArrayLength(dims));
     if (target->dims->size != num_dims) {
       throwException(env, kIllegalArgumentException,
-                     "%d-th input should have %d dimensions, but found %d "
-                     "dimensions",
+                     "Input error: %d-th input should have %d dimensions, but "
+                     "found %d dimensions",
                      i, target->dims->size, num_dims);
       return kTfLiteError;
     }
@@ -150,7 +152,8 @@ TfLiteStatus checkInputs(JNIEnv* env, tflite::Interpreter* interpreter,
                   num_dims);
         printDims(obtained_dims.get(), kBufferSize, ptr, num_dims);
         throwException(env, kIllegalArgumentException,
-                       "%d-th input dimension should be [%s], but found [%s]",
+                       "Input error: %d-th input dimension should be [%s], but "
+                       "found [%s]",
                        i, expected_dims.get(), obtained_dims.get());
         env->ReleaseIntArrayElements(dims, ptr, JNI_ABORT);
         return kTfLiteError;
@@ -236,8 +239,8 @@ TfLiteStatus setInputs(JNIEnv* env, tflite::Interpreter* interpreter,
       TfLiteType type = resolveDataType(data_type[i]);
       if (type != target->type) {
         throwException(env, kIllegalArgumentException,
-                       "DataType (%d) of input data does not match with the "
-                       "DataType (%d) of model inputs.",
+                       "Input error: DataType (%d) of input data does not "
+                       "match with the DataType (%d) of model inputs.",
                        type, target->type);
         return kTfLiteError;
       }
@@ -270,7 +273,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
     throwException(env, kUnsupportedOperationException,
-                   "Can not find java/lang/String class to get input names.");
+                   "Internal error: Can not find java/lang/String class to get "
+                   "input names.");
     return nullptr;
   }
   size_t size = interpreter->inputs().size();
@@ -292,7 +296,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
     throwException(env, kUnsupportedOperationException,
-                   "Can not find java/lang/String class to get output names.");
+                   "Internal error: Can not find java/lang/String class to get "
+                   "output names.");
     return nullptr;
   }
   size_t size = interpreter->outputs().size();
@@ -361,8 +366,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
       path, verifier.get(), error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
-                   "Contents of %s does not encode a valid TensorFlowLite "
-                   "model: %s",
+                   "Contents of %s does not encode a valid "
+                   "TensorFlowLite model: %s",
                    path, error_reporter->CachedErrorMessage());
     env->ReleaseStringUTFChars(model_file, path);
     return 0;
@@ -390,8 +395,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
       buf, static_cast<size_t>(capacity), error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
-                   "MappedByteBuffer does not encode a valid TensorFlowLite "
-                   "model: %s",
+                   "MappedByteBuffer does not encode a valid "
+                   "TensorFlowLite model: %s",
                    error_reporter->CachedErrorMessage());
     return 0;
   }
@@ -413,7 +418,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
       &interpreter, static_cast<int>(num_threads));
   if (status != kTfLiteOk) {
     throwException(env, kIllegalArgumentException,
-                   "Cannot create interpreter: %s",
+                   "Internal error: Cannot create interpreter: %s",
                    error_reporter->CachedErrorMessage());
     return 0;
   }
@@ -421,7 +426,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   status = interpreter->AllocateTensors();
   if (status != kTfLiteOk) {
     throwException(env, kNullPointerException,
-                   "Can not allocate memory for the interpreter",
+                   "Internal error: Cannot allocate memory for the interpreter",
                    error_reporter->CachedErrorMessage());
     return 0;
   }
@@ -450,7 +455,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
     // resizes inputs
     status = resizeInputs(env, interpreter, input_size, sizes);
     if (status != kTfLiteOk) {
-      throwException(env, kNullPointerException, "Can not resize the input: %s",
+      throwException(env, kNullPointerException,
+                     "Internal error: Can not resize the input: %s",
                      error_reporter->CachedErrorMessage());
       return nullptr;
     }
@@ -458,7 +464,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
     status = interpreter->AllocateTensors();
     if (status != kTfLiteOk) {
       throwException(env, kNullPointerException,
-                     "Can not allocate memory for the given inputs: %s",
+                     "Internal error: Can not allocate memory for the given "
+                     "inputs: %s",
                      error_reporter->CachedErrorMessage());
       return nullptr;
     }
@@ -471,7 +478,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   // runs inference
   if (interpreter->Invoke() != kTfLiteOk) {
     throwException(env, kIllegalArgumentException,
-                   "Failed to run on the given Interpreter: %s",
+                   "Internal error: Failed to run on the given Interpreter: %s",
                    error_reporter->CachedErrorMessage());
     return nullptr;
   }
@@ -489,8 +496,9 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   // returns outputs
   const std::vector<int>& results = interpreter->outputs();
   if (results.empty()) {
-    throwException(env, kIllegalArgumentException,
-                   "The Interpreter does not have any outputs.");
+    throwException(
+        env, kIllegalArgumentException,
+        "Internal error: The Interpreter does not have any outputs.");
     return nullptr;
   }
   jlongArray outputs = env->NewLongArray(results.size());
@@ -511,7 +519,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
   const int idx = static_cast<int>(input_idx);
   if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
     throwException(env, kIllegalArgumentException,
-                   "Out of range: Failed to get %d-th input out of %d inputs",
+                   "Input error: Out of range: Failed to get %d-th input out of"
+                   " %d inputs",
                    input_idx, interpreter->inputs().size());
     return nullptr;
   }
@@ -524,8 +533,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
     }
     if (num_bytes != expected_num_bytes) {
       throwException(env, kIllegalArgumentException,
-                     "Failed to get input dimensions. %d-th input should have"
-                     " %d bytes, but found %d bytes.",
+                     "Input error: Failed to get input dimensions. %d-th input "
+                     "should have %d bytes, but found %d bytes.",
                      idx, expected_num_bytes, num_bytes);
       return nullptr;
     }
@@ -543,8 +552,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
   const int idx = static_cast<int>(output_idx);
   if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
     throwException(env, kIllegalArgumentException,
-                   "Out of range: Failed to get %d-th output out of %d outputs",
-                   output_idx, interpreter->outputs().size());
+                   "Failed to get %d-th output out of %d outputs", output_idx,
+                   interpreter->outputs().size());
     return -1;
   }
   TfLiteTensor* target = interpreter->tensor(interpreter->outputs()[idx]);
@@ -565,7 +574,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
   const int idx = static_cast<int>(input_idx);
   if (idx < 0 || idx >= interpreter->inputs().size()) {
     throwException(env, kIllegalArgumentException,
-                   "Can not resize %d-th input for a model having %d inputs.",
+                   "Input error: Can not resize %d-th input for a model having "
+                   "%d inputs.",
                    idx, interpreter->inputs().size());
     return JNI_FALSE;
   }
@@ -577,7 +587,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
         interpreter->inputs()[idx], convertJIntArrayToVector(env, dims));
     if (status != kTfLiteOk) {
       throwException(env, kIllegalArgumentException,
-                     "Failed to resize %d-th input: %s", idx,
+                     "Internal error: Failed to resize %d-th input: %s", idx,
                      error_reporter->CachedErrorMessage());
       return JNI_FALSE;
     }

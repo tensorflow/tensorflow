@@ -814,6 +814,21 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       new_cov = sess.run(factor.make_covariance_update_op(0.))
       self.assertAllClose([[(1. + 4.) / 2.]], new_cov)
 
+  def testSubSample(self):
+    with tf_ops.Graph().as_default():
+      patches_1 = array_ops.constant(1, shape=(10, 2))
+      patches_2 = array_ops.constant(1, shape=(10, 8))
+      patches_3 = array_ops.constant(1, shape=(3, 3))
+      patches_1_sub = ff._subsample_for_cov_computation(patches_1)
+      patches_2_sub = ff._subsample_for_cov_computation(patches_2)
+      patches_3_sub = ff._subsample_for_cov_computation(patches_3)
+      patches_1_sub_batch_size = patches_1_sub.shape.as_list()[0]
+      patches_2_sub_batch_size = patches_2_sub.shape.as_list()[0]
+      patches_3_sub_batch_size = patches_3_sub.shape.as_list()[0]
+      self.assertEqual(2, patches_1_sub_batch_size)
+      self.assertEqual(8, patches_2_sub_batch_size)
+      self.assertEqual(3, patches_3_sub_batch_size)
+
 
 class ConvOutputKroneckerFactorTest(ConvFactorTestCase):
 

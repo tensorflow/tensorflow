@@ -41,7 +41,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 
-using ::tensorflow::grpc::TPUProfileAnalysis;
+using ::tensorflow::TPUProfileAnalysis;
 using ::tensorflow::TPUProfiler;
 
 constexpr uint64 kMaxEvents = 1000000;
@@ -137,9 +137,9 @@ bool NewSession(const string& service_addr,
       PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
   new_session_request.set_repository_root(repository_root);
   new_session_request.set_session_id(session_id);
-  std::copy(
-      hostnames.begin(), hostnames.end(),
-      proto2::RepeatedFieldBackInserter(new_session_request.mutable_hosts()));
+  for (const auto& hostname : hostnames) {
+    new_session_request.add_hosts(hostname);
+  }
 
   ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -159,8 +159,8 @@ bool NewSession(const string& service_addr,
   TF_QCHECK_OK(FromGrpcStatus(
       stub->NewSession(&context, new_session_request, &new_session_response)));
 
-  std::cout << "Profile session succeed for hosts:"
-            << str_util::Join(hostnames, ",");
+  std::cout << "Profile session succeed for host(s):"
+            << str_util::Join(hostnames, ",") << std::endl;
   return new_session_response.empty_trace();
 }
 
