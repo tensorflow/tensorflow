@@ -89,13 +89,15 @@ class Cluster {
     return devices_;
   }
 
-  const DeviceSet* GetDeviceSet() const {
-    return device_set_;
-  }
-
   // Convenience method that returns the set of device names. These names are
   // sorted alphabetically.
   const std::vector<string> GetDeviceNames() const;
+
+  // The DeviceSet is not always available, but when it is it contains a
+  // superset of the devices listed in GetDevices/GetDeviceNames().
+  const DeviceSet* GetDeviceSet() const {
+    return device_set_;
+  }
 
   // Enables collecting the allocator stats. Call with enable=true must be made
   // before Provision().
