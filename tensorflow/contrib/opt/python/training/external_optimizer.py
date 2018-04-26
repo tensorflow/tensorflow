@@ -492,20 +492,19 @@ class SklearnRidgeInterface:
       **optimizer_kwargs: kwargs to pass to the Ridge model as hyperparameters.
   """
   def __init__(self, X, y, var_list, **optimizer_kwargs):
-      
       self.X = X
       self.y = y
+      self.optimizer_kwargs = optimizer_kwargs
 
       if var_list is None:
           self._vars = variables.trainable_variables()
       else:
           self._vars = list(var_list)
-
-      self.optimizer_kwargs = optimizer_kwargs
+            
       self._update_placeholders = [
           array_ops.placeholder(var.dtype) for var in self._vars
       ]
-      
+
       self._var_updates = [
           var.assign(array_ops.reshape(placeholder, _get_shape_tuple(var)))
           for var, placeholder in zip(self._vars, self._update_placeholders)
@@ -537,7 +536,6 @@ class SklearnRidgeInterface:
 
 
   def _minimize(self, initial_values):
-
     _sample_weight = self.optimizer_kwargs.pop('sample_weight', None)
     import sklearn.linear_model  # pylint: disable=g-import-not-at-top
     clf = sklearn.linear_model.Ridge(**self.optimizer_kwargs)
