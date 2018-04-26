@@ -636,11 +636,9 @@ class Estimator(object):
               sharded=True)
           saver_for_restore.restore(session, checkpoint_path)
 
-          # pylint: disable=protected-access
           local_init_op = (
               estimator_spec.scaffold.local_init_op or
-              monitored_session.Scaffold._default_local_init_op())
-          # pylint: enable=protected-access
+              monitored_session.Scaffold.default_local_init_op())
 
           # Perform the export
           builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
