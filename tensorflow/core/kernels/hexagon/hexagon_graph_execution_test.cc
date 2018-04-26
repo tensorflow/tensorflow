@@ -29,6 +29,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 
 #include <memory>
 
+#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
@@ -209,7 +210,7 @@ BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(
     const GraphTransferInfo& graph_transfer_info) {
   RemoteFusedGraphExecuteInfo execute_info;
   execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
-  for (const GraphTransferInfo::GraphInputNodeInfo& input :
+  for (const GraphTransferGraphInputNodeInfo& input :
        graph_transfer_info.graph_input_node_info()) {
     execute_info.add_graph_input_node_name(input.name());
     RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
@@ -221,7 +222,7 @@ BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(
     }
   }
 
-  for (const GraphTransferInfo::GraphOutputNodeInfo& output :
+  for (const GraphTransferGraphOutputNodeInfo& output :
        graph_transfer_info.graph_output_node_info()) {
     execute_info.add_graph_output_node_name(output.name());
     RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
@@ -325,8 +326,8 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
   // 1. check node_info
   ASSERT_EQ(gfi0.node_info_size(), gfi1.node_info_size());
   for (int i = 0; i < gfi0.node_info_size(); ++i) {
-    const GraphTransferInfo::NodeInfo& ni0 = gfi0.node_info(i);
-    const GraphTransferInfo::NodeInfo& ni1 = gfi1.node_info(i);
+    const GraphTransferNodeInfo& ni0 = gfi0.node_info(i);
+    const GraphTransferNodeInfo& ni1 = gfi1.node_info(i);
     EXPECT_EQ(ni0.DebugString(), ni1.DebugString());
     EXPECT_EQ(ni0.ByteSizeLong(), ni1.ByteSizeLong());
   }
@@ -334,8 +335,8 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
   // 2. check const_node_info
   ASSERT_EQ(gfi0.const_node_info_size(), gfi1.const_node_info_size());
   for (int i = 0; i < gfi0.const_node_info_size(); ++i) {
-    const GraphTransferInfo::ConstNodeInfo& cni0 = gfi0.const_node_info(i);
-    const GraphTransferInfo::ConstNodeInfo& cni1 = gfi1.const_node_info(i);
+    const GraphTransferConstNodeInfo& cni0 = gfi0.const_node_info(i);
+    const GraphTransferConstNodeInfo& cni1 = gfi1.const_node_info(i);
     ASSERT_EQ(cni0.shape_size(), cni1.shape_size());
     for (int j = 0; j < cni0.shape_size(); ++j) {
       EXPECT_EQ(cni0.shape(j), cni1.shape(j));
@@ -347,8 +348,8 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
   // 3. check node_input_info
   ASSERT_EQ(gfi0.node_input_info_size(), gfi1.node_input_info_size());
   for (int i = 0; i < gfi0.node_input_info_size(); ++i) {
-    const GraphTransferInfo::NodeInputInfo& nii0 = gfi0.node_input_info(i);
-    const GraphTransferInfo::NodeInputInfo& nii1 = gfi1.node_input_info(i);
+    const GraphTransferNodeInputInfo& nii0 = gfi0.node_input_info(i);
+    const GraphTransferNodeInputInfo& nii1 = gfi1.node_input_info(i);
     EXPECT_EQ(nii0.ByteSizeLong(), nii1.ByteSizeLong());
     EXPECT_EQ(nii0.DebugString(), nii1.DebugString());
   }
@@ -356,8 +357,8 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
   // 4. check node_output_info
   ASSERT_EQ(gfi0.node_output_info_size(), gfi1.node_output_info_size());
   for (int i = 0; i < gfi0.node_output_info_size(); ++i) {
-    const GraphTransferInfo::NodeOutputInfo& noi0 = gfi0.node_output_info(i);
-    const GraphTransferInfo::NodeOutputInfo& noi1 = gfi1.node_output_info(i);
+    const GraphTransferNodeOutputInfo& noi0 = gfi0.node_output_info(i);
+    const GraphTransferNodeOutputInfo& noi1 = gfi1.node_output_info(i);
     ASSERT_EQ(noi0.max_byte_size_size(), noi1.max_byte_size_size());
     for (int j = 0; j < noi0.max_byte_size_size(); ++j) {
       EXPECT_EQ(noi0.max_byte_size(j), noi1.max_byte_size(j));
@@ -370,9 +371,9 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
   ASSERT_EQ(gfi0.graph_input_node_info_size(),
             gfi1.graph_input_node_info_size());
   for (int i = 0; i < gfi0.graph_input_node_info_size(); ++i) {
-    const GraphTransferInfo::GraphInputNodeInfo& gini0 =
+    const GraphTransferGraphInputNodeInfo& gini0 =
         gfi0.graph_input_node_info(i);
-    const GraphTransferInfo::GraphInputNodeInfo& gini1 =
+    const GraphTransferGraphInputNodeInfo& gini1 =
         gfi0.graph_input_node_info(i);
     EXPECT_EQ(gini0.ByteSizeLong(), gini1.ByteSizeLong());
     EXPECT_EQ(gini0.DebugString(), gini1.DebugString());
@@ -382,9 +383,9 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
   ASSERT_EQ(gfi0.graph_output_node_info_size(),
             gfi1.graph_output_node_info_size());
   for (int i = 0; i < gfi0.graph_output_node_info_size(); ++i) {
-    const GraphTransferInfo::GraphOutputNodeInfo& goni0 =
+    const GraphTransferGraphOutputNodeInfo& goni0 =
         gfi0.graph_output_node_info(i);
-    const GraphTransferInfo::GraphOutputNodeInfo& goni1 =
+    const GraphTransferGraphOutputNodeInfo& goni1 =
         gfi0.graph_output_node_info(i);
     EXPECT_EQ(goni0.ByteSizeLong(), goni1.ByteSizeLong());
     EXPECT_EQ(goni0.DebugString(), goni1.DebugString());

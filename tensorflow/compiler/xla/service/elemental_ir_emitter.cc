@@ -293,6 +293,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
         return operand_value;
       }
     }
+    case HloOpcode::kClz: {
+      auto is_zero_undef = ir_builder_->getFalse();
+      return llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::ctlz, {operand_value, is_zero_undef},
+          {operand_value->getType()}, ir_builder_);
+    }
     case HloOpcode::kSign: {
       bool is_signed =
           primitive_util::IsSignedIntegralType(op->shape().element_type());
@@ -1334,6 +1340,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCopy:

@@ -85,7 +85,33 @@ class AstUtilTest(test.TestCase):
     output.body += (ast.Assign([ast.Name(id='d', ctx=ast.Store())], d),)
     result, _ = compiler.ast_to_object(output)
     self.assertDictEqual(result.d, {'a': 3, 'c': 1, 'd': 'e'})
-    print(d)
+
+  def assertMatch(self, target_str, pattern_str):
+    node = parser.parse_expression(target_str)
+    pattern = parser.parse_expression(pattern_str)
+    self.assertTrue(ast_util.matches(node, pattern))
+
+  def assertNoMatch(self, target_str, pattern_str):
+    node = parser.parse_expression(target_str)
+    pattern = parser.parse_expression(pattern_str)
+    self.assertFalse(ast_util.matches(node, pattern))
+
+  def test_matches_symbols(self):
+    self.assertMatch('foo', '_')
+    self.assertNoMatch('foo()', '_')
+    self.assertMatch('foo + bar', 'foo + _')
+    self.assertNoMatch('bar + bar', 'foo + _')
+    self.assertNoMatch('foo - bar', 'foo + _')
+
+  def test_matches_function_args(self):
+    self.assertMatch('super(Foo, self).__init__(arg1, arg2)',
+                     'super(_).__init__(_)')
+    self.assertMatch('super().__init__()', 'super(_).__init__(_)')
+    self.assertNoMatch('super(Foo, self).bar(arg1, arg2)',
+                       'super(_).__init__(_)')
+    self.assertMatch('super(Foo, self).__init__()', 'super(Foo, _).__init__(_)')
+    self.assertNoMatch('super(Foo, self).__init__()',
+                       'super(Bar, _).__init__(_)')
 
 
 if __name__ == '__main__':

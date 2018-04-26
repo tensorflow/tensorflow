@@ -870,6 +870,9 @@ FunctionalizeCond::DeterminePredicateSwitchOrder() {
       // Merge the inputs of the switch node with one another. This results in
       // predicates and control input residing in the same cluster.
       for (const Edge* e : n->in_edges()) {
+        // Only consider the data inputs to the Switch node.
+        if (e->IsControlEdge()) continue;
+
         Node* src = e->src();
         UnionFind<Cluster>* src_cluster = find_output_cluster(src);
         int src_cluster_depth = switch_depth[src_cluster->Get().representative];

@@ -122,16 +122,19 @@ class LiteralTestUtil {
   // bounds are equivalent.
   //
   // Tuples are matched recursively.  When comparing tensors of
-  // non-floating-point type, checks for exact equality, ignoring the ErroSpec.
+  // non-floating-point type, checks for exact equality, ignoring the ErrorSpec.
   //
   // If the shape of the literals is neither a complex/floating-point tensor nor
   // a tuple which contains a complex/floating-point tensor, Near() is
   // equivalent to Equal().  We don't raise an error in this case, because we
   // want to allow callers to call Near() even if they have no preconceptions
   // about the shapes being compared.
+  //
+  // If detailed_message is true, then the error message in the assertion result
+  // will contain a more detailed breakdown of mismatches.
   static ::testing::AssertionResult Near(
-      const Literal& expected, const Literal& actual,
-      const ErrorSpec& error) TF_MUST_USE_RESULT;
+      const Literal& expected, const Literal& actual, const ErrorSpec& error,
+      bool detailed_message = false) TF_MUST_USE_RESULT;
 
   // Expects expected and actual to be Near with the given error.
   static void ExpectNear(const Literal& expected, const Literal& actual,

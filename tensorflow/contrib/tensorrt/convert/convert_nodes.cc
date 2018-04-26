@@ -444,8 +444,8 @@ class Converter {
        *    remove this and annotate the edge as a control dependency.
        ************************************************************************/
       // skip control nodes
-      if (input_name[0] == '^' ) continue;
-      string name =  input_name;
+      if (input_name[0] == '^') continue;
+      string name = input_name;
       auto first = name.find_first_of(':');
       if (first != string::npos && first + 2 == name.size() &&
           name[first + 1] == '0')
@@ -2511,7 +2511,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
   for (const std::pair<int, int>& input : s.input_inds) {
-    VLOG(2) << "parsing input. Node id= " << input.first ;
+    VLOG(2) << "parsing input. Node id= " << input.first;
     int node_id = input.first;
     int output_idx = input.second;
     tensorflow::Node* node = s.graph.FindNodeId(node_id);

@@ -401,10 +401,6 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
-  // Creates a broadcast-size-one-dimensions instruction.
-  static std::unique_ptr<HloInstruction> CreateBroadcastDimOne(
-      const Shape& shape, HloInstruction* operand);
-
   // Creates a sequence of instructions that performs an explicit broadcast of
   // the operand to the target shape.
   //
@@ -560,6 +556,18 @@ class HloInstruction {
   // Removes a previously added control dependency from this instruction to
   // 'instruction'.
   Status RemoveControlDependencyTo(HloInstruction* instruction);
+
+  // Drops all control predecessors and successors from this HLO instruction.
+  Status DropAllControlDeps();
+
+  // Copies the control predecessors and successors on this HLO instruction to
+  // `inst`.  Does not do a deep copy so this makes sense only if `inst` and
+  // this HLO are in the same module.
+  //
+  // Depending on the use cases we see in practice, in the future we may
+  // consider folding the logic here into Clone, CloneWithNewOperands and
+  // ReplaceAllUsesWith by treating control dependencies like data dependencies.
+  Status CopyAllControlDepsFrom(const HloInstruction* inst);
 
   // Returns the set of control predecessors (successors) of this
   // instruction. Control predecessors (successors) must execute before (after)
@@ -948,6 +956,14 @@ class HloInstruction {
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
   bool has_sharding() const { return sharding_ != nullptr; }
+  // Checks whether the instruction has compatible sharding with the other
+  // instruction.
+  bool has_compatible_sharding(const HloInstruction* other) const {
+    if (!has_sharding()) {
+      return !other->has_sharding();
+    }
+    return other->has_sharding() ? sharding() == other->sharding() : false;
+  }
 
   // When creating a new instruction which either replaces, or shifts up (kCopy
   // insertion case), another instruction, we need to make sure the certain
@@ -1152,17 +1168,17 @@ class HloInstruction {
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
-  // the instruction to form the name of the cloned instruction.
-  // If the module pointer is not nullptr, it will be the module where
-  // the cloned computations will be added to (in order to support deep
-  // cloning).
+  // the instruction to form the name of the cloned instruction.  If the module
+  // pointer is not nullptr, it will be the module where the cloned computations
+  // will be added to (in order to support deep cloning).  Ignores the control
+  // predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone",
                                         HloModule* module = nullptr) const;
 
-  // Clones the HLO instruction as above but with new shape and operands.
-  // If the module pointer is not nullptr, it will be the module where
-  // the cloned computations will be added to (in order to support deep
-  // cloning).
+  // Clones the HLO instruction as above but with new shape and operands.  If
+  // the module pointer is not nullptr, it will be the module where the cloned
+  // computations will be added to (in order to support deep cloning).  Ignores
+  // the control predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloModule* module = nullptr) const;

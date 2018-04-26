@@ -26,35 +26,9 @@ limitations under the License.
 #include "grpc++/impl/codegen/sync_stream.h"
 #include "grpc++/support/byte_buffer.h"
 
+#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-
-namespace tensorflow {
-class GrpcByteSource : public TensorResponse::Source {
- public:
-  explicit GrpcByteSource(::grpc::ByteBuffer* buffer) : buffer_(buffer) {}
-  ~GrpcByteSource() override { DeleteStream(); }
-
-  typedef ::grpc::GrpcProtoBufferReader Reader;
-
-  protobuf::io::ZeroCopyInputStream* contents() override {
-    DeleteStream();
-    stream_ = new (&space_) Reader(buffer_);
-    return stream_;
-  }
-
- private:
-  void DeleteStream() {
-    if (stream_) {
-      stream_->~Reader();
-    }
-  }
-
-  ::grpc::ByteBuffer* buffer_;  // Not owned
-  Reader* stream_ = nullptr;  // Points into space_ if non-nullptr
-  char space_[sizeof(Reader)];
-};
-}  // namespace tensorflow
 
 namespace grpc {
 class CompletionQueue;

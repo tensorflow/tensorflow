@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 class DeviceDescriptionBuilder;
 }  // namespace internal
@@ -388,7 +387,6 @@ uint64 CalculateRegisterLimitForTargetOccupancy(
     const DeviceDescription &device_description, uint64 shared_memory_per_block,
     const ThreadDim &thread_dims, uint64 target_blocks_per_core);
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
