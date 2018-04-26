@@ -21,13 +21,13 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"

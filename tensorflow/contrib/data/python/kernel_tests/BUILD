@@ -343,6 +343,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )

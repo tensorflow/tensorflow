@@ -55,9 +55,15 @@ void ExtendSession(TF_Session* session, TF_Status* status);
 
 // Returns the serialized CppShapeInferenceResult::HandleData proto for
 // `output` if its a resource tensor, or otherwise returns the empty string.
-// TODO(b/74620627): remove when _USE_C_SHAPES is removed
-std::string ResourceHandleShapeAndType(TF_Graph* graph, TF_Output output);
+std::string GetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output);
 
+// Sets `output` based on `proto`, which should be a serialized
+// CppShapeInferenceResult::HandleData proto.
+// NOTE(skyewm): `proto` is passed a void*/size_t pair instead of a std::string
+// because I couldn't get SWIG to work otherwise.
+void SetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
+                                   const void* proto, size_t proto_len,
+                                   TF_Status* status);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_PYTHON_API_H_

@@ -29,12 +29,12 @@ using tensorflow::gtl::ArraySlice;
 
 namespace xla {
 
-StatusOr<std::vector<ShapedBuffer>> Executable::ExecuteOnStreams(
+StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     ArraySlice<const ServiceExecutableRunOptions> run_options,
     ArraySlice<ArraySlice<const ShapedBuffer*>> arguments) {
   TF_RET_CHECK(run_options.size() == arguments.size());
 
-  std::vector<ShapedBuffer> return_values;
+  std::vector<ScopedShapedBuffer> return_values;
   return_values.reserve(run_options.size());
 
   if (run_options.size() == 1) {
@@ -60,7 +60,7 @@ StatusOr<std::vector<ShapedBuffer>> Executable::ExecuteOnStreams(
   return std::move(return_values);
 }
 
-StatusOr<ShapedBuffer> Executable::ExecuteOnStreamWrapper(
+StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
     ArraySlice<const ShapedBuffer*> arguments) {
   se::Stream* stream = run_options->stream();
@@ -80,7 +80,7 @@ StatusOr<ShapedBuffer> Executable::ExecuteOnStreamWrapper(
                                             &hlo_profile_index_map())
           : nullptr;
 
-  StatusOr<ShapedBuffer> return_value =
+  StatusOr<ScopedShapedBuffer> return_value =
       ExecuteOnStream(run_options, arguments, profile_ptr.get());
   TF_RETURN_IF_ERROR(return_value.status());
 
@@ -159,6 +159,26 @@ Status Executable::DumpSessionModule() {
   string result;
   TF_RET_CHECK(
       tensorflow::SerializeToStringDeterministic(session_module, &result));
+  return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
+                                       result);
+}
+
+/* static */ Status Executable::DumpToDirectory(
+    const string& directory_path, string filename,
+    const HloSnapshot& hlo_session) {
+  tensorflow::Env* env = tensorflow::Env::Default();
+  if (!env->IsDirectory(directory_path).ok()) {
+    // NB! CreateDir does not work reliably with multiple XLA threads -- two
+    // threads can race to observe the absence of the dump directory and
+    // simultaneously try to create it, causing the "losing" thread to get a
+    // "directory already exists" error.
+    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
+  }
+  filename = SanitizeFileName(std::move(filename));
+  string file_path = tensorflow::io::JoinPath(directory_path, filename);
+  string result;
+  TF_RET_CHECK(
+      tensorflow::SerializeToStringDeterministic(hlo_session, &result));
   return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
                                        result);
 }

@@ -331,7 +331,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
         CHECK_EQ(batch_results_.size(), batch_results_size);
         for (size_t i = 0; i < batch_results_size; ++i) {
-          TF_RETURN_IF_ERROR(ReadBatchResultLocked(reader, i));
+          TF_RETURN_IF_ERROR(ReadBatchResultLocked(ctx, reader, i));
         }
         return Status::OK();
       }
@@ -573,7 +573,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         // finish. This may delay saving a checkpoint by a bit but keeps the
         // code clean and also saves us from checkpointing the state of the
         // `BlockingCounter`.
-        batch_results_[index].counter->Wait();
+        int64 num_elements = 0;
+        WaitForBatch(index, &num_elements).IgnoreError();
+
         const BatchResult& result = batch_results_[index];
         string prefix = strings::StrCat("batch_results_", index);
         {
@@ -587,14 +589,24 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             full_name(strings::StrCat(prefix, "_output_size")),
             result.output.size()));
         for (size_t i = 0; i < result.output.size(); i++) {
-          TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(strings::StrCat(prefix, "_output_", i)),
-              result.output[i]));
+          // If the batch is not full, we only store the first
+          // `num_elements` values. The rest of the batch tensor is
+          // *uninitialized* and accessing that will raise msan errors.
+          if (num_elements < dataset()->batch_size_) {
+            TF_RETURN_IF_ERROR(writer->WriteTensor(
+                full_name(strings::StrCat(prefix, "_output_", i)),
+                result.output[i].Slice(0, num_elements)));
+          } else {
+            TF_RETURN_IF_ERROR(writer->WriteTensor(
+                full_name(strings::StrCat(prefix, "_output_", i)),
+                result.output[i]));
+          }
         }
         return Status::OK();
       }
 
-      Status ReadBatchResultLocked(IteratorStateReader* reader, size_t index)
+      Status ReadBatchResultLocked(IteratorContext* ctx,
+                                   IteratorStateReader* reader, size_t index)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         BatchResult* result = &batch_results_[index];
         string prefix = strings::StrCat("batch_results_", index);
@@ -618,10 +630,24 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
         result->output.reserve(output_size);
         for (size_t i = 0; i < output_size; i++) {
-          result->output.emplace_back();
+          Tensor t;
           TF_RETURN_IF_ERROR(reader->ReadTensor(
-              full_name(strings::StrCat(prefix, "_output_", i)),
-              &result->output.back()));
+              full_name(strings::StrCat(prefix, "_output_", i)), &t));
+          // If the batch was not full, we may have stored only the relevant
+          // slice. Since tensors in `BatchResult.output` are expected to
+          // have the leading dimension of size batch_size, we build a larger
+          // tensor and copy the slice read from the checkpoint into it.
+          if (t.dim_size(0) < dataset()->batch_size_) {
+            TensorShape component_shape(t.shape());
+            component_shape.set_dim(0, dataset()->batch_size_);
+            AllocatorAttributes attr;
+            attr.set_gpu_compatible(true);
+            Tensor new_t(ctx->allocator(attr), t.dtype(), component_shape);
+            TF_RETURN_IF_ERROR(CopyPartialBatch(&new_t, t, t.dim_size(0)));
+            result->output.emplace_back(std::move(new_t));
+          } else {
+            result->output.emplace_back(std::move(t));
+          }
         }
         return Status::OK();
       }

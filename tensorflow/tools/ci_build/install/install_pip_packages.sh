@@ -65,8 +65,13 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # numpy needs to be installed from source to fix segfaults. See:
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
-pip2 install --no-binary=:all: --upgrade numpy==1.12.0
-pip3 install --no-binary=:all: --upgrade numpy==1.12.0
+if $(cat /etc/*-release | grep -q 14.04); then
+  pip2 install --no-binary=:all: --upgrade numpy==1.12.0
+  pip3 install --no-binary=:all: --upgrade numpy==1.12.0
+else
+  pip2 install --upgrade numpy==1.12.0
+  pip3 install --upgrade numpy==1.12.0
+fi
 
 pip2 install scipy==0.18.1
 pip3 install scipy==0.18.1

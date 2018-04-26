@@ -69,7 +69,6 @@ class MetaOptimizer : public GraphOptimizer {
   struct GraphOptimizationResult {
     explicit GraphOptimizationResult(const string& id) : id(id) {}
     string id;
-    bool is_optimized = false;
     std::vector<OptimizerResult> results;
   };
 

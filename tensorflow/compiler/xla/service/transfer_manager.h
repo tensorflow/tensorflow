@@ -104,12 +104,9 @@ class TransferManager {
   // region for a host-to-device transfer.
   virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
 
-  // Allocate a ShapedBuffer which can hold data with the given on-host
+  // Allocates a ScopedShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
-  StatusOr<ShapedBuffer> AllocateShapedBuffer(const Shape& on_host_shape,
-                                              DeviceMemoryAllocator* allocator,
-                                              int device_ordinal);
   StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
       int device_ordinal);

@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using se::cuda::ScopedActivateExecutorContext;
 
 // Contains data for a single stream used for nccl communication; this includes
 // a background thread that calls NcclManager::LoopKernelLaunches.
@@ -37,11 +37,11 @@ struct NcclManager::NcclStream {
     cv.notify_all();
   }
 
-  perftools::gputools::StreamExecutor* executor = nullptr;
+  se::StreamExecutor* executor = nullptr;
 
   // The stream on which to run the nccl collective.
   // This is a different stream than the tensorflow compute stream.
-  std::unique_ptr<perftools::gputools::Stream> stream;
+  std::unique_ptr<se::Stream> stream;
 
   // See NcclManager::LoopKernelLaunches for information on these.
   std::unique_ptr<Thread> thread;
@@ -95,9 +95,8 @@ ncclDataType_t ToNcclType(DataType t) {
 // A participant in a Collective.  See <Collective> below.
 struct NcclManager::Participant {
   Participant(const Tensor* in_t, Tensor* out_t, EventMgr* event_mgr,
-              perftools::gputools::Stream* tensor_stream,
-              perftools::gputools::StreamExecutor* executor, int gpu_device_id,
-              NcclManager::DoneCallback done_callback)
+              se::Stream* tensor_stream, se::StreamExecutor* executor,
+              int gpu_device_id, NcclManager::DoneCallback done_callback)
       : in_t(in_t),
         out_t(out_t),
         event_mgr(event_mgr),
@@ -121,11 +120,11 @@ struct NcclManager::Participant {
   EventMgr* const event_mgr;
 
   // Owned by the caller, who must keep it live until <done_callback> is called.
-  perftools::gputools::Stream* const tensor_stream;
+  se::Stream* const tensor_stream;
 
   // Matches the executor in CommunicatorMember::stream. Expected to be live for
   // process lifetime.
-  perftools::gputools::StreamExecutor* const executor = nullptr;
+  se::StreamExecutor* const executor = nullptr;
 
   const int gpu_device_id;
 
@@ -245,7 +244,7 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
     if (nccl_stream == nullptr) {
       nccl_stream = new NcclStream();
       nccl_stream->executor = executor;
-      nccl_stream->stream.reset(new perftools::gputools::Stream(executor));
+      nccl_stream->stream.reset(new se::Stream(executor));
       nccl_stream->stream->Init();
 
       streams.emplace_back(nccl_stream);
@@ -300,10 +299,10 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
 
 void NcclManager::AddToAllReduce(int num_devices, const string& key,
                                  ncclRedOp_t reduction_op,
-                                 perftools::gputools::StreamExecutor* executor,
+                                 se::StreamExecutor* executor,
                                  int gpu_device_id, EventMgr* event_mgr,
-                                 perftools::gputools::Stream* tensor_stream,
-                                 const Tensor* in_t, Tensor* out_t,
+                                 se::Stream* tensor_stream, const Tensor* in_t,
+                                 Tensor* out_t,
                                  const DoneCallback& done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(in_t, out_t, event_mgr, tensor_stream, executor,
@@ -312,11 +311,12 @@ void NcclManager::AddToAllReduce(int num_devices, const string& key,
                  kAllReduce, reduction_op);
 }
 
-void NcclManager::AddBroadcastSend(
-    int num_devices, const string& key,
-    perftools::gputools::StreamExecutor* executor, int gpu_device_id,
-    EventMgr* event_mgr, perftools::gputools::Stream* tensor_stream,
-    const Tensor* in_t, DoneCallback done_callback) {
+void NcclManager::AddBroadcastSend(int num_devices, const string& key,
+                                   se::StreamExecutor* executor,
+                                   int gpu_device_id, EventMgr* event_mgr,
+                                   se::Stream* tensor_stream,
+                                   const Tensor* in_t,
+                                   DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(in_t, nullptr /* out_t */, event_mgr, tensor_stream,
                       executor, gpu_device_id, std::move(done_callback)));
@@ -325,11 +325,11 @@ void NcclManager::AddBroadcastSend(
                  kBroadcast, ncclSum /* unused */);
 }
 
-void NcclManager::AddBroadcastRecv(
-    int num_devices, const string& key,
-    perftools::gputools::StreamExecutor* executor, int gpu_device_id,
-    EventMgr* event_mgr, perftools::gputools::Stream* tensor_stream,
-    Tensor* out_t, DoneCallback done_callback) {
+void NcclManager::AddBroadcastRecv(int num_devices, const string& key,
+                                   se::StreamExecutor* executor,
+                                   int gpu_device_id, EventMgr* event_mgr,
+                                   se::Stream* tensor_stream, Tensor* out_t,
+                                   DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(nullptr /* in_t */, out_t, event_mgr, tensor_stream,
                       executor, gpu_device_id, std::move(done_callback)));
@@ -339,9 +339,8 @@ void NcclManager::AddBroadcastRecv(
 
 void NcclManager::AddReduceSend(int num_devices, const string& key,
                                 ncclRedOp_t reduction_op,
-                                perftools::gputools::StreamExecutor* executor,
-                                int gpu_device_id, EventMgr* event_mgr,
-                                perftools::gputools::Stream* tensor_stream,
+                                se::StreamExecutor* executor, int gpu_device_id,
+                                EventMgr* event_mgr, se::Stream* tensor_stream,
                                 const Tensor* in_t,
                                 DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
@@ -353,9 +352,8 @@ void NcclManager::AddReduceSend(int num_devices, const string& key,
 
 void NcclManager::AddReduceRecv(int num_devices, const string& key,
                                 ncclRedOp_t reduction_op,
-                                perftools::gputools::StreamExecutor* executor,
-                                int gpu_device_id, EventMgr* event_mgr,
-                                perftools::gputools::Stream* tensor_stream,
+                                se::StreamExecutor* executor, int gpu_device_id,
+                                EventMgr* event_mgr, se::Stream* tensor_stream,
                                 const Tensor* in_t, Tensor* out_t,
                                 DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
@@ -444,7 +442,7 @@ void NcclManager::RunCollective(const string& key, Collective* collective) {
 }
 
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
-  perftools::gputools::Stream* comm_stream = nccl_stream->stream.get();
+  se::Stream* comm_stream = nccl_stream->stream.get();
   ScopedActivateExecutorContext scoped_context(nccl_stream->executor);
   const cudaStream_t* cu_stream = reinterpret_cast<const cudaStream_t*>(
       comm_stream->implementation()->CudaStreamMemberHack());

@@ -1072,6 +1072,17 @@ class CudnnRNNTestParamsSize(test_util.TensorFlowTestCase):
 
 class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
 
+  def setUp(self):
+    super(CudnnRNNTestTraining, self).setUp()
+    self._reset_rnd_gen_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE",
+                                               str(False))
+    self._rnn_use_v2 = os.environ.get("TF_CUDNN_RNN_USE_V2", "0")
+
+  def tearDown(self):
+    super(CudnnRNNTestTraining, self).tearDown()
+    os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = self._reset_rnd_gen_state
+    os.environ["TF_CUDNN_RNN_USE_V2"] = self._rnn_use_v2
+
   def _ComputeNumericGrad(self, sess, y, x, delta=1e-4, step=1):
     """Compute the numeric gradient of y wrt to x.
 
@@ -1184,11 +1195,10 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
 
   def _TestOneSimpleTraining(self, rnn_mode, num_layers, num_units, input_size,
                              batch_size, seq_length, dir_count, dropout, dtype,
-                             delta, tolerance):
+                             use_v2, delta, tolerance):
     # Gradient checking runs two forward ops with almost the same input. Need to
     # make sure the drop patterns across the two runs are the same.
     logging.info("Training test with config: %s", locals())
-    old_env_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE", str(False))
     os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = str(True)
 
     np.random.seed(1234)
@@ -1196,6 +1206,10 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
     has_input_c = (rnn_mode == CUDNN_LSTM)
     direction = (CUDNN_RNN_UNIDIRECTION
                  if dir_count == 1 else CUDNN_RNN_BIDIRECTION)
+    if use_v2:
+      os.environ["TF_CUDNN_RNN_USE_V2"] = "1"
+    else:
+      os.environ["TF_CUDNN_RNN_USE_V2"] = "0"
     model = CudnnTestModel(
         rnn_mode,
         num_layers,
@@ -1245,22 +1259,22 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
           self._GradientCheck(
               sess, total_sum, all_inputs,
               tolerance=tolerance, delta=delta)
-      os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = old_env_state
 
   def _TestSimpleTrainingHelper(self, rnn_mode, test_configs):
     dropouts = [0, 0.5, 1.]
-    for config, dropout in itertools.product(test_configs, dropouts):
+    v2_options = [str(False), str(True)]
+    for config, dropout, use_v2 in itertools.product(test_configs, dropouts,
+                                                     v2_options):
       dtype = config.get("dtype", dtypes.float32)
       delta = config.get("delta", 1e-4)
       tolerance = config.get("tolerance", 1e-6)
       dir_count = config.get("dir_count", 1)
       shape = config["shape"]
       with ops.Graph().as_default():
-        self._TestOneSimpleTraining(rnn_mode, shape["num_layers"],
-                                    shape["num_units"], shape["input_size"],
-                                    shape["batch_size"], shape["seq_length"],
-                                    dir_count, dropout, dtype, delta,
-                                    tolerance)
+        self._TestOneSimpleTraining(
+            rnn_mode, shape["num_layers"], shape["num_units"],
+            shape["input_size"], shape["batch_size"], shape["seq_length"],
+            dir_count, dropout, dtype, use_v2, delta, tolerance)
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")

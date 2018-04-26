@@ -1135,11 +1135,10 @@ class ControlFlowTest(test.TestCase):
 
       with self.assertRaisesRegexp(
           ValueError,
-          r"The shape for while_1/Merge_1:0 is not an invariant for the loop. "
-          r"It enters the loop with shape \(2, 2\), but has shape \(4, 2\) "
-          r"after one iteration. Provide shape invariants using either the "
-          r"`shape_invariants` argument of tf.while_loop or set_shape\(\) on "
-          r"the loop variables."):
+          r"Input tensor 'ones:0' enters the loop with shape \(2, 2\), but has "
+          r"shape \(4, 2\) after one iteration. To allow the shape to vary "
+          r"across iterations, use the `shape_invariants` argument of "
+          r"tf.while_loop to specify a less-specific shape."):
         r = control_flow_ops.while_loop(c, b, [i, m])
 
   def testWhileShapeInferenceSparseTensor(self):

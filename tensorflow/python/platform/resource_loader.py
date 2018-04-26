@@ -28,7 +28,6 @@ import os as _os
 import sys as _sys
 
 from tensorflow.python.util import tf_inspect as _inspect
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -129,7 +128,3 @@ def get_path_to_datafile(path):
 def readahead_file_path(path, readahead='128M'):  # pylint: disable=unused-argument
   """Readahead files not implemented; simply returns given path."""
   return path
-
-
-_allowed_symbols = []
-remove_undocumented(__name__, _allowed_symbols)

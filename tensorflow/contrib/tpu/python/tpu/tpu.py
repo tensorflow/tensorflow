@@ -173,36 +173,18 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
           # gradients, and put the gradient of X in cluster
           # 'root_cluster.gradient_uid'.
           #
-          # When the gradient code adds multiple Ops, it asks them to
-          # be colocated either with the original Op X, or with one of
-          # the preceding Ops that was added to the gradient. In other
-          # words, we want to detect the case where we are colocating
-          # with an Op that is in cluster root_cluster.gradient_uid
-          # and put the new Op in that same cluster if the
-          # gradient_uid is the same (the case that we are in the same
-          # invocation of gradients, and just adding new Ops to the
-          # cluster); and in a different cluster if the gradient_uids
-          # are different (the case that we are in a new invocation of
-          # gradients, taking the gradient of a previously-computed
-          # gradient).
+          # When taking a gradient of a gradient, some ops will be
+          # colocated with Op in the forward pass (e.g., cluster
+          # root_cluster) and some in the backward pass (e.g., cluster
+          # root_cluster.initial_gradient_uid). We need all of the
+          # grad-of-grad ops to be in the same cluster to avoid cyclic
+          # dependencies between clusters. We adopt a heuristic that
+          # puts any op clustered with root_cluster.<xxx> in
+          # root_cluster.gradient_uid, even if xxx was
+          # initial_gradient_uid.
           self._in_gradient_colocation = op
           parts = outside_attr.split(".")
-          if len(parts) > 1:
-            uid = parts[-1]
-            if uid == gradient_uid:
-              # Keep using the same cluster
-              cluster = outside_attr
-            else:
-              # We're taking the gradient of a gradient so make a new
-              # cluster attr, adding a new '.uid' on the end to
-              # preserve the invariant that the gradient_uid is the
-              # suffix after the last '.' in the attr.
-              cluster = outside_attr + "." + gradient_uid
-          else:
-            # We're taking the gradient of an Op in the forward pass, so
-            # make a new cluster combining the Op's cluster and the
-            # gradient id.
-            cluster = outside_attr + "." + gradient_uid
+          cluster = parts[0] + "." + gradient_uid
           self._EnterOutsideCompilationScope(cluster=cluster)
         except ValueError:
           # The attr was not present: do nothing.

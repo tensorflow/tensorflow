@@ -54,6 +54,15 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
     VLOG(1) << "Failed to create XLA_GPU device: " << status;
     return Status::OK();
   }
+
+  // TODO(b/78468222): Uncomment after fixing this bug
+  // status = device->CreateAndSetGpuDeviceInfo();
+  // if (!status.ok()) {
+  //  errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
+  //                          " device");
+  //  return status;
+  // }
+
   devices->push_back(device.release());
   return Status::OK();
 }

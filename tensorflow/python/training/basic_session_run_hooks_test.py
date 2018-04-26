@@ -466,8 +466,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener_counts)
 
@@ -490,8 +490,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener_counts)
 
@@ -523,8 +523,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener1_counts)
     self.assertEqual(listener1_counts, listener2_counts)
@@ -706,6 +706,7 @@ class CheckpointSaverHookTest(test.TestCase):
       with session_lib.Session() as sess:
         sess.run(self.scaffold.init_op)
         mon_sess = monitored_session._HookedSession(sess, [hook])
+        hook.after_create_session(sess, None)
         mon_sess.run(self.train_op)
       summary_writer.assert_summaries(
           test_case=self,
@@ -717,6 +718,31 @@ class CheckpointSaverHookTest(test.TestCase):
           ])
 
     fake_summary_writer.FakeSummaryWriter.uninstall()
+
+  def test_save_checkpoint_before_first_train_step(self):
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      hook.begin()
+      self.scaffold.finalize()
+      with session_lib.Session() as sess:
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        sess.run(self.scaffold.init_op)
+        hook.after_create_session(sess, None)
+        # Verifies that checkpoint is saved at step 0.
+        self.assertEqual(0,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        # Verifies that no checkpoint is saved after one training step.
+        mon_sess.run(self.train_op)
+        self.assertEqual(0,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        # Verifies that checkpoint is saved after save_steps.
+        mon_sess.run(self.train_op)
+        self.assertEqual(2,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
 
 
 class CheckpointSaverHookMultiStepTest(test.TestCase):
