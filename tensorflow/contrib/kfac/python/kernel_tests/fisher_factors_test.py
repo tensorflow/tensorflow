@@ -35,6 +35,13 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import test
 
 
+# We need to set these constants since the numerical values used in the tests
+# were chosen when these used to be the defaults.
+ff.set_global_constants(init_covariances_at_zero=False,
+                        zero_debias=False,
+                        init_inverses_at_zero=False)
+
+
 def make_damping_func(damping):
   return fb._package_func(lambda: damping, damping)
 

@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.kfac.python.ops import fisher_blocks as fb
+from tensorflow.contrib.kfac.python.ops import fisher_factors as ff
 from tensorflow.contrib.kfac.python.ops import layer_collection as lc
 from tensorflow.contrib.kfac.python.ops import linear_operator as lo
 from tensorflow.contrib.kfac.python.ops import utils
@@ -33,6 +34,19 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import test
+
+
+# We need to set these constants since the numerical values used in the tests
+# were chosen when these used to be the defaults.
+ff.set_global_constants(init_covariances_at_zero=False,
+                        zero_debias=False,
+                        init_inverses_at_zero=False)
+
+# TODO(b/78538100): As far as I can tell, all the tests that say "Make sure our
+# inverse is something other than the identity" are actually broken. They never
+# run the covariance update ops and so the inverse actually is the identity
+# (possible plus the damping term, which would still make it a multiple of the
+# identity).
 
 
 def _make_psd(dim):

@@ -181,44 +181,6 @@ class FisherEstimator(object):
     return self._name
 
   @abc.abstractmethod
-  def make_ops_and_vars(self, scope=None):
-    """Make ops and vars with a specific placement strategy.
-
-    For each factor, all of that factor's cov variables and their associated
-    update ops will be placed on a particular device.  For example in case of
-    round robin placement a new device is chosen for each factor by cycling
-    through list of devices in the cov_devices argument. If cov_devices is None
-    then no explicit device placement occurs.
-
-    An analogous strategy is followed for inverse update ops, with the list of
-    devices being given by the inv_devices argument.
-
-    Inverse variables on the other hand are not placed on any specific device
-    (they will just use the current the device placement context, whatever
-    that happens to be).  The idea is that the inverse variable belong where
-    they will be accessed most often, which is the device that actually applies
-    the preconditioner to the gradient. The user will be responsible for setting
-    the device context for this.
-
-    Args:
-      scope: A string or None.  If None it will be set to the name of this
-        estimator (given by the name property). All variables will be created,
-        and all ops will execute, inside of a variable scope of the given
-        name. (Default: None)
-
-    Returns:
-      cov_update_ops: List of ops that compute the cov updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      cov_update_op: cov_update_ops grouped into a single op.
-      inv_update_ops: List of ops that compute the inv updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      inv_update_op: inv_update_ops grouped into a single op.
-      cov_update_thunks: Thunks that make the ops in cov_update_ops.
-      inv_update_thunks: Thunks that make the ops in inv_update_ops.
-    """
-    pass
-
-  @abc.abstractmethod
   def make_vars_and_create_op_thunks(self, scope=None):
     """Make vars and create op thunks with a specific placement strategy.
 

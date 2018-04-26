@@ -43,10 +43,14 @@ from tensorflow.python.util import nest
 
 # Whether to initialize covariance estimators at a zero matrix (or the identity
 # matrix).
-INIT_COVARIANCES_AT_ZERO = False
+INIT_COVARIANCES_AT_ZERO = True
 
 # Whether to zero-debias the moving averages.
-ZERO_DEBIAS = False
+ZERO_DEBIAS = True
+
+# Whether to initialize inverse (and other such matrices computed from the cov
+# matrices) to the zero matrix (or the identity matrix).
+INIT_INVERSES_AT_ZERO = True
 
 # When the number of inverses requested from a FisherFactor exceeds this value,
 # the inverses are computed using an eigenvalue decomposition.
@@ -83,6 +87,7 @@ TOWER_STRATEGY = "concat"
 
 def set_global_constants(init_covariances_at_zero=None,
                          zero_debias=None,
+                         init_inverses_at_zero=None,
                          eigenvalue_decomposition_threshold=None,
                          eigenvalue_clipping_threshold=None,
                          max_num_outer_products_per_cov_row=None,
@@ -93,6 +98,7 @@ def set_global_constants(init_covariances_at_zero=None,
   """Sets various global constants used by the classes in this module."""
   global INIT_COVARIANCES_AT_ZERO
   global ZERO_DEBIAS
+  global INIT_INVERSES_AT_ZERO
   global EIGENVALUE_DECOMPOSITION_THRESHOLD
   global EIGENVALUE_CLIPPING_THRESHOLD
   global _MAX_NUM_OUTER_PRODUCTS_PER_COV_ROW
@@ -105,6 +111,8 @@ def set_global_constants(init_covariances_at_zero=None,
     INIT_COVARIANCES_AT_ZERO = init_covariances_at_zero
   if zero_debias is not None:
     ZERO_DEBIAS = zero_debias
+  if init_inverses_at_zero is not None:
+    INIT_INVERSES_AT_ZERO = init_inverses_at_zero
   if eigenvalue_decomposition_threshold is not None:
     EIGENVALUE_DECOMPOSITION_THRESHOLD = eigenvalue_decomposition_threshold
   if eigenvalue_clipping_threshold is not None:
@@ -122,19 +130,21 @@ def set_global_constants(init_covariances_at_zero=None,
 
 
 def inverse_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
-  return array_ops.diag(array_ops.ones(shape[0], dtype))
+  if INIT_INVERSES_AT_ZERO:
+    return array_ops.zeros(shape, dtype=dtype)
+  return linalg_ops.eye(num_rows=shape[0], dtype=dtype)
 
 
 def covariance_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
   if INIT_COVARIANCES_AT_ZERO:
-    return array_ops.diag(array_ops.zeros(shape[0], dtype))
-  return array_ops.diag(array_ops.ones(shape[0], dtype))
+    return array_ops.zeros(shape, dtype=dtype)
+  return linalg_ops.eye(num_rows=shape[0], dtype=dtype)
 
 
-def diagonal_covariance_initializer(shape, dtype, partition_info):  # pylint: disable=unused-argument
+def diagonal_covariance_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
   if INIT_COVARIANCES_AT_ZERO:
-    return array_ops.zeros(shape, dtype)
-  return array_ops.ones(shape, dtype)
+    return array_ops.zeros(shape, dtype=dtype)
+  return array_ops.ones(shape, dtype=dtype)
 
 
 @contextlib.contextmanager

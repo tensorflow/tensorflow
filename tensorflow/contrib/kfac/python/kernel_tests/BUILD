@@ -97,6 +97,7 @@ py_test(
     srcs = ["optimizer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/kfac/python/ops:fisher_factors",
         "//tensorflow/contrib/kfac/python/ops:kfac_optimizer",
         "//tensorflow/contrib/kfac/python/ops:layer_collection",
         "//tensorflow/python:array_ops",
