@@ -622,14 +622,16 @@ def _EnforceShapeInvariant(merge_var, next_var):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
-      # TODO(skyewm): get original loop input that caused the shape error and
-      # report its name instead of the merge node's.
+      enter = merge_var.op.inputs[0].op
+      assert util.IsLoopEnter(enter)
+      input_t = enter.inputs[0]
+      assert input_t.shape == m_shape
       raise ValueError(
-          "The shape for %s is not an invariant for the loop. It enters "
-          "the loop with shape %s, but has shape %s after one iteration. "
-          "Provide shape invariants using either the `shape_invariants` "
-          "argument of tf.while_loop or set_shape() on the loop variables." %
-          (merge_var.name, m_shape, n_shape))
+          "Input tensor '%s' enters the loop with shape %s, but has shape %s "
+          "after one iteration. To allow the shape to vary across iterations, "
+          "use the `shape_invariants` argument of tf.while_loop to specify a "
+          "less-specific shape." %
+          (input_t.name, input_t.shape, n_shape))
   else:
     if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(var))
