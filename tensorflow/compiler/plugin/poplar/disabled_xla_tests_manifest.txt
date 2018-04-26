@@ -239,4 +239,6 @@ DotOperationTest.DotOfInputTupleElem POPLAR // dot of a tuple
 GatherOperationTest POPLAR // don't support Gather
 GatherClientLibraryTest POPLAR
 
+ArrayElementwiseOpTest.ClzU32s POPLAR // Don't support counting leading zeros
+
 TestUtilsTest.UnusedParam POPLAR // Decide what to do with strange reductions

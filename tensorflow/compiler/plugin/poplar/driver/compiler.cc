@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -217,6 +218,7 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
 
   HloPassPipeline pipeline("IPU");
   pipeline.AddPass<BatchNormExpander>(true, true, true, false);
+  pipeline.AddPass<GatherExpander>();
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<HloCSE>(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
