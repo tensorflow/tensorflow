@@ -2249,8 +2249,8 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   op_res->logger_ = new tensorflow::tensorrt::Logger();
   cudaSetDevice(s.cuda_device_id_);
   op_res->builder_ = nvinfer1::createInferBuilder(*(op_res->logger_));
-  op_res->allocator_=s.allocator_;
-#if NV_TENSORRT_MAJOR >4 
+  op_res->allocator_ = s.allocator_;
+#if NV_TENSORRT_MAJOR > 3
   op_res->builder_->setGpuAllocator(s.allocator_.get());
 #endif
   if (!op_res->builder_) {
@@ -2481,13 +2481,13 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   // Topological order is needed to build TRT network
 
   tensorflow::tensorrt::Logger trt_logger;
-cudaSetDevice(s.cuda_device_id_);
+  cudaSetDevice(s.cuda_device_id_);
   auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
   if (!trt_builder) {
     return tensorflow::errors::Internal(
         "Failed to create TensorRT builder object");
   }
-#if NV_TENSORRT_MAJOR >3 
+#if NV_TENSORRT_MAJOR > 3
   trt_builder->setGpuAllocator(s.allocator_.get());
 #endif
   auto trt_network = infer_object(trt_builder->createNetwork());
@@ -2718,7 +2718,7 @@ cudaSetDevice(s.cuda_device_id_);
                     .Finalize(s.trt_node);
 
   VLOG(0) << status.ToString() << " finished op building for " << engine_name
-          << " on device " << s.device_name_ ;
+          << " on device " << s.device_name_;
 
   return tensorflow::Status::OK();
 }

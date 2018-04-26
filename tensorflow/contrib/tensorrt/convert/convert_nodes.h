@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"

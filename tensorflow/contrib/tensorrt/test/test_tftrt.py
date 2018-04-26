@@ -78,8 +78,7 @@ def execute_graph(gdef, dumm_inp):
   # with csess.Session(
   #     config=cpb2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
   #   val = sess.run(out, {inp: dumm_inp})
-  with csess.Session(
-      config=sessconfig, graph=g) as sess:
+  with csess.Session(config=sessconfig, graph=g) as sess:
     val = sess.run(out, {inp: dumm_inp})
   return val
 
@@ -149,6 +148,7 @@ def user(run_graph=execute_graph, run_calibration=execute_calibration):
   assert np.allclose(o1, o5)
   print("Pass")
 
+
 def auto():
   """ Run the conversion as an optimization pass"""
   inp_dims = (100, 24, 24, 2)
@@ -165,8 +165,8 @@ def auto():
   print(custom_op)
   gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   graph_options = cpb2.GraphOptions(rewrite_options=opt_config)
-  sessconfig = cpb2.ConfigProto(gpu_options=gpu_options,
-                                graph_options=graph_options)
+  sessconfig = cpb2.ConfigProto(
+      gpu_options=gpu_options, graph_options=graph_options)
   print(sessconfig)
   g = ops.Graph()
   ops.reset_default_graph()
@@ -179,11 +179,17 @@ def auto():
       val = sess.run(out, {inp: dummy_input})
   print(val.shape)
 
+
 if "__main__" in __name__:
-  P = argparse.ArgumentParser(prog="tftrt_test",
-    description="Example utilization of TensorFlow-TensorRT integration")
-  P.add_argument("--automatic", "-a", action="store_true",
-                 help="Do TRT conversion automatically", default=False)
+  P = argparse.ArgumentParser(
+      prog="tftrt_test",
+      description="Example utilization of TensorFlow-TensorRT integration")
+  P.add_argument(
+      "--automatic",
+      "-a",
+      action="store_true",
+      help="Do TRT conversion automatically",
+      default=False)
   flags, unparsed = P.parse_known_args()
   if flags.automatic:
     auto()

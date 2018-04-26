@@ -23,10 +23,10 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorrt/include/NvInfer.h"
-#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -38,6 +38,7 @@ class TRTEngineOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override;
   ~TRTEngineOp();
+
  private:
   template <typename T>
   struct Destroyer {

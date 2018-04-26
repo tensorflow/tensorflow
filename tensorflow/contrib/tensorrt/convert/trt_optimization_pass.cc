@@ -189,8 +189,8 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     const auto& pname = dev->parsed_name();
     VLOG(1) << "Device name= " << dev->name()
             << " parsedname job= " << pname.job << " id= " << pname.id
-            << " has_id: " << pname.has_id << " has_job: " << pname.has_job<< 
-            "has_type: "<<pname.has_type<<" type ="<<pname.type;
+            << " has_id: " << pname.has_id << " has_job: " << pname.has_job
+            << "has_type: " << pname.has_type << " type =" << pname.type;
   }
   auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(
       item.graph, item.fetch, maximum_batch_size_, maximum_workspace_size_,
