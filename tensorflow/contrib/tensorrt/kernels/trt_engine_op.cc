@@ -138,7 +138,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
       reinterpret_cast<const cudaStream_t*>(context->op_device_context()
                                                 ->stream()
                                                 ->implementation()
-                                                ->CudaStreamMemberHack()));
+                                                ->GPUStreamMemberHack()));
 
   // TODO(jie): trt enqueue does not return error
   auto ret = trt_execution_context_ptr_->enqueue(num_batch, &buffers[0],

@@ -94,7 +94,7 @@ class ProcessState {
   virtual Allocator* GetGPUAllocator(const GPUOptions& options,
                                      TfGpuId tf_gpu_id, size_t total_bytes);
 
-  virtual Allocator* GetCUDAHostAllocator(int numa_node);
+  virtual Allocator* GetGPUHostAllocator(int numa_node);
 
   // Registers a function to be called once on every new Region
   // allocated by every GPURegionAllocator proximate to the specified
@@ -126,7 +126,7 @@ class ProcessState {
   std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
   std::vector<VisitableAllocator*> gpu_allocators_ GUARDED_BY(mu_);
   std::vector<std::vector<AllocVisitor>> gpu_visitors_ GUARDED_BY(mu_);
-  std::vector<Allocator*> cuda_host_allocators_ GUARDED_BY(mu_);
+  std::vector<Allocator*> gpu_host_allocators_ GUARDED_BY(mu_);
 
   virtual ~ProcessState();
 
@@ -135,7 +135,7 @@ class ProcessState {
   MDMap mem_desc_map_;
   std::vector<Allocator*> cpu_al_ GUARDED_BY(mu_);
   std::vector<Allocator*> gpu_al_ GUARDED_BY(mu_);
-  std::vector<Allocator*> cuda_al_ GUARDED_BY(mu_);
+  std::vector<Allocator*> gpu_host_al_ GUARDED_BY(mu_);
 
   friend class GPUDeviceTest;
 };

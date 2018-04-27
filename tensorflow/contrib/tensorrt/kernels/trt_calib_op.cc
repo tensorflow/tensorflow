@@ -119,7 +119,7 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
                                                 ->implementation()
-                                                ->CudaStreamMemberHack()));
+                                                ->GPUStreamMemberHack()));
   calib_res->calibrator_->setBatch(input_data, *stream);
   VLOG(2) << "Passed calibration data";
   // TODO(aaroey): make sure we wait for the completion of calibration on the

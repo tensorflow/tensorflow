@@ -55,6 +55,7 @@ DeviceDescription::DeviceDescription()
       clock_rate_ghz_(-1.0),
       cuda_compute_capability_major_(-1),
       cuda_compute_capability_minor_(-1),
+      rocm_amdgpu_isa_version_(0),
       numa_node_(-1),
       core_count_(-1),
       ecc_enabled_(false) {}
@@ -115,6 +116,11 @@ bool DeviceDescription::cuda_compute_capability(int *major, int *minor) const {
   *major = cuda_compute_capability_major_;
   *minor = cuda_compute_capability_minor_;
   return cuda_compute_capability_major_ != 0;
+}
+
+bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
+  *version = rocm_amdgpu_isa_version_;
+  return rocm_amdgpu_isa_version_ != 0;
 }
 
 bool ThreadDimOk(const DeviceDescription &device_description,
