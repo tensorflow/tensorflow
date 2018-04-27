@@ -25,6 +25,7 @@ from tensorflow.contrib.data.python.ops import scan_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
@@ -102,9 +103,8 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
 def _get_prob_original_static(initial_dist_t, target_dist_t):
   """Returns the static probability of sampling from the original.
 
-  For some reason, `tensor_util.constant_value(prob_of_original)` of a ratio
-  of two constant Tensors isn't a constant. We have some custom logic to avoid
-  this.
+  `tensor_util.constant_value(prob_of_original)` returns `None` if it encounters
+  an Op that it isn't defined for. We have some custom logic to avoid this.
 
   Args:
     initial_dist_t: A tensor of the initial distribution.

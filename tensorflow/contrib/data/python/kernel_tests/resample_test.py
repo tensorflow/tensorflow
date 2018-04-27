@@ -59,7 +59,7 @@ def _time_resampling(
 class ResampleTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ("InitialnDistributionKnown", True),
+      ("InitialDistributionKnown", True),
       ("InitialDistributionUnknown", False))
   def testDistribution(self, initial_known):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
