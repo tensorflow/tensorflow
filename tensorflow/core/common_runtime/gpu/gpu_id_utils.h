@@ -24,31 +24,31 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Utility methods for translation between Tensorflow GPU ids and CUDA GPU ids.
+// Utility methods for translation between Tensorflow GPU ids and physical GPU ids.
 class GpuIdUtil {
  public:
   // Convenient methods for getting the associated executor given a TfGpuId or
-  // CudaGpuId.
-  static se::port::StatusOr<se::StreamExecutor*> ExecutorForCudaGpuId(
-      se::Platform* gpu_manager, CudaGpuId cuda_gpu_id) {
-    return gpu_manager->ExecutorForDevice(cuda_gpu_id.value());
+  // PhysicalGpuId.
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForPhysicalGpuId(
+      se::Platform* gpu_manager, PhysicalGpuId physical_gpu_id) {
+    return gpu_manager->ExecutorForDevice(physical_gpu_id.value());
   }
-  static se::port::StatusOr<se::StreamExecutor*> ExecutorForCudaGpuId(
-      CudaGpuId cuda_gpu_id) {
-    return ExecutorForCudaGpuId(GPUMachineManager(), cuda_gpu_id);
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForPhysicalGpuId(
+      PhysicalGpuId physical_gpu_id) {
+    return ExecutorForPhysicalGpuId(GPUMachineManager(), physical_gpu_id);
   }
   static se::port::StatusOr<se::StreamExecutor*> ExecutorForTfGpuId(
       TfGpuId tf_gpu_id) {
-    return ExecutorForCudaGpuId(GpuIdManager::TfToCudaGpuId(tf_gpu_id));
+    return ExecutorForPhysicalGpuId(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id));
   }
 
-  // Verify that the cuda_gpu_id associated with a TfGpuId is legitimate.
+  // Verify that the physical_gpu_id associated with a TfGpuId is legitimate.
   static void CheckValidTfGpuId(TfGpuId tf_gpu_id) {
-    const CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+    const PhysicalGpuId physical_gpu_id = GpuIdManager::TfToPhysicalGpuId(tf_gpu_id);
     const int visible_device_count = GPUMachineManager()->VisibleDeviceCount();
-    CHECK_LT(cuda_gpu_id.value(), visible_device_count)
-        << "cuda_gpu_id is outside discovered device range."
-        << " TF GPU id: " << tf_gpu_id << " CUDA GPU id: " << cuda_gpu_id
+    CHECK_LT(physical_gpu_id.value(), visible_device_count)
+        << "physical_gpu_id is outside discovered device range."
+        << " TF GPU id: " << tf_gpu_id << " physical GPU id: " << physical_gpu_id
         << " visible device count: " << visible_device_count;
   }
 };

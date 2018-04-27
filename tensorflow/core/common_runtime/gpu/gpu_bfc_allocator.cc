@@ -22,16 +22,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-GPUBFCAllocator::GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+GPUBFCAllocator::GPUBFCAllocator(PhysicalGpuId physical_gpu_id, size_t total_memory,
                                  const string& name)
-    : GPUBFCAllocator(cuda_gpu_id, total_memory, GPUOptions(), name) {}
+    : GPUBFCAllocator(physical_gpu_id, total_memory, GPUOptions(), name) {}
 
-GPUBFCAllocator::GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+GPUBFCAllocator::GPUBFCAllocator(PhysicalGpuId physical_gpu_id, size_t total_memory,
                                  const GPUOptions& gpu_options,
                                  const string& name)
     : BFCAllocator(
           new GPUMemAllocator(
-              GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie()),
+              GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie()),
           total_memory, gpu_options.allow_growth(), name) {}
 
 }  // namespace tensorflow

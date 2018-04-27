@@ -28,9 +28,9 @@ limitations under the License.
 namespace tensorflow {
 
 GPUcudaMallocAllocator::GPUcudaMallocAllocator(VisitableAllocator* allocator,
-                                               CudaGpuId cuda_gpu_id)
+                                               PhysicalGpuId physical_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  stream_exec_ = GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie();
 }
 
 GPUcudaMallocAllocator::~GPUcudaMallocAllocator() { delete base_allocator_; }

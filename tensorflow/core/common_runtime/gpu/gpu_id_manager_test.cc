@@ -23,31 +23,31 @@ namespace test {
 
 TEST(GpuIdManagerTest, Basics) {
   TfGpuId key_0(0);
-  CudaGpuId value_0(0);
-  GpuIdManager::InsertTfCudaGpuIdPair(key_0, value_0);
-  EXPECT_EQ(value_0, GpuIdManager::TfToCudaGpuId(key_0));
+  PhysicalGpuId value_0(0);
+  GpuIdManager::InsertTfPhysicalGpuIdPair(key_0, value_0);
+  EXPECT_EQ(value_0, GpuIdManager::TfToPhysicalGpuId(key_0));
 
   // Multiple calls to map the same value is ok.
-  GpuIdManager::InsertTfCudaGpuIdPair(key_0, value_0);
-  EXPECT_EQ(value_0, GpuIdManager::TfToCudaGpuId(key_0));
+  GpuIdManager::InsertTfPhysicalGpuIdPair(key_0, value_0);
+  EXPECT_EQ(value_0, GpuIdManager::TfToPhysicalGpuId(key_0));
 
   // Map a different TfGpuId to a different value.
   TfGpuId key_1(3);
-  CudaGpuId value_1(2);
-  GpuIdManager::InsertTfCudaGpuIdPair(key_1, value_1);
-  EXPECT_EQ(value_1, GpuIdManager::TfToCudaGpuId(key_1));
+  PhysicalGpuId value_1(2);
+  GpuIdManager::InsertTfPhysicalGpuIdPair(key_1, value_1);
+  EXPECT_EQ(value_1, GpuIdManager::TfToPhysicalGpuId(key_1));
 
   // Mapping a different TfGpuId to the same value is ok.
   TfGpuId key_2(10);
-  GpuIdManager::InsertTfCudaGpuIdPair(key_2, value_1);
-  EXPECT_EQ(value_1, GpuIdManager::TfToCudaGpuId(key_2));
+  GpuIdManager::InsertTfPhysicalGpuIdPair(key_2, value_1);
+  EXPECT_EQ(value_1, GpuIdManager::TfToPhysicalGpuId(key_2));
 
   // Mapping the same TfGpuId to a different value will crash the program.
-  ASSERT_DEATH(GpuIdManager::InsertTfCudaGpuIdPair(key_2, value_0),
-               "Mapping the same TfGpuId to a different CUDA GPU id");
+  ASSERT_DEATH(GpuIdManager::InsertTfPhysicalGpuIdPair(key_2, value_0),
+               "Mapping the same TfGpuId to a different physical GPU id");
 
   // Getting an nonexistent mapping will crash the program.
-  ASSERT_DEATH(GpuIdManager::TfToCudaGpuId(TfGpuId(100)),
+  ASSERT_DEATH(GpuIdManager::TfToPhysicalGpuId(TfGpuId(100)),
                "Could not find the mapping for TfGpuId");
 }
 

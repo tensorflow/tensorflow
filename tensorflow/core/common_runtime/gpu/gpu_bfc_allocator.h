@@ -35,11 +35,11 @@ namespace tensorflow {
 // algorithm.
 class GPUBFCAllocator : public BFCAllocator {
  public:
-  // 'cuda_gpu_id' refers to the ID of the GPU device within
+  // 'physical_gpu_id' refers to the ID of the GPU device within
   // the process and must reference a valid ID in the process.
-  GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+  GPUBFCAllocator(PhysicalGpuId physical_gpu_id, size_t total_memory,
                   const string& name);
-  GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+  GPUBFCAllocator(PhysicalGpuId physical_gpu_id, size_t total_memory,
                   const GPUOptions& gpu_options, const string& name);
   virtual ~GPUBFCAllocator() {}
 
