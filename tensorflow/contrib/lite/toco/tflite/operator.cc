@@ -901,6 +901,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "MINIMUM", OperatorType::kTensorFlowMinimum));
   ops.emplace_back(new SimpleOperator<TensorFlowLessOperator>(
       "LESS", OperatorType::kTensorFlowLess));
+  ops.emplace_back(
+      new SimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor));
 
   return ops;
 }

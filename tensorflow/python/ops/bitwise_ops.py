@@ -13,15 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Operations for manipulating the binary representations of integers.
-
-@@bitwise_and
-@@bitwise_or
-@@bitwise_xor
-@@invert
-@@left_shift
-@@right_shift
-"""
+"""Operations for manipulating the binary representations of integers."""
 
 from __future__ import absolute_import
 from __future__ import division

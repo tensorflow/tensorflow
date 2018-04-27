@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_CLUSTERS_CLUSTER_H_
-#define TENSORFLOW_GRAPPLER_CLUSTERS_CLUSTER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_CLUSTERS_CLUSTER_H_
+#define TENSORFLOW_CORE_GRAPPLER_CLUSTERS_CLUSTER_H_
 
 #include <string>
 #include <unordered_map>
@@ -133,4 +133,4 @@ class Cluster {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_CLUSTERS_CLUSTER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_CLUSTERS_CLUSTER_H_

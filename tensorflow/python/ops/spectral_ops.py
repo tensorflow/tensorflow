@@ -12,22 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Spectral operators (e.g. DCT, FFT, RFFT).
-
-@@dct
-@@fft
-@@ifft
-@@fft2d
-@@ifft2d
-@@fft3d
-@@ifft3d
-@@rfft
-@@irfft
-@@rfft2d
-@@irfft2d
-@@rfft3d
-@@irfft3d
-"""
+"""Spectral operators (e.g. DCT, FFT, RFFT)."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

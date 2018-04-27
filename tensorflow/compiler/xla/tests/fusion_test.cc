@@ -25,8 +25,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -675,21 +674,20 @@ XLA_TEST_F(FusionTest, SharedConstant) {
 
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR1<int32>({0})));
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({0})));
   auto const1 = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
   auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, const0));
+      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, const0));
   auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add1));
+      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add1));
   auto add3 = builder.AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add2));
+      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add2));
   auto add4 = builder.AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add3));
+      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add3));
   hlo_module->AddEntryComputation(builder.Build())
-      ->CreateFusionInstruction(
-        {add4, add3, add2, add1, const1},
-        HloInstruction::FusionKind::kLoop);
+      ->CreateFusionInstruction({add4, add3, add2, add1, const1},
+                                HloInstruction::FusionKind::kLoop);
 
   HloComputation* entry_comp = hlo_module->entry_computation();
 
@@ -700,7 +698,7 @@ XLA_TEST_F(FusionTest, SharedConstant) {
   EXPECT_EQ(entry_comp->root_instruction()->fused_instruction_count(), 6);
 
   LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({8}),
-          *ExecuteAndTransfer(std::move(hlo_module), {}));
+                               *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Add2D) { TestElementwise2D<float, 2>(HloOpcode::kAdd); }
@@ -779,7 +777,7 @@ void BM_ParallelFusion(int num_iters) {
   const int64 param2_dim1 = 1024;
 
   // Create computation.
-  ComputationBuilder builder(client, "ParallelFusion");
+  XlaBuilder builder("ParallelFusion");
   Shape shape0 = ShapeUtil::MakeShape(F32, {param0_dim0, param0_dim1});
   auto param0 = builder.Parameter(0, shape0, "param0");
   Shape shape1 = ShapeUtil::MakeShape(F32, {param1_dim0, param1_dim1});
