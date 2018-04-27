@@ -1,5 +1,5 @@
 # Roadmap
-**Last updated: Apr 18, 2018**
+**Last updated: Apr 27, 2018**
 
 TensorFlow is a rapidly moving, community supported project. This document is intended 
 to provide guidance about priorities and focus areas of the core set of TensorFlow 
@@ -73,11 +73,18 @@ across image recognition, speech, object detection, and
 * Multi-GPU support optimized for a variety of GPU topologies
 * Improved mechanisms for distributing computations on several machines
 
-#### Optimizations:
-* Mixed precision training support with initial example model and guide
-* Native TensorRT support
+#### GPU Optimizations:
+* Simplified mixed precision API with initial example model and guide.
+* TensorRT API finalized and moved to core.
+* CUDA 9.2 and NCCL 2.x default in TensorFlow builds.
+* Optimizations for DGX-2.
+* Remove support for CUDA less than 8.x and cuDNN less than 6.x.
+
+
+#### CPU Optimizations
 * Int8 support for SkyLake via MKL
 * Dynamic loading of SIMD-optimized kernels
+* MKL for Linux and Windows
 
 ### End-to-end ML systems:
 #### TensorFlow Hub:
@@ -112,3 +119,4 @@ Guest and Showcase videos
 * Grow global TensorFlow communities and user groups
 * Collaborate with partners to co-develop and publish research papers
 * Process to enable external contributions to tutorials, documentation, and blogs showcasing best practice use-cases of TensorFlow and high-impact applications
+
