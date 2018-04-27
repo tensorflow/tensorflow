@@ -353,8 +353,10 @@ class _DefinedFunction(object):
           raise ValueError("Function can not return None.")
       # Ensures each output is a Tensor in the function graph.
       outputs = [ops.convert_to_tensor(t) for t in outputs]
-      outputs = [temp_graph.capture(t) if t.graph is not temp_graph else t
-                 for t in outputs]
+      outputs = [
+          temp_graph.capture(t) if t.graph is not temp_graph else t
+          for t in outputs
+      ]
     self._extra_inputs = temp_graph.extra_inputs
     inputs.extend(temp_graph.extra_args)
     # pylint: disable=protected-access
@@ -362,9 +364,13 @@ class _DefinedFunction(object):
     # pylint: enable=protected-access
 
     # Extra kwargs are treated as attrs on the function def.
-    base_func_name = self._func_name or _get_func_name(self._func)
-    kwargs_attr = _parse_kwargs_as_attrs(base_func_name,
-                                         **self._extra_kwargs)
+    if self._func_name:
+      base_func_name = self._func_name
+    else:
+      base_func_name = _get_func_name(self._func)
+      if self._grad_func:
+        base_func_name += ("_%s" % self._grad_func.name)
+    kwargs_attr = _parse_kwargs_as_attrs(base_func_name, **self._extra_kwargs)
 
     if not temp_graph._c_graph:  # pylint: disable=protected-access
       # Build the FunctionDef
@@ -503,6 +509,12 @@ class _DefinedFunction(object):
     self.add_to_graph(ops.get_default_graph())
     args = [ops.convert_to_tensor(_) for _ in args] + self._extra_inputs
     ret, op = _call(self._signature, *args, **kwargs)
+
+    # Set a hidden attr in 'op' so that gradients_impl can refer back
+    # to this _DefinedFunction instance to access python_grad_func.
+    assert isinstance(op, ops.Operation)
+    setattr(op, "__defun", self)
+
     if self._shape_func is not None:
       shapes = self._shape_func(op)
       if len(shapes) != len(op.outputs):
@@ -591,12 +603,11 @@ class _OverloadedFunction(object):
         # _OverloadedFunction. We need to instantiate it with the
         # right input types.
         output_types = [
-            dtypes.DType(_.type)
-            for _ in defined._signature.output_arg  # pylint: disable=protected-access
+            dtypes.DType(_.type) for _ in defined._signature.output_arg  # pylint: disable=protected-access
         ]
         # pylint: disable=protected-access
-        defined._grad_func = self._grad_func.instantiate(
-            input_types + output_types)
+        defined._grad_func = self._grad_func.instantiate(input_types +
+                                                         output_types)
         # pylint: enable=protected-access
       self._overload[key] = defined
     return defined
@@ -833,8 +844,8 @@ def _call(sig, *inputs, **kwargs):
     ValueError: if the arguments are invalid.
   """
   if len(inputs) != len(sig.input_arg):
-    raise ValueError("Expected number of arguments: %d, received: %d" %
-                     (len(sig.input_arg), len(inputs)))
+    raise ValueError("Expected number of arguments: %d, received: %d" % (len(
+        sig.input_arg), len(inputs)))
   name = kwargs.pop("name", None)
   g = ops.get_default_graph()
   func_name = sig.name
@@ -950,8 +961,8 @@ def _from_library(lib):
       fdef for fdef in lib.function if func_to_grad[fdef.signature.name] is None
   ]
   if not ready:
-    raise ValueError("FunctionDefLibrary contains cyclic gradient functions!\n"
-                     + str(lib))
+    raise ValueError(
+        "FunctionDefLibrary contains cyclic gradient functions!\n" + str(lib))
   # function name -> _DefinedFunction
   initialized = {}
 
