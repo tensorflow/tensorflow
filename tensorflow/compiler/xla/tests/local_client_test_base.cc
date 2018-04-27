@@ -149,8 +149,6 @@ ExecutableBuildOptions LocalClientTestBase::DefaultExecutableBuildOptions()
 
 ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
   ExecutableRunOptions run_options;
-  run_options.set_inter_op_thread_pool(
-      local_client_->backend().inter_op_thread_pool());
   run_options.set_intra_op_thread_pool(thread_pool_wrapper_->device.get());
   run_options.set_allocator(GetOrCreateAllocator(local_client_->platform()));
   return run_options;

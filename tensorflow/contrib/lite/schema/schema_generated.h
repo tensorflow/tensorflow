@@ -221,6 +221,7 @@ enum BuiltinOperator {
   BuiltinOperator_DEPTHWISE_CONV_2D = 4,
   BuiltinOperator_DEQUANTIZE = 6,
   BuiltinOperator_EMBEDDING_LOOKUP = 7,
+  BuiltinOperator_FLOOR = 8,
   BuiltinOperator_FULLY_CONNECTED = 9,
   BuiltinOperator_HASHTABLE_LOOKUP = 10,
   BuiltinOperator_L2_NORMALIZATION = 11,
@@ -275,7 +276,7 @@ enum BuiltinOperator {
   BuiltinOperator_MAX = BuiltinOperator_LESS
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[57] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[58] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -284,6 +285,7 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[57] {
     BuiltinOperator_DEPTHWISE_CONV_2D,
     BuiltinOperator_DEQUANTIZE,
     BuiltinOperator_EMBEDDING_LOOKUP,
+    BuiltinOperator_FLOOR,
     BuiltinOperator_FULLY_CONNECTED,
     BuiltinOperator_HASHTABLE_LOOKUP,
     BuiltinOperator_L2_NORMALIZATION,
@@ -348,7 +350,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "",
     "DEQUANTIZE",
     "EMBEDDING_LOOKUP",
-    "",
+    "FLOOR",
     "FULLY_CONNECTED",
     "HASHTABLE_LOOKUP",
     "L2_NORMALIZATION",
@@ -1485,8 +1487,8 @@ struct Conv2DOptionsT : public flatbuffers::NativeTable {
         stride_w(0),
         stride_h(0),
         fused_activation_function(ActivationFunctionType_NONE),
-        dilation_w_factor(0),
-        dilation_h_factor(0) {
+        dilation_w_factor(1),
+        dilation_h_factor(1) {
   }
 };
 
@@ -1513,10 +1515,10 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
   int32_t dilation_w_factor() const {
-    return GetField<int32_t>(VT_DILATION_W_FACTOR, 0);
+    return GetField<int32_t>(VT_DILATION_W_FACTOR, 1);
   }
   int32_t dilation_h_factor() const {
-    return GetField<int32_t>(VT_DILATION_H_FACTOR, 0);
+    return GetField<int32_t>(VT_DILATION_H_FACTOR, 1);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -1549,10 +1551,10 @@ struct Conv2DOptionsBuilder {
     fbb_.AddElement<int8_t>(Conv2DOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
   void add_dilation_w_factor(int32_t dilation_w_factor) {
-    fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_W_FACTOR, dilation_w_factor, 0);
+    fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_W_FACTOR, dilation_w_factor, 1);
   }
   void add_dilation_h_factor(int32_t dilation_h_factor) {
-    fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 0);
+    fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 1);
   }
   explicit Conv2DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -1572,8 +1574,8 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(
     int32_t stride_w = 0,
     int32_t stride_h = 0,
     ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
-    int32_t dilation_w_factor = 0,
-    int32_t dilation_h_factor = 0) {
+    int32_t dilation_w_factor = 1,
+    int32_t dilation_h_factor = 1) {
   Conv2DOptionsBuilder builder_(_fbb);
   builder_.add_dilation_h_factor(dilation_h_factor);
   builder_.add_dilation_w_factor(dilation_w_factor);

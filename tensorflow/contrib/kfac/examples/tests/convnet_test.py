@@ -157,7 +157,7 @@ class ConvNetTest(tf.test.TestCase):
           num_ps_tasks=0,
           master="",
           data_dir=None,
-          num_epochs=1,
+          num_epochs=2,
           op_strategy="chief_worker",
           use_fake_data=True)
 

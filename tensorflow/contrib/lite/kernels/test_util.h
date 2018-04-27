@@ -88,9 +88,7 @@ struct TensorData {
 class SingleOpResolver : public OpResolver {
  public:
   SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration)
-      : op_(op), registration_(registration) {
-    registration_->builtin_code = op;
-  }
+      : op_(op), registration_(registration) {}
   TfLiteRegistration* FindOp(BuiltinOperator op) const override {
     if (op == op_) {
       return registration_;

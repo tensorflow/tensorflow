@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
+#include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -37,7 +39,7 @@ namespace grappler {
 
 namespace {
 
-constexpr int kDefaultNumberOfIterations = 1;
+constexpr int kDefaultNumberOfIterations = 2;
 
 int64 NumEdges(const GraphDef& graph) {
   int64 num_edges = 0;
@@ -61,7 +63,10 @@ int NumIterations(const RewriterConfig& cfg) {
 }
 
 // Check if optimizer is allowed to run only once.
-bool IsRunOnceOptimizer(const string& name) { return name == "layout"; }
+bool IsRunOnceOptimizer(const string& name) {
+  return name == "layout" || name == "memory_optimizer" ||
+         name == "arithmetic_optimizer" || name == "loop_optimizer";
+}
 
 }  // namespace
 
@@ -235,7 +240,75 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
   optimization_results_.clear();
+
+  // 1. Optimize main graph
   TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
+
+  // 2. Optimize function library
+  FunctionLibraryDefinition flib(OpRegistry::Global(),
+                                 optimized_graph->library());
+
+  // Optimize each function only once.
+  std::unordered_set<string> optimized_funcs;
+  bool optimize_function_library = true;
+
+  while (optimize_function_library) {
+    optimize_function_library = false;
+
+    for (const FunctionDef& func : optimized_graph->library().function()) {
+      const string& func_name = func.signature().name();
+
+      // Skip already optimized functions.
+      if (optimized_funcs.find(func_name) != optimized_funcs.end()) continue;
+
+      // Skip parametrized functions (function type or body is defined only at
+      // function call time by caller node attributes).
+      if (IsParametrized(func)) continue;
+
+      VLOG(3) << "Optimize function: function=" << func_name;
+
+      // Function optimization might specialize nested function calls, so we
+      // have to reset the flag and do at least one more pass over the library.
+      optimize_function_library = true;
+      optimized_funcs.insert(func_name);
+
+      // Make a GrapplerItem from a FunctionDef.
+      GrapplerFunctionItem func_item;
+      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, flib, &func_item));
+
+      // Optimize function body graph.
+      GraphDef optimized_func_graph;
+      TF_RETURN_IF_ERROR(
+          OptimizeGraph(cluster, func_item, &optimized_func_graph));
+
+      // Function body optimization might have created new specialized
+      // functions for each instantiation context. Add them to the library.
+      for (const FunctionDef& func_def :
+           optimized_func_graph.library().function()) {
+        if (flib.Find(func_def.signature().name()) == nullptr) {
+          TF_RETURN_IF_ERROR(flib.AddFunctionDef(func_def));
+        }
+      }
+
+      // Convert optimized graph back to FunctionDef.
+      FunctionDef optimized_func;
+      func_item.SwapFunctionBody(std::move(optimized_func_graph));
+      TF_RETURN_IF_ERROR(MakeFunctionDef(func_item, flib, &optimized_func));
+
+      // Replace optimized function with a new FunctionDef.
+      TF_RETURN_IF_ERROR(flib.RemoveFunction(func_name));
+      TF_RETURN_IF_ERROR(flib.AddFunctionDef(optimized_func));
+    }
+
+    // If optimized at least one function, update the graph library.
+    if (optimize_function_library) {
+      *optimized_graph->mutable_library() = flib.ToProto();
+    }
+  }
+
+  VLOG(3) << "Optimized " << optimized_funcs.size()
+          << " functions: " << str_util::Join(optimized_funcs, ", ");
+
   return Status::OK();
 }
 

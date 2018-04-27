@@ -136,8 +136,8 @@ def set_stats_aggregator(stats_aggregator):
 def bytes_produced_stats(tag):
   """Records the number of bytes produced by each element of the input dataset.
 
-  To consume the statistics, associate a `StatsAggregator` with an iterator
-  over the output dataset.
+  To consume the statistics, associate a `StatsAggregator` with the output
+  dataset.
 
   Args:
     tag: String. All statistics recorded by the returned transformation will
@@ -158,8 +158,8 @@ def bytes_produced_stats(tag):
 def latency_stats(tag):
   """Records the latency of producing each element of the input dataset.
 
-  To consume the statistics, associate a `StatsAggregator` with an iterator
-  over the output dataset.
+  To consume the statistics, associate a `StatsAggregator` with the output
+  dataset.
 
   Args:
     tag: String. All statistics recorded by the returned transformation will
