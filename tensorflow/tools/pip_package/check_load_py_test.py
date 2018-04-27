@@ -43,7 +43,7 @@ def check_output_despite_error(args):
 
 def main():
   # Get all py_test target, note bazel query result will also include
-  # cuda_py_test etc.
+  # gpu_py_test etc.
   try:
     targets = subprocess.check_output([
         'bazel', 'query',

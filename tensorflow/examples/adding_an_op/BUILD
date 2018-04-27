@@ -8,7 +8,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_tests_tags")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_tests_tags")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 exports_files(["LICENSE"])
@@ -116,7 +116,7 @@ py_test(
     size = "small",
     srcs = ["cuda_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":cuda_op",
         "//tensorflow:tensorflow_py",

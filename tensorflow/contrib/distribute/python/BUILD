@@ -11,7 +11,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 # TODO(priyag): Figure out testonly issues that are preventing us from
 # including our tests in pip for now.
@@ -37,7 +37,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "values_test",
     srcs = ["values_test.py"],
     additional_deps = [
@@ -186,7 +186,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "mirrored_strategy_multigpu_test",
     srcs = ["mirrored_strategy_multigpu_test.py"],
     additional_deps = [
@@ -265,7 +265,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "minimize_loss_test",
     srcs = ["minimize_loss_test.py"],
     additional_deps = [
@@ -277,7 +277,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "optimizer_v2_test",
     srcs = ["optimizer_v2_test.py"],
     additional_deps = [
@@ -296,7 +296,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "estimator_integration_test",
     srcs = ["estimator_integration_test.py"],
     additional_deps = [
@@ -336,7 +336,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "step_fn_test",
     srcs = ["step_fn_test.py"],
     additional_deps = [
@@ -364,7 +364,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "monitor_test",
     srcs = ["monitor_test.py"],
     additional_deps = [
@@ -467,7 +467,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "prefetching_ops_v2_test",
     srcs = ["prefetching_ops_v2_test.py"],
     additional_deps = [

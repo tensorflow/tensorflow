@@ -18,8 +18,8 @@ load(
     "tf_gpu_library",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # For platform specific build config
@@ -29,7 +29,7 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 
 package(default_visibility = [
@@ -393,7 +393,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cuda_cc_tests(
+tf_gpu_cc_tests(
     name = "rpc_tests",
     size = "small",
     srcs = [
@@ -405,7 +405,7 @@ tf_cuda_cc_tests(
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [],
+    tags = tf_gpu_tests_tags() + [],
     deps = [
         ":grpc_channel",
         ":grpc_server_lib",
@@ -459,12 +459,12 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "grpc_session_test",
     size = "medium",
     srcs = ["grpc_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [
+    tags = tf_gpu_tests_tags() + [
         "no_oss",  # b/62956105: port conflicts.
     ],
     deps = [

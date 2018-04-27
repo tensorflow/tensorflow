@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_binary(
     name = "mnist",
@@ -15,7 +15,7 @@ py_binary(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "mnist_test",
     srcs = ["mnist_test.py"],
     additional_deps = [
@@ -25,7 +25,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "mnist_graph_test",
     srcs = ["mnist_graph_test.py"],
     additional_deps = [

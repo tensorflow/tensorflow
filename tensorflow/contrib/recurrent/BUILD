@@ -6,7 +6,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
 
 py_library(
     name = "recurrent_py",
@@ -53,7 +53,7 @@ py_library(
     ],
 )
 
-cuda_py_tests(
+gpu_py_tests(
     name = "recurrent_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/recurrent_test.py"],
@@ -79,7 +79,7 @@ cuda_py_tests(
     tags = ["nopip"],
 )
 
-cuda_py_tests(
+gpu_py_tests(
     name = "functional_rnn_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/functional_rnn_test.py"],

@@ -16,8 +16,8 @@ filegroup(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # For platform specific build config
@@ -27,7 +27,7 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 
 package(default_visibility = [
@@ -454,7 +454,7 @@ cc_library(
 
 # TODO(mrry): Move executor_test.cc to ../common_runtime when once it no longer depends
 # on grpc_testlib.
-tf_cuda_cc_tests(
+tf_gpu_cc_tests(
     name = "executor_tests",
     size = "medium",
     srcs = [
@@ -462,7 +462,7 @@ tf_cuda_cc_tests(
         #"master_test.cc",  # TODO(b/27683709): Re-enable when not flaky.
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":master",
         ":remote_device",
@@ -491,12 +491,12 @@ tf_cuda_cc_tests(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "remote_device_test",
     size = "small",
     srcs = ["remote_device_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [
+    tags = tf_gpu_tests_tags() + [
         "manual",
         "notap",  # Memory leak due to b/62910646
         "noguitar",  # Memory leak due to b/62910646
@@ -524,12 +524,12 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "rpcbench_test",
     size = "small",
     srcs = ["rpcbench_test.cc"],
     linkstatic = 1,
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",

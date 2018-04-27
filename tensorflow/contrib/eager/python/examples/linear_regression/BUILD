@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_binary(
     name = "linear_regression",
@@ -14,7 +14,7 @@ py_binary(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "linear_regression_test",
     size = "small",
     srcs = ["linear_regression_test.py"],
@@ -25,7 +25,7 @@ cuda_py_test(
     tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "linear_regression_graph_test",
     size = "small",
     srcs = ["linear_regression_graph_test.py"],

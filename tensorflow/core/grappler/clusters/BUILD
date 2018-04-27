@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 
 config_setting(
@@ -37,7 +37,7 @@ tf_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
     linkstatic = if_cuda(1, 0),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":utils",
         "//tensorflow/core:gpu_id",

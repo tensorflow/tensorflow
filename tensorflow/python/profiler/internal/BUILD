@@ -2,7 +2,7 @@ package(default_visibility = ["//tensorflow/python/profiler:__subpackages__"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -54,7 +54,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "run_metadata_test",
     srcs = ["run_metadata_test.py"],
     additional_deps = [

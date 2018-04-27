@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 config_setting(
     name = "empty_condition",
@@ -707,7 +707,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "multi_gpu_utils_test",
     srcs = ["_impl/keras/utils/multi_gpu_utils_test.py"],
     additional_deps = [

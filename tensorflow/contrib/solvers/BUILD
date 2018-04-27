@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_library(
     name = "solvers_py",
@@ -26,7 +26,7 @@ py_library(
 )
 
 # Ops tests
-cuda_py_test(
+gpu_py_test(
     name = "lanczos_test",
     srcs = [
         "python/kernel_tests/lanczos_test.py",
@@ -44,7 +44,7 @@ cuda_py_test(
     shard_count = 4,
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "least_squares_test",
     srcs = [
         "python/kernel_tests/least_squares_test.py",
@@ -61,7 +61,7 @@ cuda_py_test(
     shard_count = 4,
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "linear_equations_test",
     srcs = [
         "python/kernel_tests/linear_equations_test.py",
@@ -78,7 +78,7 @@ cuda_py_test(
     shard_count = 4,
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "util_test",
     srcs = [
         "python/kernel_tests/util_test.py",

@@ -12,7 +12,7 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 tf_custom_op_py_library(
     name = "resampler_py",
@@ -72,7 +72,7 @@ tf_gen_op_wrapper_py(
     deps = [":resampler_ops_op_lib"],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "resampler_ops_test",
     size = "small",
     srcs = ["python/ops/resampler_ops_test.py"],

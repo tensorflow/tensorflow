@@ -67,7 +67,7 @@ py_binary(
 
 # Unit test that calls run_and_gather_logs on a benchmark, and
 # prints the result.
-#cuda_py_test(
+#gpu_py_test(
 #    name = "run_and_gather_logs_test",
 #    srcs = ["run_and_gather_logs.py"],
 #    additional_deps = [

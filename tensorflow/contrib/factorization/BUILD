@@ -13,7 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_py_library(
@@ -329,7 +329,7 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "masked_matmul_benchmark",
     srcs = ["python/kernel_tests/masked_matmul_benchmark.py"],
     additional_deps = [

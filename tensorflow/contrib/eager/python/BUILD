@@ -3,7 +3,7 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_library(
     name = "tfe",
@@ -31,7 +31,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "tfe_test",
     srcs = ["tfe_test.py"],
     additional_deps = [
@@ -63,7 +63,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "datasets_test",
     srcs = ["datasets_test.py"],
     additional_deps = [
@@ -96,7 +96,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "saver_test",
     srcs = ["saver_test.py"],
     additional_deps = [

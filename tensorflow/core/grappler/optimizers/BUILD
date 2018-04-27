@@ -1,9 +1,9 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_only_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # Platform specific build config
@@ -37,7 +37,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "static_schedule_test",
     srcs = ["static_schedule_test.cc"],
     deps = [
@@ -72,7 +72,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "auto_parallel_test",
     srcs = ["auto_parallel_test.cc"],
     deps = [
@@ -152,7 +152,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "function_optimizer_test",
     srcs = ["function_optimizer_test.cc"],
     deps = [
@@ -218,7 +218,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "graph_optimizer_stage_test",
     size = "small",
     srcs = ["graph_optimizer_stage_test.cc"],
@@ -272,7 +272,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "arithmetic_optimizer_test",
     size = "small",
     srcs = ["arithmetic_optimizer_test.cc"],
@@ -319,7 +319,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "dependency_optimizer_test",
     size = "small",
     srcs = ["dependency_optimizer_test.cc"],
@@ -355,7 +355,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "model_pruner_test",
     srcs = ["model_pruner_test.cc"],
     deps = [
@@ -428,7 +428,7 @@ cc_library(
     ],
 )
 
-tf_cuda_only_cc_test(
+tf_gpu_only_cc_test(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
     tags = ["no_cuda_on_cpu_tap"],  # Do not re-enable again without actually testing.
@@ -472,7 +472,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "layout_optimizer_test",
     srcs = ["layout_optimizer_test.cc"],
     deps = [
@@ -527,7 +527,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "meta_optimizer_test",
     srcs = ["meta_optimizer_test.cc"],
     deps = [
@@ -573,7 +573,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "custom_graph_optimizer_registry_test",
     size = "small",
     srcs = ["custom_graph_optimizer_registry_test.cc"],
@@ -608,7 +608,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "loop_optimizer_test",
     srcs = ["loop_optimizer_test.cc"],
     deps = [
@@ -667,7 +667,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "debug_stripper_test",
     size = "small",
     srcs = ["debug_stripper_test.cc"],

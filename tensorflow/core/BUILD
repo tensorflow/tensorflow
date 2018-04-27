@@ -95,7 +95,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_only_cc_test")
 
 # For platform specific build config
 load(
@@ -141,7 +141,7 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
     "if_static",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -3233,7 +3233,7 @@ tf_cc_tests_gpu(
         "common_runtime/ring_reducer_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":all_kernels",
         ":core",
@@ -3261,7 +3261,7 @@ tf_cc_tests_gpu(
         "common_runtime/broadcaster_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":all_kernels",
         ":core",
@@ -3367,7 +3367,7 @@ tf_cc_tests_gpu(
         "common_runtime/gpu/pool_allocator_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -3392,7 +3392,7 @@ tf_cc_test_gpu(
     size = "small",
     srcs = ["platform/cuda_libdevice_path_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":cuda_libdevice_path",
         ":lib",
@@ -3401,7 +3401,7 @@ tf_cc_test_gpu(
     ],
 )
 
-tf_cuda_only_cc_test(
+tf_gpu_only_cc_test(
     name = "util_cuda_kernel_helper_test",
     srcs = [
         "util/cuda_kernel_helper_test.cu.cc",
@@ -3418,7 +3418,7 @@ tf_cc_test_gpu(
     size = "small",
     srcs = ["common_runtime/memory_types_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":core",
         ":core_cpu",
@@ -3444,7 +3444,7 @@ tf_cc_test_gpu(
     size = "small",
     srcs = ["framework/variant_op_copy_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":core",
         ":core_cpu",
@@ -3473,7 +3473,7 @@ tf_cc_test(
     size = "small",
     srcs = ["common_runtime/constant_folding_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":core",
         ":core_cpu",
@@ -3806,7 +3806,7 @@ tf_cc_test_gpu(
     size = "medium",
     srcs = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -3830,7 +3830,7 @@ tf_cc_test_gpu(
     srcs = ["common_runtime/gpu/gpu_debug_allocator_test.cc"],
     args = ["\"--gtest_death_test_style=threadsafe\""],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -3855,7 +3855,7 @@ tf_cc_test_gpu(
     size = "small",
     srcs = ["common_runtime/gpu/gpu_stream_util_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_gpu_tests_tags() + ["nomac"],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -4054,7 +4054,7 @@ tf_cc_test_gpu(
     srcs = ["platform/device_tracer_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_gpu_tests_tags() + ["nomac"],
     deps = [
         ":all_kernels",
         ":core_cpu",

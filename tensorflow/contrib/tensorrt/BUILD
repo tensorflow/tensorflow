@@ -20,7 +20,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
@@ -28,7 +28,7 @@ load(
     "if_tensorrt",
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
     srcs = ["tensorrt_test.cc"],

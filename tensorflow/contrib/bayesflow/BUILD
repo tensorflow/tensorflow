@@ -12,7 +12,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_library(
     name = "bayesflow_py",
@@ -37,7 +37,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "monte_carlo_test",
     size = "small",
     srcs = ["python/kernel_tests/monte_carlo_test.py"],

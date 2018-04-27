@@ -3,7 +3,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_cc_test",
+    "tf_gpu_cc_test",
     "tf_cc_test",
     "tf_copts",
     "tfe_xla_copts",
@@ -77,7 +77,7 @@ tf_gpu_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "c_api_test",
     srcs = ["c_api_test.cc"],
     extra_copts = tfe_xla_copts(),
