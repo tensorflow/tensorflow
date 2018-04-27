@@ -86,7 +86,7 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
     filtered_ds = filtered_ds.prefetch(3)
 
     prob_original_static = _get_prob_original_static(
-        initial_dist, target_dist_t) if initial_dist is not None else None
+          initial_dist_t, target_dist_t) if initial_dist is not None else None
     if prob_original_static == 1:
       return dataset_ops.Dataset.zip((class_values_ds, dataset))
     elif prob_original_static == 0:
