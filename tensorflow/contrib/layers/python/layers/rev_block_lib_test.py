@@ -278,7 +278,7 @@ class RecomputeTest(test.TestCase):
     ]
     outputs_and_vars = []
     for name, wrapped_fn in names_and_fns:
-      with variable_scope.variable_scope(name) as vs:
+      with variable_scope.variable_scope(name, use_resource=True) as vs:
         out = math_ops.reduce_sum(wrapped_fn(x))
         outputs_and_vars.append((out, vs.trainable_variables()))
 
@@ -304,19 +304,45 @@ class RecomputeTest(test.TestCase):
           self.assertAllClose(current, g)
           current = g
 
-  def testResourceVariable(self):
-    @rev_block_lib.recompute_grad(tupleize_grads=True)
-    def layer_with_recompute(inputs):
-      var = variable_scope.get_variable("var", ())
-      return var * inputs
+  def testDoubleCallInSameScopeFails(self):
 
-    inputs = array_ops.ones((), dtypes.float32)
+    @rev_block_lib.recompute_grad
+    def layer_with_recompute(inputs):
+      return core_layers.dense(inputs, 2)
+
     with variable_scope.variable_scope("layer", use_resource=True):
-      outputs = layer_with_recompute(inputs)
-      loss = math_ops.square(outputs)
-      grads = gradients_impl.gradients(loss, variables.trainable_variables())
-      self.assertEqual(1, len(grads))
-      self.assertTrue(grads[0] is not None)
+      inputs = array_ops.ones((2, 4), dtypes.float32)
+      out1 = layer_with_recompute(inputs)
+      out2 = layer_with_recompute(inputs) + out1
+      out = math_ops.reduce_sum(out2)
+
+    tvars = variables.trainable_variables()
+    assert len(tvars) == 4
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "called twice in the same enclosing scope"):
+      gradients_impl.gradients(out, [inputs] + tvars)
+
+  def testDoubleCallInUniqueScope(self):
+
+    @rev_block_lib.recompute_grad
+    def layer_with_recompute(inputs):
+      with variable_scope.variable_scope("inner", use_resource=True):
+        return core_layers.dense(inputs, 2)
+
+    with variable_scope.variable_scope("layer", use_resource=True):
+      inputs = array_ops.ones((2, 4), dtypes.float32)
+
+      with variable_scope.variable_scope("layer1", use_resource=True):
+        out1 = layer_with_recompute(inputs)
+      with variable_scope.variable_scope("layer2", use_resource=True):
+        out2 = layer_with_recompute(inputs) + out1
+      out = math_ops.reduce_sum(out2)
+
+    tvars = variables.trainable_variables()
+    assert len(tvars) == 4
+    grads = gradients_impl.gradients(out, [inputs] + tvars)
+    for grad in grads:
+      self.assertTrue(grad is not None)
 
 
 class FnWithCustomGradTest(test.TestCase):

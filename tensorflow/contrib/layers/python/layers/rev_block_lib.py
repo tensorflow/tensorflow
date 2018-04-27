@@ -33,6 +33,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.framework.python import ops as contrib_framework_ops
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops as framework_ops
@@ -40,6 +41,7 @@ from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -50,6 +52,13 @@ __all__ = ["rev_block", "RevBlock", "recompute_grad"]
 
 LAYER_RE = re.compile(".*revlayer_([0-9]*)/([fg])/.*")
 _USE_DEFAULT = "__rev_block_lib_default"
+_WRONG_VARS_ERR = """\
+The variables used on recompute were different than the variables originally
+used. The function wrapped with @recompute_grad likley creates its own variable
+scope with a default name and has been called twice in the same enclosing scope.
+To fix, ensure each call to the function happens in its own unique variable
+scope.
+"""
 
 
 def _acc_grads(*lists_of_grads):
@@ -432,6 +441,10 @@ def enable_with_args(dec):
 def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   """Decorator that recomputes the function on the backwards pass.
 
+  To use this function, you must use `ResourceVariable`s (i.e.
+  `variable_scope(name, use_resource=True), which are the default in Eager mode
+  and when running on TPU.
+
   Args:
     fn: a function that takes Tensors (all as positional arguments) and returns
       a tuple of Tensors.
@@ -472,44 +485,55 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   if use_data_dep_ == _USE_DEFAULT:
     use_data_dep_ = _is_on_tpu()
 
-  cached_vs = []
-  cached_arg_scope = []
-
-  def grad_fn(inputs, variables, outputs, output_grads):
-    """Recompute outputs for gradient computation."""
-    del outputs
-    # Recompute outputs
-    with framework_ops.control_dependencies(output_grads):
-      if use_data_dep_:
-        inputs = _force_data_dependency(output_grads, inputs)
-      with contrib_framework_ops.arg_scope(cached_arg_scope[0]):
-        with variable_scope.variable_scope(cached_vs[0], reuse=True):
-          outputs = fn(*inputs)
-
-    if not (isinstance(outputs, list) or isinstance(outputs, tuple)):
-      outputs = [outputs]
-    outputs = list(outputs)
-    grads = gradients_impl.gradients(outputs, inputs + variables, output_grads)
-
-    if tupleize_grads:
-      if use_data_dep_:
-        grads = _tuple_with_data_dep(grads)
-      else:
-        grads = control_flow_ops.tuple(grads)
-
-    grad_inputs = grads[:len(inputs)]
-    grad_vars = grads[len(inputs):]
-    return grad_inputs, grad_vars
-
-  @_fn_with_custom_grad(grad_fn)
+  @custom_gradient.custom_gradient
   def fn_with_recompute(*args):
-    cached_vs.append(variable_scope.get_variable_scope())
-    # TODO(rsepassi): Rm conditional in TF 1.4
-    if hasattr(contrib_framework_ops, "current_arg_scope"):
-      cached_arg_scope.append(contrib_framework_ops.current_arg_scope())
-    else:
-      cached_arg_scope.append({})
-    return fn(*args)
+    """Wrapper for fn."""
+    # Forward pass
+    vs = variable_scope.get_variable_scope()
+    arg_scope = contrib_framework_ops.current_arg_scope()
+    with backprop.GradientTape() as tape:
+      outputs = fn(*args)
+    original_vars = set(tape.watched_variables())
+
+    # Backward pass
+    def grad_fn(*output_grads, **kwargs):
+      """Recompute outputs for gradient computation."""
+      variables = []
+      if original_vars:
+        variables = kwargs["variables"]
+      if set(variables) != original_vars:
+        raise ValueError(_WRONG_VARS_ERR)
+      del kwargs
+      inputs = list(args)
+      # Recompute outputs
+      with framework_ops.control_dependencies(output_grads):
+        if use_data_dep_:
+          inputs = _force_data_dependency(output_grads, inputs)
+        with contrib_framework_ops.arg_scope(arg_scope):
+          with variable_scope.variable_scope(vs, reuse=True):
+            with backprop.GradientTape() as tape:
+              outputs = fn(*inputs)
+            recompute_vars = set(tape.watched_variables())
+            if original_vars != recompute_vars:
+              raise ValueError(_WRONG_VARS_ERR)
+
+      if not (isinstance(outputs, list) or isinstance(outputs, tuple)):
+        outputs = [outputs]
+      outputs = list(outputs)
+      grads = gradients_impl.gradients(outputs, inputs + variables,
+                                       output_grads)
+
+      if tupleize_grads:
+        if use_data_dep_:
+          grads = _tuple_with_data_dep(grads)
+        else:
+          grads = control_flow_ops.tuple(grads)
+
+      grad_inputs = grads[:len(inputs)]
+      grad_vars = grads[len(inputs):]
+      return grad_inputs, grad_vars
+
+    return outputs, grad_fn
 
   return fn_with_recompute(*args)
 
