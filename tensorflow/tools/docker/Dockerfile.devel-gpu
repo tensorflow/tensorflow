@@ -40,7 +40,7 @@ RUN pip --no-cache-dir install \
         ipykernel \
         jupyter \
         matplotlib \
-	mock \
+        mock \
         numpy \
         scipy \
         sklearn \
