@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -92,6 +93,10 @@ class Cluster {
   // sorted alphabetically.
   const std::vector<string> GetDeviceNames() const;
 
+  // The DeviceSet is not always available, but when it is it contains a
+  // superset of the devices listed in GetDevices/GetDeviceNames().
+  const DeviceSet* GetDeviceSet() const { return device_set_; }
+
   // Enables collecting the allocator stats. Call with enable=true must be made
   // before Provision().
   virtual Status EnablePeakMemoryStats(bool enable) {
@@ -119,6 +124,7 @@ class Cluster {
 
  protected:
   std::unordered_map<string, DeviceProperties> devices_;
+  const DeviceSet* device_set_ = nullptr;  // Not owned
   const int timeout_s_;
   SessionOptions options_;
   RunOptions run_options_;
