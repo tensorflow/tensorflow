@@ -469,7 +469,9 @@ SetInitialTensorValue(poplar::Graph &graph,
                       poplar::Tensor &tensor,
                       const xla::Literal &literal) {
   const TYPE* data(static_cast<const TYPE*>(literal.untyped_data()));
-  graph.setInitialValue<TYPE>(tensor, data);
+  size_t element_count = literal.element_count();
+  poplar::ArrayRef<TYPE> array(data, element_count);
+  graph.setInitialValue<TYPE>(tensor, array);
 }
 
 static void
@@ -477,20 +479,23 @@ SetFp16InitialTensorValue(poplar::Graph &graph,
                           poplar::Tensor &tensor,
                           const xla::Literal &literal) {
   const uint16_t* data(static_cast<const uint16_t*>(literal.untyped_data()));
-  graph.setInitialValueHalf(tensor, data);
+  size_t element_count = literal.element_count();
+  poplar::ArrayRef<uint16_t> array(data, element_count);
+  graph.setInitialValueHalf(tensor, array);
 }
 
 static void
 Set64BitInitialTensorValue(poplar::Graph &graph,
                            poplar::Tensor &tensor,
                            const xla::Literal &literal) {
-  int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
+  size_t element_count = literal.element_count();
   const void* data(static_cast<const void*>(literal.untyped_data()));
   std::vector<char> converted =
-      ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);
+      ConvInt64ToInt32(data, element_count * sizeof(int64), 0);
 
-  const int32* data32 = reinterpret_cast<const int32*>(converted.data());
-  graph.setInitialValue<int>(tensor, static_cast<const int*>(data32));
+  int32* data32 = reinterpret_cast<int32*>(converted.data());
+  poplar::ArrayRef<int32> array(data32, element_count);
+  graph.setInitialValue<int>(tensor, array);
 }
 
 StatusOr<poplar::Tensor>
