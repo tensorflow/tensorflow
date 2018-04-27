@@ -126,16 +126,12 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
   }
 
   TF_ASSIGN_OR_RETURN(
-      ShapedBuffer result,
+      ScopedShapedBuffer result,
       executable->ExecuteOnStreamWrapper(
           &service_run_options, /*profile=*/nullptr, argument_buffer_ptrs));
 
-  // Create a ScopedShapedBuffer of the result to manage deallocation. This will
-  // deallocate all the device memory when it goes out of scope.
-  ScopedShapedBuffer scoped_result(std::move(result), run_options.allocator());
-
   auto result_literal = backend().transfer_manager()->TransferLiteralFromDevice(
-      stream.parent(), scoped_result);
+      stream.parent(), result);
   if (result_literal.ok()) {
     VLOG(4) << "Executed binary and got result: "
             << result_literal.ValueOrDie()->ToString();
@@ -248,18 +244,16 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
   }
 
   LOG(INFO) << "Replicated execution started";
-  TF_ASSIGN_OR_RETURN(std::vector<ShapedBuffer> results,
+  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> results,
                       executable->ExecuteOnStreams(service_run_options,
                                                    argument_buffer_slices));
   LOG(INFO) << "Replicated execution terminated";
 
   std::vector<std::unique_ptr<Literal>> exec_results;
   for (int64 i = 0; i < options.num_replicas; ++i) {
-    ScopedShapedBuffer result(std::move(results[i]),
-                              backend().memory_allocator());
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                         backend().transfer_manager()->TransferLiteralFromDevice(
-                            streams[i]->parent(), result));
+                            streams[i]->parent(), results[i]));
     exec_results.push_back(std::move(literal));
   }
   return std::move(exec_results);

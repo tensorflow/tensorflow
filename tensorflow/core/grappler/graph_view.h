@@ -29,6 +29,8 @@ namespace grappler {
 class GraphView {
  public:
   struct Port {
+    Port() : node(nullptr), port_id(-1) {}
+    Port(NodeDef* n, int port) : node(n), port_id(port) {}
     NodeDef* node = nullptr;
     int port_id = -1;
 
@@ -36,12 +38,34 @@ class GraphView {
       return node == other.node && port_id == other.port_id;
     }
   };
-  struct InputPort : public Port {};
-  struct OutputPort : public Port {};
+  struct InputPort : public Port {
+    InputPort() = default;
+    InputPort(NodeDef* n, int port_id) : Port(n, port_id) {}
+    InputPort(const NodeDef* n, int port_id)
+        : Port(const_cast<NodeDef*>(n), port_id) {}
+  };
+  struct OutputPort : public Port {
+    OutputPort() = default;
+    OutputPort(NodeDef* n, int port_id) : Port(n, port_id) {}
+  };
 
   struct HashPort {
     std::size_t operator()(const Port& port) const {
       return reinterpret_cast<std::size_t>(port.node) + port.port_id;
+    }
+  };
+
+  struct Edge {
+    OutputPort src;
+    InputPort tgt;
+
+    bool operator==(const Edge& other) const {
+      return src == other.src && tgt == other.tgt;
+    }
+  };
+  struct HashEdge {
+    std::size_t operator()(const Edge& edge) const {
+      return HashPort()(edge.src) + HashPort()(edge.tgt);
     }
   };
 
@@ -63,6 +87,7 @@ class GraphView {
       const OutputPort& port) const;
   std::unordered_set<OutputPort, HashPort> GetFanin(
       const InputPort& port) const;
+
   // Special case: regular (i.e. non-control) input ports can only have one
   // fanin.
   const OutputPort GetRegularFanin(const InputPort& port) const;
@@ -78,6 +103,13 @@ class GraphView {
   // Get the number of ports in the immediate fanin of a node. Count the
   // controlling nodes iff include_controlling_nodes is true.
   int NumFanins(const NodeDef& node, bool include_controlling_nodes) const;
+
+  // Get all the edge in the immediate fanout (resp fanin) of a node. Include
+  // the control edges iff include_controlling_edges is true.
+  std::unordered_set<Edge, HashEdge> GetFanoutEdges(
+      const NodeDef& node, bool include_controlled_edges) const;
+  std::unordered_set<Edge, HashEdge> GetFaninEdges(
+      const NodeDef& node, bool include_controlling_edges) const;
 
  private:
   GraphDef* graph_;

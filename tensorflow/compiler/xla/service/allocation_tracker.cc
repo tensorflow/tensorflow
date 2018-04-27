@@ -31,23 +31,35 @@ limitations under the License.
 namespace xla {
 
 StatusOr<GlobalDataHandle> AllocationTracker::Register(
-    ShapedBuffer shaped_buffer, const string& tag) {
+    ScopedShapedBuffer shaped_buffer, const string& tag) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "Register";
-  std::vector<ShapedBuffer> replicated_buffers;
+  std::vector<ScopedShapedBuffer> replicated_buffers;
   replicated_buffers.emplace_back(std::move(shaped_buffer));
   return RegisterInternal(std::move(replicated_buffers), tag);
 }
 
 StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
-    std::vector<ShapedBuffer> replicated_buffers, const string& tag) {
+    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "RegisterReplicatedBuffers";
   return RegisterInternal(std::move(replicated_buffers), tag);
 }
 
+// ReleaseIfScopedShapedBuffer lets RegisterInternal<ShapedBufferTy>(b) call
+// b.release() if b is a ScopedShapedBuffer, or otherwise pass b through
+// unmodified.
+static ShapedBuffer ReleaseIfScopedShapedBuffer(ShapedBuffer b) { return b; }
+static ShapedBuffer ReleaseIfScopedShapedBuffer(ScopedShapedBuffer b) {
+  return b.release();
+}
+
+template <typename ShapedBufferTy>
 StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
-    std::vector<ShapedBuffer> replicated_buffers, const string& tag) {
+    std::vector<ShapedBufferTy> replicated_buffers, const string& tag) {
+  static_assert(std::is_same<ShapedBufferTy, ShapedBuffer>::value ||
+                    std::is_same<ShapedBufferTy, ScopedShapedBuffer>::value,
+                "ShapedBufferTy must be ShapedBuffer or ScopedShapedBuffer.");
   VLOG(2) << "RegisterInternal("
           << "tag: \"" << tag << "\" with " << replicated_buffers.size()
           << " shaped_buffers.";
@@ -65,17 +77,22 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
   int64 handle = next_handle_++;
   for (auto& shaped_buffer : replicated_buffers) {
     std::vector<ShapeIndex> shape_indices;
-    ShapeUtil::ForEachSubshape(shaped_buffer.on_device_shape(),
-                               [this, &shape_indices](const Shape& /*subshape*/,
-                                                      const ShapeIndex& index) {
-                                 shape_indices.push_back(index);
-                               });
+    ShapeUtil::ForEachSubshape(
+        shaped_buffer.on_device_shape(),
+        [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+          shape_indices.push_back(index);
+        });
+    // Add shaped_buffer's buffers to opaque_to_allocation_map_, which owns
+    // them.
     for (const ShapeIndex& index : shape_indices) {
       AddAllocationOrIncrementRefCount(shaped_buffer.buffer(index),
                                        shaped_buffer.device_ordinal());
     }
-    handle_to_shaped_buffers_[handle].emplace_back(
-        MakeUnique<ShapedBuffer>(std::move(shaped_buffer)));
+    // If ShapedBufferTy is ScopedShapedBuffer, release the ScopedShapedBuffer
+    // into a regular ShapedBuffer, which is stored in
+    // handle_to_shaped_buffers_.
+    handle_to_shaped_buffers_[handle].emplace_back(MakeUnique<ShapedBuffer>(
+        ReleaseIfScopedShapedBuffer(std::move(shaped_buffer))));
   }
 
   GlobalDataHandle result;
@@ -102,10 +119,6 @@ tensorflow::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
                                            shaped_buffer->device_ordinal()));
     }
   }
-  return Reset(data);
-}
-
-Status AllocationTracker::Reset(const GlobalDataHandle& data) {
   // Keep a nullptr as a tombstone for unregistered handles. This enables
   // better error messages. That is, "handle has been deallocated" versus
   // "handle does not exist".
@@ -152,7 +165,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
     element_buffer.set_buffer(shaped_buffer->buffer(/*index=*/{i}),
                               /*index=*/{});
     std::vector<ShapedBuffer> replicated_buffers;
-    replicated_buffers.emplace_back(std::move(element_buffer));
+    replicated_buffers.push_back(std::move(element_buffer));
     TF_ASSIGN_OR_RETURN(
         GlobalDataHandle element_handle,
         RegisterInternal(std::move(replicated_buffers), "deconstructed tuple"));

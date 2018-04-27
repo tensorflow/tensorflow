@@ -94,7 +94,7 @@ class BaseGPUDevice : public LocalDevice {
 
   // The executor that provides control for the device; e.g., for CUDA this
   // corresponds to the cuda context.
-  gpu::StreamExecutor* executor() const { return executor_; }
+  se::StreamExecutor* executor() const { return executor_; }
 
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
                                 int64 step_id) override;
@@ -107,15 +107,15 @@ class BaseGPUDevice : public LocalDevice {
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
 
-  gpu::StreamExecutor* executor_;  // not owned
+  se::StreamExecutor* executor_;  // not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
  private:
   struct StreamGroup {
-    gpu::Stream* compute = nullptr;
-    gpu::Stream* host_to_device = nullptr;
-    gpu::Stream* device_to_host = nullptr;
-    gpu::Stream* device_to_device = nullptr;
+    se::Stream* compute = nullptr;
+    se::Stream* host_to_device = nullptr;
+    se::Stream* device_to_host = nullptr;
+    se::Stream* device_to_device = nullptr;
   };
   class StreamGroupFactory;
 
@@ -168,7 +168,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // pathways between GPUs.
   virtual Status GetInterconnectMaps(
       const std::vector<CudaGpuId>& visible_gpu_order,
-      gpu::Platform* gpu_manager, std::vector<InterconnectMap>* maps);
+      se::Platform* gpu_manager, std::vector<InterconnectMap>* maps);
 
   struct TfGpuIdHash {
     std::size_t operator()(const TfGpuId& id) const noexcept {

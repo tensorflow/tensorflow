@@ -69,7 +69,6 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
       //       Tuple
       //
       HloInstruction* top_tuple = nullptr;
-      HloInstruction* first_gte = nullptr;
       bool can_simplify = true;
       for (int64 operand_number = 0;
            operand_number < instruction->operand_count(); ++operand_number) {
@@ -79,17 +78,11 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
           can_simplify = false;
           break;
         }
-        if (first_gte == nullptr) {
-          first_gte = operand;
-        } else if (!first_gte->has_compatible_sharding(operand)) {
-          can_simplify = false;
-          break;
-        }
+
         if (top_tuple == nullptr) {
           top_tuple = operand->mutable_operand(0);
           if (!ShapeUtil::Compatible(top_tuple->shape(),
-                                     instruction->shape()) ||
-              !instruction->has_compatible_sharding(top_tuple)) {
+                                     instruction->shape())) {
             can_simplify = false;
             break;
           }
@@ -115,17 +108,15 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
       //          |
       //         GTE
       if (instruction->operand(0)->opcode() == HloOpcode::kTuple) {
+        changed = true;
         HloInstruction* element_source =
             instruction->mutable_operand(0)->mutable_operand(
                 instruction->tuple_index());
-        if (instruction->has_compatible_sharding(element_source)) {
-          changed = true;
-          TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(element_source));
-          for (HloInstruction* user : element_source->users()) {
-            if (user->opcode() == HloOpcode::kTuple ||
-                user->opcode() == HloOpcode::kGetTupleElement) {
-              worklist.push(user);
-            }
+        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(element_source));
+        for (HloInstruction* user : element_source->users()) {
+          if (user->opcode() == HloOpcode::kTuple ||
+              user->opcode() == HloOpcode::kGetTupleElement) {
+            worklist.push(user);
           }
         }
       }

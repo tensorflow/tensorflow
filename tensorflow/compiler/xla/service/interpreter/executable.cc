@@ -45,7 +45,7 @@ InterpreterExecutable::InterpreterExecutable(
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
-StatusOr<ShapedBuffer> InterpreterExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -88,8 +88,8 @@ StatusOr<ShapedBuffer> InterpreterExecutable::ExecuteOnStream(
       evaluator.Evaluate<std::unique_ptr<Literal>>(*computation, arg_literals));
 
   // Transform the result literal back into a ShapedBuffer.
-  TF_ASSIGN_OR_RETURN(ShapedBuffer result,
-                      transfer_manager->AllocateShapedBuffer(
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                      transfer_manager->AllocateScopedShapedBuffer(
                           result_literal->shape(), run_options->allocator(),
                           executor->device_ordinal()));
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
@@ -106,7 +106,7 @@ StatusOr<ShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   return std::move(result);
 }
 
-StatusOr<ShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   return tensorflow::errors::Unimplemented(

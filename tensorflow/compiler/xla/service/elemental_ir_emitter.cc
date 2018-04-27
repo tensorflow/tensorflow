@@ -52,6 +52,13 @@ using tensorflow::strings::StrCat;
 
 namespace {
 
+int64 GlobalRandomValue() {
+  static auto* mu = new tensorflow::mutex();
+  static std::mt19937_64 rng{42};
+  tensorflow::mutex_lock l(*mu);
+  return rng();
+}
+
 llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
                                       int64 mantissa_bits,
                                       llvm::IRBuilder<>* ir_builder) {
@@ -1175,7 +1182,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
   llvm::Value* increment = ir_builder_->getInt(
       llvm::APInt(128, {0x14057B7EF767814F, 0x5851F42D4C957F2D}));
 
-  auto random_value = [hlo]() {
+  auto random_value_from_hlo = [hlo]() {
     const HloModule* module =
         hlo->IsFused() ? hlo->parent()->FusionInstruction()->parent()->parent()
                        : hlo->parent()->parent();
@@ -1197,10 +1204,15 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
       /*Ty=*/ir_builder_->getInt64Ty(),
       /*isConstant=*/false,
       /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-      /*Initializer=*/ir_builder_->getInt64(random_value()),
+      /*Initializer=*/ir_builder_->getInt64(random_value_from_hlo()),
       /*Name=*/"state_ptr0");
+
+  // When the module config seed is 0, the expected result of a prng is a random
+  // value. Instead of using the random_value_from_hlo, we need a global random
+  // value as the graph seed. This is because if we use random_value_from_hlo
+  // here, then for a newly built hlo graph, it always gives the same number.
   uint64 graph_seed = hlo_module_config_.seed() != 0 ? hlo_module_config_.seed()
-                                                     : random_value();
+                                                     : GlobalRandomValue();
   llvm::GlobalVariable* state_ptr1 = new llvm::GlobalVariable(
       /*M=*/*module_,
       /*Ty=*/ir_builder_->getInt64Ty(),

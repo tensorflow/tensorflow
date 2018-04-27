@@ -31,13 +31,16 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
@@ -209,6 +212,21 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self._WeMustGoDeeper("name")
     self._WeMustGoDeeper("orig")
 
+  def testAllCloseTensors(self):
+    a_raw_data = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    a = constant_op.constant(a_raw_data)
+    b = math_ops.add(1, constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8]]))
+    self.assertAllClose(a, b)
+    self.assertAllClose(a, a_raw_data)
+
+    a_dict = {"key": a}
+    b_dict = {"key": b}
+    self.assertAllClose(a_dict, b_dict)
+
+    x_list = [a, b]
+    y_list = [a_raw_data, b]
+    self.assertAllClose(x_list, y_list)
+
   def testAllCloseScalars(self):
     self.assertAllClose(7, 7 + 1e-8)
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
@@ -317,6 +335,12 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         rtol=1e-8, atol=1e-8
     )
 
+    self.assertAllCloseAccordingToType(
+        constant_op.constant([1e-8], dtype=dtypes.float64),
+        constant_op.constant([2e-8], dtype=dtypes.float64),
+        rtol=1e-8,
+        atol=1e-8)
+
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
           np.asarray([1e-7], dtype=np.float64),
@@ -331,6 +355,14 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         rtol=1e-8, atol=1e-8,
         float_rtol=1e-7, float_atol=1e-7
     )
+
+    self.assertAllCloseAccordingToType(
+        constant_op.constant([1e-7], dtype=dtypes.float32),
+        constant_op.constant([2e-7], dtype=dtypes.float32),
+        rtol=1e-8,
+        atol=1e-8,
+        float_rtol=1e-7,
+        float_atol=1e-7)
 
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
@@ -349,6 +381,16 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         half_rtol=1e-4, half_atol=1e-4
     )
 
+    self.assertAllCloseAccordingToType(
+        constant_op.constant([1e-4], dtype=dtypes.float16),
+        constant_op.constant([2e-4], dtype=dtypes.float16),
+        rtol=1e-8,
+        atol=1e-8,
+        float_rtol=1e-7,
+        float_atol=1e-7,
+        half_rtol=1e-4,
+        half_atol=1e-4)
+
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
           np.asarray([1e-3], dtype=np.float16),
@@ -357,6 +399,157 @@ class TestUtilTest(test_util.TensorFlowTestCase):
           float_rtol=1e-7, float_atol=1e-7,
           half_rtol=1e-4, half_atol=1e-4
       )
+
+  def testAssertAllEqual(self):
+    i = variables.Variable([100] * 3, dtype=dtypes.int32, name="i")
+    j = constant_op.constant([20] * 3, dtype=dtypes.int32, name="j")
+    k = math_ops.add(i, j, name="k")
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([120] * 3, k)
+    self.assertAllEqual([20] * 3, j)
+
+  def testAssertNotAllClose(self):
+    # Test with arrays
+    self.assertNotAllClose([0.1], [0.2])
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([-1.0, 2.0], [-1.0, 2.0])
+
+    # Test with tensors
+    x = constant_op.constant([1.0, 1.0], name="x")
+    y = math_ops.add(x, x)
+
+    self.assertAllClose([2.0, 2.0], y)
+    self.assertNotAllClose([0.9, 1.0], x)
+
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([1.0, 1.0], x)
+
+  def testAssertNotAllCloseRTol(self):
+    # Test with arrays
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([1.1, 2.1], [1.0, 2.0], rtol=0.2)
+
+    # Test with tensors
+    x = constant_op.constant([1.0, 1.0], name="x")
+    y = math_ops.add(x, x)
+
+    self.assertAllClose([2.0, 2.0], y)
+
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([0.9, 1.0], x, rtol=0.2)
+
+  def testAssertNotAllCloseATol(self):
+    # Test with arrays
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([1.1, 2.1], [1.0, 2.0], atol=0.2)
+
+    # Test with tensors
+    x = constant_op.constant([1.0, 1.0], name="x")
+    y = math_ops.add(x, x)
+
+    self.assertAllClose([2.0, 2.0], y)
+
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([0.9, 1.0], x, atol=0.2)
+
+  def testAssertAllGreaterLess(self):
+    x = constant_op.constant([100.0, 110.0, 120.0], dtype=dtypes.float32)
+    y = constant_op.constant([10.0] * 3, dtype=dtypes.float32)
+    z = math_ops.add(x, y)
+
+    self.assertAllClose([110.0, 120.0, 130.0], z)
+
+    self.assertAllGreater(x, 95.0)
+    self.assertAllLess(x, 125.0)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllGreater(x, 105.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllGreater(x, 125.0)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllLess(x, 115.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllLess(x, 95.0)
+
+  def testAssertAllGreaterLessEqual(self):
+    x = constant_op.constant([100.0, 110.0, 120.0], dtype=dtypes.float32)
+    y = constant_op.constant([10.0] * 3, dtype=dtypes.float32)
+    z = math_ops.add(x, y)
+
+    self.assertAllEqual([110.0, 120.0, 130.0], z)
+
+    self.assertAllGreaterEqual(x, 95.0)
+    self.assertAllLessEqual(x, 125.0)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllGreaterEqual(x, 105.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllGreaterEqual(x, 125.0)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllLessEqual(x, 115.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllLessEqual(x, 95.0)
+
+  def testAssertAllInRangeWithNonNumericValuesFails(self):
+    s1 = constant_op.constant("Hello, ", name="s1")
+    c = constant_op.constant([1 + 2j, -3 + 5j], name="c")
+    b = constant_op.constant([False, True], name="b")
+
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(s1, 0.0, 1.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(c, 0.0, 1.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(b, 0, 1)
+
+  def testAssertAllInRange(self):
+    x = constant_op.constant([10.0, 15.0], name="x")
+    self.assertAllInRange(x, 10, 15)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 10, 15, open_lower_bound=True)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 10, 15, open_upper_bound=True)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(
+          x, 10, 15, open_lower_bound=True, open_upper_bound=True)
+
+  def testAssertAllInRangeErrorMessageEllipses(self):
+    x_init = np.array([[10.0, 15.0]] * 12)
+    x = constant_op.constant(x_init, name="x")
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 5, 10)
+
+  def testAssertAllInRangeDetectsNaNs(self):
+    x = constant_op.constant(
+        [[np.nan, 0.0], [np.nan, np.inf], [np.inf, np.nan]], name="x")
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 0.0, 2.0)
+
+  def testAssertAllInRangeWithInfinities(self):
+    x = constant_op.constant([10.0, np.inf], name="x")
+    self.assertAllInRange(x, 10, np.inf)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 10, np.inf, open_upper_bound=True)
+
+  def testAssertAllInSet(self):
+    b = constant_op.constant([True, False], name="b")
+    x = constant_op.constant([13, 37], name="x")
+
+    self.assertAllInSet(b, [False, True])
+    self.assertAllInSet(b, (False, True))
+    self.assertAllInSet(b, {False, True})
+    self.assertAllInSet(x, [0, 13, 37, 42])
+    self.assertAllInSet(x, (0, 13, 37, 42))
+    self.assertAllInSet(x, {0, 13, 37, 42})
+
+    with self.assertRaises(AssertionError):
+      self.assertAllInSet(b, [False])
+    with self.assertRaises(AssertionError):
+      self.assertAllInSet(x, (42,))
 
   def testRandomSeed(self):
     # Call setUp again for WithCApi case (since it makes a new defeault graph

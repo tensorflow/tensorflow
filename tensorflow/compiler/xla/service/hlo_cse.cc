@@ -97,6 +97,10 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
   const std::function<bool(const HloComputation*, const HloComputation*)>
       eq_computations = std::equal_to<const HloComputation*>();
   for (auto* computation : module->computations()) {
+    if (only_fusion_computations_ && !computation->IsFusionComputation()) {
+      continue;
+    }
+
     changed |= CombineConstants(computation, is_layout_sensitive_);
 
     std::list<HloInstruction*> post_order =

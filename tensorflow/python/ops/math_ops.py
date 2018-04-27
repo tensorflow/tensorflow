@@ -973,7 +973,9 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
-      if not isinstance(y, sparse_tensor.SparseTensor):
+      if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
+        return func(x, y, name=name)
+      elif not isinstance(y, sparse_tensor.SparseTensor):
         try:
           y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
         except TypeError:

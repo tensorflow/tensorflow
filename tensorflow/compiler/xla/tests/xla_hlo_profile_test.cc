@@ -175,8 +175,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   XLA_VLOG_LINES(4, *profile_output);
 }
 
-// TODO(b/71364943): This test exposes a bug in the parallel CPU backend.
-XLA_TEST_F(HloProfileTest, DISABLED_ON_CPU_PARALLEL(ProfileSingleComputation)) {
+XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   const int64 m = 256, k = 256, n = 256;
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {m, k});
@@ -239,12 +238,9 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_CPU_PARALLEL(ProfileSingleComputation)) {
   EXPECT_TRUE(HasTrops(tanh_profile));
 }
 
-// TODO(b/71364943): This test exposes a bug in the parallel CPU backend.
-//
 // TODO(b/71544591): The GPU backend does not record cycles spent in on Hlo
 // instructions "interior" to while nodes.
-XLA_TEST_F(HloProfileTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(ProfileWhileComputation))) {
+XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
   const int64 size = 256;
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {size, size});
   Shape while_result_shape =

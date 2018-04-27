@@ -794,19 +794,19 @@ void BM_ParallelFusion(int num_iters) {
   // Transfer literals to device.
   auto param0_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param0_dim0, param0_dim1);
-  ShapedBuffer buffer0 =
+  ScopedShapedBuffer buffer0 =
       client->LiteralToShapedBuffer(*param0_literal, device_ordinal)
           .ConsumeValueOrDie();
 
   auto param1_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param1_dim0, param1_dim1);
-  ShapedBuffer buffer1 =
+  ScopedShapedBuffer buffer1 =
       client->LiteralToShapedBuffer(*param1_literal, device_ordinal)
           .ConsumeValueOrDie();
 
   auto param2_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param2_dim0, param2_dim1);
-  ShapedBuffer buffer2 =
+  ScopedShapedBuffer buffer2 =
       client->LiteralToShapedBuffer(*param2_literal, device_ordinal)
           .ConsumeValueOrDie();
 

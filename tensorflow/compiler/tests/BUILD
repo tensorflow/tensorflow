@@ -309,6 +309,25 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "eager_test",
+    size = "small",
+    srcs = ["eager_test.py"],
+    disabled_backends = [
+        # TODO(b/78199195) Support XLA CPU devices in eager runtime
+        "cpu",
+        "cpu_ondemand",
+        # TODO(b/78468222) Enable GPU backend
+        "gpu",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],
@@ -900,6 +919,18 @@ tf_xla_py_test(
     srcs = ["fake_quant_ops_test.py"],
     deps = [
         ":xla_test",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "placeholder_test",
+    size = "small",
+    srcs = ["placeholder_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],

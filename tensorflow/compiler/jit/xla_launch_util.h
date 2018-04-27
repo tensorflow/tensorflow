@@ -46,13 +46,11 @@ std::map<int, OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
 // see comment on `AllowsAsynchronousDeallocation()`.
 class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
-  XlaAllocator(const perftools::gputools::Platform* platform,
-               Allocator* wrapped);
+  XlaAllocator(const se::Platform* platform, Allocator* wrapped);
   ~XlaAllocator() override;
-  xla::StatusOr<perftools::gputools::DeviceMemoryBase> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure) override;
-  Status Deallocate(int device_ordinal,
-                    perftools::gputools::DeviceMemoryBase* mem) override;
+  xla::StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
+                                               bool retry_on_failure) override;
+  Status Deallocate(int device_ordinal, se::DeviceMemoryBase* mem) override;
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main
@@ -126,8 +124,7 @@ class XlaTensorBuffer : public TensorBuffer {
   }
 
   static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
-                           perftools::gputools::DeviceMemoryBase buffer,
-                           Allocator* allocator) {
+                           se::DeviceMemoryBase buffer, Allocator* allocator) {
     size_t expected_size = shape.num_elements() * DataTypeSize(dtype);
     auto* tensor_buffer = new XlaTensorBuffer(buffer.opaque(), expected_size,
                                               buffer.size(), allocator);

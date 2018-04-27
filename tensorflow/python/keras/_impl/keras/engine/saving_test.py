@@ -24,7 +24,15 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.keras._impl.keras.engine import training
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import training as training_module
 
@@ -55,11 +63,17 @@ class TestWeightSavingAndLoading(test.TestCase):
       with self.assertRaises(ValueError):
         model.set_weights(weights[::-1])
 
-      if h5py is None:
-        return  # Skip rest of test if H5py isn't available.
-
       temp_dir = self.get_temp_dir()
       self.addCleanup(shutil.rmtree, temp_dir)
+
+      no_extension_path = os.path.join(temp_dir, 'test')
+      model.save_weights(no_extension_path, save_format='tf')
+      model.load_weights(no_extension_path)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
+
+      if h5py is None:
+        return  # Skip rest of test if H5py isn't available.
 
       h5_path = os.path.join(temp_dir, 'test.h5')
       model.save_weights(h5_path)
@@ -68,6 +82,11 @@ class TestWeightSavingAndLoading(test.TestCase):
       self.assertAllClose(ref_y, y)
 
       model.load_weights(h5_path, by_name=True)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
+
+      model.save_weights(no_extension_path, save_format='hdf5')
+      model.load_weights(no_extension_path)
       y = model.predict(x)
       self.assertAllClose(ref_y, y)
 
@@ -456,6 +475,195 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
+
+class SubclassedModel(training.Model):
+
+  def __init__(self):
+    super(SubclassedModel, self).__init__()
+    self.x_layer = keras.layers.Dense(3)
+    self.b_layer = keras.layers.Dense(1)
+
+  def call(self, a):
+    return self.b_layer(self.x_layer(a))
+
+
+class TestWeightSavingAndLoadingTFFormat(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_tensorflow_format_overwrite(self):
+    with self.test_session() as session:
+      model = SubclassedModel()
+      temp_dir = self.get_temp_dir()
+      prefix = os.path.join(temp_dir, 'ckpt')
+
+      x = constant_op.constant(np.random.random((3, 2)), dtype=dtypes.float32)
+      executing_eagerly = context.executing_eagerly()
+      model(x)  # pylint: disable=not-callable
+      if not executing_eagerly:
+        session.run([v.initializer for v in model.variables])
+      model.save_weights(prefix, save_format='tensorflow')
+      model.save_weights(prefix, save_format='tensorflow', overwrite=True)
+      with self.assertRaises(EOFError):
+        # Indirectly tests that the user is prompted
+        model.save_weights(prefix, save_format='tensorflow', overwrite=False)
+
+  def test_no_graph_pollution(self):
+    with context.graph_mode():
+      graph = ops.Graph()
+      with graph.as_default(), self.test_session(graph) as session:
+        model = SubclassedModel()
+        temp_dir = self.get_temp_dir()
+        prefix = os.path.join(temp_dir, 'ckpt')
+
+        x = constant_op.constant(np.random.random((3, 2)), dtype=dtypes.float32)
+        model(x)  # pylint: disable=not-callable
+        session.run([v.initializer for v in model.variables])
+        model.save_weights(prefix, save_format='tensorflow')
+        op_count = len(graph.get_operations())
+        model.save_weights(prefix, save_format='tensorflow')
+        self.assertEqual(len(graph.get_operations()), op_count)
+
+        model.load_weights(prefix)
+        op_count = len(graph.get_operations())
+        model.load_weights(prefix)
+        self.assertEqual(len(graph.get_operations()), op_count)
+
+  def _weight_loading_test_template(self, make_model_fn):
+    with self.test_session() as session:
+      model = make_model_fn()
+      temp_dir = self.get_temp_dir()
+      prefix = os.path.join(temp_dir, 'ckpt')
+
+      x = constant_op.constant(np.random.random((3, 2)), dtype=dtypes.float32)
+      executing_eagerly = context.executing_eagerly()
+      ref_y_tensor = model(x)
+      if not executing_eagerly:
+        session.run([v.initializer for v in model.variables])
+      ref_y = self.evaluate(ref_y_tensor)
+      model.save_weights(prefix, save_format='tf')
+      for v in model.variables:
+        self.evaluate(
+            v.assign(random_ops.random_normal(shape=array_ops.shape(v))))
+
+      self.addCleanup(shutil.rmtree, temp_dir)
+
+      model.load_weights(prefix)
+      y = self.evaluate(model(x))
+      self.assertAllClose(ref_y, y)
+
+      # Test restore-on-create if this is a subclassed Model (graph Networks
+      # will have already created their variables).
+      load_model = make_model_fn()
+      load_model.load_weights(prefix)
+      restore_on_create_y_tensor = load_model(x)
+      restore_on_create_y = self.evaluate(restore_on_create_y_tensor)
+      self.assertAllClose(ref_y, restore_on_create_y)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_weight_loading_graph_model(self):
+    def _make_graph_model():
+      a = keras.layers.Input(shape=(2,))
+      x = keras.layers.Dense(3)(a)
+      b = keras.layers.Dense(1)(x)
+      return keras.models.Model(a, b)
+
+    self._weight_loading_test_template(_make_graph_model)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_weight_loading_subclassed_model(self):
+    self._weight_loading_test_template(SubclassedModel)
+
+  def _new_layer_weight_loading_test_template(
+      self, first_model_fn, second_model_fn, restore_init_fn):
+    with self.test_session() as session:
+      model = first_model_fn()
+      temp_dir = self.get_temp_dir()
+      prefix = os.path.join(temp_dir, 'ckpt')
+
+      x = constant_op.constant(np.random.random((3, 2)), dtype=dtypes.float32)
+      executing_eagerly = context.executing_eagerly()
+      ref_y_tensor = model(x)
+      if not executing_eagerly:
+        session.run([v.initializer for v in model.variables])
+      ref_y = self.evaluate(ref_y_tensor)
+      model.save_weights(prefix)
+      for v in model.variables:
+        self.evaluate(
+            v.assign(random_ops.random_normal(shape=array_ops.shape(v))))
+
+      self.addCleanup(shutil.rmtree, temp_dir)
+
+      second_model = second_model_fn()
+      second_model.load_weights(prefix)
+      second_model(x)
+      self.evaluate(restore_init_fn(second_model))
+      second_model.save_weights(prefix)
+      # Check that the second model's checkpoint loads into the original model
+      model.load_weights(prefix)
+      y = self.evaluate(model(x))
+      self.assertAllClose(ref_y, y)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_weight_loading_graph_model_added_layer(self):
+    def _save_graph_model():
+      a = keras.layers.Input(shape=(2,))
+      x = keras.layers.Dense(3, name='first')(a)
+      b = keras.layers.Dense(1, name='second')(x)
+      return keras.models.Model(a, b)
+    def _restore_graph_model():
+      a = keras.layers.Input(shape=(2,))
+      x = keras.layers.Dense(3, name='first')(a)
+      y = keras.layers.Dense(1, name='second')(x)
+      b = keras.layers.Dense(3, name='secondjr')(y)
+      return keras.models.Model(a, b)
+    def _restore_init_fn(restore_model):
+      return [v.initializer for v in restore_model.layers[-1].variables]
+
+    self._new_layer_weight_loading_test_template(
+        _save_graph_model, _restore_graph_model,
+        _restore_init_fn)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_weight_loading_graph_model_added_no_weight_layer(self):
+    def _save_graph_model():
+      a = keras.layers.Input(shape=(2,))
+      x = keras.layers.Dense(3, name='first')(a)
+      b = keras.layers.Dense(1, name='second')(x)
+      return keras.models.Model(a, b)
+    def _restore_graph_model():
+      a = keras.layers.Input(shape=(2,))
+      x = keras.layers.Dense(3, name='first')(a)
+      y = keras.layers.Dropout(rate=0.1)(x)
+      b = keras.layers.Dense(1, name='second')(y)
+      return keras.models.Model(a, b)
+    def _restore_init_fn(restore_model):
+      del restore_model  # unused
+      return []
+
+    self._new_layer_weight_loading_test_template(
+        _save_graph_model, _restore_graph_model,
+        _restore_init_fn)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_weight_loading_subclassed_model_added_layer(self):
+
+    class SubclassedModelRestore(training.Model):
+
+      def __init__(self):
+        super(SubclassedModelRestore, self).__init__()
+        self.x_layer = keras.layers.Dense(3)
+        self.y_layer = keras.layers.Dense(3)
+        self.b_layer = keras.layers.Dense(1)
+
+      def call(self, a):
+        return self.b_layer(self.y_layer(self.x_layer(a)))
+
+    def _restore_init_fn(restore_model):
+      return [v.initializer for v in restore_model.y_layer.variables]
+
+    self._new_layer_weight_loading_test_template(
+        SubclassedModel, SubclassedModelRestore,
+        _restore_init_fn)
 
 if __name__ == '__main__':
   test.main()
