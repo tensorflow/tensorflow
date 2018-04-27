@@ -821,11 +821,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
     ],
-    # TODO(b/62961789): Test fails with SIGABRT
-    tags = [
-        "manual",
-        "notap",
-    ],
 )
 
 cc_library(
