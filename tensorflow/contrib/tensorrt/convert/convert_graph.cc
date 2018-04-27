@@ -230,7 +230,7 @@ tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
     auto src_output = in_edge->src_output();
     auto dst_node = in_edge->dst();
     auto dst_input = in_edge->dst_input();
-    VLOG(0) << " update edge " << trt_node->name() << ":" << src_output
+    VLOG(1) << " update edge " << trt_node->name() << ":" << src_output
             << " -> " << dst_node->name() << ":" << dst_input;
     TF_RETURN_IF_ERROR(
         params->graph.UpdateEdge(trt_node, src_output, dst_node, dst_input));
@@ -367,12 +367,8 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   VLOG(2) << "gpus: " << num_gpus;
   tensorflow::RewriterConfig rw_cfg;
   tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
-  // TF_RETURN_IF_ERROR(optimizer.Optimize(cluster, item, &gdef));
   TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster, item, &gdef));
-  // constant folding
   item.graph = gdef;
-  // tensorflow::grappler::ConstantFolding fold(nullptr);
-  // TF_RETURN_IF_ERROR(fold.Optimize(nullptr, item, &gdef));
 
   // AJ refactoring shape inference through grappler/GraphProperties.
   tensorflow::grappler::GraphProperties static_graph_properties(item);

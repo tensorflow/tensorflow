@@ -42,8 +42,6 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
         maximum_workspace_size_(-1) {
     VLOG(1) << "Constructing " << m_name_;
   };
-  // tensorflow::Status Run(const tensorflow::GraphOptimizationPassOptions
-  // &options) override;
   string name() const override { return m_name_; };
   tensorflow::Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
                               config = nullptr) override;
