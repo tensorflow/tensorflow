@@ -1,0 +1,10 @@
+{
+    "sourceExclude": [
+        "**/.gradle",
+        "**/.metadata",
+        "**/bin",
+        "**/build",
+        "**/target",
+        "**/Python-2.7.11.zip"
+    ]
+}
