@@ -19,7 +19,7 @@ expected in the next one to two releases.
 
 #### Eager Execution:
 * Efficient utilization of multiple GPUs
-* Distributed training (multi-machine)
+* Distributed training support (multi-machine)
 * Performance improvements
 * Simpler export to a GraphDef/SavedModel 
 
@@ -37,8 +37,8 @@ across image recognition, speech, object detection, and
   high-performance model development.
 
 #### Contrib:
-* Deprecation notices added to parts of tf.contrib where preferred implementations exist outside of tf.contrib.
-* As much as possible, large projects inside tf.contrib moved to separate repositories.
+* Deprecate parts of tf.contrib where preferred implementations exist outside of tf.contrib.
+* As much as possible, move large projects inside tf.contrib to separate repositories.
 * The tf.contrib module will eventually be discontinued in its current form, experimental development will in future happen in other repositories.
 
 
@@ -50,12 +50,12 @@ across image recognition, speech, object detection, and
 
 ### Platforms
 #### TensorFlow Lite:
-* Increased coverage of supported ops in TensorFlow Lite
+* Increase coverage of supported ops in TensorFlow Lite
 * Easier conversion of a trained TensorFlow graph for use on TensorFlow Lite
 * Support for GPU acceleration in TensorFlow Lite (iOS and Android)
 * Support for hardware accelerators via Android NeuralNets API 
-* Improved CPU performance by quantization and other network optimizations (eg. pruning, distillation)
-* Increased support for devices beyond Android and iOS (eg. RPi, Cortex-M)
+* Improve CPU performance by quantization and other network optimizations (eg. pruning, distillation)
+* Increase support for devices beyond Android and iOS (eg. RPi, Cortex-M)
 
 #### TensorFlow.js:
 * Release package for Node.js bindings to the TensorFlow C API through the TensorFlow.js backend interface
@@ -70,12 +70,12 @@ across image recognition, speech, object detection, and
 
 ### Performance
 #### Distributed TensorFlow:
-* Multi-GPU support optimized for a variety of GPU topologies
-* Improved mechanisms for distributing computations on several machines
+* Optimize Multi-GPU support for a variety of GPU topologies
+* Improve mechanisms for distributing computations on several machines
 
 #### GPU Optimizations:
-* Simplified mixed precision API with initial example model and guide.
-* TensorRT API finalized and moved to core.
+* Simplify mixed precision API with initial example model and guide.
+* Finalize TensorRT API and move to core.
 * CUDA 9.2 and NCCL 2.x default in TensorFlow builds.
 * Optimizations for DGX-2.
 * Remove support for CUDA less than 8.x and cuDNN less than 6.x.
@@ -98,18 +98,18 @@ across image recognition, speech, object detection, and
 * Release TFX libraries for Data Validation
 
 ### Documentation and Resources:
-* Updated documentation, tutorials and Getting Started guides on all features and APIs
-* [Youtube Tensorflow channel](https://youtube.com/tensorflow) with weekly updates with new content:
+* Update documentation, tutorials and Getting Started guides on all features and APIs
+* Update [Youtube Tensorflow channel](https://youtube.com/tensorflow) weekly with new content:
 Coding TensorFlow - where we teach folks coding with tensorflow
 TensorFlow Meets - where we highlight community contributions
 Ask TensorFlow - where we answer community questions
 Guest and Showcase videos
-* [Official TensorFlow blog](https://blog.tensorflow.org) updated with regular articles from Google team and the Community
+* Update [Official TensorFlow blog](https://blog.tensorflow.org) with regular articles from Google team and the Community
 
 
 ### Community and Partner Engagement
 #### Special Interest Groups: 
-* Mobilizing the community to work together in focused domains
+* Mobilize the community to work together in focused domains
 * [tf-distribute](https://groups.google.com/a/tensorflow.org/forum/#!forum/tf-distribute): build and packaging of TensorFlow
 * SIG TensorBoard, SIG Rust, and more to be identified and launched
 
@@ -119,4 +119,3 @@ Guest and Showcase videos
 * Grow global TensorFlow communities and user groups
 * Collaborate with partners to co-develop and publish research papers
 * Process to enable external contributions to tutorials, documentation, and blogs showcasing best practice use-cases of TensorFlow and high-impact applications
-
