@@ -133,8 +133,8 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<ROCMExecutor>(config.plugin_config));
+  auto executor = MakeUnique<StreamExecutor>(
+      this, MakeUnique<ROCMExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
