@@ -360,6 +360,47 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoObjectName) {
             fs.NewRandomAccessFile("gs://bucket/", &file).code());
 }
 
+TEST(GcsFileSystemTest, NewRandomAccessFile_InconsistentRead) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "random_access.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"6\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-5\n"
+           "Timeouts: 5 1 20\n",
+           "012")});
+
+  // Set stat_cache_max_age to 1000s so that StatCache could work.
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   1e3 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay */, kTestTimeoutConfig,
+                   nullptr /* gcs additional header */);
+
+  // Stat the file first so that the file stats are cached.
+  FileStatistics stat;
+  TF_ASSERT_OK(fs.Stat("gs://bucket/random_access.txt", &stat));
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  char scratch[6];
+  StringPiece result;
+
+  EXPECT_EQ(errors::Code::INTERNAL,
+            file->Read(0, sizeof(scratch), &result, scratch).code());
+}
+
 TEST(GcsFileSystemTest, NewWritableFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
@@ -1508,6 +1549,56 @@ TEST(GcsFileSystemTest, DeleteFile_NoObjectName) {
 
   EXPECT_EQ(errors::Code::INVALID_ARGUMENT,
             fs.DeleteFile("gs://bucket/").code());
+}
+
+TEST(GcsFileSystemTest, DeleteFile_StatCacheRemoved) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "file.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"1010\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       new FakeHttpRequest("Uri: https://www.googleapis.com/storage/v1/b"
+                           "/bucket/o/file.txt\n"
+                           "Auth Token: fake_token\n"
+                           "Timeouts: 5 1 10\n"
+                           "Delete: yes\n",
+                           ""),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "file.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "", errors::NotFound("404"), 404),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+           "fields=items%2Fname%2CnextPageToken&prefix=file.txt%2F"
+           "&maxResults=1\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "{}")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      16 /* block size */, 16 /* max bytes */, 0 /* max staleness */,
+      3600 /* stat cache max age */, 0 /* stat cache max entries */,
+      0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, 0 /* initial retry delay*/,
+      kTestTimeoutConfig, nullptr /* gcs additional header */);
+
+  // Stats the file first so the stat is cached.
+  FileStatistics stat_before_deletion;
+  TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat_before_deletion));
+  EXPECT_EQ(1010, stat_before_deletion.length);
+
+  TF_EXPECT_OK(fs.DeleteFile("gs://bucket/file.txt"));
+
+  FileStatistics stat_after_deletion;
+  EXPECT_EQ(error::Code::NOT_FOUND,
+            fs.Stat("gs://bucket/file.txt", &stat_after_deletion).code());
 }
 
 TEST(GcsFileSystemTest, DeleteDir_Empty) {

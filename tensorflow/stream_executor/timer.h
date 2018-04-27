@@ -20,8 +20,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 namespace internal {
 class TimerInterface;
@@ -69,7 +68,6 @@ class Timer {
   SE_DISALLOW_COPY_AND_ASSIGN(Timer);
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TIMER_H_

@@ -48,8 +48,7 @@ class ShapeLayout {
   bool MatchesLayoutInShape(const Shape& shape) const;
 
   // Copies the layout from the given shape into this ShapeLayout. 'other_shape'
-  // must be compatible with the ShapeLayout's shape, and 'other_shape' must
-  // have a layout (LayoutUtil::HasLayout).
+  // must be compatible with the ShapeLayout's shape.
   tensorflow::Status CopyLayoutFromShape(const Shape& other_shape);
 
   // Clears (Layout::Clear) all the Layouts stored in this object.

@@ -74,7 +74,6 @@ from tensorflow.python.summary.writer.writer_cache import FileWriterCache
 # pylint: enable=unused-import
 
 from tensorflow.python.util import compat as _compat
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -361,10 +360,3 @@ def get_summary_description(node_def):
   summary_description = SummaryDescription()
   _json_format.Parse(description_str, summary_description)
   return summary_description
-
-
-_allowed_symbols = [
-    'Summary', 'SummaryDescription', 'Event', 'TaggedRunMetadata', 'SessionLog',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

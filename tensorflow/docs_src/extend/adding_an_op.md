@@ -267,7 +267,7 @@ REGISTER_CPU(int32);
 #ifdef GOOGLE_CUDA
 #define REGISTER_GPU(T)                                          \
   /* Declare explicit instantiations in kernel_example.cu.cc. */ \
-  extern template ExampleFunctor<GPUDevice, float>;              \
+  extern template ExampleFunctor<GPUDevice, T>;                  \
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Example").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       ExampleOp<GPUDevice, T>);

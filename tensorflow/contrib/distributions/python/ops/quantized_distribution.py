@@ -217,7 +217,7 @@ class QuantizedDistribution(distributions.Distribution):
     values = (
         list(distribution.parameters.values()) +
         [low, high])
-    with ops.name_scope(name, values=values):
+    with ops.name_scope(name, values=values) as name:
       self._dist = distribution
 
       if low is not None:

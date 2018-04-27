@@ -194,7 +194,6 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
           builtin_code);
       status = kTfLiteError;
     } else if (builtin_code != BuiltinOperator_CUSTOM) {
-      flatbuffer_op_index_to_registration_types_.push_back(builtin_code);
       registration = op_resolver_.FindOp(builtin_code);
       if (registration == nullptr) {
         error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
@@ -208,8 +207,6 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
     } else {
       const char* name = opcode->custom_code()->c_str();
       registration = op_resolver_.FindOp(name);
-      flatbuffer_op_index_to_registration_types_.push_back(
-          BuiltinOperator_CUSTOM);
       if (registration == nullptr) {
         error_reporter_->Report("Didn't find custom op for name '%s'\n", name);
         status = kTfLiteError;
@@ -702,8 +699,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       continue;
     }
 
-    auto op_type =
-        flatbuffer_op_index_to_registration_types_[op->opcode_index()];
+    BuiltinOperator op_type = static_cast<BuiltinOperator>(reg->builtin_code);
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(
           "Found builtin operator %s with custom options.\n",

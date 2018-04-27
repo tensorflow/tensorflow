@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import threading
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -391,7 +392,8 @@ class DistributionStrategy(object):
 
     ```
     with my_distribution.scope():
-      iterator = my_distribution.distribute_dataset(dataset)
+      iterator = my_distribution.distribute_dataset(
+          dataset).make_one_shot_iterator()
       tower_train_ops = my_distribution.call_for_each_tower(
           tower_fn, iterator.get_next())
       train_op = tf.group(my_distribution.unwrap(tower_train_ops))
@@ -404,8 +406,14 @@ class DistributionStrategy(object):
     `tower_fn` can use the `get_tower_context()` API to get enhanced
     behavior in this case.
 
-    Note that in the future we will add support for initializable
-    Dataset iterators, at which point this example code will change.
+    You can also create an initializable iterator instead of one shot iterator.
+    In that case, you will need to ensure that you initialize the iterator
+    before calling get_next.
+    ```
+    iterator = my_distribution.distribute_dataset(
+        dataset).make_initializable_iterator())
+    session.run(iterator.initializer)
+    ```
 
   * If you want to write a distributed algorithm, you may use any of
     the `DistributionStrategy` APIs inside a
@@ -486,8 +494,8 @@ class DistributionStrategy(object):
     a variable (which by definition will have locality V(`v`), though
     will match another locality if inside a `colocate_vars_with`
     scope).
-  * `d.distribute_dataset(dataset)`: in cross-tower context, produces an
-    iterator with locality T
+  * `d.distribute_dataset(dataset).make_one_shot_iterator()`: in cross-tower
+    context, produces an iterator with locality T
   * `d.broadcast(t)`: in cross-tower context, produces a value with locality M
   * `d.broadcast(t, v)`: in cross-tower context, produces a value with
     locality V(`v`)
@@ -510,7 +518,7 @@ class DistributionStrategy(object):
 
   The standard pattern for updating variables is to:
 
-  1. Wrap your input dataset in `d.distribute_dataset()`.
+  1. Wrap your input dataset in `d.distribute_dataset()` and create an iterator.
   2. Define each tower `d.call_for_each_tower()` up to the point of
      getting a list of gradient, variable pairs.
   3. Call `d.reduce("sum", t, v)` or `d.batch_reduce()` to sum the
@@ -665,25 +673,38 @@ class DistributionStrategy(object):
     _require_distribution_strategy_scope(self)
     return variable_scope.variable_creator_scope(create_colocated_variable)
 
-  # TODO(josh11b): Currently this returns an iterator, but should return
-  # something implementing (a subset of) the Dataset API.
-  def distribute_dataset(self, dataset):
-    """Return an iterator into `dataset` split across all towers.
+  def _call_dataset_fn(self, dataset_fn):
+    result = dataset_fn()
+    if not isinstance(result, dataset_ops.Dataset):
+      raise ValueError(
+          "dataset_fn() must return a tf.data.Dataset when using a "
+          "DistributionStrategy.")
+    return result
 
-    Suitable for providing input to for `call_for_each_tower()`, as in:
+  # TODO(josh11b): `PerDeviceDataset` currently only implements a few methods of
+  # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
+  # Extend to implement more functionality of datasets.
+  def distribute_dataset(self, dataset_fn):
+    """Return a `dataset` split across all towers.
+
+    Suitable for providing input to for `call_for_each_tower()` by creating an
+    iterator:
 
     ```
+    def dataset_fn():
+      return tf.data.Dataset.from_tensors([[1.]]).repeat()
     with distribution_strategy.scope():
-      iterator = distribution_strategy.distribute_dataset(dataset)
+      distributed_dataset = distribution_strategy.distribute_dataset(dataset_fn)
+      iterator = distributed_dataset.make_one_shot_iterator()
       tower_results = distribution_strategy.call_for_each_tower(
           tower_fn, iterator.get_next())
     ```
 
     Args:
-      dataset: A `tf.data.Dataset`.
+      dataset_fn: A function that returns a `tf.data.Dataset`.
 
     Returns:
-      A Dataset iterator that will produce separate splits for each tower.
+      A `PerDeviceDataset` that will produce data for each tower.
     """
     raise NotImplementedError("must be implemented in descendants")
 
@@ -1125,10 +1146,8 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     _require_distribution_strategy_scope(self)
     return ops.colocate_with(colocate_with_variable)
 
-  def distribute_dataset(self, dataset):
-    # TODO(josh11b): Support for this when executing eagerly is currently only
-    # in contrib.
-    return dataset.make_one_shot_iterator()
+  def distribute_dataset(self, dataset_fn):
+    return self._call_dataset_fn(dataset_fn)
 
   def _broadcast(self, tensor, destinations):
     if destinations is None:

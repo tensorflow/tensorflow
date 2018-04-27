@@ -91,9 +91,10 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
       EXPECT_TRUE(cps[i].task.is_local[j]);
     }
     EXPECT_EQ(cps[i].subdiv_rank[0], i);
-    EXPECT_EQ(cps[i].subdiv_source_rank.size(), 0);
+    EXPECT_EQ(cps[i].instance.impl_details.subdiv_source_rank.size(), 0);
     EXPECT_FALSE(cps[i].is_source);
     EXPECT_EQ(cps[i].default_rank, i);
+    EXPECT_TRUE(cps[i].instance.same_num_devices_per_task);
   }
 }
 
@@ -138,10 +139,11 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
     }
     ASSERT_GT(cps[i].subdiv_rank.size(), 0);
     EXPECT_EQ(cps[i].subdiv_rank[0], i);
-    ASSERT_GT(cps[i].subdiv_source_rank.size(), 0);
-    EXPECT_EQ(cps[i].subdiv_source_rank[0], 1);
+    ASSERT_GT(cps[i].instance.impl_details.subdiv_source_rank.size(), 0);
+    EXPECT_EQ(cps[i].instance.impl_details.subdiv_source_rank[0], 1);
     EXPECT_EQ(cps[i].is_source, (i == 1));
     EXPECT_EQ(cps[i].default_rank, i);
+    EXPECT_TRUE(cps[i].instance.same_num_devices_per_task);
   }
 }
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -291,7 +292,8 @@ class MklInputConversionOp : public OpKernel {
     // If both inputs are in MKL format
     if (input_shape_0.IsMklTensor() && input_shape_1.IsMklTensor()) {
       // It is safer to compare the original TensorFlow shapes than to compare
-      // Mkl shapes since element wise ops are forwarded to Eigen implementation.
+      // Mkl shapes since element wise ops are forwarded to Eigen
+      // implementation.
       TensorShape tf_shape0 = input_shape_0.GetTfShape();
       TensorShape tf_shape1 = input_shape_1.GetTfShape();
       if (tf_shape0 == tf_shape1) {
@@ -362,9 +364,11 @@ class MklInputConversionOp : public OpKernel {
       // TODO: Cleanup op_data_type and has_avx512f_ after these two parameters
       //       are removed from ConvertMklToTf
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
-                                           op_data_type, has_avx512f_, kInputIndex_0);
+                                           op_data_type, has_avx512f_,
+                                           kInputIndex_0);
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
-                                           op_data_type, has_avx512f_, kInputIndex_1);
+                                           op_data_type, has_avx512f_,
+                                           kInputIndex_1);
       SetDummyMklShapeOutput(context, kInputIndex_0);
       SetDummyMklShapeOutput(context, kInputIndex_1);
       return;
@@ -461,7 +465,8 @@ class MklInputConversionOp : public OpKernel {
     }
 
     VLOG(1) << "MklInputConversionOp: Shapes (output): "
-            << context->mutable_output(kInputIndex_0)->shape().DebugString() << " and "
+            << context->mutable_output(kInputIndex_0)->shape().DebugString()
+            << " and "
             << context->mutable_output(kInputIndex_1)->shape().DebugString();
 
     VLOG(1) << "MklInputConversion completed successfully.";

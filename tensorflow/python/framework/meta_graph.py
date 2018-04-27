@@ -439,9 +439,10 @@ def add_collection_def(meta_graph_def, key, graph=None,
       else:
         getattr(col_def, kind).value.extend([x for x in collection_list])
   except Exception as e:  # pylint: disable=broad-except
-    logging.warning("Error encountered when serializing %s.\n"
+    logging.warning("Issue encountered when serializing %s.\n"
                     "Type is unsupported, or the types of the items don't "
-                    "match field type in CollectionDef.\n%s", key, str(e))
+                    "match field type in CollectionDef. Note this is a warning "
+                    "and probably safe to ignore.\n%s", key, str(e))
     if key in meta_graph_def.collection_def:
       del meta_graph_def.collection_def[key]
     return

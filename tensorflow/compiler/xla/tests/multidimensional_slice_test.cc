@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -32,7 +32,7 @@ namespace {
 class SliceTest : public ClientLibraryTestBase {};
 
 XLA_TEST_F(SliceTest, Slice2D) {
-  ComputationBuilder builder(client_, "slice_2d");
+  XlaBuilder builder("slice_2d");
   auto original = builder.ConstantR2<float>(
       {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}, {7.0, 8.0, 9.0}, {10.0, 11.0, 12.0}});
   builder.Slice(original, {2, 1}, {4, 3}, {1, 1});
@@ -42,7 +42,7 @@ XLA_TEST_F(SliceTest, Slice2D) {
 }
 
 XLA_TEST_F(SliceTest, Slice3D) {
-  ComputationBuilder builder(client_, "slice_3d");
+  XlaBuilder builder("slice_3d");
   Array3D<float> array_3d(
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}});
   auto original = builder.ConstantR3FromArray3D<float>(array_3d);

@@ -31,16 +31,15 @@ namespace tensorflow {
   return FromTensor(const_cast<Tensor*>(tensor));
 }
 
-/*static*/ perftools::gputools::DeviceMemoryBase
-XlaTensor::DeviceMemoryFromTensor(const Tensor& tensor) {
+/*static*/ se::DeviceMemoryBase XlaTensor::DeviceMemoryFromTensor(
+    const Tensor& tensor) {
   const XlaTensor* xla_tensor = FromTensor(&tensor);
   if (xla_tensor) {
     CHECK(xla_tensor->has_shaped_buffer());
     return xla_tensor->shaped_buffer().root_buffer();
   } else {
-    return perftools::gputools::DeviceMemoryBase(
-        const_cast<char*>(tensor.tensor_data().data()),
-        tensor.tensor_data().size());
+    return se::DeviceMemoryBase(const_cast<char*>(tensor.tensor_data().data()),
+                                tensor.tensor_data().size());
   }
 }
 
@@ -65,10 +64,8 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
                             device_ordinal, size, /*retry_on_failure=*/false));
   }
 
-  TF_ASSIGN_OR_RETURN(auto scoped_buffer,
-                      xla::ScopedShapedBuffer::MakeScoped(
-                          &buffer, client->backend().memory_allocator()));
-  set_shaped_buffer(std::move(scoped_buffer));
+  set_shaped_buffer(xla::ScopedShapedBuffer(
+      std::move(buffer), client->backend().memory_allocator()));
   return Status::OK();
 }
 

@@ -652,7 +652,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     padded.set_shape(padded_shape)
 
     if not is_batch:
-      padded = array_ops.squeeze(padded, squeeze_dims=[0])
+      padded = array_ops.squeeze(padded, axis=[0])
 
     return padded
 
@@ -732,7 +732,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     cropped.set_shape(cropped_shape)
 
     if not is_batch:
-      cropped = array_ops.squeeze(cropped, squeeze_dims=[0])
+      cropped = array_ops.squeeze(cropped, axis=[0])
 
     return cropped
 
@@ -849,7 +849,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     resized = control_flow_ops.with_dependencies(assert_ops, resized)
 
     if not is_batch:
-      resized = array_ops.squeeze(resized, squeeze_dims=[0])
+      resized = array_ops.squeeze(resized, axis=[0])
 
     return resized
 
@@ -942,7 +942,7 @@ def resize_images(images,
            for x in [new_width_const, width, new_height_const, height]) and (
                width == new_width_const and height == new_height_const):
       if not is_batch:
-        images = array_ops.squeeze(images, squeeze_dims=[0])
+        images = array_ops.squeeze(images, axis=[0])
       return images
 
     if method == ResizeMethod.BILINEAR:
@@ -965,7 +965,7 @@ def resize_images(images,
     images.set_shape([None, new_height_const, new_width_const, None])
 
     if not is_batch:
-      images = array_ops.squeeze(images, squeeze_dims=[0])
+      images = array_ops.squeeze(images, axis=[0])
     return images
 
 

@@ -42,7 +42,6 @@ from __future__ import print_function
 # pylint: disable=g-bad-import-order
 from tensorflow.python.framework import test_util as _test_util
 from tensorflow.python.platform import googletest as _googletest
-from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import assert_equal_graph_def
@@ -108,13 +107,3 @@ def test_src_dir_path(relative_path):
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()
-
-
-_allowed_symbols = [
-    # We piggy-back googletest documentation.
-    'Benchmark',
-    'mock',
-    'StubOutForTesting',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

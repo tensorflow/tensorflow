@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -59,8 +60,7 @@ NarrowT CheckedNarrowing(const WideT& wide) {
 
 }  // namespace
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 using dnn::BatchDescriptor;
 using dnn::FilterDescriptor;
@@ -159,7 +159,7 @@ static port::ThreadPool* GetCudaThreadpool() {
   return cudnn_threadpool;
 }
 
-#define PERFTOOLS_GPUTOOLS_CUDNN_WRAP(__name)                      \
+#define STREAM_EXECUTOR_CUDNN_WRAP(__name)                         \
   struct WrapperShim__##__name {                                   \
     template <typename... Args>                                    \
     cudnnStatus_t operator()(CUDAExecutor* parent, Args... args) { \
@@ -169,7 +169,7 @@ static port::ThreadPool* GetCudaThreadpool() {
     }                                                              \
   } __name;
 
-#define PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM(__name)        \
+#define STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM(__name)           \
   struct WrapperShim__##__name {                                         \
     template <typename... Args>                                          \
     cudnnStatus_t operator()(CudnnSupport* dnn, Stream* s, Args... args) \
@@ -220,7 +220,7 @@ struct WrapperShim__cudnnSetStream {
   __macro(cudnnSetFilterNdDescriptor)
 
 // clang-format on
-CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH
 
 // clang-format off
@@ -242,7 +242,7 @@ CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_WITH_STREAM(
-    PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM)
+    STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM)
 #undef CUDNN_DNN_ROUTINE_EACH_WITH_STREAM
 
 // APIs available after R3:
@@ -252,7 +252,7 @@ CUDNN_DNN_ROUTINE_EACH_WITH_STREAM(
   __macro(cudnnGetConvolutionBackwardDataAlgorithm)           \
   __macro(cudnnGetConvolutionBackwardFilterAlgorithm)         \
   __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)
-CUDNN_DNN_ROUTINE_EACH_AFTER_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH_AFTER_R3(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_AFTER_R3
 #endif
 
@@ -266,7 +266,7 @@ CUDNN_DNN_ROUTINE_EACH_AFTER_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 // clang-format on
 
 CUDNN_DNN_ROUTINE_EACH_R3_WITH_STREAM(
-    PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM)
+    STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM)
 #undef CUDNN_DNN_ROUTINE_EACH_R3_WITH_STREAM
 #endif
 
@@ -293,7 +293,7 @@ CUDNN_DNN_ROUTINE_EACH_R3_WITH_STREAM(
   __macro(cudnnGetFilterNdDescriptor)
 
 // clang-format on
-CUDNN_DNN_ROUTINE_EACH_R5(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH_R5(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R5
 
 // clang-format off
@@ -305,7 +305,7 @@ CUDNN_DNN_ROUTINE_EACH_R5(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R5_WITH_STREAM(
-    PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM)
+    STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM)
 #undef CUDNN_DNN_ROUTINE_EACH_R5_WITH_STREAM
 #endif
 
@@ -313,10 +313,13 @@ CUDNN_DNN_ROUTINE_EACH_R5_WITH_STREAM(
 // clang-format off
 #if CUDNN_VERSION >= 6000
 #define CUDNN_DNN_ROUTINE_EACH_R6(__macro)                    \
-  __macro(cudnnSetRNNDescriptor_v6)
+  __macro(cudnnSetRNNDescriptor_v6)                           \
+  __macro(cudnnCreatePersistentRNNPlan)                       \
+  __macro(cudnnDestroyPersistentRNNPlan)                      \
+  __macro(cudnnSetPersistentRNNPlan)
 
 // clang-format on
-CUDNN_DNN_ROUTINE_EACH_R6(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH_R6(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R6
 
 // clang-format off
@@ -325,7 +328,7 @@ CUDNN_DNN_ROUTINE_EACH_R6(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R6_WITH_STREAM(
-    PERFTOOLS_GPUTOOLS_CUDNN_WRAP_WITH_CHECKED_STREAM)
+    STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM)
 #undef CUDNN_DNN_ROUTINE_EACH_R6_WITH_STREAM
 #endif
 
@@ -337,7 +340,7 @@ CUDNN_DNN_ROUTINE_EACH_R6_WITH_STREAM(
   __macro(cudnnSetRNNMatrixMathType)
 
 // clang-format on
-CUDNN_DNN_ROUTINE_EACH_R7(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH_R7(STREAM_EXECUTOR_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R7
 #endif
 
@@ -1196,7 +1199,7 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
  public:
   CudnnRnnDescriptor(CUDAExecutor* parent, cudnnHandle_t cudnn_handle,
                      int num_layers, int hidden_size, int input_size,
-                     cudnnRNNInputMode_t input_mode,
+                     int batch_size, cudnnRNNInputMode_t input_mode,
                      cudnnDirectionMode_t direction_mode,
                      cudnnRNNMode_t rnn_mode, cudnnDataType_t data_type,
                      cudnnDataType_t compute_type,
@@ -1208,6 +1211,10 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
         num_layers_(num_layers),
         hidden_size_(hidden_size),
         input_size_(input_size),
+        batch_size_(batch_size),
+#if CUDNN_VERSION >= 6000
+        rnn_plan_(nullptr),
+#endif
         input_mode_(input_mode),
         direction_mode_(direction_mode),
         rnn_mode_(rnn_mode),
@@ -1227,12 +1234,26 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
     CUDNN_RETURN_IF_FAIL(status, "Unable to create RNN descriptor");
 #if CUDNN_VERSION >= 6000
     // TODO: allow the user to choose an algorithm.
-    cudnnRNNAlgo_t rnn_algo = ToCudnnRNNAlgo(algorithm_config_.algorithm());
+    rnn_algo_ = ToCudnnRNNAlgo(algorithm_config_.algorithm());
     status = wrap::cudnnSetRNNDescriptor_v6(
-        parent, cudnn_handle, rnn_desc_ /*rnnDesc*/, hidden_size /*hiddenSize*/,
-        num_layers /*numLayers*/, dropout_handle() /*dropoutDesc*/,
-        input_mode /*inputMode*/, direction_mode /*direction*/,
-        rnn_mode /*mode*/, rnn_algo /*algo*/, compute_type /*dataType*/);
+        parent, cudnn_handle, /*rnnDesc=*/rnn_desc_, /*hiddenSize=*/hidden_size,
+        /*numLayers=*/num_layers, /*dropoutDesc=*/dropout_handle(),
+        /*inputMode=*/input_mode, /*direction=*/direction_mode,
+        /*mode=*/rnn_mode, /*algo=*/rnn_algo_, /*dataType=*/compute_type);
+    CUDNN_RETURN_IF_FAIL(status, ::tensorflow::strings::Printf(
+                                     "Unable to update RNN descriptor with "
+                                     "algo_id: %d and compute_type: %d",
+                                     static_cast<int>(rnn_algo_),
+                                     static_cast<int>(compute_type)));
+
+    if (rnn_algo_ == CUDNN_RNN_ALGO_PERSIST_DYNAMIC) {
+      CHECK_GE(batch_size_, 0);
+      status = wrap::cudnnCreatePersistentRNNPlan(
+          parent, rnn_desc_, batch_size_, data_type_, &rnn_plan_);
+      CUDNN_RETURN_IF_FAIL(status, "Unable to create persistent RNN plan.");
+      status = wrap::cudnnSetPersistentRNNPlan(parent, rnn_desc_, rnn_plan_);
+      CUDNN_RETURN_IF_FAIL(status, "Unable to update persistent RNN plan.");
+    }
 #else
     CHECK(algorithm_config_.is_default())
         << "Non-default algorithm not supported for CUDA version < 6.0";
@@ -1241,8 +1262,8 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
         num_layers /*numLayers*/, dropout_handle() /*dropoutDesc*/,
         input_mode /*inputMode*/, direction_mode /*direction*/,
         rnn_mode /*mode*/, compute_type /*dataType*/);
-#endif
     CUDNN_RETURN_IF_FAIL(status, "Unable to update RNN descriptor");
+#endif
 
     // Create the params handle.
     cudnn_params_desc_.reset(
@@ -1255,8 +1276,14 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
   }
   ~CudnnRnnDescriptor() override {
     if (rnn_desc_) {
-      cudnnStatus_t status =
-          wrap::cudnnDestroyRNNDescriptor(parent_, rnn_desc_);
+      cudnnStatus_t status;
+#if CUDNN_VERSION >= 6000
+      if (rnn_algo_ == CUDNN_RNN_ALGO_PERSIST_DYNAMIC && rnn_plan_) {
+        status = wrap::cudnnDestroyPersistentRNNPlan(parent_, rnn_plan_);
+        CUDNN_RETURN_IF_FAIL(status, "Unable to destroy persistent RNN plan.");
+      }
+#endif
+      status = wrap::cudnnDestroyRNNDescriptor(parent_, rnn_desc_);
       CUDNN_RETURN_IF_FAIL(status, "Unable to destroy RNN descriptor");
     }
   }
@@ -1281,6 +1308,7 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
   int num_layers() const { return num_layers_; }
   int hidden_size() const { return hidden_size_; }
   int input_size() const { return input_size_; }
+  int batch_size() const { return batch_size_; }
   cudnnRNNInputMode_t input_mode() const { return input_mode_; }
   cudnnDirectionMode_t direction_mode() const { return direction_mode_; }
   cudnnRNNMode_t rnn_mode() const { return rnn_mode_; }
@@ -1315,6 +1343,13 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
   int num_layers_;
   int hidden_size_;
   int input_size_;
+  // batch_size_ is set to -1 when not using CUDNN_RNN_ALGO_PERSIST_DYNAMIC
+  // algorithm.
+  int batch_size_;
+#if CUDNN_VERSION >= 6000
+  cudnnRNNAlgo_t rnn_algo_;
+  cudnnPersistentRNNPlan_t rnn_plan_;
+#endif
   cudnnRNNInputMode_t input_mode_;
   cudnnDirectionMode_t direction_mode_;
   cudnnRNNMode_t rnn_mode_;
@@ -1971,22 +2006,20 @@ bool CudnnSupport::DoRnnBackwardImpl(
 #endif  // CUDNN_VERSION
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-CudnnSupport::createRnnDescriptor(int num_layers, int hidden_size,
-                                  int input_size, dnn::RnnInputMode input_mode,
-                                  dnn::RnnDirectionMode direction_mode,
-                                  dnn::RnnMode rnn_mode,
-                                  dnn::DataType data_type,
-                                  const dnn::AlgorithmConfig& algorithm_config,
-                                  float dropout, uint64 seed,
-                                  ScratchAllocator* state_allocator) {
+CudnnSupport::createRnnDescriptor(
+    int num_layers, int hidden_size, int input_size, int batch_size,
+    dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
+    dnn::RnnMode rnn_mode, dnn::DataType data_type,
+    const dnn::AlgorithmConfig& algorithm_config, float dropout, uint64 seed,
+    ScratchAllocator* state_allocator) {
 #if CUDNN_VERSION >= 5000
   mutex_lock lock{dnn_handle_mutex_};
   std::unique_ptr<CudnnRnnDescriptor> rnn_desc(new CudnnRnnDescriptor(
       parent_, ToHandle(dnn_handle_), num_layers, hidden_size, input_size,
-      ToCudnnRnnInputMode(input_mode), ToCudnnRnnDirectionMode(direction_mode),
-      ToCudnnRnnMode(rnn_mode), ToCudnnDataType(data_type),
-      GetRnnComputeType(data_type), algorithm_config, dropout, seed,
-      state_allocator));
+      batch_size, ToCudnnRnnInputMode(input_mode),
+      ToCudnnRnnDirectionMode(direction_mode), ToCudnnRnnMode(rnn_mode),
+      ToCudnnDataType(data_type), GetRnnComputeType(data_type),
+      algorithm_config, dropout, seed, state_allocator));
   if (!rnn_desc->ok()) {
     return rnn_desc->Status();
   }
@@ -2531,12 +2564,20 @@ cudnnDataType_t GetConvComputeType<double>() {
 }
 
 // A helper struct to decide whether to use FP32 as the internal compute type
-// for rnn when the input data type is FP16. By default it is turned on,
-// users can explicitly disable them (choose to use FP16 as the internal compute
-// type) through an env-var "TF_FP16_RNN_USE_FP32_COMPUTE=0".
+// for rnn when the input data type is FP16. At present it is turned off,
+// users can explicitly control them through an env-var
+// TF_FP16_RNN_USE_FP32_COMPUTE.
+// After the TODO below is fixed, users should almost always use fp32 compute
+// type for training. Using fp16 might suffer suboptimal accuracy due to loss
+// in precision.
 struct RnnDoFP32ComputationFP16Input {
   static constexpr const char* kName = "TF_FP16_RNN_USE_FP32_COMPUTE";
-  static constexpr bool kDefaultFlag = true;
+  // TODO(jamesqin): b/78182362 flip to true when cudnn 7.1.4 fixes the bug.
+  // Before cudnn 7.1.4 RNN are always done in fp32, no matter what math
+  // precision is set.
+  // Set it temporary to false s.t. no error is raised when using fp16 inputs,
+  // fp32 math precision.
+  static constexpr bool kDefaultFlag = false;
 };
 
 // A helper function to return the internal compute type for
@@ -4728,46 +4769,39 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
 
 }  // namespace cuda
 
-namespace gpu = ::perftools::gputools;
-
 void initialize_cudnn() {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::DnnFactory>(
-              gpu::cuda::kCudaPlatformId, gpu::cuda::kCuDnnPlugin, "cuDNN",
-              [](gpu::internal::StreamExecutorInterface*
-                     parent) -> gpu::dnn::DnnSupport* {
-                gpu::cuda::CUDAExecutor* cuda_executor =
-                    dynamic_cast<gpu::cuda::CUDAExecutor*>(parent);
-                if (cuda_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the cuBLAS "
-                      << "support library with a non-CUDA StreamExecutor";
-                  return nullptr;
-                }
+  port::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
+          cuda::kCudaPlatformId, cuda::kCuDnnPlugin, "cuDNN",
+          [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+            cuda::CUDAExecutor* cuda_executor =
+                dynamic_cast<cuda::CUDAExecutor*>(parent);
+            if (cuda_executor == nullptr) {
+              LOG(ERROR)
+                  << "Attempting to initialize an instance of the cuBLAS "
+                  << "support library with a non-CUDA StreamExecutor";
+              return nullptr;
+            }
 
-                gpu::cuda::CudnnSupport* dnn =
-                    new gpu::cuda::CudnnSupport(cuda_executor);
-                if (!dnn->Init().ok()) {
-                  // Note: Init() will log a more specific error.
-                  delete dnn;
-                  return nullptr;
-                }
-                return dnn;
-              });
+            cuda::CudnnSupport* dnn = new cuda::CudnnSupport(cuda_executor);
+            if (!dnn->Init().ok()) {
+              // Note: Init() will log a more specific error.
+              delete dnn;
+              return nullptr;
+            }
+            return dnn;
+          });
 
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuDNN factory: "
                << status.error_message();
   }
 
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,
-                                                     gpu::PluginKind::kDnn,
-                                                     gpu::cuda::kCuDnnPlugin);
+  PluginRegistry::Instance()->SetDefaultFactory(
+      cuda::kCudaPlatformId, PluginKind::kDnn, cuda::kCuDnnPlugin);
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(register_cudnn,
-                            { perftools::gputools::initialize_cudnn(); });
+                            { stream_executor::initialize_cudnn(); });
