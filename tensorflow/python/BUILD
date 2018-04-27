@@ -1878,6 +1878,7 @@ py_library(
         ":math_grad",
         ":math_ops",
         ":platform",
+        ":resource_variable_ops",
         ":spectral_grad",
         ":util",
         ":variable_scope",

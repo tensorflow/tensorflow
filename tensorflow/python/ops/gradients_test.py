@@ -894,6 +894,22 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       self.assertEqual(6., math_ops.reduce_sum(dx).numpy())
       self.assertEqual(8., math_ops.reduce_sum(dw).numpy())
 
+  def testWithNumpyInputs(self):
+    with context.eager_mode():
+
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = x
+
+        def Grad(_):
+          return (None, None)
+
+        return out, Grad
+
+      x = np.ones((3, 2), dtype=np.float32)
+      # Smoke test to ensure numpy inputs are accepted
+      F(x)
+
 
 if __name__ == "__main__":
   googletest.main()

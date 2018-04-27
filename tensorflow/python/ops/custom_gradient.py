@@ -24,6 +24,7 @@ from tensorflow.python.eager import tape as tape_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -166,7 +167,11 @@ def _eager_mode_decorator(f, *args, **kwargs):
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  variables = list(set(tape.watched_variables()) - set(all_inputs))
+  variable_inputs = [
+      arg for arg in all_inputs
+      if isinstance(arg, resource_variable_ops.ResourceVariable)
+  ]
+  variables = list(set(tape.watched_variables()) - set(variable_inputs))
   flat_result = nest.flatten(result)
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]
