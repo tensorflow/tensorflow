@@ -38,8 +38,7 @@ namespace Eigen {
 struct half;
 }  // namespace Eigen
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class HostBuffer;
 class Stream;
@@ -713,6 +712,7 @@ class AlgorithmDesc {
     return this->algo_ == other.algo_ &&
            this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
   }
+  uint64 hash() const;
 
  private:
   enum { kDefaultAlgorithm = -1 };
@@ -2024,7 +2024,7 @@ class DnnSupport {
   //    is no longer in use.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
-                      dnn::RnnInputMode input_mode,
+                      int batch_size, dnn::RnnInputMode input_mode,
                       dnn::RnnDirectionMode direction_mode,
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
                       const dnn::AlgorithmConfig& algorithm_config,
@@ -2301,7 +2301,6 @@ class DnnSupport {
 };
 
 }  // namespace dnn
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DNN_H_

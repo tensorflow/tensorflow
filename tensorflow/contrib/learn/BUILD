@@ -281,7 +281,10 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/estimator_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "noasan",  # times out
+    ],
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",

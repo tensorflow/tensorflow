@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -78,7 +80,9 @@ using CPUDevice = Eigen::ThreadPoolDevice;
 #if GOOGLE_CUDA
 
 using GPUDevice = Eigen::GpuDevice;
-using ::perftools::gputools::StreamExecutor;
+using se::Stream;
+using se::StreamExecutor;
+using se::dnn::RnnDescriptor;
 
 template <typename Device, typename T, typename Index>
 class CudnnRNNParamsSizeOp;
@@ -95,6 +99,12 @@ class CudnnRNNForwardOp;
 template <typename Device, typename T>
 class CudnnRNNBackwardOp;
 
+template <typename Device, typename T>
+class CudnnRNNForwardOpV2;
+
+template <typename Device, typename T>
+class CudnnRNNBackwardOpV2;
+
 enum class TFRNNInputMode {
   kRNNLinearInput = 0,
   kRNNSkipInput = 1,
@@ -102,21 +112,111 @@ enum class TFRNNInputMode {
 };
 
 namespace {
-using ::perftools::gputools::DeviceMemory;
-using ::perftools::gputools::DeviceMemoryBase;
-using ::perftools::gputools::ScratchAllocator;
-using ::perftools::gputools::Stream;
-using ::perftools::gputools::dnn::AlgorithmConfig;
-using ::perftools::gputools::dnn::AlgorithmDesc;
-using ::perftools::gputools::dnn::ProfileResult;
-using ::perftools::gputools::dnn::RnnDescriptor;
-using ::perftools::gputools::dnn::RnnDirectionMode;
-using ::perftools::gputools::dnn::RnnInputMode;
-using ::perftools::gputools::dnn::RnnMode;
-using ::perftools::gputools::dnn::RnnSequenceTensorDescriptor;
-using ::perftools::gputools::dnn::RnnStateTensorDescriptor;
-using ::perftools::gputools::dnn::ToDataType;
-using ::perftools::gputools::port::StatusOr;
+using se::DeviceMemory;
+using se::DeviceMemoryBase;
+using se::ScratchAllocator;
+using se::dnn::AlgorithmConfig;
+using se::dnn::AlgorithmDesc;
+using se::dnn::ProfileResult;
+using se::dnn::RnnDirectionMode;
+using se::dnn::RnnInputMode;
+using se::dnn::RnnMode;
+using se::dnn::RnnSequenceTensorDescriptor;
+using se::dnn::RnnStateTensorDescriptor;
+using se::dnn::ToDataType;
+using se::port::StatusOr;
+
+uint64 HashList(const std::vector<int>& list) {
+  if (list.empty()) {
+    return 0;
+  }
+  uint64 hash_code = list[0];
+  for (int i = 1; i < list.size(); i++) {
+    hash_code = Hash64Combine(hash_code, list[i]);
+  }
+  return hash_code;
+}
+
+// Encapsulate all the shape information that is used in both forward and
+// backward rnn operations.
+class CudnnRnnParameters {
+ public:
+  CudnnRnnParameters(int num_layers, int input_size, int num_units,
+                     int seq_length, int batch_size, int dir_count,
+                     bool has_dropout, bool is_training, RnnMode rnn_mode,
+                     TFRNNInputMode rnn_input_mode, DataType dtype)
+      : num_layers_(num_layers),
+        input_size_(input_size),
+        num_units_(num_units),
+        seq_length_(seq_length),
+        batch_size_(batch_size),
+        dir_count_(dir_count),
+        has_dropout_(has_dropout),
+        is_training_(is_training),
+        rnn_mode_(rnn_mode),
+        rnn_input_mode_(rnn_input_mode),
+        dtype_(dtype) {
+    hash_code_ = HashList(
+        {num_layers, input_size, num_units, seq_length, batch_size, dir_count,
+         static_cast<int>(has_dropout), static_cast<int>(is_training),
+         static_cast<int>(rnn_mode), static_cast<int>(rnn_input_mode), dtype});
+  }
+
+  bool operator==(const CudnnRnnParameters& other) const {
+    return this->get_data_as_tuple() == other.get_data_as_tuple();
+  }
+
+  bool operator!=(const CudnnRnnParameters& other) const {
+    return !(*this == other);
+  }
+  uint64 hash() const { return hash_code_; }
+
+  string ToString() const {
+    std::vector<string> fields = {
+        std::to_string(num_layers_),
+        std::to_string(input_size_),
+        std::to_string(num_units_),
+        std::to_string(seq_length_),
+        std::to_string(batch_size_),
+        std::to_string(dir_count_),
+        std::to_string(has_dropout_),
+        std::to_string(is_training_),
+        std::to_string(static_cast<int>(rnn_mode_)),
+        std::to_string(static_cast<int>(rnn_input_mode_)),
+        std::to_string(static_cast<int>(dtype_))};
+    return str_util::Join(fields, ", ");
+  }
+
+ private:
+  using ParameterDataType = std::tuple<int, int, int, int, int, int, bool, bool,
+                                       RnnMode, TFRNNInputMode, DataType>;
+
+  ParameterDataType get_data_as_tuple() const {
+    return std::make_tuple(num_layers_, input_size_, num_units_, seq_length_,
+                           batch_size_, dir_count_, has_dropout_, is_training_,
+                           rnn_mode_, rnn_input_mode_, dtype_);
+  }
+
+  const int num_layers_;
+  const int input_size_;
+  const int num_units_;
+  const int seq_length_;
+  const int batch_size_;
+  const int dir_count_;
+  const bool has_dropout_;
+  const bool is_training_;
+  const RnnMode rnn_mode_;
+  const TFRNNInputMode rnn_input_mode_;
+  const DataType dtype_;
+  uint64 hash_code_;
+};
+
+struct RnnAutoTuneGroup {
+  static string name() { return "Rnn"; }
+};
+
+using AutoTuneRnnConfigMap =
+    AutoTuneSingleton<RnnAutoTuneGroup, CudnnRnnParameters, AlgorithmConfig>;
 
 Status ParseRNNMode(const string& str, RnnMode* rnn_mode) {
   if (str == "rnn_relu") {
@@ -213,25 +313,22 @@ DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
   return DeviceMemoryBase(offset_ptr, size);
 }
 
-inline Status FromExecutorStatus(const perftools::gputools::port::Status& s) {
+inline Status FromExecutorStatus(const se::port::Status& s) {
   return s.ok() ? Status::OK()
-                : Status(static_cast<tensorflow::error::Code>(
-                             static_cast<int>(s.code())),
+                : Status(static_cast<error::Code>(static_cast<int>(s.code())),
                          s.error_message());
 }
 
 template <typename T>
-inline Status FromExecutorStatus(
-    const perftools::gputools::port::StatusOr<T>& s) {
+inline Status FromExecutorStatus(const se::port::StatusOr<T>& s) {
   return FromExecutorStatus(s.status());
 }
 
-inline perftools::gputools::port::Status ToExecutorStatus(const Status& s) {
-  return s.ok() ? perftools::gputools::port::Status::OK()
-                : perftools::gputools::port::Status(
-                      static_cast<perftools::gputools::port::error::Code>(
-                          static_cast<int>(s.code())),
-                      s.error_message());
+inline se::port::Status ToExecutorStatus(const Status& s) {
+  return s.ok() ? se::port::Status::OK()
+                : se::port::Status(static_cast<se::port::error::Code>(
+                                       static_cast<int>(s.code())),
+                                   s.error_message());
 }
 
 template <typename>
@@ -414,24 +511,29 @@ struct CudnnRnnModelShapes {
   }
 };
 
-// Utility class for using CudnnRnnModelShapes as a hash table key.
-struct CudnnRnnModelShapesHasher {
-  uint64 operator()(const CudnnRnnModelShapes& to_hash) const {
-    uint64 hash = static_cast<uint64>(to_hash.num_layers);
-    hash = tensorflow::FingerprintCat64(
-        hash, static_cast<uint64>(to_hash.input_size));
-    hash = tensorflow::FingerprintCat64(hash,
-                                        static_cast<uint64>(to_hash.num_units));
-    return tensorflow::FingerprintCat64(hash,
-                                        static_cast<uint64>(to_hash.dir_count));
+// Utility class for using CudnnRnnConfig and AlgorithmDesc pair a hash table
+// key.
+struct CudnnRnnConfigHasher {
+  uint64 operator()(
+      const std::pair<CudnnRnnModelShapes, AlgorithmDesc>& to_hash) const {
+    auto& shapes = to_hash.first;
+    auto& algo_desc = to_hash.second;
+
+    uint64 hash =
+        HashList({shapes.num_layers, shapes.input_size, shapes.num_units,
+                  shapes.dir_count, shapes.batch_size});
+    hash = Hash64Combine(hash, algo_desc.hash());
+    return hash;
   }
 };
 
-// Utility class for using CudnnRnnModelShapes as a hash table key.
-struct CudnnRnnModelShapesComparator {
-  bool operator()(const CudnnRnnModelShapes& first,
-                  const CudnnRnnModelShapes& second) const {
-    return first.IsCompatibleWith(second);
+// Utility class for using CudnnRnnModelShapes and AlgorithmDesc pair as a hash
+// table key.
+struct CudnnRnnConfigComparator {
+  bool operator()(
+      const std::pair<CudnnRnnModelShapes, AlgorithmDesc>& lhs,
+      const std::pair<CudnnRnnModelShapes, AlgorithmDesc>& rhs) const {
+    return lhs.first.IsCompatibleWith(rhs.first) && lhs.second == rhs.second;
   }
 };
 
@@ -503,7 +605,7 @@ Status CreateForwardAndBackwardIODescriptors(
     std::unique_ptr<RnnStateTensorDescriptor>* state_desc,
     std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc) {
   StreamExecutor* executor = context->op_device_context()->stream()->parent();
-  ::perftools::gputools::dnn::DataType data_type = ToDataType<T>::value;
+  se::dnn::DataType data_type = ToDataType<T>::value;
 
   const TensorShape& input_shape = model_shapes.input_shape;
   const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
@@ -719,7 +821,7 @@ class CudnnRNNKernelCommon : public OpKernel {
   RnnDirectionMode rnn_direction_mode() const {
     return model_types_.rnn_direction_mode;
   }
-  CudnnModelTypes model_types() const { return model_types_; }
+  const CudnnModelTypes& model_types() const { return model_types_; }
   float dropout() const { return dropout_; }
   uint64 seed() { return (static_cast<uint64>(seed_) << 32) | seed2_; }
   bool ResetRndGenState() { return reset_rnd_gen_state_; }
@@ -755,9 +857,9 @@ class CudnnRNNKernelCommon : public OpKernel {
     // random number generator, therefore set state_allocator to nullptr.
     const AlgorithmConfig algo_config;
     auto rnn_desc_s = stream->parent()->createRnnDescriptor(
-        num_layers, num_units, input_size, input_mode, rnn_direction_mode(),
-        rnn_mode(), ToDataType<T>::value, algo_config, dropout(), seed(),
-        nullptr /* state_allocator */);
+        num_layers, num_units, input_size, /*batch_size=*/0, input_mode,
+        rnn_direction_mode(), rnn_mode(), ToDataType<T>::value, algo_config,
+        dropout(), seed(), /* state_allocator=*/nullptr);
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
     }
@@ -773,11 +875,12 @@ class CudnnRNNKernelCommon : public OpKernel {
                              ScratchAllocator* dropout_state_allocator,
                              std::unique_ptr<RnnDescriptor>* rnn_desc) {
     StreamExecutor* executor = context->op_device_context()->stream()->parent();
-    ::perftools::gputools::dnn::DataType data_type = ToDataType<T>::value;
+    se::dnn::DataType data_type = ToDataType<T>::value;
     auto rnn_desc_s = executor->createRnnDescriptor(
         model_shapes.num_layers, model_shapes.num_units,
-        model_shapes.input_size, input_mode, rnn_direction_mode(), rnn_mode(),
-        data_type, algo_config, dropout(), seed(), dropout_state_allocator);
+        model_shapes.input_size, model_shapes.batch_size, input_mode,
+        rnn_direction_mode(), rnn_mode(), data_type, algo_config, dropout(),
+        seed(), dropout_state_allocator);
     TF_RETURN_IF_ERROR(rnn_desc_s.status());
 
     *rnn_desc = rnn_desc_s.ConsumeValueOrDie();
@@ -785,8 +888,9 @@ class CudnnRNNKernelCommon : public OpKernel {
   }
 
   using RnnStateCache =
-      gtl::FlatMap<CudnnRnnModelShapes, RnnScratchSpace,
-                   CudnnRnnModelShapesHasher, CudnnRnnModelShapesComparator>;
+      gtl::FlatMap<std::pair<CudnnRnnModelShapes, AlgorithmDesc>,
+                   RnnScratchSpace, CudnnRnnConfigHasher,
+                   CudnnRnnConfigComparator>;
   // Returns a raw rnn descriptor pointer. The cache owns the rnn descriptor and
   // should outlive the returned pointer.
   template <typename T>
@@ -796,7 +900,8 @@ class CudnnRNNKernelCommon : public OpKernel {
                                 const AlgorithmConfig& algo_config,
                                 RnnStateCache* cache,
                                 RnnDescriptor** rnn_desc) {
-    RnnScratchSpace& rnn_state = (*cache)[model_shapes];
+    auto key = std::make_pair(model_shapes, algo_config.algorithm());
+    RnnScratchSpace& rnn_state = (*cache)[key];
     if (rnn_state.rnn_desc == nullptr || ResetRndGenState()) {
       CudnnRNNPersistentSpaceAllocator* dropout_state_allocator =
           new CudnnRNNPersistentSpaceAllocator(context);
@@ -825,7 +930,6 @@ class CudnnRNNKernelCommon : public OpKernel {
 template <typename T, typename Index>
 class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
  public:
-  typedef GPUDevice Device;
   explicit CudnnRNNParamsSizeOp(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {}
 
@@ -864,7 +968,6 @@ TF_CALL_double(REGISTER_GPU);
 template <typename T>
 class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
-  typedef GPUDevice Device;
   explicit CudnnRNNParamsToCanonical(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {
     OP_REQUIRES_OK(context, context->GetAttr("num_params", &num_params_));
@@ -999,7 +1102,6 @@ TF_CALL_double(REGISTER_GPU);
 template <typename T>
 class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
-  typedef GPUDevice Device;
   explicit CudnnRNNCanonicalToParams(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {}
 
@@ -1045,13 +1147,26 @@ TF_CALL_double(REGISTER_GPU);
 template <typename T>
 class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
-  typedef GPUDevice Device;
   explicit CudnnRNNForwardOp(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+
+    // Read debug env variables.
+    is_debug_mode_ = DebugCudnnRnn();
+    debug_cudnn_rnn_algo_ = DebugCudnnRnnAlgo();
+    debug_use_tensor_ops_ = DebugCudnnRnnUseTensorOps();
   }
 
   void Compute(OpKernelContext* context) override {
+    AlgorithmConfig algo_config;
+    ComputeAndReturnAlgorithm(context, &algo_config);
+  }
+
+ protected:
+  virtual void ComputeAndReturnAlgorithm(OpKernelContext* context,
+                                         AlgorithmConfig* output_algo_config) {
+    CHECK_NE(output_algo_config, nullptr);
+
     const Tensor* input = nullptr;
     const Tensor* input_h = nullptr;
     const Tensor* input_c = nullptr;
@@ -1071,7 +1186,6 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     OP_REQUIRES_OK(context, AllocateOutputs(context, model_shapes, &output,
                                             &output_h, &output_c));
 
-    AlgorithmConfig algo_config;
     // Creates a memory callback for the reserve_space. The memory lives in the
     // output of this kernel. And it will be fed into the backward pass when
     // needed.
@@ -1079,14 +1193,25 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     // Creates a memory callback for the workspace. The memory lives to the end
     // of this kernel calls.
     CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
+
+    if (is_debug_mode_) {
+      AlgorithmDesc algo_desc(debug_cudnn_rnn_algo_, debug_use_tensor_ops_);
+      output_algo_config->set_algorithm(algo_desc);
+    } else {
+      OP_REQUIRES_OK(context,
+                     MaybeAutoTune(context, model_shapes, input_mode, input,
+                                   input_h, input_c, params, output, output_h,
+                                   output_c, output_algo_config));
+    }
+
     Status launch_status;
     {
       mutex_lock l(mu_);
       RnnDescriptor* rnn_desc_ptr = nullptr;
       OP_REQUIRES_OK(
           context, GetCachedRnnDescriptor<T>(context, model_shapes, input_mode,
-                                             algo_config, &rnn_state_cache_,
-                                             &rnn_desc_ptr));
+                                             *output_algo_config,
+                                             &rnn_state_cache_, &rnn_desc_ptr));
       launch_status = DoForward<T>(
           context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
           input_c, params, is_training_, output, output_h, output_c,
@@ -1095,6 +1220,25 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     }
     OP_REQUIRES_OK(context, launch_status);
   }
+
+ protected:
+  virtual Status MaybeAutoTune(OpKernelContext* context,
+                               const CudnnRnnModelShapes& model_shapes,
+                               const RnnInputMode& input_mode,
+                               const Tensor* input, const Tensor* input_h,
+                               const Tensor* input_c, const Tensor* params,
+                               Tensor* output, Tensor* output_h,
+                               Tensor* output_c,
+                               AlgorithmConfig* best_algo_config) {
+    CHECK_NE(best_algo_config, nullptr);
+    *best_algo_config = AlgorithmConfig();
+    return Status::OK();
+  }
+
+  bool is_training() const { return is_training_; }
+  bool is_debug_mode_;
+  bool debug_use_tensor_ops_;
+  int64 debug_cudnn_rnn_algo_;
 
  private:
   Status AllocateOutputs(OpKernelContext* context,
@@ -1137,12 +1281,197 @@ TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_GPU
 
+template <typename T>
+class CudnnRNNForwardOpV2<GPUDevice, T>
+    : public CudnnRNNForwardOp<GPUDevice, T> {
+ private:
+  using CudnnRNNForwardOp<GPUDevice, T>::is_training;
+  using CudnnRNNKernelCommon::CreateRnnDescriptor;
+  using CudnnRNNKernelCommon::dropout;
+  using CudnnRNNKernelCommon::HasInputC;
+  using CudnnRNNKernelCommon::model_types;
+
+ public:
+  explicit CudnnRNNForwardOpV2(OpKernelConstruction* context)
+      : CudnnRNNForwardOp<GPUDevice, T>(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    AlgorithmConfig best_algo_config;
+    CudnnRNNForwardOp<GPUDevice, T>::ComputeAndReturnAlgorithm(
+        context, &best_algo_config);
+    if (!context->status().ok()) {
+      return;
+    }
+
+    Tensor* output_host_reserved = nullptr;
+    // output_host_reserved stores opaque info used for backprop when running
+    // in training mode. At present, it includes a serialization of the best
+    // AlgorithmDesc picked during rnn forward pass autotune.
+    // int8 algorithm_id
+    // int8 use_tensor_op
+    // If autotune is not enabled, the algorithm_id is
+    // stream_executor::dnn::kDefaultAlgorithm and use_tensor_op is false. If
+    // running in inference mode, the output_host_reserved is currently not
+    // populated.
+    if (is_training()) {
+      OP_REQUIRES_OK(context, context->allocate_output(4, TensorShape({2}),
+                                                       &output_host_reserved));
+      auto output_host_reserved_int8 = output_host_reserved->vec<int8>();
+      output_host_reserved_int8(0) = best_algo_config.algorithm().algo_id();
+      output_host_reserved_int8(1) =
+          best_algo_config.algorithm().tensor_ops_enabled();
+    } else {
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(4, {}, &output_host_reserved));
+    }
+  }
+
+ protected:
+  Status MaybeAutoTune(OpKernelContext* context,
+                       const CudnnRnnModelShapes& model_shapes,
+                       const RnnInputMode& input_mode, const Tensor* input,
+                       const Tensor* input_h, const Tensor* input_c,
+                       const Tensor* params, Tensor* output, Tensor* output_h,
+                       Tensor* output_c,
+                       AlgorithmConfig* algo_config) override {
+    CHECK_NE(algo_config, nullptr);
+    if (!CudnnRnnUseAutotune() || this->is_debug_mode_) {
+      *algo_config = AlgorithmConfig();
+      return Status::OK();
+    }
+
+    std::vector<AlgorithmDesc> algorithms;
+    auto* stream = context->op_device_context()->stream();
+    CHECK(stream->parent()->GetRnnAlgorithms(&algorithms));
+    if (algorithms.empty()) {
+      LOG(WARNING) << "No Rnn algorithm found";
+      return Status::OK();
+    }
+
+    const auto& modeltypes = model_types();
+    CudnnRnnParameters rnn_params(
+        model_shapes.num_layers, model_shapes.input_size,
+        model_shapes.num_units, model_shapes.seq_length,
+        model_shapes.batch_size, model_shapes.dir_count,
+        /*has_dropout=*/std::abs(dropout()) > 1e-8, is_training(),
+        modeltypes.rnn_mode, modeltypes.rnn_input_mode, input->dtype());
+
+    if (AutoTuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
+      return Status::OK();
+    }
+
+    // Create temp tensors when profiling backprop pass.
+    auto data_type = input->dtype();
+    Tensor output_backprop;
+    Tensor output_h_backprop;
+    Tensor output_c_backprop;
+    Tensor input_backprop;
+    Tensor input_h_backprop;
+    Tensor input_c_backprop;
+    Tensor params_backprop;
+    if (is_training()) {
+      TF_RETURN_IF_ERROR(context->allocate_temp(
+          data_type, model_shapes.output_shape, &output_backprop));
+      TF_RETURN_IF_ERROR(context->allocate_temp(
+          data_type, model_shapes.hidden_state_shape, &output_h_backprop));
+
+      TF_RETURN_IF_ERROR(
+          context->allocate_temp(data_type, params->shape(), &params_backprop));
+      TF_RETURN_IF_ERROR(context->allocate_temp(
+          data_type, model_shapes.input_shape, &input_backprop));
+      TF_RETURN_IF_ERROR(context->allocate_temp(
+          data_type, model_shapes.hidden_state_shape, &input_h_backprop));
+      if (HasInputC()) {
+        TF_RETURN_IF_ERROR(context->allocate_temp(
+            data_type, model_shapes.hidden_state_shape, &output_c_backprop));
+        TF_RETURN_IF_ERROR(context->allocate_temp(
+            data_type, model_shapes.hidden_state_shape, &input_c_backprop));
+      }
+    }
+    ProfileResult best_result;
+    for (auto& algo : algorithms) {
+      Status status;
+      ProfileResult final_profile_result;
+
+      ProfileResult fwd_profile_result;
+      ProfileResult bak_profile_result;
+
+      // RnnDescriptor is algorithm-dependent, thus not reusable.
+      std::unique_ptr<RnnDescriptor> rnn_desc;
+      // Use a temp scratch allocator for the random num generator.
+      CudnnRnnAllocatorInTemp<uint8> dropout_state_allocator(context);
+      if (!this->template CreateRnnDescriptor<T>(
+                   context, model_shapes, input_mode, AlgorithmConfig(algo),
+                   &dropout_state_allocator, &rnn_desc)
+               .ok()) {
+        continue;
+      }
+
+      // Again use temp scratch allocator during profiling.
+      CudnnRnnAllocatorInTemp<T> reserve_space_allocator(context);
+      CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
+      status = DoForward<T>(
+          context, *rnn_desc.get(), model_types(), model_shapes, input, input_h,
+          input_c, params, is_training(), output, output_h, output_c,
+          &reserve_space_allocator, &workspace_allocator, &fwd_profile_result);
+      if (!status.ok()) {
+        continue;
+      }
+
+      if (is_training()) {
+        // Get reserve space from the forward pass.
+        Tensor reserve_space = reserve_space_allocator.get_allocated_tensor(0);
+        status = DoBackward<T>(
+            context, *rnn_desc.get(), model_types(), model_shapes, input,
+            input_h, input_c, params, output, output_h, output_c,
+            &output_backprop, &output_h_backprop, &output_c_backprop,
+            &reserve_space, &input_backprop, &input_h_backprop,
+            &input_c_backprop, &params_backprop, &workspace_allocator,
+            &bak_profile_result);
+        if (!status.ok()) {
+          continue;
+        }
+        final_profile_result.set_elapsed_time_in_ms(
+            fwd_profile_result.elapsed_time_in_ms() +
+            bak_profile_result.elapsed_time_in_ms());
+      } else {
+        final_profile_result = fwd_profile_result;
+      }
+
+      auto total_time = final_profile_result.elapsed_time_in_ms();
+      VLOG(1) << "Profile Cudnn RNN algo " << algo.algo_id()
+              << " run time: " << total_time << " ms";
+      if (total_time < best_result.elapsed_time_in_ms()) {
+        best_result.set_elapsed_time_in_ms(total_time);
+        best_result.set_algorithm(algo);
+      }
+    }
+
+    if (!best_result.is_valid()) {
+      return Status(error::Code::INTERNAL, "No algorithm worked!");
+    }
+    algo_config->set_algorithm(best_result.algorithm());
+    AutoTuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
+    return Status::OK();
+  }
+};
+
+#define REGISTER_GPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNV2")               \
+                              .Device(DEVICE_GPU)          \
+                              .HostMemory("host_reserved") \
+                              .TypeConstraint<T>("T"),     \
+                          CudnnRNNForwardOpV2<GPUDevice, T>);
+
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
+
 // Run the backward operation of the RNN model.
 template <typename T>
 class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
-  typedef GPUDevice Device;
-
   explicit CudnnRNNBackwardOp(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {}
 
@@ -1185,15 +1514,16 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     // Creates a memory callback for the workspace. The memory lives to the end
     // of this kernel calls.
     CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
-    const AlgorithmConfig default_algo_config;
+    AlgorithmConfig algo_config;
+    OP_REQUIRES_OK(context, GetAlgorithm(context, &algo_config));
     Status launch_status;
     {
       mutex_lock l(mu_);
       RnnDescriptor* rnn_desc_ptr = nullptr;
       OP_REQUIRES_OK(
           context, GetCachedRnnDescriptor<T>(context, model_shapes, input_mode,
-                                             default_algo_config,
-                                             &rnn_state_cache_, &rnn_desc_ptr));
+                                             algo_config, &rnn_state_cache_,
+                                             &rnn_desc_ptr));
       launch_status = DoBackward<T>(
           context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
           input_c, params, output, output_h, output_c, output_backprop,
@@ -1202,6 +1532,14 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
           &workspace_allocator, /*output_profile_result=*/nullptr);
     }
     OP_REQUIRES_OK(context, launch_status);
+  }
+
+ protected:
+  virtual Status GetAlgorithm(OpKernelContext* context,
+                              AlgorithmConfig* algo_config) {
+    CHECK_NE(algo_config, nullptr);
+    *algo_config = AlgorithmConfig();
+    return Status::OK();
   }
 
  private:
@@ -1296,6 +1634,39 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
   REGISTER_KERNEL_BUILDER(                                                \
       Name("CudnnRNNBackprop").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       CudnnRNNBackwardOp<GPUDevice, T>);
+
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
+
+template <typename T>
+class CudnnRNNBackwardOpV2<GPUDevice, T>
+    : public CudnnRNNBackwardOp<GPUDevice, T> {
+ public:
+  explicit CudnnRNNBackwardOpV2(OpKernelConstruction* context)
+      : CudnnRNNBackwardOp<GPUDevice, T>(context) {}
+
+ protected:
+  Status GetAlgorithm(OpKernelContext* context,
+                      AlgorithmConfig* algo_config) override {
+    CHECK_NE(algo_config, nullptr);
+    const Tensor* host_reserved = nullptr;
+    TF_RETURN_IF_ERROR(context->input("host_reserved", &host_reserved));
+
+    auto host_reserved_int8 = host_reserved->vec<int8>();
+    const AlgorithmDesc algo_desc(host_reserved_int8(0), host_reserved_int8(1));
+    algo_config->set_algorithm(algo_desc);
+    return Status::OK();
+  }
+};
+
+#define REGISTER_GPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNBackpropV2")       \
+                              .Device(DEVICE_GPU)          \
+                              .HostMemory("host_reserved") \
+                              .TypeConstraint<T>("T"),     \
+                          CudnnRNNBackwardOpV2<GPUDevice, T>);
 
 TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);

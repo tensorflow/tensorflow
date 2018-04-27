@@ -19,8 +19,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace se = ::perftools::gputools;
-
 Status MemzeroThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   se::DeviceMemoryBase dest_data = buffer_allocations.GetDeviceAddress(dest_);

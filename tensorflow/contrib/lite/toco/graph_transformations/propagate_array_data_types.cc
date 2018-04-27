@@ -124,6 +124,15 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       SetDataTypeForAllOutputs(model, op, rand_op->dtype);
       break;
     }
+    case OperatorType::kTopK_V2: {
+      // topk(values: T, k: int32) -> values: T, indices: int32
+      CHECK_EQ(op->inputs.size(), 2);
+      CHECK_EQ(op->outputs.size(), 2);
+      CHECK(model->GetArray(op->inputs[1]).data_type == ArrayDataType::kInt32);
+      model->GetArray(op->outputs[0]).data_type = model->GetArray(op->inputs[0]).data_type;
+      model->GetArray(op->outputs[1]).data_type = ArrayDataType ::kInt32;
+      break;
+    }
     case OperatorType::kTensorFlowUnsupported: {
       auto* unsupported_op = static_cast<TensorFlowUnsupportedOperator*>(op);
       // Some output tensors from the op could be eliminated by optimization.

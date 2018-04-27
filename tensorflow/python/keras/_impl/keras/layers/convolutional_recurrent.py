@@ -28,11 +28,11 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.layers.recurrent import _generate_dropout_mask
 from tensorflow.python.keras._impl.keras.layers.recurrent import RNN
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils import generic_utils
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -168,7 +168,7 @@ class ConvRNN2D(RNN):
     self.input_spec = [InputSpec(ndim=5)]
     self.states = None
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
@@ -209,7 +209,7 @@ class ConvRNN2D(RNN):
                          for _ in range(2)]
     return output_shape
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Note input_shape will be list of shapes of initial states and
     # constants if these are passed in __call__.

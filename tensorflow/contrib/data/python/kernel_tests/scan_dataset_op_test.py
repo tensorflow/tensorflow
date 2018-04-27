@@ -24,9 +24,11 @@ import numpy as np
 from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import scan_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -57,19 +59,24 @@ class ScanDatasetTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(next_element)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testFibonacci(self):
     iterator = dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
         scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1]))
     ).make_one_shot_iterator()
-    next_element = iterator.get_next()
 
-    with self.test_session() as sess:
-      self.assertEqual(1, sess.run(next_element))
-      self.assertEqual(1, sess.run(next_element))
-      self.assertEqual(2, sess.run(next_element))
-      self.assertEqual(3, sess.run(next_element))
-      self.assertEqual(5, sess.run(next_element))
-      self.assertEqual(8, sess.run(next_element))
+    if context.executing_eagerly():
+      next_element = iterator.get_next
+    else:
+      get_next = iterator.get_next()
+      next_element = lambda: get_next
+
+    self.assertEqual(1, self.evaluate(next_element()))
+    self.assertEqual(1, self.evaluate(next_element()))
+    self.assertEqual(2, self.evaluate(next_element()))
+    self.assertEqual(3, self.evaluate(next_element()))
+    self.assertEqual(5, self.evaluate(next_element()))
+    self.assertEqual(8, self.evaluate(next_element()))
 
   def testChangingStateShape(self):
     # Test the fixed-point shape invariant calculations: start with

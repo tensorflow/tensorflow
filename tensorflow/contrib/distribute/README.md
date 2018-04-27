@@ -131,8 +131,6 @@ adjusting your learning rate or batch size according to the number of GPUs.
 We are working on addressing this limitation by splitting each batch across GPUs
 instead.
 * PartitionedVariables are not supported yet.
-* Input pipelines with Datasets that capture stateful objects and rely on
-`make_initializable_iterator` are not supported yet.
 
 ## What's next?
 
