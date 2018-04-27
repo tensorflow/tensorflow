@@ -44,8 +44,3 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.rnn_cell_impl import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = []
-
-remove_undocumented(__name__, _allowed_symbols)

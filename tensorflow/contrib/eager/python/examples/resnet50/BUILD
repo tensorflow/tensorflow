@@ -14,6 +14,17 @@ py_library(
     ],
 )
 
+py_library(
+    name = "resnet50_test_lib",
+    srcs = ["resnet50_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":resnet50",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/eager/python:tfe",
+    ],
+)
+
 cuda_py_test(
     name = "resnet50_test",
     size = "large",

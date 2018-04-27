@@ -935,9 +935,9 @@ def stack(values, axis=0, name="stack"):
     except (TypeError, ValueError):
       pass  # Input list contains non-constant tensors
 
-  value_shape = ops.convert_to_tensor(values[0], name=name).get_shape()
-  if value_shape.ndims is not None:
-    expanded_num_dims = value_shape.ndims + 1
+  value_shape = ops.convert_to_tensor(values[0], name=name)._shape_tuple()  # pylint: disable=protected-access
+  if value_shape is not None:
+    expanded_num_dims = len(value_shape) + 1
     if axis < -expanded_num_dims or axis >= expanded_num_dims:
       raise ValueError("axis = %d not in [%d, %d)" % (axis, -expanded_num_dims,
                                                       expanded_num_dims))

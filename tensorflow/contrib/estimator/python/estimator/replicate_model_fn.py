@@ -47,8 +47,12 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_setter as device_setter_lib
 from tensorflow.python.training import optimizer as optimizer_lib
+from tensorflow.python.util import deprecation
 
 
+@deprecation.deprecated(
+    '2018-05-31',
+    'Please use `tf.contrib.distribute.MirroredStrategy` instead.')
 def replicate_model_fn(model_fn,
                        loss_reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
                        devices=None):
@@ -255,6 +259,9 @@ class TowerOptimizer(optimizer_lib.Optimizer):
 
   COLLECTION_FOR_GRAPH_STATES = 'replicate_model_fn_graph_states'
 
+  @deprecation.deprecated(
+      '2018-05-31',
+      'Please use `tf.contrib.distribute.MirroredStrategy` instead.')
   def __init__(self, optimizer_or_optimizer_fn):
     """Wrap an existing optimizer for gathering gradients across towers.
 

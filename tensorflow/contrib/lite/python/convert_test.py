@@ -17,8 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.lite.python import lite
-from tensorflow.contrib.lite.python.op_hint import _tensor_name_base as _tensor_name_base
+from tensorflow.contrib.lite.python import convert
+from tensorflow.contrib.lite.python import lite_constants
+from tensorflow.contrib.lite.python import op_hint
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -29,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class LiteTest(test_util.TensorFlowTestCase):
+class ConvertTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
     in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
@@ -37,13 +38,13 @@ class LiteTest(test_util.TensorFlowTestCase):
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
     # Try running on valid graph
-    result = lite.toco_convert(sess.graph_def, [in_tensor], [out_tensor])
+    result = convert.toco_convert(sess.graph_def, [in_tensor], [out_tensor])
     self.assertTrue(result)
     # TODO(aselle): remove tests that fail (we must get TOCO to not fatal
     # all the time).
     # Try running on identity graph (known fail)
     # with self.assertRaisesRegexp(RuntimeError, "!model->operators.empty()"):
-    #   result = lite.toco_convert(sess.graph_def, [in_tensor], [in_tensor])
+    #   result = convert.toco_convert(sess.graph_def, [in_tensor], [in_tensor])
 
   def testQuantization(self):
     in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
@@ -51,13 +52,14 @@ class LiteTest(test_util.TensorFlowTestCase):
     out_tensor = array_ops.fake_quant_with_min_max_args(in_tensor + in_tensor,
                                                         min=0., max=1.)
     sess = session.Session()
-    result = lite.toco_convert(sess.graph_def, [in_tensor], [out_tensor],
-                               inference_type=lite.QUANTIZED_UINT8,
-                               quantized_input_stats=[(0., 1.)])
+    result = convert.toco_convert(
+        sess.graph_def, [in_tensor], [out_tensor],
+        inference_type=lite_constants.QUANTIZED_UINT8,
+        quantized_input_stats=[(0., 1.)])
     self.assertTrue(result)
 
 
-class LiteTestOpHint(test_util.TensorFlowTestCase):
+class ConvertTestOpHint(test_util.TensorFlowTestCase):
   """Test the hint to stub functionality."""
 
   def _getGraphOpTypes(self, graphdef, output_nodes):
@@ -99,7 +101,7 @@ class LiteTestOpHint(test_util.TensorFlowTestCase):
     swish_scale = array_ops.constant(1.0)
 
     def _swish(input_tensor, scale):
-      custom = lite.OpHint("cool_activation")
+      custom = op_hint.OpHint("cool_activation")
       input_tensor, scale = custom.add_inputs(input_tensor, scale)
       output = math_ops.sigmoid(input_tensor) * input_tensor * scale
       output, = custom.add_outputs(output)
@@ -111,11 +113,12 @@ class LiteTestOpHint(test_util.TensorFlowTestCase):
       # and 1 final output).
       self.assertEqual(self._countIdentities(sess.graph_def.node), 4)
 
-      stubbed_graphdef = lite.convert_op_hints_to_stubs(sess)
+      stubbed_graphdef = op_hint.convert_op_hints_to_stubs(sess)
 
       self.assertCountEqual(
           self._getGraphOpTypes(
-              stubbed_graphdef, output_nodes=[_tensor_name_base(output)]),
+              stubbed_graphdef,
+              output_nodes=[op_hint._tensor_name_base(output)]),
           ["cool_activation", "Const", "Identity"])
 
   def testScaleAndBiasAndIdentity(self):
@@ -125,7 +128,7 @@ class LiteTestOpHint(test_util.TensorFlowTestCase):
     b = array_ops.constant([4., 5.])
 
     def _scaled_and_bias_and_identity(a, x, b):
-      custom = lite.OpHint("scale_and_bias_and_identity")
+      custom = op_hint.OpHint("scale_and_bias_and_identity")
       a, x, b = custom.add_inputs(a, x, b)
       return custom.add_outputs(a * x + b, x)
     output = array_ops.identity(_scaled_and_bias_and_identity(a, x, b),
@@ -136,11 +139,12 @@ class LiteTestOpHint(test_util.TensorFlowTestCase):
       # +1 for the final output
       self.assertEqual(self._countIdentities(sess.graph_def.node), 6)
 
-      stubbed_graphdef = lite.convert_op_hints_to_stubs(sess)
+      stubbed_graphdef = op_hint.convert_op_hints_to_stubs(sess)
 
       self.assertCountEqual(
           self._getGraphOpTypes(
-              stubbed_graphdef, output_nodes=[_tensor_name_base(output)]),
+              stubbed_graphdef,
+              output_nodes=[op_hint._tensor_name_base(output)]),
           ["scale_and_bias_and_identity", "Const", "Identity", "Pack"])
 
   def testTwoFunctions(self):
@@ -148,7 +152,7 @@ class LiteTestOpHint(test_util.TensorFlowTestCase):
     a = array_ops.constant([1.])
     b = array_ops.constant([1.])
     def _double_values(x):
-      custom = lite.OpHint("add_test")
+      custom = op_hint.OpHint("add_test")
       x = custom.add_inputs(x)
       output = math_ops.multiply(x, x)
       output, = custom.add_outputs(output)
@@ -160,10 +164,11 @@ class LiteTestOpHint(test_util.TensorFlowTestCase):
       # make sure one identity for each input (2) and output (2) => 2 + 2
       # +1 for the final output
       self.assertEqual(self._countIdentities(sess.graph_def.node), 5)
-      stubbed_graphdef = lite.convert_op_hints_to_stubs(sess)
+      stubbed_graphdef = op_hint.convert_op_hints_to_stubs(sess)
       self.assertCountEqual(
           self._getGraphOpTypes(
-              stubbed_graphdef, output_nodes=[_tensor_name_base(output)]),
+              stubbed_graphdef,
+              output_nodes=[op_hint._tensor_name_base(output)]),
           ["add_test", "Const", "Identity", "Add"])
 
 

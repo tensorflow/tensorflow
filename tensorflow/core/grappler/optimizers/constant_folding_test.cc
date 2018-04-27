@@ -520,6 +520,25 @@ TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_UnknownOutputShape) {
       EXPECT_EQ("Mul", node.op()) << node.name();
     }
   }
+
+  const std::vector<string> fetch = {"mul_0", "mul_4", "mul_8"};
+  auto x_known_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto x_partially_unknown_t =
+      GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 4}));
+  auto x_unknown_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({5, 7}));
+  auto expected_tensors =
+      EvaluateNodes(item.graph, fetch,
+                    {{"x_known", x_known_t},
+                     {"x_partially_unknown", x_partially_unknown_t},
+                     {"x_unknown", x_unknown_t}});
+  EXPECT_EQ(fetch.size(), expected_tensors.size());
+  auto tensors = EvaluateNodes(output, fetch,
+                               {{"x_known", x_known_t},
+                                {"x_partially_unknown", x_partially_unknown_t},
+                                {"x_unknown", x_unknown_t}});
+  EXPECT_EQ(fetch.size(), tensors.size());
+  for (int i = 0; i < tensors.size(); i++)
+    test::ExpectTensorNear<float>(expected_tensors[i], tensors[i], 1e-5);
 }
 
 TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_KnownOutputShape) {
@@ -572,6 +591,20 @@ TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_KnownOutputShape) {
       EXPECT_TRUE(IsControlInput(node.input(1)));
     }
   }
+  const std::vector<string> fetch = {"addn1"};
+  auto x_partially_unknown_t =
+      GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto x_unknown_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto expected_tensors =
+      EvaluateNodes(item.graph, fetch,
+                    {{"x_partially_unknown", x_partially_unknown_t},
+                     {"x_unknown", x_unknown_t}});
+  EXPECT_EQ(1, expected_tensors.size());
+  auto tensors = EvaluateNodes(output, fetch,
+                               {{"x_partially_unknown", x_partially_unknown_t},
+                                {"x_unknown", x_unknown_t}});
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(expected_tensors[0], tensors[0], 1e-5);
 }
 
 TEST_F(ConstantFoldingTest, CreateConstNodes) {
@@ -1064,6 +1097,20 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN) {
     }
   }
   EXPECT_EQ(9, found);
+
+  auto v1_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 4}));
+  auto v2_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({5, 6}));
+  auto v3_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({4, 6}));
+  const std::vector<string> fetch_nodes = {"i1a", "i1b", "i2a", "i2b",
+                                           "i2c", "i3a", "i3b"};
+  auto tensors_expected = EvaluateNodes(
+      item.graph, fetch_nodes, {{"v1", v1_t}, {"v2", v2_t}, {"v3", v3_t}});
+  EXPECT_EQ(fetch_nodes.size(), tensors_expected.size());
+  auto tensors = EvaluateNodes(output, fetch_nodes,
+                               {{"v1", v1_t}, {"v2", v2_t}, {"v3", v3_t}});
+  EXPECT_EQ(fetch_nodes.size(), tensors.size());
+  for (int i = 0; i < fetch_nodes.size(); i++)
+    test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
 }
 
 TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN_MultipleOutputs) {
@@ -1930,6 +1977,14 @@ TEST_F(ConstantFoldingTest, Packing) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
+  const std::vector<string> fetch_nodes = {"i1", "i2"};
+  auto tensors_expected = EvaluateNodes(item.graph, fetch_nodes);
+  EXPECT_EQ(fetch_nodes.size(), tensors_expected.size());
+  auto tensors = EvaluateNodes(output, fetch_nodes);
+  EXPECT_EQ(fetch_nodes.size(), tensors.size());
+  for (int i = 0; i < fetch_nodes.size(); i++)
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-5);
+
   // Make sure that the representation of the folded constant is space
   // efficient: in particular, the whole message should be smaller than 8k
   // (the size needed to naively encode 1000 floats folded twice).
@@ -1964,6 +2019,13 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
+
+  std::vector<string> fetch_nodes = {"o1", "o2", "p1", "p2"};
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 5}));
+  auto g_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1}));
+  auto tensors_expected =
+      EvaluateNodes(item.graph, fetch_nodes, {{"a", a_t}, {"g", g_t}});
+  EXPECT_EQ(fetch_nodes.size(), tensors_expected.size());
 
   // Run a second time to make sure the optimization is idempotent.
   item.graph.Swap(&output);
@@ -2005,6 +2067,11 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
     }
   }
   EXPECT_EQ(6, found);
+
+  auto tensors = EvaluateNodes(output, fetch_nodes, {{"a", a_t}, {"g", g_t}});
+  EXPECT_EQ(fetch_nodes.size(), tensors.size());
+  for (int i = 0; i < fetch_nodes.size(); i++)
+    test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
 }
 
 TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs_InfiniteLoop) {
@@ -2023,6 +2090,11 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs_InfiniteLoop) {
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  std::vector<string> fetch_nodes = {"o1", "o2"};
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto tensors_expected = EvaluateNodes(item.graph, fetch_nodes, {{"a", a_t}});
+  EXPECT_EQ(fetch_nodes.size(), tensors_expected.size());
 
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
@@ -2078,6 +2150,10 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs_InfiniteLoop) {
     }
   }
   EXPECT_EQ(7, found);
+  auto tensors = EvaluateNodes(output, fetch_nodes, {{"a", a_t}});
+  EXPECT_EQ(fetch_nodes.size(), tensors.size());
+  for (int i = 0; i < fetch_nodes.size(); i++)
+    test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
 }
 
 TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
@@ -2452,7 +2528,6 @@ TEST_F(ConstantFoldingTest, PartialFolding_IdentityN) {
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
-  LOG(INFO) << output.DebugString();
   TF_EXPECT_OK(status);
   EXPECT_EQ(8, output.node_size());
   for (const auto& node : output.node()) {
@@ -2539,6 +2614,8 @@ TEST_F(ConstantFoldingTest, TrivialPack) {
   EXPECT_EQ(tensors_expected[0].shape(), tensors[0].shape());
 }
 
+// The test does not evalute the optimized and original graphs to check if their
+// outputs are the same. See b/78233179.
 TEST_F(ConstantFoldingTest, Enter) {
   GrapplerItem item;
   AttrValue frame_name;
@@ -2555,7 +2632,7 @@ TEST_F(ConstantFoldingTest, Enter) {
   value_tensor.AsProtoTensorContent(value.mutable_tensor());
 
   GraphDef& graph = item.graph;
-  AddNode("x", "Placeholder", {}, {{"T", type}}, &graph);
+  AddNode("x", "Placeholder", {}, {{"dtype", type}}, &graph);
   AddNode("c1", "Const", {"^x"}, {{"value", value}, {"dtype", type}}, &graph);
   AddNode("enter1", "Enter", {"x"},
           {{"T", type},

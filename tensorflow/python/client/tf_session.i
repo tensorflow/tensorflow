@@ -458,7 +458,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 }
 
 // Override default py3 behavior of attempting to encode into Unicode.
-%typemap(out) std::string tensorflow::ResourceHandleShapeAndType {
+%typemap(out) std::string tensorflow::GetResourceHandleShapeAndType {
   $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }
 

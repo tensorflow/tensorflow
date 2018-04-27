@@ -532,8 +532,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   const HloModuleConfig& hlo_module_config_;
 
-  const bool parallel_cpu_backend_;
-
   bool is_top_level_computation_;
 
   TargetMachineFeatures target_machine_features_;

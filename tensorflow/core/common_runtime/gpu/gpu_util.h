@@ -27,10 +27,6 @@ namespace tensorflow {
 class RecvTensorResponse;
 class TensorProto;
 
-// TODO(b/77980417): Remove this and use the regular tensorflow::se alias once
-// that's available.
-namespace gpu = ::stream_executor;
-
 class GPUUtil {
  public:
   // "tensor" is GPU-local.  "dev" is the hosting GPU.
@@ -74,10 +70,9 @@ class GPUUtil {
   // NOTE: will be removed soon, see StreamExecutorUtil::AsDeviceMemory
   // instead.
   template <typename T>
-  static perftools::gputools::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
+  static se::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
     T* ptr = reinterpret_cast<T*>(const_cast<void*>(DMAHelper::base(&t)));
-    return perftools::gputools::DeviceMemory<T>(
-        perftools::gputools::DeviceMemoryBase(ptr, t.TotalBytes()));
+    return se::DeviceMemory<T>(se::DeviceMemoryBase(ptr, t.TotalBytes()));
   }
 
   // Computes a checksum over the contents of "tensor", which is allocated

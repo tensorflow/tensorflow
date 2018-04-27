@@ -35,7 +35,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
-using perftools::gputools::dnn::DimIndex;
+using stream_executor::dnn::DimIndex;
 #endif
 
 namespace tensorflow {
@@ -468,7 +468,7 @@ struct Conv3dBackwardDataAutoTuneGroup {
   static string name() { return "Conv3dBwdData"; }
 };
 typedef AutoTuneSingleton<Conv3dBackwardDataAutoTuneGroup, ConvParameters,
-                          perftools::gputools::dnn::AlgorithmConfig>
+                          se::dnn::AlgorithmConfig>
 
     AutoTuneConv3dBwdData;
 template <typename T>
@@ -554,8 +554,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       auto c_ptr = AsDeviceMemory(in_backprop->template flat<T>().data(),
                                   in_backprop->template flat<T>().size());
 
-      auto transpose = perftools::gputools::blas::Transpose::kTranspose;
-      auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+      auto transpose = se::blas::Transpose::kTranspose;
+      auto no_transpose = se::blas::Transpose::kNoTranspose;
 
       bool blas_launch_status =
           stream
@@ -582,8 +582,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       auto c_ptr = AsDeviceMemory(in_backprop->template flat<T>().data(),
                                   in_backprop->template flat<T>().size());
 
-      auto transpose = perftools::gputools::blas::Transpose::kTranspose;
-      auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+      auto transpose = se::blas::Transpose::kTranspose;
+      auto no_transpose = se::blas::Transpose::kNoTranspose;
 
       bool blas_launch_status =
           stream
@@ -629,27 +629,27 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     CHECK(padding_rows >= 0 && padding_cols >= 0 && padding_planes >= 0)
         << "Negative paddings: (" << padding_rows << ", " << padding_cols
         << ", " << padding_planes << ")";
-    perftools::gputools::dnn::BatchDescriptor input_desc(3);
+    se::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(batch)
         .set_spatial_dim(DimIndex::X, compatible_input_shape.dim_size(4))
         .set_spatial_dim(DimIndex::Y, compatible_input_shape.dim_size(3))
         .set_spatial_dim(DimIndex::Z, compatible_input_shape.dim_size(2))
         .set_feature_map_count(in_depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::BatchDescriptor output_desc(3);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+    se::dnn::BatchDescriptor output_desc(3);
     output_desc.set_count(batch)
         .set_spatial_dim(DimIndex::X, output_cols)
         .set_spatial_dim(DimIndex::Y, output_rows)
         .set_spatial_dim(DimIndex::Z, output_planes)
         .set_feature_map_count(out_depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::FilterDescriptor filter_desc(3);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+    se::dnn::FilterDescriptor filter_desc(3);
     filter_desc.set_spatial_dim(DimIndex::X, filter_size[2])
         .set_spatial_dim(DimIndex::Y, filter_size[1])
         .set_spatial_dim(DimIndex::Z, filter_size[0])
         .set_input_feature_map_count(in_depth)
         .set_output_feature_map_count(out_depth);
-    perftools::gputools::dnn::ConvolutionDescriptor conv_desc(3);
+    se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
         .set_dilation_rate(DimIndex::Y, dilations[1])
         .set_dilation_rate(DimIndex::Z, dilations[0])
@@ -725,9 +725,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         device_id,
     };
 
-    using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmDesc;
-    using perftools::gputools::dnn::ProfileResult;
+    using se::dnn::AlgorithmConfig;
+    using se::dnn::AlgorithmDesc;
+    using se::dnn::ProfileResult;
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
@@ -839,7 +839,7 @@ struct Conv3dBackwardFilterAutoTuneGroup {
   static string name() { return "Conv3dBwdFilter"; }
 };
 typedef AutoTuneSingleton<Conv3dBackwardFilterAutoTuneGroup, ConvParameters,
-                          perftools::gputools::dnn::AlgorithmConfig>
+                          se::dnn::AlgorithmConfig>
     AutoTuneConv3dBwdFilter;
 
 template <typename T>
@@ -941,9 +941,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
       bool blas_launch_status =
           stream
-              ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
-                             perftools::gputools::blas::Transpose::kTranspose,
-                             n, m, k, 1.0f, a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
+              ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                             se::blas::Transpose::kTranspose, n, m, k, 1.0f,
+                             a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -967,9 +967,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
       bool blas_launch_status =
           stream
-              ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
-                             perftools::gputools::blas::Transpose::kTranspose,
-                             n, m, k, 1.0f, b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
+              ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                             se::blas::Transpose::kTranspose, n, m, k, 1.0f,
+                             b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -1014,7 +1014,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     CHECK(padding_rows >= 0 && padding_cols >= 0 && padding_planes >= 0)
         << "Negative paddings: (" << padding_rows << ", " << padding_cols
         << ", " << padding_planes << ")";
-    perftools::gputools::dnn::BatchDescriptor input_desc(3);
+    se::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(batch)
         .set_spatial_dim(DimIndex::X,
                          GetTensorDim(compatible_input, data_format_, '2'))
@@ -1023,21 +1023,21 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         .set_spatial_dim(DimIndex::Z,
                          GetTensorDim(compatible_input, data_format_, '0'))
         .set_feature_map_count(in_depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::BatchDescriptor output_desc(3);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+    se::dnn::BatchDescriptor output_desc(3);
     output_desc.set_count(batch)
         .set_spatial_dim(DimIndex::X, output_cols)
         .set_spatial_dim(DimIndex::Y, output_rows)
         .set_spatial_dim(DimIndex::Z, output_planes)
         .set_feature_map_count(out_depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::FilterDescriptor filter_desc(3);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+    se::dnn::FilterDescriptor filter_desc(3);
     filter_desc.set_spatial_dim(DimIndex::X, filter_size[2])
         .set_spatial_dim(DimIndex::Y, filter_size[1])
         .set_spatial_dim(DimIndex::Z, filter_size[0])
         .set_input_feature_map_count(in_depth)
         .set_output_feature_map_count(out_depth);
-    perftools::gputools::dnn::ConvolutionDescriptor conv_desc(3);
+    se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
         .set_dilation_rate(DimIndex::Y, dilations[1])
         .set_dilation_rate(DimIndex::Z, dilations[0])
@@ -1121,9 +1121,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         device_id,
     };
 
-    using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmDesc;
-    using perftools::gputools::dnn::ProfileResult;
+    using se::dnn::AlgorithmConfig;
+    using se::dnn::AlgorithmDesc;
+    using se::dnn::ProfileResult;
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {

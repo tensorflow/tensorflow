@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         libcurl3-dev \
         libfreetype6-dev \
+        libhdf5-serial-dev \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
@@ -28,9 +29,12 @@ RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py
 
 RUN pip --no-cache-dir install \
+        Pillow \
+        h5py \
         ipykernel \
         jupyter \
         matplotlib \
+        mock \
         numpy \
         scipy \
         sklearn \
