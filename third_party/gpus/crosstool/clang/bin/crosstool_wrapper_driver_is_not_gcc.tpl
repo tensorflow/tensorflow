@@ -167,7 +167,7 @@ def InvokeNvcc(argv, log=False):
   undefines = ''.join([' -U' + define for define in undefines])
   std_options = GetOptionValue(argv, 'std')
   # currently only c++11 is supported by Cuda 7.0 std argument
-  nvcc_allowed_std_options = ["c++11"]
+  nvcc_allowed_std_options = ["c++11","c++14"]
   std_options = ''.join([' -std=' + define
       for define in std_options if define in nvcc_allowed_std_options])
 

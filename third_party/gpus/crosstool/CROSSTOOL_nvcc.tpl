@@ -51,9 +51,9 @@ toolchain {
   # path, combined with the rest of our Bazel configuration causes our
   # compilation to use those files.
   tool_path { name: "gcc" path: "clang/bin/crosstool_wrapper_driver_is_not_gcc" }
-  # Use "-std=c++11" for nvcc. For consistency, force both the host compiler
-  # and the device compiler to use "-std=c++11".
-  cxx_flag: "-std=c++11"
+  # Use "-std=c++14" for nvcc. For consistency, force both the host compiler
+  # and the device compiler to use "-std=c++14".
+  cxx_flag: "-std=c++14"
   linker_flag: "-Wl,-no-as-needed"
   linker_flag: "-lstdc++"
   linker_flag: "-B/usr/bin/"
