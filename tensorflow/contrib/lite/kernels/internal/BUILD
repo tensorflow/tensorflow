@@ -289,6 +289,7 @@ cc_library(
         "reference/portable_tensor_utils.h",
     ],
     deps = [
+        ":round",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "//tensorflow/contrib/lite/kernels:op_macros",
@@ -310,6 +311,7 @@ cc_library(
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
+        ":round",
         ":types",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
