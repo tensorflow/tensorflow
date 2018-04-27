@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """A Dual Coordinate Ascent optimizer library for training fast linear models.
-
-@@sdca_optimizer
-@@sdca_fprint
-@@sdca_shrink_l1
 """
 
 # pylint: disable=g-bad-name

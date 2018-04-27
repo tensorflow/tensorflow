@@ -730,7 +730,7 @@ class GradSliceChecker(object):
     analytic_grad2 = 2 * slice_val
 
     dy = variables.Variable(
-        array_ops.ones(shape=slice_var.get_shape(), dtype=dtypes.int32))
+        array_ops.ones(shape=slice_var.get_shape(), dtype=dtypes.float32))
     assign = dy.assign(slice_var)
     slice_val_grad, = gradients_impl.gradients(slice_val, self.var, grad_ys=dy)
     slice_val_grad2, = gradients_impl.gradients(
@@ -755,7 +755,8 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
   def testGradient(self):
     with self.test_session(use_gpu=True) as sess:
       var = variables.Variable(
-          array_ops.reshape(math_ops.range(1, 97, 1), shape=(6, 4, 4)))
+          array_ops.reshape(
+              math_ops.range(1, 97, 1, dtype=dtypes.float32), shape=(6, 4, 4)))
       init = variables.global_variables_initializer()
       sess.run(init)
 
@@ -774,7 +775,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
 
   def testGradientZero(self):
     with self.test_session(use_gpu=True) as sess:
-      var = variables.Variable(8)
+      var = variables.Variable(8.)
       init = variables.global_variables_initializer()
       sess.run(init)
       grad = GradSliceChecker(self, sess, var, np.array(8))
@@ -782,11 +783,11 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
 
   def testInt64Indices(self):
     with self.test_session(use_gpu=True) as sess:
-      a = math_ops.range(3)
+      a = math_ops.range(3, dtype=dtypes.float32)
       index = constant_op.constant(1, dtype=dtypes.int64)
-      b = 2 * a[index]
+      b = 2. * a[index]
       grad, = gradients_impl.gradients(b, a)
-      self.assertAllEqual(sess.run(grad), [0, 2, 0])
+      self.assertAllEqual(sess.run(grad), [0., 2., 0.])
 
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):

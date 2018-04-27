@@ -62,9 +62,6 @@ from tensorflow.python.keras._impl.keras.layers.convolutional import Cropping1D
 from tensorflow.python.keras._impl.keras.layers.convolutional import Cropping2D
 from tensorflow.python.keras._impl.keras.layers.convolutional import Cropping3D
 
-# Convolutional-recurrent layers.
-from tensorflow.python.keras._impl.keras.layers.convolutional_recurrent import ConvLSTM2D
-
 # Core layers.
 from tensorflow.python.keras._impl.keras.layers.core import Masking
 from tensorflow.python.keras._impl.keras.layers.core import Dropout
@@ -146,6 +143,13 @@ from tensorflow.python.keras._impl.keras.layers.recurrent import LSTMCell
 from tensorflow.python.keras._impl.keras.layers.recurrent import SimpleRNN
 from tensorflow.python.keras._impl.keras.layers.recurrent import GRU
 from tensorflow.python.keras._impl.keras.layers.recurrent import LSTM
+
+# Convolutional-recurrent layers.
+from tensorflow.python.keras._impl.keras.layers.convolutional_recurrent import ConvLSTM2D
+
+# CuDNN recurrent layers.
+from tensorflow.python.keras._impl.keras.layers.cudnn_recurrent import CuDNNLSTM
+from tensorflow.python.keras._impl.keras.layers.cudnn_recurrent import CuDNNGRU
 
 # Wrapper functions
 from tensorflow.python.keras._impl.keras.layers.wrappers import Wrapper

@@ -16,21 +16,6 @@
 """Tensor summaries for exporting information about a model.
 
 See the @{$python/summary} guide.
-
-@@FileWriter
-@@FileWriterCache
-@@tensor_summary
-@@scalar
-@@histogram
-@@audio
-@@image
-@@text
-@@merge
-@@merge_all
-@@get_summary_description
-@@PluginAsset
-@@get_plugin_asset
-@@get_all_plugin_assets
 """
 
 from __future__ import absolute_import
