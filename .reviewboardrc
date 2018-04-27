@@ -1,0 +1,5 @@
+BRANCH='master'
+OPEN_BROWSER='yes'
+REPOSITORY="tensorflow-utilities"
+TARGET_GROUPS='tensorflow-reviewers'
+TRACKING_BRANCH='origin/master'
