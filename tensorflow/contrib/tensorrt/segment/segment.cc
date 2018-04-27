@@ -96,15 +96,6 @@ bool CanContractEdge(const Edge* edge, const Graph* graph) {
   }
 
   bool is_cycle = check_cycles(graph, src, dfs_start_nodes);
-  // if (!dfs_start_nodes.empty()) {
-  //   tensorflow::ReverseDFSFrom(graph, dfs_start_nodes, {},
-  //                              [&is_cycle, src](tensorflow::Node* node) {
-  //                                if (node == src) {
-  //                                  is_cycle = true;
-  //                                }
-  //                              });
-  // }
-
   return !is_cycle;
 }
 }  // namespace
@@ -140,7 +131,7 @@ Graph::Graph(const tensorflow::Graph* g) : g_(g) {
       auto dst = nodes_[tfdst->id()];
       auto edge =
           new Edge(i, src, e->src_output(), dst, e->dst_input(), is_control);
-      edges_[i]=edge;
+      edges_[i] = edge;
       src->out_edges_.push_back(edge);
       dst->in_edges_.push_back(edge);
     } else {
@@ -271,10 +262,10 @@ tensorflow::Status SegmentGraph(
     const std::function<bool(const tensorflow::Node*)>& candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
   // tensorflow::DumpGraph("Pre-Segment", &graph);
-  Graph* graph= new Graph(tf_graph);
+  Graph* graph = new Graph(tf_graph);
   // Use a union-find to collect the nodes that belong to the same
-  // segment. A node value of nullptr indicates that tusing
-  // ::tensorflow::strings::StrAppendhe node is not a candidate for TRT.
+  // segment. A node value of nullptr indicates that the node is not a candidate
+  // for TRT.
   std::vector<UnionFind<Node*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     Node* node = graph->FindNodeId(i);

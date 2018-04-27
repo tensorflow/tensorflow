@@ -31,6 +31,7 @@ using tensorflow::strings::StrCat;
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+// TODO(sami): Remove VLOG messages once the code matures
 tensorflow::Status TRTOptimizationPass::Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
   VLOG(1) << "Called INIT for " << m_name_ << " with config = " << config;
