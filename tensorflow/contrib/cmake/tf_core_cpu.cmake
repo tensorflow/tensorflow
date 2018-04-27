@@ -20,6 +20,8 @@ file(GLOB_RECURSE tf_core_cpu_srcs
     "${tensorflow_source_dir}/tensorflow/cc/saved_model/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/*.h"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/eager/*.h"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/eager/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/debug/*.h"
     "${tensorflow_source_dir}/tensorflow/core/debug/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/server_lib.h"

@@ -34,7 +34,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
-using perftools::gputools::dnn::DimIndex;
+using stream_executor::dnn::DimIndex;
 #endif
 
 namespace tensorflow {
@@ -192,7 +192,7 @@ struct Conv3dAutoTuneGroup {
   static string name() { return "Conv3d"; }
 };
 typedef AutoTuneSingleton<Conv3dAutoTuneGroup, ConvParameters,
-                          perftools::gputools::dnn::AlgorithmConfig>
+                          se::dnn::AlgorithmConfig>
     AutoTuneConv3d;
 
 // TODO(mjanusz): Share logic with 2d implementation as much as possible.
@@ -250,7 +250,7 @@ struct LaunchConvOp<GPUDevice, T> {
       auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
                                   output->template flat<T>().size());
 
-      auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+      auto no_transpose = se::blas::Transpose::kNoTranspose;
       bool blas_launch_status =
           stream
               ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
@@ -277,7 +277,7 @@ struct LaunchConvOp<GPUDevice, T> {
       auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
                                   output->template flat<T>().size());
 
-      auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+      auto no_transpose = se::blas::Transpose::kNoTranspose;
       bool blas_launch_status =
           stream
               ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
@@ -346,27 +346,27 @@ struct LaunchConvOp<GPUDevice, T> {
     CHECK(pad_rows >= 0 && pad_cols >= 0 && pad_planes >= 0)
         << "Negative paddings: (" << pad_rows << ", " << pad_cols << ", "
         << pad_planes << ")";
-    perftools::gputools::dnn::BatchDescriptor input_desc(3);
+    se::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(in_batch)
         .set_feature_map_count(in_depth)
         .set_spatial_dim(DimIndex::X, in_cols)
         .set_spatial_dim(DimIndex::Y, in_rows)
         .set_spatial_dim(DimIndex::Z, in_planes)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::BatchDescriptor output_desc(3);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+    se::dnn::BatchDescriptor output_desc(3);
     output_desc.set_count(in_batch)
         .set_spatial_dim(DimIndex::X, out_cols)
         .set_spatial_dim(DimIndex::Y, out_rows)
         .set_spatial_dim(DimIndex::Z, out_planes)
         .set_feature_map_count(out_depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::FilterDescriptor filter_desc(3);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+    se::dnn::FilterDescriptor filter_desc(3);
     filter_desc.set_spatial_dim(DimIndex::X, filter_cols)
         .set_spatial_dim(DimIndex::Y, filter_rows)
         .set_spatial_dim(DimIndex::Z, filter_planes)
         .set_input_feature_map_count(in_depth)
         .set_output_feature_map_count(out_depth);
-    perftools::gputools::dnn::ConvolutionDescriptor conv_desc(3);
+    se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
         .set_dilation_rate(DimIndex::Y, dilations[1])
         .set_dilation_rate(DimIndex::Z, dilations[0])
@@ -424,9 +424,9 @@ struct LaunchConvOp<GPUDevice, T> {
         device_id,
     };
 
-    using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmDesc;
-    using perftools::gputools::dnn::ProfileResult;
+    using se::dnn::AlgorithmConfig;
+    using se::dnn::AlgorithmDesc;
+    using se::dnn::ProfileResult;
 
     AlgorithmConfig algorithm_config;
 

@@ -501,8 +501,27 @@ def _GetBatchNormParams(graph, context, has_scaling):
   bn_decay_var_tensor = None
 
   split_context = context.split('/')
-  base_context = split_context[-1]
+  # Matching variable names is brittle and relies on scoping
+  # conventions. Fused batch norm folding is more robust. Support for unfused
+  # batch norms will be deprecated as we move forward. Fused batch norms allow
+  # for faster training and should be used whenever possible.
+  # context contains part of the names of the tensors we are interested in:
+  # For MobilenetV1, the context has repetitions:
+  # MobilenetV1/MobilenetV1/Conv2d_3_depthwise
+  # when the moving_mean tensor has the name:
+  # MobilenetV1/Conv2d_3_depthwise/BatchNorm/moving_mean/read
+  # To pick the correct variable name, it is necessary to ignore the repeating
+  # header.
 
+  # For MobilenetV2, this problem does not exist:
+  # The context is: MobilenetV2/expanded_conv_3/depthwise
+  # and the names of the tensors start with a single MobilenetV2
+  # The moving mean for example, has the name:
+  # MobilenetV2/expanded_conv_3/depthwise/BatchNorm/moving_mean/read
+  # We ignore the first string (MobilenetV1 or MobilenetV2)
+  # in the context to match correctly in both cases
+
+  base_context = '/'.join(split_context[1:])
   oplist = graph.get_operations()
   op_suffix_mean = base_context + '/BatchNorm/moments/Squeeze'
   op_suffix_variance = base_context + '/BatchNorm/moments/Squeeze_1'
@@ -520,7 +539,6 @@ def _GetBatchNormParams(graph, context, has_scaling):
     op_suffix_gamma = base_context + '/BatchNorm/gamma'
     op_suffix_moving_variance = base_context + '/BatchNorm/moving_variance/read'
     op_suffix_moving_mean = base_context + '/BatchNorm/moving_mean/read'
-
   # Parse through list of ops to find relevant ops
   for op in oplist:
     if op.name.endswith(op_suffix_mean):

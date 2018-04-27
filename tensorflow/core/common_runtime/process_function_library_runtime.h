@@ -134,9 +134,6 @@ class ProcessFunctionLibraryRuntime {
   // of the device where the function is registered.
   string GetDeviceName(FunctionLibraryRuntime::Handle handle);
 
-  // Removes handle from the state owned by this object.
-  Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
-
   Status Clone(Env* env, int graph_def_version,
                const OptimizerOptions& optimizer_options,
                CustomKernelCreator custom_kernel_creator,

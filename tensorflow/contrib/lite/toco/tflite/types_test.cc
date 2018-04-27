@@ -151,6 +151,13 @@ TEST(DataBuffer, Int32) {
               ::testing::ElementsAre(1, 1 << 30));
 }
 
+TEST(DataBuffer, String) {
+  Array recovered = ToFlatBufferAndBack<ArrayDataType::kString>(
+      {"AA", "BBB", "Best. String. Ever."});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kString>().data,
+              ::testing::ElementsAre("AA", "BBB", "Best. String. Ever."));
+}
+
 TEST(Padding, All) {
   EXPECT_EQ(::tflite::Padding_SAME, Padding::Serialize(PaddingType::kSame));
   EXPECT_EQ(PaddingType::kSame, Padding::Deserialize(::tflite::Padding_SAME));

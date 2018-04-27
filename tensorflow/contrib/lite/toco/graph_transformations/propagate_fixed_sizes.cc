@@ -168,7 +168,9 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
     return;
   }
   const auto& input_shape = input_array.shape();
-  CHECK_EQ(input_shape.dimensions_count(), 4);
+  CHECK(input_shape.dimensions_count() == 4)
+      << "Conv ops require 4D inputs. Input array \"" << op->inputs[0]
+      << "\" is " << input_shape.dimensions_count() << "D.";
 
   const auto& weights_array = model->GetArray(op->inputs[1]);
   // Yield until weights dims have been resolved.
@@ -249,12 +251,6 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
       << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
       << toco::ShapeToString(weights_shape) << ".";
 
-  CHECK(weights_shape.dims(0) == 1 && weights_shape.dims(3) == 1)
-      << "TransposeConv weights dimensions must begin and end with 1. Input "
-         "weights \""
-      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
-      << toco::ShapeToString(weights_shape) << ".";
-
   // Compute padding
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
@@ -269,9 +265,7 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
     LOG(FATAL) << "TransposeConv only supports SAME or VALID padding";
   }
 
-  // VALIDATE OUTPUT SHAPE
-  // Compute the output shape from the input and weights shapes to verify it
-  // agrees with the specified output shape.
+  // VALIDATE some dimensions and set the output shape.
   const auto& input_array =
       model->GetArray(op->inputs[TransposeConvOperator::DATA_INPUT]);
   if (!input_array.has_shape()) {
@@ -283,31 +277,13 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
       << "TransposeConv input shape must have 4 dimensions. Input \""
       << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
       << toco::ShapeToString(weights_shape) << ".";
+  CHECK_EQ(input_shape.dims(3), weights_shape.dims(0))
+      << "Input shape depth and weight depth do not agree";
 
-  // Compute output shape
-  const int input_width = input_shape.dims(2);
-  const int input_height = input_shape.dims(1);
-  int output_height = op->stride_height * (input_height - 1);
-  int output_width = op->stride_width * (input_width - 1);
-  if (op->padding.type == PaddingType::kValid) {
-    output_height += kheight;
-    output_width += kwidth;
-  } else if (op->padding.type == PaddingType::kSame) {
-    output_height += 1;
-    output_width += 1;
-  }
-
-  CHECK(specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data ==
-        std::vector<int32>({input_shape.dims(0), output_height, output_width,
-                            weights_shape.dims(3)}))
-      << "Specified output shape: " << ShapeToString(output_array.shape())
-      << ", does not agree with shape computed from input data and weights: ["
-      << input_shape.dims(0) << ", " << output_height << ", " << output_width
-      << ", " << weights_shape.dims(3) << "].";
-
-  // SUCCESS: Set the op's output shape according to the specified output shape.
-  *(output_array.mutable_shape()->mutable_dims()) =
+  // Set the output shape according to the specified output shape.
+  std::vector<int32> const& specified_output_shape =
       specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  *(output_array.mutable_shape()->mutable_dims()) = specified_output_shape;
 }
 
 void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
@@ -1110,8 +1086,8 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
 void ProcessTopkV2Operator(Model* model, TopKV2Operator* op) {
   const auto& input_values = model->GetArray(op->inputs[0]);
   const auto& input_k = model->GetArray(op->inputs[1]);
-  auto& output_indexes = model->GetArray(op->outputs[0]);
-  auto& output_values = model->GetArray(op->outputs[1]);
+  auto& output_values = model->GetArray(op->outputs[0]);
+  auto& output_indexes = model->GetArray(op->outputs[1]);
 
   // Bail if we already know the output shape.
   if (output_indexes.has_shape()) {
@@ -1179,6 +1155,11 @@ void ProcessRankOperator(Model* model, RankOperator* op) {
     return;
   }
 
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until input dims have been resolved.
@@ -1197,6 +1178,11 @@ void ProcessShapeOperator(Model* model, TensorFlowShapeOperator* op) {
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     // Shape already propagated
+    return;
+  }
+
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
     return;
   }
 
@@ -1230,10 +1216,6 @@ void ProcessStackOperator(Model* model, StackOperator* op) {
     }
 
     Shape shape = input_array.shape();
-    if (shape.dimensions_count() == 0) {
-      // Convert 0D scalars to 1D scalars of shape {1}.
-      shape.mutable_dims()->push_back(1);
-    }
     if (!stacked_shape) {
       stacked_shape.reset(new Shape(shape));
     } else {
@@ -1519,7 +1501,7 @@ void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
   const std::vector<int>& input_dims = input_array.shape().dims();
   std::vector<int> output_dims;
 
-  output_dims.reserve(input_dims.size() - 1);
+  output_dims.reserve(input_dims.size());
   for (int i = 0; i < input_dims.size() - 1; ++i) {
     output_dims.push_back(input_dims[i]);
   }

@@ -28,18 +28,5 @@ from tensorflow.python.estimator.export.export_output import ExportOutput
 from tensorflow.python.estimator.export.export_output import PredictOutput
 from tensorflow.python.estimator.export.export_output import RegressionOutput
 
-from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long
 
-_allowed_symbols = [
-    'build_parsing_serving_input_receiver_fn',
-    'build_raw_serving_input_receiver_fn',
-    'ServingInputReceiver',
-    'TensorServingInputReceiver',
-    'ClassificationOutput',
-    'ExportOutput',
-    'PredictOutput',
-    'RegressionOutput',
-]
-
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
