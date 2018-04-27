@@ -15,20 +15,6 @@
 """Loss operations for use in neural networks.
 
 Note: All the losses are added to the `GraphKeys.LOSSES` collection by default.
-
-@@Reduction
-@@absolute_difference
-@@compute_weighted_loss
-@@cosine_distance
-@@hinge_loss
-@@huber_loss
-@@log_loss
-@@mean_pairwise_squared_error
-@@mean_squared_error
-@@sigmoid_cross_entropy
-@@softmax_cross_entropy
-@@sparse_softmax_cross_entropy
-
 """
 
 from __future__ import absolute_import

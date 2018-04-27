@@ -10,7 +10,7 @@ course prior to diving into TensorFlow documentation:
 TensorFlow is a tool for machine learning. While it contains a wide range of
 functionality, TensorFlow is mainly designed for deep neural network models.
 
-The easiest way to get started with tensorflow is using Eager Execution.
+The easiest way to get started with TensorFlow is using Eager Execution.
 
   * @{$get_started/eager}, is for anyone new to  machine learning or TensorFlow.
 

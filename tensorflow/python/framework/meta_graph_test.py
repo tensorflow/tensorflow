@@ -476,11 +476,12 @@ class ScopedMetaGraphTest(test.TestCase):
     # Create a simple while loop.
     with ops.Graph().as_default():
       with ops.name_scope("export"):
-        var = variables.Variable(0)
+        var = variables.Variable(0.)
         var_name = var.name
-        _, output = control_flow_ops.while_loop(lambda i, x: i < 5,
-                                                lambda i, x: (i + 1, x + i),
-                                                [0, var])
+        _, output = control_flow_ops.while_loop(
+            lambda i, x: i < 5,
+            lambda i, x: (i + 1, x + math_ops.cast(i, dtypes.float32)),
+            [0, var])
         output_name = output.name
 
       # Generate a MetaGraphDef containing the while loop with an export scope.

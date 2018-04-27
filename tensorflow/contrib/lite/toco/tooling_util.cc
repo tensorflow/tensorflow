@@ -825,11 +825,6 @@ void FixNoOrphanedArray(Model* model) {
 void CheckEachArray(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = array_entry.second;
-    if (array->has_shape()) {
-      for (int d : array->shape().dims()) {
-        CHECK_GE(d, 1);
-      }
-    }
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
     CHECK(!array->buffer || !array->alloc);
@@ -839,6 +834,10 @@ void CheckEachArray(const Model& model) {
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
       CHECK(array->has_shape());
+      // Constant buffer should has a valid shape.
+      for (int d : array->shape().dims()) {
+        CHECK_GE(d, 1);
+      }
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
                RequiredBufferSizeForShape(array->shape()));

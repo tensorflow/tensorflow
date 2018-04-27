@@ -105,21 +105,28 @@ TEST(HloMatchersTest, ShapeMatcher) {
       0, ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1}), "param");
 
   EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {5, 7})));
+  EXPECT_THAT(p0.get(), op::Shape("f32[5,7]"));
   EXPECT_THAT(
       p0.get(),
       ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {5, 7}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]")));
   EXPECT_THAT(p0.get(),
               ::testing::Not(op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::Shape("f32[7,5]")));
   EXPECT_THAT(
       p0.get(),
       ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {7, 5}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[7,5]")));
   EXPECT_THAT(p0.get(),
               op::Shape(ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1})));
+  EXPECT_THAT(p0.get(), op::Shape("f32[5,7]{0,1}"));
   EXPECT_THAT(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
                             F32, {5, 7}, {0, 1})));
+  EXPECT_THAT(p0.get(), op::ShapeWithLayout("f32[5,7]{0,1}"));
   EXPECT_THAT(p0.get(),
               ::testing::Not(op::ShapeWithLayout(
                   ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {1, 0}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]{1,0}")));
 
   EXPECT_THAT(Explain(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))),
               "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "

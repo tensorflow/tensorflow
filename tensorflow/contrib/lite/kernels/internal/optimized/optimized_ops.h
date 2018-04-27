@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
+#include "tensorflow/contrib/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -5864,90 +5865,7 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
       output_dims, 0);
 }
 
-// UNOPTIMIZED COPY of StridedSlice from reference_ops.h (see comments there).
-
-// Use until std::clamp() is available from C++17.
-inline int Clamp(const int v, const int lo, const int hi) {
-  TFLITE_DCHECK(!(hi < lo));
-  if (hi < v) return hi;
-  if (v < lo) return lo;
-  return v;
-}
-
-inline int StartForAxis(int begin_mask, const std::vector<int>& start_indices,
-                        const std::vector<int>& strides,
-                        const Dims<4>& input_shape, int axis) {
-  // Begin with the specified index
-  int start = start_indices[axis];
-
-  // begin_mask override
-  if (begin_mask & 1 << axis) {
-    if (strides[axis] > 0) {
-      // Forward iteration - use the first element. These values will get
-      // clamped below (Note: We could have set them to 0 and axis_size-1, but
-      // use lowest() and max() to maintain symmetry with StopForAxis())
-      start = std::numeric_limits<int>::lowest();
-    } else {
-      // Backward iteration - use the last element.
-      start = std::numeric_limits<int>::max();
-    }
-  }
-
-  // Handle negative indices
-  int axis_size = input_shape.sizes[axis];
-  if (start < 0) {
-    start += axis_size;
-  }
-
-  // Clamping
-  start = Clamp(start, 0, axis_size - 1);
-
-  return start;
-}
-
-inline int StopForAxis(int end_mask, const std::vector<int>& stop_indices,
-                       const std::vector<int>& strides,
-                       const Dims<4>& input_shape, int axis) {
-  // Begin with the specified index
-  int stop = stop_indices[axis];
-
-  // end_mask override
-  if (end_mask & (1 << axis)) {
-    if (strides[axis] > 0) {
-      // Forward iteration - use the last element. These values will get
-      // clamped below
-      stop = std::numeric_limits<int>::max();
-    } else {
-      // Backward iteration - use the first element.
-      stop = std::numeric_limits<int>::lowest();
-    }
-  }
-
-  // Handle negative indices
-  int axis_size = input_shape.sizes[axis];
-  if (stop < 0) {
-    stop += axis_size;
-  }
-
-  // Clamping
-  // Because the end index points one past the last element, we need slightly
-  // different clamping ranges depending on the direction.
-  if (strides[axis] > 0) {
-    // Forward iteration
-    stop = Clamp(stop, 0, axis_size);
-  } else {
-    // Backward iteration
-    stop = Clamp(stop, -1, axis_size - 1);
-  }
-
-  return stop;
-}
-
-inline bool LoopCondition(int index, int stop, int stride) {
-  // True when we have reached the end of an axis and should loop.
-  return stride > 0 ? index >= stop : index <= stop;
-}
-
+// UNOPTIMIZED COPY of StridedSlice from reference_ops.h.
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask,
@@ -5958,31 +5876,35 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK_EQ(start_indices.size(), 4);
   TFLITE_DCHECK_EQ(stop_indices.size(), 4);
   TFLITE_DCHECK_EQ(strides.size(), 4);
-  const int start_b =
-      StartForAxis(begin_mask, start_indices, strides, input_dims, 3);
-  const int stop_b =
-      StopForAxis(end_mask, stop_indices, strides, input_dims, 3);
-  const int start_h =
-      StartForAxis(begin_mask, start_indices, strides, input_dims, 2);
-  const int stop_h =
-      StopForAxis(end_mask, stop_indices, strides, input_dims, 2);
-  const int start_w =
-      StartForAxis(begin_mask, start_indices, strides, input_dims, 1);
-  const int stop_w =
-      StopForAxis(end_mask, stop_indices, strides, input_dims, 1);
-  const int start_d =
-      StartForAxis(begin_mask, start_indices, strides, input_dims, 0);
-  const int stop_d =
-      StopForAxis(end_mask, stop_indices, strides, input_dims, 0);
+  const int start_b = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 3);
+  const int stop_b = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 3);
+  const int start_h = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 2);
+  const int stop_h = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 2);
+  const int start_w = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 1);
+  const int stop_w = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 1);
+  const int start_d = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 0);
+  const int stop_d = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 0);
 
   T* out_ptr = output_data;
-  for (int in_b = start_b; !LoopCondition(in_b, stop_b, strides[3]);
+  for (int in_b = start_b;
+       !strided_slice::LoopCondition(in_b, stop_b, strides[3]);
        in_b += strides[3]) {
-    for (int in_h = start_h; !LoopCondition(in_h, stop_h, strides[2]);
+    for (int in_h = start_h;
+         !strided_slice::LoopCondition(in_h, stop_h, strides[2]);
          in_h += strides[2]) {
-      for (int in_w = start_w; !LoopCondition(in_w, stop_w, strides[1]);
+      for (int in_w = start_w;
+           !strided_slice::LoopCondition(in_w, stop_w, strides[1]);
            in_w += strides[1]) {
-        for (int in_d = start_d; !LoopCondition(in_d, stop_d, strides[0]);
+        for (int in_d = start_d;
+             !strided_slice::LoopCondition(in_d, stop_d, strides[0]);
              in_d += strides[0]) {
           *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
         }

@@ -471,6 +471,10 @@ if (tensorflow_ENABLE_GPU)
   include_directories(${tensorflow_source_dir}/third_party/gpus)
   # add cuda libraries to tensorflow_EXTERNAL_LIBRARIES
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${CUDA_LIBRARIES})
+  if(NOT WIN32)
+    # add gomp to tensorflow_EXTERNAL_LIBRARIES, needed by libcusolver.so
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES gomp)
+  endif()
 
   # NOTE(mrry): Update these flags when the version of CUDA or cuDNN used
   # in the default build is upgraded.

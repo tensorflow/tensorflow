@@ -579,7 +579,10 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
-      if (specialize_func && IsParametrized(*func)) {
+      // Do not specialize if function has custom gradient.
+      const string grad_func = ctx.function_library().FindGradient(func_name);
+
+      if (specialize_func && grad_func.empty() && IsParametrized(*func)) {
         // TODO(ezhulenev): Specialize function call if input is a Const or has
         // a known shape. Const input tensors can be pushed into the function
         // body and removed from function inputs.

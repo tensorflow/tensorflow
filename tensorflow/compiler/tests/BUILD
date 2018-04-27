@@ -755,6 +755,7 @@ tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
+    tags = ["noasan"],  # times out, http://b/78599043
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

@@ -17,9 +17,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -42,9 +43,8 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
   // Build and execute the given computation then verify the results can be
   // transferred from the device successfully.
   std::unique_ptr<GlobalData> ExecuteAndCheckTransfer(
-      ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-    Computation computation = builder->Build().ConsumeValueOrDie();
+      XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    XlaComputation computation = builder->Build().ConsumeValueOrDie();
     auto global_data =
         client_->Execute(computation, arguments, &execution_options_)
             .ConsumeValueOrDie();
@@ -54,7 +54,7 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
 };
 
 TEST_F(DeconstructTupleTest, DeconstructTuple) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({const1, const2});
@@ -73,7 +73,7 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({const1, const2});
@@ -103,7 +103,7 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({const1, const2, const2, const1});
@@ -129,7 +129,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({const1, const2, const1});
@@ -159,7 +159,7 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
 }
 
 TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
@@ -170,7 +170,7 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   std::unique_ptr<Literal> param0_literal =
       Literal::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
@@ -186,7 +186,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({builder.Tuple({const1, const2}), const1});
