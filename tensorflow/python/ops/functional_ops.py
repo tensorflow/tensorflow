@@ -16,11 +16,6 @@
 """Functional operations.
 
 See the @{$python/functional_ops} guide.
-
-@@map_fn
-@@foldl
-@@foldr
-@@scan
 """
 
 from __future__ import absolute_import

@@ -37,6 +37,14 @@ VirtualCluster::VirtualCluster(
     : Cluster(0), node_estimator_(node_estimator), node_manager_(node_manager) {
   devices_ = devices;
 }
+
+VirtualCluster::VirtualCluster(
+    const std::unordered_map<string, DeviceProperties>& devices,
+    const DeviceSet* device_set)
+    : VirtualCluster(devices) {
+  device_set_ = device_set;
+}
+
 VirtualCluster::~VirtualCluster() {}
 
 Status VirtualCluster::Provision() { return Status::OK(); }

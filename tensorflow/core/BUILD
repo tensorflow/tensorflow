@@ -100,6 +100,8 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 # For platform specific build config
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_platform_hdrs",
+    "tf_platform_srcs",
     "tf_proto_library",
     "tf_proto_library_cc",
     "tf_additional_all_protos",
@@ -119,8 +121,6 @@ load(
     "tf_additional_libdevice_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
-    "tf_env_time_hdrs",
-    "tf_env_time_srcs",
     "tf_kernel_tests_linkstatic",
     "tf_additional_cloud_op_deps",
     "tf_additional_cloud_kernel_deps",
@@ -288,6 +288,7 @@ cc_library(
 )
 
 PLATFORM_BASE_HDRS = [
+    "platform/env_time.h",
     "platform/logging.h",
     "platform/macros.h",
     "platform/types.h",
@@ -303,7 +304,6 @@ PLATFORM_OTHER_HDRS = [
     "platform/cpu_feature_guard.h",
     "platform/dynamic_annotations.h",
     "platform/env.h",
-    "platform/env_time.h",
     "platform/file_system.h",
     "platform/file_system_helper.h",
     "platform/fingerprint.h",
@@ -325,11 +325,17 @@ PLATFORM_OTHER_HDRS = [
 # Smaller platform libraries that don't depend on "lib" or "lib_internal".
 cc_library(
     name = "platform_base",
-    srcs = glob([
-        "platform/*/integral_types.h",
-        "platform/*/logging.h",
-    ]),
+    srcs = tf_platform_hdrs([
+        "integral_types.h",
+        "logging.h",
+    ]) + tf_platform_srcs([
+        "logging.cc",
+        "env_time.cc",
+    ]) + [
+        "platform/env_time.cc",
+    ],
     hdrs = PLATFORM_BASE_HDRS,
+    copts = tf_copts(),
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
@@ -340,7 +346,7 @@ cc_library(
 # don't have to depend on lib/platformlib.
 cc_library(
     name = "lib_proto_parsing",
-    srcs = glob(tf_additional_proto_srcs()) + tf_env_time_srcs(),
+    srcs = glob(tf_additional_proto_srcs()),
     hdrs = [
         "lib/core/errors.h",
         "lib/core/status.h",
@@ -355,9 +361,10 @@ cc_library(
         "platform/types.h",
         "platform/windows/cpu_info.h",
         "lib/bfloat16/bfloat16.h",
-    ] + tf_additional_proto_hdrs() + glob(tf_env_time_hdrs()),
+    ] + tf_additional_proto_hdrs(),
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps() + [
+        ":platform_base",
         "@double_conversion//:double-conversion",
     ],
 )
@@ -1760,6 +1767,7 @@ cc_library(
             "platform/**/env_time.cc",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/device_tracer.cc",
+            "platform/**/logging.cc",
             "platform/abi.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
@@ -1773,6 +1781,7 @@ cc_library(
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
+            "platform/**/logging.cc",
             "platform/abi.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
@@ -2296,7 +2305,9 @@ tf_cuda_library(
 
 CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "common_runtime/device.h",
+    "common_runtime/device_factory.h",
     "common_runtime/device_mgr.h",
+    "common_runtime/device_set.h",
     "common_runtime/eval_const_tensor.h",
     "common_runtime/graph_runner.h",
     "common_runtime/shape_refiner.h",
@@ -2354,9 +2365,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/copy_tensor.h",
     "common_runtime/costmodel_manager.h",
     "common_runtime/debugger_state_interface.h",
-    "common_runtime/device_factory.h",
     "common_runtime/device_resolver_local.h",
-    "common_runtime/device_set.h",
     "common_runtime/dma_helper.h",
     "common_runtime/eigen_thread_pool.h",
     "common_runtime/executor.h",
@@ -2806,7 +2815,10 @@ cc_library(
     srcs = ["platform/test_main.cc"],
     copts = tf_copts(),
     deps = [
-        ":core_stringpiece",
+        # TODO(ahentz): we don't want to depend on "lib" here. It used to be
+        # that "core_stringpiece" was enough but that recently changed and
+        # we now need at least "str_util".
+        ":lib",
         ":lib_platform",
         ":stacktrace_handler",
         ":test_lite",

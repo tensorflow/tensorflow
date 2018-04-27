@@ -148,9 +148,15 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     DisableAllStages(optimizer);
     optimizer->options_.remove_negation = true;
   }
+
   void EnableOnlyHoistCWiseUnaryFromConcat(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.hoist_unary_out_of_concat = true;
+  }
+
+  void EnableOnlySqrtDivToRsqrtMul(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.convert_sqrt_div_to_rsqrt_mul = true;
   }
 };
 
@@ -1934,6 +1940,43 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
     }
   }
   EXPECT_EQ(5, found);
+}
+
+TEST_F(ArithmeticOptimizerTest, ConvertSqrtDivToRsqrtMul) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  auto y = ops::Const(s.WithOpName("y"), {3.0f, 4.0f}, {1, 2});
+  Output sqrt_y = ops::Sqrt(s.WithOpName("sqrt_y"), y);
+  Output div_x_sqrt_y = ops::Div(s.WithOpName("output"), x, sqrt_y);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlySqrtDivToRsqrtMul(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "output") {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("sqrt_y", node.input(1));
+    } else if (node.name() == "sqrt_y") {
+      EXPECT_EQ("Rsqrt", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+    }
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_SimpleSwap) {

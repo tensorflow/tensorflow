@@ -12,12 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Confusion matrix related utilities.
-
-
-@@remove_squeezable_dimensions
-@@confusion_matrix
-"""
+"""Confusion matrix related utilities."""
 
 from __future__ import absolute_import
 from __future__ import division

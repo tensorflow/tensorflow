@@ -26,6 +26,7 @@ from tensorflow.python.keras._impl.keras.layers.advanced_activations import *
 from tensorflow.python.keras._impl.keras.layers.convolutional import *
 from tensorflow.python.keras._impl.keras.layers.convolutional_recurrent import *
 from tensorflow.python.keras._impl.keras.layers.core import *
+from tensorflow.python.keras._impl.keras.layers.cudnn_recurrent import *
 from tensorflow.python.keras._impl.keras.layers.embeddings import *
 from tensorflow.python.keras._impl.keras.layers.local import *
 from tensorflow.python.keras._impl.keras.layers.merge import *

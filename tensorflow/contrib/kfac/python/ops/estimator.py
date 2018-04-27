@@ -57,8 +57,8 @@ def make_fisher_estimator(placement_strategy=None, **kwargs):
   if placement_strategy in [None, "round_robin"]:
     return FisherEstimatorRoundRobin(**kwargs)
   else:
-    raise ValueError("Unimplemented vars and ops placement strategy : %s",
-                     placement_strategy)
+    raise ValueError("Unimplemented vars and ops "
+                     "placement strategy : {}".format(placement_strategy))
 # pylint: enable=abstract-class-instantiated
 
 
@@ -81,7 +81,9 @@ class FisherEstimator(object):
                exps=(-1,),
                estimation_mode="gradients",
                colocate_gradients_with_ops=True,
-               name="FisherEstimator"):
+               name="FisherEstimator",
+               compute_cholesky=False,
+               compute_cholesky_inverse=False):
     """Create a FisherEstimator object.
 
     Args:
@@ -124,6 +126,12 @@ class FisherEstimator(object):
       name: A string. A name given to this estimator, which is added to the
           variable scope when constructing variables and ops.
           (Default: "FisherEstimator")
+      compute_cholesky: Bool. Whether or not the FisherEstimator will be
+          able to multiply vectors by the Cholesky factor.
+          (Default: False)
+      compute_cholesky_inverse: Bool. Whether or not the FisherEstimator
+          will be able to multiply vectors by the Cholesky factor inverse.
+          (Default: False)
     Raises:
       ValueError: If no losses have been registered with layer_collection.
     """
@@ -142,6 +150,8 @@ class FisherEstimator(object):
 
     self._made_vars = False
     self._exps = exps
+    self._compute_cholesky = compute_cholesky
+    self._compute_cholesky_inverse = compute_cholesky_inverse
 
     self._name = name
 
@@ -169,44 +179,6 @@ class FisherEstimator(object):
   @property
   def name(self):
     return self._name
-
-  @abc.abstractmethod
-  def make_ops_and_vars(self, scope=None):
-    """Make ops and vars with a specific placement strategy.
-
-    For each factor, all of that factor's cov variables and their associated
-    update ops will be placed on a particular device.  For example in case of
-    round robin placement a new device is chosen for each factor by cycling
-    through list of devices in the cov_devices argument. If cov_devices is None
-    then no explicit device placement occurs.
-
-    An analogous strategy is followed for inverse update ops, with the list of
-    devices being given by the inv_devices argument.
-
-    Inverse variables on the other hand are not placed on any specific device
-    (they will just use the current the device placement context, whatever
-    that happens to be).  The idea is that the inverse variable belong where
-    they will be accessed most often, which is the device that actually applies
-    the preconditioner to the gradient. The user will be responsible for setting
-    the device context for this.
-
-    Args:
-      scope: A string or None.  If None it will be set to the name of this
-        estimator (given by the name property). All variables will be created,
-        and all ops will execute, inside of a variable scope of the given
-        name. (Default: None)
-
-    Returns:
-      cov_update_ops: List of ops that compute the cov updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      cov_update_op: cov_update_ops grouped into a single op.
-      inv_update_ops: List of ops that compute the inv updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      inv_update_op: inv_update_ops grouped into a single op.
-      cov_update_thunks: Thunks that make the ops in cov_update_ops.
-      inv_update_thunks: Thunks that make the ops in inv_update_ops.
-    """
-    pass
 
   @abc.abstractmethod
   def make_vars_and_create_op_thunks(self, scope=None):
@@ -300,7 +272,52 @@ class FisherEstimator(object):
       A list of (transformed vector, var) pairs in the same order as
       vecs_and_vars.
     """
+    assert exp in self._exps
+
     fcn = lambda fb, vec: fb.multiply_matpower(vec, exp)
+    return self._apply_transformation(vecs_and_vars, fcn)
+
+  def multiply_cholesky(self, vecs_and_vars, transpose=False):
+    """Multiplies the vecs by the corresponding Cholesky factors.
+
+    Args:
+      vecs_and_vars: List of (vector, variable) pairs.
+      transpose: Bool. If true the Cholesky factors are transposed before
+        multiplying the vecs. (Default: False)
+
+    Returns:
+      A list of (transformed vector, var) pairs in the same order as
+      vecs_and_vars.
+    """
+    assert self._compute_cholesky
+
+    fcn = lambda fb, vec: fb.multiply_cholesky(vec, transpose=transpose)
+    return self._apply_transformation(vecs_and_vars, fcn)
+
+  def multiply_cholesky_inverse(self, vecs_and_vars, transpose=False):
+    """Mults the vecs by the inverses of the corresponding Cholesky factors.
+
+      Note: if you are using Cholesky inverse multiplication to sample from
+      a matrix-variate Gaussian you will want to multiply by the transpose.
+      Let L be the Cholesky factor of F and observe that
+
+        L^-T * L^-1 = (L * L^T)^-1 = F^-1 .
+
+      Thus we want to multiply by L^-T in order to sample from Gaussian with
+      covariance F^-1.
+
+    Args:
+      vecs_and_vars: List of (vector, variable) pairs.
+      transpose: Bool. If true the Cholesky factor inverses are transposed
+        before multiplying the vecs. (Default: False)
+
+    Returns:
+      A list of (transformed vector, var) pairs in the same order as
+      vecs_and_vars.
+    """
+    assert self._compute_cholesky_inverse
+
+    fcn = lambda fb, vec: fb.multiply_cholesky_inverse(vec, transpose=transpose)
     return self._apply_transformation(vecs_and_vars, fcn)
 
   def _instantiate_factors(self):
@@ -333,9 +350,13 @@ class FisherEstimator(object):
     return self._made_vars
 
   def _register_matrix_functions(self):
-    for exp in self._exps:
-      for block in self.blocks:
+    for block in self.blocks:
+      for exp in self._exps:
         block.register_matpower(exp)
+      if self._compute_cholesky:
+        block.register_cholesky()
+      if self._compute_cholesky_inverse:
+        block.register_cholesky_inverse()
 
   def _finalize_layer_collection(self):
     self._layers.create_subgraph()

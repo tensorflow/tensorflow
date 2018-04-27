@@ -51,18 +51,15 @@ from tensorflow.python.util import compat
 
 class IteratorTest(test.TestCase):
 
-  def testAttemptingGradientsRaiseExceptions(self):
-    component = constant_op.constant([1])
-    side = constant_op.constant(0)
+  def testNoGradients(self):
+    component = constant_op.constant([1.])
+    side = constant_op.constant(0.)
     add = lambda x: x + side
     dataset = dataset_ops.Dataset.from_tensor_slices(component).map(add)
     value = dataset.make_one_shot_iterator().get_next()
-    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
-      gradients_impl.gradients(value, component)
-    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
-      gradients_impl.gradients(value, side)
-    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
-      gradients_impl.gradients(value, [component, side])
+    self.assertIsNone(gradients_impl.gradients(value, component)[0])
+    self.assertIsNone(gradients_impl.gradients(value, side)[0])
+    self.assertIsNone(gradients_impl.gradients(value, [component, side])[0])
 
   def testCapturingStateInOneShotRaisesException(self):
     var = variables.Variable(37.0, name="myvar")

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
@@ -287,13 +286,13 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesOnFalse) {
 }
 
 XLA_TEST_F(TupleTest, TuplesInAMap) {
-  Computation tuple_computation;
+  XlaComputation tuple_computation;
   {
     // tuple_computation(x) = 100 * min(x, x^2) + max(x, x^2) using tuples.
     //
     // Need to put a select in there to prevent HLO-level optimizations from
     // optimizing out the tuples.
-    ComputationBuilder b(client_, "sort_square");
+    XlaBuilder b("sort_square");
     auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
     auto x2 = b.Mul(x, x);
     auto x_smaller_tuple = b.Tuple({x, x2});
@@ -307,7 +306,7 @@ XLA_TEST_F(TupleTest, TuplesInAMap) {
     tuple_computation = computation_status.ConsumeValueOrDie();
   }
 
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   auto input = b.ConstantR1<float>({-1.0f, 1.0f, 2.1f});
   b.Map({input}, tuple_computation, {0});
   ComputeAndCompareR1<float>(&b, {-99.0f, 101.0f, 214.41f}, {}, error_spec_);

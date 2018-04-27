@@ -35,6 +35,13 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import test
 
 
+# We need to set these constants since the numerical values used in the tests
+# were chosen when these used to be the defaults.
+ff.set_global_constants(init_covariances_at_zero=False,
+                        zero_debias=False,
+                        init_inverses_at_zero=False)
+
+
 def make_damping_func(damping):
   return fb._package_func(lambda: damping, damping)
 
@@ -70,18 +77,6 @@ class FisherFactorTestingDummy(ff.FisherFactor):
   def get_cov(self):
     return NotImplementedError
 
-  def left_multiply(self, x, damping):
-    return NotImplementedError
-
-  def right_multiply(self, x, damping):
-    return NotImplementedError
-
-  def left_multiply_matpower(self, x, exp, damping):
-    return NotImplementedError
-
-  def right_multiply_matpower(self, x, exp, damping):
-    return NotImplementedError
-
   def instantiate_inv_variables(self):
     return NotImplementedError
 
@@ -91,14 +86,35 @@ class FisherFactorTestingDummy(ff.FisherFactor):
   def _get_data_device(self):
     raise NotImplementedError
 
+  def register_matpower(self, exp, damping_func):
+    raise NotImplementedError
 
-class InverseProvidingFactorTestingDummy(ff.InverseProvidingFactor):
-  """Dummy class to test the non-abstract methods on ff.InverseProvidingFactor.
+  def register_cholesky(self, damping_func):
+    raise NotImplementedError
+
+  def register_cholesky_inverse(self, damping_func):
+    raise NotImplementedError
+
+  def get_matpower(self, exp, damping_func):
+    raise NotImplementedError
+
+  def get_cholesky(self, damping_func):
+    raise NotImplementedError
+
+  def get_cholesky_inverse(self, damping_func):
+    raise NotImplementedError
+
+  def get_cov_as_linear_operator(self):
+    raise NotImplementedError
+
+
+class DenseSquareMatrixFactorTestingDummy(ff.DenseSquareMatrixFactor):
+  """Dummy class to test the non-abstract methods on ff.DenseSquareMatrixFactor.
   """
 
   def __init__(self, shape):
     self._shape = shape
-    super(InverseProvidingFactorTestingDummy, self).__init__()
+    super(DenseSquareMatrixFactorTestingDummy, self).__init__()
 
   @property
   def _var_scope(self):
@@ -230,13 +246,13 @@ class FisherFactorTest(test.TestCase):
       self.assertEqual(0, len(factor.make_inverse_update_ops()))
 
 
-class InverseProvidingFactorTest(test.TestCase):
+class DenseSquareMatrixFactorTest(test.TestCase):
 
   def testRegisterDampedInverse(self):
     with tf_ops.Graph().as_default():
       random_seed.set_random_seed(200)
       shape = [2, 2]
-      factor = InverseProvidingFactorTestingDummy(shape)
+      factor = DenseSquareMatrixFactorTestingDummy(shape)
       factor_var_scope = 'dummy/a_b_c'
 
       damping_funcs = [make_damping_func(0.1),
@@ -248,22 +264,25 @@ class InverseProvidingFactorTest(test.TestCase):
 
       factor.instantiate_inv_variables()
 
-      inv = factor.get_inverse(damping_funcs[0])
-      self.assertEqual(inv, factor.get_inverse(damping_funcs[1]))
-      self.assertNotEqual(inv, factor.get_inverse(damping_funcs[2]))
-      self.assertEqual(factor.get_inverse(damping_funcs[2]),
-                       factor.get_inverse(damping_funcs[3]))
+      inv = factor.get_inverse(damping_funcs[0]).to_dense()
+      self.assertEqual(inv, factor.get_inverse(damping_funcs[1]).to_dense())
+      self.assertNotEqual(inv, factor.get_inverse(damping_funcs[2]).to_dense())
+      self.assertEqual(factor.get_inverse(damping_funcs[2]).to_dense(),
+                       factor.get_inverse(damping_funcs[3]).to_dense())
       factor_vars = tf_ops.get_collection(tf_ops.GraphKeys.GLOBAL_VARIABLES,
                                           factor_var_scope)
-      self.assertEqual(set([inv, factor.get_inverse(damping_funcs[2])]),
-                       set(factor_vars))
+      factor_tensors = (tf_ops.convert_to_tensor(var) for var in factor_vars)
+
+      self.assertEqual(set([inv,
+                            factor.get_inverse(damping_funcs[2]).to_dense()]),
+                       set(factor_tensors))
       self.assertEqual(shape, inv.get_shape())
 
   def testRegisterMatpower(self):
     with tf_ops.Graph().as_default():
       random_seed.set_random_seed(200)
       shape = [3, 3]
-      factor = InverseProvidingFactorTestingDummy(shape)
+      factor = DenseSquareMatrixFactorTestingDummy(shape)
       factor_var_scope = 'dummy/a_b_c'
 
       # TODO(b/74201126): Change to using the same func for both once
@@ -278,10 +297,13 @@ class InverseProvidingFactorTest(test.TestCase):
 
       factor_vars = tf_ops.get_collection(tf_ops.GraphKeys.GLOBAL_VARIABLES,
                                           factor_var_scope)
-      matpower1 = factor.get_matpower(-0.5, damping_func_1)
-      matpower2 = factor.get_matpower(2, damping_func_2)
 
-      self.assertEqual(set([matpower1, matpower2]), set(factor_vars))
+      factor_tensors = (tf_ops.convert_to_tensor(var) for var in factor_vars)
+
+      matpower1 = factor.get_matpower(-0.5, damping_func_1).to_dense()
+      matpower2 = factor.get_matpower(2, damping_func_2).to_dense()
+
+      self.assertEqual(set([matpower1, matpower2]), set(factor_tensors))
 
       self.assertEqual(shape, matpower1.get_shape())
       self.assertEqual(shape, matpower2.get_shape())
@@ -297,7 +319,7 @@ class InverseProvidingFactorTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       cov = np.array([[1., 2.], [3., 4.]])
-      factor = InverseProvidingFactorTestingDummy(cov.shape)
+      factor = DenseSquareMatrixFactorTestingDummy(cov.shape)
       factor._cov = array_ops.constant(cov, dtype=dtypes.float32)
 
       damping_funcs = []
@@ -316,7 +338,8 @@ class InverseProvidingFactorTest(test.TestCase):
       sess.run(ops)
       for i in range(ff.EIGENVALUE_DECOMPOSITION_THRESHOLD):
         # The inverse op will assign the damped inverse of cov to the inv var.
-        new_invs.append(sess.run(factor.get_inverse(damping_funcs[i])))
+        new_invs.append(
+            sess.run(factor.get_inverse(damping_funcs[i]).to_dense()))
 
       # We want to see that the new invs are all different from each other.
       for i in range(len(new_invs)):
@@ -328,7 +351,7 @@ class InverseProvidingFactorTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       cov = np.array([[6., 2.], [2., 4.]])
-      factor = InverseProvidingFactorTestingDummy(cov.shape)
+      factor = DenseSquareMatrixFactorTestingDummy(cov.shape)
       factor._cov = array_ops.constant(cov, dtype=dtypes.float32)
       exp = 2  # NOTE(mattjj): must be int to test with np.linalg.matrix_power
       damping = 0.5
@@ -341,7 +364,7 @@ class InverseProvidingFactorTest(test.TestCase):
 
       sess.run(tf_variables.global_variables_initializer())
       sess.run(ops[0])
-      matpower = sess.run(factor.get_matpower(exp, damping_func))
+      matpower = sess.run(factor.get_matpower(exp, damping_func).to_dense())
       matpower_np = np.linalg.matrix_power(cov + np.eye(2) * damping, exp)
       self.assertAllClose(matpower, matpower_np)
 
@@ -349,7 +372,7 @@ class InverseProvidingFactorTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       cov = np.array([[5., 2.], [2., 4.]])  # NOTE(mattjj): must be symmetric
-      factor = InverseProvidingFactorTestingDummy(cov.shape)
+      factor = DenseSquareMatrixFactorTestingDummy(cov.shape)
       factor._cov = array_ops.constant(cov, dtype=dtypes.float32)
 
       damping_func = make_damping_func(0)
@@ -361,12 +384,12 @@ class InverseProvidingFactorTest(test.TestCase):
 
       sess.run(tf_variables.global_variables_initializer())
       # The inverse op will assign the damped inverse of cov to the inv var.
-      old_inv = sess.run(factor.get_inverse(damping_func))
+      old_inv = sess.run(factor.get_inverse(damping_func).to_dense())
       self.assertAllClose(
           sess.run(ff.inverse_initializer(cov.shape, dtypes.float32)), old_inv)
 
       sess.run(ops)
-      new_inv = sess.run(factor.get_inverse(damping_func))
+      new_inv = sess.run(factor.get_inverse(damping_func).to_dense())
       self.assertAllClose(new_inv, np.linalg.inv(cov))
 
 
@@ -411,7 +434,7 @@ class NaiveDiagonalFactorTest(test.TestCase):
       tensor = array_ops.ones((2, 3), name='a/b/c')
       factor = ff.NaiveDiagonalFactor((tensor,), 32)
       factor.instantiate_cov_variables()
-      self.assertEqual([6, 1], factor.get_cov_var().get_shape().as_list())
+      self.assertEqual([6, 1], factor.get_cov().get_shape().as_list())
 
   def testNaiveDiagonalFactorInitFloat64(self):
     with tf_ops.Graph().as_default():
@@ -420,7 +443,7 @@ class NaiveDiagonalFactorTest(test.TestCase):
       tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
       factor = ff.NaiveDiagonalFactor((tensor,), 32)
       factor.instantiate_cov_variables()
-      cov = factor.get_cov_var()
+      cov = factor.get_cov()
       self.assertEqual(cov.dtype, dtype)
       self.assertEqual([6, 1], cov.get_shape().as_list())
 
@@ -444,7 +467,7 @@ class EmbeddingInputKroneckerFactorTest(test.TestCase):
       vocab_size = 5
       factor = ff.EmbeddingInputKroneckerFactor((input_ids,), vocab_size)
       factor.instantiate_cov_variables()
-      cov = factor.get_cov_var()
+      cov = factor.get_cov()
       self.assertEqual(cov.shape.as_list(), [vocab_size])
 
   def testCovarianceUpdateOp(self):
@@ -502,7 +525,7 @@ class ConvDiagonalFactorTest(test.TestCase):
           self.kernel_height * self.kernel_width * self.in_channels,
           self.out_channels
       ],
-                       factor.get_cov_var().shape.as_list())
+                       factor.get_cov().shape.as_list())
 
   def testMakeCovarianceUpdateOp(self):
     with tf_ops.Graph().as_default():
@@ -564,7 +587,7 @@ class ConvDiagonalFactorTest(test.TestCase):
           self.kernel_height * self.kernel_width * self.in_channels + 1,
           self.out_channels
       ],
-                       factor.get_cov_var().shape.as_list())
+                       factor.get_cov().shape.as_list())
 
       # Ensure update op doesn't crash.
       cov_update_op = factor.make_covariance_update_op(0.0)
@@ -654,13 +677,13 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       # Ensure shape of covariance matches input size of filter.
       input_size = in_channels * (width**3)
       self.assertEqual([input_size, input_size],
-                       factor.get_cov_var().shape.as_list())
+                       factor.get_cov().shape.as_list())
 
       # Ensure cov_update_op doesn't crash.
       with self.test_session() as sess:
         sess.run(tf_variables.global_variables_initializer())
         sess.run(factor.make_covariance_update_op(0.0))
-        cov = sess.run(factor.get_cov_var())
+        cov = sess.run(factor.get_cov())
 
       # Cov should be rank-8, as the filter will be applied at each corner of
       # the 4-D cube.
@@ -685,13 +708,13 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
 
       # Ensure shape of covariance matches input size of filter.
       self.assertEqual([in_channels, in_channels],
-                       factor.get_cov_var().shape.as_list())
+                       factor.get_cov().shape.as_list())
 
       # Ensure cov_update_op doesn't crash.
       with self.test_session() as sess:
         sess.run(tf_variables.global_variables_initializer())
         sess.run(factor.make_covariance_update_op(0.0))
-        cov = sess.run(factor.get_cov_var())
+        cov = sess.run(factor.get_cov())
 
       # Cov should be rank-9, as the filter will be applied at each location.
       self.assertMatrixRank(9, cov)
@@ -716,7 +739,7 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       with self.test_session() as sess:
         sess.run(tf_variables.global_variables_initializer())
         sess.run(factor.make_covariance_update_op(0.0))
-        cov = sess.run(factor.get_cov_var())
+        cov = sess.run(factor.get_cov())
 
       # Cov should be the sum of 3 * 2 = 6 outer products.
       self.assertMatrixRank(6, cov)
@@ -742,7 +765,7 @@ class ConvInputKroneckerFactorTest(ConvFactorTestCase):
       with self.test_session() as sess:
         sess.run(tf_variables.global_variables_initializer())
         sess.run(factor.make_covariance_update_op(0.0))
-        cov = sess.run(factor.get_cov_var())
+        cov = sess.run(factor.get_cov())
 
       # Cov should be rank = in_channels, as only the center of the filter
       # receives non-zero input for each input channel.
