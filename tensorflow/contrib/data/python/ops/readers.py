@@ -156,12 +156,21 @@ def _infer_column_names(filenames, field_delim, use_quote_delim):
       "quoting": csv.QUOTE_MINIMAL if use_quote_delim else csv.QUOTE_NONE
   }
   with file_io.FileIO(filenames[0], "r") as f:
-    column_names = next(csv.reader(f, **csv_kwargs))
+    try:
+      column_names = next(csv.reader(f, **csv_kwargs))
+    except StopIteration:
+      raise ValueError(("Received StopIteration when reading the header line "
+                        "of %s.  Empty file?") % filenames[0])
 
   for name in filenames[1:]:
     with file_io.FileIO(name, "r") as f:
-      if next(csv.reader(f, **csv_kwargs)) != column_names:
-        raise ValueError("Files have different column names in the header row.")
+      try:
+        if next(csv.reader(f, **csv_kwargs)) != column_names:
+          raise ValueError(
+              "Files have different column names in the header row.")
+      except StopIteration:
+        raise ValueError(("Received StopIteration when reading the header line "
+                          "of %s.  Empty file?") % filenames[0])
   return column_names
 
 

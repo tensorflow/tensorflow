@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
-namespace se = ::perftools::gputools;
+
 namespace gtl = ::tensorflow::gtl;
 
 class HloProfileTest : public ClientLibraryTestBase {};
@@ -129,18 +129,18 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   auto* transfer_manager = backend->transfer_manager();
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<ScopedShapedBuffer> lhs_arg,
+      ScopedShapedBuffer lhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           lhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      executor, *Literal::CreateFromShape(lhs_arg_shape), *lhs_arg));
+      executor, *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<ScopedShapedBuffer> rhs_arg,
+      ScopedShapedBuffer rhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           rhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      executor, *Literal::CreateFromShape(rhs_arg_shape), *rhs_arg));
+      executor, *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
@@ -165,7 +165,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       backend->eigen_intra_op_thread_pool());
   TF_ASSERT_OK_AND_ASSIGN(
       auto execution_result,
-      executable->ExecuteOnStream(&run_options, {lhs_arg.get(), rhs_arg.get()},
+      executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
                                   &hlo_execution_profile));
   (void)execution_result;
 
@@ -175,8 +175,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   XLA_VLOG_LINES(4, *profile_output);
 }
 
-// TODO(b/71364943): This test exposes a bug in the parallel CPU backend.
-XLA_TEST_F(HloProfileTest, DISABLED_ON_CPU_PARALLEL(ProfileSingleComputation)) {
+XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   const int64 m = 256, k = 256, n = 256;
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {m, k});
@@ -239,12 +238,9 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_CPU_PARALLEL(ProfileSingleComputation)) {
   EXPECT_TRUE(HasTrops(tanh_profile));
 }
 
-// TODO(b/71364943): This test exposes a bug in the parallel CPU backend.
-//
 // TODO(b/71544591): The GPU backend does not record cycles spent in on Hlo
 // instructions "interior" to while nodes.
-XLA_TEST_F(HloProfileTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(ProfileWhileComputation))) {
+XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
   const int64 size = 256;
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {size, size});
   Shape while_result_shape =

@@ -176,7 +176,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                   output);
   } else {
     context->ReportError(context,
-                         "Inputs and outputs not all float|unit8 types.");
+                         "Inputs and outputs not all float|uint8 types.");
     return kTfLiteError;
   }
 

@@ -41,8 +41,8 @@ Status WhileThunk::Initialize(const GpuExecutable& executable) {
 }
 
 Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                   perftools::gputools::Stream* stream) {
-  perftools::gputools::DeviceMemoryBase condition_result_data =
+                                   se::Stream* stream) {
+  se::DeviceMemoryBase condition_result_data =
       buffer_allocations.GetDeviceAddress(condition_result_buffer_index_);
 
   while (true) {

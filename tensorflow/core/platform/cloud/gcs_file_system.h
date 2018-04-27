@@ -227,6 +227,9 @@ class GcsFileSystem : public FileSystem {
   Status LoadBufferFromGCS(const string& filename, size_t offset, size_t n,
                            char* buffer, size_t* bytes_transferred);
 
+  // Clear all the caches related to the file with name `filename`.
+  void ClearFileCaches(const string& fname);
+
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<FileBlockCache> file_block_cache_;

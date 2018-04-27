@@ -282,6 +282,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "writers",
+    srcs = [
+        "writers.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
 tf_gen_op_wrapper_py(
     name = "gen_dataset_ops",
     out = "gen_dataset_ops.py",
@@ -344,6 +356,7 @@ py_library(
         ":stats_ops",
         ":threadpool",
         ":unique",
+        ":writers",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",

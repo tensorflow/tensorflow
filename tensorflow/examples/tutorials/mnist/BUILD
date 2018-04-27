@@ -51,6 +51,7 @@ py_binary(
         "fully_connected_feed.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["optonly"],
     deps = [
         ":input_data",
         ":mnist",

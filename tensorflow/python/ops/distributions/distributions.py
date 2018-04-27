@@ -35,29 +35,3 @@ from tensorflow.python.ops.distributions.student_t import StudentT
 from tensorflow.python.ops.distributions.uniform import Uniform
 # pylint: enable=wildcard-import,unused-import
 
-from tensorflow.python.util.all_util import remove_undocumented
-
-
-_allowed_symbols = [
-    "Bernoulli",
-    "Beta",
-    "Categorical",
-    "DirichletMultinomial",
-    "Dirichlet",
-    "Distribution",
-    "ReparameterizationType",
-    "FULLY_REPARAMETERIZED",
-    "NOT_REPARAMETERIZED",
-    "Exponential",
-    "Gamma",
-    "RegisterKL",
-    "kl_divergence",
-    "Laplace",
-    "Multinomial",
-    "Normal",
-    "StudentT",
-    "Uniform",
-]
-
-
-remove_undocumented(__name__, _allowed_symbols)

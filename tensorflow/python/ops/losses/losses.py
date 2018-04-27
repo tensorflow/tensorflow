@@ -35,16 +35,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-from tensorflow.python.ops.losses import util
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.losses.losses_impl import *
 from tensorflow.python.ops.losses.util import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = []
-
-remove_undocumented(__name__, _allowed_symbols,
-                    [sys.modules[__name__], util])

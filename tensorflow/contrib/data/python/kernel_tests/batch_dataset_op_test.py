@@ -18,15 +18,18 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import time
 
 import numpy as np
 
 from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import batching
+from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -34,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 class BatchDatasetTest(test.TestCase):
@@ -151,6 +155,69 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
 
+  def testUnbatchDatasetWithStrings(self):
+    data = tuple([math_ops.range(10) for _ in range(3)])
+    data = dataset_ops.Dataset.from_tensor_slices(data)
+    data = data.map(lambda x, y, z: (x, string_ops.as_string(y), z))
+    expected_types = (dtypes.int32, dtypes.string, dtypes.int32)
+    data = data.batch(2)
+    self.assertEqual(expected_types, data.output_types)
+    data = data.apply(batching.unbatch())
+    self.assertEqual(expected_types, data.output_types)
+
+    iterator = data.make_one_shot_iterator()
+    op = iterator.get_next()
+
+    with self.test_session() as sess:
+      for i in range(10):
+        self.assertEqual((i, compat.as_bytes(str(i)), i), sess.run(op))
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(op)
+
+  def testUnbatchDatasetWithSparseTensor(self):
+    st = sparse_tensor.SparseTensorValue(
+        indices=[[i, i] for i in range(10)],
+        values=list(range(10)),
+        dense_shape=[10, 10])
+    data = dataset_ops.Dataset.from_tensors(st)
+    data = data.apply(batching.unbatch())
+    data = data.batch(5)
+    data = data.apply(batching.unbatch())
+    iterator = data.make_one_shot_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      for i in range(10):
+        st_row = sess.run(next_element)
+        self.assertEqual([i], st_row.indices)
+        self.assertEqual([i], st_row.values)
+        self.assertEqual([10], st_row.dense_shape)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def testUnbatchDatasetWithDenseAndSparseTensor(self):
+    st = sparse_tensor.SparseTensorValue(
+        indices=[[i, i] for i in range(10)],
+        values=list(range(10)),
+        dense_shape=[10, 10])
+    data = dataset_ops.Dataset.from_tensors((list(range(10)), st))
+    data = data.apply(batching.unbatch())
+    data = data.batch(5)
+    data = data.apply(batching.unbatch())
+    iterator = data.make_one_shot_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      for i in range(10):
+        dense_elem, st_row = sess.run(next_element)
+        self.assertEqual(i, dense_elem)
+        self.assertEqual([i], st_row.indices)
+        self.assertEqual([i], st_row.values)
+        self.assertEqual([10], st_row.dense_shape)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
   def testUnbatchSingleElementTupleDataset(self):
     data = tuple([(math_ops.range(10),) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -190,6 +257,53 @@ class BatchDatasetTest(test.TestCase):
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
+
+  def testUnbatchEmpty(self):
+    data = dataset_ops.Dataset.from_tensors(
+        (constant_op.constant([]), constant_op.constant([], shape=[0, 4]),
+         constant_op.constant([], shape=[0, 4, 0])))
+    data = data.apply(batching.unbatch())
+    iterator = data.make_one_shot_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def testUnbatchStaticShapeMismatch(self):
+    data = dataset_ops.Dataset.from_tensors((np.arange(7), np.arange(8),
+                                             np.arange(9)))
+    with self.assertRaises(ValueError):
+      data.apply(batching.unbatch())
+
+  def testUnbatchDynamicShapeMismatch(self):
+    ph1 = array_ops.placeholder(dtypes.int32, shape=[None])
+    ph2 = array_ops.placeholder(dtypes.int32, shape=None)
+    data = dataset_ops.Dataset.from_tensors((ph1, ph2))
+    data = data.apply(batching.unbatch())
+    iterator = data.make_initializable_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      # Mismatch in the 0th dimension.
+      sess.run(
+          iterator.initializer,
+          feed_dict={
+              ph1: np.arange(7).astype(np.int32),
+              ph2: np.arange(8).astype(np.int32)
+          })
+      with self.assertRaises(errors.InvalidArgumentError):
+        print(sess.run(next_element))
+
+      # No 0th dimension (i.e. scalar value) for one component.
+      sess.run(
+          iterator.initializer,
+          feed_dict={
+              ph1: np.arange(7).astype(np.int32),
+              ph2: 7
+          })
+      with self.assertRaises(errors.InvalidArgumentError):
+        print(sess.run(next_element))
 
   def testBatchAndDropRemainder(self):
     components = (np.arange(7),
@@ -545,6 +659,59 @@ class BatchDatasetSerializationTest(
     self.run_core_tests(self._build_dataset_nested_sparse, None, 1)
 
 
+class UnbatchDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
+    components = (
+        np.arange(tensor_slice_len),
+        np.array([[1, 2, 3]]) * np.arange(tensor_slice_len)[:, np.newaxis],
+        np.array(multiplier) * np.arange(tensor_slice_len))
+
+    return dataset_ops.Dataset.from_tensor_slices(components).batch(
+        batch_size).apply(batching.unbatch())
+
+  def testCore(self):
+    tensor_slice_len = 8
+    batch_size = 2
+    num_outputs = tensor_slice_len
+    self.run_core_tests(
+        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
+        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
+        num_outputs)
+
+
+class MapAndBatchDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def testSerializationCore(self):
+    range_size = 11
+    num_repeats = 2
+    batch_size = 5
+    total_outputs = range_size * num_repeats
+    num_outputs_drop_remainder = total_outputs // batch_size
+    num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
+    num_parallel_batches = 2
+
+    def build_ds(range_start, drop_remainder=False):
+
+      def _map_fn(x):
+        return math_ops.square(x)
+
+      return dataset_ops.Dataset.range(
+          range_start, range_start + range_size).repeat(num_repeats).apply(
+              batching.map_and_batch(
+                  map_func=_map_fn,
+                  batch_size=batch_size,
+                  num_parallel_batches=num_parallel_batches,
+                  drop_remainder=drop_remainder))
+
+    self.run_core_tests(lambda: build_ds(10), lambda: build_ds(15),
+                        num_outputs_keep_remainder)
+    self.run_core_tests(lambda: build_ds(10, True), lambda: build_ds(15, True),
+                        num_outputs_drop_remainder)
+
+
 class PaddedBatchDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
@@ -586,10 +753,12 @@ class RestructuredDatasetTest(test.TestCase):
   def test_assert_element_shape(self):
 
     def create_unknown_shape_dataset(x):
-      return script_ops.py_func(lambda _: (np.ones(2, dtype=np.float32),
-                                           np.zeros((3, 4), dtype=np.int32)),
-                                [x],
-                                [dtypes.float32, dtypes.int32])
+      return script_ops.py_func(
+          lambda _: (  # pylint: disable=g-long-lambda
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
+          [x],
+          [dtypes.float32, dtypes.int32])
 
     dataset = dataset_ops.Dataset.range(5).map(create_unknown_shape_dataset)
     unknown_shapes = (tensor_shape.TensorShape(None),
@@ -626,10 +795,12 @@ class RestructuredDatasetTest(test.TestCase):
   def test_assert_wrong_element_shape_on_unknown_shape_dataset(self):
 
     def create_unknown_shape_dataset(x):
-      return script_ops.py_func(lambda _: (np.ones(2, dtype=np.float32),
-                                           np.zeros((3, 4), dtype=np.int32)),
-                                [x],
-                                [dtypes.float32, dtypes.int32])
+      return script_ops.py_func(
+          lambda _: (  # pylint: disable=g-long-lambda
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
+          [x],
+          [dtypes.float32, dtypes.int32])
 
     dataset = dataset_ops.Dataset.range(3).map(create_unknown_shape_dataset)
     unknown_shapes = (tensor_shape.TensorShape(None),
@@ -647,6 +818,78 @@ class RestructuredDatasetTest(test.TestCase):
       sess.run(init_op)
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
+
+
+class UnbatchDatasetBenchmark(test.Benchmark):
+
+  def benchmarkNativeUnbatch(self):
+    batch_sizes = [1, 2, 5, 10, 20, 50]
+    elems_per_trial = 10000
+    with ops.Graph().as_default():
+      dataset = dataset_ops.Dataset.from_tensors("element").repeat(None)
+      batch_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
+      dataset = dataset.batch(batch_size_placeholder)
+      dataset = dataset.apply(batching.unbatch())
+      dataset = dataset.skip(elems_per_trial)
+      iterator = dataset.make_initializable_iterator()
+      next_element = iterator.get_next()
+
+      with session.Session() as sess:
+        for batch_size in batch_sizes:
+          deltas = []
+          for _ in range(5):
+            sess.run(
+                iterator.initializer,
+                feed_dict={batch_size_placeholder: batch_size})
+            start = time.time()
+            sess.run(next_element.op)
+            end = time.time()
+            deltas.append((end - start) / elems_per_trial)
+
+          median_wall_time = np.median(deltas)
+          print("Unbatch (native) batch size: %d Median wall time per element:"
+                " %f microseconds" % (batch_size, median_wall_time * 1e6))
+          self.report_benchmark(
+              iters=10000,
+              wall_time=median_wall_time,
+              name="benchmark_unbatch_dataset_native_batch_size_%d" %
+              batch_size)
+
+  # Include a benchmark of the previous `unbatch()` implementation that uses
+  # a composition of more primitive ops. Eventually we'd hope to generate code
+  # that is as good in both cases.
+  def benchmarkOldUnbatchImplementation(self):
+    batch_sizes = [1, 2, 5, 10, 20, 50]
+    elems_per_trial = 10000
+    with ops.Graph().as_default():
+      dataset = dataset_ops.Dataset.from_tensors("element").repeat(None)
+      batch_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
+      dataset = dataset.batch(batch_size_placeholder)
+      dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+      dataset = dataset.skip(elems_per_trial)
+      iterator = dataset.make_initializable_iterator()
+      next_element = iterator.get_next()
+
+      with session.Session() as sess:
+        for batch_size in batch_sizes:
+          deltas = []
+          for _ in range(5):
+            sess.run(
+                iterator.initializer,
+                feed_dict={batch_size_placeholder: batch_size})
+            start = time.time()
+            sess.run(next_element.op)
+            end = time.time()
+            deltas.append((end - start) / elems_per_trial)
+
+          median_wall_time = np.median(deltas)
+          print("Unbatch (unfused) batch size: %d Median wall time per element:"
+                " %f microseconds" % (batch_size, median_wall_time * 1e6))
+          self.report_benchmark(
+              iters=10000,
+              wall_time=median_wall_time,
+              name="benchmark_unbatch_dataset_unfused_batch_size_%d" %
+              batch_size)
 
 
 if __name__ == "__main__":

@@ -364,7 +364,7 @@ def make_dataset(latitude, longitude, labels):
     return tf.data.Dataset.from_tensor_slices((features, labels))
 
 
-# Bucketize the latitude and longitude usig the `edges`
+# Bucketize the latitude and longitude using the `edges`
 latitude_bucket_fc = tf.feature_column.bucketized_column(
     tf.feature_column.numeric_column('latitude'),
     list(atlanta.latitude.edges))

@@ -44,7 +44,7 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
         std::unique_ptr<GraphMgr>()));
 
     cluster_flr_.reset(
-        new ClusterFunctionLibraryRuntime(worker_session_.get()));
+        new ClusterFunctionLibraryRuntime(worker_session_.get(), true));
   }
 
   Status ConstructFunctionGraphHelper(

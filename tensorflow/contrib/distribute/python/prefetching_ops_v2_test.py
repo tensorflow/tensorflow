@@ -64,5 +64,27 @@ class PrefetchingOpsV2Test(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
+  def testPrefetchToTwoDevicesWithReinit(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops_v2.prefetch_to_devices(["/cpu:0", "/gpu:0"]))
+
+    iterator = device_dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(iterator.initializer)
+      for _ in range(5):
+        sess.run(next_element)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+      sess.run(iterator.initializer)
+      for _ in range(5):
+        sess.run(next_element)
+
+
 if __name__ == "__main__":
   test.main()

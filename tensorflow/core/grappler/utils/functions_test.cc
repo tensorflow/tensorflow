@@ -30,12 +30,37 @@ namespace {
 
 class FunctionsTest : public ::testing::Test {};
 
+TEST_F(FunctionsTest, IsParametrized) {
+  // Function is defined for multiple input types.
+  FunctionDef parametrized_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+      {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "output:z:0"}});
+
+  // Function is defined just for float inputs.
+  FunctionDef non_parametrized_func = FunctionDefHelper::Create(
+      "MyMul", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"output"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "output:z:0"}});
+
+  EXPECT_TRUE(HasParametrizedType(parametrized_func));
+  EXPECT_TRUE(HasParametrizedBody(parametrized_func));
+  EXPECT_TRUE(IsParametrized(parametrized_func));
+
+  EXPECT_FALSE(HasParametrizedType(non_parametrized_func));
+  EXPECT_FALSE(HasParametrizedBody(non_parametrized_func));
+  EXPECT_FALSE(IsParametrized(non_parametrized_func));
+}
+
 TEST_F(FunctionsTest, GrapplerFunctionConnectivity_ExpandFunctionDefInput) {
   GrapplerFunctionConnectivity connectivity;
 
-  connectivity.RegisterInputArgExpansion({"inputA", DT_FLOAT, {"inputA"}});
   connectivity.RegisterInputArgExpansion(
-      {"inputB", DT_FLOAT, {"inputB_0", "inputB_1"}});
+      {"inputA", DT_FLOAT, /*is_ref=*/false, {"inputA"}});
+  connectivity.RegisterInputArgExpansion(
+      {"inputB", DT_FLOAT, /*is_ref=*/false, {"inputB_0", "inputB_1"}});
 
   connectivity.RegisterFunctionBodyOutputs("Add", {{"z", {0, 1}}});
   connectivity.RegisterFunctionBodyOutputs("Func",
@@ -98,9 +123,10 @@ TEST_F(FunctionsTest, GrapplerFunctionConnectivity_ExpandFunctionDefInput) {
 TEST_F(FunctionsTest, GrapplerFunctionConnectivity_AsFunctionDefInput) {
   GrapplerFunctionConnectivity connectivity;
 
-  connectivity.RegisterInputArgExpansion({"inputA", DT_FLOAT, {"inputA"}});
   connectivity.RegisterInputArgExpansion(
-      {"inputB", DT_FLOAT, {"inputB_0", "inputB_1"}});
+      {"inputA", DT_FLOAT, /*is_ref=*/false, {"inputA"}});
+  connectivity.RegisterInputArgExpansion(
+      {"inputB", DT_FLOAT, /*is_ref=*/false, {"inputB_0", "inputB_1"}});
 
   connectivity.RegisterFunctionBodyOutputs("Add", {{"z", {0, 1}}});
   connectivity.RegisterFunctionBodyOutputs("Func",
@@ -136,9 +162,10 @@ TEST_F(FunctionsTest, GrapplerFunctionConnectivity_AsFunctionDefInput) {
 TEST_F(FunctionsTest, GrapplerFunctionConnectivity_ExpandNodeInputs) {
   GrapplerFunctionConnectivity connectivity;
 
-  connectivity.RegisterInputArgExpansion({"inputA", DT_FLOAT, {"inputA"}});
   connectivity.RegisterInputArgExpansion(
-      {"inputB", DT_FLOAT, {"inputB_0", "inputB_1"}});
+      {"inputA", DT_FLOAT, /*is_ref=*/false, {"inputA"}});
+  connectivity.RegisterInputArgExpansion(
+      {"inputB", DT_FLOAT, /*is_ref=*/false, {"inputB_0", "inputB_1"}});
 
   NodeDef node;
   node.add_input("inputA:0");
@@ -497,7 +524,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
   EXPECT_EQ("two", cast.input(0));
 }
 
-TEST_F(FunctionsTest, MakeSpecializedFunctionDef) {
+TEST_F(FunctionsTest, MakeFunctionDef) {
   const Tensor kTwo = test::AsScalar<int64>(2);
   FunctionDef func = FunctionDefHelper::Define(
       // Name
@@ -523,7 +550,7 @@ TEST_F(FunctionsTest, MakeSpecializedFunctionDef) {
   TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
 
   FunctionDef specialized;
-  TF_EXPECT_OK(MakeSpecializedFunctionDef(item, flib, &specialized));
+  TF_EXPECT_OK(MakeFunctionDef(item, flib, &specialized));
 
   // Input and output types are resolved based on instantiation attributes.
   EXPECT_EQ("x", specialized.signature().input_arg(0).name());
@@ -546,7 +573,7 @@ TEST_F(FunctionsTest, MakeSpecializedFunctionDef) {
   EXPECT_EQ(2, count);
 }
 
-TEST_F(FunctionsTest, SwapFunctionBodyAndMakeSpecializedFunctionDef) {
+TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   using test::function::NDef;
 
   FunctionDef mul_func = FunctionDefHelper::Create(
@@ -579,7 +606,7 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeSpecializedFunctionDef) {
   // Replace function body with identity function
   item.SwapFunctionBody(std::move(id_func_body));
   FunctionDef specialized;
-  TF_EXPECT_OK(MakeSpecializedFunctionDef(item, flib, &specialized));
+  TF_EXPECT_OK(MakeFunctionDef(item, flib, &specialized));
 
   // Check that graph body was updated.
   int count = 0;
