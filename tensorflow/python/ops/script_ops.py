@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Script Language Operators. See the @{$python/script_ops} guide.
-
-@@py_func
-"""
+"""Script Language Operators. See the @{$python/script_ops} guide."""
 
 # pylint: disable=g-bad-name
 from __future__ import absolute_import

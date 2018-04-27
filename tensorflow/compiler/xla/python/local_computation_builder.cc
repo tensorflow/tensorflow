@@ -197,8 +197,6 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
         ExecutableRunOptions options;
         options.set_device_ordinal(device_ordinal);
         options.set_allocator(client->backend().memory_allocator());
-        options.set_inter_op_thread_pool(
-            client->backend().inter_op_thread_pool());
         options.set_intra_op_thread_pool(
             client->backend().eigen_intra_op_thread_pool_device());
         options.set_device_assignment(&device_assignment);
@@ -242,7 +240,6 @@ LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
   // Execute
   ExecutableRunOptions options;
   options.set_allocator(client->backend().memory_allocator());
-  options.set_inter_op_thread_pool(client->backend().inter_op_thread_pool());
   options.set_intra_op_thread_pool(
       client->backend().eigen_intra_op_thread_pool_device());
   ScopedShapedBuffer result_buffer =

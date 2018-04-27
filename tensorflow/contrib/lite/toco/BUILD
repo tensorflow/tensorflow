@@ -308,6 +308,7 @@ cc_library(
         ":toco_port",
         ":tooling_util",
         "//tensorflow/contrib/lite/kernels/internal:quantization_util",
+        "//tensorflow/contrib/lite/kernels/internal:strided_slice_logic",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

@@ -361,9 +361,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
