@@ -1587,6 +1587,92 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         }
         return operand_to_generator.at(input_hlo)(input_index);
       };
+
+    case HloOpcode::kGather:
+      return [this, hlo, &operand_to_generator](
+                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+        const Shape& operand_shape = hlo->operand(0)->shape();
+        const Shape& indices_shape = hlo->operand(1)->shape();
+        const Shape& output_shape = hlo->shape();
+
+        const GatherDimensionNumbers& dim_numbers =
+            hlo->gather_dimension_numbers();
+
+        const llvm_ir::ElementGenerator& operand_generator =
+            operand_to_generator.at(hlo->operand(0));
+        const llvm_ir::ElementGenerator& indices_generator =
+            operand_to_generator.at(hlo->operand(1));
+
+        // This is the index into `operand` that holds the element we want to
+        // generate.  This index "unsafe" as in the components in here may be
+        // out of bounds.
+        IrArray::Index unsafe_operand_index;
+
+        // First copy in the window indices to unsafe_operand_index.
+        for (int64 i = 0, e = operand_shape.dimensions_size(),
+                   unsafe_operand_index_dim = 0;
+             i < e; i++) {
+          if (c_binary_search(dim_numbers.elided_window_dims(), i)) {
+            unsafe_operand_index.push_back(ir_builder_->getInt64(0));
+          } else {
+            unsafe_operand_index.push_back(index[dim_numbers.output_window_dims(
+                unsafe_operand_index_dim++)]);
+          }
+        }
+
+        // This is the index of the index vector in the gather_indices tensor.
+        IrArray::Index gather_index_index;
+        {
+          std::vector<llvm::Value*> gather_index_index_components;
+          for (int64 i = 0, e = output_shape.dimensions_size(); i < e; i++) {
+            if (!c_binary_search(dim_numbers.output_window_dims(), i)) {
+              gather_index_index.push_back(index[i]);
+            }
+          }
+
+          if (gather_index_index.size() != indices_shape.dimensions_size()) {
+            gather_index_index.InsertAt(dim_numbers.index_vector_dim(),
+                                        nullptr);
+          }
+        }
+
+        auto add_to_unsafe_operand_index = [&](llvm::Value* index_component,
+                                               int64 dim) {
+          llvm::Value* gather_dim_component_extended =
+              ir_builder_->CreateSExtOrTrunc(index_component,
+                                             ir_builder_->getInt64Ty());
+          unsafe_operand_index[dim_numbers.gather_dims_to_operand_dims(dim)] =
+              ir_builder_->CreateAdd(
+                  unsafe_operand_index[dim_numbers.gather_dims_to_operand_dims(
+                      dim)],
+                  gather_dim_component_extended);
+        };
+
+        if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
+          TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
+                              indices_generator(gather_index_index));
+          add_to_unsafe_operand_index(gather_dim_component, 0);
+        } else {
+          int64 index_vector_size =
+              indices_shape.dimensions(dim_numbers.index_vector_dim());
+          for (int64 i = 0; i < index_vector_size; i++) {
+            gather_index_index[dim_numbers.index_vector_dim()] =
+                ir_builder_->getInt64(i);
+            TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
+                                indices_generator(gather_index_index));
+            add_to_unsafe_operand_index(gather_dim_component, i);
+          }
+        }
+
+        IrArray::Index safe_operand_index;
+        for (int64 i = 0, e = unsafe_operand_index.size(); i < e; i++) {
+          safe_operand_index.push_back(ir_builder_->CreateURem(
+              unsafe_operand_index[i],
+              ir_builder_->getInt64(operand_shape.dimensions(i))));
+        }
+
+        return operand_generator(safe_operand_index);
+      };
     case HloOpcode::kDynamicUpdateSlice:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
