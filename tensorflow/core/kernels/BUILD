@@ -2487,6 +2487,7 @@ cc_library(
         ":self_adjoint_eig_op",
         ":self_adjoint_eig_v2_op",
         ":svd_op",
+        ":lu_op",
     ],
 )
 
@@ -2589,6 +2590,14 @@ tf_kernel_library(
     prefix = "matrix_solve_op",
     deps = LINALG_DEPS,
 )
+
+
+tf_kernel_library(
+    name = "lu_op",
+    prefix = "lu_op",
+    deps = LINALG_DEPS,
+)
+
 
 tf_kernel_library(
     name = "matrix_triangular_solve_op",

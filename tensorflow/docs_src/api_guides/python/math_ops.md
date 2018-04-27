@@ -103,7 +103,9 @@ functions on matrices to your graph.
 *   @{tf.qr}
 *   @{tf.self_adjoint_eig}
 *   @{tf.self_adjoint_eigvals}
+*   @{tf.lu}
 *   @{tf.svd}
+
 
 
 ## Tensor Math Function

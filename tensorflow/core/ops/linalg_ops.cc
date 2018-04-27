@@ -139,6 +139,21 @@ Status QrShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+
+// Input is [...,M,M].
+// First, second, and third outputs are:
+//   [...,M,M]; [...,M,M]; [...,M,M];
+Status LuShapeFn(InferenceContext* c) {  
+  // TODO: add ERROR CHECK
+  //c->set_output(0, l_shape);
+  c->set_output(0, c->input(0));
+  //c->set_output(1, u_shape);
+  c->set_output(1, c->input(0));
+  //c->set_output(2, p_shape);
+  c->set_output(2, c->input(0));
+  return Status::OK();
+}
+
 // Input is [...,M,N].  First output is [...,min(M,N)].
 // Second and third outputs are:
 //   [0]; [0], if compute_uv is false.
@@ -328,6 +343,14 @@ REGISTER_OP("Qr")
     .Attr("full_matrices: bool = False")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(QrShapeFn);
+
+REGISTER_OP("Lu")
+    .Input("input: T")
+    .Output("l: T")
+    .Output("u: T")
+    .Output("p: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(LuShapeFn);
 
 REGISTER_OP("Svd")
     .Input("input: T")
