@@ -37,8 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
-namespace gpu = perftools::gputools;
-
 namespace tensorflow {
 
 XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
@@ -51,9 +49,9 @@ XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
   num_constant_args_ = constant_types.size();
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args_));
   if (device_type_ == DeviceType(DEVICE_CPU)) {
-    platform_id_ = gpu::host::kHostPlatformId;
+    platform_id_ = se::host::kHostPlatformId;
   } else if (device_type_ == DeviceType(DEVICE_GPU)) {
-    platform_id_ = gpu::cuda::kCudaPlatformId;
+    platform_id_ = se::cuda::kCudaPlatformId;
   } else {
     platform_id_ = nullptr;
   }
@@ -69,9 +67,9 @@ Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
     return Status::OK();
   }
 
-  auto platform = gpu::MultiPlatformManager::PlatformWithId(platform_id_);
+  auto platform = se::MultiPlatformManager::PlatformWithId(platform_id_);
   if (!platform.ok()) {
-    return StreamExecutorUtil::ConvertStatus(platform.status());
+    return platform.status();
   }
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform.ValueOrDie());
@@ -100,7 +98,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   ResourceMgr* rm = ctx->resource_manager();
   OP_REQUIRES(ctx, rm, errors::Internal("No resource manager."));
 
-  gpu::Stream* stream =
+  se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
   XlaCompilationCache* cache;
@@ -153,7 +151,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   options.device_type = &cache->device_type();
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
-  options.allow_cpu_custom_calls = (platform_id_ == gpu::host::kHostPlatformId);
+  options.allow_cpu_custom_calls = (platform_id_ == se::host::kHostPlatformId);
   options.device_allocator = xla_allocator;
   // TODO(b/77671268): We don't set variable_representation_shape_fn here. This
   // is restricted to Variables, but we need something like this to apply to

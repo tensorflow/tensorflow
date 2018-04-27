@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/mem.h"
 
-namespace se = ::perftools::gputools;
-
 namespace tensorflow {
 
 // The allocator used for Tensors assigned to the XLA device.

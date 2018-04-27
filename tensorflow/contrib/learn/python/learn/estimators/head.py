@@ -777,7 +777,7 @@ class _RegressionHead(_SingleHead):
     key = prediction_key.PredictionKey.SCORES
     with ops.name_scope(None, "predictions", (logits,)):
       if self.logits_dimension == 1:
-        logits = array_ops.squeeze(logits, squeeze_dims=(1,), name=key)
+        logits = array_ops.squeeze(logits, axis=(1,), name=key)
       return {key: self._link_fn(logits)}
 
   def _metrics(self, eval_loss, predictions, labels, weights):
@@ -974,7 +974,7 @@ def _softmax_cross_entropy_loss(labels, logits, weights=None):
     is_squeezed_labels = False
     # TODO(ptucker): This will break for dynamic shapes.
     if len(labels.get_shape()) == 2:
-      labels = array_ops.squeeze(labels, squeeze_dims=(1,))
+      labels = array_ops.squeeze(labels, axis=(1,))
       is_squeezed_labels = True
 
     loss = nn.sparse_softmax_cross_entropy_with_logits(

@@ -36,6 +36,9 @@ namespace tensorflow {
 namespace grappler {
 
 namespace {
+
+constexpr int kDefaultNumberOfIterations = 1;
+
 int64 NumEdges(const GraphDef& graph) {
   int64 num_edges = 0;
   for (const auto& node : graph.node()) {
@@ -50,164 +53,144 @@ string PrintSizesBeforeAfter(const GraphDef& before, const GraphDef& after) {
                          NumEdges(after), " edges (",
                          NumEdges(after) - NumEdges(before), ")");
 }
-}  // namespace
 
-std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
-    const string& optimizer) {
-  std::unique_ptr<GraphOptimizer> graph_optimizer;
-  if (optimizer == "pruning") {
-    graph_optimizer.reset(new ModelPruner());
-  }
-  if (optimizer == "function") {
-    graph_optimizer.reset(new FunctionOptimizer(cfg_.function_optimization()));
-  }
-  if (optimizer == "constfold") {
-    graph_optimizer.reset(new ConstantFolding(cpu_device_));
-  }
-  if (optimizer == "layout") {
-    graph_optimizer.reset(new LayoutOptimizer());
-  }
-  if (optimizer == "memory") {
-    graph_optimizer.reset(new MemoryOptimizer(RewriterConfig::MANUAL));
-  }
-  if (optimizer == "arithmetic") {
-    graph_optimizer.reset(
-        new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
-  }
-  if (optimizer == "autoparallel") {
-    graph_optimizer.reset(
-        new AutoParallel(cfg_.auto_parallel().num_replicas()));
-  }
-  if (optimizer == "loop") {
-    graph_optimizer.reset(new LoopOptimizer(cfg_.loop_optimization()));
-  }
-  if (optimizer == "dependency") {
-    graph_optimizer.reset(
-        new DependencyOptimizer(cfg_.dependency_optimization()));
-  }
-  if (optimizer == "debug_stripper") {
-    graph_optimizer.reset(new DebugStripper());
-  }
-  return graph_optimizer;
+int NumIterations(const RewriterConfig& cfg) {
+  return cfg.meta_optimizer_iterations() == RewriterConfig::DEFAULT_NUM_ITERS
+             ? kDefaultNumberOfIterations
+             : cfg.meta_optimizer_iterations();
 }
 
-Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
-                               GraphDef* optimized_graph) {
-  std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  if (cfg_.optimizers().empty()) {
-    if (!cfg_.disable_model_pruning()) {
-      optimizers.push_back(std::unique_ptr<GraphOptimizer>(new ModelPruner()));
-    }
-    if (cfg_.function_optimization() != RewriterConfig::OFF) {
-      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
-          new FunctionOptimizer(cfg_.function_optimization())));
-    }
-    if (cfg_.debug_stripper() == RewriterConfig::ON) {
-      optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new DebugStripper()));
-    }
-    if (cfg_.constant_folding() != RewriterConfig::OFF) {
-      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
-          new ConstantFolding(cfg_.constant_folding(), cpu_device_)));
-    }
-    if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
-      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
-          new ArithmeticOptimizer(cfg_.arithmetic_optimization())));
-    }
-    if (cfg_.loop_optimization() != RewriterConfig::OFF) {
-      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
-          new LoopOptimizer(cfg_.loop_optimization())));
-    }
-    if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
-      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
-          new DependencyOptimizer(cfg_.dependency_optimization())));
-    }
-    if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-      optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
-    }
-    if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
-      if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
-        optimizers.push_back(std::unique_ptr<GraphOptimizer>(
-            // Use the default target node name prefix "gradients/"
-            new MemoryOptimizer(cfg_.memory_optimization())));
-      } else {
-        optimizers.push_back(
-            std::unique_ptr<GraphOptimizer>(new MemoryOptimizer(
-                cfg_.memory_optimization(),
-                cfg_.memory_optimizer_target_node_name_scope())));
-      }
-    }
-    if (cfg_.auto_parallel().enable()) {
-      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
-          new AutoParallel(cfg_.auto_parallel().num_replicas())));
-    }
-  } else {
-    const std::set<string> available_optimizers = {
-        "pruning",    "function",      "constfold",  "layout",
-        "memory",     "autoparallel",  "arithmetic", "loop",
-        "dependency", "debug_stripper"};
-    std::vector<string> custom_optimizer_names;
-    for (const auto& optimizer_name : cfg_.optimizers()) {
-      if (available_optimizers.find(optimizer_name) !=
-          available_optimizers.end()) {
-        optimizers.push_back(NewOptimizer(optimizer_name));
-      } else {
-        custom_optimizer_names.push_back(optimizer_name);
-      }
-    }
-    // Now run the custom optimizers.
-    for (const auto& optimizer_name : custom_optimizer_names) {
-      std::unique_ptr<CustomGraphOptimizer> opt =
-          CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer_name);
-      if (opt == nullptr) continue;
-      TF_RETURN_IF_ERROR(opt->Init());
-      optimizers.push_back(std::move(opt));
-    }
+// Check if optimizer is allowed to run only once.
+bool IsRunOnceOptimizer(const string& name) { return name == "layout"; }
 
-    // Append custom configurable optimizers.
-    std::vector<tensorflow::RewriterConfig_CustomGraphOptimizer>
-        custom_configurable_optimizers;
-    for (const auto& optimizer : cfg_.custom_optimizers()) {
-      if (available_optimizers.find(optimizer.name()) !=
-          available_optimizers.end()) {
-        optimizers.push_back(NewOptimizer(optimizer.name()));
-      } else {
-        custom_configurable_optimizers.push_back(optimizer);
-      }
-    }
-    // Now initialize and configure the custom optimizers.
-    for (const auto& optimizer : custom_configurable_optimizers) {
-      std::unique_ptr<CustomGraphOptimizer> opt =
-          CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer.name());
-      if (opt == nullptr) continue;
-      TF_RETURN_IF_ERROR(opt->Init(&optimizer));
-      optimizers.push_back(std::move(opt));
+}  // namespace
+
+#define MK_OPT(NAME, VALUE) \
+  if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
+
+std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
+    const string& optimizer) const {
+  MK_OPT("pruning", new ModelPruner());
+  MK_OPT("function", new FunctionOptimizer(cfg_.function_optimization()));
+  MK_OPT("constfold", new ConstantFolding(cpu_device_));
+  MK_OPT("layout", new LayoutOptimizer());
+  MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
+  MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
+  MK_OPT("autoparallel", new AutoParallel(cfg_.auto_parallel().num_replicas()));
+  MK_OPT("loop", new LoopOptimizer(cfg_.loop_optimization()));
+  MK_OPT("dependency", new DependencyOptimizer(cfg_.dependency_optimization()));
+  MK_OPT("debug_stripper", new DebugStripper());
+
+  return std::unique_ptr<GraphOptimizer>();
+}
+
+#undef MK_OPT
+
+Status MetaOptimizer::InitializeOptimizers(
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+  if (!cfg_.disable_model_pruning()) {
+    optimizers->emplace_back(new ModelPruner());
+  }
+  if (cfg_.function_optimization() != RewriterConfig::OFF) {
+    optimizers->emplace_back(
+        new FunctionOptimizer(cfg_.function_optimization()));
+  }
+  if (cfg_.debug_stripper() == RewriterConfig::ON) {
+    optimizers->emplace_back(new DebugStripper());
+  }
+  if (cfg_.constant_folding() != RewriterConfig::OFF) {
+    optimizers->emplace_back(
+        new ConstantFolding(cfg_.constant_folding(), cpu_device_));
+  }
+  if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
+    optimizers->emplace_back(
+        new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
+  }
+  if (cfg_.loop_optimization() != RewriterConfig::OFF) {
+    optimizers->emplace_back(new LoopOptimizer(cfg_.loop_optimization()));
+  }
+  if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
+    optimizers->emplace_back(
+        new DependencyOptimizer(cfg_.dependency_optimization()));
+  }
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+    optimizers->emplace_back(new LayoutOptimizer());
+  }
+  if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
+    if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
+      optimizers->emplace_back(
+          // Use the default target node name prefix "gradients/"
+          new MemoryOptimizer(cfg_.memory_optimization()));
+    } else {
+      optimizers->emplace_back(
+          new MemoryOptimizer(cfg_.memory_optimization(),
+                              cfg_.memory_optimizer_target_node_name_scope()));
     }
   }
+  if (cfg_.auto_parallel().enable()) {
+    optimizers->emplace_back(
+        new AutoParallel(cfg_.auto_parallel().num_replicas()));
+  }
+  return Status::OK();
+}
+
+Status MetaOptimizer::InitializeOptimizersByName(
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+  for (const string& optimizer_name : cfg_.optimizers()) {
+    auto optimizer = MakeNewOptimizer(optimizer_name);
+    if (optimizer) {
+      VLOG(2) << "Registered default graph optimizer: " << optimizer_name;
+      optimizers->push_back(std::move(optimizer));
+      continue;
+    }
+
+    auto custom_optimizer =
+        CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer_name);
+
+    if (custom_optimizer) {
+      VLOG(2) << "Registered custom graph optimizer: " << optimizer_name;
+      TF_RETURN_IF_ERROR(custom_optimizer->Init());
+      optimizers->push_back(std::move(custom_optimizer));
+    } else {
+      VLOG(2) << "Can't register an optimizer by name: " << optimizer_name;
+    }
+  }
+  return Status::OK();
+}
+
+Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
+                                    GraphDef* optimized_graph) {
+  std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
+  if (cfg_.optimizers().empty()) {
+    TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
+  } else {
+    TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
+  }
+
+  VLOG(2) << "Optimize GrapplerItem: item.id=" << item.id
+          << " num_optimizers=" << optimizers.size();
 
   if (optimizers.empty()) {
+    VLOG(3) << "Skip graph optimization, no optimizers registered";
     *optimized_graph = item.graph;
     return Status::OK();
   }
 
-  // Some optimizers should be run only once.
-  const std::set<string> run_once_optimizers = {"layout"};
-  bool already_optimized = false;
-  const int num_iterations =
-      cfg_.meta_optimizer_iterations() == RewriterConfig::DEFAULT_NUM_ITERS
-          ? 1
-          : cfg_.meta_optimizer_iterations();
+  // Invariant: optimized_graph contains the most recently optimized version of
+  // the graph.
   GrapplerItem optimized_item = item;
   optimized_graph->Swap(&optimized_item.graph);
-  for (int iteration = 0; iteration < num_iterations; ++iteration) {
-    VLOG(1) << "Starting optimization iteration " << iteration + 1;
+
+  bool is_optimized = false;
+  GraphOptimizationResult optimization_result(item.id);
+
+  for (int iteration = 0; iteration < NumIterations(cfg_); ++iteration) {
+    VLOG(4) << "Starting optimization iteration " << iteration + 1;
+
     for (const auto& optimizer : optimizers) {
-      // Invariant: optimized_graph contains the most recently optimized
-      // version of the graph.
-      if (iteration > 0 && run_once_optimizers.count(optimizer->name())) {
-        continue;
-      }
+      // Some optimizers can run only once.
+      if (iteration > 0 && IsRunOnceOptimizer(optimizer->name())) continue;
+
       uint64 start_us = Env::Default()->NowMicros();
       // This swaps the current optimized_graph into optimized item and
       // resets optimized_graph to an empty graph.
@@ -215,45 +198,53 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       *optimized_graph = GraphDef();
       Status status =
           optimizer->Optimize(cluster, optimized_item, optimized_graph);
-
       uint64 end_us = Env::Default()->NowMicros();
-      float duration_ms = (end_us - start_us) / 1000.0f;
+
       string result;
       if (!status.ok()) {
-        VLOG(1) << "Not able to apply optimizer " << optimizer->name() << ": "
-                << status.ToString();
         optimized_graph->Swap(&optimized_item.graph);
         result = status.ToString();
       } else {
-        already_optimized = true;
+        is_optimized = true;
+        float duration_ms = (end_us - start_us) / 1000.0f;
         result = strings::StrCat(
-            optimizer->name(), ": ",
             PrintSizesBeforeAfter(optimized_item.graph, *optimized_graph),
             ", time = ", duration_ms, "ms.");
       }
-      result_.emplace_back(optimizer->name(), result);
-      VLOG(1) << result;
+      VLOG(4) << optimizer->name() << ": " << result;
+
+      OptimizerResult optimizer_result{optimizer->name(), result};
+      optimization_result.results.push_back(optimizer_result);
     }
   }
 
-  if (already_optimized) {
+  // Record graph optimization result.
+  optimization_results_.push_back(optimization_result);
+
+  if (is_optimized) {
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     ReassignColocation(optimized_graph);
-    // Make sure that the optimizers preserved the graph version and library.
-    DCHECK_GE(optimized_graph->library().function_size(),
-              item.graph.library().function_size());
-    DCHECK_GE(optimized_graph->library().gradient_size(),
-              item.graph.library().gradient_size());
+    // Make sure that the optimizers preserved the graph version.
     DCHECK_EQ(optimized_graph->versions().producer(),
               item.graph.versions().producer());
   }
+
+  return Status::OK();
+}
+
+Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
+                               GraphDef* optimized_graph) {
+  optimization_results_.clear();
+  TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
   return Status::OK();
 }
 
 void MetaOptimizer::PrintResult() {
-  for (const auto& result : result_) {
-    LOG(INFO) << "Return status of optimizer " << result.first << ": "
-              << result.second;
+  for (const GraphOptimizationResult& graph_result : optimization_results_) {
+    LOG(INFO) << "Optimization results for grappler item: " << graph_result.id;
+    for (const OptimizerResult& result : graph_result.results) {
+      LOG(INFO) << "  " << result.optimizer_name << ": " << result.result;
+    }
   }
 }
 
@@ -273,7 +264,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
-         !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
+         !cfg.optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,

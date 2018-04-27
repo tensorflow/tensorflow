@@ -445,7 +445,7 @@ class RandomForestGraphs(object):
           mask = math_ops.less(
               r, array_ops.ones_like(r) * self.params.bagging_fraction)
           gather_indices = array_ops.squeeze(
-              array_ops.where(mask), squeeze_dims=[1])
+              array_ops.where(mask), axis=[1])
           # TODO(thomaswc): Calculate out-of-bag data and labels, and store
           # them for use in calculating statistics later.
           tree_data = array_ops.gather(processed_dense_features, gather_indices)

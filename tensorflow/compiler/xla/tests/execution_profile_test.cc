@@ -24,8 +24,7 @@ namespace {
 
 class ExecutionProfileTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(ExecutionProfileTest,
-           DISABLED_ON_CPU_PARALLEL(ExecuteWithExecutionProfile)) {
+XLA_TEST_F(ExecutionProfileTest, ExecuteWithExecutionProfile) {
   Shape shape = ShapeUtil::MakeShape(F32, {256, 256});
 
   TF_ASSERT_OK_AND_ASSIGN(

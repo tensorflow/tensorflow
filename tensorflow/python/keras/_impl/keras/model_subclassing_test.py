@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import tempfile
 
 import numpy as np
 import six
@@ -420,8 +419,6 @@ class ModelSubclassingTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def test_saving(self):
-    if h5py is None:
-      return  # Skip test if models cannot be saved.
 
     num_classes = (2, 3)
     num_samples = 100
@@ -437,20 +434,30 @@ class ModelSubclassingTest(test.TestCase):
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
     y_ref_1, y_ref_2 = model.predict([x1, x2])
 
-    fd, fname = tempfile.mkstemp('.h5')
-    model.save_weights(fname)
+    tf_format_name = os.path.join(self.get_temp_dir(), 'ckpt')
+    model.save_weights(tf_format_name)
+    if h5py is not None:
+      hdf5_format_name = os.path.join(self.get_temp_dir(), 'weights.h5')
+      model.save_weights(hdf5_format_name)
 
     model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-    # need to build the model before loading weights
-    # (otherwise no weights to load)
-    model._set_inputs([x1, x2])
-    model.load_weights(fname)
+
+    if h5py is not None:
+      with self.assertRaises(ValueError):
+        model.load_weights(hdf5_format_name)
+
+    model.load_weights(tf_format_name)
 
     y1, y2 = model.predict([x1, x2])
     self.assertAllClose(y_ref_1, y1, atol=1e-5)
     self.assertAllClose(y_ref_2, y2, atol=1e-5)
-    os.close(fd)
-    os.remove(fname)
+
+    if h5py is not None:
+      model.load_weights(hdf5_format_name)
+
+      y1, y2 = model.predict([x1, x2])
+      self.assertAllClose(y_ref_1, y1, atol=1e-5)
+      self.assertAllClose(y_ref_2, y2, atol=1e-5)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_summary(self):

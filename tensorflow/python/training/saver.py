@@ -1824,12 +1824,10 @@ class Saver(object):
       # This is an object-based checkpoint. We'll print a warning and then do
       # the restore.
       logging.warning(
-          # TODO(allenl): Modify instructions for using the object-based saver
-          # once that's in core.
           "Restoring an object-based checkpoint using a name-based saver. This "
           "may be somewhat fragile, and will re-build the Saver. Instead, "
           "consider loading object-based checkpoints using "
-          "tf.contrib.eager.Checkpoint().")
+          "tf.train.Checkpoint().")
       self._restore_from_object_based_checkpoint(
           sess=sess, save_path=save_path,
           object_graph_string=object_graph_string)

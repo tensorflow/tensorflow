@@ -235,6 +235,11 @@ StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
   return Computation(stub_, response.computation());
 }
 
+StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
+  TF_RET_CHECK(module.has_hlo() && module.hlo().has_hlo_module());
+  return XlaComputation(module.hlo().hlo_module());
+}
+
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,

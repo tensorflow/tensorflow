@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -62,7 +63,8 @@ class GrapplerTest : public ::testing::Test {
   Tensor GenerateRandomTensor(const TensorShape& shape) const {
     typedef typename EnumToDataType<DTYPE>::Type T;
     Tensor tensor(DTYPE, shape);
-    tensor.flat<T>() = tensor.flat<T>().random();
+    for (auto i = 0; i < tensor.NumElements(); i++)
+      tensor.flat<T>()(i) = i + random::New64() % 10;
     return tensor;
   }
 

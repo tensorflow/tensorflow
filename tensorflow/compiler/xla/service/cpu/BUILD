@@ -89,12 +89,10 @@ cc_library(
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
-        ":cpu_parallelization_preparation",
         ":disassembler",
         ":dot_op_emitter",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":parallel_cpu_executable",
         ":parallel_task_assignment",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:literal_util",
@@ -226,35 +224,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "@llvm//:orc_jit",
-    ],
-)
-
-cc_library(
-    name = "parallel_cpu_executable",
-    srcs = ["parallel_cpu_executable.cc"],
-    hdrs = [
-        "parallel_cpu_executable.h",
-    ],
-    deps = [
-        ":cpu_runtime",
-        ":shape_partition",
-        ":simple_orc_jit",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:device_memory_allocator",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_execution_profile",
-        "//tensorflow/compiler/xla/service:logical_buffer",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:orc_jit",
@@ -658,25 +627,6 @@ cc_library(
         ":ir_emission_utils",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
-    ],
-)
-
-cc_library(
-    name = "cpu_parallelization_preparation",
-    srcs = ["cpu_parallelization_preparation.cc"],
-    hdrs = [
-        "cpu_parallelization_preparation.h",
-    ],
-    deps = [
-        ":ir_emission_utils",
-        ":parallel_task_assignment",
-        ":shape_partition",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
     ],
 )
 

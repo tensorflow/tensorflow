@@ -28,7 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [
@@ -44,7 +44,7 @@ def _ndims_from_shape(shape):
   return array_ops.shape(shape)[0]
 
 
-class Reshape(bijector_lib.Bijector):
+class Reshape(bijector.Bijector):
   """Reshapes the `event_shape` of a `Tensor`.
 
   The semantics generally follow that of `tf.reshape()`, with

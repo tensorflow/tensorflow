@@ -115,7 +115,6 @@ cuda_py_test(
     additional_deps = [
         ":training",
         "@six_archive//:six",
-        "//tensorflow/contrib/eager/python:checkpointable_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -203,4 +202,5 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
+    tags = ["optonly"],
 )
