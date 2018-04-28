@@ -4,18 +4,17 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test", "py_test", "tf_py_test")
 
 py_test(
     name = "batch_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -38,8 +37,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:grouping",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -60,10 +58,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
@@ -80,8 +78,7 @@ py_test(
     ],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -125,16 +122,19 @@ py_test(
     size = "small",
     srcs = ["filter_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -146,7 +146,7 @@ tf_py_test(
     additional_deps = [
         ":dataset_serialization_test",
         "//third_party/py/numpy",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -176,8 +176,7 @@ py_test(
     ],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -188,6 +187,7 @@ py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -198,7 +198,8 @@ tf_py_test(
     srcs = ["get_single_element_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:get_single_element",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -213,11 +214,14 @@ py_test(
     size = "medium",
     srcs = ["map_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "noasan",  # times out
+        "optonly",
+    ],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:error_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -262,8 +266,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:counter",
+        "//tensorflow/contrib/data/python/ops:enumerate_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -275,6 +279,7 @@ py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -308,14 +313,17 @@ py_test(
     srcs = ["resample_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "optonly",
+    ],
     deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:resampling",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -328,13 +336,14 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:scan_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )
@@ -347,11 +356,11 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -379,7 +388,6 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:shuffle_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -416,10 +424,10 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:stats_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -430,10 +438,11 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:threadpool",
+        "//tensorflow/contrib/data/python/ops:unique",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -445,13 +454,13 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:unique",
         "//tensorflow/contrib/stateless",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -464,21 +473,20 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "prefetching_ops_test",
     size = "small",
     srcs = ["prefetching_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -498,8 +506,8 @@ tf_py_test(
     size = "small",
     srcs = ["slide_dataset_op_test.py"],
     additional_deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:sliding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -507,5 +515,25 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "writer_ops_test",
+    size = "small",
+    srcs = ["writer_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/data/python/ops:writers",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:readers",
     ],
 )

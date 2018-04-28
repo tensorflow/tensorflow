@@ -657,12 +657,14 @@ def _get_arg_spec(func):
           argspec_defaults.pop(i-first_default_arg)
         else:
           first_default_arg -= 1
-    return tf_inspect.FullArgSpec(args=argspec_args,
-                                  varargs=argspec.varargs,
-                                  varkw=argspec.varkw,
-                                  defaults=tuple(argspec_defaults),
-                                  kwonlyargs=[], kwonlydefaults=None,
-                                  annotations={})
+    return tf_inspect.FullArgSpec(
+        args=argspec_args,
+        varargs=argspec.varargs,
+        varkw=argspec.varkw,
+        defaults=tuple(argspec_defaults),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
   else:  # Regular function or method, getargspec will work fine.
     return tf_inspect.getfullargspec(func)
 
@@ -672,7 +674,7 @@ def _remove_first_line_indent(string):
   return '\n'.join([line[indent:] for line in string.split('\n')])
 
 
-PAREN_NUMBER_RE = re.compile("^\(([0-9.e-]+)\)")
+PAREN_NUMBER_RE = re.compile(r'^\(([0-9.e-]+)\)')
 
 
 def _generate_signature(func, reverse_index):
@@ -1145,10 +1147,11 @@ class _ClassPageInfo(object):
 
     for short_name in parser_config.tree[self.full_name]:
       # Remove builtin members that we never want to document.
-      if short_name in ['__class__', '__base__', '__weakref__', '__doc__',
-                        '__module__', '__dict__', '__abstractmethods__',
-                        '__slots__', '__getnewargs__', '__str__',
-                        '__repr__', '__hash__']:
+      if short_name in [
+          '__class__', '__base__', '__weakref__', '__doc__', '__module__',
+          '__dict__', '__abstractmethods__', '__slots__', '__getnewargs__',
+          '__str__', '__repr__', '__hash__'
+      ]:
         continue
 
       child_name = '.'.join([self.full_name, short_name])
@@ -1193,7 +1196,8 @@ class _ClassPageInfo(object):
         # obvious what they do, don't include them in the docs if there's no
         # docstring.
         if not child_doc.brief.strip() and short_name in [
-            '__del__', '__copy__']:
+            '__del__', '__copy__'
+        ]:
           print('Skipping %s, defined in %s, no docstring.' % (child_name,
                                                                defining_class))
           continue

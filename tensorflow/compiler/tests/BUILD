@@ -272,6 +272,18 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "dynamic_slice_ops_test",
+    size = "small",
+    srcs = ["dynamic_slice_ops_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+    ],
+)
+
+tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
@@ -288,6 +300,25 @@ tf_xla_py_test(
     name = "extract_image_patches_op_test",
     size = "small",
     srcs = ["extract_image_patches_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "eager_test",
+    size = "small",
+    srcs = ["eager_test.py"],
+    disabled_backends = [
+        # TODO(b/78199195) Support XLA CPU devices in eager runtime
+        "cpu",
+        "cpu_ondemand",
+        # TODO(b/78468222) Enable GPU backend
+        "gpu",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -328,7 +359,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "ftrl_test",
-    size = "small",
+    size = "medium",
     srcs = ["ftrl_test.py"],
     deps = [
         ":xla_test",
@@ -489,6 +520,22 @@ tf_xla_py_test(
     shard_count = 5,
     deps = [
         ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "reduce_window_test",
+    size = "small",
+    srcs = ["reduce_window_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -690,9 +737,25 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "while_test",
+    size = "small",
+    srcs = ["while_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
+    tags = ["noasan"],  # times out, http://b/78599043
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -857,6 +920,18 @@ tf_xla_py_test(
     srcs = ["fake_quant_ops_test.py"],
     deps = [
         ":xla_test",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "placeholder_test",
+    size = "small",
+    srcs = ["placeholder_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],

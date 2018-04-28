@@ -20,8 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import contextlib
-import threading
 
 import numpy as np
 
@@ -32,34 +30,15 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-
-# Thread-local storage for tfe Tensors which are referenced while evaluating a
-# graph-mode function.
-_scoped_captures = threading.local()
-# _scoped_captures.tensors is either None or a map from Tensor id to a pair
-# of a tfe tensor and its corresponding placeholder to pass as a function
-# argument. The value should be None unless we're in function definition
-# context.
-_scoped_captures.tensors = None
-
-
-@contextlib.contextmanager
-def capture_tensors(captures):
-  old = _scoped_captures.__dict__.get("tensors", None)
-  try:
-    _scoped_captures.tensors = captures
-    yield
-  finally:
-    _scoped_captures.tensors = old
 
 
 def capture_value(tensor_map, value, dtype, name):
@@ -69,9 +48,22 @@ def capture_value(tensor_map, value, dtype, name):
     captured_value = graph_placeholder(
         dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes_module.resource:
-      handle_data = value._handle_data  # pylint: disable=protected-access
-      captured_value._handle_data = handle_data  # pylint: disable=protected-access
+      if ops._USE_C_SHAPES:  # pylint: disable=protected-access
+        if isinstance(value, ops.EagerTensor):
+          handle_data = value._handle_data  # pylint: disable=protected-access
+        else:
+          handle_data = resource_variable_ops.get_resource_handle_data(value)
+      else:
+        handle_data = value._handle_data  # pylint: disable=protected-access
       if handle_data is not None and handle_data.is_set:
+        # pylint: disable=protected-access
+        if ops._USE_C_SHAPES:
+          pywrap_tensorflow.SetResourceHandleShapeAndType(
+              captured_value.graph._c_graph, captured_value._as_tf_output(),
+              handle_data.SerializeToString())
+        else:
+          captured_value._handle_data = handle_data
+        # pylint: enable=protected-access
         # Ensure that shapes and dtypes are propagated.
         shapes, types = zip(*[(pair.shape, pair.dtype)
                               for pair in handle_data.shape_and_type])
@@ -89,43 +81,6 @@ def capture_value(tensor_map, value, dtype, name):
   tape.record_operation("captured_value", [captured_value], [value],
                         lambda x: [x])
   return captured_value
-
-
-def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
-  """Captures a Tensor while building a graph mode function.
-
-  Arguments:
-    value: A Tensor object.
-    dtype: The datatype of the value produced by the node in the graph.
-    name:  str, Name of the node in the graph.
-    as_ref: Ignored (required by register_tensor_conversion_function).
-
-  Returns:
-    Returns a constant (the current value of the tensor) if capturing
-    is not enabled. A placeholder which will have the value of the
-    tensor at runtime otherwise.
-  """
-  del as_ref  # Unused.
-
-  if context.executing_eagerly():
-    return value
-
-  default_graph = ops.get_default_graph()
-  if not default_graph.building_function:
-    return value
-
-  tensor_map = _scoped_captures.tensors
-  if tensor_map is None:
-    # Capturing is not enabled.
-    if value.dtype == dtypes_module.resource:
-      return value
-    return constant_op.constant(value.numpy())
-  if type(value) == ops.Tensor and value.graph is default_graph:
-    # The tensor has already been converted and captured. The type check
-    # is intentional: we are checking that value is a Tensor and not an
-    # EagerTensor.
-    return value
-  return capture_value(tensor_map, value, dtype, name)
 
 
 class CapturingGraph(ops.Graph):
@@ -147,6 +102,15 @@ class CapturingGraph(ops.Graph):
   def clear_resource_control_flow_state(self):
     self._last_op_using_resource_tensor = {}
 
+  def maybe_capture_tensor(self, tensor):
+    if isinstance(tensor, ops.EagerTensor):
+      return capture_value(
+          self.captures, tensor, tensor.dtype, str(ops.uid()))
+    if tensor.graph is not self:
+      return capture_value(
+          self.captures, tensor, tensor.dtype, tensor.op.name)
+    return tensor
+
   def create_op(
       self,
       op_type,
@@ -162,18 +126,10 @@ class CapturingGraph(ops.Graph):
     # forward the resources such as Identity and Switch can cause serialization
     # to fail.
     for i, inp in enumerate(inputs):
-      if inp.graph is not self:
-        inputs[i] = capture_value(self.captures, inp, inp.dtype, inp.op.name)
+      inputs[i] = self.maybe_capture_tensor(inp)
     return super(CapturingGraph, self).create_op(
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
         compute_shapes, compute_device)
-
-
-# TODO(apassos): it'd be really nice if we could scope this registration.
-# Note that we register this at a higher priority than ops.Tensor since we want
-# to handle subclass specific conversion before a superclass conversion.
-ops.register_tensor_conversion_function(
-    ops.EagerTensor, _convert_to_graph_tensor, priority=-1)
 
 
 # pylint: disable=invalid-name
@@ -391,7 +347,15 @@ class GraphModeFunction(object):
       c_known_ops = set()
       c_captured_tensors = set()
 
-      def add_op_internal(op):
+      existing_op_len = len(self._graph.get_operations())
+      filtered_outputs = [x for x in self._returns if x is not None]
+      self._out_grad_placeholders = [
+          graph_placeholder(x.dtype, x.shape) for x in filtered_outputs]
+      in_gradients = gradients_impl.gradients(
+          filtered_outputs,
+          self._input_placeholders,
+          grad_ys=self._out_grad_placeholders)
+      for op in self._graph.get_operations()[existing_op_len:]:
         if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
           raise ValueError("tfe.defun cannot capture variables created without "
                            "using tf.get_variable. Op: %s" % op)
@@ -399,17 +363,6 @@ class GraphModeFunction(object):
         for i in op.inputs:
           if i.op not in c_known_ops:
             c_captured_tensors.add(i)
-
-      c = HelperContext(add_op_internal)
-
-      with c:
-        filtered_outputs = [x for x in self._returns if x is not None]
-        self._out_grad_placeholders = [
-            graph_placeholder(x.dtype, x.shape) for x in filtered_outputs]
-        in_gradients = gradients_impl.gradients(
-            filtered_outputs,
-            self._input_placeholders,
-            grad_ys=self._out_grad_placeholders)
 
     backward_outputs = tuple(
         grad for grad in _flatten(in_gradients) if grad is not None)
@@ -633,21 +586,21 @@ def _defun_internal(name, func, args, kwds):
         x = a.mark_as_return(x)
         return x
 
-      with capture_tensors(captures):
-        this_tape = tape.push_new_tape()
-        try:
-          func_outputs = func(*func_inputs, **kwds)
-          func_outputs = nest.map_structure(convert, func_outputs)
-        finally:
-          tape.pop_tape(this_tape)
-        variables = this_tape.watched_variables()
+      this_tape = tape.push_new_tape()
+      try:
+        func_outputs = func(*func_inputs, **kwds)
+        func_outputs = nest.map_structure(convert, func_outputs)
+      finally:
+        tape.pop_tape(this_tape)
+      variables = this_tape.watched_variables()
 
-        # Returning a closed-over tensor as an output does not trigger a
-        # call to convert_to_tensor, so we manually capture all such tensors.
-        outputs_list = _flatten(func_outputs)
-        func_def_outputs = [
-            _convert_to_graph_tensor(x) for x in outputs_list if x is not None
-        ]
+      # Returning a closed-over tensor as an output does not trigger a
+      # call to convert_to_tensor, so we manually capture all such tensors.
+      outputs_list = _flatten(func_outputs)
+      func_def_outputs = [
+          tmp_graph.maybe_capture_tensor(x) for x in outputs_list
+          if x is not None
+      ]
 
       ids = list(sorted(captures.keys()))
       if ids:

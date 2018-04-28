@@ -288,4 +288,13 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
   return Status::OK();
 }
 
+void AddDtypeToKernalDefConstraint(StringPiece name, DataType dtype,
+                                   KernelDef* kdef) {
+  for (KernelDef::AttrConstraint& constraint : *kdef->mutable_constraint()) {
+    if (constraint.name() == name) {
+      constraint.mutable_allowed_values()->mutable_list()->add_type(dtype);
+    }
+  }
+}
+
 }  // namespace tensorflow

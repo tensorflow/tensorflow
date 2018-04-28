@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
+#include "tensorflow/contrib/lite/profiling/profiler.h"
 
 namespace tflite {
 
@@ -47,6 +49,10 @@ constexpr TfLiteType typeToTfLiteType<float>() {
 template <>
 constexpr TfLiteType typeToTfLiteType<unsigned char>() {
   return kTfLiteUInt8;
+}
+template <>
+constexpr TfLiteType typeToTfLiteType<bool>() {
+  return kTfLiteBool;
 }
 
 // Forward declare since NNAPIDelegate uses Interpreter.
@@ -144,7 +150,7 @@ class Interpreter {
   };
 
   TfLiteStatus SetTensorParametersReadOnly(
-      int tensor_index, TfLiteType type, const char* name, const int rank,
+      int tensor_index, TfLiteType type, const char* name, const size_t rank,
       const int* dims, TfLiteQuantizationParams quantization,
       const char* buffer, size_t bytes, const Allocation* allocation = nullptr);
 
@@ -159,7 +165,7 @@ class Interpreter {
                                         dims.data(), quantization);
   }
   TfLiteStatus SetTensorParametersReadWrite(
-      int tensor_index, TfLiteType type, const char* name, const int rank,
+      int tensor_index, TfLiteType type, const char* name, const size_t rank,
       const int* dims, TfLiteQuantizationParams quantization);
 
   // Functions to access tensor data
@@ -183,10 +189,10 @@ class Interpreter {
   }
 
   // Return the number of tensors in the model.
-  int tensors_size() const { return context_.tensors_size; }
+  size_t tensors_size() const { return context_.tensors_size; }
 
   // Return the number of ops in the model.
-  int nodes_size() const { return nodes_and_registration_.size(); }
+  size_t nodes_size() const { return nodes_and_registration_.size(); }
 
   // WARNING: Experimental interface, subject to change
   const std::vector<int>& execution_plan() const { return execution_plan_; }
@@ -278,6 +284,7 @@ class Interpreter {
 
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
+  // WARNING: This is an experimental API and subject to change.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
     TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
     TfLiteTensor* tensor = &tensors_[tensor_index];
@@ -316,6 +323,12 @@ class Interpreter {
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
+  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+
+  profiling::Profiler* GetProfiler(profiling::Profiler* profiler) {
+    return profiler_;
+  }
+
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
   // The capacity headroom of `tensors_` vector before calling ops'
@@ -323,6 +336,18 @@ class Interpreter {
   // allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
   // pointers to existing tensors.
   static constexpr int kTensorsCapacityHeadroom = 16;
+
+  // Set if buffer handle output is allowed.
+  //
+  // When using hardware delegation, Interpreter will make the data of output
+  // tensors available in `tensor->data` by default. If the application can
+  // consume the buffer handle directly (e.g. reading output from OpenGL
+  // texture), it can set this flag to false, so Interpreter won't copy the data
+  // from buffer handle to CPU memory.
+  // WARNING: This is an experimental API and subject to change.
+  void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
+    allow_buffer_handle_output_ = allow_buffer_handle_output;
+  }
 
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
@@ -381,7 +406,7 @@ class Interpreter {
   // Compute the number of bytes required to represent a tensor with dimensions
   // specified by the array dims (of length dims_size). Returns the status code
   // and bytes.
-  TfLiteStatus BytesRequired(TfLiteType type, const int* dims, int dims_size,
+  TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
                              size_t* bytes);
 
   // Request an tensor be resized implementation. If the given tensor is of
@@ -442,7 +467,7 @@ class Interpreter {
   // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
   // more tensors won't invalidate the pointer to existing tensors.
   void EnsureTensorsVectorCapacity() {
-    const int required_capacity = tensors_size() + kTensorsCapacityHeadroom;
+    const size_t required_capacity = tensors_size() + kTensorsCapacityHeadroom;
     if (required_capacity > tensors_.capacity()) {
       tensors_.reserve(required_capacity);
       context_.tensors = tensors_.data();
@@ -514,6 +539,11 @@ class Interpreter {
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
+
+  bool allow_buffer_handle_output_ = false;
+
+  // Profiler for this interpreter instance.
+  profiling::Profiler* profiler_;
 };
 
 }  // namespace tflite

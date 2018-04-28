@@ -1,4 +1,4 @@
-FROM launcher.gcr.io/google/rbe-debian8:r322167
+FROM launcher.gcr.io/google/rbe-debian8:r327695
 LABEL maintainer="Yu Yi <yiyu@google.com>"
 
 # Copy install scripts

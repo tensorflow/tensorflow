@@ -33,6 +33,7 @@ typedef enum {
   kTfLiteBuiltinDepthwiseConv2d = 4,
   kTfLiteBuiltinDequantize = 6,
   kTfLiteBuiltinEmbeddingLookup = 7,
+  kTfLiteBuiltinFloor = 8,
   kTfLiteBuiltinFullyConnected = 9,
   kTfLiteBuiltinHashtableLookup = 10,
   kTfLiteBuiltinL2Normalization = 11,
@@ -82,6 +83,7 @@ typedef enum {
   kTfLiteBuiltinMaximum = 55,
   kTfLiteBuiltinArgMax = 56,
   kTfLiteBuiltinMinimum = 57,
+  kTfLiteBuiltinLess = 58,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

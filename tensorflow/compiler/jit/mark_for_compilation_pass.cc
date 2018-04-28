@@ -51,6 +51,15 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
   // is really a kind of function call and will be handled by
   // IsCompilableCall().
   if (node.type_string() == "SymbolicGradient") return false;
+  if (node.type_string() == "Const") {
+    // Skip Const op with type DT_STRING, since XLA doesn't support it, but the
+    // registered Const KernelDef says that it does, to support no-op Assert for
+    // tfcompile.
+    const AttrValue* attr = node.attrs().Find("dtype");
+    if (attr != nullptr && attr->type() == DT_STRING) {
+      return false;
+    }
+  }
   return FindKernelDef(jit_device_type, node.def(), nullptr, nullptr).ok();
 }
 

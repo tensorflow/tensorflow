@@ -38,8 +38,7 @@ namespace Eigen {
 struct half;
 }  // namespace Eigen
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class HostBuffer;
 class Stream;
@@ -713,6 +712,7 @@ class AlgorithmDesc {
     return this->algo_ == other.algo_ &&
            this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
   }
+  uint64 hash() const;
 
  private:
   enum { kDefaultAlgorithm = -1 };
@@ -876,6 +876,22 @@ enum class ElementwiseOperation { kAdd, kMultiply };
 
 string ElementwiseOperationString(ElementwiseOperation op);
 
+// A simple class representing the version of the backing library, to 
+// workaround the "too perfect forwarding" issue in gcc6+ compilers. 
+// See PR#16309 and issue #18402 for links discussing the issue.
+class VersionInfo {
+ public:
+  VersionInfo(int major = 0, int minor = 0, int patch = 0)
+      : major_(major), minor_(minor), patch_(patch) {}
+  int major_version() { return major_; }
+  int minor_version() { return minor_; }
+  int patch() { return patch_; }
+ private:
+  int major_;
+  int minor_;
+  int patch_;
+};
+
 // Suite of operations typically used for implementing Deep/Convolutional Neural
 // Nets. Note: A false return value of an operation indicates the
 // implementation is not available.
@@ -886,8 +902,8 @@ class DnnSupport {
 
   virtual port::Status Init() = 0;
 
-  // Gets the version of the backing library, as a {major, minor, patch} tuple.
-  virtual port::StatusOr<std::tuple<int, int, int>> GetVersion() {
+  // Gets the version of the backing library, as a VersionInfo object.
+  virtual port::StatusOr<VersionInfo> GetVersion() {
     return port::UnimplementedError(
         "DnnSupport::GetVersion not implemented on this platform.");
   }
@@ -2008,7 +2024,7 @@ class DnnSupport {
   //    is no longer in use.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
-                      dnn::RnnInputMode input_mode,
+                      int batch_size, dnn::RnnInputMode input_mode,
                       dnn::RnnDirectionMode direction_mode,
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
                       const dnn::AlgorithmConfig& algorithm_config,
@@ -2285,7 +2301,6 @@ class DnnSupport {
 };
 
 }  // namespace dnn
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DNN_H_

@@ -98,6 +98,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   // should explicitly enable required optimization for tests isolation
   void DisableAllStages(ArithmeticOptimizer* optimizer) {
     ArithmeticOptimizer::ArithmeticOptimizerOptions options;
+    options.dedup_computations = false;
     options.enable_try_simplify_and_replace = false;
     options.combine_add_to_addn = false;
     options.hoist_common_factor_out_of_aggregation = false;
@@ -105,6 +106,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.remove_identity_transpose = false;
     options.remove_redundant_bitcast = false;
     options.remove_redundant_cast = false;
+    options.remove_negation = false;
     optimizer->options_ = options;
   }
 
@@ -145,6 +147,16 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void EnableOnlyRemoveNegation(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.remove_negation = true;
+  }
+
+  void EnableOnlyHoistCWiseUnaryFromConcat(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.hoist_unary_out_of_concat = true;
+  }
+
+  void EnableOnlySqrtDivToRsqrtMul(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.convert_sqrt_div_to_rsqrt_mul = true;
   }
 };
 
@@ -1930,6 +1942,43 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
   EXPECT_EQ(5, found);
 }
 
+TEST_F(ArithmeticOptimizerTest, ConvertSqrtDivToRsqrtMul) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  auto y = ops::Const(s.WithOpName("y"), {3.0f, 4.0f}, {1, 2});
+  Output sqrt_y = ops::Sqrt(s.WithOpName("sqrt_y"), y);
+  Output div_x_sqrt_y = ops::Div(s.WithOpName("output"), x, sqrt_y);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlySqrtDivToRsqrtMul(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "output") {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("sqrt_y", node.input(1));
+    } else if (node.name() == "sqrt_y") {
+      EXPECT_EQ("Rsqrt", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+    }
+  }
+}
+
 TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_SimpleSwap) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -2069,20 +2118,117 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_BuildTreeUp) {
   //  a   b c   D          a   b
   NodeMap node_map(&output);
 
-  const NodeDef* mul1_node = node_map.GetNode("mul1");
+  const NodeDef* mul1_node = node_map.GetNode("mul2");
   ASSERT_NE(mul1_node, nullptr);
   EXPECT_EQ("a", mul1_node->input(0));
   EXPECT_EQ("b", mul1_node->input(1));
 
-  const NodeDef* mul2_node = node_map.GetNode("mul2");
+  const NodeDef* mul2_node = node_map.GetNode("mul1");
   ASSERT_NE(mul2_node, nullptr);
-  EXPECT_EQ("mul1", mul2_node->input(0));
+  EXPECT_EQ("mul2", mul2_node->input(0));
   EXPECT_EQ("c", mul2_node->input(1));
 
   const NodeDef* mul3_node = node_map.GetNode("mul3");
   ASSERT_NE(mul3_node, nullptr);
   EXPECT_EQ("D", mul3_node->input(0));
-  EXPECT_EQ("mul2", mul3_node->input(1));
+  EXPECT_EQ("mul1", mul3_node->input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcat) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Variable(s.WithOpName("a"), {32}, DT_FLOAT);
+  Output b = ops::Variable(s.WithOpName("b"), {32}, DT_FLOAT);
+  Output c = ops::Variable(s.WithOpName("c"), {32}, DT_FLOAT);
+  Output axis = ops::Const(s.WithOpName("axis"), 0, {});
+  Output ctrl1 = ops::Const(s.WithOpName("ctrl1"), 1, {});
+  Output ctrl2 = ops::Const(s.WithOpName("ctrl2"), 2, {});
+  Output ctrl3 = ops::Const(s.WithOpName("ctrl3"), 3, {});
+  // Test case with chains of length 1.
+  Output sin_a =
+      ops::Sin(s.WithOpName("sin_a").WithControlDependencies(ctrl3), a);
+  Output exp_a =
+      ops::Exp(s.WithOpName("exp_a").WithControlDependencies(ctrl1), sin_a);
+  Output exp_b = ops::Exp(s.WithOpName("exp_b"), b);
+  Output exp_c =
+      ops::Exp(s.WithOpName("exp_c").WithControlDependencies(ctrl2), c);
+  Output concat =
+      ops::Concat(s.WithOpName("concat"), {exp_a, exp_b, exp_c}, axis);
+  Output id = ops::Identity(s.WithOpName("id"), concat);
+
+  // Test case with chains of length 2.
+  Output exp_a2 =
+      ops::Exp(s.WithOpName("exp_a2").WithControlDependencies(ctrl1), sin_a);
+  Output exp_b2 = ops::Exp(s.WithOpName("exp_b2"), b);
+  Output exp_c2 =
+      ops::Exp(s.WithOpName("exp_c2").WithControlDependencies(ctrl2), c);
+  Output cos_exp_a2 = ops::Cos(
+      s.WithOpName("cos_exp_a2").WithControlDependencies(ctrl1), exp_a2);
+  Output cos_exp_b2 = ops::Cos(
+      s.WithOpName("cos_exp_b2").WithControlDependencies(ctrl3), exp_b2);
+  Output cos_exp_c2 = ops::Cos(s.WithOpName("cos_exp_c2"), exp_c2);
+  Output concat2 = ops::Concat(s.WithOpName("concat2"),
+                               {cos_exp_a2, cos_exp_b2, cos_exp_c2}, axis);
+  Output id2 = ops::Identity(s.WithOpName("id2"), concat2);
+  GrapplerItem item;
+  item.fetch = {"id", "id2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyHoistCWiseUnaryFromConcat(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "concat") {
+      EXPECT_EQ(6, node.input_size());
+      EXPECT_EQ("sin_a", node.input(0));
+      EXPECT_EQ("b", node.input(1));
+      EXPECT_EQ("c", node.input(2));
+      EXPECT_EQ("axis", node.input(3));
+      EXPECT_EQ("^ctrl1", node.input(4));
+      EXPECT_EQ("^ctrl2", node.input(5));
+      found++;
+    }
+    if (node.name() == "exp_a") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("concat", node.input(0));
+      found++;
+    }
+    if (node.name() == "id") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("exp_a", node.input(0));
+      found++;
+    }
+
+    if (node.name() == "concat2") {
+      EXPECT_EQ(7, node.input_size());
+      EXPECT_EQ("sin_a", node.input(0));
+      EXPECT_EQ("b", node.input(1));
+      EXPECT_EQ("c", node.input(2));
+      EXPECT_EQ("axis", node.input(3));
+      EXPECT_EQ("^ctrl1", node.input(4));
+      EXPECT_EQ("^ctrl2", node.input(5));
+      EXPECT_EQ("^ctrl3", node.input(6));
+      found++;
+    }
+    if (node.name() == "exp_a2") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("concat2", node.input(0));
+      found++;
+    }
+    if (node.name() == "cos_exp_a2") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("exp_a2", node.input(0));
+      found++;
+    }
+    if (node.name() == "id2") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("cos_exp_a2", node.input(0));
+      found++;
+    }
+  }
+  EXPECT_EQ(7, found);
 }
 
 }  // namespace grappler

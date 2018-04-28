@@ -524,6 +524,7 @@ REGISTER_OP("Conv3DBackpropInput")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropInputV2")
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
     });
@@ -537,6 +538,7 @@ REGISTER_OP("Conv3DBackpropFilter")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropFilterV2")
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &out));

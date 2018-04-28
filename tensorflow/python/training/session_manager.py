@@ -263,8 +263,6 @@ class SessionManager(object):
 
     Raises:
       RuntimeError: If the model cannot be initialized or recovered.
-
-    Raises:
       ValueError: If both checkpoint_dir and checkpoint_filename_with_path are
         set.
     """

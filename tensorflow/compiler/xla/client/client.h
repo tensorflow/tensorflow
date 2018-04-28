@@ -255,6 +255,9 @@ class Client {
 
   StatusOr<Computation> LoadSnapshot(const SessionModule& module);
 
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<XlaComputation> LoadSnapshot(const HloSnapshot& module);
+
   ServiceInterface* stub() { return stub_; }
 
  private:

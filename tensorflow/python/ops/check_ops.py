@@ -16,29 +16,6 @@
 """Asserts and Boolean Checks.
 
 See the @{$python/check_ops} guide.
-
-@@assert_negative
-@@assert_positive
-@@assert_non_negative
-@@assert_non_positive
-@@assert_equal
-@@assert_none_equal
-@@assert_near
-@@assert_less
-@@assert_less_equal
-@@assert_greater
-@@assert_greater_equal
-@@assert_rank
-@@assert_rank_at_least
-@@assert_rank_in
-@@assert_type
-@@assert_integer
-@@assert_proper_iterable
-@@assert_same_float_dtype
-@@assert_scalar
-@@is_non_decreasing
-@@is_numeric_tensor
-@@is_strictly_increasing
 """
 
 from __future__ import absolute_import

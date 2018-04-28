@@ -89,17 +89,16 @@ StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocalReplica(
   return client->TransferFromOutfeedLocal(shape, device_ordinal);
 }
 
-LocalShapedBuffer::LocalShapedBuffer(
-    std::unique_ptr<ScopedShapedBuffer> shaped_buffer)
+LocalShapedBuffer::LocalShapedBuffer(ScopedShapedBuffer shaped_buffer)
     : shaped_buffer_(std::move(shaped_buffer)) {}
 
-const std::unique_ptr<ScopedShapedBuffer>& LocalShapedBuffer::shaped_buffer()
-    const {
-  return shaped_buffer_;
+const ScopedShapedBuffer* LocalShapedBuffer::shaped_buffer() const {
+  return &shaped_buffer_;
 }
 
-static StatusOr<std::unique_ptr<ScopedShapedBuffer>> ToBuffer(
-    LocalClient* client, int device_ordinal, const Literal& arg) {
+static StatusOr<ScopedShapedBuffer> ToBuffer(LocalClient* client,
+                                             int device_ordinal,
+                                             const Literal& arg) {
   return client->LiteralToShapedBuffer(arg, device_ordinal,
                                        client->backend().memory_allocator());
 }
@@ -109,14 +108,15 @@ LocalShapedBuffer* LocalShapedBuffer::FromLiteral(
     const Literal& argument,
     const tensorflow::gtl::optional<Shape>& shape_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
-  std::unique_ptr<ScopedShapedBuffer> buf;
-  if (shape_with_layout) {
-    std::unique_ptr<Literal> relaid =
-        argument.Relayout(shape_with_layout.value());
-    buf = ToBuffer(client, /*device_ordinal=*/0, *relaid).ConsumeValueOrDie();
-  } else {
-    buf = ToBuffer(client, /*device_ordinal=*/0, argument).ConsumeValueOrDie();
-  }
+  ScopedShapedBuffer buf = [&] {
+    if (shape_with_layout) {
+      std::unique_ptr<Literal> relaid =
+          argument.Relayout(shape_with_layout.value());
+      return ToBuffer(client, /*device_ordinal=*/0, *relaid)
+          .ConsumeValueOrDie();
+    }
+    return ToBuffer(client, /*device_ordinal=*/0, argument).ConsumeValueOrDie();
+  }();
   return new LocalShapedBuffer(std::move(buf));
 }
 
@@ -158,14 +158,14 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
                 << device_ordinal;
 
         // Transfer arguments in
-        std::vector<std::unique_ptr<ScopedShapedBuffer>> scoped_buffers;
+        std::vector<ScopedShapedBuffer> scoped_buffers;
         scoped_buffers.reserve(arguments.size());
         for (int i = 0; i < arguments.size(); ++i) {
           const Literal& argument = arguments[i];
           const tensorflow::gtl::optional<Shape>& shape_with_layout =
               shapes_with_layout[i];
 
-          StatusOr<std::unique_ptr<ScopedShapedBuffer>> pushed;
+          StatusOr<ScopedShapedBuffer> pushed;
           if (shape_with_layout) {
             std::unique_ptr<Literal> relaid =
                 argument.Relayout(shape_with_layout.value());
@@ -185,7 +185,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
         std::vector<const ShapedBuffer*> argument_buffers;
         argument_buffers.reserve(scoped_buffers.size());
         for (auto& buffer : scoped_buffers) {
-          argument_buffers.push_back(buffer.get());
+          argument_buffers.push_back(&buffer);
         }
 
         DeviceAssignment device_assignment =
@@ -197,12 +197,10 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
         ExecutableRunOptions options;
         options.set_device_ordinal(device_ordinal);
         options.set_allocator(client->backend().memory_allocator());
-        options.set_inter_op_thread_pool(
-            client->backend().inter_op_thread_pool());
         options.set_intra_op_thread_pool(
             client->backend().eigen_intra_op_thread_pool_device());
         options.set_device_assignment(&device_assignment);
-        StatusOr<std::unique_ptr<ScopedShapedBuffer>> result_buffer_status =
+        StatusOr<ScopedShapedBuffer> result_buffer_status =
             executable_->Run(argument_buffers, options);
         if (!result_buffer_status.ok()) {
           results[replica] = result_buffer_status.status();
@@ -210,8 +208,8 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
         }
 
         // Transfer result out
-        results[replica] =
-            client->ShapedBufferToLiteral(*result_buffer_status.ValueOrDie());
+        results[replica] = client->ShapedBufferToLiteral(
+            std::move(result_buffer_status).ValueOrDie());
       });
     }
   }
@@ -236,16 +234,15 @@ LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
   std::vector<const ShapedBuffer*> argument_buffers;
   argument_buffers.reserve(argument_handles.size());
   for (auto& handle : argument_handles) {
-    argument_buffers.push_back(handle->shaped_buffer().get());
+    argument_buffers.push_back(handle->shaped_buffer());
   }
 
   // Execute
   ExecutableRunOptions options;
   options.set_allocator(client->backend().memory_allocator());
-  options.set_inter_op_thread_pool(client->backend().inter_op_thread_pool());
   options.set_intra_op_thread_pool(
       client->backend().eigen_intra_op_thread_pool_device());
-  std::unique_ptr<ScopedShapedBuffer> result_buffer =
+  ScopedShapedBuffer result_buffer =
       executable_->Run(argument_buffers, options).ConsumeValueOrDie();
 
   return new LocalShapedBuffer(std::move(result_buffer));

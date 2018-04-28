@@ -29,18 +29,19 @@ using tensorflow::gtl::ArraySlice;
 
 namespace xla {
 
-StatusOr<std::vector<std::unique_ptr<ShapedBuffer>>>
-Executable::ExecuteOnStreams(
+StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     ArraySlice<const ServiceExecutableRunOptions> run_options,
     ArraySlice<ArraySlice<const ShapedBuffer*>> arguments) {
   TF_RET_CHECK(run_options.size() == arguments.size());
 
-  std::vector<std::unique_ptr<ShapedBuffer>> return_values(run_options.size());
+  std::vector<ScopedShapedBuffer> return_values;
+  return_values.reserve(run_options.size());
 
   if (run_options.size() == 1) {
-    TF_ASSIGN_OR_RETURN(return_values[0],
+    TF_ASSIGN_OR_RETURN(auto rv,
                         ExecuteOnStream(&run_options[0], arguments[0],
                                         /*hlo_execution_profile=*/nullptr));
+    return_values.push_back(std::move(rv));
     return std::move(return_values);
   }
 
@@ -48,8 +49,9 @@ Executable::ExecuteOnStreams(
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
-    TF_ASSIGN_OR_RETURN(return_values[i],
+    TF_ASSIGN_OR_RETURN(auto rv,
                         ExecuteAsyncOnStream(&run_options[i], arguments[i]));
+    return_values.push_back(std::move(rv));
   }
   for (const auto& options : run_options) {
     TF_RET_CHECK(options.stream() != nullptr);
@@ -58,13 +60,13 @@ Executable::ExecuteOnStreams(
   return std::move(return_values);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
+StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
     ArraySlice<const ShapedBuffer*> arguments) {
-  perftools::gputools::Stream* stream = run_options->stream();
-  std::unique_ptr<perftools::gputools::Timer> timer;
+  se::Stream* stream = run_options->stream();
+  std::unique_ptr<se::Timer> timer;
   if (profile != nullptr) {
-    timer.reset(new perftools::gputools::Timer(stream->parent()));
+    timer.reset(new se::Timer(stream->parent()));
     stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
   }
 
@@ -78,7 +80,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
                                             &hlo_profile_index_map())
           : nullptr;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> return_value =
+  StatusOr<ScopedShapedBuffer> return_value =
       ExecuteOnStream(run_options, arguments, profile_ptr.get());
   TF_RETURN_IF_ERROR(return_value.status());
 
@@ -157,6 +159,26 @@ Status Executable::DumpSessionModule() {
   string result;
   TF_RET_CHECK(
       tensorflow::SerializeToStringDeterministic(session_module, &result));
+  return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
+                                       result);
+}
+
+/* static */ Status Executable::DumpToDirectory(
+    const string& directory_path, string filename,
+    const HloSnapshot& hlo_session) {
+  tensorflow::Env* env = tensorflow::Env::Default();
+  if (!env->IsDirectory(directory_path).ok()) {
+    // NB! CreateDir does not work reliably with multiple XLA threads -- two
+    // threads can race to observe the absence of the dump directory and
+    // simultaneously try to create it, causing the "losing" thread to get a
+    // "directory already exists" error.
+    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
+  }
+  filename = SanitizeFileName(std::move(filename));
+  string file_path = tensorflow::io::JoinPath(directory_path, filename);
+  string result;
+  TF_RET_CHECK(
+      tensorflow::SerializeToStringDeterministic(hlo_session, &result));
   return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
                                        result);
 }

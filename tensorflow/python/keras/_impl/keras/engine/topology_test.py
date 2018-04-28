@@ -964,16 +964,16 @@ class GraphUtilsTest(test.TestCase):
       x_5 = x_3 * pl_1
 
       self.assertEqual(
-          keras.engine.base_layer.get_reachable_from_inputs([pl_1]),
+          keras.utils.tf_utils.get_reachable_from_inputs([pl_1]),
           {pl_1, x_1, x_4, x_5, x_1.op, x_4.op, x_5.op})
       self.assertEqual(
-          keras.engine.base_layer.get_reachable_from_inputs([pl_1, pl_2]),
+          keras.utils.tf_utils.get_reachable_from_inputs([pl_1, pl_2]),
           {pl_1, pl_2, x_1, x_2, x_4, x_5, x_1.op, x_2.op, x_4.op, x_5.op})
       self.assertEqual(
-          keras.engine.base_layer.get_reachable_from_inputs([pl_3]),
+          keras.utils.tf_utils.get_reachable_from_inputs([pl_3]),
           {pl_3, x_3, x_5, x_3.op, x_5.op})
       self.assertEqual(
-          keras.engine.base_layer.get_reachable_from_inputs([x_3]),
+          keras.utils.tf_utils.get_reachable_from_inputs([x_3]),
           {x_3, x_5, x_5.op})
 
 
