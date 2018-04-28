@@ -976,8 +976,9 @@ def resize_image_with_pad(image, target_height, target_width,
   Resizes and pads an image to a target width and height.
 
   Resizes an image to a target width and height by keeping
-  the aspect ratio the same without distortion and padding
-  it evenly with zeros.
+  the aspect ratio the same without distortion. If the target
+  dimensions don't match the image dimensions, the image
+  is padded with zeroes prior to resizing.
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
