@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/c/python_api.h"
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/python/framework/cpp_shape_inference.h"
+#include "tensorflow/python/framework/cpp_shape_inference.pb.h"
 
 namespace tensorflow {
 
