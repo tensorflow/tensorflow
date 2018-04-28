@@ -69,7 +69,6 @@ from tensorflow.contrib import predictor
 from tensorflow.contrib import proto
 from tensorflow.contrib import quantization
 from tensorflow.contrib import quantize
-from tensorflow.contrib import recurrent
 from tensorflow.contrib import reduce_slice_ops
 from tensorflow.contrib import resampler
 from tensorflow.contrib import rnn
@@ -96,6 +95,7 @@ if os.name != "nt":
   from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.optimizer_v2 import optimizer_v2_symbols as optimizer_v2
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
+from tensorflow.contrib.recurrent.python import recurrent_api as recurrent
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
 from tensorflow.contrib.summary import summary
