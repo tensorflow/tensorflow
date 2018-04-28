@@ -316,9 +316,17 @@ def remove_training_nodes(input_graph, protected_nodes=None):
 
   input_nodes = input_graph.node
   names_to_remove = {}
+  names_to_input_occurrences = {}  # number of occurrences as the input of other nodes
   for node in input_nodes:
     if node.op in types_to_remove and node.name not in protected_nodes:
       names_to_remove[node.name] = True
+
+    for full_input_name in node.input:
+      input_name = re.sub(r"^\^", "", full_input_name)
+      if input_name not in names_to_input_occurrences:
+        names_to_input_occurrences[input_name] = 0
+      else:
+        names_to_input_occurrences[input_name] += 1
 
   nodes_after_removal = []
   for node in input_nodes:
@@ -346,7 +354,8 @@ def remove_training_nodes(input_graph, protected_nodes=None):
       for input_name in node.input:
         if re.match(r"^\^", input_name):
           has_control_edge = True
-      if not has_control_edge:
+      # if an Identify is the input of more than one node, this node cannot be removed as training nodes
+      if not has_control_edge and names_to_input_occurrences[node.name] < 2:
         names_to_splice[node.name] = node.input[0]
 
   nodes_after_splicing = []
