@@ -48,6 +48,8 @@ class Controller(object):
     # order. The order of this collection is deterministic.
     self.important_ops = []
     for name in important_op_names:
+      if isinstance(name, bytes):
+        name = name.decode()
       self.important_ops.append(self._node[name])
 
     self.node_properties = item.GetOpProperties()
