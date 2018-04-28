@@ -23,6 +23,8 @@ if(WIN32)
   # we need.
   #
   add_library(tensorflow_static STATIC
+      $<TARGET_OBJECTS:tf_c_eager>
+      $<TARGET_OBJECTS:tf_core_eager_runtime>
       $<TARGET_OBJECTS:tf_c>
       $<TARGET_OBJECTS:tf_cc>
       $<TARGET_OBJECTS:tf_cc_framework>
@@ -65,6 +67,8 @@ endif(WIN32)
 # tensorflow is a shared library containing all of the
 # TensorFlow runtime and the standard ops and kernels.
 add_library(tensorflow SHARED
+    $<TARGET_OBJECTS:tf_c_eager>
+    $<TARGET_OBJECTS:tf_core_eager_runtime>
     $<TARGET_OBJECTS:tf_c>
     $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_framework>
