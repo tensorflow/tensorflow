@@ -864,7 +864,7 @@ Instead of writing another `OpKernel` with redundant code as above, often you
 will be able to use a C++ template instead.  You will still have one kernel
 registration (`REGISTER_KERNEL_BUILDER` call) per overload.
 ```c++
->template <typename T>
+template <typename T>
 class ZeroOutOp : public OpKernel {
  public:
   explicit ZeroOutOp(OpKernelConstruction* context) : OpKernel(context) {}
