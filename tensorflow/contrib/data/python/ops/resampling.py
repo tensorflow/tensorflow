@@ -79,7 +79,6 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
           lambda accept_prob, _: accept_prob)
       prob_of_original_ds = acceptance_and_original_prob_ds.map(
           lambda _, prob_original: prob_original)
-      prob_of_original = None
     filtered_ds = _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds,
                              class_values_ds, seed)
     # Prefetch filtered dataset for speed.
