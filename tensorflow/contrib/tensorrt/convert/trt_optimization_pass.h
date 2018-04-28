@@ -34,8 +34,8 @@ namespace tensorrt {
 namespace convert {
 class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
  public:
-  TRTOptimizationPass(string optName = "TRTOptimizationPass")
-      : m_name_(optName),
+  TRTOptimizationPass(const string& name = "TRTOptimizationPass")
+      : m_name_(name),
         minimum_segment_size_(3),
         precision_mode_(0),
         maximum_batch_size_(-1),

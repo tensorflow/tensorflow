@@ -50,7 +50,7 @@ struct SubGraphParams {
       tensorflow::NodeDef* constructed_trt_node,
       int engine_precision_mode = FP32MODE, const string& device_name = "",
       std::shared_ptr<nvinfer1::IGpuAllocator> allocator = 0,
-      int cuda_device_id = 0)
+      int cuda_gpu_id = 0)
       : graph(inp_graph),
         subgraph_node_ids(subgraph_node_id_numbers),
         input_inds(input_indices),
@@ -63,7 +63,7 @@ struct SubGraphParams {
         precision_mode(engine_precision_mode),
         device_name_(device_name),
         allocator_(allocator),
-        cuda_device_id_(cuda_device_id) {}
+        cuda_gpu_id_(cuda_gpu_id) {}
 
   tensorflow::Graph& graph;
   const std::set<int>& subgraph_node_ids;
@@ -77,7 +77,7 @@ struct SubGraphParams {
   const int precision_mode;
   const string device_name_;
   std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
-  const int cuda_device_id_;
+  const int cuda_gpu_id_;
 };
 
 // TODO(sami): Replace references with const reference or pointers

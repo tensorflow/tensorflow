@@ -150,7 +150,7 @@ struct ConvertGraphParams {
       const tensorflow::grappler::GraphProperties& current_graph_properties,
       std::unordered_map<string, std::pair<int, string>>* output_edges,
       int engine_precision_mode, const string& device_name,
-      std::shared_ptr<nvinfer1::IGpuAllocator> allocator, int cuda_device_id)
+      std::shared_ptr<nvinfer1::IGpuAllocator> allocator, int cuda_gpu_id)
       : graph(inp_graph),
         output_names(output_node_names),
         subgraph_node_ids(subgraph_node_id_numbers),
@@ -161,7 +161,7 @@ struct ConvertGraphParams {
         precision_mode(engine_precision_mode),
         device_name_(device_name),
         allocator_(allocator),
-        cuda_device_id_(cuda_device_id) {}
+        cuda_gpu_id_(cuda_gpu_id) {}
   tensorflow::Graph& graph;
   const std::vector<string>& output_names;
   const std::set<int>& subgraph_node_ids;
@@ -172,7 +172,7 @@ struct ConvertGraphParams {
   int precision_mode;
   string device_name_;
   std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
-  int cuda_device_id_;
+  int cuda_gpu_id_;
   std::vector<std::pair<int, int>> subgraph_inputs;
   std::vector<std::pair<int, int>> subgraph_outputs;
   tensorflow::EdgeSet subgraph_incoming_edges;
@@ -216,7 +216,7 @@ tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
                    params->max_batch_size, params->max_workspace_size_bytes,
                    params->graph_properties, params->output_edge_map,
                    &trt_node_def, params->precision_mode, params->device_name_,
-                   params->allocator_, params->cuda_device_id_);
+                   params->allocator_, params->cuda_gpu_id_);
   TF_RETURN_IF_ERROR(InjectCalibrationNode(s));
   tensorflow::Status status;
   tensorflow::Node* trt_node = params->graph.AddNode(trt_node_def, &status);
@@ -247,7 +247,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(ConvertGraphParams* params) {
                    params->max_batch_size, params->max_workspace_size_bytes,
                    params->graph_properties, params->output_edge_map,
                    &trt_node_def, params->precision_mode, params->device_name_,
-                   params->allocator_, params->cuda_device_id_);
+                   params->allocator_, params->cuda_gpu_id_);
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(s));
   tensorflow::Status status;
   tensorflow::Node* trt_node = params->graph.AddNode(trt_node_def, &status);

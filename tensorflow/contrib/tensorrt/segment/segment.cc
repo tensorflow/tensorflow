@@ -34,10 +34,11 @@ namespace segment {
 using ::tensorflow::strings::StrAppend;
 namespace {
 
-bool check_cycles(const Graph* g, const Node* src,
-                  const std::vector<Node*>& start) {
+bool CheckCycles(const SimpleGraph* g, const SimpleNode* src,
+                 const std::vector<SimpleNode*>& start) {
+  //  copied from TF ReverseDFS
   struct Work {
-    Node* node;
+    SimpleNode* node;
     bool leave;  // Are we entering or leaving n?
   };
 
@@ -74,7 +75,7 @@ bool check_cycles(const Graph* g, const Node* src,
   return false;
 }
 
-bool CanContractEdge(const Edge* edge, const Graph* graph) {
+bool CanContractEdge(const SimpleEdge* edge, const SimpleGraph* graph) {
   const auto src = edge->src();
   const auto dst = edge->dst();
 
@@ -88,35 +89,36 @@ bool CanContractEdge(const Edge* edge, const Graph* graph) {
   //   1. Get all nodes incoming to 'dst', excluding 'src'
   //   2. Reverse DFS from those nodes
   //   3. If reverse DFS reaches 'src' then we have a cycle
-  std::vector<Node*> dfs_start_nodes;
-  for (Node* node : dst->in_nodes()) {
+  std::vector<SimpleNode*> dfs_start_nodes;
+  for (SimpleNode* node : dst->in_nodes()) {
     if (node != src) {
       dfs_start_nodes.push_back(node);
     }
   }
 
-  bool is_cycle = check_cycles(graph, src, dfs_start_nodes);
+  bool is_cycle = CheckCycles(graph, src, dfs_start_nodes);
   return !is_cycle;
 }
 }  // namespace
-Node::Node(const tensorflow::Node* node, const int id) : node_(node), id_(id) {
+SimpleNode::SimpleNode(const tensorflow::Node* node, const int id)
+    : node_(node), id_(id) {
   if (node_) {
     in_edges_.reserve(node_->in_edges().size());
     out_edges_.reserve(node_->out_edges().size());
   }
 }
 
-Graph::Graph(const tensorflow::Graph* g) : g_(g) {
+SimpleGraph::SimpleGraph(const tensorflow::Graph* g) : g_(g) {
   int n_nodes = g_->num_node_ids();
   nodes_.resize(n_nodes, nullptr);
-  nodes_[g->kSourceId] = new Node(g->source_node(), g->kSourceId);
-  nodes_[g->kSinkId] = new Node(g->sink_node(), g->kSinkId);
+  nodes_[g->kSourceId] = new SimpleNode(g->source_node(), g->kSourceId);
+  nodes_[g->kSinkId] = new SimpleNode(g->sink_node(), g->kSinkId);
   int n_edges = g->num_edge_ids();
   edges_.resize(n_edges, nullptr);
   for (int i = 2; i < n_nodes; i++) {
     const auto n = g->FindNodeId(i);
     if (n) {
-      nodes_[i] = new Node(n, i);
+      nodes_[i] = new SimpleNode(n, i);
     } else {
       node_ids_.insert(i);
     }
@@ -129,8 +131,8 @@ Graph::Graph(const tensorflow::Graph* g) : g_(g) {
       bool is_control = e->IsControlEdge();
       auto src = nodes_[tfsrc->id()];
       auto dst = nodes_[tfdst->id()];
-      auto edge =
-          new Edge(i, src, e->src_output(), dst, e->dst_input(), is_control);
+      auto edge = new SimpleEdge(i, src, e->src_output(), dst, e->dst_input(),
+                                 is_control);
       edges_[i] = edge;
       src->out_edges_.push_back(edge);
       dst->in_edges_.push_back(edge);
@@ -140,7 +142,8 @@ Graph::Graph(const tensorflow::Graph* g) : g_(g) {
   }
 }
 
-void Graph::AddEdge(Node* src, int out_port, Node* dst, int in_port) {
+void SimpleGraph::AddEdge(SimpleNode* src, int out_port, SimpleNode* dst,
+                          int in_port) {
   int i = edges_.size();
   if (edge_ids_.size()) {
     auto it = edge_ids_.begin();
@@ -151,18 +154,18 @@ void Graph::AddEdge(Node* src, int out_port, Node* dst, int in_port) {
   }
   bool is_control = (out_port == tensorflow::Graph::kControlSlot);
   is_control |= (in_port == tensorflow::Graph::kControlSlot);
-  auto edge = new Edge(i, src, out_port, dst, in_port, is_control);
+  auto edge = new SimpleEdge(i, src, out_port, dst, in_port, is_control);
   edges_[i] = edge;
   src->out_edges_.push_back(edge);
   dst->in_edges_.push_back(edge);
 }
 
-void Graph::AddControlEdge(Node* src, Node* dst) {
+void SimpleGraph::AddControlEdge(SimpleNode* src, SimpleNode* dst) {
   AddEdge(src, tensorflow::Graph::kControlSlot, dst,
           tensorflow::Graph::kControlSlot);
 }
 
-void Graph::RemoveEdge(const Edge* edge) {
+void SimpleGraph::RemoveEdge(const SimpleEdge* edge) {
   auto src = edge->src();
   auto dst = edge->dst();
   for (auto it = src->out_edges_.begin(); it != src->out_edges_.end(); ++it) {
@@ -179,13 +182,13 @@ void Graph::RemoveEdge(const Edge* edge) {
   }
 }
 
-Graph::~Graph() {
+SimpleGraph::~SimpleGraph() {
   for (auto x : nodes_) delete x;
   for (auto x : edges_) delete x;
 }
 
-void ContractEdge(Edge* edge, Graph* graph,
-                  std::vector<const Edge*>* remove_edges) {
+void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
+                  std::vector<const SimpleEdge*>* remove_edges) {
   // Transfer all inputs and outputs of 'dst' to 'src' except edges
   // connecting the two.
   auto src = edge->src();
@@ -193,17 +196,17 @@ void ContractEdge(Edge* edge, Graph* graph,
 
   // We can use '0' for input/output index because we don't need them
   // to be accurate for the way we are using the graph.
-  std::vector<const Edge*> in_edges(dst->in_edges().begin(),
-                                    dst->in_edges().end());
-  for (const Edge* in_edge : in_edges) {
+  std::vector<const SimpleEdge*> in_edges(dst->in_edges().begin(),
+                                          dst->in_edges().end());
+  for (const SimpleEdge* in_edge : in_edges) {
     if (in_edge->IsControlEdge()) {
       if (in_edge->src() != src) {
-        Edge* e = const_cast<Edge*>(in_edge);
+        SimpleEdge* e = const_cast<SimpleEdge*>(in_edge);
         graph->AddControlEdge(e->src(), src);
       }
     } else {
       if (in_edge->src() != src) {
-        Edge* e = const_cast<Edge*>(in_edge);
+        SimpleEdge* e = const_cast<SimpleEdge*>(in_edge);
         if (e->src() == graph->source_node()) {
           graph->AddEdge(e->src(), e->src_output(), src,
                          tensorflow::Graph::kControlSlot);
@@ -214,14 +217,14 @@ void ContractEdge(Edge* edge, Graph* graph,
     }
   }
 
-  std::vector<const Edge*> out_edges(dst->out_edges().begin(),
-                                     dst->out_edges().end());
-  for (const Edge* out_edge : out_edges) {
+  std::vector<const SimpleEdge*> out_edges(dst->out_edges().begin(),
+                                           dst->out_edges().end());
+  for (const SimpleEdge* out_edge : out_edges) {
     if (out_edge->IsControlEdge()) {
-      Edge* e = const_cast<Edge*>(out_edge);
+      SimpleEdge* e = const_cast<SimpleEdge*>(out_edge);
       graph->AddControlEdge(src, e->dst());
     } else {
-      Edge* e = const_cast<Edge*>(out_edge);
+      SimpleEdge* e = const_cast<SimpleEdge*>(out_edge);
       if (e->dst() == graph->sink_node()) {
         VLOG(1) << " edge to sink node " << src->name() << " -> "
                 << e->dst()->name();
@@ -262,13 +265,13 @@ tensorflow::Status SegmentGraph(
     const std::function<bool(const tensorflow::Node*)>& candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
   // tensorflow::DumpGraph("Pre-Segment", &graph);
-  Graph* graph = new Graph(tf_graph);
+  SimpleGraph* graph = new SimpleGraph(tf_graph);
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
   // for TRT.
-  std::vector<UnionFind<Node*>> node_segments;
+  std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
-    Node* node = graph->FindNodeId(i);
+    SimpleNode* node = graph->FindNodeId(i);
     if (options.exclude_node_list.count(node->name()) != 0 ||
         !candidate_fn(node->tf_node())) {
       node = nullptr;
@@ -288,12 +291,12 @@ tensorflow::Status SegmentGraph(
   tensorflow::GetPostOrder(*tf_graph, &tforder);
   // use postorder implementation from tensorflow and construct mirror in
   // internal format
-  std::vector<Node*> order;
+  std::vector<SimpleNode*> order;
   order.reserve(tforder.size());
   for (const auto tfnode : tforder) {
     order.push_back(graph->FindNodeId(tfnode->id()));
   }
-  for (const Node* node : order) {
+  for (const SimpleNode* node : order) {
     // All output nodes of 'node' have been visited...
     VLOG(2) << "Trying node " << node->name() << " id=" << node->id();
 
@@ -307,8 +310,8 @@ tensorflow::Status SegmentGraph(
     // nodes. Iterate since combining two nodes may unblock other
     // combining.
     while (true) {
-      std::set<const Edge*> contract_edges;
-      for (const Edge* out_edge : node->out_edges()) {
+      std::set<const SimpleEdge*> contract_edges;
+      for (const SimpleEdge* out_edge : node->out_edges()) {
         VLOG(2) << "... out node " << out_edge->dst()->name() << " ( "
                 << out_edge->dst()->id() << " <- " << node->id() << " )";
         if (out_edge->IsControlEdge()) {
@@ -336,9 +339,9 @@ tensorflow::Status SegmentGraph(
       // Contract edges and collect the adjacent nodes into the same
       // segment/subgraph.
       while (!contract_edges.empty()) {
-        const Edge* contract_edge = *contract_edges.begin();
-        const Node* src = contract_edge->src();
-        const Node* dst = contract_edge->dst();
+        const SimpleEdge* contract_edge = *contract_edges.begin();
+        const SimpleNode* src = contract_edge->src();
+        const SimpleNode* dst = contract_edge->dst();
 
         VLOG(2) << "Merge " << src->name() << " <- " << dst->name() << " ("
                 << src->id() << " <- " << dst->id();
@@ -347,11 +350,11 @@ tensorflow::Status SegmentGraph(
         // Contracting the edge leaves disconnected graph edges.
         // Remove these from the graph and from 'contract_edges' so we
         // don't visit them again.
-        Edge* e = const_cast<Edge*>(contract_edge);
-        std::vector<const Edge*> remove_edges;
+        SimpleEdge* e = const_cast<SimpleEdge*>(contract_edge);
+        std::vector<const SimpleEdge*> remove_edges;
         ContractEdge(e, graph, &remove_edges);
 
-        for (const Edge* r : remove_edges) {
+        for (const SimpleEdge* r : remove_edges) {
           contract_edges.erase(r);
           graph->RemoveEdge(r);
         }
@@ -399,6 +402,7 @@ tensorflow::Status SegmentGraph(
               << segment_node_names.size() << " nodes, dropping";
       continue;
     }
+    // TODO(sami): Make segmenter placement aware once trtscopes are in place
     const auto& dev_itr = device_maps.find(itr.first);
     if (dev_itr == device_maps.end() || dev_itr->second.size() == 0) {
       VLOG(1) << "No device assigned to segment " << segments->size();

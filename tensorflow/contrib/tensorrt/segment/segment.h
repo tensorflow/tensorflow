@@ -30,43 +30,41 @@ namespace tensorrt {
 namespace segment {
 
 using SegmentNodesVector = std::vector<std::pair<std::set<string>, string>>;
-class Node;
-class Graph;
-class Edge {
+class SimpleNode;
+class SimpleGraph;
+class SimpleEdge {
  public:
-  Edge(int id, Node* src, int src_port, Node* dst, int dst_port,
-       bool is_control = false)
+  SimpleEdge(int id, SimpleNode* src, int src_port, SimpleNode* dst,
+             int dst_port, bool is_control = false)
       : id_(id),
         src_(src),
         src_port_(src_port),
         dst_(dst),
         dst_port_(dst_port),
         control_(is_control){};
-  Node* src() const { return src_; }
-  Node* dst() const { return dst_; }
+  SimpleNode* src() const { return src_; }
+  SimpleNode* dst() const { return dst_; }
   int src_output() const { return src_port_; }
   int dst_input() const { return dst_port_; }
   int id() const { return id_; }
   bool IsControlEdge() const { return control_; }
-  ~Edge() {}
+  ~SimpleEdge() {}
 
  private:
   int id_;
-  Node* src_;
+  SimpleNode* src_;
   int src_port_;
-  Node* dst_;
+  SimpleNode* dst_;
   int dst_port_;
   bool control_;
 };
-class Node {
-  friend class Graph;
-
+class SimpleNode {
  public:
-  Node(const tensorflow::Node* node, const int id);
-  const std::vector<Edge*>& in_edges() const { return in_edges_; };
-  const std::vector<Edge*>& out_edges() const { return out_edges_; };
-  std::vector<Node*> in_nodes() const {
-    std::vector<Node*> res;
+  SimpleNode(const tensorflow::Node* node, const int id);
+  const std::vector<SimpleEdge*>& in_edges() const { return in_edges_; };
+  const std::vector<SimpleEdge*>& out_edges() const { return out_edges_; };
+  std::vector<SimpleNode*> in_nodes() const {
+    std::vector<SimpleNode*> res;
     res.reserve(in_edges_.size());
     for (const auto e : in_edges_) {
       if (e) res.push_back(e->src());
@@ -79,32 +77,36 @@ class Node {
 
  private:
   const tensorflow::Node* node_;
-  std::vector<Edge*> in_edges_;
-  std::vector<Edge*> out_edges_;
+  std::vector<SimpleEdge*> in_edges_;
+  std::vector<SimpleEdge*> out_edges_;
   int id_;
+
+  friend class SimpleGraph;
 };
 
-class Graph {
+class SimpleGraph {
  public:
-  Graph(const tensorflow::Graph* g);
-  void AddControlEdge(Node* src, Node* dst);
-  void AddEdge(Node* src, int out_port, Node* dst, int in_port);
-  void RemoveEdge(const Edge*);
-  Node* FindNodeId(int node_id) {
+  SimpleGraph(const tensorflow::Graph* g);
+  void AddControlEdge(SimpleNode* src, SimpleNode* dst);
+  void AddEdge(SimpleNode* src, int out_port, SimpleNode* dst, int in_port);
+  void RemoveEdge(const SimpleEdge*);
+  SimpleNode* FindNodeId(int node_id) {
     if (node_id < 0 || node_id > (int)nodes_.size()) return nullptr;
     return nodes_[node_id];
   }
-  ~Graph();
+  ~SimpleGraph();
   int num_node_ids() const { return nodes_.size(); }
-  const Node* source_node() const {
+  const SimpleNode* source_node() const {
     return nodes_[tensorflow::Graph::kSourceId];
   }
-  const Node* sink_node() const { return nodes_[tensorflow::Graph::kSinkId]; }
+  const SimpleNode* sink_node() const {
+    return nodes_[tensorflow::Graph::kSinkId];
+  }
 
  private:
   const tensorflow::Graph* g_;
-  std::vector<Node*> nodes_;
-  std::vector<Edge*> edges_;
+  std::vector<SimpleNode*> nodes_;
+  std::vector<SimpleEdge*> edges_;
   std::set<int> edge_ids_;
   std::set<int> node_ids_;
 };
@@ -114,15 +116,15 @@ struct SegmentOptions {
   std::set<string> exclude_node_list;
 };
 
-// // Get the subgraphs of a graph that can be handled by TensorRT.
-// //
-// // @param gdef The GraphDef describing the network
-// // @param candidate_fn A function that returns true for a NodeDef if
-// // that node can be handled by TensorRT.
-// // @param segments Returns the TensorRT segments/subgraphs. Each entry
-// // in the vector describes a subgraph by giving a set of the names of
-// // all the NodeDefs in that subgraph.
-// // @return the status.
+// Get the subgraphs of a graph that can be handled by TensorRT.
+//
+// @param gdef The GraphDef describing the network
+// @param candidate_fn A function that returns true for a NodeDef if
+// that node can be handled by TensorRT.
+// @param segments Returns the TensorRT segments/subgraphs. Each entry
+// in the vector describes a subgraph by giving a set of the names of
+// all the NodeDefs in that subgraph.
+// @return the status.
 tensorflow::Status SegmentGraph(
     const tensorflow::GraphDef& gdef,
     const std::function<bool(const tensorflow::Node*)>& candidate_fn,
