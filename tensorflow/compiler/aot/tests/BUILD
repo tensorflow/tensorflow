@@ -164,6 +164,15 @@ tf_library(
 )
 
 tf_library(
+    name = "test_graph_tfmatmulandadd_with_profiling",
+    testonly = 1,
+    config = "test_graph_tfmatmulandadd.config.pbtxt",
+    cpp_class = "MatMulAndAddCompWithProfiling",
+    enable_xla_hlo_profiling = True,
+    graph = "test_graph_tfmatmulandadd.pb",
+)
+
+tf_library(
     name = "test_graph_tfsplits",
     testonly = 1,
     config = "test_graph_tfsplits.config.pbtxt",
@@ -189,9 +198,13 @@ tf_cc_test(
         ":test_graph_tfgather",
         ":test_graph_tfmatmul",
         ":test_graph_tfmatmulandadd",
+        ":test_graph_tfmatmulandadd_with_profiling",
         ":test_graph_tfsplits",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_profile_printer",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",

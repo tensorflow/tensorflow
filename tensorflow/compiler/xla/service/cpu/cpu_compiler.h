@@ -76,9 +76,15 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
-  CpuAotCompilationResult(ObjectFileData object_file_data,
-                          BufferSizes buffer_sizes, int64 result_buffer_index);
+  CpuAotCompilationResult(
+      ObjectFileData object_file_data, BufferSizes buffer_sizes,
+      int64 result_buffer_index,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
+
+  HloProfilePrinterData* hlo_profile_printer_data() const {
+    return hlo_profile_printer_data_.get();
+  }
 
   const ObjectFileData& object_file_data() const { return object_file_data_; }
   const BufferSizes& buffer_sizes() const { return buffer_sizes_; }
@@ -97,6 +103,10 @@ class CpuAotCompilationResult : public AotCompilationResult {
   // result of the computation.  This buffer should be passed into the output
   // parameter when calling the compiled computation.
   const int64 result_buffer_index_;
+
+  // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
+  // otherwise is nullptr.
+  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
 };
 
 // CPU-targeting implementation of the XLA Compiler interface.
