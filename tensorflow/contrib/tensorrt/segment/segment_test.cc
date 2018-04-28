@@ -165,7 +165,7 @@ TEST_F(SegmentTest, Simple) {
   ASSERT_EQ(segments.size(), 1);
   std::vector<string> expected{"add0", "add1", "add2", "add3", "add4"};
   for (const auto& ex : expected) {
-    EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
+    EXPECT_TRUE(segments[0].first.find(ex) != segments[0].first.end())
         << "Missing expected node " << ex;
   }
   TF_DeleteGraph(graph);
@@ -278,13 +278,13 @@ TEST_F(SegmentTest, Multiple) {
 
   std::vector<string> expected0{"add0", "add1", "add2", "add3"};
   for (const auto& ex : expected0) {
-    EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
+    EXPECT_TRUE(segments[0].first.find(ex) != segments[0].first.end())
         << "Missing expected node " << ex;
   }
 
   std::vector<string> expected1{"add6", "add8"};
   for (const auto& ex : expected1) {
-    EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
+    EXPECT_TRUE(segments[1].first.find(ex) != segments[1].first.end())
         << "Missing expected node " << ex;
   }
   TF_DeleteGraph(graph);
@@ -348,13 +348,13 @@ TEST_F(SegmentTest, BigIfElse) {
 
   std::vector<string> expected0{"add3", "add4", "add5", "add6", "add7"};
   for (const auto& ex : expected0) {
-    EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
+    EXPECT_TRUE(segments[0].first.find(ex) != segments[0].first.end())
         << "Missing expected node " << ex;
   }
 
   std::vector<string> expected1{"add0", "add1"};
   for (const auto& ex : expected1) {
-    EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
+    EXPECT_TRUE(segments[1].first.find(ex) != segments[1].first.end())
         << "Missing expected node " << ex;
   }
   TF_DeleteGraph(graph);

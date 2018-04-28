@@ -30,6 +30,7 @@ void* TRTCudaAllocator::allocate(uint64_t size, uint64_t alignment,
   cudaMalloc(&memory, size);
   return memory;
 }
+
 void TRTCudaAllocator::free(void* memory) { cudaFree(memory); }
 
 void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
@@ -44,7 +45,8 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
 TRTDeviceAllocator::TRTDeviceAllocator(tensorflow::Allocator* allocator)
     : allocator_(allocator) {
   VLOG(1) << "Using " << allocator->Name() << " allocator from TensorFlow";
-};
+}
+
 void TRTDeviceAllocator::free(void* memory) {
   VLOG(2) << "Deallocating " << memory;
   allocator_->DeallocateRaw(memory);

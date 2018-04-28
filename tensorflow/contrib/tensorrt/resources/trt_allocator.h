@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <thread>
 #include <vector>
+
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -41,21 +42,21 @@ namespace tensorrt {
 class TRTCudaAllocator : public nvinfer1::IGpuAllocator {
  public:
   TRTCudaAllocator() {}
-  virtual ~TRTCudaAllocator(){};
+  virtual ~TRTCudaAllocator() {};
   void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) override;
   void free(void* memory) override;
 };
+
 class TRTDeviceAllocator : public nvinfer1::IGpuAllocator {
  public:
   TRTDeviceAllocator(tensorflow::Allocator* allocator);
-  virtual ~TRTDeviceAllocator(){};
+  virtual ~TRTDeviceAllocator() {};
   void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) override;
   void free(void* memory) override;
 
  private:
   tensorflow::Allocator* allocator_;
 };
-class AllocatorFactory {};
 
 }  // namespace tensorrt
 }  // namespace tensorflow

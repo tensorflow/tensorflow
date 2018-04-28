@@ -66,7 +66,6 @@ def execute_graph(gdef, dumm_inp):
   """Run given graphdef once."""
   print("executing")
   gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
-  #graph_options = cpb2.GraphOptions(rewrite_options=opt_config)
   sessconfig = cpb2.ConfigProto(gpu_options=gpu_options)
   ops.reset_default_graph()
   g = ops.Graph()
@@ -75,9 +74,6 @@ def execute_graph(gdef, dumm_inp):
         graph_def=gdef, return_elements=["input", "output"])
     inp = inp.outputs[0]
     out = out.outputs[0]
-  # with csess.Session(
-  #     config=cpb2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
-  #   val = sess.run(out, {inp: dumm_inp})
   with csess.Session(config=sessconfig, graph=g) as sess:
     val = sess.run(out, {inp: dumm_inp})
   return val
@@ -105,7 +101,7 @@ def execute_calibration(gdef, dumm_inp):
 
 
 def user(run_graph=execute_graph, run_calibration=execute_calibration):
-  """ Example function that converts a graph to TFTRT graph """
+  """Example function that converts a graph to TFTRT graph."""
 
   inp_dims = (100, 24, 24, 2)
   dummy_input = np.random.random_sample(inp_dims)
@@ -150,7 +146,7 @@ def user(run_graph=execute_graph, run_calibration=execute_calibration):
 
 
 def auto():
-  """ Run the conversion as an optimization pass"""
+  """Run the conversion as an optimization pass."""
   inp_dims = (100, 24, 24, 2)
   dummy_input = np.random.random_sample(inp_dims)
   orig_graph = get_simple_graph_def()

@@ -2247,7 +2247,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   auto op_res = new tensorflow::tensorrt::TRTCalibrationResource();
   TF_CHECK_OK(op_rmgr->Create(calib_op_name, calib_op_name, op_res));
   op_res->logger_ = new tensorflow::tensorrt::Logger();
-  cudaSetDevice(s.cuda_device_id_);
+  cudaSetDevice(s.cuda_gpu_id_);
   op_res->builder_ = nvinfer1::createInferBuilder(*(op_res->logger_));
   op_res->allocator_ = s.allocator_;
 #if NV_TENSORRT_MAJOR > 3
@@ -2481,7 +2481,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   // Topological order is needed to build TRT network
 
   tensorflow::tensorrt::Logger trt_logger;
-  cudaSetDevice(s.cuda_device_id_);
+  cudaSetDevice(s.cuda_gpu_id_);
   auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
   if (!trt_builder) {
     return tensorflow::errors::Internal(
