@@ -12,6 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+# 1. Resolve the installed version of Python (for Python.h and python).
+# TODO(mrry): Parameterize the build script to enable Python 3 building.
+if(NOT PYTHON_INCLUDE_DIR)
+  set(PYTHON_NOT_FOUND false)
+  exec_program("${PYTHON_EXECUTABLE}"
+    ARGS "-c \"import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())\""
+    OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
+    RETURN_VALUE PYTHON_NOT_FOUND)
+  if(${PYTHON_NOT_FOUND})
+    message(FATAL_ERROR
+            "Cannot get Python include directory. Is distutils installed?")
+  endif(${PYTHON_NOT_FOUND})
+endif(NOT PYTHON_INCLUDE_DIR)
+
+# 2. Resolve the installed version of NumPy (for numpy/arrayobject.h).
+if(NOT NUMPY_INCLUDE_DIR)
+  set(NUMPY_NOT_FOUND false)
+  exec_program("${PYTHON_EXECUTABLE}"
+    ARGS "-c \"import numpy; print(numpy.get_include())\""
+    OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
+    RETURN_VALUE NUMPY_NOT_FOUND)
+  if(${NUMPY_NOT_FOUND})
+    message(FATAL_ERROR
+            "Cannot get NumPy include directory: Is NumPy installed?")
+  endif(${NUMPY_NOT_FOUND})
+endif(NOT NUMPY_INCLUDE_DIR)
+
 ########################################################
 # tf_c_framework library
 ########################################################
@@ -38,6 +66,12 @@ if(tensorflow_BUILD_PYTHON_BINDINGS)
     "${tensorflow_source_dir}/tensorflow/c/python_api.cc"
     "${tensorflow_source_dir}/tensorflow/c/python_api.h"
   )
+
+  target_include_directories(tf_c_python_api PUBLIC
+        ${PYTHON_INCLUDE_DIR}
+        ${NUMPY_INCLUDE_DIR}
+    )
+
   add_dependencies(
     tf_c_python_api
     tf_c
