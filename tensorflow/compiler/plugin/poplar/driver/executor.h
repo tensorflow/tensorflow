@@ -62,7 +62,10 @@ std::string GetOutputCopyHandle(int64 index);
 typedef std::vector<char> (*ConversionFn)(const void*, int64, int64);
 
 using Args = tensorflow::gtl::ArraySlice<se::DeviceMemoryBase>;
+
+// This maps outputs to inputs where the tensor is the same
 using OutputMap = std::map<int64, int64>;
+
 using ConversionList = std::vector<ConversionFn>;
 
 class PoplarExecutor : public se::internal::StreamExecutorInterface {

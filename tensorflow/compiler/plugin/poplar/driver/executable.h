@@ -64,7 +64,7 @@ class PoplarExecutable : public Executable {
 
   const std::vector<Shape> ParameterShapes() const { return parameter_shapes_; }
 
-  const OutputMap& OutputMap() const { return output_map_; }
+  const OutputMap& OutputMapping() const { return output_map_; }
 
   const std::shared_ptr<poplar::Engine>& Engine() const {
     return poplar_engine_;
@@ -74,7 +74,7 @@ class PoplarExecutable : public Executable {
   friend class GraphCompileIoMapTest;
 
   std::shared_ptr<poplar::Engine> poplar_engine_;
-  ::xla::poplarplugin::OutputMap output_map_;
+  OutputMap output_map_;
   std::vector<Shape> parameter_shapes_;
   bool first_execution_;
 

@@ -497,7 +497,7 @@ PoplarExecutor::ExecuteEngine(
     xla::DeviceMemoryAllocator* allocator,
     const Args& args) {
 
-  const auto& output_map = executable.OutputMap();
+  const auto& output_map = executable.OutputMapping();
   const auto& output_shape = executable.result_shape();
   const auto& engine = executable.Engine();
 
