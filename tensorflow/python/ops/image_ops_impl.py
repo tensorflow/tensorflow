@@ -1066,16 +1066,6 @@ def resize_image_with_pad(image, target_height, target_width,
 
     _, resized_height, resized_width, _ = _ImageDimensions(resized, rank=4)
 
-    assert_ops = []
-    assert_ops += _assert(
-        equal_(resized_height, target_height), ValueError,
-        'resized height is not correct.')
-    assert_ops += _assert(
-        equal_(resized_width, target_width), ValueError,
-        'resized width is not correct.')
-
-    resized = control_flow_ops.with_dependencies(assert_ops, resized)
-
     if not is_batch:
       resized = array_ops.squeeze(resized, squeeze_dims=[0])
 
