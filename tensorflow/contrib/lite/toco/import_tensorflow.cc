@@ -74,7 +74,7 @@ const string& GetStringAttr(const NodeDef& node, const string& attr_name) {
   return attr.s();
 }
 
-int GetIntAttr(const NodeDef& node, const string& attr_name) {
+int64 GetIntAttr(const NodeDef& node, const string& attr_name) {
   CHECK(HasAttr(node, attr_name)) << attr_name << " not found in:\n"
                                   << node.DebugString();
   const auto& attr = node.attr().at(attr_name);
@@ -569,6 +569,23 @@ void ConvertBiasAddOperator(const NodeDef& node,
   model->operators.emplace_back(biasadd);
 }
 
+void ConvertRandomUniform(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK_EQ(node.op(), "RandomUniform");
+  CheckInputsCount(node, tf_import_flags, 1);
+
+  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_INT32);
+  auto op = absl::make_unique<RandomUniformOperator>();
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  op->dtype = ConvertDataType(GetDataTypeAttr(node, "dtype"));
+  op->seed = GetIntAttr(node, "seed");
+  op->seed2 = GetIntAttr(node, "seed2");
+  CHECK(model != nullptr);
+  model->operators.emplace_back(std::move(op));
+}
+
 void ConvertReluOperator(const NodeDef& node,
                          const TensorFlowImportFlags& tf_import_flags,
                          Model* model) {
@@ -592,6 +609,18 @@ void ConvertRelu6Operator(const NodeDef& node,
   op->inputs.push_back(input_name);
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+}
+
+void ConvertLogOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Log");
+  CheckInputsCount(node, tf_import_flags, 1);
+
+  auto op = absl::make_unique<LogOperator>();
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(std::move(op));
 }
 
 void ConvertLogisticOperator(const NodeDef& node,
@@ -665,6 +694,8 @@ void ConvertFakeQuantWithMinMaxArgs(
   minmax.min = GetFloatAttr(node, "min");
   minmax.max = GetFloatAttr(node, "max");
   op->outputs.push_back(node.name());
+  // tf.fake_quant_with_min_max_args num_bits defaults to 8.
+  op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
   model->operators.emplace_back(op);
 }
 
@@ -682,6 +713,7 @@ void ConvertFakeQuantWithMinMaxVars(
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
+  op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
   model->operators.emplace_back(op);
 }
 
@@ -1061,8 +1093,10 @@ void ConvertMatMulOperator(const NodeDef& node,
 
   // Transpose flags should be easy to support, but we don't have a
   // GraphDef with them to test on at the moment.
-  CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
-  CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
+  CHECK_EQ(HasAttr(node, "transpose_a") && GetBoolAttr(node, "transpose_a"),
+           false);
+  CHECK_EQ(HasAttr(node, "transpose_b") && GetBoolAttr(node, "transpose_b"),
+           false);
   CHECK(!HasAttr(node, "adjoint_a") ||
         (GetBoolAttr(node, "adjoint_a") == false));
   CHECK(!HasAttr(node, "adjoint_b") ||
@@ -1268,11 +1302,17 @@ void ConvertStridedSliceOperator(const NodeDef& node,
   }
   op->outputs.push_back(node.name());
 
-  op->begin_mask = GetIntAttr(node, "begin_mask");
-  op->ellipsis_mask = GetIntAttr(node, "ellipsis_mask");
-  op->end_mask = GetIntAttr(node, "end_mask");
-  op->new_axis_mask = GetIntAttr(node, "new_axis_mask");
-  op->shrink_axis_mask = GetIntAttr(node, "shrink_axis_mask");
+  op->begin_mask =
+      HasAttr(node, "begin_mask") ? GetIntAttr(node, "begin_mask") : 0;
+  op->ellipsis_mask =
+      HasAttr(node, "ellipsis_mask") ? GetIntAttr(node, "ellipsis_mask") : 0;
+  op->end_mask = HasAttr(node, "end_mask") ? GetIntAttr(node, "end_mask") : 0;
+  op->new_axis_mask =
+      HasAttr(node, "new_axis_mask") ? GetIntAttr(node, "new_axis_mask") : 0;
+  op->shrink_axis_mask = HasAttr(node, "shrink_axis_mask")
+                             ? GetIntAttr(node, "shrink_axis_mask")
+                             : 0;
+
   model->operators.emplace_back(op);
 }
 
@@ -1362,8 +1402,11 @@ void ConvertArgMaxOperator(const NodeDef& node,
                            Model* model) {
   CHECK_EQ(node.op(), "ArgMax");
   CheckInputsCount(node, tf_import_flags, 2);
-  const auto axis_data_type = GetDataTypeAttr(node, "Tidx");
-  const auto output_type = GetDataTypeAttr(node, "output_type");
+  const auto axis_data_type =
+      HasAttr(node, "Tidx") ? GetDataTypeAttr(node, "Tidx") : DT_INT32;
+  const auto output_type = HasAttr(node, "output_type")
+                               ? GetDataTypeAttr(node, "output_type")
+                               : DT_INT64;
   CHECK(axis_data_type == DT_INT64 || axis_data_type == DT_INT32);
   CHECK(output_type == DT_INT64 || output_type == DT_INT32);
   auto* op = new ArgMaxOperator;
@@ -1740,7 +1783,7 @@ void ConvertStackOperator(const NodeDef& node,
     op->inputs.push_back(node.input(i));
   }
   // Both "Stack" and "Pack" have the "axis" attribute.
-  op->axis = GetIntAttr(node, "axis");
+  op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
 }
@@ -1931,14 +1974,14 @@ void ConvertTopKV2Operator(const NodeDef& node,
   // K can be encoded as attr (TopK) convert it to a const.
   if (HasAttr(node, "k")) {
     string k_array = CreateConstArray<ArrayDataType::kInt32>(
-        model, node.name() + "k", {GetIntAttr(node, "k")});
+        model, node.name() + "k", {static_cast<int32>(GetIntAttr(node, "k"))});
     op->inputs.push_back(k_array);
   } else {
     CheckInputsCount(node, tf_import_flags, 2);
     op->inputs.push_back(node.input(1));
   }
   // The op has two outputs.
-  op->outputs.push_back(node.name() + ":0");
+  op->outputs.push_back(node.name());
   op->outputs.push_back(node.name() + ":1");
   model->operators.emplace_back(op.release());
 }
@@ -2074,6 +2117,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertLRNOperator(node, tf_import_flags, model);
     } else if (node.op() == "Softmax") {
       ConvertSoftmaxOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Log") {
+      ConvertLogOperator(node, tf_import_flags, model);
     } else if (node.op() == "LogSoftmax") {
       ConvertLogSoftmaxOperator(node, tf_import_flags, model);
     } else if (node.op() == "All") {
@@ -2168,6 +2213,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
     } else if (node.op() == "DynamicStitch" ||
                node.op() == "ParallelDynamicStitch") {
       ConvertDynamicStitchOperator(node, tf_import_flags, model);
+    } else if (node.op() == "RandomUniform") {
+      ConvertRandomUniform(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }

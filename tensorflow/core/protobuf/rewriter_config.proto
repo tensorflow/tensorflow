@@ -6,6 +6,8 @@ option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+import "tensorflow/core/framework/attr_value.proto";
+
 message AutoParallelOptions {
   bool enable = 1;
   int32 num_replicas = 2;
@@ -29,6 +31,14 @@ message RewriterConfig {
     AGGRESSIVE = 3;
   }
 
+  // Enum controling the number of times to run optimizers. The default is to
+  // run them once.
+  enum NumIterationsType {
+    DEFAULT_NUM_ITERS = 0;
+    ONE = 1;
+    TWO = 2;
+  }
+
   // Optimize tensor layouts (default is ON)
   // e.g. This will try to use NCHW layout on GPU which is faster.
   Toggle layout_optimizer = 1;
@@ -50,6 +60,10 @@ message RewriterConfig {
   Toggle debug_stripper = 11;
   // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;
+
+  // Controls how many times we run the optimizers in meta optimizer (default
+  // is once).
+  NumIterationsType meta_optimizer_iterations = 12;
 
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)
@@ -107,4 +121,13 @@ message RewriterConfig {
   // Custom registered optimizers will be run after the base optimizers, in
   // the order that they are specified.
   repeated string optimizers = 100;
+
+  // Message to describe custom graph optimizer and its parameters
+  message CustomGraphOptimizer {
+    string name = 1;
+    map<string, AttrValue> parameter_map = 2;
+  }
+
+  // list of CustomGraphOptimizers to apply.
+  repeated CustomGraphOptimizer custom_optimizers = 200;
 }

@@ -24,51 +24,55 @@ import six
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('keras.metrics.mean_squared_error',
            'keras.losses.mean_squared_error')
 def mean_squared_error(y_true, y_pred):
-  return K.mean(K.square(y_pred - y_true), axis=-1)
+  return K.mean(math_ops.square(y_pred - y_true), axis=-1)
 
 
 @tf_export('keras.metrics.mean_absolute_error',
            'keras.losses.mean_absolute_error')
 def mean_absolute_error(y_true, y_pred):
-  return K.mean(K.abs(y_pred - y_true), axis=-1)
+  return K.mean(math_ops.abs(y_pred - y_true), axis=-1)
 
 
 @tf_export('keras.metrics.mean_absolute_percentage_error',
            'keras.losses.mean_absolute_percentage_error')
 def mean_absolute_percentage_error(y_true, y_pred):
-  diff = K.abs((y_true - y_pred) / K.clip(K.abs(y_true), K.epsilon(), None))
+  diff = math_ops.abs(
+      (y_true - y_pred) / K.clip(math_ops.abs(y_true), K.epsilon(), None))
   return 100. * K.mean(diff, axis=-1)
 
 
 @tf_export('keras.metrics.mean_squared_logarithmic_error',
            'keras.losses.mean_squared_logarithmic_error')
 def mean_squared_logarithmic_error(y_true, y_pred):
-  first_log = K.log(K.clip(y_pred, K.epsilon(), None) + 1.)
-  second_log = K.log(K.clip(y_true, K.epsilon(), None) + 1.)
-  return K.mean(K.square(first_log - second_log), axis=-1)
+  first_log = math_ops.log(K.clip(y_pred, K.epsilon(), None) + 1.)
+  second_log = math_ops.log(K.clip(y_true, K.epsilon(), None) + 1.)
+  return K.mean(math_ops.square(first_log - second_log), axis=-1)
 
 
 @tf_export('keras.metrics.squared_hinge', 'keras.losses.squared_hinge')
 def squared_hinge(y_true, y_pred):
-  return K.mean(K.square(K.maximum(1. - y_true * y_pred, 0.)), axis=-1)
+  return K.mean(
+      math_ops.square(math_ops.maximum(1. - y_true * y_pred, 0.)), axis=-1)
 
 
 @tf_export('keras.metrics.hinge', 'keras.losses.hinge')
 def hinge(y_true, y_pred):
-  return K.mean(K.maximum(1. - y_true * y_pred, 0.), axis=-1)
+  return K.mean(math_ops.maximum(1. - y_true * y_pred, 0.), axis=-1)
 
 
 @tf_export('keras.losses.categorical_hinge')
 def categorical_hinge(y_true, y_pred):
-  pos = K.sum(y_true * y_pred, axis=-1)
-  neg = K.max((1. - y_true) * y_pred, axis=-1)
-  return K.maximum(0., neg - pos + 1.)
+  pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
+  neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
+  return math_ops.maximum(0., neg - pos + 1.)
 
 
 @tf_export('keras.losses.logcosh')
@@ -89,7 +93,7 @@ def logcosh(y_true, y_pred):
   """
 
   def _logcosh(x):
-    return x + K.softplus(-2. * x) - K.log(2.)
+    return x + nn.softplus(-2. * x) - math_ops.log(2.)
 
   return K.mean(_logcosh(y_pred - y_true), axis=-1)
 
@@ -117,19 +121,19 @@ def binary_crossentropy(y_true, y_pred):
 def kullback_leibler_divergence(y_true, y_pred):
   y_true = K.clip(y_true, K.epsilon(), 1)
   y_pred = K.clip(y_pred, K.epsilon(), 1)
-  return K.sum(y_true * K.log(y_true / y_pred), axis=-1)
+  return math_ops.reduce_sum(y_true * math_ops.log(y_true / y_pred), axis=-1)
 
 
 @tf_export('keras.metrics.poisson', 'keras.losses.poisson')
 def poisson(y_true, y_pred):
-  return K.mean(y_pred - y_true * K.log(y_pred + K.epsilon()), axis=-1)
+  return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
 
 
 @tf_export('keras.metrics.cosine_proximity', 'keras.losses.cosine_proximity')
 def cosine_proximity(y_true, y_pred):
-  y_true = K.l2_normalize(y_true, axis=-1)
-  y_pred = K.l2_normalize(y_pred, axis=-1)
-  return -K.sum(y_true * y_pred, axis=-1)
+  y_true = nn.l2_normalize(y_true, axis=-1)
+  y_pred = nn.l2_normalize(y_pred, axis=-1)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=-1)
 
 
 # Aliases.

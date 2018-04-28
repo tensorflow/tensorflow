@@ -45,7 +45,7 @@ class ListTransformer(transformer.Base):
     if not anno.hasanno(node, 'element_type'):
       raise NotImplementedError(
           'type inference for empty lists is not yet supported; '
-          'use utils.set_element_type(<list>, <dtype>) to continue')
+          'use set_element_type(<list>, <dtype>) to continue')
     dtype = anno.getanno(node, 'element_type')
     if not isinstance(dtype, dtypes.DType):
       # TODO(mdan): Allow non-TF dtypes?
@@ -74,7 +74,7 @@ class ListTransformer(transformer.Base):
 
       if qn.qn[-1] == 'append' and (len(call_node.args) == 1):
         template = """
-          target = autograph_utils.dynamic_list_append(target, element)
+          target = ag__.utils.dynamic_list_append(target, element)
         """
         node = templates.replace(
             template,
@@ -82,23 +82,33 @@ class ListTransformer(transformer.Base):
             element=call_node.args[0])
     return node
 
+  def _replace_list_constructors(self, targets, values):
+    for target in targets:
+      if (isinstance(target, (gast.Tuple, gast.List)) and
+          isinstance(values, (gast.Tuple, gast.List))):
+        n_targets = len(target.elts)
+        for i in range(n_targets):
+          target_el, value_el = target.elts[i], values.elts[i]
+          values.elts[i] = self._replace_list_constructors(
+              (target_el,), value_el)
+        return values
+      if isinstance(values, gast.List):
+        if values.elts:
+          return self._pre_populated_list(values)
+        else:
+          return self._empty_list(values)
+    return values
+
   def visit_Assign(self, node):
     node = self.generic_visit(node)
 
     # Only convert lists when they are assigned to a variable, e.g.:
     #   l = []
-    # TODO(mdan): This rule should be improved.
-    if len(node.targets) != 1:
-      return node
-    if not isinstance(node.value, gast.List):
-      return node
-    if not isinstance(node.value.ctx, gast.Load):
-      return node
-
-    if node.value.elts:
-      node.value = self._pre_populated_list(node.value)
-    else:
-      node.value = self._empty_list(node.value)
+    # TODO(mdan): A similar pattern exists in type_info.py
+    # We should add a generic "unpack_assignment" function to the base
+    # transformer, that has the same effect as applying some logic to the SSA
+    # form.
+    node.value = self._replace_list_constructors(node.targets, node.value)
     return node
 
 

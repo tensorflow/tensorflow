@@ -253,7 +253,7 @@ def add_execution_callback(callback):
       `f(op_type, op_name, attrs, inputs, outputs)`.
       `op_type` is the type of the operation that was just executed (e.g.,
         `MatMul`).
-      `op_name` is the name of the operation that has was just executed. This
+      `op_name` is the name of the operation that was just executed. This
         name is set by the client who created the operation and can be `None` if
         it is unset.
       `attrs` contains the attributes of the operation as a `tuple` of

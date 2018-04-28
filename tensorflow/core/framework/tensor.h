@@ -44,6 +44,7 @@ class TensorProto;
 class VariantTensorData;
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
+Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -493,6 +494,10 @@ class Tensor {
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
       int64 index);                // For access to RefCountIsOne().
+  friend Status batch_util::MaybeMoveSliceToElement(
+      Tensor* parent, Tensor* element,
+      int64 index);  // For access to RefCountIsOne().
+
   friend class NumpyTensorBuffer;  // For access to the private constructor
                                    // taking the buffer.
 

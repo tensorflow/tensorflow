@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import tempfile
 
 import numpy as np
 import six
@@ -420,8 +419,6 @@ class ModelSubclassingTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def test_saving(self):
-    if h5py is None:
-      return  # Skip test if models cannot be saved.
 
     num_classes = (2, 3)
     num_samples = 100
@@ -437,20 +434,30 @@ class ModelSubclassingTest(test.TestCase):
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
     y_ref_1, y_ref_2 = model.predict([x1, x2])
 
-    fd, fname = tempfile.mkstemp('.h5')
-    model.save_weights(fname)
+    tf_format_name = os.path.join(self.get_temp_dir(), 'ckpt')
+    model.save_weights(tf_format_name)
+    if h5py is not None:
+      hdf5_format_name = os.path.join(self.get_temp_dir(), 'weights.h5')
+      model.save_weights(hdf5_format_name)
 
     model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-    # need to build the model before loading weights
-    # (otherwise no weights to load)
-    model._set_inputs([x1, x2])
-    model.load_weights(fname)
+
+    if h5py is not None:
+      with self.assertRaises(ValueError):
+        model.load_weights(hdf5_format_name)
+
+    model.load_weights(tf_format_name)
 
     y1, y2 = model.predict([x1, x2])
     self.assertAllClose(y_ref_1, y1, atol=1e-5)
     self.assertAllClose(y_ref_2, y2, atol=1e-5)
-    os.close(fd)
-    os.remove(fname)
+
+    if h5py is not None:
+      model.load_weights(hdf5_format_name)
+
+      y1, y2 = model.predict([x1, x2])
+      self.assertAllClose(y_ref_1, y1, atol=1e-5)
+      self.assertAllClose(y_ref_2, y2, atol=1e-5)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_summary(self):
@@ -607,12 +614,6 @@ class CustomCallSignatureTests(test.TestCase):
     self.assertAllClose(10. * expected_output, self.evaluate(output))
     output = model(first, second=second, training=False)
     self.assertAllClose(expected_output, self.evaluate(output))
-    if not context.executing_eagerly():
-      six.assertCountEqual(self, [first, second], model.inputs)
-    with self.assertRaises(TypeError):
-      # tf.layers.Layer expects an "inputs" argument, so all-keywords doesn't
-      # work at the moment.
-      model(first=first, second=second, fiddle_with_output='yes')
 
   @test_util.run_in_graph_and_eager_modes()
   def test_inputs_in_signature(self):
@@ -622,10 +623,14 @@ class CustomCallSignatureTests(test.TestCase):
       def call(self, inputs, some_other_arg, training=False):
         return inputs
 
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
     model = HasInputsAndOtherPositional()
     with self.assertRaisesRegexp(
         TypeError, 'everything else as a keyword argument'):
-      model(array_ops.ones([]), array_ops.ones([]))
+      x1, x2 = keras.Input((1, 1)), keras.Input((1, 1))
+      model(x1, x2)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_kwargs_in_signature(self):
@@ -649,13 +654,14 @@ class CustomCallSignatureTests(test.TestCase):
       def call(self, x, *args, **kwargs):
         return [x] + list(args)
 
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
     model = HasArgs()
-    arg1 = array_ops.ones([])
-    arg2 = array_ops.ones([])
-    arg3 = array_ops.ones([])
-    model(arg1, arg2, arg3, a=3)
+    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
+    model(x1, x2, x3, a=3)
     if not context.executing_eagerly():
-      six.assertCountEqual(self, [arg1, arg2, arg3], model.inputs)
+      six.assertCountEqual(self, [x1, x2, x3], model.inputs)
 
   def test_args_and_keywords_in_signature(self):
 
@@ -666,11 +672,9 @@ class CustomCallSignatureTests(test.TestCase):
 
     with context.graph_mode():
       model = HasArgs()
-      arg1 = array_ops.ones([])
-      arg2 = array_ops.ones([])
-      arg3 = array_ops.ones([])
+      x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
       with self.assertRaisesRegexp(TypeError, 'args and arguments with'):
-        model(arg1, arg2, arg3, a=3)
+        model(x1, x2, x3, a=3)
 
   def test_training_no_default(self):
 
@@ -694,11 +698,9 @@ class CustomCallSignatureTests(test.TestCase):
 
     with context.graph_mode():
       model = TrainingNoDefaultWithPositional()
-      arg1 = array_ops.ones([])
-      arg2 = array_ops.ones([])
-      arg3 = array_ops.ones([])
+      x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
       with self.assertRaisesRegexp(TypeError, 'after a non-input'):
-        model(arg1, arg2, arg3)
+        model(x1, x2, x3)
 
 if __name__ == '__main__':
   test.main()

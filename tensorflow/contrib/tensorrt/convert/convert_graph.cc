@@ -111,20 +111,22 @@ void GetSubGraphOutgoingEdges(const tensorflow::Graph& graph,
   }
 }
 
-std::pair<string, int> ParseTensorName(string name, int default_idx = 0) {
+std::pair<string, int> ParseTensorName(const string& name,
+                                       int default_idx = 0) {
+  string name_no_idx = name;
   int idx = default_idx;
-  size_t sep = name.find_last_of(':');
+  const size_t sep = name_no_idx.find_last_of(':');
   if (sep != string::npos) {
-    name = name.substr(0, sep);
+    name_no_idx = name_no_idx.substr(0, sep);
     idx = std::stoi(name.substr(sep + 1));
   }
-  return std::make_pair(name, idx);
+  return std::make_pair(name_no_idx, idx);
 }
 
 std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
     const std::vector<string>& tensor_names) {
   std::unordered_map<string, std::vector<int>> result;
-  for (string const& tensor_name : tensor_names) {
+  for (const string& tensor_name : tensor_names) {
     string node_name;
     int index;
     std::tie(node_name, index) = ParseTensorName(tensor_name);
@@ -132,6 +134,7 @@ std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
   }
   return result;
 }
+
 // TODO(sami): convert references to pointers
 struct ConvertGraphParams {
   ConvertGraphParams(
@@ -405,7 +408,13 @@ tensorflow::Status ConvertGraphDefToTensorRT(
                          max_mem_per_engine, static_graph_properties,
                          &output_edge_map, precision_mode);
     if (precision_mode == INT8MODE) {
-      TF_RETURN_IF_ERROR(GetCalibNode(&p));
+      tensorflow::Status status = GetCalibNode(&p);
+      if (status != tensorflow::Status::OK()) {
+        LOG(WARNING) << "subgraph conversion error for subgraph_index:" << count
+                     << " due to: \"" << status.ToString()
+                     << "\" SKIPPING......( " << subgraph_node_names.size()
+                     << " nodes)";
+      }
     } else {
       tensorflow::Status status = ConvertSubGraphToTensorRT(&p);
       if (status != tensorflow::Status::OK()) {
@@ -414,8 +423,8 @@ tensorflow::Status ConvertGraphDefToTensorRT(
                      << "\" SKIPPING......( " << subgraph_node_names.size()
                      << " nodes)";
       }
-      count++;
     }
+    count++;
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();

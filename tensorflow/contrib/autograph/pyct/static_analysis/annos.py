@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Annotations used by the static analizer."""
+"""Annotations used by the static analyzer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,21 +28,22 @@ class NoValue(Enum):
 
 
 class NodeAnno(NoValue):
-  """Additionnal annotations used by the static analyzer.
+  """Additional annotations used by the static analyzer.
 
   These are in addition to the basic annotations declared in anno.py.
   """
 
   # Symbols
   # These flags are boolean.
-  IS_LOCAL = 'Symbol is local to the function scope being analized.'
-  IS_PARAM = 'Symbol is a parameter to the function being analized.'
+  IS_LOCAL = 'Symbol is local to the function scope being analyzed.'
+  IS_PARAM = 'Symbol is a parameter to the function being analyzed.'
   IS_MODIFIED_SINCE_ENTRY = (
       'Symbol has been explicitly replaced in the current function scope.')
 
   # Scopes
   # Scopes are represented by objects of type activity.Scope.
   ARGS_SCOPE = 'The scope for the argument list of a function call.'
+  COND_SCOPE = 'The scope for the test node of a conditional statement.'
   BODY_SCOPE = (
       'The scope for the main body of a statement (True branch for if '
       'statements, main body for loops).')

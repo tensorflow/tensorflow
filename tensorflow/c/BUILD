@@ -122,6 +122,7 @@ tf_cuda_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_platform",
         "//tensorflow/core:protos_all_cc",
     ],
 )

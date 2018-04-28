@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
 # pylint disable=long-line
 from tensorflow.contrib.kfac.python.ops import curvature_matrix_vector_products as cmvp
 from tensorflow.contrib.kfac.python.ops import estimator as est
@@ -108,13 +107,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       ValueError: If momentum is non-zero and momentum_type is not 'regular'
           or 'adam'.
     """
-
-    variables = var_list
-    if variables is None:
-      variables = tf_variables.trainable_variables()
-
     # Parameters to be passed to the Fisher estimator:
-    self._variables = variables
+    self._variables = var_list or tf_variables.trainable_variables
     self._cov_ema_decay = cov_ema_decay
     self._layers = layer_collection
     self._estimation_mode = estimation_mode
@@ -235,7 +229,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
 
   @property
   def variables(self):
-    return self._variables
+    return self._fisher_est.variables
 
   @property
   def damping(self):
@@ -247,62 +241,6 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
   @property
   def damping_adaptation_interval(self):
     return self._damping_adaptation_interval
-
-  @property
-  def cov_update_thunks(self):
-    self._maybe_make_and_save_everything()
-    return self._cov_update_thunks
-
-  @property
-  def cov_update_ops(self):
-    self._maybe_make_and_save_everything()
-    return self._cov_update_ops
-
-  @property
-  def cov_update_op(self):
-    self._maybe_make_and_save_everything()
-    return self._cov_update_op
-
-  @property
-  def inv_update_thunks(self):
-    self._maybe_make_and_save_everything()
-    return self._inv_update_thunks
-
-  @property
-  def inv_update_ops(self):
-    self._maybe_make_and_save_everything()
-    return self._inv_update_ops
-
-  @property
-  def inv_update_op(self):
-    self._maybe_make_and_save_everything()
-    return self._inv_update_op
-
-  def _maybe_make_and_save_everything(self):
-    if not self._fisher_est.made_vars():
-      warnings.warn("These convenience properties will be depcrecated soon. "
-                    "Please use explicit op/thunk creation methods instead "
-                    "(e.g. make_ops_and_vars, etc).",
-                    DeprecationWarning)
-      (self._cov_update_ops, self._cov_update_op, self._inv_update_ops,
-       self._inv_update_op, self._cov_update_thunks,
-       self._inv_update_thunks) = self.make_ops_and_vars()
-
-  def make_ops_and_vars(self):
-    """Make ops and vars with device placement `self._placement_strategy`.
-
-    See `FisherEstimator.make_ops_and_vars` for details.
-
-    Returns:
-      cov_update_ops: List of ops that compute the cov updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      cov_update_op: cov_update_ops grouped into a single op.
-      inv_update_ops: List of ops that compute the inv updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      cov_update_op: cov_update_ops grouped into a single op.
-      inv_update_op: inv_update_ops grouped into a single op.
-    """
-    return self._fisher_est.make_ops_and_vars(scope=self.get_name())
 
   def make_vars_and_create_op_thunks(self):
     """Make vars and create op thunks.
@@ -373,6 +311,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     else:
       kwargs["var_list"] = kwargs.get("var_list") or self.variables
       var_list = kwargs["var_list"]
+
     if set(var_list) != set(self.variables):
       raise ValueError("var_list doesn't match with set of Fisher-estimating "
                        "variables.")
@@ -389,7 +328,6 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     Returns:
       An `Operation` that applies the specified gradients.
     """
-    self._maybe_make_and_save_everything()
     # In Python 3, grads_and_vars can be a zip() object which can only be
     # iterated over once. By converting it to a list, we ensure that it can be
     # iterated over more than once.

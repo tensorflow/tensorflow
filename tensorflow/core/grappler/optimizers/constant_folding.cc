@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/setround.h"
@@ -298,7 +299,8 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
   for (int node_idx = 0; node_idx < node_count; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
     const string op = node->op();
-    if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN") {
+    if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN" &&
+        op != "TensorArraySizeV3") {
       continue;
     }
 
@@ -346,6 +348,36 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       node_map_->AddOutput(NodeName(ctrl_dep), node->name());
 
       // Done with the Shape/Size/Rank node, move to the next node.
+      continue;
+    }
+
+    if (op == "TensorArraySizeV3") {
+      const NodeDef* array = node_map_->GetNode(node->input(0));
+      if (array->attr().count("dynamic_size") != 0 &&
+          array->attr().at("dynamic_size").b()) {
+        continue;
+      }
+      const NodeDef* array_size = node_map_->GetNode(array->input(0));
+      if (IsReallyConstant(*array_size)) {
+        // Don't materialize 0 sizes to avoid triggering incorrect static
+        // checks. A 0 sized array that can't grow isn't useful anyway.
+        const TensorProto& raw_val = array_size->attr().at("value").tensor();
+        if (raw_val.dtype() != DT_INT32) {
+          continue;
+        }
+        Tensor value(raw_val.dtype(), raw_val.tensor_shape());
+        if (!value.FromProto(raw_val)) {
+          continue;
+        }
+        if (value.flat<int32>()(0) == 0) {
+          continue;
+        }
+        node->set_op("Const");
+        *node->mutable_attr() = array_size->attr();
+        node->set_input(0, AsControlDependency(NodeName(node->input(0))));
+        node->set_input(1, AddControlDependency(NodeName(node->input(1)),
+                                                graph_, node_map_.get()));
+      }
       continue;
     }
 
@@ -552,7 +584,6 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
 
   const DataType type = node.attr().at("T").type();
   NodeDef* out[2];
-  bool created_const = false;
   for (int j = 0; j < 2; ++j) {
     int reduction_indices = reduce_dims[j].size();
     Tensor value(type, TensorShape({reduction_indices}));
@@ -576,20 +607,17 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
           AddControlDependency(node.name(), graph_, node_map_.get());
       *out[j]->add_input() = ctrl_dep;
       node_map_->AddOutput(NodeName(ctrl_dep), const_name);
-      created_const = true;
     }
   }
 
-  if (created_const) {
-    const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
-    for (NodeDef* output : outputs) {
-      for (int k = 0; k < output->input_size(); ++k) {
-        int port;
-        string node_name = ParseNodeName(output->input(k), &port);
-        if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
-          *output->mutable_input(k) = out[port]->name();
-          node_map_->UpdateInput(output->name(), node_name, out[port]->name());
-        }
+  const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
+  for (NodeDef* output : outputs) {
+    for (int k = 0; k < output->input_size(); ++k) {
+      int port;
+      string node_name = ParseNodeName(output->input(k), &port);
+      if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
+        *output->mutable_input(k) = out[port]->name();
+        node_map_->UpdateInput(output->name(), node_name, out[port]->name());
       }
     }
   }
@@ -747,10 +775,6 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   if (op.find("Quantized") != string::npos || op.find("Sparse") == 0) {
     return false;
   }
-  if (node.attr().count("_XlaCompile") > 0 &&
-      node.attr().at("_XlaCompile").b()) {
-    return false;
-  }
 
   const OpDef* op_def = nullptr;
   Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
@@ -777,7 +801,7 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   // the case of a merge node that propagate the first inputs that becomes
   // available, and therefore only requires a single constant input to be
   // foldable.
-  bool has_constant_input = false;
+  bool merge_has_constant_input = false;
   const bool is_merge = IsMerge(node);
   for (const auto& input : node.input()) {
     if (IsControlInput(input)) {
@@ -788,21 +812,20 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
       return false;
     }
     bool is_const = IsReallyConstant(*input_node);
-    if (!is_const && !is_merge) {
+    if (is_const) {
+      // Don't fold strings constants for now since this causes problems with
+      // checkpointing.
+      if (input_node->attr().at("dtype").type() == DT_STRING) {
+        return false;
+      }
+      // Special case: If a Merge node has at least one constant input that
+      // does not depend on a control input, we can fold it.
+      merge_has_constant_input |= !HasControlInputs(*input_node);
+    } else if (!is_merge) {
       return false;
     }
-    // Don't fold strings constants for now since this causes problems with
-    // checkpointing.
-    if (is_const && input_node->attr().at("dtype").type() == DT_STRING) {
-      return false;
-    }
-    has_constant_input |= is_const;
   }
-  if (is_merge) {
-    return has_constant_input;
-  }
-
-  return true;
+  return !is_merge || merge_has_constant_input;
 }
 
 namespace {
@@ -982,7 +1005,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 
   for (const auto& input : node.input()) {
     int port = 0;
-    ParseNodeName(input, &port);
+    ParseNodeNameAsStringPiece(input, &port);
     if (port < 0) {
       // Control dependency
       break;
@@ -1542,21 +1565,113 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
     NodeDef* node = optimized_graph->mutable_node(i);
 
-    // Remove Shuffle or Reverse op over scalar values.
-    if (use_shape_info &&
-        !properties->GetInputProperties(node->name()).empty() &&
-        (IsShuffle(*node) || IsReverse(*node) || IsTranspose(*node))) {
+    if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
+      ReplaceOperationWithIdentity(1, node, optimized_graph);
+      continue;
+    }
+
+    if (IsSplitV(*node) && node->attr().at("num_split").i() == 1) {
+      ReplaceOperationWithIdentity(0, node, optimized_graph);
+      continue;
+    }
+
+    // Remove Shuffle or Transpose op over dimensions of size 1.
+    if (use_shape_info && (IsShuffle(*node) || IsTranspose(*node)) &&
+        properties->GetInputProperties(node->name()).size() >= 2) {
+      const auto& shape =
+          properties->GetInputProperties(node->name())[0].shape();
+      if (shape.unknown_rank()) {
+        // Not optimizable.
+        continue;
+      }
+      const auto& p = properties->GetInputProperties(node->name())[1];
+      if (TensorShape::IsValid(p.shape()) && p.has_value()) {
+        Tensor perm(p.dtype(), p.shape());
+        if (!perm.FromProto(p.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         p.value().DebugString());
+        }
+        std::vector<int> permutation;
+        for (int j = 0; j < perm.NumElements(); ++j) {
+          if (perm.dtype() == DT_INT64) {
+            permutation.push_back(perm.vec<int64>()(j));
+          } else {
+            permutation.push_back(perm.vec<int>()(j));
+          }
+        }
+        if (permutation.size() != shape.dim_size()) {
+          // Number of elements in perm should be same as dim_size. Skip if not.
+          continue;
+        }
+        // The node is replaceable iff
+        // dim_size == 0 || all dims have size 1 ||
+        // all dims with > 1 size are not permuted.
+        bool replaceable = true;
+        for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
+          replaceable &= shape.dim(j).size() == 1 || j == permutation[j];
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, optimized_graph);
+          continue;
+        }
+      }
+    }
+
+    // Remove RandomShuffle op if it is scalar or first dimension is of size 1.
+    if (use_shape_info && IsRandomShuffle(*node) &&
+        !properties->GetInputProperties(node->name()).empty()) {
       const auto& shape =
           properties->GetInputProperties(node->name())[0].shape();
       // The node is replaceable iff
-      // unknown_rank == false && (dim_size == 0 || all dims have size 1)
-      bool replaceable = !shape.unknown_rank();
-      for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
-        replaceable &= shape.dim(j).size() == 1;
-      }
-      if (replaceable) {
+      // unknown_rank == false && (dim_size == 0 || first dim is of size 1)
+      if (!shape.unknown_rank() &&
+          (shape.dim_size() == 0 || shape.dim(0).size() == 1)) {
         ReplaceOperationWithIdentity(0, node, optimized_graph);
         continue;
+      }
+    }
+
+    // Remove Reverse op over dimensions with size 1.
+    if (use_shape_info && node->op() == "ReverseV2" &&
+        properties->GetInputProperties(node->name()).size() >= 2) {
+      const auto& shape =
+          properties->GetInputProperties(node->name())[0].shape();
+      if (shape.unknown_rank()) {
+        // Not optimizable.
+        continue;
+      }
+      const auto& a = properties->GetInputProperties(node->name())[1];
+      if (TensorShape::IsValid(a.shape()) && a.has_value()) {
+        Tensor axis(a.dtype(), a.shape());
+        if (!axis.FromProto(a.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         a.value().DebugString());
+        }
+        std::set<int> target_axes;
+        for (int j = 0; j < axis.NumElements(); ++j) {
+          // value of axis can be negative.
+          if (axis.dtype() == DT_INT64) {
+            target_axes.insert(
+                (axis.vec<int64>()(j) + shape.dim_size()) % shape.dim_size());
+          } else {
+            target_axes.insert(
+                (axis.vec<int>()(j) + shape.dim_size()) % shape.dim_size());
+          }
+        }
+
+        // The node is replaceable iff
+        // unknown_rank == false &&
+        // (dim_size == 0 || all dims have size 1 ||
+        //  all dims with > 1 size are not in target_axes)
+        bool replaceable = !shape.unknown_rank();
+        for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
+          replaceable &= shape.dim(j).size() == 1 ||
+                         target_axes.find(j) == target_axes.end();
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, optimized_graph);
+          continue;
+        }
       }
     }
 
@@ -1708,9 +1823,11 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
     }
 
     // Move constants past Enter.
-    // TODO(rmlarsen): Reenable when we fix the root cause of b/76008022
-    if (opt_level_ == RewriterConfig::AGGRESSIVE && IsEnter(*node) &&
-        node->input_size() > 0) {
+    if (IsEnter(*node) && node->input_size() > 0) {
+      if (node->attr().count("is_constant") == 0 ||
+          !node->attr().at("is_constant").b()) {
+        continue;
+      }
       const string& node_name = node->name();
       const NodeDef* input = node_map_->GetNode(node->input(0));
       if (input != nullptr && IsReallyConstant(*input) &&
@@ -1739,7 +1856,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
           node_map_->AddOutput(node_name, new_node->name());
           for (NodeDef* consumer : consumers) {
             for (int i = 0; i < consumer->input_size(); ++i) {
-              if (consumer->input(i) == node_name) {
+              if (NodeName(consumer->input(i)) == node_name) {
                 node_map_->UpdateInput(consumer->name(), node_name,
                                        new_node->name());
                 consumer->set_input(i, new_node->name());
@@ -2050,9 +2167,9 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
           left_child_is_constant ? left_child : right_child;
       // Make sure that it is safe to change the value of the child node->
       if (op_child_node->input_size() < 2 ||
-          NumNonControlOutputs(*op_child_node, *node_map_) > 1 ||
           nodes_to_preserve_.find(op_child_node->name()) !=
-              nodes_to_preserve_.end()) {
+              nodes_to_preserve_.end() ||
+          NumNonControlOutputs(*op_child_node, *node_map_) > 1) {
         continue;
       }
 

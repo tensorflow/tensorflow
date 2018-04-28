@@ -604,7 +604,7 @@ struct ConvBackwardDataAutoTuneGroup {
   static string name() { return "ConvBwdData"; }
 };
 typedef AutoTuneSingleton<ConvBackwardDataAutoTuneGroup, ConvParameters,
-                          perftools::gputools::dnn::AlgorithmConfig>
+                          se::dnn::AlgorithmConfig>
     AutoTuneConvBwdData;
 
 // Backprop for input.
@@ -705,9 +705,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     const Tensor& out_backprop, const Tensor& filter, int row_dilation,
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
     Tensor* in_backprop, TensorFormat data_format) {
-  using perftools::gputools::dnn::AlgorithmConfig;
-  using perftools::gputools::dnn::AlgorithmDesc;
-  using perftools::gputools::dnn::ProfileResult;
+  using se::dnn::AlgorithmConfig;
+  using se::dnn::AlgorithmDesc;
+  using se::dnn::ProfileResult;
 
   std::vector<int32> strides(4, 1);
   std::vector<int32> dilations(4, 1);
@@ -778,8 +778,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(in_backprop->template flat<T>().data(),
                                 in_backprop->template flat<T>().size());
 
-    auto transpose = perftools::gputools::blas::Transpose::kTranspose;
-    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    auto transpose = se::blas::Transpose::kTranspose;
+    auto no_transpose = se::blas::Transpose::kNoTranspose;
 
     bool blas_launch_status =
         stream
@@ -810,8 +810,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(in_backprop->template flat<T>().data(),
                                 in_backprop->template flat<T>().size());
 
-    auto transpose = perftools::gputools::blas::Transpose::kTranspose;
-    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    auto transpose = se::blas::Transpose::kTranspose;
+    auto no_transpose = se::blas::Transpose::kNoTranspose;
 
     bool blas_launch_status =
         stream
@@ -841,24 +841,24 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   CHECK(padding_rows >= 0 && padding_cols >= 0)
       << "Negative row or col paddings: (" << padding_rows << ", "
       << padding_cols << ")";
-  perftools::gputools::dnn::BatchDescriptor input_desc;
+  se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(dims.batch_size)
       .set_height(GetTensorDim(compatible_input_shape, data_format, 'H'))
       .set_width(GetTensorDim(compatible_input_shape, data_format, 'W'))
       .set_feature_map_count(dims.in_depth)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::BatchDescriptor output_desc;
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(dims.batch_size)
       .set_height(dims.spatial_dims[0].output_size)
       .set_width(dims.spatial_dims[1].output_size)
       .set_feature_map_count(dims.out_depth)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::FilterDescriptor filter_desc;
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(dims.spatial_dims[0].filter_size)
       .set_input_filter_width(dims.spatial_dims[1].filter_size)
       .set_input_feature_map_count(dims.in_depth)
       .set_output_feature_map_count(dims.out_depth);
-  perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
+  se::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(dims.spatial_dims[0].dilation)
       .set_horizontal_dilation_rate(dims.spatial_dims[1].dilation)
       .set_vertical_filter_stride(dims.spatial_dims[0].stride)
@@ -961,7 +961,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                                 conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
-        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
+        &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {

@@ -26,7 +26,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.Paths;
 import javax.imageio.ImageIO;
 import org.junit.Before;
 import org.junit.Test;
@@ -45,37 +44,39 @@ public final class OvicClassifierTest {
   private ByteBuffer testImage = null;
   private ByteBuffer lowResTestImage = null;
   private OvicSingleImageResult testResult = null;
-  private static final String LABELS_PATH = "testdata/labels.txt";
-  private static final String QUANTIZED_MODEL_PATH = "testdata/quantized_model.lite";
-  private static final String LOW_RES_MODEL_PATH = "testdata/low_res_model.lite";
-  private static final String FLOAT_MODEL_PATH = "testdata/float_model.lite";
-  private static final String TEST_IMAGE_PATH = "testdata/test_image_224.jpg";
-  private static final String TEST_LOW_RES_IMAGE_PATH = "testdata/test_image_128.jpg";
+  private static final String LABELS_PATH =
+      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/labels.txt";
+  private static final String QUANTIZED_MODEL_PATH =
+      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/quantized_model.lite";
+  private static final String LOW_RES_MODEL_PATH =
+      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/low_res_model.lite";
+  private static final String FLOAT_MODEL_PATH =
+      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/float_model.lite";
+  private static final String TEST_IMAGE_PATH =
+      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/test_image_224.jpg";
+  private static final String TEST_LOW_RES_IMAGE_PATH =
+      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/test_image_128.jpg";
   private static final int TEST_IMAGE_GROUNDTRUTH = 653; // "military uniform"
 
   @Before
   public void setUp() {
     try {
-      File labelsfile = new File(getTestDir(LABELS_PATH));
+      File labelsfile = new File(LABELS_PATH);
       labelsInputStream = new FileInputStream(labelsfile);
-      quantizedModel = loadModelFile(getTestDir(QUANTIZED_MODEL_PATH));
-      floatModel = loadModelFile(getTestDir(FLOAT_MODEL_PATH));
-      lowResModel = loadModelFile(getTestDir(LOW_RES_MODEL_PATH));
-      File imageFile = new File(getTestDir(TEST_IMAGE_PATH));
+      quantizedModel = loadModelFile(QUANTIZED_MODEL_PATH);
+      floatModel = loadModelFile(FLOAT_MODEL_PATH);
+      lowResModel = loadModelFile(LOW_RES_MODEL_PATH);
+      File imageFile = new File(TEST_IMAGE_PATH);
       BufferedImage img = ImageIO.read(imageFile);
       testImage = toByteBuffer(img);
       // Low res image and models.
-      imageFile = new File(getTestDir(TEST_LOW_RES_IMAGE_PATH));
+      imageFile = new File(TEST_LOW_RES_IMAGE_PATH);
       img = ImageIO.read(imageFile);
       lowResTestImage = toByteBuffer(img);
     } catch (IOException e) {
       System.out.print(e.getMessage());
     }
     System.out.println("Successful setup");
-  }
-
-  private static String getTestDir(String testfile) throws IOException {
-    return Paths.get("third_party/tensorflow/contrib/lite/java/ovic/src/", testfile).toString();
   }
 
   @Test

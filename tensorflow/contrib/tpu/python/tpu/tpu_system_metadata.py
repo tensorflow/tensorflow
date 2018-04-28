@@ -120,7 +120,8 @@ def _query_tpu_system_metadata(master_address, run_config,
     logging.info('*** Num TPU Workers: %d', metadata.num_hosts)
     logging.info('*** Num TPU Cores Per Worker: %d',
                  metadata.num_of_cores_per_host)
-    logging.info('*** Available Devices: %s', metadata.devices)
+    for device in metadata.devices:
+      logging.info('*** Available Device: %s', device)
   else:
     logging.info('Failed to find TPU: %s', metadata)
   return metadata

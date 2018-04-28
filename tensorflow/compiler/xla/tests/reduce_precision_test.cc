@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
@@ -228,15 +228,14 @@ XLA_TEST_P(ReducePrecisionAccuracyTest, ReducePrecisionF32) {
   // This is required for proper handling of NaN values.
   SetFastMathDisabled(true);
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({input_values});
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(*a_literal).ConsumeValueOrDie();
   auto a = builder.Parameter(0, a_literal->shape(), "a");
 
-  auto reduce_precision =
-      builder.ReducePrecision(a, exponent_bits, mantissa_bits);
+  builder.ReducePrecision(a, exponent_bits, mantissa_bits);
 
   ComputeAndCompareR1<float>(&builder, expected_values, {a_data.get()});
 }
@@ -252,7 +251,7 @@ class ReducePrecisionInsertionTest : public ClientLibraryTestBase {};
 // The interpreter has no fusion pass, so skip this test.
 XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionBeforeFusion)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
   std::unique_ptr<GlobalData> a_data =
@@ -265,7 +264,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
   // Near 1.0, Log(x) approximates x - 1; this lets us confirm that the
   // reduce-precision operation showed up in the correct place in the
   // graph.
-  auto log = builder.Log(abs);
+  builder.Log(abs);
 
   // Insert precision-reduction after the Abs(x) operation, rounding that
   // result to exactly 1.0f.
@@ -281,7 +280,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
 // The interpreter has no fusion pass, so skip this test.
 XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionSkippedAfterFusion)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
   std::unique_ptr<GlobalData> a_data =
@@ -290,7 +289,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
 
   // These two operations should be fused by any reasonable backend.
   auto abs = builder.Abs(a);
-  auto neg = builder.Neg(abs);
+  builder.Neg(abs);
 
   // Add a pass after operation fusion, suffixing kAbs operations.  This
   // should not see into the fusion nodes and thus should not affect the
@@ -307,7 +306,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
 // The interpreter has no fusion pass, so skip this test.
 XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionAddedAfterFusion)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
   std::unique_ptr<GlobalData> a_data =
@@ -316,7 +315,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
 
   // These two operations should be fused by any reasonable backend.
   auto abs = builder.Abs(a);
-  auto neg = builder.Neg(abs);
+  builder.Neg(abs);
 
   // Add a pass after operation fusion, suffixing kFusion operations.
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
@@ -331,7 +330,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
 // The interpreter has no fusion pass, so skip this test.
 XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionSkippedFusionContains)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
   std::unique_ptr<GlobalData> a_data =
@@ -340,7 +339,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
 
   // These two operations should be fused by any reasonable backend.
   auto abs = builder.Abs(a);
-  auto neg = builder.Neg(abs);
+  builder.Neg(abs);
 
   // Add a pass suffixing fusion nodes containing kCos operations.  This
   // should have no effect.
@@ -356,7 +355,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
 // The interpreter has no fusion pass, so skip this test.
 XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionAddedFusionContains)) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
   std::unique_ptr<GlobalData> a_data =
@@ -365,7 +364,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
 
   // These two operations should be fused by any reasonable backend.
   auto abs = builder.Abs(a);
-  auto neg = builder.Neg(abs);
+  builder.Neg(abs);
 
   // Add a pass suffixing fusion nodes containing kAbs operations.  This
   // should see the kAbs operation within the above fusion node.

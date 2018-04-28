@@ -29,7 +29,6 @@ from tensorflow.python.keras._impl.keras.engine.input_layer import Input
 from tensorflow.python.keras._impl.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras._impl.keras.engine.training import Model
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -123,7 +122,7 @@ class Sequential(Model):
             multiple output tensors, or is already connected
             somewhere else (forbidden in `Sequential` models).
     """
-    if not isinstance(layer, (base_layer.Layer, base_layer.TFBaseLayer)):
+    if not isinstance(layer, base_layer.Layer):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))
@@ -193,36 +192,6 @@ class Sequential(Model):
       self.build()
     else:
       self._layers.append(layer)
-    # In implementing Checkpointable, Sequential does not track its Layers
-    # normally, since they may be added and removed (in pop()). Instead, it
-    # names everything on demand (gathering dependencies in
-    # _checkpoint_dependencies, and looking them up in
-    # _lookup_dependency). _handle_deferred_dependencies just checks whether an
-    # existing checkpoint load targets this Layer, it does not create a
-    # dependency on the Layer.
-    self._handle_deferred_dependencies(
-        name='layer-%d' % (len(self._layers) - 1), checkpointable=layer)
-
-  @property
-  def _checkpoint_dependencies(self):
-    """For implementing Checkpointable. Layers which should be saved."""
-    return super(Sequential, self)._checkpoint_dependencies + [
-        checkpointable.CheckpointableReference(
-            name='layer-%d' % layer_index, ref=layer)
-        for layer_index, layer in enumerate(self._layers)]
-
-  def _lookup_dependency(self, name):
-    """For implementing Checkpointable. Looks up a Layer."""
-    super_lookup = super(Sequential, self)._lookup_dependency(name=name)
-    if super_lookup is not None:
-      return super_lookup
-    if name.startswith('layer-'):
-      try:
-        return self._layers[int(name[6:])]
-      except IndexError:
-        return None
-    else:
-      return None
 
   def pop(self):
     """Removes the last layer in the model.
@@ -257,6 +226,7 @@ class Sequential(Model):
     if self.inputs:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
+    self._track_layers(self._layers)
 
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.

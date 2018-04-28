@@ -340,7 +340,7 @@ class DeserializeSparseOp : public OpKernel {
             "but has a zero dimension ",
             serialized_sparse.shape().DebugString()));
 
-    if (num_sparse_tensors == 0 && serialized_sparse.shape().dims() == 1) {
+    if (num_sparse_tensors == 1 && serialized_sparse.shape().dims() == 0) {
       // Special case with a single sparse tensor. We can avoid data
       // motion in the Concat and Reshape.
       const auto& serialized_sparse_t = serialized_sparse.vec<T>();

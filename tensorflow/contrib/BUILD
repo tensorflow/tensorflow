@@ -8,6 +8,7 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "contrib_py",
@@ -24,11 +25,13 @@ py_library(
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/boosted_trees:init_py",
+        "//tensorflow/contrib/checkpoint/python:checkpoint",
         "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
-        "//tensorflow/contrib/coder:coder_ops_py",
+        "//tensorflow/contrib/coder:coder_py",
         "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/contrib/constrained_optimization",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
@@ -40,7 +43,6 @@ py_library(
         "//tensorflow/contrib/estimator:estimator_py",
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/fused_conv:fused_conv_py",
         "//tensorflow/contrib/gan",
@@ -63,7 +65,6 @@ py_library(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
-        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/losses:metric_learning_py",
@@ -78,14 +79,17 @@ py_library(
         "//tensorflow/contrib/optimizer_v2:optimizer_v2_py",
         "//tensorflow/contrib/periodic_resample:init_py",
         "//tensorflow/contrib/predictor",
+        "//tensorflow/contrib/proto",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",
         "//tensorflow/contrib/autograph",
         "//tensorflow/contrib/receptive_field:receptive_field_py",
+        "//tensorflow/contrib/recurrent:recurrent_py",
         "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/resampler:resampler_py",
         "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/contrib/rpc",
         "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/contrib/seq2seq:seq2seq_py",
         "//tensorflow/contrib/signal:signal_py",
@@ -117,7 +121,10 @@ py_library(
             "//tensorflow/contrib/kafka",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_not_windows([
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
+    ]),
 )
 
 cc_library(

@@ -162,7 +162,9 @@ function main() {
 
   # Before we leave the top-level directory, make sure we know how to
   # call python.
-  source tools/python_bin_path.sh
+  if [[ -e tools/python_bin_path.sh ]]; then
+    source tools/python_bin_path.sh
+  fi
 
   pushd ${TMPDIR}
   rm -f MANIFEST

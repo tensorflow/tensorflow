@@ -36,7 +36,7 @@ class MemzeroThunk : public Thunk {
       : Thunk(Kind::kMemzero, hlo), dest_(dest) {}
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream) override;
 
  private:
   const BufferAllocation::Slice dest_;
@@ -52,7 +52,7 @@ class Memset32BitValueThunk : public Thunk {
       : Thunk(Kind::kMemset32BitValue, hlo), value_(value), dest_(dest) {}
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream) override;
 
  private:
   uint32 value_;

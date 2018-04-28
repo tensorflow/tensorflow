@@ -32,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
@@ -82,7 +83,12 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
   """
   loader.load_op_library(
       resource_loader.get_path_to_datafile("_variable_ops.so"))
-  return gen_variable_ops.zero_initializer(ref, name=name)
+  if resource_variable_ops.is_resource_variable(ref):
+    return gen_variable_ops.zero_var_initializer(
+        ref.handle, shape=ref.shape, dtype=ref.dtype, name=name)
+  else:
+    return gen_variable_ops.zero_initializer(ref, name=name)
+
 
 @deprecated(None, "Please switch to tf.train.assert_global_step")
 def assert_global_step(global_step_tensor):

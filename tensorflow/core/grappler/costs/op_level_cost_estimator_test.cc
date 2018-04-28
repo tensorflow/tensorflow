@@ -93,6 +93,14 @@ OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
   return op_context;
 }
 
+// Wrangles the minimum number of proto fields to set up a 1D Tensor for cost
+// estimation purposes.
+void DescribeTensor1D(int dim0, OpInfo::TensorProperties* tensor) {
+  auto shape = tensor->mutable_shape();
+  shape->add_dim()->set_size(dim0);
+  tensor->set_dtype(DT_FLOAT);
+}
+
 // Wrangles the minimum number of proto fields to set up a 4D Tensor for cost
 // estimation purposes.
 void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
@@ -116,6 +124,38 @@ OpContext DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2,
 
   DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
   DescribeTensor4D(kx, ky, iz2, oz, op_context.op_info.add_inputs());
+
+  return op_context;
+}
+
+// DescribeFusedConv2DBiasActivation constructs an OpContext for a
+// FusedConv2DBiasActivation applied to a convolution input tensor with shape
+// (batch, ix, iy, iz1), a kernel tensor with shape (kx, ky, iz2, oz), a
+// bias tensor with shape (oz), a side input tensor with shape
+// (batch, ox, oy, oz) if has_side_input is set, and two scaling tensors with
+// shape (1).
+//
+// Note that this assumes the NHWC data format.
+OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
+                                            int iz2, int kx, int ky, int ox,
+                                            int oy, int oz,
+                                            bool has_side_input) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("FusedConv2DBiasActivation");
+  DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
+  DescribeTensor4D(kx, ky, iz2, oz, op_context.op_info.add_inputs());
+  DescribeTensor1D(oz, op_context.op_info.add_inputs());
+
+  // Add the side_input, if any.
+  auto side_input = op_context.op_info.add_inputs();
+  if (has_side_input) {
+    DescribeTensor4D(batch, ox, oy, oz, side_input);
+  }
+
+  // Add the scaling tensors.
+  DescribeTensor1D(1, op_context.op_info.add_inputs());
+  DescribeTensor1D(1, op_context.op_info.add_inputs());
 
   return op_context;
 }
@@ -162,11 +202,8 @@ OpContext DescribeBiasAdd(int size1, int size2) {
   op_context.op_info.set_op("BiasAdd");
 
   DescribeTensor4D(1, 1, size2, size1, op_context.op_info.add_inputs());
+  DescribeTensor1D(size1, op_context.op_info.add_inputs());
   DescribeTensor4D(1, 1, size2, size1, op_context.op_info.add_outputs());
-
-  auto bias = op_context.op_info.add_inputs();
-  bias->mutable_shape()->add_dim()->set_size(size1);
-  bias->set_dtype(DT_FLOAT);
 
   return op_context;
 }
@@ -217,6 +254,39 @@ std::vector<int> GetPoolingOutputSize(const std::vector<int>& input,
   return output;
 }
 
+// Helper functions for testing GetTensorShapeProtoFromTensorProto().
+void GetTensorProto(const DataType dtype, const std::vector<int64>& shape,
+                    const std::vector<int64> values, const bool tensor_content,
+                    TensorProto* tensor_proto) {
+  tensor_proto->Clear();
+  TensorProto temp_tensor_proto;
+  temp_tensor_proto.set_dtype(dtype);
+  for (const auto& x : shape) {
+    temp_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(x);
+  }
+  for (const auto& x : values) {
+    if (dtype == DT_INT64) {
+      temp_tensor_proto.add_int64_val(x);
+    } else if (dtype == DT_INT32 || dtype == DT_INT16 || dtype == DT_INT8 ||
+               dtype == DT_UINT8) {
+      temp_tensor_proto.add_int_val(x);
+    } else if (dtype == DT_UINT32) {
+      temp_tensor_proto.add_uint32_val(x);
+    } else if (dtype == DT_UINT64) {
+      temp_tensor_proto.add_uint64_val(x);
+    } else {
+      CHECK(false) << "Unsupported dtype: " << dtype;
+    }
+  }
+  Tensor tensor(dtype);
+  CHECK(tensor.FromProto(temp_tensor_proto));
+  if (tensor_content) {
+    tensor.AsProtoTensorContent(tensor_proto);
+  } else {
+    tensor.AsProtoField(tensor_proto);
+  }
+}
+
 OpContext DescribePoolingOp(const string& op_name, const std::vector<int>& x,
                             const std::vector<int>& ksize,
                             const std::vector<int>& strides,
@@ -233,8 +303,11 @@ OpContext DescribePoolingOp(const string& op_name, const std::vector<int>& x,
     DescribeTensor4D(x[0], x[1], x[2], x[3], op_info.add_inputs());
     DescribeTensor4D(y[0], y[1], y[2], y[3], op_info.add_outputs());
   } else if (op_name == "AvgPoolGrad") {
-    // input: x, y_grad, output: x_grad.
-    DescribeTensor4D(x[0], x[1], x[2], x[3], op_info.add_inputs());
+    // input: x's shape, y_grad, output: x_grad.
+    DescribeArbitraryRankInput({4}, DT_INT32, &op_info);
+    auto* tensor_proto = op_info.mutable_inputs(0)->mutable_value();
+    GetTensorProto(DT_INT32, {4}, {x[0], x[1], x[2], x[3]},
+                   /*tensor_content=*/false, tensor_proto);
     DescribeTensor4D(y[0], y[1], y[2], y[3], op_info.add_inputs());
     DescribeTensor4D(x[0], x[1], x[2], x[3], op_info.add_outputs());
   } else if (op_name == "MaxPoolGrad") {
@@ -365,43 +438,56 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
   OpLevelCostEstimator estimator_;
 };
 
-// TODO(76227186): re-enable with output size check & test
-/*
 TEST_F(OpLevelCostEstimatorTest, TestGatherCosts) {
-OpContext op_context;
-SetCpuDevice(&op_context.op_info);
-op_context.op_info.set_op("Gather");
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Gather");
 
-// Huge first input shouldn't affect Gather execution and memory costs.
-DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
-DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
-DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
+  // Huge first input shouldn't affect Gather execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
 
-auto cost = estimator_.PredictCosts(op_context);
-EXPECT_EQ(Costs::Duration(130), cost.memory_time);
-EXPECT_EQ(Costs::Duration(16), cost.compute_time);
-EXPECT_EQ(Costs::Duration(146), cost.execution_time);
-EXPECT_FALSE(cost.inaccurate);
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(130), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(16), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(146), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, TestGatherCostsWithoutOutput) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Gather");
+
+  // Huge first input shouldn't affect Gather execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
+
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(0), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(0), cost.execution_time);
+  EXPECT_TRUE(cost.inaccurate);
 }
 
 TEST_F(OpLevelCostEstimatorTest, TestSliceCosts) {
-OpContext op_context;
-SetCpuDevice(&op_context.op_info);
-op_context.op_info.set_op("Slice");
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Slice");
 
-// Huge first input shouldn't affect Slice execution and memory costs.
-DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
-DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
-DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
-DescribeArbitraryRankOutput({10, 10}, DT_FLOAT, &op_context.op_info);
+  // Huge first input shouldn't affect Slice execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankOutput({10, 10}, DT_FLOAT, &op_context.op_info);
 
-auto cost = estimator_.PredictCosts(op_context);
-EXPECT_EQ(Costs::Duration(81), cost.memory_time);
-EXPECT_EQ(Costs::Duration(10), cost.compute_time);
-EXPECT_EQ(Costs::Duration(91), cost.execution_time);
-EXPECT_FALSE(cost.inaccurate);
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(81), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(10), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(91), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
 }
-*/
 
 TEST_F(OpLevelCostEstimatorTest, BiasAddExecutionTime) {
   auto cost = PredictCosts(DescribeBiasAdd(1000, 10));
@@ -435,6 +521,25 @@ TEST_F(OpLevelCostEstimatorTest, ExecutionTimeSumOrMax) {
   EXPECT_EQ(Costs::Duration(2000), cost.execution_time);  // max(2000, 200)
   EXPECT_TRUE(cost.inaccurate);
   SetComputeMemoryOverlap(false);  // Set it back to default.
+}
+
+TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationExecutionTime) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true));
+  EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest,
+       FusedConv2DBiasActivationNoSideInputExecutionTime) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ false));
+  EXPECT_EQ(Costs::Duration(825345), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355321038), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(356146383), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
 }
 
 TEST_F(OpLevelCostEstimatorTest, MulExecutionTime) {
@@ -508,39 +613,6 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
                 DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
-}
-
-// Helper functions for testing GetTensorShapeProtoFromTensorProto().
-void GetTensorProto(const DataType dtype, const std::vector<int64>& shape,
-                    const std::vector<int64> values, const bool tensor_content,
-                    TensorProto* tensor_proto) {
-  tensor_proto->Clear();
-  TensorProto temp_tensor_proto;
-  temp_tensor_proto.set_dtype(dtype);
-  for (const auto& x : shape) {
-    temp_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(x);
-  }
-  for (const auto& x : values) {
-    if (dtype == DT_INT64) {
-      temp_tensor_proto.add_int64_val(x);
-    } else if (dtype == DT_INT32 || dtype == DT_INT16 || dtype == DT_INT8 ||
-               dtype == DT_UINT8) {
-      temp_tensor_proto.add_int_val(x);
-    } else if (dtype == DT_UINT32) {
-      temp_tensor_proto.add_uint32_val(x);
-    } else if (dtype == DT_UINT64) {
-      temp_tensor_proto.add_uint64_val(x);
-    } else {
-      CHECK(false) << "Unsupported dtype: " << dtype;
-    }
-  }
-  Tensor tensor(dtype);
-  CHECK(tensor.FromProto(temp_tensor_proto));
-  if (tensor_content) {
-    tensor.AsProtoTensorContent(tensor_proto);
-  } else {
-    tensor.AsProtoField(tensor_proto);
-  }
 }
 
 void ExpectTensorShape(const std::vector<int64>& expected,
@@ -746,25 +818,25 @@ TEST_F(OpLevelCostEstimatorTest, PredictAvgPoolGrad) {
   {
     // Typical 3xz3 window with 2x2 stride.
     auto costs = predict_avg_pool_grad(10, 20, 384, 3, 2, "SAME");
-    EXPECT_EQ(Costs::Duration(1920000), costs.execution_time);
+    EXPECT_EQ(Costs::Duration(1305602), costs.execution_time);
     EXPECT_EQ(Costs::Duration(537600), costs.compute_time);
-    EXPECT_EQ(Costs::Duration(1382400), costs.memory_time);
+    EXPECT_EQ(Costs::Duration(768002), costs.memory_time);
     EXPECT_FALSE(costs.inaccurate);
   }
   {
     // 1x1 window with 2x2 stride: used for shortcut in resnet-50.
     auto costs = predict_avg_pool_grad(10, 20, 384, 1, 2, "SAME");
-    EXPECT_EQ(Costs::Duration(1574400), costs.execution_time);
+    EXPECT_EQ(Costs::Duration(960002), costs.execution_time);
     EXPECT_EQ(Costs::Duration(192000), costs.compute_time);
-    EXPECT_EQ(Costs::Duration(1382400), costs.memory_time);
+    EXPECT_EQ(Costs::Duration(768002), costs.memory_time);
     EXPECT_FALSE(costs.inaccurate);
   }
   {
     // 2x2 window with 3x3 stride.
     auto costs = predict_avg_pool_grad(10, 20, 384, 2, 3, "VALID");
-    EXPECT_EQ(Costs::Duration(1476480), costs.execution_time);
+    EXPECT_EQ(Costs::Duration(862082), costs.execution_time);
     EXPECT_EQ(Costs::Duration(172416), costs.compute_time);
-    EXPECT_EQ(Costs::Duration(1304064), costs.memory_time);
+    EXPECT_EQ(Costs::Duration(689666), costs.memory_time);
     EXPECT_FALSE(costs.inaccurate);
   }
 }

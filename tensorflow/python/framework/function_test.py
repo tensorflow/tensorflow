@@ -37,7 +37,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_logging_ops
@@ -58,15 +57,35 @@ def _OptimizerOptions():
   for cse in [False, True]:
     for inline in [False, True]:
       for cfold in [False, True]:
-        yield config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-            optimizer_options=config_pb2.OptimizerOptions(
-                opt_level=config_pb2.OptimizerOptions.L0,
-                do_common_subexpression_elimination=cse,
-                do_function_inlining=inline,
-                do_constant_folding=cfold)))
+        cfg = config_pb2.ConfigProto(
+            graph_options=config_pb2.GraphOptions(
+                optimizer_options=config_pb2.OptimizerOptions(
+                    opt_level=config_pb2.OptimizerOptions.L0,
+                    do_common_subexpression_elimination=cse,
+                    do_function_inlining=inline,
+                    do_constant_folding=cfold)))
+        if cse:
+          cfg.graph_options.rewrite_options.arithmetic_optimization = (
+              rewriter_config_pb2.RewriterConfig.ON)
+        else:
+          cfg.graph_options.rewrite_options.arithmetic_optimization = (
+              rewriter_config_pb2.RewriterConfig.OFF)
+        if inline:
+          cfg.graph_options.rewrite_options.function_optimization = (
+              rewriter_config_pb2.RewriterConfig.ON)
+        else:
+          cfg.graph_options.rewrite_options.function_optimization = (
+              rewriter_config_pb2.RewriterConfig.OFF)
+        if cfold:
+          cfg.graph_options.rewrite_options.constant_folding = (
+              rewriter_config_pb2.RewriterConfig.ON)
+        else:
+          cfg.graph_options.rewrite_options.constant_folding = (
+              rewriter_config_pb2.RewriterConfig.OFF)
+        yield cfg
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class FunctionTest(test.TestCase):
   """Test methods for verifying Function support.
 
@@ -412,7 +431,6 @@ class FunctionTest(test.TestCase):
                                    "assertion failed.*-3"):
         self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
 
-  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testAssertWrapper(self):
 
     @function.Defun(dtypes.float32)
@@ -427,7 +445,6 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
-  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testWhileLoopCallsFunc(self):
     with self.test_session(use_gpu=True) as sess:
 
@@ -447,7 +464,6 @@ class FunctionTest(test.TestCase):
       ans = sess.run(loop)
       self.assertAllClose(ans, 131072.)
 
-  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testControlFlowStrictness(self):
     """Inlined functions must not execute in a untaken control flow branch."""
 
@@ -1034,8 +1050,31 @@ class FunctionTest(test.TestCase):
         self.assertEqual(44.0, sess.run(f_1))
         self.assertEqual((42.0, 44.0), sess.run((f_0, f_1)))
 
+  def testGuaranteedConstsAreCaptured(self):
+    var = variables.Variable(1.0)
+    const = array_ops.guarantee_const(var)
+    also_const = array_ops.identity(const)
+    still_const = array_ops.identity(also_const)
+    not_const = still_const + var
+    also_not_const = array_ops.placeholder(dtypes.float32)
 
-@test_util.with_c_api
+    @function.Defun()
+    def CapturesGuaranteedConst():
+      output = const + also_const + still_const + not_const + also_not_const
+      first, second, third, fourth, fifth = function.get_extra_args()
+      self.assertEqual("GuaranteeConst", first.consumers()[0].node_def.op)
+      self.assertEqual("GuaranteeConst", second.consumers()[0].node_def.op)
+      self.assertEqual("GuaranteeConst", third.consumers()[0].node_def.op)
+      self.assertNotEqual("GuaranteeConst", fourth.consumers()[0].node_def.op)
+      self.assertNotEqual("GuaranteeConst", fifth.consumers()[0].node_def.op)
+      return output
+
+    with self.test_session(use_gpu=False) as sess:
+      sess.run(var.initializer)
+      _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
+
+
+@test_util.with_c_shapes
 class FunctionsFromProtos(test.TestCase):
 
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
@@ -1237,7 +1276,7 @@ class FunctionsFromProtos(test.TestCase):
         FunctionWithAttr.definition.attr["experimental_tag"].s, b"tag_value")
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class FunctionOverloadTest(test.TestCase):
 
   def testBasic(self):
@@ -1290,7 +1329,7 @@ class FunctionOverloadTest(test.TestCase):
                      "Successor of x.")
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class FunctionCaptureByValueTest(test.TestCase):
 
   def testCaptureByValue(self):
@@ -1320,7 +1359,7 @@ class FunctionCaptureByValueTest(test.TestCase):
       self.assertAllEqual(y.eval(), [[12.0]])
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1342,7 +1381,7 @@ class UnrollLSTMTest(test.TestCase):
         value=math_ops.matmul(xm, weights), num_or_size_splits=4, axis=1)
     new_c = math_ops.sigmoid(f_g) * cprev + math_ops.sigmoid(
         i_g) * math_ops.tanh(i_i)
-    new_c = clip_ops.clip_by_value(new_c, -50.0, 50.0)
+    new_c = math_ops.maximum(math_ops.minimum(new_c, 50.0), -50.0)
     new_m = math_ops.sigmoid(o_g) * math_ops.tanh(new_c)
     return new_m, new_c
 
@@ -1456,7 +1495,7 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
@@ -1524,10 +1563,6 @@ def Linear2(w1, b1, w2, b2, x):
   return Linear(w2, b2, Linear(w1, b1, x))
 
 
-# Set C API before defining module level functions
-ops._USE_C_API = True
-
-
 @function.Defun(*[dtypes.float32] * 3)
 def LinearWithCApi(w, b, x):
   return nn_ops.relu(math_ops.matmul(x, w) + b)
@@ -1538,25 +1573,9 @@ def Linear2WithCApi(w1, b1, w2, b2, x):
   return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
 
 
-# Unset C API after defining module level functions
-ops._USE_C_API = False
-
-
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
-    with ops.Graph().as_default():
-      a, b, c, d, e = [
-          constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
-      ]
-      y = Linear(a, b, c)
-      z = Linear2(a, b, c, d, e)
-      with session.Session() as sess:
-        self.assertAllEqual([[1]], sess.run(y))
-        self.assertAllEqual([[5]], sess.run(z))
-
-  @test_util.enable_c_api
-  def testBasicWithCApi(self):
     with ops.Graph().as_default():
       a, b, c, d, e = [
           constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
@@ -1568,7 +1587,7 @@ class ModuleFunctionTest(test.TestCase):
         self.assertAllEqual([[5]], sess.run(z))
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class VariableHoistingTest(test.TestCase):
 
   def _testSimpleModel(self, use_forward_func, use_resource=False):

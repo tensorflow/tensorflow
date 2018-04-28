@@ -21,6 +21,7 @@ from __future__ import print_function
 import contextlib
 import imp
 
+from tensorflow.contrib.autograph import operators
 from tensorflow.contrib.autograph import utils
 from tensorflow.contrib.autograph.pyct import compiler
 from tensorflow.contrib.autograph.pyct import context
@@ -34,14 +35,17 @@ from tensorflow.python.platform import test
 
 
 class FakeNamer(object):
+  """A fake namer that uses a global counter to generate unique names."""
+
+  def __init__(self):
+    self.i = 0
 
   def new_symbol(self, name_root, used):
-    i = 0
     while True:
-      name = '%s%d' % (name_root, i)
+      self.i += 1
+      name = '%s%d' % (name_root, self.i)
       if name not in used:
         return name
-      i += 1
 
   def compiled_function_name(self,
                              original_fqn,
@@ -75,8 +79,10 @@ class TestCase(test.TestCase):
     try:
       result, source = compiler.ast_to_object(node)
       result.tf = self.make_fake_mod('fake_tf', *symbols)
-      result.autograph_utils = utils
-      result.autograph_api = self.make_fake_mod('fake_api', converted_call)
+      fake_ag = self.make_fake_mod('fake_ag', converted_call)
+      fake_ag.__dict__.update(operators.__dict__)
+      fake_ag.__dict__['utils'] = utils
+      result.__dict__['ag__'] = fake_ag
       yield result
     except Exception:  # pylint:disable=broad-except
       if source is None:

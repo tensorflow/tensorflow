@@ -101,9 +101,10 @@ class TextFileLineIterator
     string line;
     status_ = input_buffer_->ReadLine(&line);
     if (!status_.ok()) {
-      if (errors::IsOutOfRange(status_) && next_id_ != total_size()) {
+      if (errors::IsOutOfRange(status_) && vocab_size_ != -1 &&
+          next_id_ != vocab_size_) {
         status_ = errors::InvalidArgument("Invalid vocab_size in ", filename_,
-                                          ": expected ", total_size(),
+                                          ": expected ", vocab_size_,
                                           " but got ", next_id_);
       }
       valid_ = false;

@@ -97,7 +97,10 @@ def add_metrics(estimator, metric_fn):
   return estimator_lib.Estimator(
       model_fn=new_model_fn,
       model_dir=estimator.model_dir,
-      config=estimator.config)
+      config=estimator.config,
+      # pylint: disable=protected-access
+      warm_start_from=estimator._warm_start_settings)
+      # pylint: enable=protected-access
 
 
 def clip_gradients_by_norm(optimizer, clip_norm):

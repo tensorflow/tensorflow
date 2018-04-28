@@ -147,6 +147,9 @@ class DfsHloVisitorBase {
   virtual Status HandleLog(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleClz(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleCos(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }

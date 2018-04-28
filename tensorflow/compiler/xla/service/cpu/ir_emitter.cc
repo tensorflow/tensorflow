@@ -93,8 +93,6 @@ IrEmitter::IrEmitter(
       computation_to_profile_idx_(std::move(computation_to_profile_idx)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
-      parallel_cpu_backend_(
-          options::CpuParallelBackendRequested(hlo_module_config_)),
       is_top_level_computation_(false),
       target_machine_features_(target_machine),
       external_constant_pool_(external_constant_pool) {
@@ -856,6 +854,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   const ConvolutionDimensionNumbers& dnums =
       convolution->convolution_dimension_numbers();
 
+  // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
+  // different data layouts.
   if (PotentiallyImplementedAsEigenConvolution(*convolution)) {
     const Shape& lhs_shape = lhs->shape();
     const Shape& rhs_shape = rhs->shape();
@@ -944,16 +944,26 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
            int64_type,    int64_type,  int64_type,  int64_type,  int64_type,
            int64_type,    int64_type,  int64_type,  int64_type},
           /*isVarArg=*/false);
-      bool multi_threaded_eigen =
+      bool multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
+      bool use_mkl_dnn =
+          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
+
+      // TODO(b/78639006) Singlethread MKL conv2d is not implemented due to the
+      // potential race condition by setting the omp_num_threads.
       const char* fn_name =
           primitive_type == F16
-              ? (multi_threaded_eigen
+              ? (multi_threaded
                      ? runtime::kEigenConvF16SymbolName
                      : runtime::kEigenSingleThreadedConvF16SymbolName)
-              : (multi_threaded_eigen
-                     ? runtime::kEigenConvF32SymbolName
+              : (multi_threaded
+                     ? (use_mkl_dnn ? runtime::kMKLConvF32SymbolName
+                                    : runtime::kEigenConvF32SymbolName)
                      : runtime::kEigenSingleThreadedConvF32SymbolName);
+      if (!multi_threaded && use_mkl_dnn) {
+        LOG(WARNING) << "Using Eigen instead of MKL-DNN for single-threaded "
+                        "conv2d function.";
+      }
       llvm::Function* conv_func = llvm::cast<llvm::Function>(
           module_->getOrInsertFunction(fn_name, conv_type));
       conv_func->setCallingConv(llvm::CallingConv::C);
@@ -2076,7 +2086,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
 
     TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
         /*instruction=*/*root, /*operands=*/{lhs, rhs},
-        /*supported_types=*/{F16, F32}));
+        /*supported_types=*/{F16, F32, F64}));
 
     llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
     llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
@@ -2163,8 +2173,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
-  if (!computation->root_instruction()->outer_dimension_partitions().empty() &&
-      !parallel_cpu_backend_) {
+  if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
     // ParallelTaskAssignment assigned partitions, emit call to
     // ParallelForkJoin.
     std::vector<llvm::Value*> call_args = GetArrayFunctionCallArguments(
@@ -2549,22 +2558,6 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
       profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
     }
   };
-
-  // For the parallel cpu backend, we record the total for each embedded
-  // computation callee with its caller kCall HLO.
-  if (parallel_cpu_backend_ && is_top_level_computation_) {
-    auto* computation = root->parent();
-    auto* entry_computation = computation->parent()->entry_computation();
-    if (computation != entry_computation) {
-      for (HloInstruction* instruction : entry_computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCall &&
-            instruction->to_apply()->root_instruction() == root) {
-          record_complete_computation(GetProfileCounterFor(*instruction));
-          return Status::OK();
-        }
-      }
-    }
-  }
 
   // For the entry computation this increment is cumulative of embedded
   // computations since it includes cycles spent in computations invoked by

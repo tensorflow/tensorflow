@@ -98,6 +98,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
   }
 
+  if (instruction->opcode() == HloOpcode::kTrace) {
+    TF_RET_CHECK(instruction->operands().size() == 1)
+        << "Trace instruction should have 1 operand but sees "
+        << instruction->operands().size();
+    instruction->mutable_operand(0)->set_tracing(instruction.get());
+  }
+
   TF_RET_CHECK(!proto.name().empty());
   instruction->name_ = proto.name();
 
@@ -152,6 +159,23 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->fft_length_.push_back(fft_len);
   }
 
+  if (proto.has_sharding()) {
+    TF_ASSIGN_OR_RETURN(const auto& sharding,
+                        HloSharding::FromProto(proto.sharding()));
+    instruction->set_sharding(sharding);
+  }
+
+  if (proto.has_gather_dimension_numbers()) {
+    instruction->gather_dimension_numbers_ =
+        MakeUnique<GatherDimensionNumbers>(proto.gather_dimension_numbers());
+  }
+  for (int64 bound : proto.gather_window_bounds()) {
+    instruction->gather_window_bounds_.push_back(bound);
+  }
+
+  instruction->channel_name_ = proto.channel_name();
+  instruction->cost_estimate_ns_ = proto.cost_estimate_ns();
+
   return std::move(instruction);
 }
 
@@ -170,6 +194,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
   instruction->literal_ = Literal::CreateR1U8(tag);
+  operand->set_tracing(instruction.get());
   return instruction;
 }
 
@@ -229,6 +254,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kClz:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
@@ -804,6 +830,16 @@ static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
   return instruction;
 }
 
+void HloInstruction::SetupDerivedInstruction(
+    HloInstruction* derived_instruction) const {
+  if (sharding_ != nullptr) {
+    derived_instruction->set_sharding(*sharding_);
+  } else {
+    derived_instruction->clear_sharding();
+  }
+  derived_instruction->set_metadata(metadata_);
+}
+
 HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
   CHECK_EQ(opcode(), HloOpcode::kFusion);
   CHECK_EQ(operand_count(),
@@ -1213,6 +1249,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -1442,10 +1479,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
-  clone->set_metadata(metadata_);
-  if (has_sharding()) {
-    clone->set_sharding(sharding());
-  }
+  SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
   return clone;
 }
@@ -1644,14 +1678,35 @@ Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
 }
 
 Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
-  auto succ_it = std::find(control_successors_.begin(),
-                           control_successors_.end(), instruction);
-  TF_RET_CHECK(succ_it != control_successors_.end());
-  control_successors_.erase(succ_it);
-  auto pred_it = std::find(instruction->control_predecessors_.begin(),
-                           instruction->control_predecessors_.end(), this);
-  TF_RET_CHECK(pred_it != instruction->control_predecessors_.end());
-  instruction->control_predecessors_.erase(pred_it);
+  TF_RET_CHECK(instruction->parent() == parent());
+  TF_RETURN_IF_ERROR(EraseElementFromVector(&control_successors_, instruction));
+  TF_RETURN_IF_ERROR(
+      EraseElementFromVector(&instruction->control_predecessors_, this));
+  return Status::OK();
+}
+
+Status HloInstruction::DropAllControlDeps() {
+  for (auto* ctrl_succ : control_successors_) {
+    TF_RETURN_IF_ERROR(
+        EraseElementFromVector(&ctrl_succ->control_predecessors_, this));
+  }
+  for (auto* ctrl_pred : control_predecessors_) {
+    TF_RETURN_IF_ERROR(
+        EraseElementFromVector(&ctrl_pred->control_successors_, this));
+  }
+  control_successors_.clear();
+  control_predecessors_.clear();
+  return Status::OK();
+}
+
+Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
+  for (auto* ctrl_pred : inst->control_predecessors()) {
+    TF_RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(this));
+  }
+
+  for (auto* ctrl_succ : inst->control_successors()) {
+    TF_RETURN_IF_ERROR(this->AddControlDependencyTo(ctrl_succ));
+  }
 
   return Status::OK();
 }
@@ -1696,6 +1751,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kAdd:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
     case HloOpcode::kComplex:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
@@ -2395,6 +2451,9 @@ HloInstructionProto HloInstruction::ToProto() const {
     proto.add_fft_length(fft_len);
   }
 
+  proto.set_channel_name(channel_name_);
+  proto.set_cost_estimate_ns(cost_estimate_ns_);
+
   return proto;
 }
 
@@ -2618,6 +2677,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleFloor(this);
     case HloOpcode::kCeil:
       return visitor->HandleCeil(this);
+    case HloOpcode::kClz:
+      return visitor->HandleClz(this);
     case HloOpcode::kLog:
       return visitor->HandleLog(this);
     case HloOpcode::kTanh:
@@ -2959,6 +3020,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCopy:

@@ -180,7 +180,15 @@ cc_library(
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/memory",
     ],
+)
+
+cc_library(
+    name = "shape_inference_helpers",
+    srcs = ["shape_inference_helpers.cc"],
+    hdrs = ["shape_inference_helpers.h"],
+    deps = ["//tensorflow/core:graph"],
 )
 
 # Internal targets below this point.
@@ -204,14 +212,14 @@ cc_library(
         ":common",
         ":xla_compilation_cache",
         ":xla_tensor",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -250,19 +258,6 @@ cc_library(
 )
 
 cc_library(
-    name = "graph_to_functiondef",
-    srcs = ["graph_to_functiondef.cc"],
-    hdrs = ["graph_to_functiondef.h"],
-    visibility = [":friends"],
-    deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
     name = "create_xla_launch_op",
     srcs = [
         "create_xla_launch_op.cc",
@@ -292,7 +287,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":graph_to_functiondef",
+        ":shape_inference_helpers",
         ":union_find",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
@@ -310,6 +305,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
     ],
 )
 
@@ -318,22 +314,19 @@ cc_library(
     hdrs = ["union_find.h"],
 )
 
+cc_library(
+    name = "producer_consumer_queue",
+    hdrs = ["producer_consumer_queue.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
 tf_cc_test(
-    name = "graph_to_functiondef_test",
+    name = "producer_consumer_queue_test",
     size = "small",
-    srcs = [
-        "graph_to_functiondef_test.cc",
-    ],
+    srcs = ["producer_consumer_queue_test.cc"],
     deps = [
-        ":graph_to_functiondef",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework_internal",
+        ":producer_consumer_queue",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -350,7 +343,6 @@ tf_cc_test(
     deps = [
         ":common",
         ":compilation_passes",
-        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

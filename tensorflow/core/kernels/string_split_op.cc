@@ -71,7 +71,7 @@ class StringSplitOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("delimiter", &delimiter_tensor));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(delimiter_tensor->shape()),
-        errors::InvalidArgument("delimiter must scalar, got shape: ",
+        errors::InvalidArgument("delimiter must be a scalar, got shape: ",
                                 delimiter_tensor->shape().DebugString()));
     const auto delimiter_vec = delimiter_tensor->flat<string>();
     const string& delimiter = delimiter_vec(0);

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OP_TYPES_H_
-#define TENSORFLOW_GRAPPLER_OP_TYPES_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OP_TYPES_H_
+#define TENSORFLOW_CORE_GRAPPLER_OP_TYPES_H_
 
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -37,6 +37,7 @@ bool IsBiasAdd(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
 bool IsCast(const NodeDef& node);
+bool IsCheckNumerics(const NodeDef& node);
 bool IsComplex(const NodeDef& node);
 bool IsComplexAbs(const NodeDef& node);
 bool IsConj(const NodeDef& node);
@@ -94,8 +95,10 @@ bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
 bool IsPolygamma(const NodeDef& node);
+bool IsPrint(const NodeDef& node);
 bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
+bool IsRandomShuffle(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu6Grad(const NodeDef& node);
@@ -107,6 +110,7 @@ bool IsReshape(const NodeDef& node);
 bool IsRestore(const NodeDef& node);
 bool IsReverse(const NodeDef& node);
 bool IsReverseV2(const NodeDef& node);
+bool IsRsqrt(const NodeDef& node);
 bool IsRsqrtGrad(const NodeDef& node);
 bool IsSelect(const NodeDef& node);
 bool IsSeluGrad(const NodeDef& node);
@@ -120,6 +124,7 @@ bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
 bool IsSplitV(const NodeDef& node);
+bool IsSqrt(const NodeDef& node);
 bool IsSqrtGrad(const NodeDef& node);
 bool IsSquare(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
@@ -139,6 +144,7 @@ bool IsTile(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsTruncateDiv(const NodeDef& node);
 bool IsTruncateMod(const NodeDef& node);
+bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
@@ -165,10 +171,16 @@ bool ModifiesInputsInPlace(const NodeDef& node);
 // own inverse such that f(f(x)) == x.
 bool IsInvolution(const NodeDef& node);
 
+// Returns true if the op preserves the order and value of elements in its
+// first input tensor and possible changes its shape.
+bool IsValueAndOrderPreserving(const NodeDef& node);
+
 // Returns true if the op in node only rearranges the order of elements in its
 // first input tensor and possible changes its shape. More precisely, this
 // function returns true if the op commutes with all element-wise operations.
 bool IsValuePreserving(const NodeDef& node);
+
+bool IsUnaryElementWise(const NodeDef& node);
 
 // Returns true if we can find an opdef corresponding to the op of the node.
 bool HasOpDef(const NodeDef& node);
@@ -176,4 +188,4 @@ bool HasOpDef(const NodeDef& node);
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OP_TYPES_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OP_TYPES_H_

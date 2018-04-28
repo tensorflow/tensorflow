@@ -17,8 +17,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 

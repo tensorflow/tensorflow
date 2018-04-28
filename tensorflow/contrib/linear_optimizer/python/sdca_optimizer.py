@@ -19,6 +19,7 @@ from __future__ import print_function
 from tensorflow.contrib import layers
 from tensorflow.contrib.linear_optimizer.python.ops import sdca_ops
 from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -71,12 +72,14 @@ class SDCAOptimizer(object):
                num_loss_partitions=1,
                num_table_shards=None,
                symmetric_l1_regularization=0.0,
-               symmetric_l2_regularization=1.0):
+               symmetric_l2_regularization=1.0,
+               adaptive=True):
     self._example_id_column = example_id_column
     self._num_loss_partitions = num_loss_partitions
     self._num_table_shards = num_table_shards
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
+    self._adaptive = adaptive
 
   def get_name(self):
     return 'SDCAOptimizer'
@@ -100,6 +103,10 @@ class SDCAOptimizer(object):
   @property
   def symmetric_l2_regularization(self):
     return self._symmetric_l2_regularization
+
+  @property
+  def adaptive(self):
+    return self._adaptive
 
   def get_train_step(self, columns_to_variables, weight_column_name, loss_type,
                      features, targets, global_step):
@@ -175,28 +182,42 @@ class SDCAOptimizer(object):
         elif isinstance(
             column,
             (
+                layers.feature_column._WeightedSparseColumn,  # pylint: disable=protected-access
                 layers.feature_column._CrossedColumn,  # pylint: disable=protected-access
                 layers.feature_column._SparseColumn)):  # pylint: disable=protected-access
-          sparse_features.append(
-              SparseFeatureColumn(
-                  array_ops.reshape(
-                      array_ops.split(
-                          value=transformed_tensor.indices,
-                          num_or_size_splits=2,
-                          axis=1)[0], [-1]),
-                  array_ops.reshape(transformed_tensor.values, [-1]), None))
-          sparse_feature_weights.append(columns_to_variables[column][0])
-        elif isinstance(column, layers.feature_column._WeightedSparseColumn):  # pylint: disable=protected-access
-          id_tensor = column.id_tensor(transformed_tensor)
-          weight_tensor = column.weight_tensor(transformed_tensor)
+
+          if isinstance(column, layers.feature_column._WeightedSparseColumn):  # pylint: disable=protected-access
+            id_tensor = column.id_tensor(transformed_tensor)
+            weight_tensor = array_ops.reshape(
+                column.weight_tensor(transformed_tensor).values, [-1])
+          else:
+            id_tensor = transformed_tensor
+            weight_tensor = array_ops.ones(
+                [array_ops.shape(id_tensor.indices)[0]], dtypes.float32)
+
+          example_ids = array_ops.reshape(id_tensor.indices[:, 0], [-1])
+
+          flat_ids = array_ops.reshape(id_tensor.values, [-1])
+          projection_length = math_ops.reduce_max(flat_ids) + 1
+          # project ids based on example ids so that we can dedup ids that
+          # occur multiple times for a single example.
+          projected_ids = projection_length * example_ids + flat_ids
+
+          # Remove any redudant ids.
+          ids, idx = array_ops.unique(projected_ids)
+          # Keep only one example id per duplicated ids.
+          example_ids_filtered = math_ops.unsorted_segment_min(
+              example_ids, idx,
+              array_ops.shape(ids)[0])
+
+          # reproject ids back feature id space.
+          reproject_ids = (ids - projection_length * example_ids_filtered)
+
+          weights = array_ops.reshape(
+              math_ops.unsorted_segment_sum(weight_tensor, idx,
+                                            array_ops.shape(ids)[0]), [-1])
           sparse_feature_with_values.append(
-              SparseFeatureColumn(
-                  array_ops.reshape(
-                      array_ops.split(
-                          value=id_tensor.indices, num_or_size_splits=2, axis=1)
-                      [0], [-1]),
-                  array_ops.reshape(id_tensor.values, [-1]),
-                  array_ops.reshape(weight_tensor.values, [-1])))
+              SparseFeatureColumn(example_ids_filtered, reproject_ids, weights))
           sparse_feature_with_values_weights.append(
               columns_to_variables[column][0])
         else:
@@ -228,6 +249,7 @@ class SDCAOptimizer(object):
         options=dict(
             symmetric_l1_regularization=self._symmetric_l1_regularization,
             symmetric_l2_regularization=self._symmetric_l2_regularization,
+            adaptive=self._adaptive,
             num_loss_partitions=self._num_loss_partitions,
             num_table_shards=self._num_table_shards,
             loss_type=loss_type))

@@ -258,6 +258,13 @@ struct NodeItem {
   // Return array of per-output allocator attributes.
   const AllocatorAttributes* output_attrs() const { return output_attr_base(); }
 
+  // Return array of expected input index from which each output should
+  // be forwarded:
+  // kNeverForward (-2) for DO NOT FORWARD (must allocate).
+  // kNoReservation (-1) for no expected forwarding.
+  // 0... for forward from that input.
+  const int* forward_from() const { return forward_from_base(); }
+
  private:
   friend class GraphView;
 
@@ -267,6 +274,7 @@ struct NodeItem {
   //   AllocatorAttributes output_attr[num_outputs];
   //   uint8               input_type[num_inputs];
   //   uint8               output_type[num_outputs];
+  //   int                 forward_from[num_outputs];
 
   // Return pointer to variable length section.
   char* var() const {
@@ -290,6 +298,13 @@ struct NodeItem {
     return reinterpret_cast<uint8*>(
         var() + sizeof(EdgeInfo) * num_output_edges +
         sizeof(AllocatorAttributes) * num_outputs + sizeof(uint8) * num_inputs);
+  }
+
+  int* forward_from_base() const {
+    return reinterpret_cast<int*>(var() + sizeof(EdgeInfo) * num_output_edges +
+                                  sizeof(AllocatorAttributes) * num_outputs +
+                                  sizeof(uint8) * num_inputs +
+                                  sizeof(uint8) * num_outputs);
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(NodeItem);
@@ -466,7 +481,8 @@ size_t GraphView::NodeItemBytes(const Node* n) {
       + num_output_edges * sizeof(EdgeInfo)        // output_edges[...]
       + num_outputs * sizeof(AllocatorAttributes)  // output_attr[...]
       + num_inputs * sizeof(uint8)                 // input_type[num_inputs]
-      + num_outputs * sizeof(uint8);               // output_type[num_outputs]
+      + num_outputs * sizeof(uint8)                // output_type[num_outputs]
+      + num_outputs * sizeof(int);                 // forward_from[num_outputs]
   static constexpr size_t kItemAlignment = sizeof(NodeItem*);
   static_assert(kItemAlignment % alignof(NodeItem) == 0,
                 "NodeItem must be aligned with kItemAlignment");
@@ -737,8 +753,8 @@ Status InferAllocAttr(const Node* n, const Node* dst,
       VLOG(2) << "node " << n->name() << " is the sink of an RPC in";
     } else if ((local_dev_name.type == "CPU" || n->IsHostRecv()) &&
                parsed_src_name.type != "CPU") {
-      // Value is going to be the sink of a local DMA from GPU to CPU (or other
-      // types of accelerators).
+      // Value is going to be the sink of a local DMA from GPU to CPU (or
+      // other types of accelerators).
       attr->set_gpu_compatible(true);
       VLOG(2) << "node " << n->name() << " is the sink of a gpu->cpu copy";
     } else {
@@ -1022,7 +1038,8 @@ class ExecutorState {
     int total_input_tensors = 0;
     std::vector<const Node*>* nodes = nullptr;
 
-    // Lock ordering: ExecutorState.mu_ < mu.
+    // Lock ordering: ExecutorState.mu_ < mu;
+    // during structured traversal: parent_frame->mu < mu.
     mutex mu;
 
     void InitializeFrameInfo(const string& enter_name) {
@@ -1090,7 +1107,8 @@ class ExecutorState {
     void ActivateLoopInvs(const GraphView* gview, int64 iter,
                           TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
-    // Add a new loop invariant and make it available to all active iterations.
+    // Add a new loop invariant and make it available to all active
+    // iterations.
     void AddLoopInv(const NodeItem* item, const Entry& value,
                     TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
@@ -1147,8 +1165,8 @@ class ExecutorState {
         if (front_index_ == ready_.size()) {
           ready_.clear();
         } else {
-          // Lots of unused entries at beginning of vector: move everything down
-          // to start of vector.
+          // Lots of unused entries at beginning of vector: move everything
+          // down to start of vector.
           ready_.erase(ready_.begin(), ready_.begin() + front_index_);
         }
         front_index_ = 0;
@@ -1596,6 +1614,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       params.frame_iter = FrameAndIter(input_frame->frame_id, input_iter);
       params.is_input_dead = is_input_dead;
       params.output_attr_array = item.output_attrs();
+      params.forward_from_array = nullptr;  // later: item.forward_from();
 
       if (item.kernel_is_async) {
         // Asynchronous computes.
@@ -2333,8 +2352,9 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
   FrameState* parent_frame = frame->parent_frame;
   const int64 parent_iter = frame->parent_iter;
   if (parent_frame != nullptr) {
-    mutex_lock paranet_frame_lock(parent_frame->mu);
+    mutex_lock parent_frame_lock(parent_frame->mu);
     // Propagate all the dead exits to the parent frame.
+    mutex_lock this_frame_lock(frame->mu);
     for (const Node* node : frame->dead_exits) {
       auto parent_iter_state = parent_frame->GetIteration(parent_iter);
       for (const Edge* e : node->out_edges()) {
@@ -2603,7 +2623,7 @@ void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
   (new ExecutorState(args, this))->RunAsync(std::move(done));
 }
 
-}  // end namespace
+}  // namespace
 
 Status NewLocalExecutor(const LocalExecutorParams& params,
                         std::unique_ptr<const Graph> graph,
@@ -2629,4 +2649,4 @@ Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
 
 void DeleteNonCachedKernel(OpKernel* kernel) { delete kernel; }
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

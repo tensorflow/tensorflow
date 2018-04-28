@@ -29,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
@@ -44,11 +42,15 @@ std::ostream& operator<<(std::ostream& out,
 
 // Calculates the launch dimensions used to invoke `hlo`.
 LaunchDimensions CalculateLaunchDimensions(
-    const Shape& shape, const se::DeviceDescription& device_desc) {
+    const Shape& shape, const se::DeviceDescription& device_desc,
+    int unroll_factor) {
   int64 num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
   }
+
+  CHECK_EQ(num_elements % unroll_factor, 0);
+  num_elements = num_elements / unroll_factor;
 
   // Since we don't do any inter-warp communication, we're free to choose any
   // block size we want, subject to hardware constraints.  We choose the

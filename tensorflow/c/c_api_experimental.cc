@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 using tensorflow::FunctionDef;
@@ -54,57 +55,6 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
   } else {
     optimizer_options->set_global_jit_level(tensorflow::OptimizerOptions::OFF);
   }
-}
-
-void TF_InitializeTPU(TF_Session* session, TF_Status* status) {
-  VLOG(1) << "Initializing TPU";
-  TF_Operation* config_op =
-      TF_GraphOperationByName(session->graph, "ConfigureDistributedTPU");
-  if (config_op == nullptr) {
-    status->status = tensorflow::errors::Internal(
-        "Unable to find node ConfigureDistributedTPU in the TF graph.");
-    return;
-  }
-
-  TF_Output config_node{config_op, 0};
-
-  TF_Tensor* dummy_output;
-  TF_SessionRun(session, /*run_options*/ nullptr,
-                // input related parameters
-                /*inputs*/ nullptr, /*input_values*/ nullptr, /*ninputs*/ 0,
-                // output related parameters
-                /*outputs*/ &config_node, /*output_values*/ &dummy_output,
-                /*noutputs*/ 1,
-                /*targets*/ nullptr, /*ntargets*/ 0,
-                /*run_metadata*/ nullptr, status);
-  if (status->status.ok()) {
-    TF_DeleteTensor(dummy_output);
-  }
-}
-
-void TF_ShutdownTPU(TF_Session* session, TF_Status* status) {
-  {
-    tensorflow::mutex_lock c(session->graph->mu);
-    VLOG(1) << "Shutting down TPU, with input graph: "
-            << session->graph->graph.ToGraphDefDebug().DebugString();
-  }
-
-  TF_Operation* shutdown_op =
-      TF_GraphOperationByName(session->graph, "ShutdownDistributedTPU");
-  if (shutdown_op == nullptr) {
-    status->status = tensorflow::errors::Internal(
-        "Unable to find node ShutdownDistributedTPU in the TF graph.");
-    return;
-  }
-
-  TF_SessionRun(session, /*run_options*/ nullptr,
-                // input related parameters
-                /*inputs*/ nullptr, /*input_values*/ nullptr, /*ninputs*/ 0,
-                // output related parameters
-                /*outputs*/ nullptr, /*output_values*/ nullptr,
-                /*noutputs*/ 0,
-                /*targets*/ &shutdown_op, /*ntargets*/ 1,
-                /*run_metadata*/ nullptr, status);
 }
 
 const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
@@ -234,12 +184,19 @@ library {
   return std::move(functions[0]);
 }
 
+#if not defined(PLATFORM_WINDOWS)
 //  On success, returns a set of TF_Function instances encoding a dataset
 //  node stack that reads a Imagenet TFRecordFile dataset from `file_path`, and
 //  sets `dataset_name` to the created dataset name. The returned functions must
 //  be deleted by calling TF_DeleteFunction.
 static std::vector<UniqueFuncPtr> CreateImagenetDatasetFunctions(
     const char* file_path, std::string* dataset_name, TF_Status* status) {
+#if defined(PLATFORM_WINDOWS)
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
+  return std::vector<UniqueFuncPtr>();
+#else
   const char* func_def = R"PREFIX(
 library {
   function {
@@ -7118,8 +7075,11 @@ library {
         DCHECK(found);
       };
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
+#endif
 }
+#endif
 
+#if not defined(PLATFORM_WINDOWS)
 //  On success, returns a set of TF_Function instances encoding a dataset
 //  node stack that reads an MNIST file dataset from `file_path`, and
 //  sets `dataset_name` to the created dataset name. The returned functions must
@@ -7127,6 +7087,12 @@ library {
 static std::vector<UniqueFuncPtr> CreateMNISTDatasetFunctions(
     const char* file_path, int batch_size, std::string* dataset_name,
     TF_Status* status) {
+#if defined(PLATFORM_WINDOWS)
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
+  return nullptr;
+#else
   const char* func_def = R"PREFIX(
 library {
   function {
@@ -8256,7 +8222,9 @@ library {
         DCHECK(found_batch_size);
       };
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
+#endif
 }
+#endif
 
 // Adds the input functions to `graph`.  On success, returns the created
 // IteratorGetNext node.
@@ -8350,6 +8318,13 @@ TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(TF_Graph* graph,
 TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
     TF_Graph* graph, const char* file_path, int batch_size,
     unsigned char is_mnist, TF_Status* status) {
+#if defined(PLATFORM_WINDOWS)
+  // TODO(ashankar): get these functions working on Windows.
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
+  return nullptr;
+#else
   tensorflow::Status s;
 
   std::string dataset_name;
@@ -8391,4 +8366,5 @@ TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
           << graph->graph.ToGraphDefDebug().DebugString();
 
   return getnext_node;
+#endif
 }

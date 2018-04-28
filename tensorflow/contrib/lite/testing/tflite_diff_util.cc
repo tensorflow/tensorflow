@@ -27,13 +27,13 @@ namespace testing {
 
 bool RunDiffTest(const DiffOptions& options) {
   std::stringstream tflite_stream;
-  GenerateTestSpecFromTensorflowModel(
-      tflite_stream, options.tensorflow_model, options.tflite_model,
-      options.input_layer, options.input_layer_type, options.input_layer_shape,
-      options.output_layer);
+  if (!GenerateTestSpecFromTensorflowModel(
+          tflite_stream, options.tensorflow_model, options.tflite_model,
+          options.input_layer, options.input_layer_type,
+          options.input_layer_shape, options.output_layer))
+    return false;
   TfLiteDriver tflite_driver(/*use_nnapi=*/true);
   tflite_driver.LoadModel(options.tflite_model);
-  std::cout << tflite_stream.str();
   return tflite::testing::ParseAndRunTests(&tflite_stream, &tflite_driver);
 }
 }  // namespace testing

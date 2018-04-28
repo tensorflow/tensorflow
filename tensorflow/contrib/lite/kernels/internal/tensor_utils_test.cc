@@ -32,6 +32,55 @@ TEST(uKernels, ClipTest) {
                   {0.0, -0.5, 1.0, -1.5, 2.0, -2.0, 2.0, -2.0, 2.0, -2.0})));
 }
 
+TEST(uKernels, SymmetricQuantizeFloatsTest) {
+  constexpr int kVectorSize = 9;
+  static float input[kVectorSize] = {-640, -635.0, -630, 10.0,  2.0,
+                                     -5.0, -10.0,  0.0,  1000.0};
+
+  int8 output[kVectorSize];
+  float min, max, scaling_factor;
+  SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
+                          &scaling_factor);
+
+  EXPECT_EQ(min, -640);
+  EXPECT_EQ(max, 1000);
+  EXPECT_NEAR(scaling_factor, 0.127, 1e-6);  // EQ won't work due to fpoint.
+  EXPECT_THAT(output,
+              testing::ElementsAreArray({-81, -81, -80, 1, 0, -1, -1, 0, 127}));
+}
+
+TEST(uKernels, SymmetricQuantizeFloatsAllZerosTest) {
+  constexpr int kVectorSize = 9;
+  static float input[kVectorSize] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+  int8 output[kVectorSize];
+  float min, max, scaling_factor;
+  SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
+                          &scaling_factor);
+
+  EXPECT_EQ(min, 0);
+  EXPECT_EQ(max, 0);
+  EXPECT_EQ(scaling_factor, 1);
+  EXPECT_THAT(output, testing::ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0, 0}));
+}
+
+TEST(uKernels, SymmetricQuantizeFloatsAllAlmostZeroTest) {
+  constexpr int kVectorSize = 9;
+  static float input[kVectorSize] = {-1e-5, 3e-5, -7e-6, -9e-5, 1e-6,
+                                     4e-5,  9e-6, 2e-4,  0};
+
+  int8 output[kVectorSize];
+  float min, max, scaling_factor;
+  SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
+                          &scaling_factor);
+
+  EXPECT_NEAR(min, -9e-05, 1e-6);
+  EXPECT_NEAR(max, 0.0002, 1e-6);
+  EXPECT_EQ(scaling_factor, 635000);
+  EXPECT_THAT(output,
+              testing::ElementsAreArray({-6, 19, -4, -57, 1, 25, 6, 127, 0}));
+}
+
 TEST(uKernels, MatrixBatchVectorMultiplyAccumulateTest) {
   constexpr int kRow = 3;
   constexpr int kCol = 4;

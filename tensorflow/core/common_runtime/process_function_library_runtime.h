@@ -134,9 +134,6 @@ class ProcessFunctionLibraryRuntime {
   // of the device where the function is registered.
   string GetDeviceName(FunctionLibraryRuntime::Handle handle);
 
-  // Removes handle from the state owned by this object.
-  Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
-
   Status Clone(Env* env, int graph_def_version,
                const OptimizerOptions& optimizer_options,
                CustomKernelCreator custom_kernel_creator,
@@ -155,7 +152,10 @@ class ProcessFunctionLibraryRuntime {
 
     string target_device() { return target_device_; }
 
-    FunctionLibraryRuntime::LocalHandle local_handle() { return local_handle_; }
+    FunctionLibraryRuntime::LocalHandle local_handle() {
+      mutex_lock l(mu_);
+      return local_handle_;
+    }
 
     // Initializes the FunctionData object by potentially making an Initialize
     // call to the DistributedFunctionLibraryRuntime.
