@@ -68,7 +68,7 @@ class MultivariateNormalDiagTest(test.TestCase):
       dist = ds.TransformedDistribution(
           base_dist,
           validate_args=True,
-          bijector=bijectors.Softplus(event_ndims=1))
+          bijector=bijectors.Softplus())
       samps = dist.sample(5)  # Shape [5, 1, 3].
       self.assertAllEqual([5, 1], dist.log_prob(samps).get_shape())
 

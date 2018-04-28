@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -33,15 +34,16 @@ SessionMgr::SessionMgr(
     WorkerCacheFactory worker_cache_factory)
     : worker_env_(worker_env),
       default_worker_cache_(std::move(default_worker_cache)),
-      legacy_session_(new WorkerSession(
+      legacy_session_(WorkerSession::CreateWithBorrowedDeviceMgr(
           "", default_worker_name,
           std::unique_ptr<WorkerCacheInterface>(
               new WorkerCacheWrapper(default_worker_cache_.get())),
-          std::unique_ptr<DeviceMgr>(worker_env->device_mgr),
+          worker_env->device_mgr,
           std::unique_ptr<GraphMgr>(
               new GraphMgr(worker_env, worker_env->device_mgr)))),
       worker_cache_factory_(std::move(worker_cache_factory)) {}
 
+/* static */
 string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
   return strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:",
                          server_def.task_index());
@@ -55,13 +57,14 @@ Status SessionMgr::CreateSession(const string& session,
     return errors::InvalidArgument("Session must be non-empty.");
   }
 
-  const string worker_name = WorkerNameFromServerDef(server_def);
-
   WorkerCacheInterface* worker_cache = nullptr;
+  string worker_name;
   if (server_def.cluster().job().empty()) {
     worker_cache = new WorkerCacheWrapper(default_worker_cache_.get());
+    worker_name = legacy_session_->worker_name;
   } else {
     TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
+    worker_name = WorkerNameFromServerDef(server_def);
   }
 
   if (worker_cache != nullptr & default_worker_cache_.get() != nullptr) {
@@ -71,19 +74,32 @@ Status SessionMgr::CreateSession(const string& session,
   CHECK(!worker_env_->local_devices.empty())
       << "The WorkerEnv must have at least one device in `local_devices`.";
 
-  std::vector<Device*> renamed_devices;
-  for (Device* d : worker_env_->local_devices) {
-    renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
-        worker_name, d, false, isolate_session_state));
+  std::shared_ptr<WorkerSession> worker_session;
+
+  if (isolate_session_state) {
+    // Create a private copy of the DeviceMgr for the WorkerSession.
+    std::vector<Device*> renamed_devices;
+    for (Device* d : worker_env_->local_devices) {
+      renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
+          worker_name, d, false, isolate_session_state));
+    }
+
+    auto device_mgr = MakeUnique<DeviceMgr>(renamed_devices);
+    auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, device_mgr.get());
+    worker_session.reset(
+        new WorkerSession(session, worker_name,
+                          std::unique_ptr<WorkerCacheInterface>(worker_cache),
+                          std::move(device_mgr), std::move(graph_mgr)));
+  } else {
+    // Borrown the WorkerEnv's DeviceMgr for the WorkerSession, so
+    // that resources using it can use its devices after the
+    // WorkerSession has been deleted.
+    auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, worker_env_->device_mgr);
+    worker_session = WorkerSession::CreateWithBorrowedDeviceMgr(
+        session, worker_name,
+        std::unique_ptr<WorkerCacheInterface>(worker_cache),
+        worker_env_->device_mgr, std::move(graph_mgr));
   }
-  std::unique_ptr<DeviceMgr> device_mgr(new DeviceMgr(renamed_devices));
-
-  std::unique_ptr<GraphMgr> graph_mgr(
-      new GraphMgr(worker_env_, device_mgr.get()));
-
-  std::shared_ptr<WorkerSession> worker_session(new WorkerSession(
-      session, worker_name, std::unique_ptr<WorkerCacheInterface>(worker_cache),
-      std::move(device_mgr), std::move(graph_mgr)));
 
   sessions_.insert(std::make_pair(session, std::move(worker_session)));
   return Status::OK();
@@ -98,20 +114,26 @@ Status SessionMgr::DeleteSession(const string& session) {
   return Status::OK();
 }
 
-std::shared_ptr<WorkerSession> SessionMgr::WorkerSessionForSessionUnlocked(
-    const string& session) {
-  auto it = sessions_.find(session);
-  if (it == sessions_.end()) {
-    return legacy_session_;
+Status SessionMgr::WorkerSessionForSessionLocked(
+    const string& session_handle, std::shared_ptr<WorkerSession>* out_session) {
+  if (session_handle.empty()) {
+    *out_session = legacy_session_;
   } else {
-    return it->second;
+    auto it = sessions_.find(session_handle);
+    if (it == sessions_.end()) {
+      return errors::Aborted("Session handle is not found: ", session_handle,
+                             ". Possibly this worker just restarted.");
+    } else {
+      *out_session = it->second;
+    }
   }
+  return Status::OK();
 }
 
-std::shared_ptr<WorkerSession> SessionMgr::WorkerSessionForSession(
-    const string& session) {
+Status SessionMgr::WorkerSessionForSession(
+    const string& session_handle, std::shared_ptr<WorkerSession>* out_session) {
   mutex_lock l(mu_);
-  return WorkerSessionForSessionUnlocked(session);
+  return WorkerSessionForSessionLocked(session_handle, out_session);
 }
 
 std::shared_ptr<WorkerSession> SessionMgr::LegacySession() {

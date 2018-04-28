@@ -18,10 +18,14 @@ See the @{$python/contrib.linalg} guide.
 
 @@LinearOperator
 @@LinearOperatorBlockDiag
+@@LinearOperatorCirculant
+@@LinearOperatorCirculant2D
+@@LinearOperatorCirculant3D
 @@LinearOperatorDiag
 @@LinearOperatorIdentity
 @@LinearOperatorScaledIdentity
 @@LinearOperatorFullMatrix
+@@LinearOperatorKronecker
 @@LinearOperatorLowerTriangular
 @@LinearOperatorLowRankUpdate
 @@LinearOperatorComposition
@@ -36,7 +40,9 @@ from __future__ import print_function
 
 from tensorflow.contrib.linalg.python.ops.linear_operator_addition import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_block_diag import *
+from tensorflow.contrib.linalg.python.ops.linear_operator_kronecker import *
 from tensorflow.python.ops.linalg.linear_operator import *
+from tensorflow.python.ops.linalg.linear_operator_circulant import *
 from tensorflow.python.ops.linalg.linear_operator_composition import *
 from tensorflow.python.ops.linalg.linear_operator_diag import *
 from tensorflow.python.ops.linalg.linear_operator_full_matrix import *

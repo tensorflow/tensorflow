@@ -18,8 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
@@ -47,16 +45,14 @@ ClientType client_types[] = {ClientType::kLocal, ClientType::kCompileOnly};
 
 class ComputeConstantTest : public ::testing::Test {
  public:
-  explicit ComputeConstantTest(
-      perftools::gputools::Platform* platform = nullptr)
+  explicit ComputeConstantTest(se::Platform* platform = nullptr)
       : platform_(platform) {}
 
   string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  Client* ClientOrDie(::perftools::gputools::Platform* platform,
-                      ClientType client_type) {
+  Client* ClientOrDie(se::Platform* platform, ClientType client_type) {
     if (client_type == ClientType::kLocal) {
       StatusOr<Client*> result =
           ClientLibrary::GetOrCreateLocalClient(platform);
@@ -90,24 +86,13 @@ class ComputeConstantTest : public ::testing::Test {
     return literal->Get<Scalar>({});
   }
 
-  template <class Scalar>
-  StatusOr<Scalar> ComputeConstantScalar(
-      Client* client, const ComputationDataHandle& operand,
-      ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<Literal> parameters = {}) {
-    TF_ASSIGN_OR_RETURN(auto literal,
-                        builder->ComputeConstant(
-                            operand, /*output_layout=*/nullptr, parameters));
-    return literal->Get<Scalar>({});
-  }
-
   bool IsConstant(const XlaOp& operand, XlaBuilder* builder) {
     StatusOr<bool> result = builder->IsConstant(operand);
     EXPECT_TRUE(result.ok()) << result.status();
     return result.ok() ? result.ValueOrDie() : false;
   }
 
-  perftools::gputools::Platform* platform_;
+  se::Platform* platform_;
 };
 
 TEST_F(ComputeConstantTest, ScalarInt32Literal) {
@@ -149,26 +134,6 @@ TEST_F(ComputeConstantTest, ScalarRng) {
     auto value = ComputeConstantScalar<float>(client, computation, &b);
     ASSERT_FALSE(value.ok())
         << "computing a RNG value should not be considered a constant";
-  }
-}
-
-TEST_F(ComputeConstantTest, Param) {
-  for (ClientType client_type : client_types) {
-    Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
-    auto param = b.Parameter(0, ShapeUtil::MakeShape(F32, {}), "lhs");
-    auto computation = b.Add(param, b.ConstantR0<float>(1.5f));
-
-    std::vector<Literal> arguments;
-    arguments.push_back(std::move(*Literal::CreateR0(42.5f)));
-    TF_ASSERT_OK_AND_ASSIGN(bool is_constant,
-                            b.IsConstant(computation, arguments.size()));
-    EXPECT_TRUE(is_constant);
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto value,
-        ComputeConstantScalar<float>(client, computation, &b, arguments));
-    EXPECT_EQ(value, 44.0f);
   }
 }
 

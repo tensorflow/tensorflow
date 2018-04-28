@@ -38,6 +38,7 @@ CollInstanceParams& CollInstanceParams::operator=(
     device_names.clear();
     device_names.assign(other.device_names.begin(), other.device_names.end());
     task_names.assign(other.task_names.begin(), other.task_names.end());
+    same_num_devices_per_task = other.same_num_devices_per_task;
     impl_details.subdiv_offsets.assign(
         other.impl_details.subdiv_offsets.begin(),
         other.impl_details.subdiv_offsets.end());
@@ -76,6 +77,13 @@ string CollInstanceParams::ToString() const {
     }
     strings::StrAppend(&v, "}");  // one subdiv
   }
+  if (!impl_details.subdiv_source_rank.empty()) {
+    strings::StrAppend(&v, " subdiv_source_rank={");
+    for (const auto& r : impl_details.subdiv_source_rank) {
+      strings::StrAppend(&v, r, ",");
+    }
+    strings::StrAppend(&v, "}");
+  }
   strings::StrAppend(&v, "}");  // all subdivs
   return v;
 }
@@ -97,13 +105,6 @@ string CollectiveParams::ToString() const {
                      " is_source=", is_source, " subdiv_rank={");
   for (const auto& r : subdiv_rank) {
     strings::StrAppend(&v, r, ",");
-  }
-  if (!subdiv_source_rank.empty()) {
-    strings::StrAppend(&v, " subdiv_rank={");
-    for (const auto& r : subdiv_source_rank) {
-      strings::StrAppend(&v, r, ",");
-    }
-    strings::StrAppend(&v, "}");
   }
   strings::StrAppend(&v, "}}");
   return v;

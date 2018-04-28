@@ -137,6 +137,7 @@ cc_library(
         "//tensorflow/contrib/lite/kernels:eigen_support",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
+        "//tensorflow/contrib/lite/profiling:profiler",
         "//tensorflow/contrib/lite/schema:schema_fbs",
     ],
 )

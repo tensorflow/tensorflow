@@ -63,6 +63,9 @@ cc_test(
         "schema.fbs",
         "schema_v3.fbs",
     ],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         "//tensorflow/core:lib_platform",
         "@com_google_googletest//:gtest",

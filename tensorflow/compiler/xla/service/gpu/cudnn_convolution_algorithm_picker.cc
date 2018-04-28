@@ -24,8 +24,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace se = perftools::gputools;
-
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmConfig;
 using se::dnn::AlgorithmDesc;
@@ -99,9 +97,9 @@ bool ShouldIncludeWinogradNonfusedAlgo(const Shape& input_shape,
                                        const ConvolutionDimensionNumbers& dnums,
                                        se::StreamExecutor* stream_exec) {
   // Skip this check for cudnn7 and newer.
-  se::port::StatusOr<std::tuple<int, int, int>> version =
+  auto version =
       stream_exec->AsDnn()->GetVersion();
-  if (version.ok() && std::get<0>(version.ValueOrDie()) >= 7) {
+  if (version.ok() && version.ValueOrDie().major_version() >= 7) {
     return true;
   }
 

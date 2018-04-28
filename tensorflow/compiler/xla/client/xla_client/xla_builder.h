@@ -53,14 +53,31 @@ class XlaBuilder;
 class XlaOp {
  public:
   XlaOp() : handle_(0), builder_(nullptr) {}
+  ~XlaOp() {}
 
   StatusOr<Shape> GetShape() const;
+
+  const XlaBuilder* builder() const { return builder_; }
+
+  bool operator==(const XlaOp& rhs) const {
+    return handle_ == rhs.handle_ && builder_ == rhs.builder_;
+  }
+
+  bool operator!=(const XlaOp& rhs) const {
+    return handle_ != rhs.handle_ || builder_ != rhs.builder_;
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, const XlaOp& op) {
+    out << op.handle();
+    return out;
+  }
 
  private:
   XlaOp(int64 handle, XlaBuilder* builder)
       : handle_(handle), builder_(builder) {}
 
   int64 handle() const { return handle_; }
+
   friend class XlaBuilder;
 
   int64 handle_;
@@ -570,6 +587,9 @@ class XlaBuilder {
   // Enqueues a sign instruction onto the computation.
   XlaOp Sign(const XlaOp& operand);
 
+  // Enqueues a count leading zeros instruction onto the computation.
+  XlaOp Clz(const XlaOp& operand);
+
   // Enqueues a cosine instruction onto the computation.
   XlaOp Cos(const XlaOp& operand);
 
@@ -958,6 +978,37 @@ template <typename NativeT>
 XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
   return ConstantFromArray(values);
 }
+
+// RAII-style object: sets the current sharding assignment in builder on
+// construction, and sets back to the previous assignment on destruction.
+//
+// TODO(b/74197823): This is a part of a NOT YET ready refactor.
+class XlaScopedShardingAssignment {
+ public:
+  XlaScopedShardingAssignment(xla::XlaBuilder* builder,
+                              tensorflow::gtl::optional<OpSharding> sharding)
+      : builder_(builder), prev_sharding_(builder->sharding()) {
+    SetSharding(sharding);
+  }
+
+  XlaScopedShardingAssignment(const XlaScopedShardingAssignment&) = delete;
+  XlaScopedShardingAssignment& operator=(const XlaScopedShardingAssignment&) =
+      delete;
+
+  ~XlaScopedShardingAssignment() { SetSharding(prev_sharding_); }
+
+ private:
+  void SetSharding(const tensorflow::gtl::optional<OpSharding>& sharding) {
+    if (sharding.has_value()) {
+      builder_->SetSharding(sharding.value());
+    } else {
+      builder_->ClearSharding();
+    }
+  }
+
+  xla::XlaBuilder* const builder_;
+  tensorflow::gtl::optional<OpSharding> prev_sharding_;
+};
 
 }  // namespace xla
 

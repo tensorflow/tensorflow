@@ -43,8 +43,7 @@ class XlaTensor {
   // which case the returned value is shaped_buffer()->root_buffer(), or a
   // normal Tensor in which case the returned value is
   // {tensor.tensor_data().data(), tensor.tensor_data().size}.
-  static perftools::gputools::DeviceMemoryBase DeviceMemoryFromTensor(
-      const Tensor& tensor);
+  static se::DeviceMemoryBase DeviceMemoryFromTensor(const Tensor& tensor);
 
   // Assign the internal ShapedBuffer to new memory for the given dtype and
   // shape. If a ShapedBuffer exists already (has_shaped_buffer() == true), it
@@ -64,9 +63,9 @@ class XlaTensor {
     return *shaped_buffer_;
   }
   // Mutates the TensorInfo to set the ShapedBuffer.
-  void set_shaped_buffer(
-      std::unique_ptr<xla::ScopedShapedBuffer> shaped_buffer) {
-    shaped_buffer_ = std::move(shaped_buffer);
+  void set_shaped_buffer(xla::ScopedShapedBuffer shaped_buffer) {
+    shaped_buffer_ =
+        xla::MakeUnique<xla::ScopedShapedBuffer>(std::move(shaped_buffer));
   }
 
   // Some tensors on the device may have known values on the host. We use these

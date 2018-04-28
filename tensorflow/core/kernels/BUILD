@@ -617,6 +617,7 @@ cc_library(
         ":batch_space_ops",
         ":bcast_ops",
         ":bitcast_op",
+        ":broadcast_to_op",
         ":concat_op",
         ":constant_op",
         ":depth_space_ops",
@@ -665,6 +666,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bitcast_op",
     prefix = "bitcast_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "broadcast_to_op",
+    prefix = "broadcast_to_op",
     deps = ARRAY_DEPS,
 )
 
@@ -936,6 +943,7 @@ tf_kernel_library(
     srcs = ["cudnn_rnn_ops.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":gpu_util_hdrs",
         "//tensorflow/core:cudnn_rnn_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2028,6 +2036,17 @@ tf_kernel_library(
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "partitioned_function_ops",
+    prefix = "partitioned_function_ops",
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -3549,6 +3568,7 @@ tf_kernel_library(
         "pooling_ops_3d_gpu.cu.cc",
     ],
     deps = [
+        ":bounds_check",
         ":conv_2d",
         ":conv_3d",
         ":conv_ops",
@@ -3559,6 +3579,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
     ],
 )
@@ -4225,6 +4246,7 @@ cc_library(
         ":regex_replace_op",
         ":string_join_op",
         ":string_split_op",
+        ":string_strip_op",
         ":string_to_hash_bucket_op",
         ":substr_op",
     ],
@@ -4266,6 +4288,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "string_split_op",
     prefix = "string_split_op",
+    deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "string_strip_op",
+    prefix = "string_strip_op",
     deps = STRING_DEPS,
 )
 
@@ -4323,6 +4351,7 @@ tf_kernel_library(
     deps = [
         ":random_op",
         ":random_ops",
+        ":stateless_random_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -5136,6 +5165,7 @@ filegroup(
             "decode_proto_op.cc",
             "encode_proto_op.cc",
             "rpc_op.cc",
+            "partitioned_function_ops.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
@@ -5922,6 +5952,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

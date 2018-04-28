@@ -23,8 +23,8 @@ from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
-from tensorflow.python.ops import array_ops
+from tensorflow.python.keras._impl.keras.utils import tf_utils
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -114,7 +114,7 @@ class Embedding(Layer):
     self.mask_zero = mask_zero
     self.input_length = input_length
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     self.embeddings = self.add_weight(
         shape=(self.input_dim, self.output_dim),
@@ -130,7 +130,7 @@ class Embedding(Layer):
     else:
       return math_ops.not_equal(inputs, 0)
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self.input_length is None:
       return input_shape + (self.output_dim,)
@@ -155,7 +155,7 @@ class Embedding(Layer):
   def call(self, inputs):
     if K.dtype(inputs) != 'int32':
       inputs = math_ops.cast(inputs, 'int32')
-    out = array_ops.gather(self.embeddings, inputs)
+    out = embedding_ops.embedding_lookup(self.embeddings, inputs)
     return out
 
   def get_config(self):

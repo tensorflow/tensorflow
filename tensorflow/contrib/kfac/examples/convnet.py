@@ -223,26 +223,26 @@ def minimize_loss_single_machine(loss,
   (cov_update_thunks,
    inv_update_thunks) = optimizer.make_vars_and_create_op_thunks()
 
-  with tf.device(device):
-    train_op = optimizer.minimize(loss, global_step=g_step)
-
   def make_update_op(update_thunks):
-    update_op = [thunk() for thunk in update_thunks]
-    return tf.group(*update_op)
+    update_ops = [thunk() for thunk in update_thunks]
+    return tf.group(*update_ops)
 
   cov_update_op = make_update_op(cov_update_thunks)
-  with tf.control_dependencies([train_op, cov_update_op]):
+  with tf.control_dependencies([cov_update_op]):
     inverse_op = tf.cond(
-        tf.equal(tf.mod(g_step + 1, _INVERT_EVERY), 0),
+        tf.equal(tf.mod(g_step, _INVERT_EVERY), 0),
         lambda: make_update_op(inv_update_thunks), tf.no_op)
+    with tf.control_dependencies([inverse_op]):
+      with tf.device(device):
+        train_op = optimizer.minimize(loss, global_step=g_step)
 
   tf.logging.info("Starting training.")
   with tf.train.MonitoredTrainingSession(config=session_config) as sess:
     while not sess.should_stop():
       global_step_, loss_, accuracy_, _ = sess.run(
-          [g_step, loss, accuracy, inverse_op])
+          [g_step, loss, accuracy, train_op])
 
-      if (global_step_ + 1) % _INVERT_EVERY == 0:
+      if global_step_ % _INVERT_EVERY == 0:
         tf.logging.info("global_step: %d | loss: %f | accuracy: %s",
                         global_step_, loss_, accuracy_)
 
@@ -357,24 +357,25 @@ def distributed_grads_only_and_ops_chief_worker(
       task_id, num_worker_tasks, num_ps_tasks, layer_collection)
   (cov_update_thunks,
    inv_update_thunks) = optimizer.make_vars_and_create_op_thunks()
-  train_op = sync_optimizer.minimize(loss, global_step=global_step)
 
   tf.logging.info("Starting training.")
   hooks = [sync_optimizer.make_session_run_hook(is_chief)]
 
   def make_update_op(update_thunks):
-    update_op = [thunk() for thunk in update_thunks]
-    return tf.group(*update_op)
+    update_ops = [thunk() for thunk in update_thunks]
+    return tf.group(*update_ops)
 
   if is_chief:
     cov_update_op = make_update_op(cov_update_thunks)
-    with tf.control_dependencies([train_op, cov_update_op]):
-      update_op = tf.cond(
-          tf.equal(tf.mod(global_step + 1, invert_every), 0),
+    with tf.control_dependencies([cov_update_op]):
+      inverse_op = tf.cond(
+          tf.equal(tf.mod(global_step, invert_every), 0),
           lambda: make_update_op(inv_update_thunks),
           tf.no_op)
+      with tf.control_dependencies([inverse_op]):
+        train_op = sync_optimizer.minimize(loss, global_step=global_step)
   else:
-    update_op = train_op
+    train_op = sync_optimizer.minimize(loss, global_step=global_step)
 
   with tf.train.MonitoredTrainingSession(
       master=master,
@@ -384,7 +385,7 @@ def distributed_grads_only_and_ops_chief_worker(
       stop_grace_period_secs=0) as sess:
     while not sess.should_stop():
       global_step_, loss_, accuracy_, _ = sess.run(
-          [global_step, loss, accuracy, update_op])
+          [global_step, loss, accuracy, train_op])
       tf.logging.info("global_step: %d | loss: %f | accuracy: %s", global_step_,
                       loss_, accuracy_)
   return accuracy_
@@ -577,25 +578,25 @@ def train_mnist_multitower(data_dir, num_epochs, num_towers,
   (cov_update_thunks,
    inv_update_thunks) = optimizer.make_vars_and_create_op_thunks()
 
-  train_op = optimizer.minimize(loss, global_step=g_step)
-
   def make_update_op(update_thunks):
-    update_op = [thunk() for thunk in update_thunks]
-    return tf.group(*update_op)
+    update_ops = [thunk() for thunk in update_thunks]
+    return tf.group(*update_ops)
 
   cov_update_op = make_update_op(cov_update_thunks)
-  with tf.control_dependencies([train_op, cov_update_op]):
+  with tf.control_dependencies([cov_update_op]):
     inverse_op = tf.cond(
-        tf.equal(tf.mod(g_step + 1, _INVERT_EVERY), 0),
+        tf.equal(tf.mod(g_step, _INVERT_EVERY), 0),
         lambda: make_update_op(inv_update_thunks), tf.no_op)
+    with tf.control_dependencies([inverse_op]):
+      train_op = optimizer.minimize(loss, global_step=g_step)
 
   tf.logging.info("Starting training.")
   with tf.train.MonitoredTrainingSession(config=session_config) as sess:
     while not sess.should_stop():
       global_step_, loss_, accuracy_, _ = sess.run(
-          [g_step, loss, accuracy, inverse_op])
+          [g_step, loss, accuracy, train_op])
 
-      if (global_step_ + 1) % _INVERT_EVERY == 0:
+      if global_step_ % _INVERT_EVERY == 0:
         tf.logging.info("global_step: %d | loss: %f | accuracy: %s",
                         global_step_, loss_, accuracy_)
 

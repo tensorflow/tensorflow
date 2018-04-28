@@ -125,19 +125,6 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
       return update_op
 
 
-class _StreamingModelPortProcessor(_OptimizableVariable):
-  """Processor for streaming ModelPorts."""
-
-  def __init__(self, v):
-    self._v = v
-
-  def target(self):
-    return self._v
-
-  def update_op(self, optimizer, g, *args):
-    return g
-
-
 class _TensorProcessor(_OptimizableVariable):
   """Processor for ordinary Tensors.
 
@@ -167,8 +154,6 @@ def _get_processor(v):
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
-  if v.op.type == "SubmodelPort":
-    return _StreamingModelPortProcessor(v)
   if isinstance(v, ops.Tensor):
     return _TensorProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
@@ -579,7 +564,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   ### State
 
-  Internal methods apre passed a `state` argument with the correct
+  Internal methods are passed a `state` argument with the correct
   values to use for the slot and non-slot variables, and the hyper
   parameters.
   """

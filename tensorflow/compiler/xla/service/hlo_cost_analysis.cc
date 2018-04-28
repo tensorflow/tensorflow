@@ -336,11 +336,6 @@ Status HloCostAnalysis::HandleBroadcast(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBroadcastDimOne(
-    const HloInstruction* broadcastDimOne) {
-  return Status::OK();
-}
-
 Status HloCostAnalysis::HandlePad(const HloInstruction*) {
   return Status::OK();
 }

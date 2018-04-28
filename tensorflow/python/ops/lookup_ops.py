@@ -277,7 +277,27 @@ class HashTable(InitializableLookupTableBase):
           name=scope)
 
       super(HashTable, self).__init__(table_ref, default_value, initializer)
+      self._value_shape = self._default_value.get_shape()
 
+  def export(self, name=None):
+    """Returns tensors of all keys and values in the table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A pair of tensors with the first tensor containing all keys and the
+        second tensors containing all values in the table.
+    """
+    with ops.name_scope(name, "%s_Export" % self._name,
+                        [self._table_ref]) as name:
+      with ops.colocate_with(self._table_ref):
+        exported_keys, exported_values = gen_lookup_ops.lookup_table_export_v2(
+            self._table_ref, self._key_dtype, self._value_dtype, name=name)
+
+    exported_values.set_shape(exported_keys.get_shape().concatenate(
+        self._value_shape))
+    return exported_keys, exported_values
 
 class TableInitializerBase(object):
   """Base class for lookup table initializers."""

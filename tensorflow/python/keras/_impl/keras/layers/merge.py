@@ -22,7 +22,7 @@ from __future__ import print_function
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -83,7 +83,7 @@ class _Merge(Layer):
         output_shape.append(i)
     return tuple(output_shape)
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
     if not isinstance(input_shape, list):
@@ -181,7 +181,7 @@ class _Merge(Layer):
     else:
       return self._merge_function(inputs)
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if input_shape[0] is None:
       output_shape = None
@@ -274,7 +274,7 @@ class Subtract(_Merge):
   ```
   """
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     super(Subtract, self).build(input_shape)
     if len(input_shape) != 2:
@@ -370,7 +370,7 @@ class Concatenate(_Merge):
     self.supports_masking = True
     self._reshape_required = False
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
     if not isinstance(input_shape, list) or len(input_shape) < 2:
@@ -392,7 +392,7 @@ class Concatenate(_Merge):
   def _merge_function(self, inputs):
     return K.concatenate(inputs, axis=self.axis)
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if not isinstance(input_shape, list):
       raise ValueError('A `Concatenate` layer should be called '
@@ -478,7 +478,7 @@ class Dot(_Merge):
     self.supports_masking = True
     self._reshape_required = False
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
     if not isinstance(input_shape, list) or len(input_shape) != 2:
@@ -523,7 +523,7 @@ class Dot(_Merge):
     output = K.batch_dot(x1, x2, axes)
     return output
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if not isinstance(input_shape, list) or len(input_shape) != 2:
       raise ValueError('A `Dot` layer should be called '

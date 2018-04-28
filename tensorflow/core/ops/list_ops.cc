@@ -71,6 +71,50 @@ REGISTER_OP("TensorListPushBack")
       return Status::OK();
     });
 
+REGISTER_OP("TensorListPushBackBatch")
+    .Input("input_handles: variant")
+    .Input("tensor: element_dtype")
+    .Output("output_handles: variant")
+    .Attr("element_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle input_handles;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input_handles));
+
+      shape_inference::ShapeHandle tensor;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &tensor));
+
+      TF_RETURN_IF_ERROR(
+          c->MergePrefix(tensor, input_handles, &tensor, &input_handles));
+
+      c->set_output(0, input_handles);
+
+      DataType t;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
+      shape_inference::ShapeHandle s = c->UnknownShape();
+
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr && handle_data->size() != 1) {
+        return errors::InvalidArgument(
+            "Trying to push to list with wrong variant data.");
+      }
+      if (handle_data != nullptr) {
+        const shape_inference::ShapeAndType& list_shape_type =
+            (*handle_data)[0];
+        if (list_shape_type.dtype != t) {
+          return errors::InvalidArgument(
+              "Trying to push to list with wrong element dtype. List has type ",
+              DataTypeString(list_shape_type.dtype),
+              " but trying to push element with type ", DataTypeString(t));
+        }
+        shape_inference::ShapeHandle ignored;
+        TF_RETURN_IF_ERROR(c->Merge(s, list_shape_type.shape, &ignored));
+        s = list_shape_type.shape;
+      }
+      c->set_output_handle_shapes_and_types(
+          0, std::vector<shape_inference::ShapeAndType>{{s, t}});
+      return Status::OK();
+    });
+
 REGISTER_OP("TensorListLength")
     .Input("input_handle: variant")
     .Output("length: int32")
@@ -248,6 +292,47 @@ REGISTER_OP("TensorListSetItem")
       shape_inference::ShapeHandle s = c->input(2);
       TF_RETURN_IF_ERROR(c->Merge(s, list_shape_type.shape, &s));
       c->set_output_handle_shapes_and_types(0, *handle_data);
+      return Status::OK();
+    });
+
+REGISTER_OP("TensorListConcatLists")
+    .Input("input_a: variant")
+    .Input("input_b: variant")
+    .Attr("element_dtype: type")
+    .Output("output: variant")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      auto input_a = c->input(0);
+      auto input_b = c->input(1);
+      TF_RETURN_IF_ERROR(c->Merge(input_a, input_b, &input_a));
+      c->set_output(0, input_a);
+
+      DataType t;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
+
+      auto* handle_data_a = c->input_handle_shapes_and_types(0);
+      auto* handle_data_b = c->input_handle_shapes_and_types(1);
+      if (handle_data_a == nullptr && handle_data_b == nullptr) {
+        c->set_output_handle_shapes_and_types(0, {{c->UnknownShape(), t}});
+        return Status::OK();
+      }
+      shape_inference::ShapeAndType list_shape_type_a =
+          (handle_data_a) ? handle_data_a->at(0) : handle_data_b->at(0);
+      const shape_inference::ShapeAndType& list_shape_type_b =
+          (handle_data_b) ? handle_data_b->at(0) : handle_data_a->at(0);
+      if (list_shape_type_a.dtype != t) {
+        return errors::InvalidArgument("input_a.type != element_dtype: ",
+                                       DataTypeString(list_shape_type_a.dtype),
+                                       " vs. ", DataTypeString(t));
+      }
+      if (list_shape_type_b.dtype != t) {
+        return errors::InvalidArgument("input_b.type != element_dtype: ",
+                                       DataTypeString(list_shape_type_b.dtype),
+                                       " vs. ", DataTypeString(t));
+      }
+      TF_RETURN_IF_ERROR(c->Merge(list_shape_type_a.shape,
+                                  list_shape_type_b.shape,
+                                  &list_shape_type_a.shape));
+      c->set_output_handle_shapes_and_types(0, {list_shape_type_a});
       return Status::OK();
     });
 

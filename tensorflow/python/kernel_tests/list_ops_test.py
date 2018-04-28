@@ -318,6 +318,108 @@ class ListOpsTest(test_util.TensorFlowTestCase):
                 [[1.0, 2.0]] * 4)
     self.assertAllEqual(self.evaluate(updated_v_stacked), expected)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testConcat(self):
+    c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
+    l0 = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+    l1 = list_ops.tensor_list_from_tensor([-1.0], element_shape=scalar_shape())
+    l_batch_0 = array_ops.stack([l0, l1])
+    l_batch_1 = array_ops.stack([l1, l0])
+
+    l_concat_01 = list_ops.tensor_list_concat_lists(
+        l_batch_0, l_batch_1, element_dtype=dtypes.float32)
+    l_concat_10 = list_ops.tensor_list_concat_lists(
+        l_batch_1, l_batch_0, element_dtype=dtypes.float32)
+    l_concat_00 = list_ops.tensor_list_concat_lists(
+        l_batch_0, l_batch_0, element_dtype=dtypes.float32)
+    l_concat_11 = list_ops.tensor_list_concat_lists(
+        l_batch_1, l_batch_1, element_dtype=dtypes.float32)
+
+    expected_00 = [[1.0, 2.0, 1.0, 2.0], [-1.0, -1.0]]
+    expected_01 = [[1.0, 2.0, -1.0], [-1.0, 1.0, 2.0]]
+    expected_10 = [[-1.0, 1.0, 2.0], [1.0, 2.0, -1.0]]
+    expected_11 = [[-1.0, -1.0], [1.0, 2.0, 1.0, 2.0]]
+
+    for i, (concat, expected) in enumerate(zip(
+        [l_concat_00, l_concat_01, l_concat_10, l_concat_11],
+        [expected_00, expected_01, expected_10, expected_11])):
+      splitted = array_ops.unstack(concat)
+      splitted_stacked_ret = self.evaluate(
+          (list_ops.tensor_list_stack(splitted[0], dtypes.float32),
+           list_ops.tensor_list_stack(splitted[1], dtypes.float32)))
+      print("Test concat %d: %s, %s, %s, %s"
+            % (i, expected[0], splitted_stacked_ret[0],
+               expected[1], splitted_stacked_ret[1]))
+      self.assertAllClose(expected[0], splitted_stacked_ret[0])
+      self.assertAllClose(expected[1], splitted_stacked_ret[1])
+
+    # Concatenating mismatched shapes fails.
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      self.evaluate(
+          list_ops.tensor_list_concat_lists(
+              l_batch_0,
+              list_ops.empty_tensor_list(scalar_shape(), dtypes.float32),
+              element_dtype=dtypes.float32))
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "element shapes are not identical at index 0"):
+      l_batch_of_vec_tls = array_ops.stack(
+          [list_ops.tensor_list_from_tensor([[1.0]], element_shape=[1])] * 2)
+      self.evaluate(
+          list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_vec_tls,
+                                            element_dtype=dtypes.float32))
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r"input_b\[0\].dtype != element_dtype."):
+      l_batch_of_int_tls = array_ops.stack(
+          [list_ops.tensor_list_from_tensor([1], element_shape=scalar_shape())]
+          * 2)
+      self.evaluate(
+          list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_int_tls,
+                                            element_dtype=dtypes.float32))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testPushBackBatch(self):
+    c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
+    l0 = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+    l1 = list_ops.tensor_list_from_tensor([-1.0], element_shape=scalar_shape())
+    l_batch = array_ops.stack([l0, l1])
+    l_push = list_ops.tensor_list_push_back_batch(l_batch, [3.0, 4.0])
+    l_unstack = array_ops.unstack(l_push)
+    l0_ret = list_ops.tensor_list_stack(l_unstack[0], dtypes.float32)
+    l1_ret = list_ops.tensor_list_stack(l_unstack[1], dtypes.float32)
+    self.assertAllClose([1.0, 2.0, 3.0], self.evaluate(l0_ret))
+    self.assertAllClose([-1.0, 4.0], self.evaluate(l1_ret))
+
+    with ops.control_dependencies([l_push]):
+      l_unstack_orig = array_ops.unstack(l_batch)
+      l0_orig_ret = list_ops.tensor_list_stack(l_unstack_orig[0],
+                                               dtypes.float32)
+      l1_orig_ret = list_ops.tensor_list_stack(l_unstack_orig[1],
+                                               dtypes.float32)
+
+    # Check that without aliasing, push_back_batch still works; and
+    # that it doesn't modify the input.
+    l0_r_v, l1_r_v, l0_orig_v, l1_orig_v = self.evaluate(
+        (l0_ret, l1_ret, l0_orig_ret, l1_orig_ret))
+    self.assertAllClose([1.0, 2.0, 3.0], l0_r_v)
+    self.assertAllClose([-1.0, 4.0], l1_r_v)
+    self.assertAllClose([1.0, 2.0], l0_orig_v)
+    self.assertAllClose([-1.0], l1_orig_v)
+
+    # Pushing back mismatched shapes fails.
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      self.evaluate(list_ops.tensor_list_push_back_batch(l_batch, []))
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "incompatible shape to a list at index 0"):
+      self.evaluate(
+          list_ops.tensor_list_push_back_batch(l_batch, [[3.0], [4.0]]))
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Invalid data type at index 0"):
+      self.evaluate(list_ops.tensor_list_push_back_batch(l_batch, [3, 4]))
+
 
 if __name__ == "__main__":
   test.main()

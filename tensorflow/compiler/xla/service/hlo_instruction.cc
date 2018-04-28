@@ -159,6 +159,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->fft_length_.push_back(fft_len);
   }
 
+  if (proto.has_sharding()) {
+    TF_ASSIGN_OR_RETURN(const auto& sharding,
+                        HloSharding::FromProto(proto.sharding()));
+    instruction->set_sharding(sharding);
+  }
+
   if (proto.has_gather_dimension_numbers()) {
     instruction->gather_dimension_numbers_ =
         MakeUnique<GatherDimensionNumbers>(proto.gather_dimension_numbers());
@@ -248,6 +254,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kClz:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
@@ -695,15 +702,6 @@ HloInstruction::CreateSelectAndScatter(
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateBroadcastDimOne(const Shape& shape,
-                                      HloInstruction* operand) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBroadcastDimOne, shape));
-  instruction->AppendOperand(operand);
-  return instruction;
-}
-
-/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBroadcastSequence(
     const Shape& output_shape, HloInstruction* operand,
     const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
@@ -830,6 +828,16 @@ static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
   instruction->called_computations_.push_back(fusion_computation);
   fusion_computation->SetFusionInstruction(instruction.get());
   return instruction;
+}
+
+void HloInstruction::SetupDerivedInstruction(
+    HloInstruction* derived_instruction) const {
+  if (sharding_ != nullptr) {
+    derived_instruction->set_sharding(*sharding_);
+  } else {
+    derived_instruction->clear_sharding();
+  }
+  derived_instruction->set_metadata(metadata_);
 }
 
 HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
@@ -1241,6 +1249,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -1294,10 +1303,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBroadcast:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBroadcast(shape, new_operands[0], dimensions_);
-      break;
-    case HloOpcode::kBroadcastDimOne:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateBroadcastDimOne(shape, new_operands[0]);
       break;
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
@@ -1474,10 +1479,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
-  clone->set_metadata(metadata_);
-  if (has_sharding()) {
-    clone->set_sharding(sharding());
-  }
+  SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
   return clone;
 }
@@ -1676,14 +1678,35 @@ Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
 }
 
 Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
-  auto succ_it = std::find(control_successors_.begin(),
-                           control_successors_.end(), instruction);
-  TF_RET_CHECK(succ_it != control_successors_.end());
-  control_successors_.erase(succ_it);
-  auto pred_it = std::find(instruction->control_predecessors_.begin(),
-                           instruction->control_predecessors_.end(), this);
-  TF_RET_CHECK(pred_it != instruction->control_predecessors_.end());
-  instruction->control_predecessors_.erase(pred_it);
+  TF_RET_CHECK(instruction->parent() == parent());
+  TF_RETURN_IF_ERROR(EraseElementFromVector(&control_successors_, instruction));
+  TF_RETURN_IF_ERROR(
+      EraseElementFromVector(&instruction->control_predecessors_, this));
+  return Status::OK();
+}
+
+Status HloInstruction::DropAllControlDeps() {
+  for (auto* ctrl_succ : control_successors_) {
+    TF_RETURN_IF_ERROR(
+        EraseElementFromVector(&ctrl_succ->control_predecessors_, this));
+  }
+  for (auto* ctrl_pred : control_predecessors_) {
+    TF_RETURN_IF_ERROR(
+        EraseElementFromVector(&ctrl_pred->control_successors_, this));
+  }
+  control_successors_.clear();
+  control_predecessors_.clear();
+  return Status::OK();
+}
+
+Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
+  for (auto* ctrl_pred : inst->control_predecessors()) {
+    TF_RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(this));
+  }
+
+  for (auto* ctrl_succ : inst->control_successors()) {
+    TF_RETURN_IF_ERROR(this->AddControlDependencyTo(ctrl_succ));
+  }
 
   return Status::OK();
 }
@@ -1728,6 +1751,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kAdd:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
     case HloOpcode::kComplex:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
@@ -1850,8 +1874,6 @@ bool HloInstruction::IdenticalSlowPath(
 
     // Remaining instructions with special values.
     case HloOpcode::kBitcast:
-    case HloOpcode::kBroadcastDimOne:
-    case HloOpcode::kDynamicUpdateSlice:
       return eq_shapes(shape(), other.shape());
     case HloOpcode::kBroadcast:
       return eq_shapes(shape(), other.shape()) &&
@@ -1870,6 +1892,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDynamicSlice:
       return eq_shapes(shape(), other.shape()) &&
              dynamic_slice_sizes_ == other.dynamic_slice_sizes_;
+    case HloOpcode::kDynamicUpdateSlice:
+      return eq_shapes(shape(), other.shape());
     case HloOpcode::kCall:
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
@@ -2427,12 +2451,6 @@ HloInstructionProto HloInstruction::ToProto() const {
     proto.add_fft_length(fft_len);
   }
 
-  if (gather_dimension_numbers_ != nullptr) {
-    *proto.mutable_gather_dimension_numbers() = *gather_dimension_numbers_;
-  }
-  for (int64 bound : gather_window_bounds_) {
-    proto.add_gather_window_bounds(bound);
-  }
   proto.set_channel_name(channel_name_);
   proto.set_cost_estimate_ns(cost_estimate_ns_);
 
@@ -2659,6 +2677,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleFloor(this);
     case HloOpcode::kCeil:
       return visitor->HandleCeil(this);
+    case HloOpcode::kClz:
+      return visitor->HandleClz(this);
     case HloOpcode::kLog:
       return visitor->HandleLog(this);
     case HloOpcode::kTanh:
@@ -2679,8 +2699,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
       return visitor->HandleBroadcast(this);
-    case HloOpcode::kBroadcastDimOne:
-      return visitor->HandleBroadcastDimOne(this);
     case HloOpcode::kPad:
       return visitor->HandlePad(this);
     case HloOpcode::kReshape:
@@ -3002,6 +3020,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCopy:

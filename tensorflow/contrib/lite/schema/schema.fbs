@@ -33,6 +33,7 @@ enum TensorType : byte {
   UINT8 = 3,
   INT64 = 4,
   STRING = 5,
+  BOOL = 6,
 }
 
 // Parameters for converting a quantized tensor back to float. Given a
@@ -77,7 +78,7 @@ enum BuiltinOperator : byte {
   // DEPTH_TO_SPACE = 5,
   DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
-  // FLOOR = 8,
+  FLOOR = 8,
   FULLY_CONNECTED = 9,
   HASHTABLE_LOOKUP = 10,
   L2_NORMALIZATION = 11,
@@ -134,6 +135,7 @@ enum BuiltinOperator : byte {
   MAXIMUM = 55,
   ARG_MAX = 56,
   MINIMUM = 57,
+  LESS = 58,
 }
 
 // Options for the builtin operators.
@@ -178,6 +180,7 @@ union BuiltinOptions {
   DequantizeOptions,
   MaximumMinimumOptions,
   ArgMaxOptions,
+  LessOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -196,6 +199,8 @@ table Conv2DOptions {
   stride_w:int;
   stride_h:int;
   fused_activation_function:ActivationFunctionType;
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table Pool2DOptions {
@@ -398,6 +403,9 @@ table ArgMaxOptions {
   output_type : TensorType;
 }
 
+table LessOptions {
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -427,21 +435,25 @@ table Operator {
   custom_options_format:CustomOptionsFormat;
 }
 
-// The root type, defining a model.
+// The root type, defining a subgraph, which typically represents an entire
+// model.
 table SubGraph {
-  // A list of all tensors used in this model.
+  // A list of all tensors used in this subgraph.
   tensors:[Tensor];
 
-  // Indices of the input tensors.
+  // Indices of the tensors that are inputs into this subgraph. Note this is
+  // the list of non-static tensors that feed into the subgraph for inference.
   inputs:[int];
 
-  // Indices of the output tensors.
+  // Indices of the tensors that are outputs out of this subgraph. Note this is
+  // the list of output tensors that are considered the product of the
+  // subgraph's inference.
   outputs:[int];
 
   // All operators, in execution order.
   operators:[Operator];
 
-  // Name of subgraph (used for debugging).
+  // Name of this subgraph (used for debugging).
   name:string;
 }
 
@@ -467,9 +479,14 @@ table Model {
   // A description of the model.
   description:string;
 
-  // Buffers of the model
+  // Buffers of the model.
+  // Note the 0th entry of this array must be an empty buffer (sentinel).
+  // This is a convention so that tensors without a buffer can provide 0 as
+  // their buffer.
   buffers:[Buffer];
 
+  // Metadata about the model.  Indirects into the existings buffers list.
+  metadata_buffer:[int];
 }
 
 root_type Model;

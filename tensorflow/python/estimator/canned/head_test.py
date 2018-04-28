@@ -255,14 +255,14 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         logits=logits_placeholder,
         labels=labels_placeholder)[0]
     with self.test_session():
-      with self.assertRaisesOpError('Label IDs must < n_classes'):
+      with self.assertRaisesOpError('Labels must <= n_classes - 1'):
         training_loss.eval({
             labels_placeholder: labels_2x1_with_large_id,
             logits_placeholder: logits_2x3
         })
 
     with self.test_session():
-      with self.assertRaisesOpError('Label IDs must >= 0'):
+      with self.assertRaisesOpError('Labels must >= 0'):
         training_loss.eval({
             labels_placeholder: labels_2x1_with_negative_id,
             logits_placeholder: logits_2x3
@@ -2089,6 +2089,24 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
           metric_keys.MetricKeys.LOSS_REGULARIZATION: (
               expected_regularization_loss),
       }, summary_str)
+
+  def test_float_labels_invalid_values(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    logits = np.array([[0.5], [-0.3]], dtype=np.float32)
+    labels = np.array([[1.2], [0.4]], dtype=np.float32)
+    features = {'x': np.array([[42]], dtype=np.float32)}
+    training_loss = head.create_loss(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels)[0]
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r'Labels must <= n_classes - 1'):
+      with self.test_session():
+        _initialize_variables(self, monitored_session.Scaffold())
+        training_loss.eval()
 
   def test_float_labels_train_create_loss(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()

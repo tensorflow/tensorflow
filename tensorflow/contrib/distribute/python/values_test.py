@@ -32,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import device_util
 from tensorflow.python.training import saver as saver_lib
@@ -407,6 +408,32 @@ class PerDeviceDatasetTest(test.TestCase):
 
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
     self._test_iterator(devices, dataset, expected_values)
+
+  def testInitializableIterator(self):
+    with context.graph_mode():
+      devices = ["/device:CPU:0"]
+      # Using random input since that is only allowed with initializable
+      # iterator.
+      dataset = dataset_ops.Dataset.from_tensor_slices(
+          random_ops.random_uniform((10,)))
+
+      per_device_dataset = values.PerDeviceDataset(
+          dataset, devices, prefetch_on_device=False)
+      iterator = per_device_dataset.make_initializable_iterator()
+
+      self.evaluate(iterator.initializer)
+      next_element = iterator.get_next()
+      for _ in range(10):
+        self.evaluate(next_element)
+
+      # Should fail after the input is finished.
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(next_element)
+
+      # After re-initializing the iterator, should be able to iterate again.
+      self.evaluate(iterator.initializer)
+      for _ in range(10):
+        self.evaluate(next_element)
 
 
 @test_util.with_c_api

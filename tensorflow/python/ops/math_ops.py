@@ -15,136 +15,6 @@
 """Basic arithmetic operators.
 
 See the @{$python/math_ops} guide.
-
-@@add
-@@subtract
-@@multiply
-@@scalar_mul
-@@div
-@@divide
-@@truediv
-@@floordiv
-@@realdiv
-@@truncatediv
-@@floor_div
-@@truncatemod
-@@floormod
-@@mod
-@@cross
-@@add_n
-@@abs
-@@negative
-@@sign
-@@reciprocal
-@@square
-@@round
-@@sqrt
-@@rsqrt
-@@pow
-@@exp
-@@expm1
-@@log
-@@log1p
-@@sinh
-@@cosh
-@@asinh
-@@acosh
-@@atanh
-@@ceil
-@@floor
-@@maximum
-@@minimum
-@@cos
-@@sin
-@@lbeta
-@@tan
-@@acos
-@@asin
-@@atan
-@@atan2
-@@lgamma
-@@digamma
-@@erf
-@@erfc
-@@squared_difference
-@@igamma
-@@igammac
-@@zeta
-@@polygamma
-@@betainc
-@@rint
-@@diag
-@@diag_part
-@@trace
-@@transpose
-@@eye
-@@matrix_diag
-@@matrix_diag_part
-@@matrix_band_part
-@@matrix_set_diag
-@@matrix_transpose
-@@matmul
-@@norm
-@@matrix_determinant
-@@matrix_inverse
-@@cholesky
-@@cholesky_solve
-@@matrix_solve
-@@matrix_triangular_solve
-@@matrix_solve_ls
-@@qr
-@@self_adjoint_eig
-@@self_adjoint_eigvals
-@@svd
-@@tensordot
-@@complex
-@@conj
-@@imag
-@@angle
-@@real
-@@fft
-@@ifft
-@@fft2d
-@@ifft2d
-@@fft3d
-@@ifft3d
-@@reduce_sum
-@@reduce_prod
-@@reduce_min
-@@reduce_max
-@@reduce_mean
-@@reduce_all
-@@reduce_any
-@@reduce_logsumexp
-@@count_nonzero
-@@accumulate_n
-@@einsum
-@@bincount
-@@cumsum
-@@cumprod
-@@segment_sum
-@@segment_prod
-@@segment_min
-@@segment_max
-@@segment_mean
-@@to_complex128
-@@to_complex64
-@@unsorted_segment_sum
-@@unsorted_segment_max
-@@unsorted_segment_mean
-@@unsorted_segment_min
-@@unsorted_segment_prod
-@@unsorted_segment_sqrt_n
-@@sparse_segment_sum
-@@sparse_segment_mean
-@@sparse_segment_sqrt_n
-@@argmin
-@@argmax
-@@setdiff1d
-@@where
-@@unique
-@@edit_distance
-@@invert_permutation
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -211,11 +81,9 @@ def argmax(input,
            name=None,
            dimension=None,
            output_type=dtypes.int64):
-  if dimension is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dimension'")
-    axis = dimension
-  elif axis is None:
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "dimension", dimension)
+  if axis is None:
     axis = 0
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
@@ -231,11 +99,9 @@ def argmin(input,
            name=None,
            dimension=None,
            output_type=dtypes.int64):
-  if dimension is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dimension'")
-    axis = dimension
-  elif axis is None:
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "dimension", dimension)
+  if axis is None:
     axis = 0
   return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
@@ -761,13 +627,25 @@ def cast(x, dtype, name=None):
   tf.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
   ```
 
+  The operation supports data types (for `x` and `dtype`) of
+  `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `float16`, `float32`,
+  `float64`, `complex64`, `complex128`, `bfloat16`. In case of casting from
+  complex types (`complex64`, `complex128`) to real types, only the real part
+  of `x` is returned. In case of casting from real types to complex types
+  (`complex64`, `complex128`), the imaginary part of the returned value is set
+  to `0`. The handling of complex types here matches the behavior of numpy.
+
   Args:
-    x: A `Tensor` or `SparseTensor`.
-    dtype: The destination type.
+    x: A `Tensor` or `SparseTensor` of numeric type. It could be
+      `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`,
+      `float16`, `float32`, `float64`, `complex64`, `complex128`, `bfloat16`.
+    dtype: The destination type. The list of supported dtypes is the same
+      as `x`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x`.
+    A `Tensor` or `SparseTensor` with same shape as `x` and
+      same type as `dtype`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `dtype`.
@@ -965,7 +843,9 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
-      if not isinstance(y, sparse_tensor.SparseTensor):
+      if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
+        return func(x, y, name=name)
+      elif not isinstance(y, sparse_tensor.SparseTensor):
         try:
           y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
         except TypeError:
@@ -1458,8 +1338,18 @@ def count_nonzero(input_tensor,
   tf.count_nonzero(x, [0, 1])  # 3
   ```
 
+  **NOTE** Strings are compared against zero-length empty string `""`. Any
+  string with a size greater than zero is already considered as nonzero.
+
+  For example:
+  ```python
+  x = tf.constant(["", "a", "  ", "b", ""])
+  tf.count_nonzero(x) # 3, with "a", "  ", and "b" as nonzero strings.
+  ```
+
   Args:
-    input_tensor: The tensor to reduce. Should be of numeric type, or `bool`.
+    input_tensor: The tensor to reduce. Should be of numeric type, `bool`,
+      or `string`.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
@@ -1479,7 +1369,8 @@ def count_nonzero(input_tensor,
 
   with ops.name_scope(name, "count_nonzero", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
-    zero = input_tensor.dtype.as_numpy_dtype()
+    # A scalar of 'zero' is enough as `not_equal` will broadcast.
+    zero = array_ops.zeros([], dtype=input_tensor.dtype)
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU

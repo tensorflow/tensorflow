@@ -64,11 +64,10 @@ std::vector<TestCase> ExpandUseBfloat16(
 // A client library test establishes an in-process XLA client connection.
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
-  explicit ClientLibraryTestBase(
-      perftools::gputools::Platform* platform = nullptr);
+  explicit ClientLibraryTestBase(se::Platform* platform = nullptr);
 
   // Creates a new ClientLibraryTestBase with custom client options.
-  ClientLibraryTestBase(perftools::gputools::Platform* platform,
+  ClientLibraryTestBase(se::Platform* platform,
                         const LocalClientOptions& client_options);
 
   // Returns the name of the test currently being run.
@@ -166,6 +165,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   void ComputeAndCompareR1(ComputationBuilder* builder,
                            const tensorflow::core::Bitmap& expected,
                            tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+  void ComputeAndCompareR1(XlaBuilder* builder,
+                           const tensorflow::core::Bitmap& expected,
+                           tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
   template <typename NativeT, typename BuilderT>
   void ComputeAndCompareR2(BuilderT* builder, const Array2D<NativeT>& expected,
@@ -220,7 +222,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Compare the result of the computation to a strings. In XLA strings are
   // represented using rank-1 U8 shapes.
   void ComputeAndCompareR1U8(
-      ComputationBuilder* builder, tensorflow::StringPiece expected,
+      XlaBuilder* builder, tensorflow::StringPiece expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
   // Convenience method for running a built computation, transferring the
@@ -253,8 +255,8 @@ class ClientLibraryTestBase : public ::testing::Test {
                          ErrorSpec error);
 
   // Create scalar operations for use in reductions.
-  Computation CreateScalarRelu();
-  Computation CreateScalarMax();
+  XlaComputation CreateScalarRelu();
+  XlaComputation CreateScalarMax();
   Computation CreateScalarReluSensitivity();
 
   // Special case convenience functions for creating filled arrays.
