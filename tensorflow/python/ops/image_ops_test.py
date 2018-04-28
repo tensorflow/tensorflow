@@ -2458,9 +2458,9 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       self.assertTrue(y.op.name.startswith("resize_images"))
 
 
-class ResizeImageAspectWithPadTest(test_util.TensorFlowTestCase):
+class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
 
-  def _ResizeImageAspectWithPad(self, x, target_height, target_width,
+  def _ResizeImageWithPad(self, x, target_height, target_width,
                                 use_tensor_inputs):
     if use_tensor_inputs:
       target_height = ops.convert_to_tensor(target_height)
@@ -2471,7 +2471,7 @@ class ResizeImageAspectWithPadTest(test_util.TensorFlowTestCase):
       x_tensor = x
       feed_dict = {}
 
-    y = image_ops.resize_image_aspect_with_pad(x_tensor, target_height,
+    y = image_ops.resize_image_with_pad(x_tensor, target_height,
                                                 target_width)
     if not use_tensor_inputs:
       self.assertTrue(y.get_shape().is_fully_defined())
@@ -2491,7 +2491,7 @@ class ResizeImageAspectWithPadTest(test_util.TensorFlowTestCase):
     y = np.array(y).reshape(y_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      y_tf = self._ResizeImageAspectWithPad(x, target_height, target_width,
+      y_tf = self._ResizeImageWithPad(x, target_height, target_width,
                                             use_tensor_inputs)
       self.assertAllClose(y, y_tf)
 
@@ -2507,7 +2507,7 @@ class ResizeImageAspectWithPadTest(test_util.TensorFlowTestCase):
 
     for use_tensor_inputs in use_tensor_inputs_options:
       try:
-        self._ResizeImageAspectWithPad(x, target_height, target_width,
+        self._ResizeImageWithPad(x, target_height, target_width,
                                        use_tensor_inputs)
       except Exception as e:
         if err_msg not in str(e):
@@ -2517,7 +2517,7 @@ class ResizeImageAspectWithPadTest(test_util.TensorFlowTestCase):
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
-    y = image_ops.resize_image_aspect_with_pad(image, height, width)
+    y = image_ops.resize_image_with_pad(image, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
   def testNoOp(self):

@@ -969,8 +969,8 @@ def resize_images(images,
     return images
 
 
-@tf_export('image.resize_image_aspect_with_pad')
-def resize_image_aspect_with_pad(image, target_height, target_width,
+@tf_export('image.resize_image_with_pad')
+def resize_image_with_pad(image, target_height, target_width,
                                  method=ResizeMethod.BILINEAR):
   """
   Resizes and pads an image to a target width and height.
@@ -996,7 +996,7 @@ def resize_image_aspect_with_pad(image, target_height, target_width,
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
   """
-  with ops.name_scope(None, 'resize_image_aspect_with_pad', [image]):
+  with ops.name_scope(None, 'resize_image_with_pad', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image_shape = image.get_shape()
     is_batch = True
