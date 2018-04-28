@@ -60,7 +60,7 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("InitialDistributionKnown", True),
-      ("InitialDistributionUnknown", False))
+      ("InitialDistributionUnknown", True))  # THIS IS TO TEST THE WINDOWS BUILD DONT SUBMIT
   def testDistribution(self, initial_known):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
