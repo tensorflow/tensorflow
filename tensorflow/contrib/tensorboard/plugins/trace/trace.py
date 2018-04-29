@@ -150,7 +150,7 @@ def _add_data_from_tensors(tensors, info):
 
 def _ignore_file_path(fname, ignore_regex_fpaths):
   for regex_pattern in ignore_regex_fpaths:
-    if re.search(regex_pattern, fname):
+    if re.search(re.escape(regex_pattern), fname):
       return True
   return False
 
