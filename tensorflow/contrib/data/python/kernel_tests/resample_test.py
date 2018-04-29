@@ -62,7 +62,7 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
       ("InitialDistributionKnown", True),
       ("InitialDistributionUnknown", False))
   def testDistribution(self, initial_known):
-    classes = np.random.randint(5, size=(20000,), dtype=np.int64)
+    classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
     initial_dist = [0.2] * 5 if initial_known else None
     dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
