@@ -91,9 +91,18 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
     elif prob_original_static == 0:
       return filtered_ds
     else:
+      print('class_values_ds.output_shapes: %s', class_values_ds.output_shapes)
+      print('class_values_ds.output_types: %s', class_values_ds.output_types)
+      print('dataset.output_shapes: %s', dataset.output_shapes)
+      print('dataset.output_types: %s', dataset.output_types)
+      print('filtered_ds.output_shapes: %s', filtered_ds.output_shapes)
+      print('filtered_ds.output_types: %s', filtered_ds.output_types)
+      weights = prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)])
+      print('weights.output_shapes: %s', weights.output_shapes)
+      print('weights.output_types: %s', weights.output_types)
       return interleave_ops.sample_from_datasets(
           [dataset_ops.Dataset.zip((class_values_ds, dataset)), filtered_ds],
-          weights=prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)]),
+          weights=weights,
           seed=seed)
 
   return _apply_fn
