@@ -59,7 +59,7 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
 
     # Get initial distribution.
     if initial_dist is not None:
-      initial_dist_t = ops.convert_to_tensor(initial_dist, name="initial_dist")
+      initial_dist_t = math_ops.to_float(ops.convert_to_tensor(initial_dist, name="initial_dist"))
       acceptance_dist, prob_of_original = (
           _calculate_acceptance_probs_with_mixing(initial_dist_t,
                                                   target_dist_t))
@@ -291,4 +291,4 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
 
   # TODO(joelshor): Simplify fraction, if possible.
   a_i = (ratio_l - m) / (max_ratio - m)
-  return a_i, m
+  return math_ops.to_float(a_i), math_ops.to_float(m)
