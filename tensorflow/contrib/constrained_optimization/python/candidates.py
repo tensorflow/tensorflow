@@ -204,7 +204,7 @@ def find_best_candidate_distribution(objective_vector,
   assert best_pp is not None
 
   # Throughout this loop, a maximum_violation of "lower" is not achievable,
-  # but a maximum_violation of "upper" is achiveable.
+  # but a maximum_violation of "upper" is achievable.
   while True:
     middle = 0.5 * (lower + upper)
     if (middle - lower <= epsilon) or (upper - middle <= epsilon):

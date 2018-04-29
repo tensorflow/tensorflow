@@ -71,15 +71,15 @@ _MAX_NUM_OUTER_PRODUCTS_PER_COV_ROW = 1
 # factor. This parameter is used only if `_SUB_SAMPLE_INPUTS` is True.
 _INPUTS_TO_EXTRACT_PATCHES_FACTOR = 0.5
 
-# If True, then subsamples the tensor passed to compute the covaraince matrix.
+# If True, then subsamples the tensor passed to compute the covariance matrix.
 _SUB_SAMPLE_OUTER_PRODUCTS = False
 
-# If True, then subsamples the tensor passed to compute the covaraince matrix.
+# If True, then subsamples the tensor passed to compute the covariance matrix.
 _SUB_SAMPLE_INPUTS = False
 
 # TOWER_STRATEGY can be one of "concat" or "separate".  If "concat", the data
 # passed to the factors from the blocks will be concatenated across towers
-# (lazilly via PartitionedTensor objects).  Otherwise a tuple of tensors over
+# (lazily via PartitionedTensor objects).  Otherwise a tuple of tensors over
 # towers will be passed in, and the factors will iterate over this and do the
 # cov computations separately for each one, averaging the results together.
 TOWER_STRATEGY = "concat"
@@ -309,7 +309,7 @@ def _subsample_for_cov_computation(array, name=None):
 
 
 def _random_tensor_gather(array, max_size):
-  """Generates a random set of indices and gathers the value at the indcices.
+  """Generates a random set of indices and gathers the value at the indices.
 
   Args:
     array: Tensor, of shape `[batch_size, dim_2]`.
@@ -1762,8 +1762,8 @@ class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
         # Might need to enforce symmetry lost due to numerical issues.
         invsqrtC0 = (invsqrtC0 + array_ops.transpose(invsqrtC0)) / 2.0
 
-        # The following line imposses the symmetry assumed by "Option 1" on C1.
-        # Stangely the code can work okay with this line commented out,
+        # The following line imposes the symmetry assumed by "Option 1" on C1.
+        # Strangely the code can work okay with this line commented out,
         # depending on how psd_eig is defined.  I'm not sure why.
         C1 = (C1 + array_ops.transpose(C1)) / 2.0
 
