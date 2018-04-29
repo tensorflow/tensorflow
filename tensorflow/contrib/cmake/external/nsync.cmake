@@ -52,4 +52,4 @@ ExternalProject_Add(nsync
 	-DNSYNC_LANGUAGE:STRING=c++11)
 
 add_custom_command(TARGET nsync_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${nsync_INSTALL}/include/ ${nsync_INCLUDE_DIR}/)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${nsync_INSTALL}/include/*.h ${nsync_INCLUDE_DIR}/)
