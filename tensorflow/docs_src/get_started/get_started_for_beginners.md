@@ -611,7 +611,7 @@ def eval_input_fn(features, labels=None, batch_size=None):
         # No labels, use only features.
         inputs = features
     else:
-        inputs = (features, labels)
+        inputs = (dict(features), labels)
 
     # Convert inputs to a tf.dataset object.
     dataset = tf.data.Dataset.from_tensor_slices(inputs)
