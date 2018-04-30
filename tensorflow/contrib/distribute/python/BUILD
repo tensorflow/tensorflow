@@ -42,6 +42,7 @@ cuda_py_test(
     srcs = ["values_test.py"],
     additional_deps = [
         ":mirrored_strategy",
+        ":multi_worker_test_base",
         ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -56,6 +57,9 @@ cuda_py_test(
         "//tensorflow/python:device_util",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:model_fn",
+    ],
+    tags = [
+        "no_pip",
     ],
 )
 
@@ -213,6 +217,24 @@ cuda_py_test(
         "noasan",
         "notap",
         "notsan",
+    ],
+)
+
+py_library(
+    name = "multi_worker_test_base",
+    testonly = 1,
+    srcs = ["multi_worker_test_base.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:test",
     ],
 )
 
