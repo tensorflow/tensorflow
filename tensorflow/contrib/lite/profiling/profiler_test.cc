@@ -82,16 +82,15 @@ TEST(ProfilingTest, ProfilesAreCollected) {
   EXPECT_EQ("Child", profile_events[3]->tag);
   EXPECT_EQ("SleepForQuarter", profile_events[4]->tag);
 
-  AssertDurationOfEventAroundMs(profile_events[0], /*expected_ms*/ 500,
-                                /*eps_ms*/ 2);
-  AssertDurationOfEventAroundMs(profile_events[1], /*expected_ms*/ 250,
-                                /*eps_ms*/ 2);
-  AssertDurationOfEventAroundMs(profile_events[2], /*expected_ms*/ 250,
-                                /*eps_ms*/ 2);
-  AssertDurationOfEventAroundMs(profile_events[3], /*expected_ms*/ 250,
-                                /*eps_ms*/ 2);
-  AssertDurationOfEventAroundMs(profile_events[4], /*expected_ms*/ 250,
-                                /*eps_ms*/ 2);
+#ifndef ADDRESS_SANITIZER
+  // ASAN build is sometimes very slow.
+  const int eps_ms = 10;
+  AssertDurationOfEventAroundMs(profile_events[0], /*expected_ms*/ 500, eps_ms);
+  AssertDurationOfEventAroundMs(profile_events[1], /*expected_ms*/ 250, eps_ms);
+  AssertDurationOfEventAroundMs(profile_events[2], /*expected_ms*/ 250, eps_ms);
+  AssertDurationOfEventAroundMs(profile_events[3], /*expected_ms*/ 250, eps_ms);
+  AssertDurationOfEventAroundMs(profile_events[4], /*expected_ms*/ 250, eps_ms);
+#endif
 }
 
 }  // namespace

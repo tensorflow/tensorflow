@@ -245,4 +245,6 @@ message TfOpStats {
   optional HostOpsResult host_ops = 8;
   // A map from core ID to name.
   map<uint32, string> core_id_to_name_map = 9;
+  // The result for hw unit b stats.
+  optional bytes unit_b_stats = 10;
 }

@@ -117,6 +117,14 @@ void PortableZeroVector(float* vector, int v_size);
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
+// Symmetric quantizer.
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float* min,
+                                     float* max, float* scaling_factor);
+void NeonSymmetricQuantizeFloats(const float* values, const int size,
+                                 int8_t* quantized_values, float* min,
+                                 float* max, float* scaling_factor);
+
 // Shift left a vector in place with v_size size.
 void PortableVectorShiftLeft(float* vector, int v_size, float shift_value);
 void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);

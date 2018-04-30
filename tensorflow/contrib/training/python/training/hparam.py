@@ -502,6 +502,16 @@ class HParams(object):
             'Must pass a list for multi-valued parameter: %s.' % name)
       setattr(self, name, _cast_to_type_if_compatible(name, param_type, value))
 
+  def del_hparam(self, name):
+    """Removes the hyperparameter with key 'name'.
+
+    Args:
+      name: Name of the hyperparameter.
+    """
+    if hasattr(self, name):
+      delattr(self, name)
+      del self._hparam_types[name]
+
   def parse(self, values):
     """Override hyperparameter values, parsing new values from a string.
 

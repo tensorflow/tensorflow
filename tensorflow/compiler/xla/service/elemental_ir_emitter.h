@@ -142,6 +142,46 @@ class ElementalIrEmitter {
     return ir_builder_->getIntN(128, 0);
   }
 
+  StatusOr<llvm::Value*> EmitElementalSelect(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalClamp(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalConcatenate(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& target_index) const;
+
+  StatusOr<llvm::Value*> EmitElementalDynamicSlice(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalGather(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalDynamicUpdateSlice(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalPad(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& padded_index) const;
+
+  StatusOr<llvm::Value*> EmitElementalDot(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& dot_result_index) const;
+
   llvm::IRBuilder<>* const ir_builder_;
 
   llvm::Module* module_;

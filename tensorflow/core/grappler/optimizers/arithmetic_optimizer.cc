@@ -1515,6 +1515,36 @@ class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
   }
 };
 
+// Performs the conversion:
+// Div(x, Sqrt(y)) => Mul(x, Rsqrt(y))
+// TODO(srjoglekar): Generalize to optimize cases like (x / pow(y, z)).
+class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
+ public:
+  explicit SqrtDivToRsqrtMulStage(const GraphOptimizerContext& ctx,
+                                  const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("SqrtDivToRsqrtMul", ctx, ctx_ext) {}
+  ~SqrtDivToRsqrtMulStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsAnyDiv(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* y;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
+    // Optimize only if divisor is a Sqrt whose output is not being consumed
+    // elsewhere.
+    if (IsSqrt(*y) && (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
+      // a / sqrt(b) = a * rsqrt(b)
+      node->set_op("Mul");
+      y->set_op("Rsqrt");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(y);
+    }
+    return Status::OK();
+  }
+};
+
 }  // namespace
 
 class UniqueNodes {
@@ -2172,6 +2202,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
   if (options_.hoist_unary_out_of_concat)
     pipeline.AddStage<HoistCWiseUnaryFromConcatStage>(ctx, ctx_ext);
+  if (options_.convert_sqrt_div_to_rsqrt_mul)
+    pipeline.AddStage<SqrtDivToRsqrtMulStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");

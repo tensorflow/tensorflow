@@ -103,9 +103,6 @@ tf_gen_op_libs(
         "trt_engine_op",
         "trt_calib_op",
     ],
-    deps = if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
-    ]),
 )
 
 tf_cuda_library(
@@ -139,6 +136,12 @@ tf_custom_op_py_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),
+    kernels = [
+        ":trt_engine_op_kernel",
+        ":trt_engine_op_op_lib",
+        ":trt_calib_op_op_lib",
+        ":trt_shape_function",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/util:util_py",

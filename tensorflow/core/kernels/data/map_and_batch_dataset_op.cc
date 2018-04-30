@@ -468,7 +468,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       void StartInvocationBatch(IteratorContext* ctx, int64 batch_index)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        port::Tracing::TraceMe activity(strings::StrCat(prefix(), "::Start"));
+        tracing::ScopedActivity activity(strings::StrCat(prefix(), "::Start"));
         // Initialize batch result.
         {
           mutex_lock l(batch_results_[batch_index].mu);
@@ -493,7 +493,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status WaitForBatch(int64 batch_index, int64* num_elements)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        port::Tracing::TraceMe activity(strings::StrCat(prefix(), "::Wait"));
+        tracing::ScopedActivity activity(strings::StrCat(prefix(), "::Wait"));
         batch_results_[batch_index].counter->Wait();
         Status status = Status::OK();
         for (size_t i = 0; i < dataset()->batch_size_; ++i, ++*num_elements) {

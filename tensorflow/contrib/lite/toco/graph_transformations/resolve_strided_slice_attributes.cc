@@ -31,6 +31,12 @@ bool ResolveStridedSliceAttributes::Run(Model* model, std::size_t op_index) {
   }
 
   CHECK_EQ(op->inputs.size(), 4);
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  if (!input_array.has_shape()) {
+    // We require the dimensionality of the input to pad the indices
+    return false;
+  }
+
   const auto& start_array = model->GetArray(op->inputs[1]);
   if (!start_array.has_shape()) return false;
   if (toco::RequiredBufferSizeForShape(start_array.shape()) > 4) {
@@ -56,6 +62,21 @@ bool ResolveStridedSliceAttributes::Run(Model* model, std::size_t op_index) {
   CHECK_LE(op->start_indices.size(), 4);
   CHECK_EQ(op->stop_indices.size(), op->start_indices.size());
   CHECK_EQ(op->strides.size(), op->stop_indices.size());
+
+  // The TensorFlow documentation is not explicit on how it handles fewer
+  // supplied indices than dimensions, but they are accepted. We emulate TF's
+  // behavior by fully iterating over each omitted dimension.
+  int num_input_axes = input_array.shape().dimensions_count();
+  CHECK_LE(op->start_indices.size(), num_input_axes)
+      << "StridedSlice op requires no more than " << num_input_axes
+      << " start indices";
+  CHECK_LE(op->stop_indices.size(), num_input_axes)
+      << "StridedSlice op requires no more than " << num_input_axes
+      << " stop indices";
+  CHECK_LE(op->strides.size(), num_input_axes)
+      << "StridedSlice op requires no more than " << num_input_axes
+      << " strides";
+  op->PadIndices(num_input_axes);
 
   // Ideally, we would remove the input arrays after they have been resolved.
   // However, we must then reconstitute these input arrays for all supported

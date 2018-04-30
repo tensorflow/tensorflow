@@ -282,10 +282,20 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
     const class Shape& shape) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(shape));
 }
+inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
+    tensorflow::StringPiece shape) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(
+      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+}
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
     const class Shape& shape) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloShapeAndLayoutMatcher(shape));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
+    tensorflow::StringPiece shape) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
+      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
 }
 
 // Verifies the value of the HloSharing against the provided sharding object.
