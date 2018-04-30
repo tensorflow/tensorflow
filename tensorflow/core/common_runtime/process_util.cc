@@ -79,21 +79,18 @@ thread::ThreadPool* NewThreadPoolFromSessionOptions(
 }
 
 void SchedClosure(std::function<void()> closure) {
-  if (port::Tracing::IsActive()) {
-    const uint64 id = port::Tracing::UniqueId();
-    port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
-                               id);
-    std::function<void()> wrapper = std::bind(
-        [id](std::function<void()> closure) {
-          port::Tracing::ScopedActivity region(
-              port::Tracing::EventCategory::kRunClosure, id);
-          closure();
-        },
-        std::move(closure));
-    Env::Default()->SchedClosure(std::move(wrapper));
-  } else {
-    Env::Default()->SchedClosure(std::move(closure));
+  if (!tracing::EventCollector::IsEnabled()) {
+    return Env::Default()->SchedClosure(std::move(closure));
   }
+  uint64 id = tracing::GetUniqueArg();
+  tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
+
+  Env::Default()->SchedClosure(std::bind(
+      [id](std::function<void()> closure) {
+        tracing::ScopedRegion region(tracing::EventCategory::kRunClosure, id);
+        closure();
+      },
+      std::move(closure)));
 }
 
 void SchedNonBlockingClosureAfter(int64 micros, std::function<void()> closure) {
