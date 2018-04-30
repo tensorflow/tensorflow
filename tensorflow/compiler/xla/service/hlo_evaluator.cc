@@ -2536,6 +2536,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     } break;
     case F16:
       return Unimplemented("unhandled primitive type: F16.");
+    case BF16: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<bfloat16>(compare->shape(), opcode,
+                                            lhs_literal, rhs_literal));
+    } break;
     case F32: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
@@ -2963,9 +2968,10 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
 }
 
 Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
+  HloModuleConfig config;
   // Attach cloned computation to an empty HLO module so the existing ones are
   // not modified.
-  HloModule empty_hlo_module("EmptyModuleForFusion");
+  HloModule empty_hlo_module("EmptyModuleForFusion", config);
   auto cloned_fused_computation =
       fusion->fused_instructions_computation()->Clone(
           /*suffix=*/"clone_with_layout", &empty_hlo_module);

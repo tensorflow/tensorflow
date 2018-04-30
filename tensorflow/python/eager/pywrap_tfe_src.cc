@@ -1402,8 +1402,12 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
     auto* tape_set = GetTapeSet();
     if (tape_set->find(tape_obj) != tape_set->end()) {
       PyErr_SetString(PyExc_RuntimeError,
-                      "Trying to call tape.gradient on a non-persistent tape "
-                      "while it is still active.");
+                      "gradient() cannot be invoked within the "
+                      "GradientTape context (i.e., while operations are being "
+                      "recorded). Either move the call to gradient() to be "
+                      "outside the 'with tf.GradientTape' block, or "
+                      "use a persistent tape: "
+                      "'with tf.GradientTape(persistent=true)'");
       return nullptr;
     }
   }

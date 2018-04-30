@@ -894,6 +894,40 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       self.assertEqual(6., math_ops.reduce_sum(dx).numpy())
       self.assertEqual(8., math_ops.reduce_sum(dw).numpy())
 
+  def testCustomGradientErrorsWithNonResourceVariables(self):
+
+    def F(x, use_resource=False):
+      with variable_scope.variable_scope("f", use_resource=use_resource):
+        out = core_layers.dense(x, 4, use_bias=False)
+
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        del out_grad
+        self.assertEqual(1, len(variables))
+        return (array_ops.ones((3, 2)), [array_ops.ones((2, 4))])
+
+      return out, Grad
+
+    @custom_gradient.custom_gradient
+    def FResource(x):
+      return F(x, use_resource=True)
+
+    @custom_gradient.custom_gradient
+    def FNonResource(x):
+      return F(x, use_resource=False)
+
+    x = array_ops.ones((3, 2)) + 2.
+
+    # Wrapping scope has use_resource=True but inner scope sets to False. Fails.
+    with variable_scope.variable_scope("vs1", use_resource=True):
+      with self.assertRaisesWithPredicateMatch(TypeError,
+                                               "must be `ResourceVariable`s"):
+        FNonResource(x)
+
+    # Wrapping scope has use_resource=False but inner scope sets to True.
+    # Passes.
+    with variable_scope.variable_scope("vs2", use_resource=False):
+      FResource(x)
+
   def testWithNumpyInputs(self):
     with context.eager_mode():
 

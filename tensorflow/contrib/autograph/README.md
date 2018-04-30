@@ -56,8 +56,6 @@ Use AutoGraph in one of the following ways, described below:
  1. Annotations (simpler)
  2. Functional API (more flexible)
 
-NOTE: You can find more examples in this [interactive notebook](https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/autograph/examples/notebooks/dev_summit_2018_demo.ipynb).
-
 To get started, install the latest nightly TensorFlow build:
 
 ```shell
@@ -69,6 +67,13 @@ Then import the `autograph` module from `tf.contrib`:
 ```
 from tensorflow.contrib import autograph as ag
 ```
+
+### Interactive demo notebooks
+
+For more extensive examples, check out these interactive notebooks:
+
+ * [RNN trained using Keras and Estimators](https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/autograph/examples/notebooks/rnn_keras_estimator.ipynb)
+ * [Demo from the TF Dev Summit 2018](https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/autograph/examples/notebooks/dev_summit_2018_demo.ipynb)
 
 ## Using with annotations
 

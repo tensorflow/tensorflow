@@ -76,7 +76,8 @@ class HeapSimulatorTracker {
   HeapSimulatorTracker(
       const string& name, std::unique_ptr<HloComputation> computation,
       const std::vector<const HloInstruction*>& instruction_sequence) {
-    module_ = MakeUnique<HloModule>(name);
+    HloModuleConfig config;
+    module_ = MakeUnique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(computation));
     points_to_analysis_ =
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
@@ -94,7 +95,8 @@ class HeapSimulatorTracker {
   }
 
   explicit HeapSimulatorTracker(const string& name) {
-    module_ = MakeUnique<HloModule>(name);
+    HloModuleConfig config;
+    module_ = MakeUnique<HloModule>(name, config);
   }
 
   // Similar to the single entry computation constructor above, but runs the
