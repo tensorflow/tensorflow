@@ -172,15 +172,6 @@ if (tensorflow_OPTIMIZE_FOR_NATIVE_ARCH)
   endif()
 endif()
 
-# MSVC SIMD instructions
-if (tensorflow_WIN_CPU_SIMD_OPTIONS)
-  if (WIN32)
-    CHECK_CXX_COMPILER_FLAG(${tensorflow_WIN_CPU_SIMD_OPTIONS} COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
-    if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
-    endif()
-  endif()
-endif()
 include(CheckCXXCompilerFlag)
 
 # MKL Support
@@ -195,10 +186,20 @@ endif()
 CHECK_CXX_COMPILER_FLAG("-fopenmp" GCC_OPENMP_SUPPORT)
 if (GCC_OPENMP_SUPPORT)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-endif ()
+endif()
 CHECK_CXX_COMPILER_FLAG("/openmp" MSVC_OPENMP_SUPPORT)
 if (MSVC_OPENMP_SUPPORT)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /openmp")
+endif()
+
+# MSVC SIMD instructions
+if (tensorflow_WIN_CPU_SIMD_OPTIONS)
+  if (WIN32)
+    CHECK_CXX_COMPILER_FLAG(${tensorflow_WIN_CPU_SIMD_OPTIONS} COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+    if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
+    endif()
+  endif()
 endif()
 
 if (tensorflow_ENABLE_JEMALLOC_SUPPORT)
