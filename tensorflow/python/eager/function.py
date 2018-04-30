@@ -716,8 +716,7 @@ def defun(func):
   objects. Non-Tensor python objects are treated as constants, and new function
   definitions are created internally based on their values.
 
-  func must return a tf.Tensor (NOT a Tensor) or a list of tf.Tensor (NOT a
-  Tensor).
+  func must return zero or more `tf.Tensor`.
 
   Control flow constructs (e.g., `if`, `while`) are not yet compatible with
   `defun`.
@@ -748,7 +747,7 @@ def defun(func):
 
   Returns:
      A callable that will execute the compiled function (and return zero
-     or more Tensor objects).
+     or more `tf.Tensor` objects).
   """
   # TODO(apassos): deal with captured global state. Deal with control flow.
   try:
