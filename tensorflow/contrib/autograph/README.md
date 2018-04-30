@@ -70,7 +70,7 @@ from tensorflow.contrib import autograph as ag
 
 ### Interactive demo notebooks
 
-For more extensive examples, check out these IPython notebooks:
+For more extensive examples, check out these interactive notebooks:
 
  * [RNN trained using Keras and Estimators](https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/autograph/examples/notebooks/rnn_keras_estimator.ipynb)
  * [Demo from the TF Dev Summit 2018](https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/autograph/examples/notebooks/dev_summit_2018_demo.ipynb)
