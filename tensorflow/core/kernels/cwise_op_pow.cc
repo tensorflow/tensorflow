@@ -20,6 +20,8 @@ REGISTER5(BinaryOp, CPU, "Pow", functor::pow, float, Eigen::half, double,
           complex64, complex128);
 REGISTER2(BinaryOp, CPU, "Pow", functor::safe_pow, int32, int64);
 
+REGISTER(BinaryOp, CPU, "Pow", functor::pow, int32);
+
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double,
           int64);
