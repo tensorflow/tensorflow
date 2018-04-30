@@ -174,14 +174,6 @@ endif()
 
 include(CheckCXXCompilerFlag)
 
-# MKL Support
-if (tensorflow_ENABLE_MKL_SUPPORT)
-  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
-  if (NOT tensorflow_ENABLE_MKLDNN_SUPPORT)
-    add_definitions(-DINTEL_MKL_ML)
-  endif()
-endif()
-
 # OpenMP Support
 CHECK_CXX_COMPILER_FLAG("-fopenmp" GCC_OPENMP_SUPPORT)
 if (GCC_OPENMP_SUPPORT)
@@ -332,7 +324,9 @@ if(HAIKU)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES network)
 endif()
 
+# MKL Support
 if (tensorflow_ENABLE_MKL_SUPPORT)
+  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
   if (WIN32)
     find_path(MKL_HOME_PLATFORM mkl
       PATHS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
@@ -366,6 +360,8 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
     list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn)
     include_directories(${mkldnn_INCLUDE_DIRS})
+  else (tensorflow_ENABLE_MKLDNN_SUPPORT)
+    add_definitions(-DINTEL_MKL_ML)
   endif()
 endif (tensorflow_ENABLE_MKL_SUPPORT)
 
