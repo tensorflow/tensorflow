@@ -409,7 +409,7 @@ If you are new to machine learning, we recommend the following:
 *  @{$get_started/get_started_for_beginners$Getting Started for ML Beginners}
 
 If you are experienced with machine learning but new to TensorFlow, see
-@{$get_started/premade_estimators$Getting Started with TensorFlow}.
+@{$get_started/eager}.
 
 
 ## Common installation problems
