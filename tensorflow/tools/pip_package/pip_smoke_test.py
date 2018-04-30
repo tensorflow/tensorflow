@@ -147,10 +147,11 @@ def main():
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
 
-    raise RuntimeError("""One or more dependencies are not in the pip package.
-Please either blacklist the dependencies in
-//tensorflow/tools/pip_package/pip_smoke_test.py
-or add them to //tensorflow/tools/pip_package/BUILD.""")
+    raise RuntimeError("""
+    One or more added test dependencies are not in the pip package.
+If these test dependencies need to be in TensorFlow pip package, please add them to //tensorflow/tools/pip_package/BUILD.
+Else either blacklist the dependencies in //tensorflow/tools/pip_package/pip_smoke_test.py
+or add no_pip tag to the test.""")
 
   else:
     print("TEST PASSED")
