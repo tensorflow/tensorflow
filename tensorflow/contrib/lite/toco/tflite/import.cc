@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/import.h"
 
 #include "flatbuffers/flexbuffers.h"
+#include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
+#include "tensorflow/contrib/lite/tools/verifier.h"
 
 namespace toco {
 
@@ -162,16 +164,28 @@ void ImportIOTensors(const ::tflite::Model& input_model,
   }
 }
 
+namespace {
+bool Verify(const void* buf, size_t len) {
+  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
+  return ::tflite::VerifyModelBuffer(verifier);
+}
+}  // namespace
+
 std::unique_ptr<Model> Import(const ModelFlags& model_flags,
                               const string& input_file_contents) {
+  ::tflite::AlwaysTrueResolver r;
+  if (!::tflite::Verify(input_file_contents.data(), input_file_contents.size(),
+                        r, ::tflite::DefaultErrorReporter())) {
+    LOG(FATAL) << "Invalid flatbuffer.";
+  }
   const ::tflite::Model* input_model =
       ::tflite::GetModel(input_file_contents.data());
 
   // Full list of all known operators.
   const auto ops_by_name = BuildOperatorByNameMap();
 
-  if (input_model->subgraphs()->size() != 1) {
-    LOG(FATAL) << "# of subgraphs in tflite should be exactly 1 for now.";
+  if (!input_model->subgraphs() || input_model->subgraphs()->size() != 1) {
+    LOG(FATAL) << "Number of subgraphs in tflite should be exactly 1.";
   }
   std::unique_ptr<Model> model;
   model.reset(new Model);

@@ -38,6 +38,16 @@ void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
   const int input_height = input_shape.dims(1);
   const int batch = input_shape.dims(0);
 
+  CHECK_GE(input_width, 1);
+  CHECK_GE(input_height, 1);
+  CHECK_GE(batch, 1);
+  CHECK_GE(kwidth, 1);
+  CHECK_GE(kheight, 1);
+  CHECK_GE(stride_width, 1);
+  CHECK_GE(stride_height, 1);
+  CHECK_GE(dilation_width_factor, 1);
+  CHECK_GE(dilation_height_factor, 1);
+
   int dilated_kwidth = dilation_width_factor * (kwidth - 1) + 1;
   int dilated_kheight = dilation_height_factor * (kheight - 1) + 1;
 
