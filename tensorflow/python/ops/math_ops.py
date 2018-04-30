@@ -1562,6 +1562,109 @@ def reduce_mean(input_tensor,
                                    name=name))
 
 
+@tf_export("reduce_average")
+def reduce_average(input_tensor,
+                axis=None,
+                weights=None,
+                keepdims=None,
+                name=None):
+  """Computes the weighted average of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` multiply 'weights' along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for
+  each entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` has no entries, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  The weights array can either be x-D (in which case its rank x must equal
+  the length of `axis`. And the length of each dimension must be the size
+  of `input_tensor` along the corresponding axis) or of the same shape as `a`.
+  If weights=None, then all data in `input_tensor` are assumed to have a
+  weight equal to one.
+
+  For example:
+
+  ```python
+  x = tf.constant([[1., 2.], [3., 4.], [5., 6.]])
+  tf.reduce_average(x)  # 3.5
+  tf.reduce_average(x, 0)  # [3., 4.]
+  tf.reduce_average(x, 1, [0.25, 0.75])  # [1.75, 3.75, 5.75]
+  ```
+
+  Args:
+    input_tensor: The tensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce. If `None` (the default),
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
+    weights: The weights associated with the input_tensor. Can either
+      be x-D (in which case its rank x must equal the length of `axis`.
+      And the length of each dimension must be the size of `input_tensor`
+      along the corresponding axis) or of the same shape as `input_tensor`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.average
+
+  Please note that `np.average` has a `returned` parameter that could be used to
+  return the sum_of_weights. It's not supported here.
+
+  @end_compatibility
+  """
+
+  if keepdims is None:
+    keepdims = False
+
+  with ops.name_scope(name, "reduce_average", [input_tensor, weights]):
+    if weights is None:
+      return reduce_mean(input_tensor, axis=axis, keepdims=keepdims)
+
+    input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
+    weights = ops.convert_to_tensor(weights, name="weights")
+
+    if input_tensor.dtype != weights.dtype:
+      raise TypeError("'Weights' has the type {} does not match {} of"
+        "'input_tensor'".format(weights.dtype, input_tensor.dtype))
+
+    shape_input = input_tensor.get_shape().as_list()
+    shape_weights = weights.get_shape().as_list()
+    rank_input = input_tensor.get_shape().ndims
+    rank_weights = weights.get_shape().ndims
+
+    if isinstance(axis, int):
+      axis = tuple([axis])
+
+    if shape_input != shape_weights:
+      if axis is None:
+        raise ValueError(
+          "Axis must be specified when shapes of 'input_tensor' and 'weights' differ.")
+      if rank_weights != len(axis):
+        raise ValueError(
+          "Rank of 'weights': {} should equal length of 'axis': {}."
+          "".format(rank_weights, len(axis)))
+      for i, ax in enumerate(axis):
+        if shape_weights[i] != shape_input[ax]:
+          raise ValueError(
+            "Dimension {} of 'weights' not compatible with 'input_tensor'"
+            " in axis {}.".format(i, ax))
+
+      expected_shape = [1,] * rank_input
+      for i, ax in enumerate(axis):
+        expected_shape[ax] = shape_weights[i]
+      weights = array_ops.reshape(weights, expected_shape)
+
+    scl = reduce_sum(weights, axis=axis)
+    if scl == 0:
+      raise ValueError("Weights sum to zero, can't be normalized.")
+    avg = reduce_sum(multiply(input_tensor, weights), axis=axis, keepdims=keepdims) / scl
+    return avg
+
+
 @tf_export("reduce_prod")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")

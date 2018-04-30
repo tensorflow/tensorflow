@@ -71,6 +71,87 @@ class ReduceTest(test_util.TensorFlowTestCase):
 
 
 @test_util.with_c_api
+class ReduceAverageTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testReduceWithoutWeights(self):
+    x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+    with test_util.device(use_gpu=True):
+      y_tf = self.evaluate(math_ops.reduce_average(x))
+      self.assertEqual(y_tf, 3)
+
+    x = np.array([[1., 2., 3.], [4., 5., 6.]], dtype=np.float32)
+    with test_util.device(use_gpu=True):
+      y_tf = self.evaluate(math_ops.reduce_average(x))
+      self.assertEqual(y_tf, 3.5)
+
+@test_util.with_c_api
+class ReduceAverageTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testReduceWithoutWeights(self):
+    x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+    with test_util.device(use_gpu=True):
+      y_tf = self.evaluate(math_ops.reduce_average(x))
+      self.assertEqual(y_tf, 3)
+
+    x = np.array([[1., 2., 3.], [4., 5., 6.]], dtype=np.float32)
+    with test_util.device(use_gpu=True):
+      y_tf = self.evaluate(math_ops.reduce_average(x))
+      self.assertEqual(y_tf, 3.5)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testReduceWeights(self):
+    x = np.array([[1., 2., 3.], [4., 5., 6.]], dtype=np.float32)
+    with test_util.device(use_gpu=True):
+      y_tf = self.evaluate(math_ops.reduce_average(
+        x, weights=[1., 2.], axis=0))
+      self.assertAllEqual(y_tf, [3., 4., 5.])
+      y_tf = self.evaluate(math_ops.reduce_average(
+        x, weights=[0., 0., 1.], axis=1))
+      self.assertAllEqual(y_tf, [3., 6.])
+      # 2D weights
+      y_tf = self.evaluate(math_ops.reduce_average(
+        x, weights=[[0., 0., 1.], [0., 0., 2.]], axis=1))
+      self.assertAllEqual(y_tf, [3., 6.])
+      y_tf = self.evaluate(math_ops.reduce_average(
+        x, weights=[[0., 0., 1.], [0., 0., 2.]]))
+      self.assertEqual(y_tf, 5.)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testReduceWeightswithAxes(self):
+    x = np.arange(6, dtype=np.float32).reshape((1, 3, 2))
+    with test_util.device(use_gpu=True):
+      # 3D input, 2D weights, 2 axes
+      y_tf = self.evaluate(math_ops.reduce_average(
+        x, weights=[[0., 1.]], axis=(0, 2)))
+      self.assertAllEqual(y_tf, [1., 3., 5.])
+      # 3D input, 3D weights, 2 axes
+      w = x.copy()
+      y_tf = self.evaluate(math_ops.reduce_average(
+        x, weights=w, axis=(0, 1)))
+      expected = np.array([3.33333333, 3.88888889], dtype=np.float32)
+      self.assertAllClose(y_tf, expected)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testReduceInvalidWeightsOrAxes(self):
+    x = np.array([[1., 2., 3.], [4., 5., 6.]], dtype=np.float32)
+    with self.assertRaisesRegexp(ValueError, "Axis must be specified"):
+      math_ops.reduce_average(x, weights=[0., 0., 1.])
+    with self.assertRaisesRegexp(ValueError,
+      "weights not compatible with input_tensor"):
+      math_ops.reduce_average(x, weights=[0., 0., 1.], axis=0)
+    
+    x = np.arange(6, dtype=np.float32).reshape((1, 3, 2))
+    # 1D weights not compatible with 2 axes
+    with self.assertRaisesRegexp(ValueError, "should equal length of"):
+      math_ops.reduce_average(x, weights=[0., 1.], axis=(0, 1))
+    with self.assertRaisesRegexp(ValueError,
+      "weights not compatible with input_tensor"):
+      math_ops.reduce_average(x, weights=[[0., 1.]], axis=(2, 0))
+
+
+@test_util.with_c_api
 class LogSumExpTest(test_util.TensorFlowTestCase):
 
   def testReduceLogSumExp(self):
