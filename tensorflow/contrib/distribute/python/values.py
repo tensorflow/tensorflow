@@ -229,6 +229,12 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.type)
     return self.get().op
 
+  def _as_graph_element(self):
+    # pylint: disable=protected-access
+    if distribute_lib.get_cross_tower_context():
+      return self._primary_var._as_graph_element()
+    return self.get()._as_graph_element()
+
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
