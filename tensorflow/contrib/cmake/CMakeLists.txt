@@ -327,6 +327,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
   if (WIN32)
     find_path(MKL_HOME_PLATFORM mkl
       PATHS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
+      $ENV{MKLROOT} $ENV{MKLROOT}/../ $ENV{MKLROOT}/../../
       PATH_SUFFIXES windows)
     set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
     set(MKL_LINK_DIRS
@@ -345,6 +346,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
     # Fix me: complete the path on linux
     find_path(MKL_HOME_PLATFORM mkl
       HINTS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
+      $ENV{MKLROOT} $ENV{MKLROOT}/../ $ENV{MKLROOT}/../../
       PATH_SUFFIXES linux)
     set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
     set(MKL_LINK_DIRS) # incompleted
