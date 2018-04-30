@@ -740,7 +740,7 @@ class GradientTape(object):
     """Computes the gradient using operations recorded in context of this tape.
 
     Args:
-      target: Tensor to be differentiated.
+      target: Tensor (or list of tensors) to be differentiated.
       sources: a list or nested structure of Tensors or Variables. `target`
         will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
@@ -762,8 +762,12 @@ class GradientTape(object):
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]
 
+    if output_gradients is not None:
+      output_gradients = [None if x is None else ops.convert_to_tensor(x)
+                          for x in nest.flatten(output_gradients)]
+
     flat_grad = imperative_grad.imperative_grad(
-        _default_vspace, self._tape, [target], flat_sources,
+        _default_vspace, self._tape, nest.flatten(target), flat_sources,
         output_gradients=output_gradients)
 
     if not self._persistent:
