@@ -28,7 +28,6 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 # imports for backwards namespace compatibility
 # pylint: disable=unused-import
 from tensorflow.python.keras._impl.keras.layers.pooling import AveragePooling1D
@@ -39,6 +38,7 @@ from tensorflow.python.keras._impl.keras.layers.pooling import MaxPooling2D
 from tensorflow.python.keras._impl.keras.layers.pooling import MaxPooling3D
 # pylint: enable=unused-import
 from tensorflow.python.keras._impl.keras.utils import conv_utils
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
@@ -1731,7 +1731,7 @@ class DepthwiseConv2D(Conv2D):
 
     return outputs
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self.data_format == 'channels_first':
       rows = input_shape[2]

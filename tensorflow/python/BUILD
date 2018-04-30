@@ -70,6 +70,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow/python/tools:__pkg__",
     ],
     deps = [
         ":array_ops",
@@ -1877,8 +1878,10 @@ py_library(
         ":math_grad",
         ":math_ops",
         ":platform",
+        ":resource_variable_ops",
         ":spectral_grad",
         ":util",
+        ":variable_scope",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
@@ -2775,6 +2778,7 @@ cuda_py_test(
         ":framework_test_lib",
         ":functional_ops",
         ":gradients",
+        ":layers",
         ":math_grad",
         ":math_ops",
         ":nn_grad",
@@ -2784,6 +2788,7 @@ cuda_py_test(
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
+        ":variable_scope",
         "//third_party/py/numpy",
     ],
 )
@@ -2963,7 +2968,11 @@ py_library(
         ["training/**/*.py"],
         exclude = [
             "**/*test*",
-            "training/training_util.py",  # See :training_util
+            # The following targets have their own build rules (same name as the
+            # file):
+            "training/checkpointable.py",
+            "training/saveable_object.py",
+            "training/training_util.py",
         ],
     ),
     srcs_version = "PY2AND3",
@@ -2971,6 +2980,7 @@ py_library(
         ":array_ops",
         ":array_ops_gen",
         ":checkpoint_ops_gen",
+        ":checkpointable",
         ":client",
         ":control_flow_ops",
         ":data_flow_ops",
@@ -2994,6 +3004,7 @@ py_library(
         ":random_ops",
         ":resource_variable_ops",
         ":resources",
+        ":saveable_object",
         ":sdca_ops",
         ":sparse_ops",
         ":state_ops",
@@ -3037,6 +3048,12 @@ py_test(
         ":checkpointable",
         ":client_testlib",
     ],
+)
+
+py_library(
+    name = "saveable_object",
+    srcs = ["training/saveable_object.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_library(

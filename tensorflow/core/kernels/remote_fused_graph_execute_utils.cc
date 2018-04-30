@@ -20,7 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -1125,46 +1127,43 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
     for (size_t i = 0; i < inputs.size(); ++i) {
       if (IsSameNodeName(node_def, inputs.at(i), &tid)) {
         AppendDeliminator(&attr_str);
-        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::GRAPH_INPUT,
-                                      tid.second, i, remote_graph_executor_name,
+        attr_str += BuildNodeTypeAttr(GRAPH_INPUT, tid.second, i,
+                                      remote_graph_executor_name,
                                       remote_fused_graph_node_name);
       }
     }
     for (size_t i = 0; i < outputs.size(); ++i) {
       if (IsSameNodeName(node_def, outputs.at(i), &tid)) {
         AppendDeliminator(&attr_str);
-        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::GRAPH_OUTPUT,
-                                      tid.second, i);
+        attr_str += BuildNodeTypeAttr(GRAPH_OUTPUT, tid.second, i);
       }
     }
     for (const string& fused_node_name : fused_node_names) {
       if (fused_node_name == node_def.name()) {
         AppendDeliminator(&attr_str);
-        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::FUSED_NODE);
+        attr_str += BuildNodeTypeAttr(FUSED_NODE);
       }
     }
     for (const string& fused_node_name : fused_nodes_filtered_by_op_types) {
       if (fused_node_name == node_def.name()) {
         AppendDeliminator(&attr_str);
-        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::FUSED_NODE);
+        attr_str += BuildNodeTypeAttr(FUSED_NODE);
       }
     }
     for (size_t i = 0; i < border_inputs.size(); ++i) {
       if (IsSameNodeName(node_def, border_inputs.at(i), &tid)) {
         AppendDeliminator(&attr_str);
-        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::BORDER_INPUT,
-                                      tid.second, i);
+        attr_str += BuildNodeTypeAttr(BORDER_INPUT, tid.second, i);
       }
     }
     for (size_t i = 0; i < border_outputs.size(); ++i) {
       if (IsSameNodeName(node_def, border_outputs.at(i), &tid)) {
         AppendDeliminator(&attr_str);
-        attr_str += BuildNodeTypeAttr(
-            RemoteFusedGraphExecuteInfo::BORDER_OUTPUT, tid.second, i);
+        attr_str += BuildNodeTypeAttr(BORDER_OUTPUT, tid.second, i);
       }
     }
     if (attr_str.empty()) {
-      attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::UNUSED);
+      attr_str += BuildNodeTypeAttr(UNUSED);
     }
     AddNodeAttr(ATTR_NODE_TYPE, attr_str, &node_def);
   }
@@ -1200,14 +1199,14 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
       }
       int node_type_int;
       CHECK(strings::safe_strto32(attr.at(0), &node_type_int)) << attr.at(0);
-      const RemoteFusedGraphExecuteInfo::NodeType node_type =
-          static_cast<RemoteFusedGraphExecuteInfo::NodeType>(node_type_int);
+      const RemoteFusedGraphNodeType node_type =
+          static_cast<RemoteFusedGraphNodeType>(node_type_int);
       const string& name = node_def.name();
       int port;
       int index;
 
       switch (node_type) {
-        case RemoteFusedGraphExecuteInfo::GRAPH_INPUT:
+        case GRAPH_INPUT:
           VLOG(2) << "Graph input: " << name;
           CHECK_EQ(5, attr.size());
           CHECK(strings::safe_strto32(attr.at(1), &port));
@@ -1224,33 +1223,33 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
             return Status::OK();
           }
           break;
-        case RemoteFusedGraphExecuteInfo::GRAPH_OUTPUT:
+        case GRAPH_OUTPUT:
           VLOG(2) << "Graph output: " << name;
           CHECK_EQ(3, attr.size());
           CHECK(strings::safe_strto32(attr.at(1), &port));
           CHECK(strings::safe_strto32(attr.at(2), &index));
           output_map.emplace(index, strings::StrCat(name, ":", port));
           break;
-        case RemoteFusedGraphExecuteInfo::FUSED_NODE:
+        case FUSED_NODE:
           VLOG(2) << "Fused node: " << name;
           CHECK_EQ(1, attr.size());
           fused_node_names.emplace(name);
           break;
-        case RemoteFusedGraphExecuteInfo::BORDER_INPUT:
+        case BORDER_INPUT:
           VLOG(2) << "Border input: " << name;
           CHECK_EQ(3, attr.size());
           CHECK(strings::safe_strto32(attr.at(1), &port));
           CHECK(strings::safe_strto32(attr.at(2), &index));
           border_input_map.emplace(index, strings::StrCat(name, ":", port));
           break;
-        case RemoteFusedGraphExecuteInfo::BORDER_OUTPUT:
+        case BORDER_OUTPUT:
           VLOG(2) << "Border output: " << name;
           CHECK_EQ(3, attr.size());
           CHECK(strings::safe_strto32(attr.at(1), &port));
           CHECK(strings::safe_strto32(attr.at(2), &index));
           border_output_map.emplace(index, strings::StrCat(name, ":", port));
           break;
-        case RemoteFusedGraphExecuteInfo::UNUSED:
+        case UNUSED:
           // do nothing
           break;
         default:
@@ -1461,20 +1460,19 @@ RemoteFusedGraphExecuteUtils::BuildNodeMapFromOpsDefinitions(
 }
 
 /* static */ string RemoteFusedGraphExecuteUtils::BuildNodeTypeAttr(
-    const RemoteFusedGraphExecuteInfo::NodeType node_type, const int port,
-    const int index, const string& executor_name, const string& node_name) {
+    const RemoteFusedGraphNodeType node_type, const int port, const int index,
+    const string& executor_name, const string& node_name) {
   return strings::StrCat(static_cast<int>(node_type), ",", port, ",", index,
                          ",", executor_name, ",", node_name);
 }
 
 /* static */ string RemoteFusedGraphExecuteUtils::BuildNodeTypeAttr(
-    const RemoteFusedGraphExecuteInfo::NodeType node_type, const int port,
-    const int index) {
+    const RemoteFusedGraphNodeType node_type, const int port, const int index) {
   return strings::StrCat(static_cast<int>(node_type), ",", port, ",", index);
 }
 
 /* static */ string RemoteFusedGraphExecuteUtils::BuildNodeTypeAttr(
-    const RemoteFusedGraphExecuteInfo::NodeType node_type) {
+    const RemoteFusedGraphNodeType node_type) {
   return strings::StrCat(static_cast<int>(node_type));
 }
 

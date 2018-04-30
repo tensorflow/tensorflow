@@ -15,36 +15,6 @@
 """Control Flow Operations.
 
 See the @{$python/control_flow_ops} guide.
-
-@@identity
-@@identity_n
-@@tuple
-@@group
-@@no_op
-@@count_up_to
-@@cond
-@@case
-@@while_loop
-@@logical_and
-@@logical_not
-@@logical_or
-@@logical_xor
-@@equal
-@@not_equal
-@@less
-@@less_equal
-@@greater
-@@greater_equal
-@@where
-@@is_finite
-@@is_inf
-@@is_nan
-@@verify_tensor_all_finite
-@@check_numerics
-@@add_check_numerics_ops
-@@Assert
-@@Print
-@@timestamp
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -622,14 +592,16 @@ def _EnforceShapeInvariant(merge_var, next_var):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
-      # TODO(skyewm): get original loop input that caused the shape error and
-      # report its name instead of the merge node's.
+      enter = merge_var.op.inputs[0].op
+      assert util.IsLoopEnter(enter)
+      input_t = enter.inputs[0]
+      assert input_t.shape == m_shape
       raise ValueError(
-          "The shape for %s is not an invariant for the loop. It enters "
-          "the loop with shape %s, but has shape %s after one iteration. "
-          "Provide shape invariants using either the `shape_invariants` "
-          "argument of tf.while_loop or set_shape() on the loop variables." %
-          (merge_var.name, m_shape, n_shape))
+          "Input tensor '%s' enters the loop with shape %s, but has shape %s "
+          "after one iteration. To allow the shape to vary across iterations, "
+          "use the `shape_invariants` argument of tf.while_loop to specify a "
+          "less-specific shape." %
+          (input_t.name, input_t.shape, n_shape))
   else:
     if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(var))

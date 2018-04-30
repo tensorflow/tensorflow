@@ -259,6 +259,19 @@ NodeProperties GetPropertiesForOperator(const Operator& op) {
       node_properties.color = Color(0xC5, 0x39, 0x29);  // Bolder color
       break;
     }
+    case OperatorType::kFakeQuant: {
+      const auto& fakequant_op = static_cast<const FakeQuantOperator&>(op);
+      node_properties.color = Color(0xC5, 0x39, 0x29);  // Bolder color
+      if (fakequant_op.minmax) {
+        AppendF(&node_properties.label, "\\n%dbit [%g,%g]",
+                fakequant_op.num_bits, fakequant_op.minmax->min,
+                fakequant_op.minmax->max);
+      } else {
+        AppendF(&node_properties.label, "\\n%dbit [?,?]",
+                fakequant_op.num_bits);
+      }
+      break;
+    }
     default:
       node_properties.color = Color(0xDB, 0x44, 0x37);
       break;

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_JIT_GRAPH_TO_FUNCTIONDEF_H_
-#define TENSORFLOW_COMPILER_JIT_GRAPH_TO_FUNCTIONDEF_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_
+#define TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
@@ -23,11 +23,10 @@ limitations under the License.
 namespace tensorflow {
 
 // Converts 'graph' to a FunctionDef 'fdef', with name 'name'.
-// Closely modeled on the Python code in
-// third_party/tensorflow/python/framework/function.py
+// Closely modeled on the Python code in tensorflow/python/framework/function.py
 Status GraphToFunctionDef(const Graph& graph, const string& name,
                           FunctionDef* fdef);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_GRAPH_TO_FUNCTIONDEF_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_

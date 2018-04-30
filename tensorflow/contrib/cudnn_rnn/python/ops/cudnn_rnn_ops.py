@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 from tensorflow.contrib.checkpoint.python import split_dependency
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.python.framework import common_shapes
@@ -901,19 +902,27 @@ def _cudnn_rnn(inputs,
   check_direction(direction)
   check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
-  outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-      input=inputs,
-      input_h=input_h,
-      input_c=input_c,
-      params=params,
-      is_training=is_training,
-      rnn_mode=rnn_mode,
-      input_mode=input_mode,
-      direction=direction,
-      dropout=dropout,
-      seed=seed,
-      seed2=seed2,
-      name=name)
+  # TODO(jamesqin): switch default value to "1" on May 25th 2018, and get rid
+  # of V1 ops.
+  use_cudnn_v2 = os.environ.get("TF_CUDNN_RNN_USE_V2", "0")
+  args = {
+      "input": inputs,
+      "input_h": input_h,
+      "input_c": input_c,
+      "params": params,
+      "is_training": is_training,
+      "rnn_mode": rnn_mode,
+      "input_mode": input_mode,
+      "direction": direction,
+      "dropout": dropout,
+      "seed": seed,
+      "seed2": seed2,
+      "name": name
+  }
+  if use_cudnn_v2 is not "1":
+    outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(**args)
+  else:
+    outputs, output_h, output_c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
   return (outputs, output_h, output_c)
 
 

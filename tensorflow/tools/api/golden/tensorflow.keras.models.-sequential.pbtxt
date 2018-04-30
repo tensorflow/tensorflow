@@ -256,7 +256,7 @@ tf_class {
   }
   member_method {
     name: "save_weights"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'save_format\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "set_weights"

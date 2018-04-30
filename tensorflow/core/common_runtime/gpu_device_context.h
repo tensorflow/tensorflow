@@ -25,16 +25,13 @@ class Stream;
 
 namespace tensorflow {
 
-// TODO(b/77980417): Replace stream_executor:: with se:: once our namespace
-// migration is complete and the alias is available.
-
 class GPUDeviceContext : public DeviceContext {
  public:
   // Does not take ownership of streams.
-  GPUDeviceContext(int stream_id, stream_executor::Stream* stream,
-                   stream_executor::Stream* host_to_device_stream,
-                   stream_executor::Stream* device_to_host_stream,
-                   stream_executor::Stream* device_to_device_stream)
+  GPUDeviceContext(int stream_id, se::Stream* stream,
+                   se::Stream* host_to_device_stream,
+                   se::Stream* device_to_host_stream,
+                   se::Stream* device_to_device_stream)
       : stream_id_(stream_id),
         stream_(stream),
         host_to_device_stream_(host_to_device_stream),
@@ -43,14 +40,10 @@ class GPUDeviceContext : public DeviceContext {
 
   ~GPUDeviceContext() override {}
 
-  stream_executor::Stream* stream() const override { return stream_; }
-  stream_executor::Stream* host_to_device_stream() const {
-    return host_to_device_stream_;
-  }
-  stream_executor::Stream* device_to_host_stream() const {
-    return device_to_host_stream_;
-  }
-  stream_executor::Stream* device_to_device_stream() const {
+  se::Stream* stream() const override { return stream_; }
+  se::Stream* host_to_device_stream() const { return host_to_device_stream_; }
+  se::Stream* device_to_host_stream() const { return device_to_host_stream_; }
+  se::Stream* device_to_device_stream() const {
     return device_to_device_stream_;
   }
   int stream_id() const { return stream_id_; }
@@ -63,20 +56,20 @@ class GPUDeviceContext : public DeviceContext {
                              Device* device, Tensor* cpu_tensor,
                              StatusCallback done) override;
 
-  void MaintainLifetimeOnStream(
-      const Tensor* t, perftools::gputools::Stream* stream) const override {}
+  void MaintainLifetimeOnStream(const Tensor* t,
+                                se::Stream* stream) const override {}
 
  private:
   int stream_id_;
   // The default primary stream to use for this context.
   // All the memory belongs to this stream.
-  stream_executor::Stream* stream_;
+  se::Stream* stream_;
   // The stream to use for copy data from host into GPU.
-  stream_executor::Stream* host_to_device_stream_;
+  se::Stream* host_to_device_stream_;
   // The stream to use for copy data from GPU to host.
-  stream_executor::Stream* device_to_host_stream_;
+  se::Stream* device_to_host_stream_;
   // The stream to use for copy data between GPU.
-  stream_executor::Stream* device_to_device_stream_;
+  se::Stream* device_to_device_stream_;
 };
 
 }  // namespace tensorflow

@@ -42,8 +42,10 @@ struct ApplyAdagrad<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
-                  typename TTypes<T>::ConstFlat grad) {
-    accum.device(d) += grad.square();
+                  typename TTypes<T>::ConstFlat grad, bool update_slots) {
+    if (update_slots) {
+      accum.device(d) += grad.square();
+    }
     Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;

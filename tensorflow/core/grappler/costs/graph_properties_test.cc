@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -955,6 +956,11 @@ TEST_F(GraphPropertiesTest, Performance) {
   string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
                                  "large_graph.pbtxt.html");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  TF_CHECK_OK(AddDefaultAttrsToGraphDef(
+      &item.graph,
+      FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library()), 0,
+      true));
+
   GraphProperties properties(item);
   TF_CHECK_OK(properties.InferStatically(false));
 }

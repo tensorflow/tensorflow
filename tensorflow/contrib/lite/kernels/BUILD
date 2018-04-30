@@ -145,6 +145,7 @@ cc_library(
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "exp.cc",
+        "floor.cc",
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
@@ -428,6 +429,19 @@ tf_cc_test(
     name = "bidirectional_sequence_lstm_test",
     size = "small",
     srcs = ["bidirectional_sequence_lstm_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "floor_test",
+    size = "small",
+    srcs = ["floor_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
