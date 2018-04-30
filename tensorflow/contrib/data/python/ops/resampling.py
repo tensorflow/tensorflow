@@ -152,7 +152,7 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
     return control_flow_ops.cond(
         math_ops.less(proportion_rejected, .5),
         lambda: accept_dist,
-        lambda: logging_ops.logging.warn(  # pylint: disable=g-long-lambda
+        lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
             accept_dist, [proportion_rejected, initial_dist, accept_dist],
             message="Proportion of examples rejected by sampler is high: ",
             summarize=100,
