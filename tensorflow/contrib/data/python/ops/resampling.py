@@ -31,7 +31,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.platform import tf_logging as logging
 
 
 def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
@@ -60,7 +59,7 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
 
     # Get initial distribution.
     if initial_dist is not None:
-      initial_dist_t = math_ops.to_float(ops.convert_to_tensor(initial_dist, name="initial_dist"))
+      initial_dist_t = ops.convert_to_tensor(initial_dist, name="initial_dist")
       acceptance_dist, prob_of_original = (
           _calculate_acceptance_probs_with_mixing(initial_dist_t,
                                                   target_dist_t))
@@ -92,18 +91,9 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
     elif prob_original_static == 0:
       return filtered_ds
     else:
-      logging.warn('class_values_ds.output_shapes: %s'% str(class_values_ds.output_shapes))
-      logging.warn('class_values_ds.output_types: %s'% str(class_values_ds.output_types))
-      logging.warn('dataset.output_shapes: %s'% str(dataset.output_shapes))
-      logging.warn('dataset.output_types: %s'% str(dataset.output_types))
-      logging.warn('filtered_ds.output_shapes: %s'% str(filtered_ds.output_shapes))
-      logging.warn('filtered_ds.output_types: %s'% str(filtered_ds.output_types))
-      weights = prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)])
-      logging.warn('weights.output_shapes: %s'% str(weights.output_shapes))
-      logging.warn('weights.output_types: %s'% str(weights.output_types))
       return interleave_ops.sample_from_datasets(
           [dataset_ops.Dataset.zip((class_values_ds, dataset)), filtered_ds],
-          weights=weights,
+          weights=prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)]),
           seed=seed)
 
   return _apply_fn
@@ -301,4 +291,4 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
 
   # TODO(joelshor): Simplify fraction, if possible.
   a_i = (ratio_l - m) / (max_ratio - m)
-  return math_ops.to_float(a_i), math_ops.to_float(m)
+  return a_i, m
