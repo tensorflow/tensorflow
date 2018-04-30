@@ -79,6 +79,16 @@ BLACKLIST = [
 ]
 
 
+def bazel_query(query_target):
+  """Run bazel query on target."""
+  try:
+    output = subprocess.check_output(
+        ["bazel", "query", "--keep_going", query_target])
+  except subprocess.CalledProcessError as e:
+    output = e.output
+  return output
+
+
 def main():
   """This script runs the pip smoke test.
 
@@ -93,15 +103,13 @@ def main():
   """
 
   # pip_package_dependencies_list is the list of included files in pip packages
-  pip_package_dependencies = subprocess.check_output(
-      ["bazel", "query", PIP_PACKAGE_QUERY_EXPRESSION])
+  pip_package_dependencies = bazel_query(PIP_PACKAGE_QUERY_EXPRESSION)
   pip_package_dependencies_list = pip_package_dependencies.strip().split("\n")
   print("Pip package superset size: %d" % len(pip_package_dependencies_list))
 
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
-  tf_py_test_dependencies = subprocess.check_output(
-      ["bazel", "query", PY_TEST_QUERY_EXPRESSION])
+  tf_py_test_dependencies = bazel_query(PY_TEST_QUERY_EXPRESSION)
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
   print("Pytest dependency subset size: %d" % len(tf_py_test_dependencies_list))
 
@@ -135,7 +143,7 @@ def main():
       print("Affected Tests:")
       rdep_query = ("rdeps(kind(py_test, //tensorflow/python/...), %s)" %
                     missing_dependency)
-      affected_tests = subprocess.check_output(["bazel", "query", rdep_query])
+      affected_tests = bazel_query(rdep_query)
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
 
