@@ -65,6 +65,7 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
     initial_dist = [0.2] * 5 if initial_known else None
+    classes = math_ops.to_int64(classes)  # needed for Windows build.
     dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
         200, seed=21).map(lambda c: (c, string_ops.as_string(c))).repeat()
 
