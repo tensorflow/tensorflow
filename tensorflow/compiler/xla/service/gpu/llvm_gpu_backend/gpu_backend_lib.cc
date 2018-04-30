@@ -491,7 +491,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
   string ptx;
   {
-    tensorflow::port::Tracing::TraceMe annotation(
+    tensorflow::tracing::ScopedActivity activity(
         "Compiling IR", llvm_ir::AsString(module->getName()),
         /*is_expensive=*/true);
     XLA_SCOPED_LOGGING_TIMER("Compile module " +

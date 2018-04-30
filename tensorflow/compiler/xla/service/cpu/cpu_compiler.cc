@@ -118,10 +118,12 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
 
 CpuAotCompilationResult::CpuAotCompilationResult(
     ObjectFileData object_file_data, BufferSizes buffer_sizes,
-    int64 result_buffer_index)
+    int64 result_buffer_index,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
     : object_file_data_(std::move(object_file_data)),
       buffer_sizes_(std::move(buffer_sizes)),
-      result_buffer_index_(result_buffer_index) {}
+      result_buffer_index_(result_buffer_index),
+      hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {}
 
 CpuAotCompilationResult::~CpuAotCompilationResult() = default;
 
@@ -171,14 +173,13 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
  public:
   static StatusOr<std::unordered_map<const HloInstruction*, int64>>
   GetCandidatesForComputation(
-      HloComputation* computation,
+      const HloComputation& computation,
       const std::unordered_map<const HloInstruction*, int64>&
           assigned_indices) {
     std::unordered_map<const HloInstruction*, int64> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx, assigned_indices);
-    TF_RETURN_IF_ERROR(
-        computation->Accept(&profile_candidates_for_computation));
+    TF_RETURN_IF_ERROR(computation.Accept(&profile_candidates_for_computation));
     return hlo_to_profile_idx;
   }
 
@@ -258,7 +259,6 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true,
         /*use_fusion=*/false);
-    pipeline.AddPass<GatherExpander>();
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
@@ -286,6 +286,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
+
+  pipeline.AddPass<GatherExpander>();
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
@@ -423,6 +425,41 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
   return Status::OK();
 }
 
+Status CreateHloProfilingArtifacts(
+    const HloModule& module,
+    std::unordered_map<const HloInstruction*, int64>*
+        instruction_to_profile_idx,
+    std::unordered_map<const HloComputation*, int64>*
+        computation_to_profile_idx,
+    std::unique_ptr<HloProfileIndexMap>* hlo_profile_index_map,
+    std::unique_ptr<HloProfilePrinterData>* hlo_profile_printer_data) {
+  *hlo_profile_index_map = MakeUnique<HloProfileIndexMap>(module);
+  const HloComputation& entry_computation = *module.entry_computation();
+
+  TF_ASSIGN_OR_RETURN(
+      *instruction_to_profile_idx,
+      CollectProfileCandidates::GetCandidatesForComputation(
+          entry_computation,
+          (*hlo_profile_index_map)->instruction_to_profile_idx()));
+
+  auto shape_size_bytes = [](const Shape& shape) {
+    // On the cpu, opaques are pointers.
+    if (ShapeUtil::IsOpaque(shape)) {
+      return static_cast<int64>(sizeof(void*));
+    }
+    return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  };
+
+  HloCostAnalysis cost_analysis(shape_size_bytes);
+  TF_RETURN_IF_ERROR(entry_computation.Accept(&cost_analysis));
+  *hlo_profile_printer_data =
+      CreateHloProfilePrinterData(**hlo_profile_index_map, cost_analysis);
+  *computation_to_profile_idx =
+      (*hlo_profile_index_map)->computation_to_profile_idx();
+
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
@@ -477,28 +514,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
   if (module->config().hlo_profiling_enabled()) {
-    hlo_profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
-
-    TF_ASSIGN_OR_RETURN(
-        instruction_to_profile_idx,
-        CollectProfileCandidates::GetCandidatesForComputation(
-            entry_computation,
-            hlo_profile_index_map->instruction_to_profile_idx()));
-
-    auto shape_size_bytes = [](const Shape& shape) {
-      // On the cpu, opaques are pointers.
-      if (ShapeUtil::IsOpaque(shape)) {
-        return static_cast<int64>(sizeof(void*));
-      }
-      return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-    };
-
-    HloCostAnalysis cost_analysis(shape_size_bytes);
-    TF_RETURN_IF_ERROR(entry_computation->Accept(&cost_analysis));
-    hlo_profile_printer_data =
-        CreateHloProfilePrinterData(*hlo_profile_index_map, cost_analysis);
-    computation_to_profile_idx =
-        hlo_profile_index_map->computation_to_profile_idx();
+    TF_RETURN_IF_ERROR(CreateHloProfilingArtifacts(
+        *module, &instruction_to_profile_idx, &computation_to_profile_idx,
+        &hlo_profile_index_map, &hlo_profile_printer_data));
   }
 
   std::unique_ptr<Executable> cpu_executable;
@@ -714,11 +732,20 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
           proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
+    std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
+    std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
+
+    if (module->config().hlo_profiling_enabled()) {
+      TF_RETURN_IF_ERROR(CreateHloProfilingArtifacts(
+          *module, &instruction_to_profile_idx, &computation_to_profile_idx,
+          &hlo_profile_index_map, &hlo_profile_printer_data));
+    }
+
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
-                         /*instruction_to_profile_idx=*/
-                         std::unordered_map<const HloInstruction*, int64>{},
-                         /*computation_to_profile_idx=*/
-                         std::unordered_map<const HloComputation*, int64>{},
+                         std::move(instruction_to_profile_idx),
+                         std::move(computation_to_profile_idx),
                          target_machine.get(),
                          /*external_constant_pool=*/nullptr);
     HloComputation* computation = module->entry_computation();
@@ -793,7 +820,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     results.emplace_back(MakeUnique<CpuAotCompilationResult>(
         std::move(object_file_data), std::move(buffer_sizes),
-        result_slice.index()));
+        result_slice.index(), std::move(hlo_profile_printer_data)));
   }
 
   VLOG(1) << "Compilation finished";

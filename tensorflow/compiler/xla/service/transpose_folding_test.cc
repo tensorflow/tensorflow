@@ -71,10 +71,10 @@ TEST_F(TransposeFoldingTest, FoldDotTranspose) {
       HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), /*lhs=*/x,
                                 /*rhs=*/transpose_y, dot_dnums));
 
-  HloModule module("test_module");
+  auto module = CreateNewModule("test_module");
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build(dot));
-  FoldTranspose(&module);
+      module->AddEntryComputation(builder.Build(dot));
+  FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the fusion.
   std::unordered_set<HloInstruction*> instruction_set(
@@ -114,10 +114,10 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
       ShapeUtil::MakeShape(F32, {1, 3}),
       /*lhs=*/transpose0, /*rhs=*/transpose1, dot_dnums));
 
-  HloModule module("test_module");
+  auto module = CreateNewModule("test_module");
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build(dot));
-  FoldTranspose(&module);
+      module->AddEntryComputation(builder.Build(dot));
+  FoldTranspose(module.get());
 
   for (auto* instruction : entry_computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kFusion) {
@@ -149,10 +149,10 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
   HloInstruction* mul = builder.AddInstruction(HloInstruction::CreateBinary(
       add->shape(), HloOpcode::kMultiply, add, sub));
 
-  HloModule module("fuse_with_constant_operands");
+  auto module = CreateNewModule("fuse_with_constant_operands");
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build(mul));
-  HloInstruction* call = module.OutlineExpressionFromComputation(
+      module->AddEntryComputation(builder.Build(mul));
+  HloInstruction* call = module->OutlineExpressionFromComputation(
       {add, sub, mul}, "", entry_computation);
   EXPECT_EQ(call, entry_computation->root_instruction());
   HloComputation* callee_computation = call->to_apply();
@@ -182,14 +182,14 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeInWhile) {
       HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), /*lhs=*/x,
                                 /*rhs=*/transpose_y, dot_dnums));
 
-  HloModule module("test_module");
+  auto module = CreateNewModule("test_module");
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build(dot));
+      module->AddEntryComputation(builder.Build(dot));
 
-  HloInstruction* call = module.OutlineExpressionFromComputation(
+  HloInstruction* call = module->OutlineExpressionFromComputation(
       {transpose_y, dot}, "outlined", entry_computation);
 
-  FoldTranspose(&module);
+  FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the fusion.
   std::unordered_set<HloInstruction*> instruction_set(
@@ -240,10 +240,10 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), x, transpose_y, window, dnums));
 
-  HloModule module("test_module");
+  auto module = CreateNewModule("test_module");
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build(conv));
-  FoldTranspose(&module);
+      module->AddEntryComputation(builder.Build(conv));
+  FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
   std::unordered_set<HloInstruction*> instruction_set(
@@ -293,10 +293,10 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), x, transpose_y, window, dnums));
 
-  HloModule module("test_module");
+  auto module = CreateNewModule("test_module");
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build(conv));
-  FoldTranspose(&module);
+      module->AddEntryComputation(builder.Build(conv));
+  FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
   std::unordered_set<HloInstruction*> instruction_set(
@@ -351,10 +351,10 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), transpose_x, y, window, dnums));
 
-  HloModule module("test_module");
+  auto module = CreateNewModule("test_module");
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build(conv));
-  FoldTranspose(&module);
+      module->AddEntryComputation(builder.Build(conv));
+  FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
   std::unordered_set<HloInstruction*> instruction_set(
@@ -415,10 +415,10 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), transpose_x, y, window, dnums));
 
-  HloModule module("test_module");
+  auto module = CreateNewModule("test_module");
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build(conv));
-  FoldTranspose(&module);
+      module->AddEntryComputation(builder.Build(conv));
+  FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
   std::unordered_set<HloInstruction*> instruction_set(

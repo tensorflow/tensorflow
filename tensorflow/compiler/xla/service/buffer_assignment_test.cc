@@ -1641,7 +1641,7 @@ static void RunCopyInsertion(HloModule* module) {
 }
 
 TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
-  auto module = xla::MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -1816,7 +1816,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   };
 
   // Build the entry computation as described in the comment above.
-  auto module = xla::MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder("entry");
 
   auto infeed = builder.AddInstruction(HloInstruction::CreateInfeed(r0s32, ""));
@@ -1884,7 +1884,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
 }
 
 TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
-  auto module = xla::MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -1929,7 +1929,7 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
 }
 
 TEST_F(BufferAssignmentTest, TwoCalls) {
-  auto module = xla::MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   Shape r0f32 = ShapeUtil::MakeShape(xla::F32, {});
   HloComputation* sub_computation;
   {
@@ -1994,7 +1994,7 @@ static bool IsPostOrderTraversal(
 }
 
 TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
-  auto module = xla::MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto zero = builder.AddInstruction(
@@ -2073,7 +2073,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 }
 
 TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
-  auto module = xla::MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
