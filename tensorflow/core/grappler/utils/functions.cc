@@ -566,6 +566,60 @@ Status RegisterGrapplerFunctionConnectivity(
   return Status::OK();
 }
 
+Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
+                             GrapplerFunctionItem* item) {
+  if (!IsConstant(input_const)) {
+    return errors::InvalidArgument("Input node ", input_const.name(),
+                                   " is not a constant");
+  }
+
+  auto& inputs = item->input_arg_expansions_;
+
+  // Find input arg expansion and input placeholder position in it for the
+  // given function input position.
+  InputArgExpansion* input_arg_expansion = nullptr;
+  int placeholder_idx = input_position;
+
+  for (InputArgExpansion& input : inputs) {
+    if (placeholder_idx < input.placeholders.size()) {
+      input_arg_expansion = &input;
+      break;
+    }
+    placeholder_idx -= input.placeholders.size();
+  }
+
+  if (input_arg_expansion == nullptr) {
+    return errors::InvalidArgument(
+        "Input placeholder not found: input_position=", input_position,
+        " function=", item->id);
+  }
+
+  // Delete placeholder from input expansion.
+  string placeholder_name = input_arg_expansion->placeholders[placeholder_idx];
+  item->input_arg_placeholders_.erase(placeholder_name);
+  input_arg_expansion->placeholders.erase(
+      input_arg_expansion->placeholders.begin() + placeholder_idx);
+
+  // Delete empty input expansions.
+  inputs.erase(std::remove_if(inputs.begin(), inputs.end(),
+                              [](const InputArgExpansion& input) {
+                                return input.placeholders.empty();
+                              }),
+               inputs.end());
+
+  // Replace placeholder node in the function body with a const node.
+  for (NodeDef& node : *item->graph.mutable_node()) {
+    if (node.name() == placeholder_name) {
+      node = input_const;
+      node.set_name(placeholder_name);
+      node.clear_input();   // remove potential control inputs
+      node.clear_device();  // device placement is defined by instantiating node
+    }
+  }
+
+  return Status::OK();
+}
+
 Status MakeFunctionDef(const GrapplerFunctionItem& item,
                        const FunctionLibraryDefinition& flib,
                        FunctionDef* func) {
@@ -579,6 +633,9 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
 
   // Add function input arguments.
   for (const InputArgExpansion& input_arg : item.inputs()) {
+    CHECK(input_arg.placeholders.size() == 1)  // do some sanity checking
+        << "Inputs of tensor sequences are not supported";
+
     OpDef::ArgDef arg_def;
     arg_def.set_name(input_arg.input_name);
     arg_def.set_type(input_arg.data_type);
@@ -588,14 +645,14 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
 
   // Add function output arguments.
   for (const OutputArgExpansion& output_arg : item.outputs()) {
+    CHECK(output_arg.output_tensors.size() == 1)  // do some sanity checking
+        << "Outputs of tensor sequences are not supported";
+
     OpDef::ArgDef arg_def;
     arg_def.set_name(output_arg.output_name);
     arg_def.set_type(output_arg.data_type);
     arg_def.set_is_ref(output_arg.is_ref);
     *func->mutable_signature()->add_output_arg() = arg_def;
-
-    CHECK(output_arg.output_tensors.size() == 1)  // do some sanity checking
-        << "Outputs of tensor sequences are not supported";
 
     string ret;
     for (const string& output_tensor : output_arg.output_tensors) {

@@ -60,7 +60,7 @@ def _query_tpu_system_metadata(master_address, run_config,
       with ops.Graph().as_default():
         with session_lib.Session(
             master_address,
-            config=_get_session_config_with_timeout(
+            config=get_session_config_with_timeout(
                 _PINGING_MASTER_TIMEOUT_IN_MS, run_config)) as sess:
           devices = sess.list_devices()
           for device in devices:
@@ -133,7 +133,7 @@ def _obtain_topology(master_address, run_config):
                  'for model parallelism. This might take a while.',
                  master_address)
     with ops.Graph().as_default():
-      session_config = _get_session_config_with_timeout(
+      session_config = get_session_config_with_timeout(
           _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS, run_config)
       with session_lib.Session(
           master_address, config=session_config) as sess:
@@ -146,7 +146,7 @@ def _obtain_topology(master_address, run_config):
             master_address))
 
 
-def _get_session_config_with_timeout(timeout_in_secs, run_config):
+def get_session_config_with_timeout(timeout_in_secs, run_config):
   cluster_def = None
   if run_config.session_config and run_config.session_config.cluster_def.job:
     cluster_def = run_config.session_config.cluster_def

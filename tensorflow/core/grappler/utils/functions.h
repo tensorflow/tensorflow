@@ -162,6 +162,9 @@ class GrapplerFunctionItem : public GrapplerItem {
   GrapplerFunctionItem& SwapFunctionBody(GraphDef&& other);
 
  private:
+  friend Status ReplaceInputWithConst(const NodeDef&, int,
+                                      GrapplerFunctionItem*);
+
   AttrValueMap func_attr_;  // Attributes specific to function definition that
                             // produced this item (FuncDef.attr field).
 
@@ -189,11 +192,15 @@ bool HasParametrizedBody(const FunctionDef& func);
 bool IsParametrized(const FunctionDef& func);
 
 // Register GrapplerFunctionItem input arg expansion and function body outputs
-// in the GrapplerFunctionConnectivity.  Use function library definition to
+// in the GrapplerFunctionConnectivity. Use function library definition to
 // lookup function body nodes output names and ranges.
 Status RegisterGrapplerFunctionConnectivity(
     const GrapplerFunctionItem& item, const FunctionLibraryDefinition& flib,
     GrapplerFunctionConnectivity* connectivity);
+
+// Replace one of the function inputs with a constant.
+Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
+                             GrapplerFunctionItem* item);
 
 // Make a GrapplerFunctionItem from the function definition and function
 // instantiation attributes (caller node attributes). Returns error if the given

@@ -41,9 +41,6 @@ HloModule::HloModule(const string& name,
       entry_computation_handle_(entry_computation_handle),
       unique_id_(next_unique_module_id_++) {}
 
-HloModule::HloModule(const string& name)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      unique_id_(next_unique_module_id_++) {}
 HloModule::HloModule(const string& name, const HloModuleConfig& config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
@@ -479,8 +476,7 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = MakeUnique<HloModule>(name_ + "-" + suffix);
-  module->config_ = config_;
+  auto module = MakeUnique<HloModule>(name_ + "-" + suffix, config_);
   module->entry_computation_handle_ = entry_computation_handle_;
   module->has_entry_computation_handle_ = has_entry_computation_handle_;
 

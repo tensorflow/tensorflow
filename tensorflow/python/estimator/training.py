@@ -201,7 +201,7 @@ class EvalSpec(
           * A tuple (features, labels): Where features is a `Tensor` or a
             dictionary of string feature name to `Tensor` and labels is a
             `Tensor` or a dictionary of string label name to `Tensor`.
-            
+
       steps: Int. Positive number of steps for which to evaluate model. If
         `None`, evaluates until `input_fn` raises an end-of-input exception.
         See `Estimator.evaluate` for details.
@@ -427,6 +427,8 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   Raises:
     ValueError: if environment variable `TF_CONFIG` is incorrectly set.
   """
+  _assert_eval_spec(eval_spec)  # fail fast if eval_spec is invalid.
+
   executor = _TrainingExecutor(
       estimator=estimator, train_spec=train_spec, eval_spec=eval_spec)
 
@@ -481,10 +483,10 @@ class _TrainingExecutor(object):
           'Got: {}'.format(type(train_spec)))
     self._train_spec = train_spec
 
-    if not isinstance(eval_spec, EvalSpec):
-      raise TypeError(
-          '`eval_spec` must have type `tf.estimator.EvalSpec`. '
-          'Got: {}'.format(type(eval_spec)))
+    if eval_spec and not isinstance(eval_spec, EvalSpec):
+      raise TypeError('`eval_spec` must be either `None` or have type '
+                      '`tf.estimator.EvalSpec`. Got: {}'.format(
+                          type(eval_spec)))
     self._eval_spec = eval_spec
 
     self._train_hooks = _validate_hooks(train_hooks)
@@ -580,6 +582,8 @@ class _TrainingExecutor(object):
           logging.info('Skip the current checkpoint eval due to throttle secs '
                        '({} secs).'.format(self._eval_throttle_secs))
 
+    _assert_eval_spec(self._eval_spec)
+
     # Final export signal: For any eval result with global_step >= train
     # max_steps, the evaluator will send the final export signal. There is a
     # small chance that the Estimator.train stopping logic sees a different
@@ -627,6 +631,8 @@ class _TrainingExecutor(object):
       if global_step >= self._train_spec.max_steps:
         return True
       return False
+
+    _assert_eval_spec(self._eval_spec)
 
     if self._eval_spec.throttle_secs <= 0:
       raise ValueError('eval_spec.throttle_secs should be positive, given: {}.'
@@ -741,6 +747,9 @@ class _TrainingExecutor(object):
 
   def _start_continuous_evaluation(self):
     """Repeatedly calls `Estimator` evaluate and export until training ends."""
+
+    _assert_eval_spec(self._eval_spec)
+
     start_delay_secs = self._eval_spec.start_delay_secs
     if start_delay_secs:
       logging.info('Waiting %f secs before starting eval.', start_delay_secs)
@@ -769,6 +778,9 @@ class _TrainingExecutor(object):
   def _execute_evaluator_once(self, evaluator, continuous_eval_listener,
                               throttle_secs):
     """Executes the `evaluator`."""
+
+    _assert_eval_spec(self._eval_spec)
+
     start = time.time()
 
     eval_result = None
@@ -807,7 +819,10 @@ class _TrainingExecutor(object):
 
     def __init__(self, estimator, eval_spec, max_training_steps):
       self._estimator = estimator
+
+      _assert_eval_spec(eval_spec)
       self._eval_spec = eval_spec
+
       self._is_final_export_triggered = False
       self._previous_ckpt_path = None
       self._last_warning_time = 0
@@ -996,3 +1011,10 @@ class _ContinuousEvalListener(object):
     """
     del eval_result
     return True
+
+
+def _assert_eval_spec(eval_spec):
+  """Raise error if `eval_spec` is not of the right type."""
+  if not isinstance(eval_spec, EvalSpec):
+    raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`. '
+                    'Got: {}'.format(type(eval_spec)))

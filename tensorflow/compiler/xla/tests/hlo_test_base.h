@@ -85,7 +85,8 @@ class HloTestBase : public ::testing::Test {
   // options from command-line flags. If you want a fresh HloModule object and
   // then add HloComputations to it, it's recommended to use this method in your
   // tests.
-  static std::unique_ptr<HloModule> CreateNewModule();
+  static std::unique_ptr<HloModule> CreateNewModule(
+      const string& name = TestName());
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
