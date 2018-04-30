@@ -92,6 +92,8 @@ RingReducer::RingReducer(CollectiveExecutor* col_exec, const DeviceMgr* dev_mgr,
   CHECK_GT(num_subdivs_, 0);
 }
 
+RingReducer::~RingReducer() { group_size_tensor_ready_.WaitForNotification(); }
+
 string RingReducer::TensorDebugString(Tensor tensor) {
   const DeviceBase::GpuDeviceInfo* gpu_device_info =
       ctx_->device()->tensorflow_gpu_device_info();
@@ -426,17 +428,20 @@ bool RingReducer::RunAsyncParts() {
     // is done.
     bool dispatched = false;  // true if async action was initiated
     do {
-      if (aborted) break;
+      if (aborted) {
+        // Requeue this RingField to be counted off below.
+        ready_queue.Enqueue(rf);
+        break;
+      }
       switch (rf->action) {
         case RF_INIT:
           if (rf->do_recv) {
             rf->action = RF_RECV;
             auto requeue = [this, rf, &ready_queue, &aborted](Status s) {
-              if (!s.ok()) {
-                aborted = true;
-                StartAbort(s);
-              }
+              const bool bad_status = !s.ok();
+              if (bad_status) aborted = true;
               ready_queue.Enqueue(rf);
+              if (bad_status) StartAbort(s);
             };
             DispatchRecv(rf, requeue);
             dispatched = true;
@@ -481,11 +486,10 @@ bool RingReducer::RunAsyncParts() {
           if (rf->do_send) {
             rf->action = RF_SEND;
             auto send_complete = [this, rf, &ready_queue, &aborted](Status s) {
-              if (!s.ok()) {
-                aborted = true;
-                StartAbort(s);
-              }
+              const bool bad_status = !s.ok();
+              if (bad_status) aborted = true;
               ready_queue.Enqueue(rf);
+              if (bad_status) StartAbort(s);
             };
             DispatchSend(rf, send_complete);
             dispatched = true;

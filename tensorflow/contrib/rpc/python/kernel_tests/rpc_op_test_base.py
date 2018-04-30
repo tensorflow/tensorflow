@@ -93,40 +93,39 @@ class RpcOpTestBase(object):
       response_values = sess.run(response_tensors)
     self.assertAllEqual(response_values.shape, [0])
 
-  def testInvalidAddresses(self):
+  def testInvalidMethod(self):
+    for method in [
+        '/InvalidService.IncrementTestShapes',
+        self.get_method_name('InvalidMethodName')
+    ]:
+      with self.test_session() as sess:
+        with self.assertRaisesOpError(self.invalid_method_string):
+          sess.run(self.rpc(method=method, address=self._address, request=''))
+
+        _, status_code_value, status_message_value = sess.run(
+            self.try_rpc(method=method, address=self._address, request=''))
+        self.assertEqual(errors.UNIMPLEMENTED, status_code_value)
+        self.assertTrue(
+            self.invalid_method_string in status_message_value.decode('ascii'))
+
+  def testInvalidAddress(self):
+    # This covers the case of address='' and address='localhost:293874293874'
+    address = 'unix:/tmp/this_unix_socket_doesnt_exist_97820348!!@'
     with self.test_session() as sess:
-      with self.assertRaisesOpError(self.invalid_method_string):
-        sess.run(
-            self.rpc(
-                method='/InvalidService.IncrementTestShapes',
-                address=self._address,
-                request=''))
-
-      with self.assertRaisesOpError(self.invalid_method_string):
-        sess.run(
-            self.rpc(
-                method=self.get_method_name('InvalidMethodName'),
-                address=self._address,
-                request=''))
-
-      # This also covers the case of address=''
-      # and address='localhost:293874293874'
       with self.assertRaises(errors.UnavailableError):
         sess.run(
             self.rpc(
                 method=self.get_method_name('IncrementTestShapes'),
-                address='unix:/tmp/this_unix_socket_doesnt_exist_97820348!!@',
+                address=address,
                 request=''))
-
-      # Test invalid method with the TryRpc op
       _, status_code_value, status_message_value = sess.run(
           self.try_rpc(
-              method=self.get_method_name('InvalidMethodName'),
-              address=self._address,
+              method=self.get_method_name('IncrementTestShapes'),
+              address=address,
               request=''))
-      self.assertEqual(errors.UNIMPLEMENTED, status_code_value)
+      self.assertEqual(errors.UNAVAILABLE, status_code_value)
       self.assertTrue(
-          self.invalid_method_string in status_message_value.decode('ascii'))
+          self.connect_failed_string in status_message_value.decode('ascii'))
 
   def testAlwaysFailingMethod(self):
     with self.test_session() as sess:
@@ -137,6 +136,18 @@ class RpcOpTestBase(object):
       self.assertEqual(response_tensors.shape, ())
       with self.assertRaisesOpError(I_WARNED_YOU):
         sess.run(response_tensors)
+
+      response_tensors, status_code, status_message = self.try_rpc(
+          method=self.get_method_name('AlwaysFailWithInvalidArgument'),
+          address=self._address,
+          request='')
+      self.assertEqual(response_tensors.shape, ())
+      self.assertEqual(status_code.shape, ())
+      self.assertEqual(status_message.shape, ())
+      status_code_value, status_message_value = sess.run((status_code,
+                                                          status_message))
+      self.assertEqual(errors.INVALID_ARGUMENT, status_code_value)
+      self.assertTrue(I_WARNED_YOU in status_message_value.decode('ascii'))
 
   def testSometimesFailingMethodWithManyRequests(self):
     with self.test_session() as sess:
@@ -197,8 +208,7 @@ class RpcOpTestBase(object):
               address=self._address,
               request=request_tensors) for _ in range(10)
       ]
-      # Launch parallel 10 calls to the RpcOp, each containing
-      # 20 rpc requests.
+      # Launch parallel 10 calls to the RpcOp, each containing 20 rpc requests.
       many_response_values = sess.run(many_response_tensors)
     self.assertEqual(10, len(many_response_values))
     for response_values in many_response_values:

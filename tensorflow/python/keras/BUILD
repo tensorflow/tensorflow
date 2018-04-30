@@ -175,6 +175,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/data",
         "@six_archive//:six",
     ],
 )
@@ -187,6 +188,7 @@ py_library(
         "_impl/keras/layers/convolutional.py",
         "_impl/keras/layers/convolutional_recurrent.py",
         "_impl/keras/layers/core.py",
+        "_impl/keras/layers/cudnn_recurrent.py",
         "_impl/keras/layers/embeddings.py",
         "_impl/keras/layers/local.py",
         "_impl/keras/layers/merge.py",
@@ -205,8 +207,10 @@ py_library(
     deps = [
         ":engine",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
@@ -332,6 +336,7 @@ py_test(
     size = "large",
     srcs = ["_impl/keras/applications/densenet_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nomsan"],  # times out, http://b/78650237
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -380,6 +385,7 @@ py_test(
     size = "large",
     srcs = ["_impl/keras/applications/nasnet_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nomsan"],  # times out, http://b/78573625
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -471,6 +477,19 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
+)
+
+cuda_py_test(
+    name = "cudnn_recurrent_test",
+    size = "large",
+    srcs = ["_impl/keras/layers/cudnn_recurrent_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 2,
 )
 
 py_test(
@@ -625,7 +644,10 @@ py_test(
     size = "medium",
     srcs = ["_impl/keras/layers/wrappers_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "noasan",  # http://b/78599823
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -835,13 +857,14 @@ py_test(
 
 py_test(
     name = "saving_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/engine/saving_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

@@ -29,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
 
 // A GPU memory allocator that implements a 'best-fit with coalescing'
@@ -52,7 +50,7 @@ class GPUBFCAllocator : public BFCAllocator {
 class GPUMemAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
-  explicit GPUMemAllocator(perftools::gputools::StreamExecutor* stream_exec)
+  explicit GPUMemAllocator(se::StreamExecutor* stream_exec)
       : stream_exec_(stream_exec) {
     CHECK(stream_exec_ != nullptr);
   }
@@ -68,13 +66,13 @@ class GPUMemAllocator : public SubAllocator {
 
   void Free(void* ptr, size_t num_bytes) override {
     if (ptr != nullptr) {
-      gpu::DeviceMemoryBase gpu_ptr(ptr);
+      se::DeviceMemoryBase gpu_ptr(ptr);
       stream_exec_->Deallocate(&gpu_ptr);
     }
   }
 
  private:
-  perftools::gputools::StreamExecutor* stream_exec_;  // not owned, non-null
+  se::StreamExecutor* stream_exec_;  // not owned, non-null
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);
 };

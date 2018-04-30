@@ -170,7 +170,7 @@ def StreamingFilesDataset(files,
         args=[source_handle],
         Tout=[dtypes.string],
         f=LoadingFunc,
-        target='/job:%s/replica:0/task:0/cpu:0' % file_reader_job)
+        target='/job:%s/replica:0/task:0/cpu:0' % file_reader_job)[0]
 
   with ops.device('/job:%s' % worker_job):
     output_dataset = dataset_ops.Dataset.range(2).repeat().map(

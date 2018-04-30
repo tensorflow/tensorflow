@@ -32,7 +32,7 @@ class RingReducer {
               const CollectiveParams& col_params, const string& exec_key,
               int64 step_id, const Tensor* input, Tensor* output);
 
-  virtual ~RingReducer() {}
+  virtual ~RingReducer();
 
   void Run(StatusCallback done);
 

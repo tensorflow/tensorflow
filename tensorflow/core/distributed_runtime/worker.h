@@ -52,7 +52,8 @@ class Worker : public WorkerInterface {
                                 CreateWorkerSessionResponse* response,
                                 StatusCallback done) override;
 
-  void DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
+  void DeleteWorkerSessionAsync(CallOptions* opts,
+                                const DeleteWorkerSessionRequest* request,
                                 DeleteWorkerSessionResponse* response,
                                 StatusCallback done) override;
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import copy
+import os
 import signal
 import threading
 import time
@@ -31,6 +32,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import session_support
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_context
@@ -1551,7 +1553,7 @@ class _OutfeedHostCallHook(session_run_hook.SessionRunHook):
 
 
 class ExamplesPerSecondHook(basic_session_run_hooks.StepCounterHook):
-  """Count examples during runtime."""
+  """"Calculate and report the number of examples/sec during training."""
 
   def __init__(self,
                batch_size,
@@ -2037,6 +2039,11 @@ class TPUEstimator(estimator_lib.Estimator):
           host_ops = host_call.create_tpu_hostcall()
           if host_ops is None:
             host_ops = []
+
+          shutdown_hooks = []
+          if os.environ.get('TF_TPU_GRACEFUL_SHUTDOWN', '0') != '0':
+            shutdown_hooks.append(session_support.GracefulShutdownHook())
+
           hooks = [
               TPUInfeedOutfeedSessionHook(
                   ctx,
@@ -2044,8 +2051,8 @@ class TPUEstimator(estimator_lib.Estimator):
                   host_ops,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator)),
-              ExamplesPerSecondHook(ctx.global_batch_size,
-                                    output_dir=self.model_dir),
+              ExamplesPerSecondHook(
+                  ctx.global_batch_size, output_dir=self.model_dir),
               InstallSignalHandlerHook(),
               training.LoggingTensorHook(
                   {
@@ -2053,7 +2060,18 @@ class TPUEstimator(estimator_lib.Estimator):
                       'step': training.get_global_step()
                   },
                   every_n_secs=30)
-          ] + input_hooks
+          ] + input_hooks + shutdown_hooks
+
+          chief_hooks = []
+          if (self._config.save_checkpoints_secs or
+              self._config.save_checkpoints_steps):
+            chief_hooks.append(
+                training.CheckpointSaverHook(
+                    self.model_dir,
+                    save_secs=self._config.save_checkpoints_secs,
+                    save_steps=self._config.save_checkpoints_steps,
+                    steps_per_run=self._config.tpu_config.iterations_per_loop,
+                    scaffold=scaffold))
           summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
           with ops.control_dependencies([loss]):
             update_ops = _sync_variables_ops()
@@ -2067,6 +2085,7 @@ class TPUEstimator(estimator_lib.Estimator):
           return model_fn_lib.EstimatorSpec(
               mode,
               loss=loss,
+              training_chief_hooks=chief_hooks,
               training_hooks=hooks,
               train_op=train_op,
               scaffold=scaffold)

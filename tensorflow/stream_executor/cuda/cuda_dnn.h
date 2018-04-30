@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 class CUDAExecutor;
@@ -49,7 +48,7 @@ class CudnnSupport : public dnn::DnnSupport {
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
-      int num_layers, int hidden_size, int input_size,
+      int num_layers, int hidden_size, int input_size, int batch_size,
       dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
       dnn::RnnMode rnn_mode, dnn::DataType data_type,
       const dnn::AlgorithmConfig& algorithm_config, float dropout, uint64 seed,
@@ -810,7 +809,6 @@ class CudnnSupport : public dnn::DnnSupport {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_

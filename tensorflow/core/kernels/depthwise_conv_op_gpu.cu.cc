@@ -1708,8 +1708,7 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   // Initialize the results to 0.
   int num_filter_backprop =
       args.filter_rows * args.filter_cols * args.out_depth;
-  perftools::gputools::DeviceMemoryBase filter_bp_ptr(filter_backprop,
-                                                      num_filter_backprop);
+  se::DeviceMemoryBase filter_bp_ptr(filter_backprop, num_filter_backprop);
   stream->ThenMemset32(&filter_bp_ptr, 0, num_filter_backprop * sizeof(T));
 
   if (args.filter_rows == 3 && args.filter_cols == 3) {

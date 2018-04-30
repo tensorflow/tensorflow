@@ -86,6 +86,16 @@ TF_CAPI_EXPORT extern TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
     TF_Graph* graph, const char* file_path, int batch_size,
     unsigned char is_mnist, TF_Status* status);
 
+// On success, dequeues a tensor from a TF-managed FifoQueue given by
+// `tensor_id`, associated with `session`. Caller must call TF_DeleteTensor()
+// over the returned tensor. If the queue is empty, this call is blocked.
+//
+// Tensors are enqueued via the corresponding TF enqueue op.
+// TODO(hongm): Add support for `timeout_ms`.
+TF_CAPI_EXPORT extern TF_Tensor* TF_DequeueNamedTensor(TF_Session* session,
+                                                       int tensor_id,
+                                                       TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

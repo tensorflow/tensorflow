@@ -94,6 +94,7 @@ def _Conv3DGrad(op, grad):
           array_ops.shape(op.inputs[0]),
           op.inputs[1],
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format),
@@ -101,6 +102,7 @@ def _Conv3DGrad(op, grad):
           op.inputs[0],
           array_ops.shape(op.inputs[1]),
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)
@@ -116,12 +118,14 @@ def _Conv3DBackpropInputGrad(op, grad):
           grad,
           array_ops.shape(op.inputs[1]),
           op.inputs[2],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format),
       nn_ops.conv3d(
           grad,
           op.inputs[1],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)
@@ -136,12 +140,14 @@ def _Conv3DBackpropFilterGrad(op, grad):
           array_ops.shape(op.inputs[0]),
           grad,
           op.inputs[2],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format), None,
       nn_ops.conv3d(
           op.inputs[0],
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)

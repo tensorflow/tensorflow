@@ -339,8 +339,8 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
   return std::move(arguments);
 }
 
-Status VerifyHloModule(const perftools::gputools::Platform& platform,
-                       HloModule* const module, bool allow_mixed_precision) {
+Status VerifyHloModule(const se::Platform& platform, HloModule* const module,
+                       bool allow_mixed_precision) {
   return HloVerifier(allow_mixed_precision).Run(module).status();
 }
 

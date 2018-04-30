@@ -45,8 +45,7 @@ class XlaDeviceAllocator : public Allocator {
 // Helper class for managing data transfers between host and XLA devices.
 class XlaTransferManager {
  public:
-  explicit XlaTransferManager(perftools::gputools::Stream* stream,
-                              xla::LocalClient* client,
+  explicit XlaTransferManager(se::Stream* stream, xla::LocalClient* client,
                               bool transfer_as_literal);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
@@ -54,7 +53,7 @@ class XlaTransferManager {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done);
-  perftools::gputools::Stream* stream() const { return stream_; }
+  se::Stream* stream() const { return stream_; }
 
  private:
   Status TransferLiteralToDevice(const Tensor& host_tensor,
@@ -64,7 +63,7 @@ class XlaTransferManager {
 
   // Stream obtained from a Device, used to transfer tensors between
   // CPU and device.
-  perftools::gputools::Stream* stream_;
+  se::Stream* stream_;
   // For the underlying memory allocator and XLA's TransferManager.
   xla::LocalClient* client_;
   // Transfer manager, for marshalling data to and from the device.
@@ -78,8 +77,8 @@ class XlaTransferManager {
 // wraps the methods in XlaTransferManager.
 class XlaDeviceContext : public DeviceContext {
  public:
-  explicit XlaDeviceContext(perftools::gputools::Stream* stream,
-                            xla::LocalClient* client, bool transfer_as_literal);
+  explicit XlaDeviceContext(se::Stream* stream, xla::LocalClient* client,
+                            bool transfer_as_literal);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,
@@ -87,9 +86,7 @@ class XlaDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
-  perftools::gputools::Stream* stream() const override {
-    return manager_.stream();
-  }
+  se::Stream* stream() const override { return manager_.stream(); }
 
  private:
   XlaTransferManager manager_;

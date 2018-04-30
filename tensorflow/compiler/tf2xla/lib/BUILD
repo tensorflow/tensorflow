@@ -91,6 +91,7 @@ cc_library(
 xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
+    tags = ["noasan"],  # sometimes times out, http://b/78650012
     deps = [
         ":triangular_solve",
         "//tensorflow/compiler/xla:array2d",

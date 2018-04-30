@@ -59,18 +59,6 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 
 )"
 },
-// broadcast size-one dimensions
-{
-"BroadcastDimOne",
-R"(HloModule broadcast_dim_one_module
-
-ENTRY %broadcast-dim-one () -> f32[2,2] {
-  %constant = f32[1,2]{1,0} constant(f32[1,2] { { 1.1, 2.2 } })
-  ROOT %broadcast-dim-one = f32[2,2]{1,0} broadcast-dim-one(f32[1,2]{1,0} %constant)
-}
-
-)"
-},
 // pred constant
 {
 "ConstantPred",

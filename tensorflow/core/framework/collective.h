@@ -79,6 +79,8 @@ struct CollInstanceParams {
   std::vector<string> device_names;
   // Task name prefix of corresponding device name.
   std::vector<string> task_names;
+  // True if every task has the same number of devices.
+  bool same_num_devices_per_task = false;
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -97,12 +99,11 @@ struct CollectiveParams {
   CollInstanceParams instance;
   CollTaskParams task;
 
-  string name;       // node name used only for log or error messages
-  int default_rank;  // index of this op within device_names
-  bool is_source;    // broadcast only
+  string name;             // node name used only for log or error messages
+  int default_rank;        // index of this op within device_names
+  bool is_source = false;  // broadcast only
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
-  std::vector<int> subdiv_source_rank;
   std::unique_ptr<OpKernel> merge_op;  // reduction only
   std::unique_ptr<OpKernel> final_op;  // reduction only
   string ToString() const;
@@ -284,12 +285,14 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
 };
 
-// Interface of a helper object that provices a CollectiveExecutor with
+// Interface of a helper object that provides a CollectiveExecutor with
 // all of the remote access it needs.
 class CollectiveRemoteAccess : public PeerAccessInterface,
                                public DeviceResolverInterface {
  public:
   virtual ~CollectiveRemoteAccess() {}
+
+  virtual BufRendezvous* buf_rendezvous() = 0;
 };
 
 // A per-step version of CollectiveRemoteAccess that cleans up outstanding

@@ -108,10 +108,8 @@ class LayoutOptimizerTest : public GrapplerTest {
 
     TensorShape filter_shape(
         {filter_size, filter_size, input_depth, filter_count});
-    Tensor filter_data(DT_FLOAT, filter_shape);
-    test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
-        ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
+        ops::Variable(s->WithOpName("Filter"), filter_shape, DT_FLOAT);
 
     int output_height = input_height;
     int output_width = input_width;
@@ -141,6 +139,10 @@ class LayoutOptimizerTest : public GrapplerTest {
     Tensor tensor;
     CHECK(tensor.FromProto(node.attr().at({"value"}).tensor()));
     return tensor;
+  }
+
+  TensorShape GetAttrShape(const NodeDef& node) {
+    return TensorShape(node.attr().at({"shape"}).shape());
   }
 
   Output SimpleFusedBatchNormGrad(tensorflow::Scope* s, bool is_training) {
@@ -200,9 +202,12 @@ TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
   test::ExpectTensorEqual<int>(input_sizes_expected, input_sizes);
 
   if (gpu_available_) {
+    TensorShape filter_shape = GetAttrShape(*node_map.GetNode("Filter"));
+    Tensor filter_data = GenerateRandomTensor<DT_FLOAT>(filter_shape);
     std::vector<string> fetch = {"Fetch"};
-    auto tensors_expected = EvaluateNodes(item.graph, fetch);
-    auto tensors = EvaluateNodes(output, fetch);
+    auto tensors_expected =
+        EvaluateNodes(item.graph, fetch, {{"Filter", filter_data}});
+    auto tensors = EvaluateNodes(output, fetch, {{"Filter", filter_data}});
     EXPECT_EQ(1, tensors_expected.size());
     EXPECT_EQ(1, tensors.size());
     test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
@@ -1174,7 +1179,7 @@ TEST_F(LayoutOptimizerTest, DevicePlacement) {
   NodeMap node_map(&output);
   auto vec_permute =
       node_map.GetNode("s-0-0-VecPermuteNCHWToNHWC-LayoutOptimizer");
-  EXPECT_TRUE(str_util::EndsWith(vec_permute->device(), "CPU:0"));
+  EXPECT_EQ(vec_permute->attr().at("_kernel").s(), "host");
 }
 }  // namespace
 }  // namespace grappler

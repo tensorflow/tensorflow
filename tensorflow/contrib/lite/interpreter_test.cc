@@ -887,15 +887,15 @@ class TestDelegate : public ::testing::Test {
         TfLiteIntArrayFree(nodes_to_separate);
         return kTfLiteOk;
       };
-      delegate_.CopyToBufferHandle = [](TfLiteDelegate* delegate,
-                                        TfLiteBufferHandle buffer_handle,
-                                        void* data, int size) -> TfLiteStatus {
+      delegate_.CopyToBufferHandle =
+          [](TfLiteDelegate* delegate, TfLiteBufferHandle buffer_handle,
+             void* data, size_t size) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };
       delegate_.CopyFromBufferHandle =
           [](TfLiteDelegate* delegate, TfLiteBufferHandle buffer_handle,
-             void* data, int size) -> TfLiteStatus {
+             void* data, size_t size) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };

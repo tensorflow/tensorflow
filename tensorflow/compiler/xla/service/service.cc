@@ -54,8 +54,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrCat;
 using ::xla::source_map_util::InvalidParameterArgument;
@@ -95,15 +93,12 @@ tensorflow::Status RecordResult(const ShapedBuffer& result,
 
 }  // namespace
 
-ServiceOptions& ServiceOptions::set_platform(
-    perftools::gputools::Platform* platform) {
+ServiceOptions& ServiceOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
   return *this;
 }
 
-perftools::gputools::Platform* ServiceOptions::platform() const {
-  return platform_;
-}
+se::Platform* ServiceOptions::platform() const { return platform_; }
 
 ServiceOptions& ServiceOptions::set_number_of_replicas(int number_of_replicas) {
   number_of_replicas_ = number_of_replicas;
@@ -123,7 +118,7 @@ int ServiceOptions::intra_op_parallelism_threads() const {
 }
 
 /* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   ServiceOptions default_options;
   default_options.set_platform(platform);
   return NewService(default_options);
@@ -131,7 +126,7 @@ int ServiceOptions::intra_op_parallelism_threads() const {
 
 /* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
     const ServiceOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   std::unique_ptr<Backend> execute_backend;
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
@@ -235,8 +230,7 @@ tensorflow::Status Service::ValidateResultShapeWithLayout(
 StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
 Service::ResolveAndValidateArguments(
     tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-        stream_executors) {
+    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors) {
   CHECK_EQ(options_.number_of_replicas(), stream_executors.size());
   std::vector<std::vector<const ShapedBuffer*>> replicated_arguments;
   replicated_arguments.resize(options_.number_of_replicas());
@@ -349,8 +343,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     std::vector<VersionedComputationHandle> versioned_handles,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    Backend* backend,
-    std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
+    Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
     DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << Printf("BuildExecutable on service %p", this);
 
@@ -412,8 +405,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const std::vector<const HloModuleProto*>& module_protos,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    Backend* backend,
-    std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
+    Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
     DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << Printf("BuildExecutable on service %p", this);
 
@@ -493,7 +485,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
     const VersionedComputationHandle& versioned_handle,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-    perftools::gputools::StreamExecutor* executor, ExecutionProfile* profile,
+    se::StreamExecutor* executor, ExecutionProfile* profile,
     DeviceMemoryAllocator* device_allocator) {
   std::shared_ptr<Executable> executable =
       compilation_cache_.LookUp(versioned_handle, *module_config);
@@ -541,7 +533,7 @@ Service::ExecuteParallelAndRegisterResult(
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
   std::vector<Pool<se::Stream>::SmartPtr> streams;
-  std::vector<std::unique_ptr<perftools::gputools::Timer>> timers;
+  std::vector<std::unique_ptr<se::Timer>> timers;
 
   // Global data handles for the computation results, one for each computation.
   std::vector<GlobalDataHandle> result_handles;
@@ -558,15 +550,14 @@ Service::ExecuteParallelAndRegisterResult(
     // Stream executors for the replicas of the current computation.
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
-    std::vector<std::unique_ptr<ShapedBuffer>> result_buffers;
+    std::vector<ScopedShapedBuffer> result_buffers;
     for (int64 replica = 0; replica < replicas.size(); ++replica) {
       TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
 
       if (replica == 0 && profile != nullptr) {
-        timers.emplace_back(
-            new perftools::gputools::Timer(streams.back()->parent()));
+        timers.emplace_back(new se::Timer(streams.back()->parent()));
         streams.back()
             ->InitTimer(timers.back().get())
             .ThenStartTimer(timers.back().get());
@@ -583,7 +574,6 @@ Service::ExecuteParallelAndRegisterResult(
       ExecutableRunOptions options;
       options.set_stream(streams.back().get());
       options.set_allocator(backend->memory_allocator());
-      options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
       options.set_intra_op_thread_pool(
           backend->eigen_intra_op_thread_pool_device());
       options.set_device_assignment(&device_assignment);
@@ -591,7 +581,7 @@ Service::ExecuteParallelAndRegisterResult(
                                               backend->StreamBorrower());
 
       // Asynchronously launch the computation.
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result,
+      TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                           executables[i]->ExecuteAsyncOnStream(
                               &run_options, arguments[i][replica]));
 
@@ -697,12 +687,12 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_stream(stream.get());
     options.set_device_ordinal(stream->parent()->device_ordinal());
     options.set_allocator(backend->memory_allocator());
-    options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
-    run_options.emplace_back(options, backend->StreamBorrower(),
-                             backend->inter_op_thread_pool());
+    run_options.emplace_back(
+        options, backend->StreamBorrower(),
+        /*xla_intra_op_thread_pool=*/backend->eigen_intra_op_thread_pool());
   }
 
   if (options_.number_of_replicas() == 1) {
@@ -734,9 +724,9 @@ tensorflow::Status Service::SetReturnValue(const SetReturnValueRequest* arg,
   return computation->SetReturnValue(arg->operand());
 }
 
-StatusOr<std::vector<perftools::gputools::StreamExecutor*>>
-Service::GetExecutors(const ExecutionOptions& execution_options,
-                      int64 requests_size, int64 request_index) const {
+StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
+    const ExecutionOptions& execution_options, int64 requests_size,
+    int64 request_index) const {
   if (execution_options.device_handles().empty()) {
     return FailedPrecondition(
         "device handles must be given to execute parallel computations");
@@ -748,7 +738,7 @@ Service::GetExecutors(const ExecutionOptions& execution_options,
         "handles.",
         requests_size, request_index, execution_options.device_handles_size());
   }
-  std::vector<perftools::gputools::StreamExecutor*> executors;
+  std::vector<se::StreamExecutor*> executors;
   for (const auto& device_handle : execution_options.device_handles()) {
     TF_ASSIGN_OR_RETURN(auto replicas,
                         Replicas(*execute_backend_, device_handle));
@@ -780,7 +770,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   VLOG(1) << "running execute-parallel request: " << arg->ShortDebugString();
 
   std::vector<std::vector<std::vector<const ShapedBuffer*>>> all_arguments;
-  std::vector<std::vector<perftools::gputools::StreamExecutor*>> all_executors;
+  std::vector<std::vector<se::StreamExecutor*>> all_executors;
   std::vector<VersionedComputationHandle> versioned_handles;
   std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
   std::vector<string> computation_names;
@@ -891,7 +881,7 @@ tensorflow::Status Service::ExecuteGraphParallel(
   VLOG(1) << "running execute-graph-parallel request";
 
   std::vector<std::vector<std::vector<const ShapedBuffer*>>> all_arguments;
-  std::vector<std::vector<perftools::gputools::StreamExecutor*>> all_executors;
+  std::vector<std::vector<se::StreamExecutor*>> all_executors;
   std::vector<const HloModuleProto*> module_protos;
   std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
   std::vector<string> computation_names;
@@ -1243,20 +1233,19 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
     streams.push_back(std::move(stream));
   }
 
-  std::vector<std::unique_ptr<ShapedBuffer>> result_buffers;
+  std::vector<ScopedShapedBuffer> result_buffers;
   for (size_t i = 0; i < streams.size(); ++i) {
     const auto& stream = streams[i];
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_allocator(execute_backend_->memory_allocator());
-    options.set_inter_op_thread_pool(execute_backend_->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         execute_backend_->eigen_intra_op_thread_pool_device());
 
     ServiceExecutableRunOptions service_options(
         options, execute_backend_->StreamBorrower());
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> this_result_buffer,
+    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer this_result_buffer,
                         executable->ExecuteAsyncOnStream(
                             &service_options, replicated_arguments[i]));
 
@@ -1356,16 +1345,16 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
   }
 
   // Allocate memory in each replica and transfer the data to all replicas.
-  std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers;
+  std::vector<ScopedShapedBuffer> replicated_buffers;
   for (se::StreamExecutor* executor : replicas) {
     TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<ShapedBuffer> shaped_buffer,
-        execute_backend_->transfer_manager()->AllocateShapedBuffer(
+        ScopedShapedBuffer shaped_buffer,
+        execute_backend_->transfer_manager()->AllocateScopedShapedBuffer(
             shape, execute_backend_->memory_allocator(),
             executor->device_ordinal()));
     TF_RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
-            executor, *literal, *shaped_buffer));
+            executor, *literal, shaped_buffer));
     replicated_buffers.emplace_back(std::move(shaped_buffer));
   }
   TF_ASSIGN_OR_RETURN(*result->mutable_data(),
@@ -1953,9 +1942,9 @@ DeviceHandle Service::SingleComputationDeviceHandle() const {
   return device_handle;
 }
 
-StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Service::Replicas(
+StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
     const Backend& backend, const DeviceHandle& device_handle) const {
-  std::vector<perftools::gputools::StreamExecutor*> replicas;
+  std::vector<se::StreamExecutor*> replicas;
   for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
     // From the computation placer, find out the device ids of the replicas for
     // the given device handle.

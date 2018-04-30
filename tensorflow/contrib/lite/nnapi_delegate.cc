@@ -278,6 +278,9 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_TANH:
         nn_op_type = ANEURALNETWORKS_TANH;
         break;
+      case tflite::BuiltinOperator_FLOOR:
+        nn_op_type = ANEURALNETWORKS_FLOOR;
+        break;
       case tflite::BuiltinOperator_LOGISTIC:
         nn_op_type = ANEURALNETWORKS_LOGISTIC;
         break;

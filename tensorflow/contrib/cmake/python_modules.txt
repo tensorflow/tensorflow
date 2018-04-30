@@ -129,7 +129,13 @@ tensorflow/contrib/boosted_trees/kernels
 tensorflow/contrib/boosted_trees/ops
 tensorflow/contrib/boosted_trees/proto
 tensorflow/contrib/boosted_trees/python
+tensorflow/contrib/boosted_trees/python/kernel_tests
 tensorflow/contrib/boosted_trees/python/ops
+tensorflow/contrib/boosted_trees/python/training
+tensorflow/contrib/boosted_trees/python/training/functions
+tensorflow/contrib/boosted_trees/python/utils
+tensorflow/contrib/checkpoint
+tensorflow/contrib/checkpoint/python
 tensorflow/contrib/cloud
 tensorflow/contrib/cloud/kernels
 tensorflow/contrib/cloud/ops
@@ -142,8 +148,11 @@ tensorflow/contrib/coder
 tensorflow/contrib/coder/kernels
 tensorflow/contrib/coder/ops
 tensorflow/contrib/coder/python
+tensorflow/contrib/coder/python/layers
 tensorflow/contrib/coder/python/ops
 tensorflow/contrib/compiler
+tensorflow/contrib/constrained_optimization
+tensorflow/contrib/constrained_optimization/python
 tensorflow/contrib/copy_graph
 tensorflow/contrib/copy_graph/python
 tensorflow/contrib/copy_graph/python/util
