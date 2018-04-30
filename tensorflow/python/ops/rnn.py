@@ -13,16 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""RNN helpers for TensorFlow models.
-
-
-@@bidirectional_dynamic_rnn
-@@dynamic_rnn
-@@raw_rnn
-@@static_rnn
-@@static_state_saving_rnn
-@@static_bidirectional_rnn
-"""
+"""RNN helpers for TensorFlow models."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

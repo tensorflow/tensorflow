@@ -121,7 +121,8 @@ def _MarkReachedOps(from_ops, reached_ops):
     if not reached_ops[op._id]:
       reached_ops[op._id] = True
       for output in op.outputs:
-        queue.extend(output.consumers())
+        if _IsBackpropagatable(output):
+          queue.extend(output.consumers())
 
 
 def _GatherInputs(to_ops, reached_ops):
@@ -163,16 +164,19 @@ def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
     colocate_gradients_with_ops: Python bool.  See docstring of gradients().
 
   Returns:
-    A tuple containing: (1) a list of integers indexed by operation id,
-    indicating the number of backprop inputs to this operation, and (2)
-    a ControlFlowState object which is not None if the ops between from_ops
-    and to_ops contain control flow loops.
+    A tuple containing: (1) the subset of to_ops ids reachable from from_ops
+    by a path of zero or more backpropagatable tensors, (2) a list of integers
+    indexed by operation id, indicating the number of backprop inputs to this
+    operation, and (3) a ControlFlowState object which is not None if the ops
+    between from_ops and to_ops contain control flow loops.
   """
   # Mark reachable ops from from_ops.
   reached_ops = [False] * (graph._last_id + 1)
-  for op in to_ops:
-    reached_ops[op._id] = True
   _MarkReachedOps(from_ops, reached_ops)
+  # reached_ops[X] iff X is reachable from from_ops by a path of zero or more
+  # backpropagatable tensors.
+
+  reachable_to_ops = set(op._id for op in to_ops if reached_ops[op._id])  # pylint: disable=protected-access
 
   # Mark between ops.
   between_ops = [False] * (graph._last_id + 1)
@@ -189,6 +193,8 @@ def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
       reached_ops[op._id] = False
       for inp in op.inputs:
         queue.append(inp.op)
+  # between_ops[X] iff X is on a path of zero or more backpropagatable tensors
+  # between from_ops and to_ops
 
   # 'loop_state' is None if there are no while loops.
   loop_state = control_flow_ops.MaybeCreateControlFlowState(
@@ -201,7 +207,7 @@ def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
       if between_ops[x.op._id]:
         pending_count[x.op._id] += 1
 
-  return pending_count, loop_state
+  return reachable_to_ops, pending_count, loop_state
 
 
 def _AsList(x):
@@ -292,6 +298,13 @@ def _IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
                               dtypes.complex64, dtypes.complex128)
+
+
+def _IsBackpropagatable(tensor):
+  if _IsTrainable(tensor):
+    return True
+  dtype = dtypes.as_dtype(tensor.dtype)
+  return dtype.base_dtype in (dtypes.bfloat16, dtypes.resource, dtypes.variant)
 
 
 def _VerifyGeneratedGradients(grads, op):
@@ -460,6 +473,9 @@ def gradients(ys,
   backpropagation stops at both `tf.stop_gradient` nodes and nodes in
   `stop_gradients`, whichever is encountered first.
 
+  All integer tensors are considered constant with respect to all `xs`, as if
+  they were included in `stop_gradients`.
+
   Args:
     ys: A `Tensor` or list of tensors to be differentiated.
     xs: A `Tensor` or list of tensors to be used for differentiation.
@@ -539,7 +555,7 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
     stop_gradient_ops = [t.op for t in stop_gradients]
-    pending_count, loop_state = _PendingCount(
+    reachable_to_ops, pending_count, loop_state = _PendingCount(
         ops.get_default_graph(), to_ops, from_ops, colocate_gradients_with_ops)
 
     # Iterate over the collected ops.
@@ -564,7 +580,7 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
       # another output's gradient.
       # pylint: disable=protected-access
       ready = (pending_count[op._id] == 0)
-      if ready and op._id not in to_ops_set:
+      if ready and op._id not in to_ops_set and op._id in reachable_to_ops:
         to_ops_set.add(op._id)
         queue.append(op)
       # pylint: enable=protected-access

@@ -970,10 +970,8 @@ class GradientBoostedDecisionTreeModel(object):
       # Stack all the inputs to one tensor per type.
       # This is a workaround for the slowness of graph building in tf.cond.
       # See (b/36554864).
-      split_sizes = array_ops.stack([
-          array_ops.shape(partition_id)[0]
-          for partition_id in partition_ids_list
-      ])
+      split_sizes = array_ops.reshape(
+          array_ops.shape_n(partition_ids_list), [-1])
       partition_ids = array_ops.concat(partition_ids_list, axis=0)
       gains = array_ops.concat(gains_list, axis=0)
       split_infos = array_ops.concat(split_info_list, axis=0)

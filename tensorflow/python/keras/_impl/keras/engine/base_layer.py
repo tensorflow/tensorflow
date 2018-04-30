@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
-import re
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -35,6 +34,10 @@ from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.utils import generic_utils
+from tensorflow.python.keras._impl.keras.utils import tf_utils
+# A module that only depends on `keras.layers` import these from here.
+from tensorflow.python.keras._impl.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
+from tensorflow.python.keras._impl.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -177,7 +180,8 @@ class Layer(checkpointable.CheckpointableBase):
   def _init_set_name(self, name, zero_based=True):
     if not name:
       self._name = unique_layer_name(
-          to_snake_case(self.__class__.__name__), zero_based=zero_based)
+          generic_utils.to_snake_case(self.__class__.__name__),
+          zero_based=zero_based)
     else:
       self._name = name
 
@@ -318,7 +322,7 @@ class Layer(checkpointable.CheckpointableBase):
 
     # Requesting input-conditional updates.
     inputs = nest.flatten(inputs)
-    reachable = get_reachable_from_inputs(inputs, self.updates)
+    reachable = tf_utils.get_reachable_from_inputs(inputs, self.updates)
     updates = []
     for update in self.updates:
       if update in reachable:
@@ -419,7 +423,7 @@ class Layer(checkpointable.CheckpointableBase):
     # The losses we want to return will be part of this set.
     # To avoid unnecessary work, we stop the search in case all of
     # `self.losses` have been retrieved.
-    reachable = get_reachable_from_inputs(inputs, self.losses)
+    reachable = tf_utils.get_reachable_from_inputs(inputs, self.losses)
     losses = []
     for loss in self.losses:
       if loss in reachable:
@@ -639,7 +643,7 @@ class Layer(checkpointable.CheckpointableBase):
       if not hasattr(self, '_call_fn_args'):
         self._call_fn_args = estimator_util.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
-          not is_all_none(previous_mask)):
+          not generic_utils.is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly pass
         # to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
@@ -726,7 +730,16 @@ class Layer(checkpointable.CheckpointableBase):
     if hasattr(self, '_initial_weights') and self._initial_weights is not None:
       self.set_weights(self._initial_weights)
       del self._initial_weights
+    self._post_build_cleanup()
     return outputs
+
+  def _post_build_cleanup(self):
+    """Hooks to run after all sub-Layers are built."""
+    # Note that in addition to Layer.__call__, this method is called by Model
+    # after building a graph network (which skips __call__). It should be called
+    # when possible if self.built may have switched from False to True, and is
+    # idempotent.
+    pass  # No-op for Layers which don't override this method.
 
   def apply(self, inputs, *args, **kwargs):
     """Apply the layer on a input.
@@ -1606,9 +1619,9 @@ class Node(object):
     # Following 2 properties: input and output shapes.
 
     # List of shape tuples, shapes of input_tensors.
-    self.input_shapes = [static_shape(x) for x in input_tensors]
+    self.input_shapes = [backend.int_shape(x) for x in input_tensors]
     # List of shape tuples, shapes of output_tensors.
-    self.output_shapes = [static_shape(x) for x in output_tensors]
+    self.output_shapes = [backend.int_shape(x) for x in output_tensors]
 
     # Optional keyword arguments to layer's `call`.
     self.arguments = arguments
@@ -1669,91 +1682,6 @@ class DeferredTensor(object):
                                                         self.dtype.name)
 
 
-def shape_type_conversion(fn):
-  """Decorator that handles tuple/TensorShape conversion.
-
-  Used in `compute_output_shape` and `build`.
-
-  Arguments:
-    fn: function to wrap.
-
-  Returns:
-    Wrapped function.
-  """
-
-  def wrapper(instance, input_shape):
-    if input_shape is not None:
-      if isinstance(input_shape, list):
-        input_shape = [
-            tuple(tensor_shape.TensorShape(x).as_list()) for x in input_shape]
-      else:
-        input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
-    output_shape = fn(instance, input_shape)
-    if output_shape is not None:
-      if isinstance(output_shape, list):
-        return [tensor_shape.TensorShape(x) for x in output_shape]
-      return tensor_shape.TensorShape(output_shape)
-
-  return wrapper
-
-
-def object_list_uid(object_list):
-  """Creates a single string from object ids."""
-  object_list = nest.flatten(object_list)
-  return ', '.join([str(abs(id(x))) for x in object_list])
-
-
-def static_shape(x):
-  """Get the static shape of a Tensor, or None if it is unavailable."""
-  if x is None:
-    return None
-  try:
-    return tuple(x.get_shape().as_list())
-  except ValueError:
-    return None
-
-
-def get_reachable_from_inputs(inputs, targets=None):
-  """Returns the set of tensors/ops reachable from `inputs`.
-
-  Stops if all targets have been found (target is optional).
-
-  Only valid in Symbolic mode, not Eager mode.
-
-  Args:
-    inputs: List of tensors.
-    targets: List of tensors.
-
-  Returns:
-    A set of tensors reachable from the inputs (includes the inputs themselves).
-  """
-  reachable = set(inputs)
-  if targets:
-    targets = set(targets)
-  queue = inputs[:]
-
-  while queue:
-    x = queue.pop()
-    if isinstance(x, ops.Operation):
-      outputs = x.outputs[:] or []
-      outputs += x._control_outputs
-    elif isinstance(x, ops.Tensor):
-      outputs = x.consumers()
-    elif isinstance(x, tf_variables.Variable):
-      outputs = [x.op]
-    else:
-      raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
-
-    for y in outputs:
-      if y not in reachable:
-        reachable.add(y)
-        queue.insert(0, y)
-
-    if targets and targets.issubset(reachable):
-      return reachable
-  return reachable
-
-
 def unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace='',
                       zero_based=False):
   """Makes a layer name (or arbitrary string) unique within a TensorFlow graph.
@@ -1800,28 +1728,6 @@ def unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace='',
   return proposed_name
 
 
-def to_snake_case(name):
-  intermediate = re.sub('(.)([A-Z][a-z0-9]+)', r'\1_\2', name)
-  insecure = re.sub('([a-z])([A-Z])', r'\1_\2', intermediate).lower()
-  # If the class is private the name starts with "_" which is not secure
-  # for creating scopes. We prefix the name with "private" in this case.
-  if insecure[0] != '_':
-    return insecure
-  return 'private' + insecure
-
-
-def is_all_none(iterable_or_element):
-  if not isinstance(iterable_or_element, (list, tuple)):
-    iterable = [iterable_or_element]
-  else:
-    iterable = iterable_or_element
-  # We cannot use Python's `any` because the iterable may return Tensors.
-  for element in iterable:
-    if element is not None:
-      return False
-  return True
-
-
 def have_all_keras_metadata(iterable_or_element):
   if not isinstance(iterable_or_element, (list, tuple)):
     iterable = [iterable_or_element]
@@ -1850,14 +1756,6 @@ def collect_previous_mask(input_tensors):
   if len(masks) == 1:
     return masks[0]
   return masks
-
-
-def is_tensor_or_tensor_list(v):
-  v = nest.flatten(v)
-  if v and isinstance(v[0], ops.Tensor):
-    return True
-  else:
-    return False
 
 
 def get_default_graph_uid_map():

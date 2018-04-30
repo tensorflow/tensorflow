@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -51,21 +51,20 @@ using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;
 using TypesF16F32F64CF64 =
     ::testing::Types<Eigen::half, float, double, complex64>;
 #elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
-    defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64) && \
+    defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64) &&    \
     defined(XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX)
 using TypesF16F32 = ::testing::Types<Eigen::half, float>;
 using TypesF16F32F64 = ::testing::Types<Eigen::half, float>;
-using TypesF16F32F64CF64 =
-    ::testing::Types<Eigen::half, float>;
+using TypesF16F32F64CF64 = ::testing::Types<Eigen::half, float>;
 #else
 #error "Situation not handled yet"
 #endif
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
 TEST_F(DotOperationTest, DotOfInputTupleElem) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
-  ComputationDataHandle param;
+  XlaOp param;
   auto param_data = CreateParameterAndTransferLiteral(
       0,
       *Literal::MakeTuple({Literal::CreateR2<float>({{1, 2}, {3, 4}}).get(),
@@ -86,7 +85,7 @@ TYPED_TEST_CASE(DotOperationTest_F16F32F64CF64, TypesF16F32F64CF64);
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, ZeroElementVectorDot) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
 
   auto lhs = builder.ConstantR1<T>({});
   auto rhs = builder.ConstantR1<T>({});
@@ -102,7 +101,7 @@ TYPED_TEST_CASE(DotOperationTest_F16F32F64, TypesF16F32F64);
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, TrivialMatrixVectorDot) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto lhs = builder.ConstantR2FromArray2D<T>({{3.0f, 4.0f}});
   auto rhs = builder.ConstantFromArray<T>({3.0f, 4.0f});
   auto result = builder.Dot(lhs, rhs);
@@ -113,7 +112,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, TrivialMatrixVectorDot) {
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, OneElementVectorDot) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto lhs = builder.ConstantR1<T>({static_cast<T>(2.0f)});
   auto rhs = builder.ConstantR1<T>({static_cast<T>(3.0f)});
   auto result = builder.Dot(lhs, rhs);
@@ -124,7 +123,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, OneElementVectorDot) {
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, VectorDot) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto lhs = builder.ConstantFromArray<T>({1.0f, 2.5f, 42.0f});
   auto rhs = builder.ConstantFromArray<T>({11.0f, -1.0f, 0.5f});
   auto result = builder.Dot(lhs, rhs);
@@ -139,7 +138,7 @@ std::vector<int64> MinorToMajorForIsRowMajor(bool row_major) {
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x0) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto lhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(0, 2));
   auto rhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(2, 0));
   auto result = builder.Dot(lhs, rhs);
@@ -150,7 +149,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x0) {
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x3) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto lhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(0, 2));
   auto rhs = builder.ConstantR2FromArray2D<T>(
       {{7.0f, 8.0f, 9.0f}, {42.0f, 77.0f, 101.0f}});
@@ -162,7 +161,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x3) {
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_3x2_2x0) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto lhs = builder.ConstantR2FromArray2D<T>(
       {{7.0f, 8.0f}, {9.0f, 42.0f}, {77.0f, 101.0f}});
   auto rhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(2, 0));
@@ -174,7 +173,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_3x2_2x0) {
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_2x0_0x2) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto lhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(2, 0));
   auto rhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(0, 2));
   auto result = builder.Dot(lhs, rhs);
@@ -185,7 +184,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_2x0_0x2) {
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, FusedDot) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto param0 =
       builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({2, 4}), "arg0");
   auto param1 =
@@ -230,7 +229,7 @@ class SquareMatrixDot : public DotOperationTest {
                 LayoutUtil::MakeLayout(
                     MinorToMajorForIsRowMajor(rhs_row_major))))
             .ConsumeValueOrDie();
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto prim_type = primitive_util::NativeToPrimitiveType<T>();
     auto result = builder.Dot(
         builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 2}), "lhs"),
@@ -315,7 +314,7 @@ void ParametricDotTest::TestImpl() {
     addend_handle = client_->TransferToServer(*addend_lit).ConsumeValueOrDie();
   }
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto prim_type = primitive_util::NativeToPrimitiveType<NativeT>();
   auto result = builder.Dot(
       builder.Parameter(0,
@@ -491,7 +490,7 @@ class NonsquareMatrixDot : public DotOperationTest {
                     MinorToMajorForIsRowMajor(rhs_row_major))))
             .ConsumeValueOrDie();
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto prim_type = primitive_util::NativeToPrimitiveType<T>();
     auto result = builder.Dot(
         builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 3}), "lhs"),
@@ -523,7 +522,7 @@ XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
               LayoutUtil::MakeLayout({1, 0})))
           .ConsumeValueOrDie();
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto prim_type = primitive_util::NativeToPrimitiveType<complex64>();
   auto result = builder.Dot(
       builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {1, 4}), "lhs"),
@@ -538,7 +537,7 @@ XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, ConcurrentMatMult) {
   using T = TypeParam;
 
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto matrix1 = builder.ConstantR2FromArray2D<T>({{1.0f, 2.0f}, {3.0f, 4.0f}});
   auto matrix2 = builder.ConstantR2FromArray2D<T>({{5.0f, 6.0f}, {7.0f, 8.0f}});
   auto matrix12 = builder.Dot(matrix1, matrix2);
@@ -559,7 +558,7 @@ TYPED_TEST_CASE(DotOperationTestForBatchMatMul, TypesF16F32F64);
 // sync-dependent on bitcasts' operands.
 XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto x =
       builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}), "x");
   auto y =
@@ -569,7 +568,7 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
   auto y_flat = builder.Reshape(y, {0, 1, 2, 3}, {4, 2, 2});
 
   // Slice batches into individual matrices and multiply them.
-  std::vector<xla::ComputationDataHandle> out_slices;
+  std::vector<XlaOp> out_slices;
   for (int i = 0; i < 4; ++i) {
     // Slice off individual matrices and reshape to 2D tensors.
     auto x_slice = builder.Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
@@ -615,7 +614,7 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, GeneralMatMul) {
   using T = TypeParam;
 
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto x =
       builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "x");
   auto y =
@@ -677,7 +676,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, TransposeFolding) {
                               MinorToMajorForIsRowMajor(row_major))))
                 .ConsumeValueOrDie();
 
-        ComputationBuilder builder(this->client_, this->TestName());
+        XlaBuilder builder(this->TestName());
         auto prim_type = primitive_util::NativeToPrimitiveType<T>();
         auto lhs_arg = builder.Parameter(
             0, ShapeUtil::MakeShape(prim_type, {lhs->height(), lhs->width()}),
@@ -713,7 +712,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64,
       new Array2D<T>({{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
                       {6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f}}));
 
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
   auto rhs_arg_0 = builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 2}),
                                      "rhs_arg_0");
@@ -761,7 +760,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64,
                       {4.0f, 3.0f},
                       {2.0f, 1.0f}}));
 
-  ComputationBuilder builder(this->client_, this->TestName());
+  XlaBuilder builder(this->TestName());
   auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
   auto lhs_arg_0 = builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({2, 2}),
                                      "lhs_arg_0");
