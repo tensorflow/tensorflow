@@ -31,7 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from google3.third_party.tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import tf_logging as logging
 
 
 def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
