@@ -47,7 +47,7 @@ if(WIN32)
   )
 
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/tensorflow.def")
   else()
     set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/tensorflow.def")
   endif()

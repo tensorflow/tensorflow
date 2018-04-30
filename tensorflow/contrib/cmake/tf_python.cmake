@@ -549,7 +549,7 @@ if(WIN32)
     )
 
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-        set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
+        set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow.def")
     else()
         set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow.def")
     endif()
