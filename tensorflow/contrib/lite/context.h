@@ -275,7 +275,7 @@ typedef struct {
 
 typedef struct TfLiteContext {
   // Number of tensors in the context.
-  int tensors_size;
+  size_t tensors_size;
 
   // The execution plan contains a list of the node indices in execution
   // order. execution_plan->size is the current number of nodes. And,
@@ -397,13 +397,13 @@ typedef struct _TfLiteDelegate {
   // This can be null if the delegate doesn't use its own buffer.
   TfLiteStatus (*CopyFromBufferHandle)(TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,
-                                       void* data, int size);
+                                       void* data, size_t size);
 
   // Copy the data from raw memory to delegate buffer handle.
   // This can be null if the delegate doesn't use its own buffer.
   TfLiteStatus (*CopyToBufferHandle)(TfLiteDelegate* delegate,
                                      TfLiteBufferHandle buffer_handle,
-                                     void* data, int size);
+                                     void* data, size_t size);
 
   // Free the Delegate Buffer Handle. Note: This only frees the handle, but
   // this doesn't release the underlying resource (e.g. textures). The

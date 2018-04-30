@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/kernel_spec.h"
 
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 KernelLoaderSpec::KernelLoaderSpec(port::StringPiece kernelname)
     : kernelname_(kernelname.ToString()) {}
@@ -247,5 +245,4 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCompressedPtxInMemory(
 
 MultiKernelLoaderSpec::MultiKernelLoaderSpec(size_t arity) : arity_(arity) {}
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

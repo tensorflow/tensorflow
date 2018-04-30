@@ -532,7 +532,7 @@ class ShapePattern {
       ShapeType,
       ShapePatternLayoutImpl<Impl, const ::xla::Layout,
                              LayoutPatternFormatImpl<LayoutPatternBaseImpl>>>
-  IsDenseArray(const ::xla::Layout* layout) const {
+  IsDenseArray() const {
     return WithLayout(Layout().WithDenseFormat());
   }
 
@@ -540,7 +540,7 @@ class ShapePattern {
       ShapeType,
       ShapePatternLayoutImpl<Impl, const ::xla::Layout,
                              LayoutPatternFormatImpl<LayoutPatternBaseImpl>>>
-  IsSparseArray(const ::xla::Layout* layout) const {
+  IsSparseArray() const {
     return WithLayout(Layout().WithSparseFormat());
   }
 
@@ -879,7 +879,6 @@ XLA_UNOP_PATTERN(Abs)
 XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
 XLA_UNOP_PATTERN(Broadcast)
-XLA_UNOP_PATTERN(BroadcastDimOne)
 XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)

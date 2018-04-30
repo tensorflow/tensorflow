@@ -72,6 +72,23 @@ message RepeatedPrimitiveValue {
   repeated sint32 sint32_value = 17;
   repeated sint64 sint64_value = 18;
   repeated PrimitiveValue message_value = 19;
+
+  // Optional fields with explicitly-specified defaults.
+  optional double double_default = 20 [default = 1.0];
+  optional float float_default = 21 [default = 2.0];
+  optional int64 int64_default = 22 [default = 3];
+  optional uint64 uint64_default = 23 [default = 4];
+  optional int32 int32_default = 24 [default = 5];
+  optional fixed64 fixed64_default = 25 [default = 6];
+  optional fixed32 fixed32_default = 26 [default = 7];
+  optional bool bool_default = 27 [default = true];
+  optional string string_default = 28 [default = "a"];
+  optional bytes bytes_default = 29 [default = "a longer default string"];
+  optional uint32 uint32_default = 30 [default = 4294967295];
+  optional sfixed32 sfixed32_default = 31 [default = 10];
+  optional sfixed64 sfixed64_default = 32 [default = 11];
+  optional sint32 sint32_default = 33 [default = 12];
+  optional sint64 sint64_default = 34 [default = 13];
 }
 
 // A PackedPrimitiveValue looks exactly the same as a RepeatedPrimitiveValue
@@ -97,6 +114,22 @@ message PackedPrimitiveValue {
   repeated sint32 sint32_value = 17 [packed = true];
   repeated sint64 sint64_value = 18 [packed = true];
   repeated PrimitiveValue message_value = 19;
+
+  optional double double_default = 20 [default = 1.0];
+  optional float float_default = 21 [default = 2.0];
+  optional int64 int64_default = 22 [default = 3];
+  optional uint64 uint64_default = 23 [default = 4];
+  optional int32 int32_default = 24 [default = 5];
+  optional fixed64 fixed64_default = 25 [default = 6];
+  optional fixed32 fixed32_default = 26 [default = 7];
+  optional bool bool_default = 27 [default = true];
+  optional string string_default = 28 [default = "a"];
+  optional bytes bytes_default = 29 [default = "a longer default string"];
+  optional uint32 uint32_default = 30 [default = 4294967295];
+  optional sfixed32 sfixed32_default = 31 [default = 10];
+  optional sfixed64 sfixed64_default = 32 [default = 11];
+  optional sint32 sint32_default = 33 [default = 12];
+  optional sint64 sint64_default = 34 [default = 13];
 }
 
 message EnumValue {

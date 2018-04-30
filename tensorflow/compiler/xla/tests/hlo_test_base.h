@@ -76,8 +76,7 @@ class HloTestBase : public ::testing::Test {
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
-  HloTestBase(::perftools::gputools::Platform* test_platform,
-              ::perftools::gputools::Platform* reference_platform);
+  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform);
 
   ~HloTestBase() override {}
 
@@ -86,7 +85,8 @@ class HloTestBase : public ::testing::Test {
   // options from command-line flags. If you want a fresh HloModule object and
   // then add HloComputations to it, it's recommended to use this method in your
   // tests.
-  static std::unique_ptr<HloModule> CreateNewModule();
+  static std::unique_ptr<HloModule> CreateNewModule(
+      const string& name = TestName());
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
@@ -100,7 +100,7 @@ class HloTestBase : public ::testing::Test {
 
   // Same as above, except the module will be executed without running any HLO
   // passes on it.
-  StatusOr<std::unique_ptr<Literal>> ExecuteNoHloPasses(
+  std::unique_ptr<Literal> ExecuteNoHloPasses(
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<Literal*> arguments);
 

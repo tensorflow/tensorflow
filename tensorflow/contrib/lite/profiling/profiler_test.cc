@@ -30,7 +30,7 @@ namespace {
 void AssertDurationOfEventAroundMs(const ProfileEvent* event,
                                    double expected_ms, double eps_ms) {
   double duration_ms =
-      (event->end_timestamp_ms - event->begin_timestamp_ms) / 1e3;
+      (event->end_timestamp_us - event->begin_timestamp_us) / 1e3;
   EXPECT_NEAR(expected_ms, duration_ms, eps_ms);
 }
 
@@ -82,16 +82,15 @@ TEST(ProfilingTest, ProfilesAreCollected) {
   EXPECT_EQ("Child", profile_events[3]->tag);
   EXPECT_EQ("SleepForQuarter", profile_events[4]->tag);
 
-  AssertDurationOfEventAroundMs(profile_events[0], /*expected_ms*/ 500,
-                                /*eps_ms*/ 2);
-  AssertDurationOfEventAroundMs(profile_events[1], /*expected_ms*/ 250,
-                                /*eps_ms*/ 2);
-  AssertDurationOfEventAroundMs(profile_events[2], /*expected_ms*/ 250,
-                                /*eps_ms*/ 2);
-  AssertDurationOfEventAroundMs(profile_events[3], /*expected_ms*/ 250,
-                                /*eps_ms*/ 2);
-  AssertDurationOfEventAroundMs(profile_events[4], /*expected_ms*/ 250,
-                                /*eps_ms*/ 2);
+#ifndef ADDRESS_SANITIZER
+  // ASAN build is sometimes very slow.
+  const int eps_ms = 10;
+  AssertDurationOfEventAroundMs(profile_events[0], /*expected_ms*/ 500, eps_ms);
+  AssertDurationOfEventAroundMs(profile_events[1], /*expected_ms*/ 250, eps_ms);
+  AssertDurationOfEventAroundMs(profile_events[2], /*expected_ms*/ 250, eps_ms);
+  AssertDurationOfEventAroundMs(profile_events[3], /*expected_ms*/ 250, eps_ms);
+  AssertDurationOfEventAroundMs(profile_events[4], /*expected_ms*/ 250, eps_ms);
+#endif
 }
 
 }  // namespace

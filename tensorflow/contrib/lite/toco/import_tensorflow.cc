@@ -1093,8 +1093,10 @@ void ConvertMatMulOperator(const NodeDef& node,
 
   // Transpose flags should be easy to support, but we don't have a
   // GraphDef with them to test on at the moment.
-  CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
-  CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
+  CHECK_EQ(HasAttr(node, "transpose_a") && GetBoolAttr(node, "transpose_a"),
+           false);
+  CHECK_EQ(HasAttr(node, "transpose_b") && GetBoolAttr(node, "transpose_b"),
+           false);
   CHECK(!HasAttr(node, "adjoint_a") ||
         (GetBoolAttr(node, "adjoint_a") == false));
   CHECK(!HasAttr(node, "adjoint_b") ||
@@ -1300,11 +1302,17 @@ void ConvertStridedSliceOperator(const NodeDef& node,
   }
   op->outputs.push_back(node.name());
 
-  op->begin_mask = GetIntAttr(node, "begin_mask");
-  op->ellipsis_mask = GetIntAttr(node, "ellipsis_mask");
-  op->end_mask = GetIntAttr(node, "end_mask");
-  op->new_axis_mask = GetIntAttr(node, "new_axis_mask");
-  op->shrink_axis_mask = GetIntAttr(node, "shrink_axis_mask");
+  op->begin_mask =
+      HasAttr(node, "begin_mask") ? GetIntAttr(node, "begin_mask") : 0;
+  op->ellipsis_mask =
+      HasAttr(node, "ellipsis_mask") ? GetIntAttr(node, "ellipsis_mask") : 0;
+  op->end_mask = HasAttr(node, "end_mask") ? GetIntAttr(node, "end_mask") : 0;
+  op->new_axis_mask =
+      HasAttr(node, "new_axis_mask") ? GetIntAttr(node, "new_axis_mask") : 0;
+  op->shrink_axis_mask = HasAttr(node, "shrink_axis_mask")
+                             ? GetIntAttr(node, "shrink_axis_mask")
+                             : 0;
+
   model->operators.emplace_back(op);
 }
 
@@ -1394,8 +1402,11 @@ void ConvertArgMaxOperator(const NodeDef& node,
                            Model* model) {
   CHECK_EQ(node.op(), "ArgMax");
   CheckInputsCount(node, tf_import_flags, 2);
-  const auto axis_data_type = GetDataTypeAttr(node, "Tidx");
-  const auto output_type = GetDataTypeAttr(node, "output_type");
+  const auto axis_data_type =
+      HasAttr(node, "Tidx") ? GetDataTypeAttr(node, "Tidx") : DT_INT32;
+  const auto output_type = HasAttr(node, "output_type")
+                               ? GetDataTypeAttr(node, "output_type")
+                               : DT_INT64;
   CHECK(axis_data_type == DT_INT64 || axis_data_type == DT_INT32);
   CHECK(output_type == DT_INT64 || output_type == DT_INT32);
   auto* op = new ArgMaxOperator;
@@ -1772,7 +1783,7 @@ void ConvertStackOperator(const NodeDef& node,
     op->inputs.push_back(node.input(i));
   }
   // Both "Stack" and "Pack" have the "axis" attribute.
-  op->axis = GetIntAttr(node, "axis");
+  op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
 }
@@ -1970,7 +1981,7 @@ void ConvertTopKV2Operator(const NodeDef& node,
     op->inputs.push_back(node.input(1));
   }
   // The op has two outputs.
-  op->outputs.push_back(node.name() + ":0");
+  op->outputs.push_back(node.name());
   op->outputs.push_back(node.name() + ":1");
   model->operators.emplace_back(op.release());
 }

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 
 namespace tensorflow {
+class Broadcaster;
 class DeviceMgr;
 class RingReducer;
 
@@ -138,6 +139,12 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
                              const string& exec_key, int64 step_id,
                              const Tensor* input, Tensor* output,
                              string* error);
+
+  Broadcaster* CreateBroadcaster(OpKernelContext* ctx,
+                                 OpKernelContext::Params* params,
+                                 const CollectiveParams& col_params,
+                                 const string& exec_key, int64 step_id,
+                                 Tensor* output, string* error);
 };
 
 }  // namespace tensorflow

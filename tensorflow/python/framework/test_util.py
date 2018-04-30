@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import contextlib
 import gc
+import itertools
 import math
 import random
 import re
@@ -461,6 +462,30 @@ def with_c_api(cls):
   for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith("test"):
       setattr(cls, name + "WithCApi", enable_c_api(value))
+  return cls
+
+
+def with_c_shapes(cls):
+  """Adds methods that call original methods but with C API shapes enabled.
+
+  Note this enables C shapes in new methods after running the test class's
+  setup method.
+
+  Args:
+    cls: class to decorate
+
+  Returns:
+    cls with new test methods added
+  """
+  # If C shapes are already enabled, don't do anything. Some tests break if the
+  # same test is run twice, so this allows us to turn on the C shapes by default
+  # without breaking these tests.
+  if ops._USE_C_SHAPES:
+    return cls
+
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name + "WithCShapes", enable_c_shapes(value))
   return cls
 
 
@@ -1188,8 +1213,14 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
+    # If a is a tensor then convert it to ndarray
+    if isinstance(a, ops.Tensor):
+      if isinstance(a, ops._EagerTensorBase):
+        return a.numpy()
+      else:
+        a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
-      a = np.array(a)
+      return np.array(a)
     return a
 
   def _assertArrayLikeAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
@@ -1262,8 +1293,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # Try to directly compare a, b as ndarrays; if not work, then traverse
       # through the sequence, which is more expensive.
       try:
-        a_as_ndarray = np.array(a)
-        b_as_ndarray = np.array(b)
+        a_as_ndarray = self._GetNdArray(a)
+        b_as_ndarray = self._GetNdArray(b)
         self._assertArrayLikeAllClose(
             a_as_ndarray,
             b_as_ndarray,
@@ -1298,16 +1329,18 @@ class TensorFlowTestCase(googletest.TestCase):
         raise
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
-    """Asserts that two structures of numpy arrays, have near values.
+    """Asserts that two structures of numpy arrays or Tensors, have near values.
 
     `a` and `b` can be arbitrarily nested structures. A layer of a nested
     structure can be a `dict`, `namedtuple`, `tuple` or `list`.
 
     Args:
       a: The expected numpy `ndarray`, or anything that can be converted into a
-          numpy `ndarray`, or any arbitrarily nested of structure of these.
+         numpy `ndarray` (including Tensor), or any arbitrarily nested of
+         structure of these.
       b: The actual numpy `ndarray`, or anything that can be converted into a
-          numpy `ndarray`, or any arbitrarily nested of structure of these.
+         numpy `ndarray` (including Tensor), or any arbitrarily nested of
+         structure of these.
       rtol: relative tolerance.
       atol: absolute tolerance.
       msg: Optional message to report on failure.
@@ -1367,8 +1400,26 @@ class TensorFlowTestCase(googletest.TestCase):
 
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
+  def assertNotAllClose(self, a, b, **kwargs):
+    """Assert that two numpy arrays, or or Tensors, do not have near values.
+
+    Args:
+      a: the first value to compare.
+      b: the second value to compare.
+      **kwargs: additional keyword arguments to be passed to the underlying
+        `assertAllClose` call.
+
+    Raises:
+      AssertionError: If `a` and `b` are unexpectedly close at all elements.
+    """
+    try:
+      self.assertAllClose(a, b, **kwargs)
+    except AssertionError:
+      return
+    raise AssertionError("The two values are close at all elements")
+
   def assertAllEqual(self, a, b, msg=None):
-    """Asserts that two numpy arrays have the same values.
+    """Asserts that two numpy arrays or Tensors have the same values.
 
     Args:
       a: the expected numpy ndarray or anything can be converted to one.
@@ -1399,6 +1450,174 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not equal lhs = ", x)
       print("not equal rhs = ", y)
       np.testing.assert_array_equal(a, b, err_msg=msg)
+
+  def assertAllGreater(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertGreater(np.min(a), comparison_target)
+
+  def assertAllLess(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertLess(np.max(a), comparison_target)
+
+  def assertAllGreaterEqual(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertGreaterEqual(np.min(a), comparison_target)
+
+  def assertAllLessEqual(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertLessEqual(np.max(a), comparison_target)
+
+  def _format_subscripts(self, subscripts, value, limit=10, indent=2):
+    """Generate a summary of ndarray subscripts as a list of str.
+
+    If limit == N, this method will print up to the first N subscripts on
+    separate
+    lines. A line of ellipses (...) will be appended at the end if the number of
+    subscripts exceeds N.
+
+    Args:
+      subscripts: The tensor (np.ndarray) subscripts, of the same format as
+        np.where()'s return value, i.e., a tuple of arrays with each array
+        corresponding to a dimension. E.g., (array([1, 1]), array([0, 1])).
+      value: (np.ndarray) value of the tensor.
+      limit: (int) The maximum number of indices to print.
+      indent: (int) Number of characters to indent at the beginning of each
+        line.
+
+    Returns:
+      (list of str) the multi-line representation of the subscripts and values,
+        potentially with omission at the end.
+    """
+    lines = []
+    subscripts = np.transpose(subscripts)
+    prefix = " " * indent
+    for subscript in itertools.islice(subscripts, limit):
+      lines.append(prefix + str(subscript) + " : " +
+                   str(value[tuple(subscript)]))
+    if len(subscripts) > limit:
+      lines.append(prefix + "...")
+    return lines
+
+  def assertAllInRange(self,
+                       target,
+                       lower_bound,
+                       upper_bound,
+                       open_lower_bound=False,
+                       open_upper_bound=False):
+    """Assert that elements in a Tensor are all in a given range.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      lower_bound: lower bound of the range
+      upper_bound: upper bound of the range
+      open_lower_bound: (`bool`) whether the lower bound is open (i.e., > rather
+        than the default >=)
+      open_upper_bound: (`bool`) whether the upper bound is open (i.e., < rather
+        than the default <=)
+
+    Raises:
+      AssertionError:
+        if the value tensor does not have an ordered numeric type (float* or
+          int*), or
+        if there are nan values, or
+        if any of the elements do not fall in the specified range.
+    """
+    target = self._GetNdArray(target)
+    if not (np.issubdtype(target.dtype, np.float) or
+            np.issubdtype(target.dtype, np.integer)):
+      raise AssertionError(
+          "The value of %s does not have an ordered numeric type, instead it "
+          "has type: %s" % (target, target.dtype))
+
+    nan_subscripts = np.where(np.isnan(target))
+    if np.size(nan_subscripts):
+      raise AssertionError(
+          "%d of the %d element(s) are NaN. "
+          "Subscripts(s) and value(s) of the NaN element(s):\n" %
+          (len(nan_subscripts[0]), np.size(target)) +
+          "\n".join(self._format_subscripts(nan_subscripts, target)))
+
+    range_str = (("(" if open_lower_bound else "[") + str(lower_bound) + ", " +
+                 str(upper_bound) + (")" if open_upper_bound else "]"))
+
+    violations = (
+        np.less_equal(target, lower_bound)
+        if open_lower_bound else np.less(target, lower_bound))
+    violations = np.logical_or(
+        violations,
+        np.greater_equal(target, upper_bound)
+        if open_upper_bound else np.greater(target, upper_bound))
+    violation_subscripts = np.where(violations)
+    if np.size(violation_subscripts):
+      raise AssertionError(
+          "%d of the %d element(s) are outside the range %s. " %
+          (len(violation_subscripts[0]), np.size(target), range_str) +
+          "Subscript(s) and value(s) of the offending elements:\n" +
+          "\n".join(self._format_subscripts(violation_subscripts, target)))
+
+  def assertAllInSet(self, target, expected_set):
+    """Assert that elements of a Tensor are all in a given closed set.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      expected_set: (`list`, `tuple` or `set`) The closed set that the elements
+        of the value of `target` are expected to fall into.
+
+    Raises:
+      AssertionError:
+        if any of the elements do not fall into `expected_set`.
+    """
+    target = self._GetNdArray(target)
+
+    # Elements in target that are not in expected_set.
+    diff = np.setdiff1d(target.flatten(), list(expected_set))
+    if np.size(diff):
+      raise AssertionError("%d unique element(s) are not in the set %s: %s" %
+                           (np.size(diff), expected_set, diff))
+
+  def assertDTypeEqual(self, target, expected_dtype):
+    """Assert ndarray data type is equal to expected.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      expected_dtype: Expected data type.
+    """
+    target = self._GetNdArray(target)
+    if not isinstance(target, list):
+      arrays = [target]
+    for arr in arrays:
+      self.assertEqual(arr.dtype, expected_dtype)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager

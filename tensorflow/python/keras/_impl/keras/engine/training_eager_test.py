@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
@@ -211,7 +212,7 @@ class TrainingTest(test.TestCase):
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
     loss_weights = [1., 0.5]
-    metrics = ['mae']
+    metrics = ['acc', 'mae']
     model.compile(
         optimizer,
         loss,
@@ -230,20 +231,20 @@ class TrainingTest(test.TestCase):
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=0)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.evaluate(
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=1)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.evaluate(
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         batch_size=5,
         verbose=2)
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
     out = model.test_on_batch([input_a_np, input_b_np],
                               [output_d_np, output_e_np])
-    self.assertEqual(len(out), 5)
+    self.assertEqual(len(out), 7)
 
     # Test evaluate with dictionary inputs
     model.evaluate(
@@ -624,6 +625,50 @@ class LossWeightingTest(test.TestCase):
       bad_w_np = np.random.random((10, 2, 2))
       model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
 
+
+class CorrectnessTest(test.TestCase):
+
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_loss_correctness(self):
+    # Test that training loss is the same in eager and graph
+    # (by comparing it to a reference value in a deterministic case)
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(3,
+                                 activation='relu',
+                                 input_dim=4,
+                                 kernel_initializer='ones'))
+    model.add(keras.layers.Dense(2,
+                                 activation='softmax',
+                                 kernel_initializer='ones'))
+    model.compile(loss='sparse_categorical_crossentropy',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001))
+    x = np.ones((100, 4))
+    np.random.seed(123)
+    y = np.random.randint(0, 1, size=(100, 1))
+    history = model.fit(x, y, epochs=1, batch_size=10)
+    self.assertEqual(
+        np.around(history.history['loss'][-1], decimals=4), 0.6173)
+
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_metrics_correctness(self):
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(3,
+                                 activation='relu',
+                                 input_dim=4,
+                                 kernel_initializer='ones'))
+    model.add(keras.layers.Dense(1,
+                                 activation='sigmoid',
+                                 kernel_initializer='ones'))
+    model.compile(loss='mae',
+                  metrics=['acc'],
+                  optimizer=RMSPropOptimizer(learning_rate=0.001))
+    x = np.ones((100, 4))
+    y = np.ones((100, 1))
+    outs = model.evaluate(x, y)
+    self.assertEqual(outs[1], 1.)
+    y = np.zeros((100, 1))
+    outs = model.evaluate(x, y)
+    self.assertEqual(outs[1], 0.)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

@@ -1135,11 +1135,10 @@ class ControlFlowTest(test.TestCase):
 
       with self.assertRaisesRegexp(
           ValueError,
-          r"The shape for while_1/Merge_1:0 is not an invariant for the loop. "
-          r"It enters the loop with shape \(2, 2\), but has shape \(4, 2\) "
-          r"after one iteration. Provide shape invariants using either the "
-          r"`shape_invariants` argument of tf.while_loop or set_shape\(\) on "
-          r"the loop variables."):
+          r"Input tensor 'ones:0' enters the loop with shape \(2, 2\), but has "
+          r"shape \(4, 2\) after one iteration. To allow the shape to vary "
+          r"across iterations, use the `shape_invariants` argument of "
+          r"tf.while_loop to specify a less-specific shape."):
         r = control_flow_ops.while_loop(c, b, [i, m])
 
   def testWhileShapeInferenceSparseTensor(self):
@@ -2223,14 +2222,14 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileWithRefsWithGradients_1(self):
     with self.test_session() as sess:
-      x = variables.Variable(0)._ref()  # pylint: disable=protected-access
+      x = variables.Variable(0.)._ref()  # pylint: disable=protected-access
       i = constant_op.constant(0)
       c = lambda i, x: math_ops.less(i, 10)
 
-      self.assertEqual(x.dtype, dtypes.int32_ref)
+      self.assertEqual(x.dtype, dtypes.float32_ref)
 
       def body(i, x):
-        self.assertEqual(x.dtype, dtypes.int32_ref)
+        self.assertEqual(x.dtype, dtypes.float32_ref)
         return [i + 1, gen_array_ops.ref_identity(x)]
 
       r = control_flow_ops.while_loop(c, body, [i, x], parallel_iterations=5)
@@ -2241,7 +2240,7 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
 
       self.assertEqual(r[0].dtype, dtypes.int32)
-      self.assertEqual(r[1].dtype, dtypes.int32_ref)
+      self.assertEqual(r[1].dtype, dtypes.float32_ref)
 
       value_i, value_x, value_x_grad = sess.run(r + grad)
 
@@ -2443,6 +2442,63 @@ class ControlFlowTest(test.TestCase):
       r = math_ops.add(r, rg)
       r = gradients_impl.gradients(r, y)[0]
       self.assertEqual(388.0, r.eval())
+
+  def testWhileGradientWithNontrainablePath1(self):
+    q = variables.Variable([7., 8.])
+
+    def cond(_, y):
+      del y
+      return False
+
+    def body(x, _):
+      return x, math_ops.cast(x, dtypes.float32) + math_ops.reduce_sum(q)
+
+    _, y = control_flow_ops.while_loop(cond, body, (math_ops.argmin(q), 0.))
+    dy_dq, = gradients_impl.gradients(y, q)
+    self.assertIsNotNone(dy_dq)
+    with self.test_session() as sess:
+      sess.run(q.initializer)
+      self.assertAllClose([0., 0.], sess.run(dy_dq))
+
+  def testWhileGradientWithNontrainablePath2(self):
+    q = variables.Variable([7., 8.])
+
+    def cond(_, y):
+      return math_ops.equal(y, 0.)
+
+    def body(x, _):
+      zero = constant_op.constant(0, dtype=dtypes.int64)
+      return zero, math_ops.cast(x, dtypes.float32) + math_ops.reduce_sum(q)
+
+    _, y = control_flow_ops.while_loop(cond, body, (math_ops.argmin(q), 0.))
+    dy_dq, = gradients_impl.gradients(y, q)
+    self.assertIsNotNone(dy_dq)
+    with self.test_session() as sess:
+      sess.run(q.initializer)
+      self.assertAllClose([1., 1.], sess.run(dy_dq))
+
+  def testIssue16504(self):
+    c = constant_op.constant(np.arange(100), dtype=dtypes.float32)
+    w = variables.Variable(
+        initial_value=np.ones(100), dtype=dtypes.float32) / 100
+    k = variables.Variable(0, dtype=dtypes.int32)
+    chg_w = constant_op.constant(np.inf, dtype=dtypes.float32)
+
+    def cond(k, _, chg_w):
+      return math_ops.logical_and(k < 10, chg_w > 1e-3)
+
+    def body(k, w, chg_w):
+      grad, = gradients_impl.gradients(-math_ops.reduce_sum(w * c), w)
+      w_n = w * math_ops.exp(-0.1 * grad)
+      w_n /= math_ops.reduce_sum(w_n)
+      chg_w = (
+          math_ops.reduce_sum(math_ops.abs(w_n - w)) / math_ops.reduce_sum(
+              math_ops.abs(w)))
+      return k + 1, w_n, chg_w
+
+    _, w, _ = control_flow_ops.while_loop(cond, body, [k, w, chg_w])
+    grad, = gradients_impl.gradients(w, c)
+    self.assertIsNotNone(grad)
 
   def testStopGradMultiFlows(self):
     with self.test_session():

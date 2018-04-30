@@ -33,23 +33,22 @@ namespace grappler {
 
 namespace {
 
-Status OutputNameRange(const FunctionLibraryDefinition& flib,
-                       const NodeDef& node,
-                       tensorflow::NameRangeMap* outputs_range_map) {
-  const OpRegistrationData* registration;
-  TF_RETURN_IF_ERROR(flib.LookUp(node.op(), &registration));
-  TF_RETURN_IF_ERROR(tensorflow::NameRangesForNode(node, registration->op_def,
-                                                   nullptr, outputs_range_map));
+Status RegisterFunctionBodyOutputs(const OpRegistrationData& registration,
+                                   const NodeDef& node,
+                                   GrapplerFunctionConnectivity* connectivity) {
+  tensorflow::NameRangeMap outputs_range_map;
+  TF_RETURN_IF_ERROR(tensorflow::NameRangesForNode(
+      node, registration.op_def, nullptr, &outputs_range_map));
+  connectivity->RegisterFunctionBodyOutputs(node.name(), outputs_range_map);
   return Status::OK();
 }
 
 Status RegisterFunctionBodyOutputs(const FunctionLibraryDefinition& flib,
                                    const NodeDef& node,
                                    GrapplerFunctionConnectivity* connectivity) {
-  tensorflow::NameRangeMap outputs_range_map;
-  TF_RETURN_IF_ERROR(OutputNameRange(flib, node, &outputs_range_map));
-  connectivity->RegisterFunctionBodyOutputs(node.name(), outputs_range_map);
-  return Status::OK();
+  const OpRegistrationData* registration;
+  TF_RETURN_IF_ERROR(flib.LookUp(node.op(), &registration));
+  return RegisterFunctionBodyOutputs(*registration, node, connectivity);
 }
 
 // Replace the placeholder attribute values with the values specified in
@@ -306,26 +305,35 @@ GrapplerFunctionItem::GrapplerFunctionItem(
     const string& func_name, const AttrValueMap& func_attr,
     const std::vector<InputArgExpansion>& input_arg_expansions,
     const std::vector<OutputArgExpansion>& output_arg_expansions,
+    const std::vector<string>& keep_nodes, bool is_stateful,
     GraphDef&& function_body)
     : func_attr_(func_attr),
       input_arg_expansions_(input_arg_expansions),
-      output_arg_expansions_(output_arg_expansions) {
+      output_arg_expansions_(output_arg_expansions),
+      is_stateful_(is_stateful) {
   id = func_name;
-  // Fill the feed nodes with input placeholders
+  keep_ops = keep_nodes;
+  // Swap the graph body.
+  graph.Swap(&function_body);
+  // Fill the feed nodes with input placeholders.
   for (const InputArgExpansion& input_arg : input_arg_expansions_) {
     for (const string& placeholder : input_arg.placeholders) {
       feed.emplace_back(placeholder, Tensor());
       input_arg_placeholders_.insert(placeholder);
     }
   }
-  // Fill the fetch nodes with outputs
+  // Fill the fetch nodes with outputs.
   for (const OutputArgExpansion& output_arg : output_arg_expansions_) {
     for (const string& output_tensor : output_arg.output_tensors) {
       fetch.push_back(output_tensor);
     }
   }
-  // Swap the graph body
-  graph.Swap(&function_body);
+  // Stateful and Send (it's not stateful) nodes must be preserved in the graph.
+  for (const NodeDef& node : graph.node()) {
+    if (IsSend(node)) {
+      keep_ops.push_back(node.name());
+    }
+  }
 }
 
 const std::vector<InputArgExpansion>& GrapplerFunctionItem::inputs() const {
@@ -365,6 +373,8 @@ const GraphDef& GrapplerFunctionItem::function_body() const { return graph; }
 
 GraphDef& GrapplerFunctionItem::mutable_function_body() { return graph; }
 
+bool GrapplerFunctionItem::is_stateful() const { return is_stateful_; }
+
 GrapplerFunctionItem& GrapplerFunctionItem::SwapFunctionBody(GraphDef&& other) {
   graph.Swap(&other);
   return *this;
@@ -378,6 +388,33 @@ std::vector<string> OutputTensors(const GrapplerFunctionItem& item) {
     }
   }
   return output_tensors;
+}
+
+bool HasParametrizedType(const FunctionDef& func) {
+  const auto is_type_parametrized = [](const OpDef::ArgDef& arg) {
+    return !arg.type_attr().empty() || !arg.number_attr().empty() ||
+           !arg.type_list_attr().empty();
+  };
+
+  const auto& input = func.signature().input_arg();
+  const auto& output = func.signature().output_arg();
+  return std::any_of(input.begin(), input.end(), is_type_parametrized) ||
+         std::any_of(output.begin(), output.end(), is_type_parametrized);
+}
+
+bool HasParametrizedBody(const FunctionDef& func) {
+  const auto is_parametrized = [&](const NodeDef& node) {
+    for (const auto& attr : node.attr()) {
+      if (!attr.second.placeholder().empty()) return true;
+    }
+    return false;
+  };
+  return std::any_of(func.node_def().begin(), func.node_def().end(),
+                     is_parametrized);
+}
+
+bool IsParametrized(const FunctionDef& func) {
+  return HasParametrizedType(func) || HasParametrizedBody(func);
 }
 
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
@@ -408,6 +445,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 
   std::vector<InputArgExpansion> inputs;
   std::vector<OutputArgExpansion> outputs;
+  std::vector<string> keep_nodes;
 
   // Function body shares the library with the graph that instantiated it.
   GraphDef function_body;
@@ -444,6 +482,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 
     InputArgExpansion input_expansion{/*input_name=*/input.name(),
                                       /*data_type=*/input_data_type,
+                                      /*is_ref*/ input.is_ref(),
                                       /*placeholders=*/{input.name()}};
     connectivity.RegisterInputArgExpansion(input_expansion);
     inputs.push_back(input_expansion);
@@ -454,12 +493,21 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
     NodeDef* new_node = function_body.add_node();
     *new_node = func_def_node;
 
+    const OpRegistrationData* registration;
+    TF_RETURN_IF_ERROR(flib.LookUp(func_def_node.op(), &registration));
+
     // Resolve all placeholder values using function instantiation attributes.
     TF_RETURN_IF_ERROR(ResolveFunctionBodyNodeAttrPlaceholders(
         func_instantiation_attr, new_node));
+
     // Register node output range in a function connectivity.
-    TF_RETURN_IF_ERROR(
-        RegisterFunctionBodyOutputs(flib, func_def_node, &connectivity));
+    TF_RETURN_IF_ERROR(RegisterFunctionBodyOutputs(*registration, func_def_node,
+                                                   &connectivity));
+
+    // Stateful and Send nodes must be preserved in a function body
+    if (registration->op_def.is_stateful() || IsSend(func_def_node)) {
+      keep_nodes.push_back(func_def_node.name());
+    }
   }
 
   // Rewrite inputs to use GraphDef format
@@ -483,19 +531,28 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 
     OutputArgExpansion output{/*output_name=*/out.name(),
                               /*data_type=*/output_data_type,
+                              /*is_ref=*/out.is_ref(),
                               /*output_tensors=*/output_tensors};
     outputs.push_back(output);
   }
 
+  bool is_stateful = signature.is_stateful();
+
   *item = GrapplerFunctionItem(
       /*func_name=*/signature.name(),
       /*func_attr=*/AttrValueMap(func.attr().begin(), func.attr().end()),
-      inputs, outputs, std::move(function_body));
+      inputs, outputs, keep_nodes, is_stateful, std::move(function_body));
   return Status::OK();
 }
 
+Status MakeGrapplerFunctionItem(const FunctionDef& func,
+                                const FunctionLibraryDefinition& flib,
+                                GrapplerFunctionItem* item) {
+  return MakeGrapplerFunctionItem(func, AttrValueMap(), flib, item);
+}
+
 // Register GrapplerFunctionItem input arg expansion and function body outputs
-// in the GrapplerFunctionConnectivity
+// in the GrapplerFunctionConnectivity.
 Status RegisterGrapplerFunctionConnectivity(
     const GrapplerFunctionItem& item, const FunctionLibraryDefinition& flib,
     GrapplerFunctionConnectivity* connectivity) {
@@ -509,10 +566,65 @@ Status RegisterGrapplerFunctionConnectivity(
   return Status::OK();
 }
 
-Status MakeSpecializedFunctionDef(const GrapplerFunctionItem& item,
-                                  const FunctionLibraryDefinition& flib,
-                                  FunctionDef* func) {
+Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
+                             GrapplerFunctionItem* item) {
+  if (!IsConstant(input_const)) {
+    return errors::InvalidArgument("Input node ", input_const.name(),
+                                   " is not a constant");
+  }
+
+  auto& inputs = item->input_arg_expansions_;
+
+  // Find input arg expansion and input placeholder position in it for the
+  // given function input position.
+  InputArgExpansion* input_arg_expansion = nullptr;
+  int placeholder_idx = input_position;
+
+  for (InputArgExpansion& input : inputs) {
+    if (placeholder_idx < input.placeholders.size()) {
+      input_arg_expansion = &input;
+      break;
+    }
+    placeholder_idx -= input.placeholders.size();
+  }
+
+  if (input_arg_expansion == nullptr) {
+    return errors::InvalidArgument(
+        "Input placeholder not found: input_position=", input_position,
+        " function=", item->id);
+  }
+
+  // Delete placeholder from input expansion.
+  string placeholder_name = input_arg_expansion->placeholders[placeholder_idx];
+  item->input_arg_placeholders_.erase(placeholder_name);
+  input_arg_expansion->placeholders.erase(
+      input_arg_expansion->placeholders.begin() + placeholder_idx);
+
+  // Delete empty input expansions.
+  inputs.erase(std::remove_if(inputs.begin(), inputs.end(),
+                              [](const InputArgExpansion& input) {
+                                return input.placeholders.empty();
+                              }),
+               inputs.end());
+
+  // Replace placeholder node in the function body with a const node.
+  for (NodeDef& node : *item->graph.mutable_node()) {
+    if (node.name() == placeholder_name) {
+      node = input_const;
+      node.set_name(placeholder_name);
+      node.clear_input();   // remove potential control inputs
+      node.clear_device();  // device placement is defined by instantiating node
+    }
+  }
+
+  return Status::OK();
+}
+
+Status MakeFunctionDef(const GrapplerFunctionItem& item,
+                       const FunctionLibraryDefinition& flib,
+                       FunctionDef* func) {
   func->mutable_signature()->set_name(item.id);
+  func->mutable_signature()->set_is_stateful(item.is_stateful());
 
   // Build a GrapplerFunctionConnectivity from inputs and new function body.
   GrapplerFunctionConnectivity connectivity;
@@ -521,21 +633,26 @@ Status MakeSpecializedFunctionDef(const GrapplerFunctionItem& item,
 
   // Add function input arguments.
   for (const InputArgExpansion& input_arg : item.inputs()) {
+    CHECK(input_arg.placeholders.size() == 1)  // do some sanity checking
+        << "Inputs of tensor sequences are not supported";
+
     OpDef::ArgDef arg_def;
     arg_def.set_name(input_arg.input_name);
     arg_def.set_type(input_arg.data_type);
+    arg_def.set_is_ref(input_arg.is_ref);
     *func->mutable_signature()->add_input_arg() = arg_def;
   }
 
   // Add function output arguments.
   for (const OutputArgExpansion& output_arg : item.outputs()) {
+    CHECK(output_arg.output_tensors.size() == 1)  // do some sanity checking
+        << "Outputs of tensor sequences are not supported";
+
     OpDef::ArgDef arg_def;
     arg_def.set_name(output_arg.output_name);
     arg_def.set_type(output_arg.data_type);
+    arg_def.set_is_ref(output_arg.is_ref);
     *func->mutable_signature()->add_output_arg() = arg_def;
-
-    CHECK(output_arg.output_tensors.size() == 1)  // do some sanity checking
-        << "Outputs of tensor sequences are not supported";
 
     string ret;
     for (const string& output_tensor : output_arg.output_tensors) {

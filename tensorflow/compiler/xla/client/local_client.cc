@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-namespace se = ::perftools::gputools;
-
 using xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
@@ -136,7 +134,7 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
+StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     ExecutableRunOptions run_options) {
   TF_RETURN_IF_ERROR(
@@ -168,28 +166,23 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
   if (executable_->dumping()) {
     return ExecuteAndDump(&service_options, arguments);
   }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> result,
-      executable_->ExecuteOnStreamWrapper(
-          &service_options, run_options.execution_profile(), arguments));
-
-  return MakeUnique<ScopedShapedBuffer>(std::move(*result),
-                                        run_options.allocator());
+  return executable_->ExecuteOnStreamWrapper(
+      &service_options, run_options.execution_profile(), arguments);
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::ExecuteAndDump(
+StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
     const ServiceExecutableRunOptions* run_options,
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   executable_->session_module()->set_execution_platform(
       backend_->platform()->Name());
   TF_RETURN_IF_ERROR(RecordArguments(arguments, executable_->session_module()));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> result,
+      ScopedShapedBuffer result,
       executable_->ExecuteOnStream(run_options, arguments,
                                    /*hlo_execution_profile=*/nullptr));
-  TF_RETURN_IF_ERROR(RecordResult(result.get(), executable_->session_module()));
+  TF_RETURN_IF_ERROR(RecordResult(&result, executable_->session_module()));
   TF_RETURN_IF_ERROR(executable_->DumpSessionModule());
-  return ScopedShapedBuffer::MakeScoped(result.get(), run_options->allocator());
+  return std::move(result);
 }
 
 tensorflow::Status LocalExecutable::RecordArguments(
@@ -283,9 +276,9 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
                                         updated_options));
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
-                                   DeviceMemoryAllocator* allocator) {
+StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
+    const Literal& literal, int device_ordinal,
+    DeviceMemoryAllocator* allocator) {
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
   }
@@ -295,7 +288,7 @@ LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-      executor, literal, *scoped_buffer));
+      executor, literal, scoped_buffer));
   return std::move(scoped_buffer);
 }
 

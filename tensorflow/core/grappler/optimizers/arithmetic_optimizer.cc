@@ -208,8 +208,7 @@ bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
       graph_properties.GetOutputProperties(reshape.name());
   const std::vector<OpInfo::TensorProperties>& input_props =
       graph_properties.GetOutputProperties(input.name());
-  if (reshape_props.empty() || input_props.empty() ||
-      input_props.size() <= output_pos) {
+  if (reshape_props.empty() || input_props.size() <= output_pos) {
     return false;
   }
 
@@ -294,8 +293,8 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
       for (int i = src->input_size() - 1; i >= 0; --i) {
         if (IsControlInput(src->input(i))) {
           *target_node->add_input() = src->input(i);
-          ctx_.node_map->AddOutput(NodeName(src->input(i)),
-                                   target_node->name());
+          ctx().node_map->AddOutput(NodeName(src->input(i)),
+                                    target_node->name());
         } else {
           break;
         }
@@ -442,7 +441,7 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
   // TODO(ezhulenev): move to GraphOptimizerStage?
   bool DrivesControlDependency(const NodeDef& node) const {
     int position;
-    for (const NodeDef* output : ctx_.node_map->GetOutputs(node.name())) {
+    for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
       for (int i = 0; i < output->input_size(); ++i) {
         auto input = output->input(i);
         string name = ParseNodeName(input, &position);
@@ -476,8 +475,8 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
   }
 
   bool IsInPreserveSet(const NodeDef& node) const {
-    return ctx_.nodes_to_preserve->find(node.name()) !=
-           ctx_.nodes_to_preserve->end();
+    return ctx().nodes_to_preserve->find(node.name()) !=
+           ctx().nodes_to_preserve->end();
   }
 
   bool IsAlreadyOptimized(const NodeDef& node) const {
@@ -546,7 +545,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     // with a single output data consumer (presumably if we reach this node from
     // previously absorbed or a root node, it means that this node is not used
     // as an input to any other op, outside of the group)
-    if (NumNonControlDataOutputs(node, *ctx_.node_map) != 1) {
+    if (NumNonControlDataOutputs(node, *ctx().node_map) != 1) {
       return false;
     }
     // All input shapes must be broadcastable to the node shape
@@ -685,7 +684,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     (*node->mutable_attr())["N"].set_i(inputs.size());
 
     for (const auto& inputAndShape : inputs) {
-      ctx_.node_map->AddOutput(inputAndShape.input, node_name);
+      ctx().node_map->AddOutput(inputAndShape.input, node_name);
       node->add_input(inputAndShape.input);
     }
 
@@ -707,8 +706,8 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     node->set_device(root_node.device());
     (*node->mutable_attr())["T"].set_type(dtype);
 
-    ctx_.node_map->AddOutput(left.input, node_name);
-    ctx_.node_map->AddOutput(right.input, node_name);
+    ctx().node_map->AddOutput(left.input, node_name);
+    ctx().node_map->AddOutput(right.input, node_name);
 
     node->add_input(left.input);
     node->add_input(right.input);
@@ -784,20 +783,20 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
           new_outer_node->set_input(1, new_add_node->name());
         }
 
-        ctx_.node_map->AddOutput(common_factor, new_outer_node->name());
-        ctx_.node_map->AddOutput(new_add_node->name(), new_outer_node->name());
+        ctx().node_map->AddOutput(common_factor, new_outer_node->name());
+        ctx().node_map->AddOutput(new_add_node->name(), new_outer_node->name());
 
         // Hoist non-shared factors up into the new AddN node.
         for (int i = 0; i < unique_factors.size(); ++i) {
           const string& unique_factor_i = unique_factors[i];
           new_add_node->set_input(i, unique_factor_i);
-          ctx_.node_map->AddOutput(unique_factor_i, new_add_node->name());
+          ctx().node_map->AddOutput(unique_factor_i, new_add_node->name());
         }
 
         // Add control deps on add node
         for (const string& ctrl_dep : ctrl_deps) {
           *new_add_node->add_input() = ctrl_dep;
-          ctx_.node_map->AddOutput(NodeName(ctrl_dep), new_add_node->name());
+          ctx().node_map->AddOutput(NodeName(ctrl_dep), new_add_node->name());
         }
 
         // optimize new inner aggregation node
@@ -931,8 +930,8 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
     // if graph rewrite happens in multiple passes without graph pruning between
     // them, it's possible that rewritten node already exists in a graph
     return rewritten_nodes_.find(node->name()) != rewritten_nodes_.end() ||
-           ctx_.node_map->NodeExists(OuterNodeName(node, false)) ||
-           ctx_.node_map->NodeExists(OuterNodeName(node, true));
+           ctx().node_map->NodeExists(OuterNodeName(node, false)) ||
+           ctx().node_map->NodeExists(OuterNodeName(node, true));
   }
 
   // keep names of the nodes that were optimized by this stage
@@ -996,7 +995,7 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
     }
     // Optimized nodes updated in place, and that would break the graph, if the
     // node has multiple output consumers
-    if (NumNonControlOutputs(node, *ctx_.node_map) != 1) {
+    if (NumNonControlOutputs(node, *ctx().node_map) != 1) {
       return false;
     }
     // All input shapes must be broadcastable to the node shape
@@ -1120,13 +1119,13 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
       node->set_input(0, input_0);
       node->set_input(1, input_1);
       // Invalidate node properties (shape)
-      ctx_.graph_properties->ClearOutputProperties(node->name());
-      ctx_.graph_properties->ClearInputProperties(node->name());
+      ctx().graph_properties->ClearOutputProperties(node->name());
+      ctx().graph_properties->ClearInputProperties(node->name());
       // Update the node map
-      ctx_.node_map->RemoveOutput(NodeName(old_input_0), node->name());
-      ctx_.node_map->RemoveOutput(NodeName(old_input_1), node->name());
-      ctx_.node_map->AddOutput(NodeName(input_0), node->name());
-      ctx_.node_map->AddOutput(NodeName(input_1), node->name());
+      ctx().node_map->RemoveOutput(NodeName(old_input_0), node->name());
+      ctx().node_map->RemoveOutput(NodeName(old_input_1), node->name());
+      ctx().node_map->AddOutput(NodeName(input_0), node->name());
+      ctx().node_map->AddOutput(NodeName(input_1), node->name());
       // Add updated node to optimization queue
       AddToOptimizationQueue(node);
     }
@@ -1257,8 +1256,8 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
       // Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
       bitcast->set_input(0, operand->input(0));
       SetSourceDataType(GetSourceDataType(*operand), bitcast);
-      ctx_.node_map->UpdateInput(bitcast->name(), bitcast->input(0),
-                                 operand->input(0));
+      ctx().node_map->UpdateInput(bitcast->name(), bitcast->input(0),
+                                  operand->input(0));
       AddToOptimizationQueue(bitcast);
       *simplified_node_name = bitcast->name();
     }
@@ -1313,14 +1312,14 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
         node->mutable_input()->SwapElements(0, 1);
         node->set_input(1, x->input(0));
         node->add_input(AsControlDependency(x->name()));
-        ctx_.node_map->AddOutput(NodeName(x->input(0)), node_name);
+        ctx().node_map->AddOutput(NodeName(x->input(0)), node_name);
         updated = true;
       } else if (IsNeg(*y)) {
         // a + (-b) = a - b
         node->set_op("Sub");
         node->set_input(1, y->input(0));
         node->add_input(AsControlDependency(y->name()));
-        ctx_.node_map->AddOutput(NodeName(y->input(0)), node_name);
+        ctx().node_map->AddOutput(NodeName(y->input(0)), node_name);
         updated = true;
       }
     } else if (IsSub(*node)) {
@@ -1329,12 +1328,218 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
         node->set_op("Add");
         node->set_input(1, y->input(0));
         node->add_input(AsControlDependency(y->name()));
-        ctx_.node_map->AddOutput(NodeName(y->input(0)), node_name);
+        ctx().node_map->AddOutput(NodeName(y->input(0)), node_name);
         updated = true;
       }
     }
     if (updated) {
       AddToOptimizationQueue(node);
+    }
+    return Status::OK();
+  }
+};
+
+// This optimization hoists the common prefix of unary ops of the inputs to
+// concat out of the concat.
+// For example: Concat([Exp(Sin(x)), Exp(Sin(y)), Exp(Sin(z))]) ->
+// Exp(Sin(Concat([x, y, z]))).
+// TODO(rmlarsen): Support casting. We would have to change the type attribute
+// on the concat node.
+class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
+ public:
+  explicit HoistCWiseUnaryFromConcatStage(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("", ctx, ctx_ext) {}
+
+  ~HoistCWiseUnaryFromConcatStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    if (!IsConcat(*node)) return false;
+    const int n = node->attr().at("N").i();
+    return n > 1;
+  }
+
+  Status TrySimplify(NodeDef* concat_node,
+                     string* simplified_node_name) override {
+    int prefix_length;
+    std::set<string> ctrl_inputs;
+    TF_RETURN_IF_ERROR(
+        FindCommonUnaryOpPrefix(*concat_node, &prefix_length, &ctrl_inputs));
+    if (prefix_length > 0) {
+      TF_RETURN_IF_ERROR(
+          HoistUnaryOpPrefix(prefix_length, &ctrl_inputs, concat_node));
+      AddToOptimizationQueue(concat_node);
+    }
+    return Status::OK();
+  }
+
+ private:
+  void RemoveControlInputs(std::set<string>* removed_ctrl_inputs,
+                           NodeDef* node) const {
+    const int num_inputs = node->input_size();
+    for (int idx = num_inputs - 1; idx >= 0; --idx) {
+      const string& input = node->input(idx);
+      if (IsControlInput(input)) {
+        removed_ctrl_inputs->insert(input);
+        ctx().node_map->RemoveOutput(NodeName(input), node->name());
+        node->mutable_input()->RemoveLast();
+      } else {
+        break;
+      }
+    }
+  }
+
+  void AddControlInputs(std::set<string>* new_ctrl_inputs,
+                        NodeDef* node) const {
+    for (int idx = node->input_size() - 1; idx >= 0; --idx) {
+      const string& existing_input = node->input(idx);
+      if (IsControlInput(existing_input)) {
+        new_ctrl_inputs->erase(existing_input);
+      } else {
+        break;
+      }
+    }
+    for (const string& new_input : *new_ctrl_inputs) {
+      ctx().node_map->AddOutput(NodeName(new_input), node->name());
+      node->add_input(new_input);
+    }
+  }
+
+  // Returns the length of the common unary prefix chain of ops that can be
+  // hoisted out of concat.
+  Status FindCommonUnaryOpPrefix(const NodeDef& concat_node, int* prefix_length,
+                                 std::set<string>* ctrl_inputs) const {
+    *prefix_length = 0;
+    const int n = concat_node.attr().at("N").i();
+    // Follow the chains backwards from each concat input as long as all the
+    // following conditions hold:
+    //   1. The ops in all chains are the same.
+    //   2. The op is a unary elemenwise op.
+    //   3. The op output has only a single consumer.
+    std::vector<NodeDef*> tail(n, nullptr);
+    const int start = concat_node.op() == "Concat" ? 1 : 0;
+    const int end = start + n;
+    // Set up tail pointers to point to the immediate inputs to Concat.
+    for (int i = start; i < end; ++i) {
+      if (IsControlInput(concat_node.input(i))) {
+        return errors::FailedPrecondition("Got control input ",
+                                          concat_node.input(i),
+                                          " where normal input was expected.");
+      }
+      TF_RETURN_IF_ERROR(GetInputNode(concat_node.input(i), &tail[i - start]));
+    }
+
+    bool stop = false;
+    ctrl_inputs->clear();
+    while (!stop) {
+      const NodeDef* tail0 = tail[0];
+      if (!IsUnaryElementWise(*tail0)) break;
+      for (int chain = 0; chain < n; ++chain) {
+        // TODO(rmlarsen): Allow and hoist outgoing control edges.
+        if (tail[chain]->op() != tail0->op() ||
+            ctx().node_map->GetOutputs(tail[chain]->name()).size() > 1) {
+          stop = true;
+          break;
+        }
+      }
+      if (stop) break;
+      // We found one more op that can be hoisted.
+      ++(*prefix_length);
+      for (int chain = 0; chain < n; ++chain) {
+        RemoveControlInputs(ctrl_inputs, tail[chain]);
+      }
+      // Advance tail pointers to the next level.
+      for (int chain = 0; chain < n; ++chain) {
+        if (tail[chain]->input_size() == 0 ||
+            IsControlInput(tail[chain]->input(0))) {
+          stop = true;
+          break;
+        } else {
+          NodeDef* new_tail = nullptr;
+          TF_RETURN_IF_ERROR(GetInputNode(tail[chain]->input(0), &new_tail));
+          tail[chain] = new_tail;
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  Status HoistUnaryOpPrefix(const int prefix_length,
+                            std::set<string>* ctrl_inputs,
+                            NodeDef* concat_node) {
+    const int n = concat_node->attr().at("N").i();
+    const int start = concat_node->op() == "Concat" ? 1 : 0;
+    const int end = start + n;
+    const std::set<NodeDef*> consumers =
+        ctx().node_map->GetOutputs(concat_node->name());
+    AddControlInputs(ctrl_inputs, concat_node);
+    for (int chain = 0; chain < (end - start); ++chain) {
+      NodeDef* tail = nullptr;
+      const string concat_input = concat_node->input(chain + start);
+      for (int distance = 0; distance < prefix_length; ++distance) {
+        if (distance == 0) {
+          TF_RETURN_IF_ERROR(GetInputNode(concat_input, &tail));
+        } else {
+          TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &tail));
+        }
+      }
+
+      // Hook the node following tail directly into the concat node.
+      const string tail_input = tail->input(0);
+      concat_node->set_input(chain + start, tail_input);
+      ctx().node_map->UpdateInput(concat_node->name(), concat_input,
+                                  tail_input);
+
+      if (chain == 0) {
+        // Reuse nodes in the first chain to process output of concat.
+        tail->set_input(0, concat_node->name());
+        ctx().node_map->UpdateInput(tail->name(), tail_input,
+                                    concat_node->name());
+
+        // Update the consumers of concat to consume the end of the chain
+        // instead.
+        for (NodeDef* consumer : consumers) {
+          for (int idx = 0; idx < consumer->input_size(); ++idx) {
+            if (consumer->input(idx) == concat_node->name()) {
+              consumer->set_input(idx, concat_input);
+              ctx().node_map->UpdateInput(consumer->name(), concat_node->name(),
+                                          concat_input);
+            }
+          }
+          AddToOptimizationQueue(consumer);
+        }
+      }
+    }
+    return Status::OK();
+  }
+};
+
+// Performs the conversion:
+// Div(x, Sqrt(y)) => Mul(x, Rsqrt(y))
+// TODO(srjoglekar): Generalize to optimize cases like (x / pow(y, z)).
+class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
+ public:
+  explicit SqrtDivToRsqrtMulStage(const GraphOptimizerContext& ctx,
+                                  const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("SqrtDivToRsqrtMul", ctx, ctx_ext) {}
+  ~SqrtDivToRsqrtMulStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsAnyDiv(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* y;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
+    // Optimize only if divisor is a Sqrt whose output is not being consumed
+    // elsewhere.
+    if (IsSqrt(*y) && (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
+      // a / sqrt(b) = a * rsqrt(b)
+      node->set_op("Mul");
+      y->set_op("Rsqrt");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(y);
     }
     return Status::OK();
   }
@@ -1995,6 +2200,10 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
+  if (options_.hoist_unary_out_of_concat)
+    pipeline.AddStage<HoistCWiseUnaryFromConcatStage>(ctx, ctx_ext);
+  if (options_.convert_sqrt_div_to_rsqrt_mul)
+    pipeline.AddStage<SqrtDivToRsqrtMulStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");
@@ -2062,17 +2271,18 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
   *optimized_graph = item.graph;
-  optimized_graph_ = optimized_graph;
+  GrapplerItem optimized_item(item, optimized_graph);
+  optimized_graph_ = &optimized_item.graph;
   node_map_.reset(new NodeMap(optimized_graph_));
 
-  DedupComputations();
+  if (options_.dedup_computations) {
+    DedupComputations();
+  }
 
   // Perform topological sort on the graph in order to help AddOpsRewrite to
   // optimize larger subgraphs starting from the roots with more inputs.
   TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
 
-  GrapplerItem optimized_item(item, optimized_graph);
-  optimized_graph_ = &optimized_item.graph;
   graph_properties_.reset(new GraphProperties(optimized_item));
   const Status status = graph_properties_->InferStatically(false);
   const bool can_use_shapes = status.ok();

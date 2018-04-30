@@ -195,14 +195,14 @@ def _show_all(saved_model_dir):
   """
   tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
   for tag_set in sorted(tag_sets):
-    tag_set = ', '.join(tag_set)
-    print('\nMetaGraphDef with tag-set: \'' + tag_set +
-          '\' contains the following SignatureDefs:')
+    print("\nMetaGraphDef with tag-set: '%s' "
+          "contains the following SignatureDefs:" % ', '.join(tag_set))
 
+    tag_set = ','.join(tag_set)
     signature_def_map = get_signature_def_map(saved_model_dir, tag_set)
     for signature_def_key in sorted(signature_def_map.keys()):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
-      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, 
+      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
 
 

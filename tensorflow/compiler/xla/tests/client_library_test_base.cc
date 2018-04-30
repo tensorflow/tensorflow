@@ -32,8 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace {
 
@@ -59,11 +57,15 @@ se::Platform* GetReferencePlatform() {
 }  // namespace
 
 ClientLibraryTestBase::ClientLibraryTestBase(
-    perftools::gputools::Platform* platform,
-    const LocalClientOptions& client_options)
+    se::Platform* platform, const LocalClientOptions& client_options)
     : client_(GetOrCreateLocalClientOrDie(client_options)),
       execution_options_(CreateDefaultExecutionOptions()) {
   CHECK_EQ(platform, client_options.platform());
+
+  LocalClientOptions ref_options;
+  ref_options.set_platform(GetReferencePlatform());
+  ref_client_ = GetOrCreateLocalClientOrDie(ref_options);
+
   // Disabling constant_folding so that tests (usually written using Constants)
   // will exercise the intended code paths, instead of being constant folded.
   //
@@ -155,6 +157,7 @@ ClientLibraryTestBase::ExecuteAndTransferReference(
     *execution_options.mutable_shape_with_output_layout() =
         *shape_with_output_layout;
   }
+  execution_options.clear_device_handles();
   return ref_client_->ExecuteAndTransfer(computation, arguments,
                                          &execution_options);
 }
@@ -208,6 +211,14 @@ string ClientLibraryTestBase::ExecuteToString(
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
     ComputationBuilder* builder, const tensorflow::core::Bitmap& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+  std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+                                                  arguments);
+}
+
+void ClientLibraryTestBase::ComputeAndCompareR1(
+    XlaBuilder* builder, const tensorflow::core::Bitmap& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -455,7 +466,7 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(
-    ComputationBuilder* builder, tensorflow::StringPiece expected,
+    XlaBuilder* builder, tensorflow::StringPiece expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
@@ -616,8 +627,8 @@ ClientLibraryTestBase::ComputeValueAndReference(
   return std::make_pair(std::move(reference), std::move(result));
 }
 
-Computation ClientLibraryTestBase::CreateScalarRelu() {
-  ComputationBuilder builder(client_, "relu");
+XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
+  XlaBuilder builder("relu");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
   auto z_value = builder.Parameter(0, shape, "z_value");
   auto zero = use_bfloat16_
@@ -629,8 +640,8 @@ Computation ClientLibraryTestBase::CreateScalarRelu() {
   return computation_status.ConsumeValueOrDie();
 }
 
-Computation ClientLibraryTestBase::CreateScalarMax() {
-  ComputationBuilder builder(client_, "max");
+XlaComputation ClientLibraryTestBase::CreateScalarMax() {
+  XlaBuilder builder("max");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
   auto x = builder.Parameter(0, shape, "x");
   auto y = builder.Parameter(1, shape, "y");

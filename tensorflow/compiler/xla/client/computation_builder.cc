@@ -1046,6 +1046,11 @@ ComputationDataHandle ComputationBuilder::Neg(
   return UnaryOp(UNOP_NEGATE, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Clz(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_CLZ, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Clamp(
     const ComputationDataHandle& min, const ComputationDataHandle& operand,
     const ComputationDataHandle& max) {

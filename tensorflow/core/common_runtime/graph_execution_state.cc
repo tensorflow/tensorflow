@@ -76,7 +76,7 @@ GraphExecutionState::~GraphExecutionState() {
     GraphDef* graph_def, const GraphExecutionStateOptions& options,
     std::unique_ptr<GraphExecutionState>* out_state) {
 #ifndef __ANDROID__
-  VLOG(1) << "Graph proto is " << graph_def->DebugString();
+  VLOG(4) << "Graph proto is " << graph_def->DebugString();
 #endif  // __ANDROID__
 
   std::unique_ptr<GraphExecutionState> ret(
@@ -398,7 +398,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
 }
 
 Status GraphExecutionState::OptimizeGraph(
-    const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph) {
+    const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
+    std::unique_ptr<FunctionLibraryDefinition>* optimized_flib) {
 #ifndef IS_MOBILE_PLATFORM
   if (session_options_->config.graph_options().place_pruned_graph()) {
     return errors::InvalidArgument("Can't optimize a pruned graph");
@@ -489,13 +490,34 @@ Status GraphExecutionState::OptimizeGraph(
         cpu_device = device;
       }
     }
-    grappler::VirtualCluster cluster(device_map);
+    grappler::VirtualCluster cluster(device_map, device_set_);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
         item, rewrite_options, cpu_device, &cluster, &new_graph));
+
+    // Merge optimized graph function library with an original library.
+    // Optimized graph might have new functions specialized for it's
+    // instantiation context (see Grappler function optimizer), and modified
+    // function body for the existing functions.
+    optimized_flib->reset(new FunctionLibraryDefinition(*flib_def_));
+
+    for (const FunctionDef& fdef : new_graph.library().function()) {
+      const string& func_name = fdef.signature().name();
+
+      if ((*optimized_flib)->Find(func_name)) {
+        VLOG(3) << "Replace function: name=" << func_name;
+        TF_RETURN_IF_ERROR((*optimized_flib)->RemoveFunction(func_name));
+        TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
+      } else {
+        VLOG(3) << "Add new function: name=" << func_name;
+        TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
+      }
+    }
+
+    optimized_graph->reset(new Graph(OpRegistry::Global()));
+
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
-    optimized_graph->reset(new Graph(OpRegistry::Global()));
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToGraph(opts, new_graph, optimized_graph->get()));
     // The graph conversion sets the requested device names but not the assigned
@@ -524,18 +546,26 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
         "Attempted to prune a graph that has not been fully initialized.");
   }
 
-  std::unique_ptr<Graph> ng;
-  Status s = OptimizeGraph(options, &ng);
+  // Grappler optimization might change the structure of a graph itself, and
+  // also it can add/prune functions to/from the library.
+  std::unique_ptr<Graph> optimized_graph;
+  std::unique_ptr<FunctionLibraryDefinition> optimized_flib;
+
+  Status s = OptimizeGraph(options, &optimized_graph, &optimized_flib);
   if (!s.ok()) {
-    // Simply copy the original graph if we couldn't optimize it.
-    ng.reset(new Graph(flib_def_.get()));
-    CopyGraph(*graph_, ng.get());
+    VLOG(2) << "Grappler optimization failed. Error: " << s.error_message();
+    // Simply copy the original graph and the function library if we couldn't
+    // optimize it.
+    optimized_graph.reset(new Graph(flib_def_.get()));
+    CopyGraph(*graph_, optimized_graph.get());
+    optimized_flib.reset(new FunctionLibraryDefinition(*flib_def_));
   }
 
   subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||
       !session_options_->config.graph_options().place_pruned_graph()) {
-    TF_RETURN_IF_ERROR(PruneGraph(options, ng.get(), &rewrite_metadata));
+    TF_RETURN_IF_ERROR(
+        PruneGraph(options, optimized_graph.get(), &rewrite_metadata));
   } else {
     // This GraphExecutionState represents a graph that was
     // pruned when this was constructed, so we copy the metadata from
@@ -549,15 +579,11 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   CHECK_EQ(options.callable_options.fetch_size(),
            rewrite_metadata.fetch_types.size());
 
-  // Make a fresh copy of the function library for the client graph.
-  std::unique_ptr<FunctionLibraryDefinition> flib(
-      new FunctionLibraryDefinition(*flib_def_));
-
   // TODO(andydavis): Clarify optimization pass requirements around CostModel.
   GraphOptimizationPassOptions optimization_options;
   optimization_options.session_options = session_options_;
-  optimization_options.graph = &ng;
-  optimization_options.flib_def = flib.get();
+  optimization_options.graph = &optimized_graph;
+  optimization_options.flib_def = optimized_flib.get();
   optimization_options.device_set = device_set_;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -567,9 +593,9 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
   std::unique_ptr<ClientGraph> dense_copy(
-      new ClientGraph(std::move(flib), rewrite_metadata.feed_types,
+      new ClientGraph(std::move(optimized_flib), rewrite_metadata.feed_types,
                       rewrite_metadata.fetch_types));
-  CopyGraph(*ng, &dense_copy->graph);
+  CopyGraph(*optimized_graph, &dense_copy->graph);
 
   // TODO(vrv): We should check invariants of the graph here.
 

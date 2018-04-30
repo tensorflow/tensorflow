@@ -296,3 +296,20 @@ message HloProto {
   HloOrderingProto hlo_ordering = 2;
   BufferAssignmentProto buffer_assignment = 3;
 }
+
+// Encapsulates HloProto together with the arguments, result, and
+// execution_platform. This message is used for purposes such as
+// analysis/replay/file-storage.
+message HloSnapshot {
+  // The hlo graph.
+  HloProto hlo = 1;
+
+  // The arguments passed to the graph.
+  repeated LiteralProto arguments = 2;
+
+  // The result of the graph.
+  LiteralProto result = 3;
+
+  // The name of the platform used to run the graph.
+  string execution_platform = 4;
+}

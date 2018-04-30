@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
-#define TENSORFLOW_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
 
 #include <unordered_map>
 #include <vector>
@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
-class Graph;
 
 namespace grappler {
 
@@ -79,47 +78,41 @@ class GraphProperties {
   // Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.
   static Status MergeEnqueueShapesAndTypes(
-      SymbolicShapeRefiner* shape_refiner, const Node* qnode,
+      SymbolicShapeRefiner* shape_refiner, const NodeDef* qnode,
       const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
       std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
   // Relaxes shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.
   static Status RelaxEnqueueShapesAndMergeTypes(
-      SymbolicShapeRefiner* shape_refiner, const Node* qnode,
+      SymbolicShapeRefiner* shape_refiner, const NodeDef* qnode,
       const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
       std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
 
   // Update the shapes for qnode. If output shapes of qnode have changed,
   // enqueue its fanout in 'new_shapes'.
   static Status UpdateResource(
-      const Node* qnode, const std::unordered_set<const Node*>& queue_inputs,
-      SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes);
+      const NodeDef* qnode,
+      const std::unordered_set<const NodeDef*>& queue_inputs,
+      SymbolicShapeRefiner* shape_refiner, TopoQueue* new_shapes);
 
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.
-  Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner, const Node* node,
-                         bool relax, bool* new_shapes) const;
+  Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
+                         const NodeDef* node, bool relax,
+                         bool* new_shapes) const;
   // Process the Enter node, and enqueue its fanout in new_shapes if needed.
   static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
-                            const Node* node, bool relax, bool* new_shapes);
-  // Process a node that is used to feed the model.
-  Status OverwriteFedPorts(
-      SymbolicShapeRefiner* shape_refiner,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
-      const Node* node, bool* new_shapes) const;
+                            const NodeDef* node, bool relax, bool* new_shapes);
   // Update the shapes for node 'n'. If output shapes for n have changed,
   // enqueue its fanout in 'new_shapes'.
-  Status UpdateShapes(
-      SymbolicShapeRefiner* shape_refiner, bool relax,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
-      const Node* n, bool* new_shapes) const;
+  Status UpdateShapes(SymbolicShapeRefiner* shape_refiner, bool relax,
+                      const NodeDef* n, bool* new_shapes) const;
   // Propagate the shapes for the nodes enqueued in new_shapes and their
   // transitive fanout until a fixed point is reached.
   Status PropagateShapes(
       SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
-      const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
-          resources,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+      const std::unordered_map<const NodeDef*,
+                               std::unordered_set<const NodeDef*>>& resources,
       int num_loops) const;
 
   // Data members
@@ -127,11 +120,9 @@ class GraphProperties {
   std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
   std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
-
-  Graph* graph_;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_

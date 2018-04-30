@@ -15,9 +15,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -37,7 +37,7 @@ class LocalClientAllocationTest : public LocalClientTestBase {
 };
 
 XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.ConstantR1<float>({0.0f, 1.0f, 2.0f});
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
@@ -53,7 +53,7 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   // deallocation happen on the right allocator.
   ExecutableRunOptions options;
   options.set_allocator(allocator);
-  std::unique_ptr<ScopedShapedBuffer> result =
+  tensorflow::gtl::optional<ScopedShapedBuffer> result =
       ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {},
                           DefaultExecutableBuildOptions(), options);
 
@@ -66,14 +66,14 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
 
   // Deallocate result and verify that deallocate was called once.
   int64 deallocation_count_before = allocator_->deallocation_count();
-  result = nullptr;
+  result.reset();
   EXPECT_EQ(deallocation_count_before + 1, allocator_->deallocation_count());
 }
 
 XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
   // Run a computation on every device on the system. Verify that allocation
   // occurs on the proper device.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.ConstantR1<float>({0.0f, 1.0f, 2.0f});
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
@@ -92,7 +92,7 @@ XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
         computation, {}, ExecutableBuildOptions().set_device_ordinal(d),
         ExecutableRunOptions().set_device_ordinal(d).set_allocator(allocator));
     LiteralTestUtil::ExpectR1Near<float>(
-        {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(*result), error_spec_);
+        {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(result), error_spec_);
 
     // At least one allocation should have been performed when executing the
     // computation.

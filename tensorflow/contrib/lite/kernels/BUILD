@@ -145,6 +145,7 @@ cc_library(
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "exp.cc",
+        "floor.cc",
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
@@ -212,6 +213,7 @@ tf_cc_test(
     name = "audio_spectrogram_test",
     size = "small",
     srcs = ["audio_spectrogram_test.cc"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -225,6 +227,7 @@ tf_cc_test(
     name = "mfcc_test",
     size = "small",
     srcs = ["mfcc_test.cc"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -346,6 +349,7 @@ tf_cc_test(
     name = "cast_test",
     size = "small",
     srcs = ["cast_test.cc"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -398,6 +402,7 @@ tf_cc_test(
     name = "dequantize_test",
     size = "small",
     srcs = ["dequantize_test.cc"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -424,6 +429,19 @@ tf_cc_test(
     name = "bidirectional_sequence_lstm_test",
     size = "small",
     srcs = ["bidirectional_sequence_lstm_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "floor_test",
+    size = "small",
+    srcs = ["floor_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
@@ -504,6 +522,7 @@ tf_cc_test(
     name = "maximum_minimum_test",
     size = "small",
     srcs = ["maximum_minimum_test.cc"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

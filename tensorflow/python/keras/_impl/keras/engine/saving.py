@@ -498,34 +498,10 @@ def preprocess_weights_for_loading(layer,
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = np.transpose(weights[1], (3, 2, 0, 1))
 
-  # Convert the weights of CuDNNLSTM so that they could be loaded into LSTM
-  if layer.__class__.__name__ == 'LSTM' and len(weights) == 3:
-    # Determine if loading a CuDNNLSTM layer from the number of bias weights:
-    # CuDNNLSTM has (units * 8) weights; while LSTM has (units * 4)
-    # if there's no bias weight in the file, skip this conversion
-    units = weights[1].shape[0]
-    bias = weights[2]
-    if len(bias) == units * 8:
-      # reshape the kernels
-      kernels = np.split(weights[0], 4, axis=1)
-      kernels = [
-          kernel.reshape(-1).reshape(kernel.shape, order='F')
-          for kernel in kernels
-      ]
-      weights[0] = np.concatenate(kernels, axis=1)
-
-      # transpose the recurrent kernels
-      recurrent_kernels = np.split(weights[1], 4, axis=1)
-      recurrent_kernels = [kernel.T for kernel in recurrent_kernels]
-      weights[1] = np.concatenate(recurrent_kernels, axis=1)
-
-      # split the bias into half and merge
-      weights[2] = bias[:units * 4] + bias[units * 4:]
-
-  return convert_rnn_weights(layer, weights)
+  return _convert_rnn_weights(layer, weights)
 
 
-def convert_rnn_weights(layer, weights):
+def _convert_rnn_weights(layer, weights):
   """Converts weights for RNN layers between native and CuDNN format.
 
   Input kernels for each gate are transposed and converted between Fortran
@@ -557,6 +533,7 @@ def convert_rnn_weights(layer, weights):
         kernels: Stacked array of kernels for individual gates.
         func: Function applied to kernel of each gate.
         n_gates: Number of gates (4 for LSTM, 3 for GRU).
+
     Returns:
         Stacked array of transformed kernels.
     """
@@ -578,6 +555,7 @@ def convert_rnn_weights(layer, weights):
     Arguments:
         from_cudnn: `True` if source weights are in CuDNN format, `False`
             if they're in plain Keras format.
+
     Returns:
         Function that converts input kernel to the other format.
     """
@@ -608,22 +586,85 @@ def convert_rnn_weights(layer, weights):
       raise ValueError('Invalid bias shape: ' + str(bias_shape))
 
     def convert_lstm_weights(weights, from_cudnn=True):
-      # Transpose (and reshape) input and recurrent kernels.
+      """Converts the weights between CuDNNLSTM and LSTM.
+
+      Arguments:
+        weights: Original weights.
+        from_cudnn: Indicates whether original weights are from CuDNN layer.
+
+      Returns:
+        Updated weights compatible with LSTM.
+      """
+
+      # Transpose (and reshape) input and recurrent kernels
       kernels = transform_kernels(weights[0], transpose_input(from_cudnn),
                                   n_gates)
       recurrent_kernels = transform_kernels(weights[1], lambda k: k.T, n_gates)
-      if from_cudnn:  # Merge input and recurrent biases into a single set.
+      if from_cudnn:
+        # merge input and recurrent biases into a single set
         biases = np.sum(np.split(weights[2], 2, axis=0), axis=0)
       else:
-        # Split single set of biases evenly to two sets.
+        # Split single set of biases evenly to two sets. The way of
+        # splitting doesn't matter as long as the two sets sum is kept.
         biases = np.tile(0.5 * weights[2], 2)
       return [kernels, recurrent_kernels, biases]
 
     if source != target_class:
       weights = convert_lstm_weights(weights, from_cudnn=source == 'CuDNNLSTM')
 
-  # TODO(fchollet): add feature after GRU is refactored:
-  # convert the weights between `CuDNNGRU` and `GRU(reset_after=True)`
+  # convert the weights between CuDNNGRU and GRU(reset_after=True)
+  if target_class in ['GRU', 'CuDNNGRU'] and len(weights) == 3:
+    # We can determine the source of the weights from the shape of the bias.
+    # If there is no bias we skip the conversion since
+    # CuDNNGRU always has biases.
+
+    units = weights[1].shape[0]
+    bias_shape = weights[2].shape
+    n_gates = 3
+
+    def convert_gru_weights(weights, from_cudnn=True):
+      """Converts the weights between CuDNNGRU and GRU.
+
+      Arguments:
+        weights: Original weights.
+        from_cudnn: Indicates whether original weights are from CuDNN layer.
+
+      Returns:
+        Updated weights compatible with GRU.
+      """
+
+      kernels = transform_kernels(weights[0], transpose_input(from_cudnn),
+                                  n_gates)
+      recurrent_kernels = transform_kernels(weights[1], lambda k: k.T, n_gates)
+      biases = weights[2].reshape((2, -1) if from_cudnn else -1)
+      return [kernels, recurrent_kernels, biases]
+
+    if bias_shape == (2 * units * n_gates,):
+      source = 'CuDNNGRU'
+    elif bias_shape == (2, units * n_gates):
+      source = 'GRU(reset_after=True)'
+    elif bias_shape == (units * n_gates,):
+      source = 'GRU(reset_after=False)'
+    else:
+      raise ValueError('Invalid bias shape: ' + str(bias_shape))
+
+    if target_class == 'CuDNNGRU':
+      target = 'CuDNNGRU'
+    elif layer.reset_after:
+      target = 'GRU(reset_after=True)'
+    else:
+      target = 'GRU(reset_after=False)'
+
+    # only convert between different types
+    if source != target:
+      types = (source, target)
+      if 'GRU(reset_after=False)' in types:
+        raise ValueError('%s is not compatible with %s' % types)
+      if source == 'CuDNNGRU':
+        weights = convert_gru_weights(weights, from_cudnn=True)
+      elif source == 'GRU(reset_after=True)':
+        weights = convert_gru_weights(weights, from_cudnn=False)
+
   return weights
 
 
