@@ -31,6 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from google3.third_party.tensorflow.python.platform import tf_logging as logging
 
 
 def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
@@ -91,15 +92,15 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
     elif prob_original_static == 0:
       return filtered_ds
     else:
-      print('class_values_ds.output_shapes: %s', class_values_ds.output_shapes)
-      print('class_values_ds.output_types: %s', class_values_ds.output_types)
-      print('dataset.output_shapes: %s', dataset.output_shapes)
-      print('dataset.output_types: %s', dataset.output_types)
-      print('filtered_ds.output_shapes: %s', filtered_ds.output_shapes)
-      print('filtered_ds.output_types: %s', filtered_ds.output_types)
+      logging.warn('class_values_ds.output_shapes: %s'% class_values_ds.output_shapes)
+      logging.warn('class_values_ds.output_types: %s'% class_values_ds.output_types)
+      logging.warn('dataset.output_shapes: %s'% dataset.output_shapes)
+      logging.warn('dataset.output_types: %s'% dataset.output_types)
+      logging.warn('filtered_ds.output_shapes: %s'% filtered_ds.output_shapes)
+      logging.warn('filtered_ds.output_types: %s'% filtered_ds.output_types)
       weights = prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)])
-      print('weights.output_shapes: %s', weights.output_shapes)
-      print('weights.output_types: %s', weights.output_types)
+      logging.warn('weights.output_shapes: %s'% weights.output_shapes)
+      logging.warn('weights.output_types: %s'% weights.output_types)
       return interleave_ops.sample_from_datasets(
           [dataset_ops.Dataset.zip((class_values_ds, dataset)), filtered_ds],
           weights=weights,
@@ -151,7 +152,7 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
     return control_flow_ops.cond(
         math_ops.less(proportion_rejected, .5),
         lambda: accept_dist,
-        lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
+        lambda: logging_ops.logging.warn(  # pylint: disable=g-long-lambda
             accept_dist, [proportion_rejected, initial_dist, accept_dist],
             message="Proportion of examples rejected by sampler is high: ",
             summarize=100,
