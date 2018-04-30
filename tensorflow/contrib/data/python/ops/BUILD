@@ -204,7 +204,7 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
-        "//third_party/tensorflow/python:platform",
+        "//tensorflow/python:platform",
     ],
 )
 
