@@ -15,36 +15,6 @@
 """Control Flow Operations.
 
 See the @{$python/control_flow_ops} guide.
-
-@@identity
-@@identity_n
-@@tuple
-@@group
-@@no_op
-@@count_up_to
-@@cond
-@@case
-@@while_loop
-@@logical_and
-@@logical_not
-@@logical_or
-@@logical_xor
-@@equal
-@@not_equal
-@@less
-@@less_equal
-@@greater
-@@greater_equal
-@@where
-@@is_finite
-@@is_inf
-@@is_nan
-@@verify_tensor_all_finite
-@@check_numerics
-@@add_check_numerics_ops
-@@Assert
-@@Print
-@@timestamp
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import

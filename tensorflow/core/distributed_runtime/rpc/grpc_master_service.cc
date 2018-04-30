@@ -285,7 +285,7 @@ class GrpcMasterService : public AsyncServiceInterface {
 #undef ENQUEUE_REQUEST
 
   // Start tracing, including the ID attached to the RPC.
-  port::Tracing::TraceMe* TraceRpc(
+  tracing::ScopedActivity* TraceRpc(
       StringPiece name,
       const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
     StringPiece id;
@@ -293,7 +293,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     if (it != metadata.end()) {
       id = StringPiece(it->second.data(), it->second.size());
     }
-    return new port::Tracing::TraceMe(name, id);
+    return new tracing::ScopedActivity(name, id);
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);

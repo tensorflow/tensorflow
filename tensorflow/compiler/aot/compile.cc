@@ -110,6 +110,7 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
+
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 

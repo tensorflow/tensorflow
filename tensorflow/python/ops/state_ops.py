@@ -13,71 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Variables. See the @{$python/state_ops} guide.
-
-@@AUTO_REUSE
-@@IndexedSlices
-@@Saver
-@@Variable
-@@VariableScope
-@@all_variables
-@@assert_variables_initialized
-@@assign
-@@assign_add
-@@assign_sub
-@@constant_initializer
-@@export_meta_graph
-@@fixed_size_partitioner
-@@get_checkpoint_state
-@@get_local_variable
-@@get_variable
-@@get_variable_scope
-@@global_variables
-@@global_variables_initializer
-@@glorot_normal_initializer
-@@glorot_uniform_initializer
-@@import_meta_graph
-@@initialize_all_tables
-@@initialize_all_variables
-@@initialize_local_variables
-@@initialize_variables
-@@is_variable_initialized
-@@latest_checkpoint
-@@local_variables
-@@local_variables_initializer
-@@make_template
-@@min_max_variable_partitioner
-@@model_variables
-@@moving_average_variables
-@@no_regularizer
-@@ones_initializer
-@@orthogonal_initializer
-@@random_normal_initializer
-@@random_uniform_initializer
-@@report_uninitialized_variables
-@@scatter_add
-@@scatter_div
-@@scatter_mul
-@@scatter_nd_add
-@@scatter_nd_sub
-@@scatter_nd_update
-@@scatter_sub
-@@scatter_update
-@@scatter_min
-@@scatter_max
-@@sparse_mask
-@@tables_initializer
-@@trainable_variables
-@@truncated_normal_initializer
-@@uniform_unit_scaling_initializer
-@@update_checkpoint_state
-@@variable_axis_size_partitioner
-@@variable_op_scope
-@@variable_scope
-@@variables_initializer
-@@variance_scaling_initializer
-@@zeros_initializer
-"""
+"""Variables. See the @{$python/state_ops} guide."""
 
 from __future__ import absolute_import
 from __future__ import division

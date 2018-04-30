@@ -138,9 +138,6 @@ Backend::Backend(
       << "Service found no devices for backend " << platform_->Name() << '.';
 
   if (platform->id() == se::host::kHostPlatformId) {
-    inter_op_thread_pool_.reset(new tensorflow::thread::ThreadPool(
-        tensorflow::Env::Default(), "xla_inter_op",
-        tensorflow::port::NumSchedulableCPUs()));
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
                                 : tensorflow::port::NumSchedulableCPUs();
@@ -153,10 +150,6 @@ Backend::~Backend() {}
 
 int Backend::default_device_ordinal() const {
   return default_stream_executor()->device_ordinal();
-}
-
-tensorflow::thread::ThreadPool* Backend::inter_op_thread_pool() const {
-  return inter_op_thread_pool_.get();
 }
 
 const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()

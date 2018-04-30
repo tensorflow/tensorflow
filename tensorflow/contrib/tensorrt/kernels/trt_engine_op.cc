@@ -108,7 +108,8 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
       LOG(FATAL) << "input data inconsistent batch size";
       break;
     }
-    switch (trt_engine_ptr_->getBindingDataType(binding_index)) {
+    auto dtype = trt_engine_ptr_->getBindingDataType(binding_index);
+    switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
         buffers[binding_index] = (void*)(input_tensor.flat<float>().data());
         break;
@@ -117,6 +118,9 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
         break;
       case nvinfer1::DataType::kINT8:
         LOG(FATAL) << "int8 is not supported yet!";
+        break;
+      default:
+        LOG(FATAL) << "Unknown data type: " << int(dtype);
         break;
     }
   }
@@ -143,7 +147,8 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
 
     OP_REQUIRES_OK(context,
                    context->allocate_output(i, output_shape, &output_tensor));
-    switch (trt_engine_ptr_->getBindingDataType(binding_index)) {
+    auto dtype = trt_engine_ptr_->getBindingDataType(binding_index);
+    switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
         buffers[binding_index] =
             reinterpret_cast<void*>(output_tensor->flat<float>().data());
@@ -153,6 +158,9 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
         break;
       case nvinfer1::DataType::kINT8:
         LOG(FATAL) << "int8 is not supported yet!";
+        break;
+      default:
+        LOG(FATAL) << "Unknown data type: " << int(dtype);
         break;
     }
   }

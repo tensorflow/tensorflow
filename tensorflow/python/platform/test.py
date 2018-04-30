@@ -19,19 +19,6 @@ See the @{$python/test} guide.
 
 Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
 depending on the python version.
-
-@@main
-@@TestCase
-@@test_src_dir_path
-@@assert_equal_graph_def
-@@get_temp_dir
-@@is_built_with_cuda
-@@is_gpu_available
-@@gpu_device_name
-@@compute_gradient
-@@compute_gradient_error
-@@create_local_cluster
-
 """
 
 from __future__ import absolute_import

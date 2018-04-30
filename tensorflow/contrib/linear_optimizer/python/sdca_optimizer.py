@@ -37,18 +37,18 @@ class SDCAOptimizer(object):
   Example usage:
 
   ```python
-    real_feature_column = real_valued_column(...)
-    sparse_feature_column = sparse_column_with_hash_bucket(...)
-    sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
-                                          num_loss_partitions=1,
-                                          num_table_shards=1,
-                                          symmetric_l2_regularization=2.0)
-    classifier = tf.contrib.learn.LinearClassifier(
-        feature_columns=[real_feature_column, sparse_feature_column],
-        weight_column_name=...,
-        optimizer=sdca_optimizer)
-    classifier.fit(input_fn_train, steps=50)
-    classifier.evaluate(input_fn=input_fn_eval)
+  real_feature_column = real_valued_column(...)
+  sparse_feature_column = sparse_column_with_hash_bucket(...)
+  sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
+                                        num_loss_partitions=1,
+                                        num_table_shards=1,
+                                        symmetric_l2_regularization=2.0)
+  classifier = tf.contrib.learn.LinearClassifier(
+      feature_columns=[real_feature_column, sparse_feature_column],
+      weight_column_name=...,
+      optimizer=sdca_optimizer)
+  classifier.fit(input_fn_train, steps=50)
+  classifier.evaluate(input_fn=input_fn_eval)
   ```
 
   Here the expectation is that the `input_fn_*` functions passed to train and

@@ -152,6 +152,22 @@ class CrfTest(test.TestCase):
 
         self.assertAllClose(tf_log_norm, tf_brute_force_log_norm)
 
+  def testCrfLogNormZeroSeqLength(self):
+    """
+    Test `crf_log_norm` when `sequence_lengths` contains one or more zeros.
+    """
+    with self.test_session() as sess:
+      inputs = constant_op.constant(np.ones([2, 10, 5],
+                                            dtype=np.float32))
+      transition_params = constant_op.constant(np.ones([5, 5],
+                                                       dtype=np.float32))
+      sequence_lengths = constant_op.constant(np.zeros([2],
+                                                       dtype=np.int32))
+      expected_log_norm = np.zeros([2], dtype=np.float32)
+      log_norm = crf.crf_log_norm(inputs, sequence_lengths, transition_params)
+      tf_log_norm = sess.run(log_norm)
+      self.assertAllClose(tf_log_norm, expected_log_norm)
+
   def testCrfLogLikelihood(self):
     inputs = np.array(
         [[4, 5, -3], [3, -1, 3], [-1, 2, 1], [0, 0, 0]], dtype=np.float32)
@@ -292,10 +308,10 @@ class CrfTest(test.TestCase):
                                                        dtype=np.float32))
       sequence_lengths = constant_op.constant(np.zeros([2],
                                                        dtype=np.int32))
-      values = crf.crf_decode(inputs, transition_params, sequence_lengths)
-      tags, scores = sess.run(values)
-      self.assertEqual(len(tags.shape), 2)
-      self.assertEqual(len(scores.shape), 1)
+      tags, scores = crf.crf_decode(inputs, transition_params, sequence_lengths)
+      tf_tags, tf_scores = sess.run([tags, scores])
+      self.assertEqual(len(tf_tags.shape), 2)
+      self.assertEqual(len(tf_scores.shape), 1)
 
 if __name__ == "__main__":
   test.main()

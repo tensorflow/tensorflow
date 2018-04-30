@@ -433,6 +433,23 @@ def tf_proto_library(name, srcs = [], has_services = None,
       use_grpc_plugin = has_services,
   )
 
+# A list of all files under platform matching the pattern in 'files'. In
+# contrast with 'tf_platform_srcs' below, which seletive collects files that
+# must be compiled in the 'default' platform, this is a list of all headers
+# mentioned in the platform/* files.
+def tf_platform_hdrs(files):
+  return native.glob(["platform/*/" + f for f in files])
+
+def tf_platform_srcs(files):
+  base_set = ["platform/default/" + f for f in files]
+  windows_set = base_set + ["platform/windows/" + f for f in files]
+  posix_set = base_set + ["platform/posix/" + f for f in files]
+  return select({
+    "//tensorflow:windows" : native.glob(windows_set),
+    "//tensorflow:windows_msvc" : native.glob(windows_set),
+    "//conditions:default" : native.glob(posix_set),
+  })
+
 def tf_additional_lib_hdrs(exclude = []):
   windows_hdrs = native.glob([
       "platform/default/*.h",
@@ -488,7 +505,6 @@ def tf_additional_proto_hdrs():
 
 def tf_additional_proto_srcs():
   return [
-      "platform/default/logging.cc",
       "platform/default/protobuf.cc",
   ]
 
@@ -510,25 +526,6 @@ def tf_protos_grappler():
   return if_static(
       extra_deps=tf_protos_grappler_impl(),
       otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
-
-def tf_env_time_hdrs():
-  return [
-      "platform/env_time.h",
-  ]
-
-def tf_env_time_srcs():
-  win_env_time = native.glob([
-    "platform/windows/env_time.cc",
-    "platform/env_time.cc",
-  ], exclude = [])
-  return select({
-    "//tensorflow:windows" : win_env_time,
-    "//tensorflow:windows_msvc" : win_env_time,
-    "//conditions:default" : native.glob([
-        "platform/posix/env_time.cc",
-        "platform/env_time.cc",
-      ], exclude = []),
-  })
 
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]

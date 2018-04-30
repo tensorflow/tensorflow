@@ -31,6 +31,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import saver as saver_lib
@@ -157,32 +158,38 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       out_depth = 3
       stride = 1
       activation_fn = relu
-      scope = 'network/expanded_conv_1/conv'
-      layer1 = conv2d(
-          inputs,
-          out_depth, [5, 5],
-          stride=stride,
-          padding='SAME',
-          weights_initializer=self._WeightInit(0.09),
-          activation_fn=activation_fn,
-          normalizer_fn=batch_norm,
-          normalizer_params=self._BatchNormParams(
-              scale=has_scaling, fused=fused_batch_norm),
-          scope=scope)
-      # Add another layer
-      scope = 'network/expanded_conv_2/conv'
+      scope = 'topnet/testnet'
+      with variable_scope.variable_scope(scope, [inputs]):
+        layer1 = conv2d(
+            inputs,
+            out_depth, [5, 5],
+            stride=stride,
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=None,
+            normalizer_fn=None,
+            scope='testnet/layer1')
+        # Add bn and relu with different scope
+        layer1 = batch_norm(
+            layer1, scale=has_scaling, fused=fused_batch_norm, scope='layer1')
+        layer1 = activation_fn(layer1)
+        layer2 = conv2d(
+            layer1,
+            2 * out_depth, [5, 5],
+            stride=stride,
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=activation_fn,
+            normalizer_fn=batch_norm,
+            normalizer_params=self._BatchNormParams(
+                scale=has_scaling, fused=fused_batch_norm),
+            scope='testnet/layer2')
+        # Add bn and relu with different scope
+        layer2 = batch_norm(
+            layer2, scale=has_scaling, fused=fused_batch_norm, scope='layer2')
+        _ = activation_fn(layer2)
 
-      _ = conv2d(
-          layer1,
-          2 * out_depth, [5, 5],
-          stride=stride,
-          padding='SAME',
-          weights_initializer=self._WeightInit(0.09),
-          activation_fn=activation_fn,
-          normalizer_fn=batch_norm,
-          normalizer_params=self._BatchNormParams(
-              scale=has_scaling, fused=fused_batch_norm),
-          scope=scope)
+      scope = 'topnet/testnet/testnet/layer2'
 
       fold_batch_norms.FoldBatchNorms(
           g, is_training=True, freeze_batch_norm_delay=freeze_batch_norm_delay)
