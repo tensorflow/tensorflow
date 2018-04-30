@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/api_def.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
 
 namespace tensorflow {
@@ -87,20 +88,23 @@ class AttributeSpec : public ArgumentSpec {
   // op_def_name: attribute name, as known by TensorFlow core
   // var: a variable to represent this attribute in Java
   // type: the type of this attribute
+  // jni_type: the type of this attribute in JNI layer (see OperationBuilder)
   // description: a description of this attribute, in javadoc
   // iterable: true if this attribute is a list
-  // optional: true if this attribute does not require to be set explicitly
+  // has_default_value: true if this attribute has a default value if not set
   AttributeSpec(const string& op_def_name, const Variable& var,
-      const Type& type, const string& description, bool iterable,
-      bool optional)
+      const Type& type, const Type& jni_type, const string& description,
+      bool iterable, bool has_default_value)
     : ArgumentSpec(op_def_name, var, type, description, iterable),
-      optional_(optional) {}
+      jni_type_(jni_type), has_default_value_(has_default_value) {}
   virtual ~AttributeSpec() = default;
 
-  bool optional() const { return optional_; }
+  const Type& jni_type() const { return jni_type_; }
+  bool has_default_value() const { return has_default_value_; }
 
  private:
-  const bool optional_;
+  const Type jni_type_;
+  const bool has_default_value_;
 };
 
 class OpSpec {

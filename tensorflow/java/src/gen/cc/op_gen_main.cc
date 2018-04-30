@@ -67,10 +67,10 @@ int main(int argc, char* argv[]) {
   QCHECK(parsed_flags_ok && !output_dir.empty()) << usage;
   std::vector<tensorflow::string> api_dirs = tensorflow::str_util::Split(
       api_dirs_str, ",", tensorflow::str_util::SkipEmpty());
-  tensorflow::java::OpGenerator generator(base_package, output_dir, api_dirs);
+  tensorflow::java::OpGenerator generator(api_dirs);
   tensorflow::OpList ops;
   tensorflow::OpRegistry::Global()->Export(false, &ops);
-  TF_CHECK_OK(generator.Run(ops));
+  TF_CHECK_OK(generator.Run(ops, base_package, output_dir));
 
   return 0;
 }

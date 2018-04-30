@@ -46,14 +46,30 @@ class TypeResolver {
   explicit TypeResolver(const OpDef& op_def) : op_def_(op_def) {}
 
   Type TypeOf(const OpDef_ArgDef& arg_def, bool *iterable_out);
-  Type TypeOf(const OpDef_AttrDef& attr_def, bool *iterable_out);
+  std::pair<Type, Type> TypeOf(const OpDef_AttrDef& attr_def,
+      bool *iterable_out);
   bool IsAttributeVisited(const string& attr_name) {
     return visited_attrs_.find(attr_name) != visited_attrs_.cend();
   }
+
  private:
   const OpDef op_def_;
   std::map<std::string, Type> visited_attrs_;
-  char next_generic_ = 'T';
+  char next_generic_letter_ = 'T';
+
+  std::pair<Type, Type> MakeTypePair(const Type& type, const Type& jni_type) {
+    return std::make_pair(type, jni_type);
+  }
+  std::pair<Type, Type> MakeTypePair(const Type& type) {
+    return std::make_pair(type, type);
+  }
+  Type NextGeneric() {
+    char generic_letter = next_generic_letter_++;
+    if (next_generic_letter_ > 'Z') {
+      next_generic_letter_ = 'A';
+    }
+    return Type::Generic(string(1, generic_letter));
+  }
 };
 
 Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
@@ -107,7 +123,7 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
     } else {
       for (const auto& attr_def : op_def_.attr()) {
         if (attr_def.name() == arg_def.type_attr()) {
-          type = TypeOf(attr_def, iterable_out);
+          type = TypeOf(attr_def, iterable_out).first;
           break;
         }
       }
@@ -125,51 +141,47 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
   return type;
 }
 
-Type TypeResolver::TypeOf(const OpDef_AttrDef& attr_def,
+std::pair<Type, Type> TypeResolver::TypeOf(const OpDef_AttrDef& attr_def,
     bool* iterable_out) {
+  std::pair<Type, Type> types = MakeTypePair(Type::Wildcard());
   *iterable_out = false;
   StringPiece attr_type = attr_def.type();
   if (str_util::ConsumePrefix(&attr_type, "list(")) {
     attr_type.remove_suffix(1);  // remove closing brace
     *iterable_out = true;
   }
-  Type type = *iterable_out ? Type::Wildcard() : Type::Class("Object");
-  if (attr_type == "type") {
-    if (*iterable_out) {
-      type = Type::Enum("DataType", "org.tensorflow");
-    } else {
-      type = Type::Generic(string(1, next_generic_));
-      next_generic_ = (next_generic_ == 'Z') ? 'A' : next_generic_ + 1;
-      if (IsRealNumbers(attr_def.allowed_values())) {
-        // enforce real numbers datasets by extending java.lang.Number
-        type.add_supertype(Type::Class("Number"));
-      }
-    }
-  } else if (attr_type == "string") {
-    type = Type::Class("String");
+  if (attr_type == "string") {
+    types = MakeTypePair(Type::Class("String"));
 
   } else if (attr_type == "int") {
-    type = Type::Class("Integer");
+    types = MakeTypePair(Type::Class("Long"), Type::Long());
 
   } else if (attr_type == "float") {
-    type = Type::Class("Float");
+    types = MakeTypePair(Type::Class("Float"), Type::Float());
 
   } else if (attr_type == "bool") {
-    type = Type::Class("Boolean");
+    types = MakeTypePair(Type::Class("Boolean"), Type::Boolean());
 
   } else if (attr_type == "shape") {
-    type = Type::Class("Shape", "org.tensorflow");
+    types = MakeTypePair(Type::Class("Shape", "org.tensorflow"));
 
   } else if (attr_type == "tensor") {
-    type = Type::Class("Tensor", "org.tensorflow")
-        .add_parameter(Type::Wildcard());
+    types = MakeTypePair(Type::Class("Tensor", "org.tensorflow")
+        .add_parameter(Type::Wildcard()));
+
+  } else if (attr_type == "type") {
+    Type type = *iterable_out ? Type::Wildcard() : NextGeneric();
+    if (IsRealNumbers(attr_def.allowed_values())) {
+      type.add_supertype(Type::Class("Number"));
+    }
+    types = MakeTypePair(type, Type::Enum("DataType", "org.tensorflow"));
 
   } else {
     LOG(FATAL) << "Cannot resolve data type for attribute \"" << attr_type
         << "\" in operation \"" << op_def_.name() << "\"";
   }
-  visited_attrs_.insert(std::make_pair(attr_def.name(), type));
-  return type;
+  visited_attrs_.insert(std::make_pair(attr_def.name(), types.first));
+  return types;
 }
 
 string SnakeToCamelCase(const string& str, bool upper = false) {
@@ -307,19 +319,19 @@ ArgumentSpec CreateInput(const OpDef_ArgDef& input_def,
 AttributeSpec CreateAttribute(const OpDef_AttrDef& attr_def,
     const ApiDef::Attr& attr_api_def, TypeResolver* type_resolver) {
   bool iterable = false;
-  Type type = type_resolver->TypeOf(attr_def, &iterable);
-  // type attributes must be passed explicitly in methods as a Class<> parameter
-  bool is_explicit = type.kind() == Type::GENERIC && !iterable;
-  Type var_type = is_explicit ? Type::Class("Class").add_parameter(type) : type;
+  std::pair<Type, Type> types = type_resolver->TypeOf(attr_def, &iterable);
+  Type var_type = types.first.kind() == Type::GENERIC ?
+      Type::Class("Class").add_parameter(types.first) : types.first;
   if (iterable) {
-    var_type = Type::ListOf(type);
+    var_type = Type::ListOf(var_type);
   }
   return AttributeSpec(attr_api_def.name(),
       Variable::Create(SnakeToCamelCase(attr_api_def.rename_to()), var_type),
-      type,
+      types.first,
+      types.second,
       ParseDocumentation(attr_api_def.description()),
       iterable,
-      attr_api_def.has_default_value() && !is_explicit);
+      attr_api_def.has_default_value());
 }
 
 ArgumentSpec CreateOutput(const OpDef_ArgDef& output_def,
@@ -340,7 +352,6 @@ ArgumentSpec CreateOutput(const OpDef_ArgDef& output_def,
 
 EndpointSpec CreateEndpoint(const OpDef& op_def, const ApiDef& api_def,
     const ApiDef_Endpoint& endpoint_def) {
-
   std::vector<string> name_tokens = str_util::Split(endpoint_def.name(), ".");
   string package;
   string name;
@@ -381,7 +392,7 @@ OpSpec OpSpec::Create(const OpDef& op_def, const ApiDef& api_def) {
       AttributeSpec attr = CreateAttribute(op_def.attr(i), api_def.attr(i),
           &type_resolver);
       // attributes with a default value are optional
-      if (attr.optional()) {
+      if (attr.has_default_value() && attr.type().kind() != Type::GENERIC) {
         op.optional_attributes_.push_back(attr);
       } else {
         op.attributes_.push_back(attr);

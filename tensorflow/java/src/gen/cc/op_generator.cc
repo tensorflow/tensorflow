@@ -19,6 +19,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <set>
+#include <ctime>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -38,22 +39,17 @@ namespace {
 const char* kLicenseSnippet =
     "tensorflow/java/src/gen/resources/license.java.snippet";
 
-const std::map<string, Type> kPrimitiveAttrTypes = {
-  { "Boolean", Type::Boolean() },
-  { "Byte", Type::Byte() },
-  { "Character", Type::Byte() },
-  { "Float", Type::Float() },
-  { "Integer", Type::Long() },
-  { "Long", Type::Long() },
-  { "Short", Type::Long() },
-  { "Double", Type::Float() },
-};
-
 enum RenderMode {
   DEFAULT,
   SINGLE_OUTPUT,
   SINGLE_LIST_OUTPUT
 };
+
+inline void AddArgument(const Variable& var, const string& description,
+    Method* method_out, Javadoc* javadoc_out) {
+  method_out->add_argument(var);
+  javadoc_out->add_param_tag(var.name(), description);
+}
 
 void CollectOpDependencies(const OpSpec& op, RenderMode mode,
     std::list<Type>* out) {
@@ -81,9 +77,7 @@ void CollectOpDependencies(const OpSpec& op, RenderMode mode,
   }
   for (const AttributeSpec& attribute : op.attributes()) {
     out->push_back(attribute.var().type());
-    if (attribute.var().type().name() == "Class") {
-      out->push_back(Type::Enum("DataType", "org.tensorflow"));
-    }
+    out->push_back(attribute.jni_type());
   }
   for (const AttributeSpec& optional_attribute : op.optional_attributes()) {
     out->push_back(optional_attribute.var().type());
@@ -92,45 +86,38 @@ void CollectOpDependencies(const OpSpec& op, RenderMode mode,
 
 void WriteSetAttrDirective(const AttributeSpec& attr, bool optional,
     SourceWriter* writer) {
-  string var = optional ? "opts." + attr.var().name() : attr.var().name();
+  string var_name = optional ? "opts." + attr.var().name() : attr.var().name();
   if (attr.iterable()) {
-    const Type& type = attr.type();
-    std::map<string, Type>::const_iterator it =
-      kPrimitiveAttrTypes.find(type.name());
-    if (it != kPrimitiveAttrTypes.end()) {
-      string array = attr.var().name() + "Array";
-      writer->AppendType(it->second)
-          .Append("[] " + array + " = new ")
-          .AppendType(it->second)
-          .Append("[" + var + ".size()];")
-          .EndLine();
-      writer->BeginBlock("for (int i = 0; i < " + array + ".length; ++i)")
-          .Append(array + "[i] = " + var + ".get(i);")
-          .EndLine()
-          .EndBlock()
-          .Append("opBuilder.setAttr(\"" + attr.op_def_name() + "\", " + array)
-          .Append(");")
-          .EndLine();
+    string array_name = attr.var().name() + "Array";
+    writer->AppendType(attr.jni_type())
+        .Append("[] " + array_name + " = new ")
+        .AppendType(attr.jni_type())
+        .Append("[" + var_name + ".size()];")
+        .EndLine()
+        .BeginBlock("for (int i = 0; i < " + array_name + ".length; ++i)")
+        .Append(array_name + "[i] = ");
+    if (attr.type().kind() == Type::GENERIC) {
+      writer->Append("DataType.fromClass(" + var_name + ".get(i));");
     } else {
-      writer->Append("opBuilder.setAttr(\"" + attr.op_def_name() + "\", " + var)
-          .Append(".toArray(new ")
-          .AppendType(type)
-          .Append("[" + var + ".size()]));")
-          .EndLine();
+      writer->Append(var_name + ".get(i);");
     }
+    writer->EndLine()
+        .EndBlock()
+        .Append("opBuilder.setAttr(\"" + attr.op_def_name() + "\", ")
+        .Append(array_name + ");")
+        .EndLine();
   } else {
-    Type type = attr.var().type();
     writer->Append("opBuilder.setAttr(\"" + attr.op_def_name() + "\", ");
-    if (type.name() == "Class") {
-      writer->Append("DataType.fromClass(" + attr.var().name() + "));");
+    if (attr.var().type().name() == "Class") {
+      writer->Append("DataType.fromClass(" + var_name + "));");
     } else {
-      writer->Append(var + ");");
+      writer->Append(var_name + ");");
     }
     writer->EndLine();
   }
 }
 
-void RenderFactoryMethod(const OpSpec& op, const Type& op_class,
+void RenderFactoryMethods(const OpSpec& op, const Type& op_class,
     SourceWriter* writer) {
   Method factory = Method::Create("create", op_class);
   Javadoc factory_doc = Javadoc::Create(
@@ -138,27 +125,24 @@ void RenderFactoryMethod(const OpSpec& op, const Type& op_class,
       + " operation to the graph.");
   Variable scope =
       Variable::Create("scope", Type::Class("Scope", "org.tensorflow.op"));
-  factory.add_argument(scope);
-  factory_doc.add_param_tag(scope.name(), "Current graph scope");
+  AddArgument(scope, "current graph scope", &factory, &factory_doc);
   for (const ArgumentSpec& input : op.inputs()) {
-    factory.add_argument(input.var());
-    factory_doc.add_param_tag(input.var().name(), input.description());
+    AddArgument(input.var(), input.description(), &factory, &factory_doc);
   }
-  for (const AttributeSpec& attribute : op.attributes()) {
-    factory.add_argument(attribute.var());
-    factory_doc.add_param_tag(attribute.var().name(), attribute.description());
+  for (const AttributeSpec& attr : op.attributes()) {
+    AddArgument(attr.var(), attr.description(), &factory, &factory_doc);
   }
   if (!op.optional_attributes().empty()) {
-    factory.add_argument(Variable::Varargs("options", Type::Class("Options")));
-    factory_doc.add_param_tag("options", "carries optional attributes values");
+    AddArgument(Variable::Varargs("options", Type::Class("Options")),
+        "carries optional attributes values", &factory, &factory_doc);
   }
   factory_doc.add_tag("return", "a new instance of " + op_class.name());
+
   writer->BeginMethod(factory, PUBLIC|STATIC, &factory_doc);
   writer->Append("OperationBuilder opBuilder = scope.graph().opBuilder(\""
       + op.graph_op_name() + "\", scope.makeOpName(\""
       + op_class.name() + "\"));");
   writer->EndLine();
-
   for (const ArgumentSpec& input : op.inputs()) {
     if (input.iterable()) {
       writer->Append("opBuilder.addInputList(Operands.asOutputs("
@@ -192,10 +176,9 @@ void RenderFactoryMethod(const OpSpec& op, const Type& op_class,
 
 void RenderConstructor(const OpSpec& op, const Type& op_class,
     SourceWriter* writer) {
-  Method constructor = Method::ConstructorFor(op_class)
-    .add_argument(
-        Variable::Create("operation",
-            Type::Class("Operation", "org.tensorflow")));
+  Variable operation =
+      Variable::Create("operation", Type::Class("Operation", "org.tensorflow"));
+  Method constructor = Method::ConstructorFor(op_class).add_argument(operation);
   for (const ArgumentSpec& output : op.outputs()) {
     if (output.iterable() && !output.type().unknown()) {
       constructor.add_annotation(
@@ -237,15 +220,14 @@ void RenderConstructor(const OpSpec& op, const Type& op_class,
 }
 
 void RenderGettersAndSetters(const OpSpec& op, SourceWriter* writer) {
-  for (const AttributeSpec& attribute : op.optional_attributes()) {
+  for (const AttributeSpec& attr : op.optional_attributes()) {
     Method setter =
-        Method::Create(attribute.var().name(), Type::Class("Options"))
-            .add_argument(attribute.var());
-    Javadoc setter_doc = Javadoc::Create()
-        .add_param_tag(attribute.var().name(), attribute.description());
+        Method::Create(attr.var().name(), Type::Class("Options"));
+    Javadoc setter_doc = Javadoc::Create();
+    AddArgument(attr.var(), attr.description(), &setter, &setter_doc);
     writer->BeginMethod(setter, PUBLIC|STATIC, &setter_doc)
-        .Append("return new Options()." + attribute.var().name() + "("
-            + attribute.var().name() + ");")
+        .Append("return new Options()." + attr.var().name() + "("
+            + attr.var().name() + ");")
         .EndLine()
         .EndMethod();
   }
@@ -311,14 +293,12 @@ void RenderOptionsClass(const OpSpec& op, const Type& op_class,
   Javadoc options_doc = Javadoc::Create(
       "Optional attributes for {@link " + op_class.full_name() + "}");
   writer->BeginInnerType(options_class, PUBLIC | STATIC, &options_doc);
-  for (const AttributeSpec& attribute : op.optional_attributes()) {
-    Method setter = Method::Create(attribute.var().name(), options_class)
-        .add_argument(attribute.var());
-    Javadoc setter_doc = Javadoc::Create()
-        .add_param_tag(attribute.var().name(), attribute.description());
+  for (const AttributeSpec& attr : op.optional_attributes()) {
+    Method setter = Method::Create(attr.var().name(), options_class);
+    Javadoc setter_doc = Javadoc::Create();
+    AddArgument(attr.var(), attr.description(), &setter, &setter_doc);
     writer->BeginMethod(setter, PUBLIC, &setter_doc)
-        .Append("this." + attribute.var().name() + " = "
-            + attribute.var().name() + ";")
+        .Append("this." + attr.var().name() + " = " + attr.var().name() + ";")
         .EndLine()
         .Append("return this;")
         .EndLine()
@@ -339,12 +319,13 @@ inline Type ClassOf(const EndpointSpec& endpoint, const string& base_package) {
 }
 
 void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
-    const string& base_package, const string& output_dir, Env* env) {
+    const string& base_package, const string& output_dir, Env* env,
+    const std::tm* timestamp) {
   Type op_class(ClassOf(endpoint, base_package)
       .add_supertype(Type::Class("PrimitiveOp", "org.tensorflow.op")));
   Javadoc op_javadoc(endpoint.javadoc());
 
-  // implement Operand (or Iterable<Operand>) if the op has only one output
+  // op interfaces
   RenderMode mode = DEFAULT;
   if (op.outputs().size() == 1) {
     const ArgumentSpec& output = op.outputs().front();
@@ -360,18 +341,22 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
       op_class.add_supertype(operand_inf);
     }
   }
-  // declare all outputs generics at the op class level
+  // op generic parameters
   std::set<string> generics;
   for (const ArgumentSpec& output : op.outputs()) {
     if (output.type().kind() == Type::GENERIC && !output.type().unknown()
         && generics.find(output.type().name()) == generics.end()) {
       op_class.add_parameter(output.type());
       op_javadoc.add_param_tag("<" + output.type().name() + ">",
-          "data type of output {@code " + output.var().name() + "}");
+          "data type for {@code " + output.var().name() + "()} output");
       generics.insert(output.type().name());
     }
   }
-  // handle endpoint deprecation
+  // op annotations
+  char date[20];
+  strftime(date, sizeof date, "%FT%TZ", timestamp);
+  op_class.add_annotation(Annotation::Create("Generated", "javax.annotation")
+      .attributes(string("value = \"op_generator\", date = \"") + date + "\""));
   if (endpoint.deprecated()) {
     op_class.add_annotation(Annotation::Create("Deprecated"));
     string explanation;
@@ -384,8 +369,8 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
     }
     op_javadoc.add_tag("deprecated", explanation);
   }
-  // expose the op in the Ops Graph API only if it is visible
   if (!op.hidden()) {
+    // expose the op in the Ops Graph API only if it is visible
     op_class.add_annotation(
         Annotation::Create("Operator", "org.tensorflow.op.annotation")
           .attributes("group = \"" + endpoint.package() + "\""));
@@ -406,14 +391,11 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
   CollectOpDependencies(op, mode, &dependencies);
   writer.WriteFromFile(kLicenseSnippet)
       .EndLine()
-      .Append("// This file is machine generated, DO NOT EDIT!")
-      .EndLine()
-      .EndLine()
       .BeginType(op_class, PUBLIC|FINAL, &dependencies, &op_javadoc);
   if (!op.optional_attributes().empty()) {
     RenderOptionsClass(op, op_class, &writer);
   }
-  RenderFactoryMethod(op, op_class, &writer);
+  RenderFactoryMethods(op, op_class, &writer);
   RenderGettersAndSetters(op, &writer);
   if (mode != DEFAULT) {
     RenderInterfaceImpl(op, mode, &writer);
@@ -428,13 +410,8 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
 
 }  // namespace
 
-OpGenerator::OpGenerator(const string& base_package, const string& output_dir,
-    const std::vector<string>& api_dirs, Env* env)
-  : base_package_(base_package), output_dir_(output_dir), api_dirs_(api_dirs),
-    env_(env) {
-}
-
-Status OpGenerator::Run(const OpList& op_list) {
+Status OpGenerator::Run(const OpList& op_list, const string& base_package,
+    const string& output_dir) {
   ApiDefMap api_map(op_list);
   if (!api_dirs_.empty()) {
     // Only load api files that correspond to the requested "op_list"
@@ -449,12 +426,14 @@ Status OpGenerator::Run(const OpList& op_list) {
     }
   }
   api_map.UpdateDocs();
+  time_t now;
+  time(&now);
   for (const auto& op_def : op_list.op()) {
     const ApiDef* api_def = api_map.GetApiDef(op_def.name());
     if (api_def->visibility() != ApiDef::SKIP) {
       OpSpec op(OpSpec::Create(op_def, *api_def));
       for (const EndpointSpec& endpoint : op.endpoints()) {
-        GenerateOp(op, endpoint, base_package_, output_dir_, env_);
+        GenerateOp(op, endpoint, base_package, output_dir, env_, gmtime(&now));
       }
     }
   }

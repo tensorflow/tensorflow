@@ -36,18 +36,17 @@ namespace java {
 // ops definitions.
 class OpGenerator {
  public:
-  OpGenerator(const string& base_package, const string& output_dir,
-      const std::vector<string>& api_dirs, Env* env = Env::Default());
+  explicit OpGenerator(const std::vector<string>& api_dirs,
+      Env* env = Env::Default()) : api_dirs_(api_dirs), env_(env) {}
 
   // Generates wrappers for the given list of 'ops'.
   //
-  // Output files are generated in <output_dir>/<base_package>/<lib_package>,
-  // where 'lib_package' is derived from ops endpoints.
-  Status Run(const OpList& op_list);
+  // Output files are generated in <output_dir>/<base_package>/<op_package>,
+  // where 'op_package' is derived from ops endpoints.
+  Status Run(const OpList& op_list, const string& base_package,
+      const string& output_dir);
 
  private:
-  const string base_package_;
-  const string output_dir_;
   const std::vector<string> api_dirs_;
   Env* env_;
 };
