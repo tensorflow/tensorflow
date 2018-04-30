@@ -8559,8 +8559,8 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
  #elif defined(EIGEN_USE_SYCL)
 diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h
 --- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	2018-04-25 19:56:25.526519601 +0000
-@@ -0,0 +1,811 @@
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	2018-04-30 21:22:37.499629414 +0000
+@@ -0,0 +1,807 @@
 +//#include "hip/hip_runtime.h"
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -8574,7 +8574,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +#ifndef EIGEN_CXX11_TENSOR_TENSOR_REDUCTION_HIP_H
 +#define EIGEN_CXX11_TENSOR_TENSOR_REDUCTION_HIP_H
 +
-+#ifdef __HCC__
++#ifdef __HIP_DEVICE_COMPILE__
 +#include "Eigen/src/Core/arch/HIP/hcc/intrinsics.h"
 +#endif
 +
@@ -8651,11 +8651,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +template <>
 +__device__ inline double atomicExchCustom(double* address, double val) {
 +  unsigned long long int* address_as_ull = reinterpret_cast<unsigned long long int*>(address);
-+  #ifdef __NVCC__
 +  return __longlong_as_double(atomicExch(address_as_ull, __double_as_longlong(val)));
-+  #elif __HCC__
-+  return __hip_longlong_as_double(atomicExch(address_as_ull, __hip_double_as_longlong(val)));
-+  #endif
 +}
 +
 +#ifdef EIGEN_HAS_HIP_FP16

@@ -706,17 +706,18 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOp<CPUDevice, float, float>);
 
-REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<Eigen::half>("T")
-                            .TypeConstraint<float>("U"),
-                        FusedBatchNormOp<CPUDevice, Eigen::half, float>);
-
-REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<Eigen::half>("T")
-                            .TypeConstraint<float>("U"),
-                        FusedBatchNormGradOp<CPUDevice, Eigen::half, float>);
+// ROCM TODO: enable half type support
+//REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
+//                            .Device(DEVICE_CPU)
+//                            .TypeConstraint<Eigen::half>("T")
+//                            .TypeConstraint<float>("U"),
+//                        FusedBatchNormOp<CPUDevice, Eigen::half, float>);
+//
+//REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
+//                            .Device(DEVICE_CPU)
+//                            .TypeConstraint<Eigen::half>("T")
+//                            .TypeConstraint<float>("U"),
+//                        FusedBatchNormGradOp<CPUDevice, Eigen::half, float>);
 
 #if GOOGLE_CUDA
 

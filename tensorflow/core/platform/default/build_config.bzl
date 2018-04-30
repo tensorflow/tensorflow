@@ -6,6 +6,7 @@ load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",

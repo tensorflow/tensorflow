@@ -2576,7 +2576,9 @@ tf_gpu_library(
         "platform/device_tracer.h",
     ],
     copts = tf_copts(),
-    gpu_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    # ROCM TODO figure this out
+    #gpu_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    gpu_deps = [],
     deps = [
         ":core_cpu_internal",
         ":lib",
