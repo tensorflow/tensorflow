@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -697,6 +698,154 @@ TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x1_multi_use) {
               Not(op::Fusion()));
 }
 
+struct GatherLoopFusionTestSpec {
+  string test_name;
+  string hlo_computation_text;
+
+  static string Name(
+      const ::testing::TestParamInfo<GatherLoopFusionTestSpec>& info) {
+    return info.param.test_name;
+  }
+};
+
+class GatherLoopFusionTest
+    : public OpcodeFusionTest,
+      public ::testing::WithParamInterface<GatherLoopFusionTestSpec> {};
+
+TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
+  const GatherLoopFusionTestSpec& spec = GetParam();
+  string hlo_string = tensorflow::strings::StrCat(
+      "HloModule ", spec.test_name, "\n\n", spec.hlo_computation_text);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(hlo_string));
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(),
+      {HloOpcode::kGather, HloOpcode::kAdd, HloOpcode::kBroadcast,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
+std::vector<GatherLoopFusionTestSpec> GetGatherLoopFusionTestSpecs() {
+  std::vector<GatherLoopFusionTestSpec> result;
+
+  result.push_back({"FusedTensorFlowGatherV2", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  gather = s32[3,2] gather(operand, indices),
+      output_window_dims={0},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=1,
+      window_bounds={3, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[3,2] broadcast(one), dimensions={}
+  ROOT result = s32[3,2]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedTensorFlowGatherMultipleBatchDims", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,3,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=2,
+      window_bounds={3, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,3,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,3,2]{2,1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedTensorFlowGatherNdMultipleBatchDims", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=2,
+      window_bounds={1, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedTensorFlowGatherNd_0", R"(
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      window_bounds={1,1,2}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedTensorFlowGatherNd_1", R"(
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1,2}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedDynamicSlice", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  gather = s32[1,1] gather(operand, indices),
+      output_window_dims={0,1},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[1,1] broadcast(one), dimensions={}
+  ROOT result = s32[1,1]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedBatchDynamicSlice", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,1,1] gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,1,1] broadcast(one), dimensions={}
+  ROOT result = s32[2,1,1]{2,1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  return result;
+}
+
+INSTANTIATE_TEST_CASE_P(GatherLoopFusionTestInstantiation, GatherLoopFusionTest,
+                        ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
+                        GatherLoopFusionTestSpec::Name);
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
