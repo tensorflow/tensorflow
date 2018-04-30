@@ -21,6 +21,13 @@ REGISTER5(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
 REGISTER3(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, double);
 
+//#if defined(__ANDROID_TYPES_SLIM__)
+// We only register the first type when we have multi-argument calls in the
+// case where we're trying to reduce executable size, but it turns out that the
+// uint8 version of this op is needed, so explicitly include it.
+REGISTER(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, int32);
+//#endif  // __ANDROID_TYPES_SLIM__
+			  
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
           int64);
