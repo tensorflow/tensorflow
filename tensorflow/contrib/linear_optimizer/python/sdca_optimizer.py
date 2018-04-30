@@ -198,6 +198,14 @@ class SDCAOptimizer(object):
           example_ids = array_ops.reshape(id_tensor.indices[:, 0], [-1])
 
           flat_ids = array_ops.reshape(id_tensor.values, [-1])
+          # Prune invalid IDs (< 0) from the flat_ids, example_ids, and
+          # weight_tensor.  These can come from looking up an OOV entry in the
+          # vocabulary (default value being -1).
+          is_id_valid = math_ops.greater_equal(flat_ids, 0)
+          flat_ids = array_ops.boolean_mask(flat_ids, is_id_valid)
+          example_ids = array_ops.boolean_mask(example_ids, is_id_valid)
+          weight_tensor = array_ops.boolean_mask(weight_tensor, is_id_valid)
+
           projection_length = math_ops.reduce_max(flat_ids) + 1
           # project ids based on example ids so that we can dedup ids that
           # occur multiple times for a single example.
