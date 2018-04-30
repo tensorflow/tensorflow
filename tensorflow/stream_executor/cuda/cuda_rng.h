@@ -24,8 +24,7 @@ limitations under the License.
 
 typedef struct curandGenerator_st *curandGenerator_t;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 template <typename ElemT>
@@ -98,7 +97,6 @@ class CUDARng : public rng::RngSupport {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_RNG_H_

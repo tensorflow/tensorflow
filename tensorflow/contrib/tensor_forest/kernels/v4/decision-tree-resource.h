@@ -26,7 +26,6 @@
 namespace tensorflow {
 namespace tensorforest {
 
-
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
 class DecisionTreeResource : public ResourceBase {
  public:
@@ -35,15 +34,12 @@ class DecisionTreeResource : public ResourceBase {
 
   string DebugString() override {
     return strings::StrCat("DecisionTree[size=",
-                           decision_tree_->decision_tree().nodes_size(),
-                           "]");
+                           decision_tree_->decision_tree().nodes_size(), "]");
   }
 
   void MaybeInitialize();
 
-  const decision_trees::Model& decision_tree() const {
-    return *decision_tree_;
-  }
+  const decision_trees::Model& decision_tree() const { return *decision_tree_; }
 
   decision_trees::Model* mutable_decision_tree() {
     return decision_tree_.get();
@@ -59,14 +55,12 @@ class DecisionTreeResource : public ResourceBase {
 
   // Resets the resource and frees the proto.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() {
-    decision_tree_.reset(new decision_trees::Model());
-  }
+  void Reset() { decision_tree_.reset(new decision_trees::Model()); }
 
   mutex* get_mutex() { return &mu_; }
 
   // Return the TreeNode for the leaf that the example ends up at according
-  // to decsion_tree_. Also fill in that leaf's depth if it isn't nullptr.
+  // to decision_tree_. Also fill in that leaf's depth if it isn't nullptr.
   int32 TraverseTree(const std::unique_ptr<TensorDataSet>& input_data,
                      int example, int32* depth, TreePath* path) const;
 
@@ -83,7 +77,6 @@ class DecisionTreeResource : public ResourceBase {
   std::shared_ptr<LeafModelOperator> model_op_;
   std::vector<std::unique_ptr<DecisionNodeEvaluator>> node_evaluators_;
 };
-
 
 }  // namespace tensorforest
 }  // namespace tensorflow

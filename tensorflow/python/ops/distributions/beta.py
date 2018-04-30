@@ -151,7 +151,7 @@ class Beta(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration1, concentration0]):
+    with ops.name_scope(name, values=[concentration1, concentration0]) as name:
       self._concentration1 = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration1, name="concentration1"),
           validate_args)
@@ -304,12 +304,11 @@ class Beta(distribution.Distribution):
     if not self.validate_args:
       return x
     return control_flow_ops.with_dependencies([
-        check_ops.assert_positive(
-            x,
-            message="sample must be positive"),
+        check_ops.assert_positive(x, message="sample must be positive"),
         check_ops.assert_less(
-            x, array_ops.ones([], self.dtype),
-            message="sample must be no larger than `1`."),
+            x,
+            array_ops.ones([], self.dtype),
+            message="sample must be less than `1`."),
     ], x)
 
 
@@ -324,7 +323,7 @@ class BetaWithSoftplusConcentration(Beta):
                name="BetaWithSoftplusConcentration"):
     parameters = locals()
     with ops.name_scope(name, values=[concentration1,
-                                      concentration0]) as ns:
+                                      concentration0]) as name:
       super(BetaWithSoftplusConcentration, self).__init__(
           concentration1=nn.softplus(concentration1,
                                      name="softplus_concentration1"),
@@ -332,7 +331,7 @@ class BetaWithSoftplusConcentration(Beta):
                                      name="softplus_concentration0"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
 

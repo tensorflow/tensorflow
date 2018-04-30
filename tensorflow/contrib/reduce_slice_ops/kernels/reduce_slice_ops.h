@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define Sum(a, b) ((a) + (b))
 #define Prod(a, b) ((a) * (b))
@@ -58,11 +58,11 @@ inline T negative_infinity() {
 
 }  // namespace reduce_functions
 
-#define CALL_ALL_REDUCEOPS(func, ...)                                          \
-  func(Sum, functor::reduce_functions::zero, ##__VA_ARGS__)                    \
-  func(Prod, functor::reduce_functions::one, ##__VA_ARGS__)                    \
-  func(Max, functor::reduce_functions::negative_infinity, ##__VA_ARGS__)       \
-  func(Min, functor::reduce_functions::infinity, ##__VA_ARGS__)
+#define CALL_ALL_REDUCEOPS(func, ...)                                       \
+  func(Sum, functor::reduce_functions::zero, ##__VA_ARGS__)                 \
+      func(Prod, functor::reduce_functions::one, ##__VA_ARGS__) func(       \
+          Max, functor::reduce_functions::negative_infinity, ##__VA_ARGS__) \
+          func(Min, functor::reduce_functions::infinity, ##__VA_ARGS__)
 
 #define ReduceSliceFunctorReduceop(reduceop, dummy)                         \
   template <typename Device, typename T, typename Index>                    \

@@ -98,9 +98,9 @@ typedef gemmlowp::meta::SimpleContext<gemmlowp::WorkersPool> LocalContext;
 template <typename Context, typename Params>
 void MultiThreadGemm(Context* context, const Params& params) {
   if (params.m <= 4) {
-      gemmlowp::meta::MultiThreadGemm<
-          Context, gemmlowp::meta::GemmExecutorPackLHSCacheFriendly<>, Params,
-          1, 8, 8>(context, params);
+    gemmlowp::meta::MultiThreadGemm<
+        Context, gemmlowp::meta::GemmExecutorPackLHSCacheFriendly<>, Params, 1,
+        8, 8>(context, params);
   } else {
     if (params.m >= params.n) {
       gemmlowp::meta::MultiThreadGemm<

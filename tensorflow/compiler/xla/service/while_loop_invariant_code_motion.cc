@@ -106,20 +106,12 @@ static bool NotWorthHoistingIndividually(const HloInstruction& instruction) {
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kConstant:
+    case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
+    case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return true;
-
-    case HloOpcode::kTranspose:
-      return ShapeUtil::TransposeIsBitcast(
-          /*input_shape=*/instruction.operand(0)->shape(),
-          /*output_shape=*/instruction.shape(), instruction.dimensions());
-
-    case HloOpcode::kReshape:
-      return ShapeUtil::ReshapeIsBitcast(
-          /*input_shape=*/instruction.operand(0)->shape(),
-          /*output_shape=*/instruction.shape());
   }
 }
 

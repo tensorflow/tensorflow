@@ -34,6 +34,13 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
 
 
+def GenerateNumpyRandomRGB(shape):
+  # Only generate floating points that are fractions like n / 256, since they
+  # are RGB pixels. Some low-precision floating point types in this test can't
+  # handle arbitrary precision floating points well.
+  return np.random.randint(0, 256, shape) / 256.
+
+
 class RGBToHSVTest(XLATestCase):
 
   def testBatch(self):
@@ -43,7 +50,7 @@ class RGBToHSVTest(XLATestCase):
     shape = (batch_size, 2, 7, 3)
 
     for nptype in self.float_types:
-      inp = np.random.rand(*shape).astype(nptype)
+      inp = GenerateNumpyRandomRGB(shape).astype(nptype)
 
       # Convert to HSV and back, as a batch and individually
       with self.test_session() as sess:
@@ -65,7 +72,8 @@ class RGBToHSVTest(XLATestCase):
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1)
       self.assertAllClose(batch2, join2)
-      self.assertAllCloseAccordingToType(batch2, inp, bfloat16_atol=0.03)
+      self.assertAllCloseAccordingToType(
+          batch2, inp, bfloat16_atol=0.03, half_rtol=0.02)
 
   def testRGBToHSVRoundTrip(self):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
@@ -82,7 +90,7 @@ class RGBToHSVTest(XLATestCase):
   def testRGBToHSVNumpy(self):
     """Tests the RGB to HSV conversion matches a reference implementation."""
     for nptype in self.float_types:
-      rgb_flat = np.random.random(64 * 3).reshape((64, 3)).astype(nptype)
+      rgb_flat = GenerateNumpyRandomRGB((64, 3)).astype(nptype)
       rgb_np = rgb_flat.reshape(4, 4, 4, 3)
       hsv_np = np.array([
           colorsys.rgb_to_hsv(
@@ -426,7 +434,7 @@ class ResizeBilinearTest(XLATestCase):
     with self.test_session() as sess, self.test_scope():
       dtype = dtype or np.float32
       grads = array_ops.placeholder(np.float32)
-      resized = gen_image_ops._resize_bilinear_grad(
+      resized = gen_image_ops.resize_bilinear_grad(
           grads,
           np.zeros([1, input_shape[0], input_shape[1], 1], dtype=dtype),
           align_corners=True)

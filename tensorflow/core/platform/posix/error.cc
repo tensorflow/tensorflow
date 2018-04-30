@@ -73,19 +73,19 @@ error::Code ErrnoToCode(int err_number) {
     case ECHILD:      // No child processes
     case EISCONN:     // Socket is connected
 #if !defined(_WIN32) && !defined(__HAIKU__)
-    case ENOTBLK:     // Block device required
+    case ENOTBLK:  // Block device required
 #endif
-    case ENOTCONN:    // The socket is not connected
-    case EPIPE:       // Broken pipe
+    case ENOTCONN:  // The socket is not connected
+    case EPIPE:     // Broken pipe
 #if !defined(_WIN32)
-    case ESHUTDOWN:   // Cannot send after transport endpoint shutdown
+    case ESHUTDOWN:  // Cannot send after transport endpoint shutdown
 #endif
-    case ETXTBSY:     // Text file busy
+    case ETXTBSY:  // Text file busy
       code = error::FAILED_PRECONDITION;
       break;
-    case ENOSPC:   // No space left on device
+    case ENOSPC:  // No space left on device
 #if !defined(_WIN32)
-    case EDQUOT:   // Disk quota exceeded
+    case EDQUOT:  // Disk quota exceeded
 #endif
     case EMFILE:   // Too many open files
     case EMLINK:   // Too many links
@@ -95,7 +95,7 @@ error::Code ErrnoToCode(int err_number) {
     case ENOMEM:   // Not enough space
     case ENOSR:    // No STREAM resources
 #if !defined(_WIN32) && !defined(__HAIKU__)
-    case EUSERS:   // Too many users
+    case EUSERS:  // Too many users
 #endif
       code = error::RESOURCE_EXHAUSTED;
       break;
@@ -104,17 +104,17 @@ error::Code ErrnoToCode(int err_number) {
     case ERANGE:     // Result too large
       code = error::OUT_OF_RANGE;
       break;
-    case ENOSYS:           // Function not implemented
-    case ENOTSUP:          // Operation not supported
-    case EAFNOSUPPORT:     // Address family not supported
+    case ENOSYS:        // Function not implemented
+    case ENOTSUP:       // Operation not supported
+    case EAFNOSUPPORT:  // Address family not supported
 #if !defined(_WIN32)
-    case EPFNOSUPPORT:     // Protocol family not supported
+    case EPFNOSUPPORT:  // Protocol family not supported
 #endif
     case EPROTONOSUPPORT:  // Protocol not supported
 #if !defined(_WIN32) && !defined(__HAIKU__)
     case ESOCKTNOSUPPORT:  // Socket type not supported
 #endif
-    case EXDEV:            // Improper link
+    case EXDEV:  // Improper link
       code = error::UNIMPLEMENTED;
       break;
     case EAGAIN:        // Resource temporarily unavailable
@@ -123,7 +123,7 @@ error::Code ErrnoToCode(int err_number) {
     case ECONNRESET:    // Connection reset
     case EINTR:         // Interrupted function call
 #if !defined(_WIN32)
-    case EHOSTDOWN:     // Host is down
+    case EHOSTDOWN:  // Host is down
 #endif
     case EHOSTUNREACH:  // Host is unreachable
     case ENETDOWN:      // Network is down
@@ -139,7 +139,7 @@ error::Code ErrnoToCode(int err_number) {
       break;
     case EDEADLK:  // Resource deadlock avoided
 #if !defined(_WIN32)
-    case ESTALE:   // Stale file handle
+    case ESTALE:  // Stale file handle
 #endif
       code = error::ABORTED;
       break;
@@ -158,7 +158,7 @@ error::Code ErrnoToCode(int err_number) {
     case ENOMSG:       // No message of the desired type
     case EPROTO:       // Protocol error
 #if !defined(_WIN32) && !defined(__HAIKU__)
-    case EREMOTE:      // Object is remote
+    case EREMOTE:  // Object is remote
 #endif
       code = error::UNKNOWN;
       break;

@@ -35,6 +35,7 @@ See the @{$python/contrib.layers} guide.
 @@fully_connected
 @@GDN
 @@gdn
+@@images_to_sequence
 @@layer_norm
 @@linear
 @@max_pool2d
@@ -50,6 +51,7 @@ See the @{$python/contrib.layers} guide.
 @@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
+@@sequence_to_images
 @@softmax
 @@spatial_softmax
 @@stack
@@ -102,6 +104,7 @@ See the @{$python/contrib.layers} guide.
 @@infer_real_valued_columns
 @@sequence_input_from_feature_columns
 
+@@group_norm
 @@instance_norm
 """
 
@@ -120,6 +123,7 @@ _allowed_symbols = ['bias_add',
                     'conv3d',
                     'elu',
                     'feature_column',
+                    'group_norm',
                     'instance_norm',
                     'legacy_fully_connected',
                     'legacy_linear',

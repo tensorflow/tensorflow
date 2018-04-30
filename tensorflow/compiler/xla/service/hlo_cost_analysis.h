@@ -71,6 +71,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleCrossReplicaSum(const HloInstruction* crs) override;
   Status HandleInfeed(const HloInstruction* infeed) override;
   Status HandleOutfeed(const HloInstruction* outfeed) override;
+  Status HandleHostCompute(const HloInstruction* host_compute) override;
   Status HandleRng(const HloInstruction* random) override;
   Status HandleReverse(const HloInstruction* reverse) override;
   Status HandleSort(const HloInstruction* sort) override;
@@ -99,6 +100,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleTranspose(const HloInstruction* transpose) override;
   Status HandleWhile(const HloInstruction* xla_while) override;
   Status HandleConditional(const HloInstruction* conditional) override;
+  Status HandleGather(const HloInstruction* gather) override;
   Status FinishVisit(const HloInstruction* root) override;
 
   Status Preprocess(const HloInstruction* hlo) override;

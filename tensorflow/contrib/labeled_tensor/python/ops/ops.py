@@ -951,7 +951,7 @@ def define_reduce_op(op_name, reduce_fn):
           intermediate_axes.append(axis)
 
       reduce_op = reduce_fn(
-          labeled_tensor.tensor, reduction_dimensions, keep_dims=True)
+          labeled_tensor.tensor, reduction_dimensions, keepdims=True)
       reduce_lt = core.LabeledTensor(reduce_op, intermediate_axes)
 
       return squeeze(reduce_lt, axes_to_squeeze, name=scope)

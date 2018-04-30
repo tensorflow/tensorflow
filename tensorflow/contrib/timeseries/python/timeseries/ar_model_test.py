@@ -155,12 +155,15 @@ class ARModelTest(test.TestCase):
     state_times = np.expand_dims(train_data_times[:input_window_size], 0)
     state_values = np.expand_dims(
         train_data_values[:input_window_size, :], 0)
+    state_exogenous = state_times[:, :, None][:, :, :0]
 
     def prediction_input_fn():
       return ({
           PredictionFeatures.TIMES: training.limit_epochs(
               predict_times, num_epochs=1),
-          PredictionFeatures.STATE_TUPLE: (state_times, state_values)
+          PredictionFeatures.STATE_TUPLE: (state_times,
+                                           state_values,
+                                           state_exogenous)
       }, {})
     (predictions,) = tuple(estimator.predict(input_fn=prediction_input_fn))
     predicted_mean = predictions["mean"][:, 0]
@@ -246,7 +249,8 @@ class ARModelTest(test.TestCase):
       with session.Session():
         predicted_values = model.predict({
             PredictionFeatures.TIMES: [[4, 6, 10]],
-            PredictionFeatures.STATE_TUPLE: ([[1, 2]], [[[1.], [2.]]])
+            PredictionFeatures.STATE_TUPLE: (
+                [[1, 2]], [[[1.], [2.]]], [[[], []]])
         })
         variables.global_variables_initializer().run()
         self.assertAllEqual(predicted_values["mean"].eval().shape,

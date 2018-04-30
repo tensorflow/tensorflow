@@ -35,6 +35,7 @@ namespace tensorflow {
 class CancellationManager;
 class GraphDef;
 class OpKernel;
+class ProcessFunctionLibraryRuntime;
 class ResourceMgr;
 class Rendezvous;
 class ScopedStepContainer;
@@ -312,6 +313,14 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // This operation is atomic.
   Status AddGradientDef(const GradientDef& grad);
 
+  // Remove function `func` from the library. Returns non-OK Status unless
+  // `func` is in the library.
+  Status RemoveFunction(const string& func);
+
+  // Remove gradient of function `func` from the library. Returns non-OK Status
+  // unless `func` has a gradient.
+  Status RemoveGradient(const string& func);
+
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
@@ -334,6 +343,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // signature and shape inference function.
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
+
+  // Ops created for function arguments bear the name given by `kArgOp`; those
+  // created for return values bear the name given by `kRetOp`.
+  static constexpr const char* const kArgOp = "_Arg";
+  static constexpr const char* const kRetOp = "_Retval";
 
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";
@@ -384,13 +398,6 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // attr from.
   const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
 
-  // Remove function `func` from the library. `func` must be in the library.
-  void RemoveFunction(const string& func);
-
-  // Remove gradient of function `func` from the library. `func` must have
-  // a gradient.
-  void RemoveGradient(const string& func);
-
   // Remove all functions in `funcs` and all gradients of
   // functions in `funcs_with_grads` from this library.
   void Remove(const std::vector<string>& funcs,
@@ -402,6 +409,8 @@ struct FunctionBody;
 
 // Forward declare. Defined in common_runtime/device.h
 class Device;
+// Forward declare. Defined in common_runtime/device_mgr.h
+class DeviceMgr;
 
 class FunctionLibraryRuntime {
  public:
@@ -516,6 +525,9 @@ class FunctionLibraryRuntime {
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
 
+  // Get the DeviceMgr from which the device was obtained.
+  virtual const DeviceMgr* device_mgr() const = 0;
+
   // Returns the function library definition that backs this runtime.
   // NOTE(mrry): The returned library definition is the default function library
   // for this runtime. The runtime may instantiate functions from separate
@@ -534,6 +546,10 @@ class FunctionLibraryRuntime {
   virtual int graph_def_version() = 0;
 
   typedef uint64 LocalHandle;
+
+  virtual Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+                       std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+                       FunctionLibraryRuntime** out_flr) = 0;
 };
 
 // Returns a canonicalized string for the instantiation of the
@@ -656,7 +672,7 @@ bool RegisterOp(const string& op, Creator func);
 // Returns OK the gradient creator for the "op" is found (may be
 // nullptr if REGISTER_OP_NO_GRADIENT is used.
 Status GetOpGradientCreator(const string& op, Creator* creator);
-};
+};  // namespace gradient
 
 // Declare explicit instantiations of GetAttr
 #define GET_ATTR(T)                                          \

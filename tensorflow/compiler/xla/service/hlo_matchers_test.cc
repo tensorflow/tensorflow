@@ -23,6 +23,12 @@ using ::testing::Eq;
 namespace xla {
 namespace {
 
+string DescribeHloMatcher(const ::testing::Matcher<const HloInstruction*>& m) {
+  std::stringstream ss;
+  m.DescribeTo(&ss);
+  return ss.str();
+}
+
 template <typename M, typename T>
 string Explain(const T& t, const M& m) {
   ::testing::StringMatchResultListener listener;
@@ -65,6 +71,98 @@ TEST(HloMatchersTest, Test) {
          "%param = f32[1]{0} parameter(0)\n"
          "doesn't match expected:\n\t"
          "add"));
+}
+
+TEST(HloMatchersTest, CustomCallMatcher) {
+  auto c1 = HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3}));
+  auto c2 = HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 3}));
+  auto call = HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeShape(F32, {1}), {c1.get(), c2.get()}, "foo_target");
+
+  EXPECT_THAT(call.get(), op::CustomCall());
+  EXPECT_THAT(call.get(), op::CustomCall(c1.get(), c2.get()));
+  EXPECT_THAT(call.get(), op::CustomCall("foo_target"));
+  EXPECT_THAT(call.get(), op::CustomCall("foo_target", c1.get(), c2.get()));
+  EXPECT_THAT(call.get(), op::CustomCall(::testing::StartsWith("foo")));
+  EXPECT_THAT(call.get(),
+              op::CustomCall(::testing::Not(::testing::StartsWith("bar"))));
+
+  // Wrong number of operands.
+  EXPECT_THAT(call.get(), ::testing::Not(op::CustomCall(c1.get())));
+
+  // Call target does not match.
+  EXPECT_THAT(call.get(),
+              ::testing::Not(op::CustomCall(::testing::StartsWith("bar"))));
+
+  EXPECT_THAT(Explain(call.get(), op::CustomCall("bar")),
+              R"(custom-call with call target that isn't equal to "bar")");
+  EXPECT_THAT(DescribeHloMatcher(op::CustomCall("foo_target")),
+              R"(custom-call with call target that is equal to "foo_target")");
+}
+
+TEST(HloMatchersTest, ShapeMatcher) {
+  auto p0 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1}), "param");
+
+  EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {5, 7})));
+  EXPECT_THAT(p0.get(), op::Shape("f32[5,7]"));
+  EXPECT_THAT(
+      p0.get(),
+      ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {5, 7}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]")));
+  EXPECT_THAT(p0.get(),
+              ::testing::Not(op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::Shape("f32[7,5]")));
+  EXPECT_THAT(
+      p0.get(),
+      ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {7, 5}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[7,5]")));
+  EXPECT_THAT(p0.get(),
+              op::Shape(ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1})));
+  EXPECT_THAT(p0.get(), op::Shape("f32[5,7]{0,1}"));
+  EXPECT_THAT(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
+                            F32, {5, 7}, {0, 1})));
+  EXPECT_THAT(p0.get(), op::ShapeWithLayout("f32[5,7]{0,1}"));
+  EXPECT_THAT(p0.get(),
+              ::testing::Not(op::ShapeWithLayout(
+                  ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {1, 0}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]{1,0}")));
+
+  EXPECT_THAT(Explain(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))),
+              "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
+              "(expected: f32[7,5])");
+  EXPECT_THAT(
+      Explain(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
+                            F32, {7, 5}, {1, 0}))),
+      "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
+      "(expected: f32[7,5]{1,0})");
+}
+
+TEST(HloMatchersTest, ShardingMatcher) {
+  auto p0 = HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {5}),
+                                            "param.0");
+  p0->clear_sharding();
+  auto p1 = HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {7}),
+                                            "param.1");
+  p1->set_sharding(HloSharding::AssignDevice(1));
+
+  EXPECT_THAT(p0.get(), op::NoSharding());
+  EXPECT_THAT(p0.get(),
+              ::testing::Not(op::Sharding(HloSharding::AssignDevice(1))));
+  EXPECT_THAT(p1.get(), ::testing::Not(op::NoSharding()));
+  EXPECT_THAT(p1.get(),
+              ::testing::Not(op::Sharding(HloSharding::AssignDevice(0))));
+  EXPECT_THAT(p1.get(), op::Sharding(HloSharding::AssignDevice(1)));
+
+  EXPECT_THAT(Explain(p0.get(), op::Sharding(HloSharding::AssignDevice(1))),
+              "%param.0 = f32[5]{0} parameter(0) has no sharding (expected: "
+              "{maximal device=1})");
+  EXPECT_THAT(Explain(p1.get(), op::NoSharding()),
+              "%param.1 = f32[7]{0} parameter(1), sharding={maximal device=1} "
+              "expected to have no sharding.");
+  EXPECT_THAT(Explain(p1.get(), op::Sharding(HloSharding::AssignDevice(0))),
+              "%param.1 = f32[7]{0} parameter(1), sharding={maximal device=1} "
+              "has incorrect sharding (expected: {maximal device=0})");
 }
 
 }  // namespace

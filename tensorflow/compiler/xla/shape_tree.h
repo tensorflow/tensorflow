@@ -53,7 +53,7 @@ struct ShapeTreeNode {
   ShapeTreeNode(const ShapeTreeNode& other)
       : data(other.data), children(other.children.size()) {
     for (size_t i = 0; i < children.size(); ++i) {
-      children[i] = MakeUnique<ShapeTreeNode>(*other.children[i]);
+      children[i] = ::xla::MakeUnique<ShapeTreeNode>(*other.children[i]);
     }
   }
 
@@ -62,7 +62,7 @@ struct ShapeTreeNode {
       data = other.data;
       children.resize(other.children.size());
       for (size_t i = 0; i < children.size(); ++i) {
-        children[i] = MakeUnique<ShapeTreeNode>(*other.children[i]);
+        children[i] = ::xla::MakeUnique<ShapeTreeNode>(*other.children[i]);
       }
     }
     return *this;
@@ -142,6 +142,18 @@ class ShapeTree {
 
   // Return the shape represented with this ShapeTree.
   const Shape& shape() const { return *shape_; }
+
+  // Replaces *only* the underlying shape of this ShapeTree. The caller must own
+  // the Shape object and hence shape_storage_ is not updated.
+  //
+  // Only safe to use this if the ShapeTree was constructed with 'explicit
+  // ShapeTree(const Shape* shape)' or is moved from one such ShapeTree. The
+  // caller must ensure that the input shape is consistent with the underlying
+  // tree.
+  void replace_shape_ptr(const Shape* shape) {
+    CHECK(shape_storage_.get() == nullptr);
+    shape_ = shape;
+  }
 
   // Returns true if the node at the given index is a leaf node (an array
   // shape).
@@ -433,7 +445,7 @@ class ShapeTreeIterator : public std::iterator<std::forward_iterator_tag,
     for (auto& node_and_index : stack_) {
       index.push_back(node_and_index.second);
     }
-    current_ = MakeUnique<value_type>(index, node_->data);
+    current_ = ::xla::MakeUnique<value_type>(index, node_->data);
     return *current_;
   }
 
@@ -480,7 +492,7 @@ void ShapeTree<T>::InitChildren(const Shape& shape, Node* node) {
 template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape)
     : root_(),
-      shape_storage_(MakeUnique<Shape>(std::move(shape))),
+      shape_storage_(::xla::MakeUnique<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.
@@ -496,7 +508,7 @@ ShapeTree<T>::ShapeTree(const Shape* shape) : root_(), shape_(shape) {
 template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape, const T& init_value)
     : root_(init_value),
-      shape_storage_(MakeUnique<Shape>(std::move(shape))),
+      shape_storage_(::xla::MakeUnique<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.

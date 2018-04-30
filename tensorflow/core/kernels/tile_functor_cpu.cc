@@ -15,10 +15,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/tile_functor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/tile_functor.h"
 
 namespace tensorflow {
 

@@ -40,4 +40,4 @@ from tensorflow.python.keras._impl.keras.layers import Input
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.models import Sequential
 
-__version__ = '2.1.2-tf'
+__version__ = '2.1.5-tf'

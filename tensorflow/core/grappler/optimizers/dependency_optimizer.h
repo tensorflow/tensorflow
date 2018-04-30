@@ -29,9 +29,8 @@ namespace grappler {
 // optimizations, such as removing nodes that are effectively noops.
 class DependencyOptimizer : public GraphOptimizer {
  public:
-  DependencyOptimizer() : opt_level_(RewriterConfig::ON) {}
-  explicit DependencyOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+  DependencyOptimizer() {}
+  explicit DependencyOptimizer(RewriterConfig::Toggle opt_level) {}
   ~DependencyOptimizer() override {}
 
   string name() const override { return "dependency_optimizer"; };
@@ -43,14 +42,15 @@ class DependencyOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  // Returns true if node is not an Identity node or if it is an Identity
+  // that is safe to remove.
+  bool SafeToRemoveIdentity(const NodeDef& node);
   // Returns true if it is safe to convert node to NoOp.
   bool SafeToConvertToNoOp(const NodeDef& node);
   // Removes all duplicate control dependencies.
   void CleanControlInputs();
   // Builds a map from the &optimized_graph_->node(i) to i.
   void BuildNodeToIdx();
-  // Removes the given set of nodes from the graph.
-  void DeleteNodes(const std::set<int>& nodes_to_delete);
   // Tries to optimize the node with the given index, possibly additional
   // optimizations by inserting nodes in nodes_to_simplify, and pruning nodes by
   // inserting them in nodes_to_delete.
@@ -62,7 +62,6 @@ class DependencyOptimizer : public GraphOptimizer {
   // Main driver of dependency optimizations.
   Status OptimizeDependencies();
 
-  RewriterConfig::Toggle opt_level_;
   bool fetch_nodes_known_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;

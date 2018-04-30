@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -131,7 +131,8 @@ struct scalar_cast_op<::tensorflow::bfloat16, float> {
     p[0] = a.value;
     p[1] = 0;
 #else
-    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");
+    static_assert(::tensorflow::port::kLittleEndian,
+                  "Not a little endian system!");
     p[0] = 0;
     p[1] = a.value;
 #endif

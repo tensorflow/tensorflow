@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -39,6 +40,7 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
+// TODO(hongm): Convert `g` and `init` to using std::unique_ptr.
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init,
                      Rendezvous* rendez) {
@@ -85,7 +87,8 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   if (init) {
     Executor* init_exec;
-    TF_CHECK_OK(NewLocalExecutor(params, init, &init_exec));
+    TF_CHECK_OK(
+        NewLocalExecutor(params, std::unique_ptr<Graph>(init), &init_exec));
     Executor::Args args;
     args.rendezvous = rendez_;
     args.runner = runner;
@@ -93,7 +96,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
     delete init_exec;
   }
 
-  TF_CHECK_OK(NewLocalExecutor(params, g, &exec_));
+  TF_CHECK_OK(NewLocalExecutor(params, std::unique_ptr<Graph>(g), &exec_));
 }
 
 Benchmark::~Benchmark() {

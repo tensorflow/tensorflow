@@ -24,6 +24,7 @@ import numpy as np
 from six import string_types
 
 from tensorflow.python.estimator.inputs.queues import feeding_functions
+from tensorflow.python.util.tf_export import tf_export
 
 # Key name to pack the target into dict of `features`. See
 # `_get_unique_target_key` for details.
@@ -86,6 +87,7 @@ def _validate_and_convert_features(x):
   return ordered_dict_data
 
 
+@tf_export('estimator.inputs.numpy_input_fn')
 def numpy_input_fn(x,
                    y=None,
                    batch_size=128,

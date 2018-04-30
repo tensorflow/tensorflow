@@ -32,13 +32,13 @@ class GpuCopyInsertion : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  protected:
-  // Returns a copy of `hlo`. Looks in inserted_copies_ first to avoid making
+  // Returns a copy of `hlo`. Looks in hlo_to_copy_map_ first to avoid making
   // duplicate copies.
   StatusOr<HloInstruction*> FindOrInsertCopy(HloInstruction* hlo);
 
   // A map containing all copies inserted to materialize operands of library
   // calls. The key is the copied instruction and the value is the copy.
-  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> inserted_copies_;
+  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> hlo_to_copy_map_;
 };
 
 }  // namespace gpu

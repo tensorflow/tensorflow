@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
@@ -121,6 +122,9 @@ xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
 xla::ComputationDataHandle XlaHelpers::Epsilon(xla::ComputationBuilder* b,
                                                DataType data_type) {
   switch (data_type) {
+    case DT_HALF:
+      return b->ConstantR0<Eigen::half>(
+          static_cast<Eigen::half>(Eigen::NumTraits<Eigen::half>::epsilon()));
     case DT_BFLOAT16:
       return b->ConstantR0<bfloat16>(bfloat16::epsilon());
     case DT_FLOAT:
@@ -135,58 +139,9 @@ xla::ComputationDataHandle XlaHelpers::Epsilon(xla::ComputationBuilder* b,
 
 xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     xla::ComputationBuilder* b, DataType data_type, int64 value) {
-  xla::Literal literal;
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  switch (type) {
-    case xla::U8:
-      literal = std::move(*xla::Literal::CreateR0<uint8>(value));
-      break;
-    case xla::U32:
-      literal = std::move(*xla::Literal::CreateR0<uint32>(value));
-      break;
-    case xla::U64:
-      literal = std::move(*xla::Literal::CreateR0<uint64>(value));
-      break;
-    case xla::S8:
-      literal = std::move(*xla::Literal::CreateR0<int8>(value));
-      break;
-    case xla::S32:
-      literal = std::move(*xla::Literal::CreateR0<int32>(value));
-      break;
-    case xla::S64:
-      literal = std::move(*xla::Literal::CreateR0<int64>(value));
-      break;
-    case xla::F32:
-      literal = std::move(*xla::Literal::CreateR0<float>(value));
-      break;
-    case xla::F64:
-      literal = std::move(*xla::Literal::CreateR0<double>(value));
-      break;
-    case xla::C64:
-      literal = std::move(*xla::Literal::CreateR0<complex64>(value));
-      break;
-    case xla::PRED:
-      LOG(FATAL) << "pred element type is not integral";
-    case xla::S16:
-    case xla::U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case xla::BF16:
-      literal = std::move(
-          *xla::Literal::CreateR0<bfloat16>(static_cast<bfloat16>(value)));
-      break;
-    case xla::F16:
-      literal = std::move(
-          *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value)));
-      break;
-    case xla::TUPLE:
-      LOG(FATAL) << "tuple element type is not integral";
-    case xla::OPAQUE:
-      LOG(FATAL) << "opaque element type is not integral";
-    default:
-      LOG(FATAL) << "unhandled element type " << type;
-  }
-  return b->ConstantLiteral(literal);
+  return ::tensorflow::IntegerLiteral(b, type, value);
 }
 
 xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
@@ -320,6 +275,22 @@ Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
       one_hot_bool, builder->Broadcast(on_value, output_shape.dim_sizes()),
       builder->Broadcast(off_value, output_shape.dim_sizes()));
   return Status::OK();
+}
+
+DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
+  if (dtype == DT_BFLOAT16) {
+    return DT_FLOAT;
+  }
+  return dtype;
+}
+
+xla::ComputationDataHandle XlaHelpers::ConvertElementType(
+    xla::ComputationBuilder* const builder,
+    const xla::ComputationDataHandle& operand,
+    const DataType new_element_type) {
+  xla::PrimitiveType convert_to;
+  TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));
+  return builder->ConvertElementType(operand, convert_to);
 }
 
 }  // end namespace tensorflow

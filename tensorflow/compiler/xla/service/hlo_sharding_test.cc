@@ -88,7 +88,7 @@ TEST_F(HloShardingTest, Tile) {
   }
 
   {
-    // Test should pass.
+    // Test should fail because of more devices used then `num_device`.
     Shape tile_shape = ShapeUtil::MakeShape(U32, {2, 3});
     HloSharding sharding =
         HloSharding::Tile(tile_shape, MakeArray({2, 2}, {0, 1, 2, 3}));
@@ -97,17 +97,8 @@ TEST_F(HloShardingTest, Tile) {
   }
 
   {
-    // Test should fail due to the tile being larger than the input space.
-    Shape tile_shape = ShapeUtil::MakeShape(U32, {2, 3});
-    HloSharding sharding =
-        HloSharding::Tile(tile_shape, MakeArray({2, 2}, {0, 1, 2, 3}));
-    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {2, 2}),
-                                       /*num_devices=*/4));
-  }
-
-  {
-    // Test should fail due to the tile not dividing the input space into 4
-    // sections (even with padding).
+    // Test should fail because the total tiled size in dimension 0 is 4 but we
+    // have 6 elements along that dimensions.
     Shape tile_shape = ShapeUtil::MakeShape(U32, {2, 3});
     HloSharding sharding =
         HloSharding::Tile(tile_shape, MakeArray({2, 2}, {0, 1, 2, 3}));
@@ -267,6 +258,58 @@ TEST_F(HloShardingTest, Hash) {
     HloSharding sharding2 = HloSharding::Tuple(shape_tree2);
     EXPECT_TRUE(hash_compare_equal(sharding1, sharding2));
   }
+}
+
+TEST_F(HloShardingTest, TransformShardedTileShapeTest) {
+  HloSharding sharding =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 5, 7, 11}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  HloSharding result = sharding.TransformShardedTileShape(
+      ShapeUtil::MakeShape(F32, {13, 15, 17, 19}),
+      [](int dim, int value) { return dim * 111; });
+  HloSharding expected =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {13, 15, 222, 333}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  EXPECT_EQ(result, expected);
+}
+
+TEST_F(HloShardingTest, ToStringReplicatedTest) {
+  HloSharding sharding = HloSharding::Replicate();
+  EXPECT_EQ(sharding.ToString(), "{replicated}");
+}
+
+TEST_F(HloShardingTest, ToStringAssignDeviceTest) {
+  HloSharding sharding = HloSharding::AssignDevice(7);
+  EXPECT_EQ(sharding.ToString(), "{maximal device=7}");
+}
+
+TEST_F(HloShardingTest, ToStringTiledTest) {
+  HloSharding sharding =
+      HloSharding::Tile(ShapeUtil::MakeShape(S32, {7, 11, 13}),
+                        Array3D<int64>({{{2, 3}}, {{5, 7}}}));
+  EXPECT_EQ(sharding.ToString(), "{s32[7,11,13] devices=[2,1,2]2,3,5,7}");
+}
+
+TEST_F(HloShardingTest, ToStringTupleTest) {
+  HloSharding sharding = HloSharding::Tuple(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                 ShapeUtil::MakeShape(U32, {7, 25}),
+                                 ShapeUtil::MakeShape(S32, {9, 11})}),
+      {HloSharding::Replicate(),
+       HloSharding::Tile(ShapeUtil::MakeShape(U32, {7, 13}),
+                         Array2D<int64>({{3, 5}})),
+       HloSharding::AssignDevice(3)});
+  EXPECT_EQ(sharding.ToString(),
+            "{{replicated}, {u32[7,13] devices=[1,2]3,5}, {maximal device=3}}");
+}
+
+TEST_F(HloShardingTest, OstreamTest) {
+  HloSharding sharding =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 5, 7, 11}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  std::ostringstream oss;
+  oss << sharding;
+  EXPECT_EQ(oss.str(), "{f32[3,5,7,11] devices=[1,1,2,2]0,1,2,3}");
 }
 
 }  // namespace

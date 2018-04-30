@@ -233,24 +233,24 @@ StatusOr<std::unique_ptr<Shape>> ComputationBuilder::GetShape(
   return status_or_shape;
 }
 
-ComputationDataHandle ComputationBuilder::CheckShape(
-    const ComputationDataHandle& operand, const Shape& expected_shape) {
-  std::unique_ptr<Shape> actual_shape = GetShape(operand).ConsumeValueOrDie();
-  CHECK(ShapeUtil::Equal(expected_shape, *actual_shape))
-      << "want " << ShapeUtil::HumanString(expected_shape) << " got "
-      << ShapeUtil::HumanString(*actual_shape);
-  return operand;
-}
+StatusOr<ProgramShape> ComputationBuilder::GetProgramShape() {
+  TF_RETURN_IF_ERROR(first_error_);
 
-void ComputationBuilder::CheckSameShape(const ComputationDataHandle& lhs,
-                                        const ComputationDataHandle& rhs) {
-  std::unique_ptr<Shape> lhs_shape = GetShape(lhs).ConsumeValueOrDie();
-  std::unique_ptr<Shape> rhs_shape = GetShape(rhs).ConsumeValueOrDie();
-  VLOG(2) << "checking " << ShapeUtil::HumanString(*lhs_shape) << " equals "
-          << ShapeUtil::HumanString(*rhs_shape);
-  CHECK(ShapeUtil::Equal(*lhs_shape, *rhs_shape))
-      << "lhs " << ShapeUtil::HumanString(*lhs_shape) << " rhs "
-      << ShapeUtil::HumanString(*rhs_shape);
+  GetComputationShapeRequest request;
+  *request.mutable_computation() = computation_.handle();
+  GetComputationShapeResponse response;
+
+  VLOG(2) << "making get-program-shape-request";
+  Status status = client_->stub()->GetComputationShape(&request, &response);
+  VLOG(2) << "done with get-program-shape-request";
+
+  if (!status.ok()) {
+    first_error_ = status;
+    return status;
+  }
+
+  TF_RET_CHECK(response.has_program_shape());
+  return std::move(*response.mutable_program_shape());
 }
 
 ComputationDataHandle ComputationBuilder::Slice(
@@ -388,7 +388,7 @@ ComputationDataHandle ComputationBuilder::Reshape(
 
 ComputationDataHandle ComputationBuilder::Collapse(
     const ComputationDataHandle& operand,
-    tensorflow::gtl::ArraySlice<int64> dims_to_collapse) {
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
   if (!first_error_.ok()) {
     return ComputationDataHandle();
   }
@@ -396,8 +396,8 @@ ComputationDataHandle ComputationBuilder::Collapse(
   // Don't support out-of-order collapse here.
   // Checks that the collapsed dimensions are in order and consecutive.
   for (tensorflow::gtl::ArraySlice<int64>::size_type i = 1;
-       i < dims_to_collapse.size(); ++i) {
-    if (dims_to_collapse[i] - 1 != dims_to_collapse[i - 1]) {
+       i < dimensions.size(); ++i) {
+    if (dimensions[i] - 1 != dimensions[i - 1]) {
       NoteError(InvalidArgument(
           "Collapsed dimensions are not in order and consecutive."));
       return ComputationDataHandle();
@@ -414,9 +414,9 @@ ComputationDataHandle ComputationBuilder::Collapse(
 
   VLOG(3) << "original shape: " << ShapeUtil::HumanString(*original_shape);
   VLOG(3) << "dims to collapse: "
-          << tensorflow::str_util::Join(dims_to_collapse, ",");
+          << tensorflow::str_util::Join(dimensions, ",");
 
-  if (dims_to_collapse.size() <= 1) {
+  if (dimensions.size() <= 1) {
     // Not collapsing anything, trivially we can return the operand versus
     // enqueueing a trivial reshape.
     return operand;
@@ -424,7 +424,7 @@ ComputationDataHandle ComputationBuilder::Collapse(
 
   std::vector<int64> new_sizes;
   for (int i = 0; i < ShapeUtil::Rank(*original_shape); ++i) {
-    if (i <= dims_to_collapse.front() || i > dims_to_collapse.back()) {
+    if (i <= dimensions.front() || i > dimensions.back()) {
       new_sizes.push_back(original_shape->dimensions(i));
     } else {
       new_sizes.back() *= original_shape->dimensions(i);
@@ -733,13 +733,13 @@ ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape,
 }
 
 void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
-                                 const Shape& shape,
+                                 const Shape& shape_with_layout,
                                  const string& outfeed_config) {
   OpRequest op_request;
   OutfeedRequest* request = op_request.mutable_outfeed_request();
   request->set_outfeed_config(outfeed_config);
   *request->mutable_operand() = operand;
-  *request->mutable_shape() = shape;
+  *request->mutable_shape() = shape_with_layout;
   RunOpAndNoteError(&op_request);
 }
 
@@ -766,6 +766,20 @@ ComputationDataHandle ComputationBuilder::CustomCall(
     *request->add_operands() = operand;
   }
   *request->mutable_shape() = shape;
+  return RunOpAndParseResponse(&op_request);
+}
+
+ComputationDataHandle ComputationBuilder::HostCompute(
+    tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
+    const string& channel_name, int64 cost_estimate_ns, const Shape& shape) {
+  OpRequest op_request;
+  HostComputeRequest* request = op_request.mutable_host_compute_request();
+  for (const ComputationDataHandle& operand : operands) {
+    *request->add_operands() = operand;
+  }
+  *request->mutable_shape() = shape;
+  request->set_channel_name(channel_name);
+  request->set_cost_estimate_ns(cost_estimate_ns);
   return RunOpAndParseResponse(&op_request);
 }
 
@@ -832,6 +846,14 @@ ComputationDataHandle ComputationBuilder::Or(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   return BinaryOp(BINOP_OR, lhs, rhs, broadcast_dimensions);
+}
+
+// TODO(b/65209188): Create a dedicated lowering for Xor
+ComputationDataHandle ComputationBuilder::Xor(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return Or(And(Not(lhs), rhs, broadcast_dimensions),
+            And(lhs, Not(rhs), broadcast_dimensions));
 }
 
 ComputationDataHandle ComputationBuilder::Not(
@@ -1024,6 +1046,11 @@ ComputationDataHandle ComputationBuilder::Neg(
   return UnaryOp(UNOP_NEGATE, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Clz(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_CLZ, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Clamp(
     const ComputationDataHandle& min, const ComputationDataHandle& operand,
     const ComputationDataHandle& max) {
@@ -1200,6 +1227,22 @@ ComputationDataHandle ComputationBuilder::While(
   return RunOpAndParseResponse(&op_request);
 }
 
+ComputationDataHandle ComputationBuilder::Gather(
+    const ComputationDataHandle& input,
+    const ComputationDataHandle& gather_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    tensorflow::gtl::ArraySlice<int64> window_bounds) {
+  OpRequest op_request;
+  GatherRequest* gather_request = op_request.mutable_gather_request();
+  *gather_request->mutable_input() = input;
+  *gather_request->mutable_gather_indices() = gather_indices;
+  *gather_request->mutable_dimension_numbers() = dimension_numbers;
+  for (int64 window_bound : window_bounds) {
+    gather_request->add_window_bounds(window_bound);
+  }
+  return RunOpAndParseResponse(&op_request);
+}
+
 ComputationDataHandle ComputationBuilder::Conditional(
     const ComputationDataHandle& predicate,
     const ComputationDataHandle& true_operand,
@@ -1332,15 +1375,16 @@ ComputationDataHandle ComputationBuilder::BatchNormInference(
 
 ComputationDataHandle ComputationBuilder::BatchNormGrad(
     const ComputationDataHandle& operand, const ComputationDataHandle& scale,
-    const ComputationDataHandle& mean, const ComputationDataHandle& var,
+    const ComputationDataHandle& batch_mean,
+    const ComputationDataHandle& batch_var,
     const ComputationDataHandle& grad_output, float epsilon,
     int64 feature_index) {
   OpRequest op_request;
   BatchNormGradRequest* request = op_request.mutable_batch_norm_grad_request();
   *request->mutable_operand() = operand;
   *request->mutable_scale() = scale;
-  *request->mutable_mean() = mean;
-  *request->mutable_variance() = var;
+  *request->mutable_mean() = batch_mean;
+  *request->mutable_variance() = batch_var;
   *request->mutable_grad_output() = grad_output;
   request->set_epsilon(epsilon);
   request->set_feature_index(feature_index);

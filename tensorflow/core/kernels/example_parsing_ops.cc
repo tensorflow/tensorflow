@@ -346,8 +346,9 @@ class SingleSequenceExampleParserOp : public OpKernel {
           feature_list_sparse_keys[di].scalar<string>()();
     }
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(
-                 feature_list_dense_missing_assumed_empty->shape()),
+        ctx,
+        TensorShapeUtils::IsVector(
+            feature_list_dense_missing_assumed_empty->shape()),
         errors::InvalidArgument(
             "Expected feature_list_dense_missing_assumed_empty ",
             "to be a vector, got shape: ",
@@ -386,12 +387,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
       required[d] = (def_value.NumElements() == 0);  // No default provided.
 
       if (def_value.NumElements() > 0) {
-        OP_REQUIRES(
-            ctx, def_value.shape() == attrs_.context_dense_shapes[d],
-            errors::InvalidArgument(
-                "def_value[", d, "].shape() == ",
-                def_value.shape().DebugString(), " != context_dense_shapes_[",
-                d, "] == ", attrs_.context_dense_shapes[d].DebugString()));
+        OP_REQUIRES(ctx, def_value.shape() == attrs_.context_dense_shapes[d],
+                    errors::InvalidArgument(
+                        "def_value[", d,
+                        "].shape() == ", def_value.shape().DebugString(),
+                        " != context_dense_shapes_[", d,
+                        "] == ", attrs_.context_dense_shapes[d].DebugString()));
         OP_REQUIRES(
             ctx, def_value.dtype() == attrs_.context_dense_types[d],
             errors::InvalidArgument(
@@ -576,12 +577,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
         const Feature& f = fl.feature(t);
         bool types_match;
         OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
-        OP_REQUIRES(
-            ctx, types_match,
-            errors::InvalidArgument(
-                "Name: ", name, ", Feature list: ", key, ", Index: ", t,
-                ".  Data types don't match. ", "Expected type: ",
-                DataTypeString(dtype), "  Feature is: ", ProtoDebugString(f)));
+        OP_REQUIRES(ctx, types_match,
+                    errors::InvalidArgument(
+                        "Name: ", name, ", Feature list: ", key, ", Index: ", t,
+                        ".  Data types don't match. ",
+                        "Expected type: ", DataTypeString(dtype),
+                        "  Feature is: ", ProtoDebugString(f)));
         OP_REQUIRES_OK(ctx, FeatureDenseCopy(t, name, key, dtype, shape, f,
                                              feature_list_dense_values[d]));
       }

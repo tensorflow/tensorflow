@@ -17,10 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import traceback
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -354,6 +356,10 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1_1/nested/dummy:0", v5.name)
     self.assertEqual("s1_1/nested_1/dummy:0", v6.name)
 
+    self.assertEqual(2, len(tmpl1._checkpoint_dependencies))
+    self.assertEqual("nested", tmpl1._checkpoint_dependencies[0].name)
+    self.assertEqual("nested_1", tmpl1._checkpoint_dependencies[1].name)
+
   @test_util.run_in_graph_and_eager_modes()
   def test_nested_templates_with_defun(self):
 
@@ -411,6 +417,17 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/nested_1/dummy:0", v1[1].name)
     self.assertEqual("s1_1/nested/dummy:0", v3[0].name)
     self.assertEqual("s1_1/nested_1/dummy:0", v3[1].name)
+
+  def test_graph_function_no_name(self):
+    with context.eager_mode():
+
+      def f(_, y):
+        return y + 1
+
+      partial = functools.partial(f, 1.0)
+      tmpl = template.make_template_internal(
+          "a", partial, create_graph_function_=True)
+      self.assertAllEqual(tmpl(ops.convert_to_tensor(1.0)), 2.0)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_immediate_scope_creation(self):
@@ -545,7 +562,7 @@ class TemplateTest(test.TestCase):
     outputs_b, _ = linear1(inputs)
     self.assertEquals("foo", linear1.variable_scope.name)
     self.assertEquals("foo/w:0", w1.name)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEquals("foo/add:0", outputs_a.name,
                         "First application of template should get "
                         "same name scope as variables.")
@@ -560,7 +577,7 @@ class TemplateTest(test.TestCase):
                       "New template gets a freshly uniquified variable scope "
                       "because 'foo' is already taken.")
     self.assertEquals("foo_1/w:0", w2.name)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEquals("foo_1_1/add:0", outputs_c.name,
                         "First application of template would get "
                         "same name scope as variables, but 'foo_1' is already "
@@ -575,7 +592,7 @@ class TemplateTest(test.TestCase):
     with variable_scope.variable_scope("foo"):
       # Create two templates with the same name, ensure scopes are made unique.
       ta = template.make_template("bar", variable_scoped_function, True)
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         tb = template.make_template("s", function_with_side_create,
                                     trainable=False)
       else:

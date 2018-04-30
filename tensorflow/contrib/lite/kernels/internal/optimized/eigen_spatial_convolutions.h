@@ -39,7 +39,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #endif
 
-
 namespace Eigen {
 
 /** SpatialConvolution
@@ -215,13 +214,12 @@ EIGEN_DEVICE_FUNC
   }
   // TODO(yangke): choose() is defined in TensorContraction.h -- consider
   // moving it to somewhere more "common".
-  return
-      input
-          .extract_image_patches(kernelRows, kernelCols, row_stride, col_stride,
-                                 row_in_stride, col_in_stride, padding_type)
-          .reshape(pre_contract_dims)
-          .contract(kernel.reshape(kernel_dims), contract_dims)
-          .reshape(post_contract_dims);
+  return input
+      .extract_image_patches(kernelRows, kernelCols, row_stride, col_stride,
+                             row_in_stride, col_in_stride, padding_type)
+      .reshape(pre_contract_dims)
+      .contract(kernel.reshape(kernel_dims), contract_dims)
+      .reshape(post_contract_dims);
 }
 
 }  // end namespace Eigen

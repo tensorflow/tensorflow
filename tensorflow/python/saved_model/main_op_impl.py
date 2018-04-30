@@ -22,8 +22,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('saved_model.main_op.main_op')
 def main_op():
   """Returns a main op to init variables and tables.
 
@@ -40,6 +42,7 @@ def main_op():
 
 
 # TODO(sukritiramesh): Integrate with Saver for complete restore functionality.
+@tf_export('saved_model.main_op.main_op_with_restore')
 def main_op_with_restore(restore_op_name):
   """Returns a main op to init variables, tables and restore the graph.
 

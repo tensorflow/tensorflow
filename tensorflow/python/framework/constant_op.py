@@ -15,24 +15,6 @@
 """Operations that generate constants.
 
 See the @{$python/constant_op$constants guide}.
-
-@@zeros
-@@zeros_like
-@@ones
-@@ones_like
-@@fill
-@@constant
-@@linspace
-@@range
-@@random_normal
-@@truncated_normal
-@@random_uniform
-@@random_shuffle
-@@random_crop
-@@multinomial
-@@random_gamma
-@@random_poisson
-@@set_random_seed
 """
 
 # Must be separate from array_ops to avoid a cyclic dependency.
@@ -181,7 +163,7 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
     TypeError: if shape is incorrectly specified or unsupported.
   """
   ctx = context.context()
-  if not ctx.in_graph_mode():
+  if ctx.executing_eagerly():
     t = convert_to_eager_tensor(value, ctx, dtype)
     if shape is None:
       return t

@@ -121,6 +121,8 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle) {
+  VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
+          << " (this: " << this << ")";
   WorkerInterface* wi =
       worker_session_->worker_cache->CreateWorker(options.target);
 
@@ -143,6 +145,7 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
 
   RegisterGraphRequest req;
   req.set_session_handle(worker_session_->session_name);
+  req.set_create_worker_session_called(create_worker_session_called_);
   *req.mutable_graph_def() = gdef;
   req.mutable_graph_options()
       ->mutable_optimizer_options()
@@ -154,6 +157,9 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   *handle = function_data_.size();
   function_data_.push_back(FunctionData(resp.graph_handle(), options.target, wi,
                                         send_keys, recv_keys));
+  VLOG(1) << "CFLR::Instantiate: [Success] " << function_name << " on "
+          << options.target << " (this: " << this << ")"
+          << " with handle: " << *handle;
   return Status::OK();
 }
 
@@ -175,32 +181,34 @@ void ClusterFunctionLibraryRuntime::Run(
     return;
   }
 
-  RunGraphRequest req;
-  req.set_session_handle(worker_session_->session_name);
-  req.set_graph_handle(function_data->graph_handle);
+  RunGraphRequest* req = new RunGraphRequest;
+  req->set_session_handle(worker_session_->session_name);
+  req->set_create_worker_session_called(create_worker_session_called_);
+  req->set_graph_handle(function_data->graph_handle);
   // Borrowed from master_session.cc
   const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
-  req.set_step_id(step_id);
+  req->set_step_id(step_id);
   int i = 0;
   for (const auto& send_key : function_data->send_keys) {
-    NamedTensorProto* send = req.add_send();
+    NamedTensorProto* send = req->add_send();
     send->set_name(send_key);
     args[i].AsProtoTensorContent(send->mutable_tensor());
     i++;
   }
   const std::vector<string>& recv_keys = function_data->recv_keys;
   for (const auto& recv_key : recv_keys) {
-    req.add_recv_key(recv_key);
+    req->add_recv_key(recv_key);
   }
 
   RunGraphResponse* resp = new RunGraphResponse();
   CallOptions* call_options = new CallOptions();
   wi->RunGraphAsync(
-      call_options, &req, resp,
-      [call_options, resp, rets, recv_keys, done](const Status& status) {
+      call_options, req, resp,
+      [call_options, req, resp, rets, recv_keys, done](const Status& status) {
         if (!status.ok()) {
           done(status);
           delete call_options;
+          delete req;
           delete resp;
           return;
         }
@@ -212,25 +220,28 @@ void ClusterFunctionLibraryRuntime::Run(
         for (const auto& recv_key : recv_keys) {
           TensorProto* tp = mapped_recvs[recv_key];
           if (tp == nullptr) {
-            delete call_options;
-            delete resp;
             done(errors::Internal("Could not find key: ", recv_key));
+            delete call_options;
+            delete req;
+            delete resp;
             return;
           }
           Tensor t;
           if (t.FromProto(*tp)) {
             rets->push_back(t);
           } else {
-            delete call_options;
-            delete resp;
             done(errors::Internal("Could not convert tensor proto: ",
                                   tp->DebugString()));
+            delete call_options;
+            delete req;
+            delete resp;
             return;
           }
         }
-        delete call_options;
-        delete resp;
         done(status);
+        delete call_options;
+        delete req;
+        delete resp;
       });
 }
 

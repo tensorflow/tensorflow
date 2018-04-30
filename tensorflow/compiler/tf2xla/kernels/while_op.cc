@@ -58,9 +58,8 @@ Status MakeXlaCompilerArgumentsFromInputs(
       }
 
       arg.type = resource->type();
-      if (arg.initialized) {
-        TF_RETURN_IF_ERROR(resource->PackedShape(ctx->builder(), &arg.shape));
-      } else {
+      arg.shape = resource->shape();
+      if (!arg.initialized) {
         *has_uninitialized_vars = true;
       }
       arg.tensor_array_size = resource->tensor_array_size();
@@ -70,14 +69,13 @@ Status MakeXlaCompilerArgumentsFromInputs(
       arg.name = resource->name();
       VLOG(2) << "    resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
-              << " shape: " << xla::ShapeUtil::HumanString(arg.shape)
+              << " shape: " << arg.shape.DebugString()
               << " initialized: " << arg.initialized;
 
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = ctx->input_type(i);
-      TF_RETURN_IF_ERROR(
-          TensorShapeToXLAShape(arg.type, ctx->InputShape(i), &arg.shape));
+      arg.shape = ctx->InputShape(i);
     }
   }
   return Status::OK();
@@ -154,17 +152,14 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       XlaCompiler::Argument& arg = arguments[update.input_index];
       if (!arg.initialized) {
         VLOG(2) << "Update shape for argument " << update.input_index << " "
-                << xla::ShapeUtil::HumanString(update.shape);
+                << update.shape.DebugString();
         arg.initialized = true;
 
-        xla::Shape shape = update.shape;
-        if (!update.tensor_array_gradients_accessed.empty()) {
-          shape = xla::ShapeUtil::GetTupleElementShape(shape, 0);
-        }
-        std::unique_ptr<xla::Literal> zero =
-            xla::Literal::CreateFromShape(shape);
-        OP_REQUIRES_OK(ctx, resource->SetValue(
-                                update.type, builder->ConstantLiteral(*zero)));
+        arg.shape = update.shape;
+        OP_REQUIRES_OK(ctx,
+                       resource->SetTypeAndShape(update.type, update.shape));
+
+        OP_REQUIRES_OK(ctx, resource->SetZeroValue(builder));
       }
 
       // Add any TensorArray gradients touched by the body to the enclosing
@@ -182,9 +177,6 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
-
-      // Recompute the argument shape.
-      OP_REQUIRES_OK(ctx, resource->PackedShape(ctx->builder(), &arg.shape));
     }
     // Recompile the body with the "correct" resource shapes.
     VLOG(1) << "Recompiling body with corrected resource shapes";
@@ -292,13 +284,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       OP_REQUIRES_OK(ctx,
                      resource->SetFromPack(
                          arguments[update.input_index].tensor_array_gradients,
-                         builder->GetTupleElement(while_result, pos),
-                         /*reset_initial_values=*/false, builder));
+                         builder->GetTupleElement(while_result, pos), builder));
     }
     VLOG(2) << "Loop-carried variable: pos: " << update.input_index
             << " name: " << resource->name() << " modified: " << update.modified
             << " type: " << DataTypeString(update.type)
-            << " shape: " << xla::ShapeUtil::HumanString(update.shape);
+            << " shape: " << update.shape.DebugString();
     // Copies the identity of the resource variable from input to output
     // unchanged, even if the variable was not modified.
     ctx->op_kernel_context()->set_output(

@@ -400,7 +400,7 @@ struct LaunchDepthwiseConvBackpropInputOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d backprop input.
     auto shard = [&ctx, &args, &out_backprop, &filter_data, &in_backprop](
-        int64 start, int64 limit) {
+                     int64 start, int64 limit) {
       static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
 
       const int64 input_image_size =
@@ -750,7 +750,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d backprop filter.
     auto shard = [&ctx, &args, &out_backprop, &input, &output_buffer_data](
-        int64 start, int64 limit) {
+                     int64 start, int64 limit) {
       static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
       const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
       const int64 padded_out_depth_size =

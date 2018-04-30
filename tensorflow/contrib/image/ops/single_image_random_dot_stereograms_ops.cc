@@ -58,7 +58,9 @@ REGISTER_OP("SingleImageRandomDotStereograms")
       int colors;
       TF_RETURN_IF_ERROR(c->GetAttr("number_colors", &colors));
 
-      c->set_output(0, c->MakeShape({y_dim, x_dim, colors > 256? c->MakeDim(3) : c->MakeDim(1)}));
+      c->set_output(
+          0, c->MakeShape(
+                 {y_dim, x_dim, colors > 256 ? c->MakeDim(3) : c->MakeDim(1)}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -67,7 +69,7 @@ Outputs a single image random dot stereogram for export via encode_PNG/JPG OP.
 Given the 2-D tensor 'depth_values' with encoded Z values, this operation will
 encode 3-D data into a 2-D image.  The output of this Op is suitable for the
 encode_PNG/JPG ops.  Be careful with image compression as this may corrupt the
-encode 3-D data witin the image.
+encode 3-D data within the image.
 
 This Op is based upon:
 'http://www.learningace.com/doc/4331582/b6ab058d1e206d68ab60e4e1ead2fe6e/sirds-paper'
@@ -109,7 +111,7 @@ output_image_shape: Output size of returned image in X,Y, Channels 1-grayscale, 
 output_data_window: Size of "DATA" window, must be equal to or smaller than 'output_image_shape', will be centered
   and use 'convergence_dots_size' for best fit to avoid overlap if possible
 
-image:= A tensor of size 'output_image_shape' with the encloded 'depth_values'
+image:= A tensor of size 'output_image_shape' with the encoded 'depth_values'
 )doc");
 
 }  // namespace tensorflow

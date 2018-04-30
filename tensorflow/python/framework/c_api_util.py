@@ -33,7 +33,7 @@ class ScopedTFStatus(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteStatus is not None:
+    if c_api is not None and c_api.TF_DeleteStatus is not None:
       c_api.TF_DeleteStatus(self.status)
 
 
@@ -46,7 +46,7 @@ class ScopedTFGraph(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteGraph is not None:
+    if c_api is not None and c_api.TF_DeleteGraph is not None:
       c_api.TF_DeleteGraph(self.graph)
 
 
@@ -59,8 +59,34 @@ class ScopedTFImportGraphDefOptions(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteImportGraphDefOptions is not None:
+    if c_api is not None and c_api.TF_DeleteImportGraphDefOptions is not None:
       c_api.TF_DeleteImportGraphDefOptions(self.options)
+
+
+class ScopedTFImportGraphDefResults(object):
+  """Wrapper around TF_ImportGraphDefOptions that handles deletion."""
+
+  def __init__(self, results):
+    self.results = results
+
+  def __del__(self):
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api is not None and c_api.TF_DeleteImportGraphDefResults is not None:
+      c_api.TF_DeleteImportGraphDefResults(self.results)
+
+
+class ScopedTFFunction(object):
+  """Wrapper around TF_Function that handles deletion."""
+
+  def __init__(self, func):
+    self.func = func
+
+  def __del__(self):
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api is not None and c_api.TF_DeleteFunction is not None:
+      c_api.TF_DeleteFunction(self.func)
 
 
 @tf_contextlib.contextmanager

@@ -40,7 +40,6 @@ cc_library(
     hdrs = ["summary_db_writer.h"],
     copts = tf_copts(),
     deps = [
-        ":schema",
         ":summary_converter",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -135,10 +134,4 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core/lib/db:sqlite",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["*"]),
-    visibility = ["//tensorflow:__pkg__"],
 )

@@ -1724,8 +1724,58 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
   }
 }
 
+std::unique_ptr<HloComputation> MakeBenchmarkWhileBody(
+    const int num_tuple_inputs) {
+  auto builder = HloComputation::Builder("benchmark_loop_body");
+  const Shape element_shape = ShapeUtil::MakeShape(F32, {});
+  std::vector<Shape> input_shape(num_tuple_inputs, element_shape);
+  const Shape loop_state_shape = ShapeUtil::MakeTupleShape(input_shape);
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
+  std::vector<HloInstruction*> gte_nodes(num_tuple_inputs);
+  for (int i = 0; i < num_tuple_inputs; ++i) {
+    gte_nodes[i] = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(element_shape, param, i));
+  }
+  builder.AddInstruction(HloInstruction::CreateTuple(gte_nodes));
+  return builder.Build();
+}
+
+void BM_ManyElementTuple(int num_iters, const int num_tuple_inputs) {
+  tensorflow::testing::StopTiming();
+  HloModuleConfig config;
+  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  CopyInsertion copy_insertion;
+  const Shape element_shape = ShapeUtil::MakeShape(F32, {});
+  std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
+  for (int i = 0; i < num_iters; ++i) {
+    auto builder = HloComputation::Builder("BM_ParallelWhiles");
+    HloModule module("BM_ManyElementTuple", VersionedComputationHandle(),
+                     config);
+    for (int j = 0; j < num_tuple_inputs; ++j) {
+      tuple_params[j] = builder.AddInstruction(
+          HloInstruction::CreateParameter(j, element_shape, ""));
+    }
+    HloInstruction* init =
+        builder.AddInstruction(HloInstruction::CreateTuple(tuple_params));
+    HloComputation* condition =
+        module.AddEmbeddedComputation(MakeTrivialCondition(init->shape()));
+    HloComputation* body =
+        module.AddEmbeddedComputation(MakeBenchmarkWhileBody(num_tuple_inputs));
+    HloInstruction* xla_while = builder.AddInstruction(
+        HloInstruction::CreateWhile(init->shape(), condition, body, init));
+    builder.AddInstruction(HloInstruction::CreateGetTupleElement(
+        ShapeUtil::MakeShape(F32, {}), xla_while, 0));
+    module.AddEntryComputation(builder.Build());
+    tensorflow::testing::StartTiming();
+    ASSERT_IS_OK(copy_insertion.Run(&module).status());
+    tensorflow::testing::StopTiming();
+  }
+}
+
 BENCHMARK(BM_SequentialWhiles)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096);
 BENCHMARK(BM_ParallelWhiles)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096);
+BENCHMARK(BM_ManyElementTuple)->Arg(1024)->Arg(12288);
 
 TEST_F(CopyInsertionTest, SimpleControlFlowTest) {
   const string& hlo_string = R"(

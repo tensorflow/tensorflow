@@ -60,7 +60,7 @@ class Benchmark {
  private:
   string name_;
   int num_args_;
-  std::vector<std::pair<int, int>> args_;
+  std::vector<std::pair<int, int> > args_;
   void (*fn0_)(int) = nullptr;
   void (*fn1_)(int, int) = nullptr;
   void (*fn2_)(int, int, int) = nullptr;

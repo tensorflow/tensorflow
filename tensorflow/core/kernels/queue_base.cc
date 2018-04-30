@@ -39,8 +39,8 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element,
     return errors::Internal(
         "HandleSliceToElement Cannot copy slice: number of elements does not "
         "match.  Shapes are: [element]: ",
-        element->shape().DebugString(), ", [parent slice]: ",
-        chip_shape.DebugString());
+        element->shape().DebugString(),
+        ", [parent slice]: ", chip_shape.DebugString());
   }
   auto parent_as_matrix = parent.flat_outer_dims<T>();
   element->flat<T>() = parent_as_matrix.chip(index, 0);

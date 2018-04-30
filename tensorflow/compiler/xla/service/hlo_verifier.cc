@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <set>
+
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -123,6 +126,10 @@ Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
   return CheckShape(outfeed, ShapeUtil::MakeNil());
 }
 
+Status ShapeVerifier::HandleHostCompute(HloInstruction*) {
+  return tensorflow::Status::OK();
+}
+
 Status ShapeVerifier::HandleRng(HloInstruction*) {
   return tensorflow::Status::OK();
 }
@@ -164,6 +171,8 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   // HLO broadcast has no exact analog at the proto level so there is no
   // ShapeInference method. Check the output shape explicitly.
   const Shape& operand_shape = broadcast->operand(0)->shape();
+  // Check for mixed precision.
+  TF_RETURN_IF_ERROR(CheckShape(broadcast, broadcast->shape()));
   TF_RET_CHECK(ShapeUtil::Rank(operand_shape) ==
                broadcast->dimensions().size());
   for (int64 operand_dimension = 0;
@@ -178,6 +187,8 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
 }
 
 Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
+  // Check for mixed precision.
+  TF_RETURN_IF_ERROR(CheckShape(reshape, reshape->shape()));
   TF_RET_CHECK(ShapeUtil::ElementsIn(reshape->shape()) ==
                ShapeUtil::ElementsIn(reshape->operand(0)->shape()));
   return tensorflow::Status::OK();
@@ -359,13 +370,130 @@ Status ShapeVerifier::HandleBatchNormGrad(HloInstruction* batch_norm_grad) {
                                          batch_norm_grad->feature_index()));
 }
 
+namespace {
+
+// Checks that the instruction does not have mixed precision floating point
+// inputs.
+Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    // White list the following opcodes for mixed-precision check, because they
+    // involve data pass through or grouping via tuples, where the precisions
+    // of buffers can be different.
+    case HloOpcode::kCall:
+    case HloOpcode::kConditional:
+    case HloOpcode::kConstant:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kFusion:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kParameter:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kSelect:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kTuple:
+    case HloOpcode::kWhile:
+      break;
+    default: {
+      PrimitiveType fp_type = PRIMITIVE_TYPE_INVALID;
+      for (auto operand : instruction->operands()) {
+        TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+            operand->shape(),
+            [&](const Shape& subshape, const ShapeIndex& index) {
+              if (!ShapeUtil::ElementIsFloating(subshape)) {
+                return Status::OK();
+              }
+              if (fp_type == PRIMITIVE_TYPE_INVALID) {
+                fp_type = subshape.element_type();
+              } else if (fp_type != subshape.element_type()) {
+                return FailedPrecondition(
+                    "Seen floating point types of different precisions in "
+                    "%s, but mixed precision is disallowed.",
+                    instruction->ToString().c_str());
+              }
+              return Status::OK();
+            }));
+      }
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ShapeVerifier::HandleGather(HloInstruction* gather) {
+  return CheckShape(
+      gather,
+      ShapeInference::InferGatherShape(
+          gather->operand(0)->shape(), gather->operand(1)->shape(),
+          gather->gather_dimension_numbers(), gather->gather_window_bounds()));
+}
+
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
-                                 const Shape& expected_shape) {
-  if (!ShapeUtil::Compatible(instruction->shape(), expected_shape)) {
+                                 const Shape& inferred_shape) {
+  // If allow_mixed_precision_ is false, check if there are operands with
+  // different precisions. We need this check because ShapeInference allows
+  // mixed precision inputs.
+  if (!allow_mixed_precision_) {
+    TF_RETURN_IF_ERROR(CheckMixedPrecisionOperands(instruction));
+  }
+
+  // Check if the output shape matches the expected shape.
+  bool compatible;
+  // We treat BF16 and F32 as compatible types if mixed precision is allowed,
+  // but only when the instruction defines the BF16/F32 buffer.
+  switch (instruction->opcode()) {
+    case HloOpcode::kSelect:
+      if (ShapeUtil::IsTuple(inferred_shape) || !allow_mixed_precision_) {
+        // Select only defines the top-level buffer, which in this case is the
+        // tuple, so we cannot allow mixed precision.
+        compatible =
+            ShapeUtil::Compatible(instruction->shape(), inferred_shape);
+      } else {
+        compatible = ShapeUtil::CompatibleIgnoringFpPrecision(
+            instruction->shape(), inferred_shape);
+      }
+      break;
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kTuple:
+      // Tuple and GetTupleElement do not define BF16/F32 buffers, so mixed
+      // precision is disallowed.
+    case HloOpcode::kConstant:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kCall:
+    case HloOpcode::kConditional:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kParameter:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kWhile:
+      // The above opcodes should match the expected shapes exactly.
+      compatible = ShapeUtil::Compatible(instruction->shape(), inferred_shape);
+      break;
+    default:
+      if (allow_mixed_precision_) {
+        compatible = ShapeUtil::CompatibleIgnoringFpPrecision(
+            instruction->shape(), inferred_shape);
+      } else {
+        compatible =
+            ShapeUtil::Compatible(instruction->shape(), inferred_shape);
+      }
+  }
+  if (!compatible) {
     return InvalidArgument(
         "Expected instruction to have shape compatible with %s, actual "
         "shape is %s:\n%s",
-        ShapeUtil::HumanString(expected_shape).c_str(),
+        ShapeUtil::HumanString(inferred_shape).c_str(),
         ShapeUtil::HumanString(instruction->shape()).c_str(),
         instruction->ToString().c_str());
   }
@@ -373,14 +501,14 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
-                                 const StatusOr<Shape>& expected_shape_status) {
-  if (!expected_shape_status.ok()) {
-    Status s = expected_shape_status.status();
+                                 const StatusOr<Shape>& inferred_shape_status) {
+  if (!inferred_shape_status.ok()) {
+    Status s = inferred_shape_status.status();
     tensorflow::errors::AppendToMessage(&s, ", for instruction ",
                                         instruction->ToString());
     return s;
   }
-  return CheckShape(instruction, expected_shape_status.ValueOrDie());
+  return CheckShape(instruction, inferred_shape_status.ValueOrDie());
 }
 
 Status ShapeVerifier::CheckUnaryShape(const HloInstruction* instruction) {
@@ -604,6 +732,73 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
   return tensorflow::Status::OK();
 }
 
+Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
+  auto* while_cond = instruction->while_condition();
+  auto* while_body = instruction->while_body();
+  if (while_cond->num_parameters() != 1) {
+    return FailedPrecondition(
+        "While condition must have exactly 1 parameter; had %lld : %s",
+        while_cond->num_parameters(), while_cond->ToString().c_str());
+  }
+  if (while_body->num_parameters() != 1) {
+    return FailedPrecondition(
+        "While body must have exactly 1 parameter; had %lld : %s",
+        while_body->num_parameters(), while_body->ToString().c_str());
+  }
+  if (instruction->operand_count() != 1) {
+    return FailedPrecondition(
+        "While loop must have exactly one operand; had %lld : %s",
+        instruction->operand_count(), instruction->ToString().c_str());
+  }
+  auto* init = instruction->operand(0);
+  auto* cond_param = while_cond->parameter_instruction(0);
+  if (!ShapeUtil::Compatible(init->shape(), cond_param->shape())) {
+    return FailedPrecondition(
+        "While condition's parameter must have the same shape as the "
+        "loop's 'init'. init: %s, param: %s",
+        init->ToString().c_str(), cond_param->ToString().c_str());
+  }
+  auto* cond_root = while_cond->root_instruction();
+  if (!ShapeUtil::Compatible(cond_root->shape(),
+                             ShapeUtil::MakeShape(PRED, {}))) {
+    return FailedPrecondition("While condition should have shape PRED: %s",
+                              cond_root->ToString().c_str());
+  }
+  auto* body_param = while_body->parameter_instruction(0);
+  if (!ShapeUtil::Compatible(init->shape(), body_param->shape())) {
+    return FailedPrecondition(
+        "While body's parameter must have the same shape as the loop's"
+        " 'init'. init: %s, param: %s",
+        init->ToString().c_str(), body_param->ToString().c_str());
+  }
+  auto* body_root = while_body->root_instruction();
+  if (!ShapeUtil::Compatible(init->shape(), body_root->shape())) {
+    return FailedPrecondition(
+        "While body should have same shape as the loop's 'init'."
+        "init: %s, body: %s",
+        init->ToString().c_str(), body_root->ToString().c_str());
+  }
+  return tensorflow::Status::OK();
+}
+
+Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
+  const Shape& out_shape = instruction->shape();
+  for (HloInstruction* operand : instruction->operands()) {
+    const Shape& operand_shape = operand->shape();
+    if (!ShapeUtil::IsScalar(operand_shape) &&
+        !ShapeUtil::CompatibleIgnoringElementType(operand_shape, out_shape)) {
+      return FailedPrecondition(
+          "Implicit broadcast is not allowed in HLO."
+          "Found non-compatible shapes for instruction %s.\n"
+          "output: %s\noperand: %s\n",
+          HloOpcodeString(instruction->opcode()).c_str(),
+          ShapeUtil::HumanString(out_shape).c_str(),
+          ShapeUtil::HumanString(operand_shape).c_str());
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
 
@@ -635,45 +830,18 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       } else if (instruction->opcode() == HloOpcode::kBroadcast) {
         // If you see this failure then someone has confused the difference
         // between the HLO broadcast op, and the UserComputation broadcast
-        // op.  See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
+        // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
         // or ComputationLowerer::Visit()
         TF_RET_CHECK(instruction->dimensions().size() ==
                      ShapeUtil::Rank(instruction->operand(0)->shape()))
-            << "Broadcast HLO has invalid number of dimensions.";
+            << "Broadcast HLO (" << instruction->ToShortString()
+            << ") has invalid number of dimensions: "
+            << instruction->dimensions().size()
+            << " != " << ShapeUtil::Rank(instruction->operand(0)->shape());
       } else if (instruction->opcode() == HloOpcode::kWhile) {
-        auto* while_cond = instruction->while_condition();
-        auto* while_body = instruction->while_body();
-        TF_RET_CHECK(while_cond->num_parameters() == 1)
-            << "While condition must have exactly 1 parameter; had "
-            << while_cond->num_parameters() << ": " << while_cond->ToString();
-        TF_RET_CHECK(while_body->num_parameters() == 1)
-            << "While body must have exactly 1 parameter; had "
-            << while_body->num_parameters() << ": " << while_body->ToString();
-        TF_RET_CHECK(instruction->operand_count() == 1)
-            << "While loop must have exactly one operand; had "
-            << instruction->operand_count() << ": " << instruction->ToString();
-
-        auto* init = instruction->operand(0);
-        auto* cond_param = while_cond->parameter_instruction(0);
-        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), cond_param->shape()))
-            << "While condition's parameter must have the same shape as the "
-               "loop's 'init'. init: "
-            << init->ToString() << ", param: " << cond_param->ToString();
-        auto* cond_root = while_cond->root_instruction();
-        TF_RET_CHECK(ShapeUtil::Compatible(cond_root->shape(),
-                                           ShapeUtil::MakeShape(PRED, {})))
-            << "While condition should have shape PRED: "
-            << cond_root->ToString();
-
-        auto* body_param = while_body->parameter_instruction(0);
-        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_param->shape()))
-            << "While body's parameter must have the same shape as the loop's "
-               "'init'. init: "
-            << init->ToString() << ", param: " << body_param->ToString();
-        auto* body_root = while_body->root_instruction();
-        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_root->shape()))
-            << "While body should have same shape as the loop's 'init'. init: "
-            << init->ToString() << ", body: " << body_root->ToString();
+        TF_RETURN_IF_ERROR(CheckWhileInstruction(instruction));
+      } else if (instruction->IsElementwise()) {
+        TF_RETURN_IF_ERROR(CheckElementwiseInstruction(instruction));
       }
 
       auto previous = instructions.find(instruction->name());
@@ -687,7 +855,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       instructions[instruction->name()] = instruction;
     }
 
-    TF_RETURN_IF_ERROR(computation->Accept(shape_verifier_.get()));
+    std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
+    TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
   }
 
   return false;

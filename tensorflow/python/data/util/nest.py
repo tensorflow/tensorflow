@@ -44,7 +44,6 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
-from tensorflow.python.util.all_util import remove_undocumented
 
 
 def _sorted(dict_):
@@ -266,7 +265,7 @@ def map_structure(func, *structure, **check_types_dict):
   and the return value will contain the results in the same structure.
 
   Args:
-    func: A callable that acceps as many arguments are there are structures.
+    func: A callable that accepts as many arguments are there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
       tuples/lists, or scalars.  Note: numpy arrays are considered scalars.
     **check_types_dict: only valid keyword argument is `check_types`. If set to
@@ -383,8 +382,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
             "structure has keys %s, while shallow structure has keys %s." %
             (list(_six.iterkeys(input_tree)),
              list(_six.iterkeys(shallow_tree))))
-      input_tree = list(_six.iteritems(input_tree))
-      shallow_tree = list(_six.iteritems(shallow_tree))
+      input_tree = list(sorted(_six.iteritems(input_tree)))
+      shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -479,8 +478,8 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   The `inputs`, can be thought of as having the same structure as
   `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
-  This function therefore will return something with the same base structure as
-  `shallow_tree`.
+  This function, therefore, will return something with the same base structure
+  as `shallow_tree`.
 
   Examples:
 
@@ -538,16 +537,3 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   results = [func(*tensors) for tensors in zip(*all_flattened_up_to)]
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
 
-
-_allowed_symbols = [
-    "assert_same_structure",
-    "is_sequence",
-    "flatten",
-    "pack_sequence_as",
-    "map_structure",
-    "assert_shallow_structure",
-    "flatten_up_to",
-    "map_structure_up_to",
-]
-
-remove_undocumented(__name__, _allowed_symbols)

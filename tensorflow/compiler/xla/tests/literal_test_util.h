@@ -40,10 +40,16 @@ namespace xla {
 
 // Structure describing permissible absolute and relative error bounds.
 struct ErrorSpec {
-  explicit ErrorSpec(float aabs, float arel = 0) : abs(aabs), rel(arel) {}
+  explicit ErrorSpec(float aabs, float arel = 0, bool relaxed_nans = false)
+      : abs(aabs), rel(arel), relaxed_nans(relaxed_nans) {}
 
   float abs;  // Absolute error bound.
   float rel;  // Relative error bound.
+
+  // If relaxed_nans is true then any result is valid if we are expecting NaNs.
+  // In effect, this allows the tested operation to produce incorrect results
+  // for inputs outside its mathematical domain.
+  bool relaxed_nans;
 };
 
 // Utility class for making expectations/assertions related to XLA literals.
@@ -116,16 +122,19 @@ class LiteralTestUtil {
   // bounds are equivalent.
   //
   // Tuples are matched recursively.  When comparing tensors of
-  // non-floating-point type, checks for exact equality, ignoring the ErroSpec.
+  // non-floating-point type, checks for exact equality, ignoring the ErrorSpec.
   //
   // If the shape of the literals is neither a complex/floating-point tensor nor
   // a tuple which contains a complex/floating-point tensor, Near() is
   // equivalent to Equal().  We don't raise an error in this case, because we
   // want to allow callers to call Near() even if they have no preconceptions
   // about the shapes being compared.
+  //
+  // If detailed_message is true, then the error message in the assertion result
+  // will contain a more detailed breakdown of mismatches.
   static ::testing::AssertionResult Near(
-      const Literal& expected, const Literal& actual,
-      const ErrorSpec& error) TF_MUST_USE_RESULT;
+      const Literal& expected, const Literal& actual, const ErrorSpec& error,
+      bool detailed_message = false) TF_MUST_USE_RESULT;
 
   // Expects expected and actual to be Near with the given error.
   static void ExpectNear(const Literal& expected, const Literal& actual,

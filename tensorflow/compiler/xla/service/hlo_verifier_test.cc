@@ -97,5 +97,31 @@ TEST_F(HloVerifierTest, DifferentOperandParents) {
               HasSubstr("is in a different computation"));
 }
 
+TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
+  HloComputation::Builder builder(TestName());
+  Shape s1 = ShapeUtil::MakeShape(F32, {1});
+  Shape s2 = ShapeUtil::MakeShape(F32, {2});
+
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "param"));
+
+  // Create an add instruction with the incorrect shape.
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(s2, HloOpcode::kAdd, param, param));
+
+  // In order to trigger the bug we're checking for, the instruction with the
+  // bad shape can't be the root of the computation.
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(s2, HloOpcode::kMultiply, add, add));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  // Run the verifier twice.  It should fail both times, because it shouldn't
+  // carry state in its DFS visitor between runs.
+  EXPECT_FALSE(verifier().Run(module.get()).status().ok());
+  EXPECT_FALSE(verifier().Run(module.get()).status().ok());
+}
+
 }  // namespace
 }  // namespace xla

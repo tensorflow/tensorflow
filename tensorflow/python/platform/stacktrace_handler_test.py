@@ -57,7 +57,8 @@ class StacktraceHandlerTest(test.TestCase):
 
     # Capture its output. capture both stdout and stderr and append them.
     # We are not worried about timing or order of messages in this test.
-    child_output = child_process.stdout.read() + child_process.stderr.read()
+    child_stdout, child_stderr = child_process.communicate()
+    child_output = child_stdout + child_stderr
 
     # Make sure the child process is dead before we proceed.
     child_process.wait()

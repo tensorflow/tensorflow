@@ -18,18 +18,6 @@ load(
 )
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "base_api_def",
     srcs = glob(["base_api/*"]),
     visibility = ["//tensorflow:internal"],
@@ -96,6 +84,7 @@ tf_cc_test(
     srcs = ["api_test.cc"],
     data = [
         ":base_api_def",
+        ":python_api_def",
     ],
     deps = [
         ":excluded_ops_lib",

@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/c/c_test_util.h"
 
+#include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/session_options.h"
 
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
@@ -30,6 +32,10 @@ static void Int32Deallocator(void* data, size_t, void* arg) {
 
 static void DoubleDeallocator(void* data, size_t, void* arg) {
   delete[] static_cast<double*>(data);
+}
+
+static void FloatDeallocator(void* data, size_t, void* arg) {
+  delete[] static_cast<float*>(data);
 }
 
 TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
@@ -76,21 +82,34 @@ TF_Tensor* DoubleTensor(double v) {
                       &DoubleDeallocator, nullptr);
 }
 
+TF_Tensor* FloatTensor(float v) {
+  const int num_bytes = sizeof(float);
+  float* values = new float[1];
+  values[0] = v;
+  return TF_NewTensor(TF_FLOAT, nullptr, 0, values, num_bytes,
+                      &FloatDeallocator, nullptr);
+}
+
 // All the *Helper methods are used as a workaround for the restrictions that
 // one cannot call ASSERT_* methods in non-void-returning functions (when
 // exceptions are disabled during compilation)
 void PlaceholderHelper(TF_Graph* graph, TF_Status* s, const char* name,
+                       TF_DataType dtype, const std::vector<int64_t>& dims,
                        TF_Operation** op) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "Placeholder", name);
-  TF_SetAttrType(desc, "dtype", TF_INT32);
+  TF_SetAttrType(desc, "dtype", dtype);
+  if (!dims.empty()) {
+    TF_SetAttrShape(desc, "shape", dims.data(), dims.size());
+  }
   *op = TF_FinishOperation(desc, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   ASSERT_NE(*op, nullptr);
 }
 
-TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name) {
+TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name,
+                          TF_DataType dtype, const std::vector<int64_t>& dims) {
   TF_Operation* op;
-  PlaceholderHelper(graph, s, name, &op);
+  PlaceholderHelper(graph, s, name, dtype, dims, &op);
   return op;
 }
 
@@ -124,8 +143,15 @@ TF_Operation* ScalarConst(double v, TF_Graph* graph, TF_Status* s,
   return Const(tensor.get(), graph, s, name);
 }
 
-void AddHelper(TF_Operation* l, TF_Operation* r, TF_Graph* graph, TF_Status* s,
-               const char* name, TF_Operation** op, bool check) {
+TF_Operation* ScalarConst(float v, TF_Graph* graph, TF_Status* s,
+                          const char* name) {
+  unique_tensor_ptr tensor(FloatTensor(v), TF_DeleteTensor);
+  return Const(tensor.get(), graph, s, name);
+}
+
+void AddOpHelper(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                 TF_Status* s, const char* name, TF_Operation** op,
+                 bool check) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", name);
   TF_Output add_inputs[2] = {{l, 0}, {r, 0}};
   TF_AddInputList(desc, add_inputs, 2);
@@ -139,14 +165,14 @@ void AddHelper(TF_Operation* l, TF_Operation* r, TF_Graph* graph, TF_Status* s,
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name) {
   TF_Operation* op;
-  AddHelper(l, r, graph, s, name, &op, true);
+  AddOpHelper(l, r, graph, s, name, &op, true);
   return op;
 }
 
 TF_Operation* AddNoCheck(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                          TF_Status* s, const char* name) {
   TF_Operation* op;
-  AddHelper(l, r, graph, s, name, &op, false);
+  AddOpHelper(l, r, graph, s, name, &op, false);
   return op;
 }
 
@@ -158,6 +184,36 @@ TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
   TF_AddInputList(desc, add_inputs, 2);
   TF_AddControlInput(desc, ctrl_op);
   return TF_FinishOperation(desc, s);
+}
+
+// If `op_device` is non-empty, set the created op on that device.
+void BinaryOpHelper(const char* op_name, TF_Operation* l, TF_Operation* r,
+                    TF_Graph* graph, TF_Status* s, const char* name,
+                    TF_Operation** op, const string& op_device, bool check) {
+  TF_OperationDescription* desc = TF_NewOperation(graph, op_name, name);
+  if (!op_device.empty()) {
+    TF_SetDevice(desc, op_device.c_str());
+  }
+  TF_AddInput(desc, {l, 0});
+  TF_AddInput(desc, {r, 0});
+  *op = TF_FinishOperation(desc, s);
+  if (check) {
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    ASSERT_NE(*op, nullptr);
+  }
+}
+
+TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                            const string& op_device, TF_Status* s,
+                            const char* name) {
+  TF_Operation* op;
+  BinaryOpHelper("Min", l, r, graph, s, name, &op, op_device, true);
+  return op;
+}
+
+TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name) {
+  return MinWithDevice(l, r, graph, /*op_device=*/"", s, name);
 }
 
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
@@ -369,8 +425,9 @@ std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def) {
   return names;
 }
 
-CSession::CSession(TF_Graph* graph, TF_Status* s) {
+CSession::CSession(TF_Graph* graph, TF_Status* s, bool use_XLA) {
   TF_SessionOptions* opts = TF_NewSessionOptions();
+  TF_EnableXLACompilation(opts, use_XLA);
   session_ = TF_NewSession(graph, opts, s);
   TF_DeleteSessionOptions(opts);
 }

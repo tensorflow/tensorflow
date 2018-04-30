@@ -168,6 +168,10 @@ class SdcaModel(object):
     # of workers
     return self._options.get('num_loss_partitions', 1)
 
+  def _adaptive(self):
+    # Perform adaptive sampling.
+    return self._options.get('adaptive', True)
+
   def _num_table_shards(self):
     # Number of hash table shards.
     # Return 1 if not specified or if the value is 'None'
@@ -211,9 +215,8 @@ class SdcaModel(object):
             sums.append(
                 math_ops.reduce_sum(
                     math_ops.abs(math_ops.cast(weights, dtypes.float64))))
-      sum = math_ops.add_n(sums)
       # SDCA L1 regularization cost is: l1 * sum(|weights|)
-      return self._options['symmetric_l1_regularization'] * sum
+      return self._options['symmetric_l1_regularization'] * math_ops.add_n(sums)
 
   def _l2_loss(self, l2):
     """Computes the (un-normalized) l2 loss of the model."""
@@ -225,9 +228,8 @@ class SdcaModel(object):
             sums.append(
                 math_ops.reduce_sum(
                     math_ops.square(math_ops.cast(weights, dtypes.float64))))
-      sum = math_ops.add_n(sums)
       # SDCA L2 regularization cost is: l2 * sum(weights^2) / 2
-      return l2 * sum / 2.0
+      return l2 * math_ops.add_n(sums) / 2.0
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
@@ -346,7 +348,8 @@ class SdcaModel(object):
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
           num_loss_partitions=self._num_loss_partitions(),
-          num_inner_iterations=1)
+          num_inner_iterations=1,
+          adaptative=self._adaptive())
       # pylint: enable=protected-access
 
       with ops.control_dependencies([esu]):

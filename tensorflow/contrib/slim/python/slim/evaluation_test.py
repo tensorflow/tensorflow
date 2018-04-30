@@ -42,7 +42,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
-from tensorflow.python.training import input
+from tensorflow.python.training import input  # pylint: disable=redefined-builtin
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 
@@ -177,6 +177,17 @@ class EvaluationTest(test.TestCase):
     # The timeout kicked in.
     self.assertLess(end, start + 1.1)
 
+  def testTimeoutFnOnEvaluationLoop(self):
+    # We require a mutable object (e.g. list but not an int) to maintain state
+    # across calls of a nested function.
+    timeout_fn_calls = [0]
+    def _TimeoutFn():
+      timeout_fn_calls[0] += 1
+      return timeout_fn_calls[0] >= 3
+    # Need not do any evaluation, but should just call timeout_fn repeatedly.
+    evaluation.evaluation_loop('', '', '', timeout=0, timeout_fn=_TimeoutFn)
+    self.assertEqual(timeout_fn_calls[0], 3)
+
   def testMonitorCheckpointsLoopTimeout(self):
     ret = list(
         evaluation_lib.checkpoints_iterator(
@@ -236,7 +247,7 @@ class SingleEvaluationTest(test.TestCase):
   def _prepareCheckpoint(self, checkpoint_path):
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
-    saver = saver_lib.Saver()
+    saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
     with self.test_session() as sess:
       sess.run(init_op)
       saver.save(sess, checkpoint_path)

@@ -11,7 +11,7 @@ Other eager execution examples can be found under the parent directory.
 - `mnist.py`: Model definitions and training routines.
 - `mnist_test.py`: Benchmarks for training and using the models using eager
 execution.
-- `mnist_graph_test.py`: Benchmarks for trainig and using the models using
+- `mnist_graph_test.py`: Benchmarks for training and using the models using
 graph execution. The same model definitions and loss functions are used in
 all benchmarks.
 

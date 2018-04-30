@@ -28,14 +28,14 @@ typedef Eigen::GpuDevice GPUDevice;
 #define DEFINE_REVERSE(T, DIM) \
   template struct functor::Reverse<GPUDevice, T, DIM>;
 #define DEFINE_REVERSE_ALL_DIMS(T) \
-  DEFINE_REVERSE(T, 0) \
-  DEFINE_REVERSE(T, 1) \
-  DEFINE_REVERSE(T, 2) \
-  DEFINE_REVERSE(T, 3) \
-  DEFINE_REVERSE(T, 4) \
-  DEFINE_REVERSE(T, 5) \
-  DEFINE_REVERSE(T, 6) \
-  DEFINE_REVERSE(T, 7) \
+  DEFINE_REVERSE(T, 0)             \
+  DEFINE_REVERSE(T, 1)             \
+  DEFINE_REVERSE(T, 2)             \
+  DEFINE_REVERSE(T, 3)             \
+  DEFINE_REVERSE(T, 4)             \
+  DEFINE_REVERSE(T, 5)             \
+  DEFINE_REVERSE(T, 6)             \
+  DEFINE_REVERSE(T, 7)             \
   DEFINE_REVERSE(T, 8)
 
 TF_CALL_uint8(DEFINE_REVERSE_ALL_DIMS);

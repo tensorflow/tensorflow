@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
-#define TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#define TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
 
 #include <memory>
 #include <set>
@@ -40,8 +40,6 @@ struct ItemConfig {
   int placeholder_unknown_output_shape_dim = -1;
   // If true, does L1 optimizations.
   bool apply_optimizations = false;
-  // If true, does inlining.
-  bool inline_functions = false;
   // If true, erases all "_noinline" attributes from user-defined functions.
   // Has no effect if "inline_functions" is disabled.
   bool erase_noinline_attributes = false;
@@ -58,13 +56,7 @@ struct ItemConfig {
 std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const string& id, const MetaGraphDef& meta_graph, const ItemConfig& cfg);
 
-// Factory method for creating a GrapplerItem from a FunctionDef.
-// Returns nullptr if the given function def cannot be converted.
-std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
-    const string& id, const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr);
-
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_

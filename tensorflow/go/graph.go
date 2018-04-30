@@ -173,7 +173,11 @@ type OpSpec struct {
 	// operation.
 	Attrs map[string]interface{}
 
-	// Other possible fields: Device, ColocateWith, ControlInputs.
+	// Operations that must be executed before executing the operation
+	// being added.
+	ControlDependencies []*Operation
+
+	// Other possible fields: Device, ColocateWith.
 }
 
 // AddOperation adds an operation to g.
@@ -203,6 +207,9 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 				C.TF_AddInputList(cdesc, nil, 0)
 			}
 		}
+	}
+	for _, in := range args.ControlDependencies {
+		C.TF_AddControlInput(cdesc, in.c)
 	}
 	status := newStatus()
 	for name, value := range args.Attrs {

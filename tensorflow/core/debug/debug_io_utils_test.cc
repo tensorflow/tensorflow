@@ -57,7 +57,8 @@ class DebugIOUtilsTest : public ::testing::Test {
 TEST_F(DebugIOUtilsTest, ConstructDebugNodeKey) {
   DebugNodeKey debug_node_key("/job:worker/replica:1/task:0/device:GPU:2",
                               "hidden_1/MatMul", 0, "DebugIdentity");
-  EXPECT_EQ("/job:worker/replica:1/task:0/device:GPU:2", debug_node_key.device_name);
+  EXPECT_EQ("/job:worker/replica:1/task:0/device:GPU:2",
+            debug_node_key.device_name);
   EXPECT_EQ("hidden_1/MatMul", debug_node_key.node_name);
   EXPECT_EQ(0, debug_node_key.output_slot);
   EXPECT_EQ("DebugIdentity", debug_node_key.debug_op);

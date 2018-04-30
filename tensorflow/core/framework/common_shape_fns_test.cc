@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -140,9 +141,8 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(
-        StringPiece(s.ToString())
-            .contains("Invalid argument: Shape must be rank 2 but is rank 1"));
+    EXPECT_TRUE(str_util::StrContains(
+        s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 1"));
   }
 
   {
@@ -161,10 +161,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5}), S({3, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(
-        StringPiece(s.ToString())
-            .contains(
-                "Invalid argument: Dimensions must be equal, but are 5 and 3"));
+    EXPECT_TRUE(str_util::StrContains(
+        s.ToString(),
+        "Invalid argument: Dimensions must be equal, but are 5 and 3"));
   }
 
   {
@@ -173,9 +172,8 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5, 3}), S({3, 5, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(
-        StringPiece(s.ToString())
-            .contains("Invalid argument: Shape must be rank 2 but is rank 3"));
+    EXPECT_TRUE(str_util::StrContains(
+        s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 3"));
   }
 
   {
@@ -646,14 +644,18 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
                     .Finalize(&op.node_def));
   };
 
-  // 1x1x1 filter
-  set_op({{1, 1, 1, 1, 1}}, "VALID");
-  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
-
   // Invalid rank for input
   INFER_ERROR("must be rank 5", op, "[4,4];[2,1,1,1]");
   // Invalid rank for filter
   INFER_ERROR("must be rank 5", op, "[1,4,4,1];[2,1,1]");
+
+  // Invalid value for strides
+  set_op({{1, 1, 1, 0, 1}}, "VALID");
+  INFER_ERROR("must be > 0", op, "[1,2,2,2,1];[1,1,1,1,1]");
+
+  // 1x1x1 filter
+  set_op({{1, 1, 1, 1, 1}}, "VALID");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
 
   // unknown dims in the critical fields give partial inference.
   INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
@@ -712,6 +714,49 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   INFER_OK(op, "[1,4,9,4,1];[2,2,?,1,1]", "[d0_0,2,3,1,d1_4]");
   INFER_OK(op, "[1,4,9,4,1];[2,2,2,?,1]", "[d0_0,2,3,1,d1_4]");
   INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,?]", "[d0_0,2,3,1,d1_4]");
+}
+
+TEST(CommonShapeFnsTest, Conv3DDilatedShapeTest) {
+  ShapeInferenceTestOp op("Conv3D");
+  auto set_op = [&op](const std::vector<int32>& dilations,
+                      const std::vector<int32>& strides,
+                      const string& padding) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Conv3D")
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("filter", 0, DT_FLOAT)
+                    .Attr("dilations", dilations)
+                    .Attr("strides", strides)
+                    .Attr("padding", padding)
+                    .Finalize(&op.node_def));
+  };
+
+  // Invalid rank for dilation
+  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1, 1}}, "VALID");
+  INFER_ERROR("contain 5 values", op, "[1,2,2,2,1];[1,1,1,1,1]");
+
+  // Invalid value for dilation
+  set_op({{1, 2, 0, 1, 1}}, {{1, 1, 1, 1, 1}}, "VALID");
+  INFER_ERROR("must be >= 1", op, "[1,2,2,2,1];[1,1,1,1,1]");
+
+  // 2x1x1 dilation 1x1x1 filter
+  set_op({{1, 2, 1, 1, 1}}, {{1, 1, 1, 1, 1}}, "VALID");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
+
+  // 2x1x1 dilation 2x2x2 filter
+  set_op({{1, 2, 1, 1, 1}}, {{1, 1, 1, 1, 1}}, "VALID");
+  INFER_OK(op, "[1,3,2,2,1];[2,2,2,1,1]", "[d0_0,1,1,1,d1_4]");
+
+  // 2x1x1 dilation 3x3x3 input, 1x1x1 filter, 2x2x2 stride
+  set_op({{1, 2, 1, 1, 1}}, {{1, 2, 2, 2, 1}}, "VALID");
+  INFER_OK(op, "[1,3,3,3,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
+
+  // 2x1x1 dilation 3x3x3 input, 1x1x1 filter, 2x1x1 stride
+  set_op({{1, 2, 1, 1, 1}}, {{1, 2, 1, 1, 1}}, "VALID");
+  INFER_OK(op, "[1,3,3,3,1];[1,1,1,1,1]", "[d0_0,2,3,3,d1_4]");
+
+  // 2x1x1 dilation 4x4x4 input, 2x2x2 filter, 1x1x1 stride
+  set_op({{1, 2, 1, 1, 1}}, {{1, 1, 1, 1, 1}}, "SAME");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
 }
 
 TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {

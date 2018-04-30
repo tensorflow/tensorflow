@@ -102,6 +102,99 @@ bool HloGetTupleElementMatcher::MatchAndExplain(
   return true;
 }
 
+void HloCustomCallMatcher::DescribeTo(std::ostream* os) const {
+  HloMatcher::DescribeTo(os);
+  *os << " with call target that ";
+  call_target_matcher_.DescribeTo(os);
+}
+
+bool HloCustomCallMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+  ::testing::StringMatchResultListener sub_listener;
+  bool result = ExplainMatchResult(
+      call_target_matcher_, instruction->custom_call_target(), &sub_listener);
+  if (sub_listener.str().empty()) {
+    sub_listener << " that ";
+
+    std::stringstream desc_stream;
+    if (result) {
+      call_target_matcher_.DescribeTo(&desc_stream);
+    } else {
+      call_target_matcher_.DescribeNegationTo(&desc_stream);
+    }
+    sub_listener << desc_stream.str();
+  }
+  *listener << "custom-call with call target" << sub_listener.str();
+  return result;
+}
+
+bool HloShapeMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (ShapeUtil::Compatible(instruction->shape(), shape_)) {
+    return true;
+  }
+  *listener << instruction->ToString() << " has incorrect shape (expected: "
+            << ShapeUtil::HumanString(shape_) << ")";
+  return false;
+}
+
+void HloShapeMatcher::DescribeTo(std::ostream* os) const {
+  *os << ShapeUtil::HumanString(shape_);
+}
+
+bool HloShapeAndLayoutMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (ShapeUtil::Equal(instruction->shape(), shape_)) {
+    return true;
+  }
+  *listener << instruction->ToString() << " has incorrect shape (expected: "
+            << ShapeUtil::HumanStringWithLayout(shape_) << ")";
+  return false;
+}
+
+void HloShapeAndLayoutMatcher::DescribeTo(std::ostream* os) const {
+  *os << ShapeUtil::HumanStringWithLayout(shape_);
+}
+
+bool HloShardingMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!sharding_.has_value()) {
+    if (!instruction->has_sharding()) {
+      return true;
+    }
+    *listener << instruction->ToString() << " expected to have no sharding.";
+    return false;
+  }
+  if (instruction->has_sharding()) {
+    if (instruction->sharding() == sharding_.value()) {
+      return true;
+    }
+    *listener << instruction->ToString()
+              << " has incorrect sharding (expected: " << sharding_->ToString()
+              << ")";
+    return false;
+  } else {
+    *listener << instruction->ToString()
+              << " has no sharding (expected: " << sharding_->ToString() << ")";
+    return false;
+  }
+}
+
+void HloShardingMatcher::DescribeTo(std::ostream* os) const {
+  if (sharding_.has_value()) {
+    *os << sharding_->ToString();
+  } else {
+    *os << "<no-sharding>";
+  }
+}
+
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {

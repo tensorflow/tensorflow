@@ -47,7 +47,6 @@ string PBTxtToMultiline(StringPiece pbtxt,
                         const std::vector<string>& multi_line_fields);
 string PBTxtFromMultiline(StringPiece multiline_pbtxt);
 
-
 // Takes a list of files with ApiDefs text protos, and allows you to
 // look up the specific ApiDef for any given op.
 class ApiDefMap {

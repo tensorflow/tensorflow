@@ -22,6 +22,7 @@ import os
 import shutil
 import tempfile
 
+import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.eager.python.examples.spinn import data
@@ -173,14 +174,9 @@ class DataTest(tf.test.TestCase):
         ValueError, "Cannot find GloVe embedding file at"):
       data.load_word_vectors(self._temp_data_dir, vocab)
 
-  def testSnliData(self):
-    """Unit test for SnliData objects."""
-    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
-    fake_train_file = os.path.join(snli_1_0_dir, "snli_1.0_train.txt")
-    os.makedirs(snli_1_0_dir)
-
+  def _createFakeSnliData(self, fake_snli_file):
     # Four sentences in total.
-    with open(fake_train_file, "wt") as f:
+    with open(fake_snli_file, "wt") as f:
       f.write("gold_label\tsentence1_binary_parse\tsentence2_binary_parse\t"
               "sentence1_parse\tsentence2_parse\tsentence1\tsentence2\t"
               "captionID\tpairID\tlabel1\tlabel2\tlabel3\tlabel4\tlabel5\n")
@@ -205,10 +201,7 @@ class DataTest(tf.test.TestCase):
               "4705552913.jpg#2\t4705552913.jpg#2r1n\t"
               "neutral\tentailment\tneutral\tneutral\tneutral\n")
 
-    glove_dir = os.path.join(self._temp_data_dir, "glove")
-    os.makedirs(glove_dir)
-    glove_file = os.path.join(glove_dir, "glove.42B.300d.txt")
-
+  def _createFakeGloveData(self, glove_file):
     words = [".", "foo", "bar", "baz", "quux", "quuz", "grault", "garply"]
     with open(glove_file, "wt") as f:
       for i, word in enumerate(words):
@@ -220,6 +213,40 @@ class DataTest(tf.test.TestCase):
           else:
             f.write("\n")
 
+  def testEncodeSingleSentence(self):
+    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+    fake_train_file = os.path.join(snli_1_0_dir, "snli_1.0_train.txt")
+    os.makedirs(snli_1_0_dir)
+    self._createFakeSnliData(fake_train_file)
+    vocab = data.load_vocabulary(self._temp_data_dir)
+    glove_dir = os.path.join(self._temp_data_dir, "glove")
+    os.makedirs(glove_dir)
+    glove_file = os.path.join(glove_dir, "glove.42B.300d.txt")
+    self._createFakeGloveData(glove_file)
+    word2index, _ = data.load_word_vectors(self._temp_data_dir, vocab)
+
+    sentence_variants = [
+        "( Foo ( ( bar baz ) . ) )",
+        " ( Foo ( ( bar baz ) . ) ) ",
+        "( Foo ( ( bar baz ) . )  )"]
+    for sentence in sentence_variants:
+      word_indices, shift_reduce = data.encode_sentence(sentence, word2index)
+      self.assertEqual(np.int64, word_indices.dtype)
+      self.assertEqual((5, 1), word_indices.shape)
+      self.assertAllClose(
+          np.array([[3, 3, 3, 2, 3, 2, 2]], dtype=np.int64).T, shift_reduce)
+
+  def testSnliData(self):
+    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+    fake_train_file = os.path.join(snli_1_0_dir, "snli_1.0_train.txt")
+    os.makedirs(snli_1_0_dir)
+    self._createFakeSnliData(fake_train_file)
+
+    glove_dir = os.path.join(self._temp_data_dir, "glove")
+    os.makedirs(glove_dir)
+    glove_file = os.path.join(glove_dir, "glove.42B.300d.txt")
+    self._createFakeGloveData(glove_file)
+
     vocab = data.load_vocabulary(self._temp_data_dir)
     word2index, _ = data.load_word_vectors(self._temp_data_dir, vocab)
 
@@ -230,7 +257,7 @@ class DataTest(tf.test.TestCase):
     self.assertEqual(1, train_data.num_batches(4))
 
     generator = train_data.get_generator(2)()
-    for i in range(2):
+    for _ in range(2):
       label, prem, prem_trans, hypo, hypo_trans = next(generator)
       self.assertEqual(2, len(label))
       self.assertEqual((4, 2), prem.shape)

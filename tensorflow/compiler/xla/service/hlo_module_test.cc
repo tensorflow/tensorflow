@@ -188,6 +188,12 @@ TEST_F(HloModuleTest, LargeConstantToString) {
       module->ToString(HloPrintOptions().set_print_large_constants(true)));
 }
 
+TEST_F(HloModuleTest, UniqueModuleId) {
+  auto module_a = CreateNewModule();
+  auto module_b = CreateNewModule();
+  EXPECT_NE(module_a->unique_id(), module_b->unique_id());
+}
+
 }  // namespace
 
 }  // namespace xla

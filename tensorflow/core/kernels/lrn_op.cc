@@ -187,14 +187,14 @@ struct LaunchLRN<GPUDevice, T> {
     const int cols = static_cast<int>(in.dim_size(2));
     const int depth = static_cast<int>(in.dim_size(3));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    se::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchYXDepth);
+        .set_layout(se::dnn::DataLayout::kBatchYXDepth);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    se::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -229,10 +229,11 @@ class LRNOp : public OpKernel {
   explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     float tmp;
     OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
@@ -247,9 +248,10 @@ class LRNOp : public OpKernel {
     const Tensor& in = context->input(0);
     OP_REQUIRES(context, in.dims() == 4,
                 errors::InvalidArgument("in must be 4-dimensional"));
-    OP_REQUIRES(context, FastBoundsCheck(in.NumElements(),
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("argument to LRN too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(in.NumElements(), std::numeric_limits<int>::max()),
+        errors::InvalidArgument("argument to LRN too large"));
     // Cast to platform-specific int to avoid conversion warnings.
     const int batch = static_cast<int>(in.dim_size(0));
     const int rows = static_cast<int>(in.dim_size(1));
@@ -402,14 +404,14 @@ struct LaunchLRNGrad<GPUDevice, T> {
     const int64 cols = in_grads.dim_size(2);
     const int64 depth = in_grads.dim_size(3);
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    se::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchYXDepth);
+        .set_layout(se::dnn::DataLayout::kBatchYXDepth);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    se::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -448,10 +450,11 @@ class LRNGradOp : public OpKernel {
   explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     float tmp;
     OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));

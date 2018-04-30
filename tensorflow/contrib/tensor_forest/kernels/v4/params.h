@@ -24,7 +24,6 @@ namespace tensorforest {
 // Return the value of the given depth-dependent parameter given a leaf's depth.
 float ResolveParam(const DepthDependentParam& param, int32 depth);
 
-
 }  // namespace tensorforest
 }  // namespace tensorflow
 

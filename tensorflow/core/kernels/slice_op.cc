@@ -58,7 +58,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Shared code that is not dependent on the type of T.  We do this to reduce
 // code size by not duplicating all this for all T (float, double, int32, etc.)
@@ -72,10 +72,11 @@ static void SharedValidation(OpKernelContext* context,
   const Tensor& size_tensor = context->input(2);
 
   OP_REQUIRES(
-      context, context->op_kernel().IsLegacyVector(begin_tensor.shape()) &&
-                   context->op_kernel().IsLegacyVector(size_tensor.shape()) &&
-                   begin_tensor.NumElements() == input.dims() &&
-                   size_tensor.NumElements() == input.dims(),
+      context,
+      context->op_kernel().IsLegacyVector(begin_tensor.shape()) &&
+          context->op_kernel().IsLegacyVector(size_tensor.shape()) &&
+          begin_tensor.NumElements() == input.dims() &&
+          size_tensor.NumElements() == input.dims(),
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
           input.dims(), ", but got shapes ", begin_tensor.shape().DebugString(),
@@ -125,8 +126,7 @@ static void SharedSliceCommonCases(OpKernelContext* context,
                                    TensorShape* output_shape,
                                    gtl::InlinedVector<int64, 4>* begin,
                                    gtl::InlinedVector<int64, 4>* size,
-                                   Tensor** result,
-                                   bool* done) {
+                                   Tensor** result, bool* done) {
   bool is_identity = true;
   bool slice_dim0 = true;
   *done = false;
@@ -142,8 +142,8 @@ static void SharedSliceCommonCases(OpKernelContext* context,
     return;
   }
 
-  if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), (*begin)[0],
-                                          (*size)[0])) {
+  if (slice_dim0 &&
+      IsDim0SliceAligned<T>(input.shape(), (*begin)[0], (*size)[0])) {
     VLOG(1) << "Slice dim 0: " << input.shape().DebugString();
     CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
     context->set_output(0, input.Slice((*begin)[0], (*begin)[0] + (*size)[0]));
@@ -153,7 +153,6 @@ static void SharedSliceCommonCases(OpKernelContext* context,
 
   OP_REQUIRES_OK(context, context->allocate_output(0, *output_shape, result));
 }
-
 
 template <typename Device, typename T>
 class SliceOp : public OpKernel {
@@ -206,8 +205,9 @@ class SliceOp : public OpKernel {
 
 #undef HANDLE_DIM
 
-      OP_REQUIRES(context, false, errors::Unimplemented(
-                                      "SliceOp : Unhandled input dimensions"));
+      OP_REQUIRES(
+          context, false,
+          errors::Unimplemented("SliceOp : Unhandled input dimensions"));
     }
   }
 
@@ -280,8 +280,9 @@ class MklSliceOp : public OpKernel {
 
 #undef HANDLE_DIM
 
-      OP_REQUIRES(context, false, errors::Unimplemented(
-                                      "SliceOp : Unhandled input dimensions"));
+      OP_REQUIRES(
+          context, false,
+          errors::Unimplemented("SliceOp : Unhandled input dimensions"));
     }
   }
 
@@ -292,9 +293,9 @@ class MklSliceOp : public OpKernel {
   // as the sizes of all the dimensions of the input except slice_dim, then
   // returns True. Otherwise, returns False.
   bool DoesSliceShapeDifferInOnly1DHelper(const TensorShape& input_shape,
-                          const gtl::ArraySlice<int64>& begin,
-                          const gtl::ArraySlice<int64>& size,
-                          int slice_dim) {
+                                          const gtl::ArraySlice<int64>& begin,
+                                          const gtl::ArraySlice<int64>& size,
+                                          int slice_dim) {
     for (int dim = 0; dim < 4; dim++) {
       if (dim != slice_dim &&
           (begin[dim] != 0 || size[dim] != input_shape.dim_size(dim))) {
@@ -316,9 +317,9 @@ class MklSliceOp : public OpKernel {
   // Returns True if Slicing over a single dimension, and sets slice_dim
   // to the number of the dimension that satisfies criteria.
   bool DoesSliceShapeDifferInOnly1D(const TensorShape& input_shape,
-                          const gtl::ArraySlice<int64>& begin,
-                          const gtl::ArraySlice<int64>& size,
-                          int* slice_dim) {
+                                    const gtl::ArraySlice<int64>& begin,
+                                    const gtl::ArraySlice<int64>& size,
+                                    int* slice_dim) {
     for (int dim = 0; dim < 4; dim++) {
       if (DoesSliceShapeDifferInOnly1DHelper(input_shape, begin, size, dim)) {
         *slice_dim = dim;
@@ -329,8 +330,7 @@ class MklSliceOp : public OpKernel {
   }
 
   template <int NDIM>
-  void HandleCase(OpKernelContext* context,
-                  const gtl::ArraySlice<int64>& begin,
+  void HandleCase(OpKernelContext* context, const gtl::ArraySlice<int64>& begin,
                   const gtl::ArraySlice<int64>& size, Tensor* result) {
     int slice_dim = -1;
     TensorShape in_shape = context->input(0).shape();
@@ -340,67 +340,63 @@ class MklSliceOp : public OpKernel {
     // format over channel dimension.
     if (NDIM == 4 &&
         DoesSliceShapeDifferInOnly1D(in_shape, begin, size, &slice_dim)) {
-        size_t in_strides[4] = { (size_t) in_shape.dim_size(1) *
-                                          in_shape.dim_size(2) *
-                                          in_shape.dim_size(3),
-                                 (size_t) in_shape.dim_size(2) *
-                                          in_shape.dim_size(3),
-                                 (size_t) in_shape.dim_size(3),
-                                 (size_t) 1
-                               };
+      size_t in_strides[4] = {
+          (size_t)in_shape.dim_size(1) * in_shape.dim_size(2) *
+              in_shape.dim_size(3),
+          (size_t)in_shape.dim_size(2) * in_shape.dim_size(3),
+          (size_t)in_shape.dim_size(3), (size_t)1};
 
-        size_t out_strides[4] = { (size_t) size[1] * size[2] * size[3],
-                                  (size_t) size[2] * size[3],
-                                  (size_t) size[3],
-                                  (size_t) 1 };
+      size_t out_strides[4] = {(size_t)size[1] * size[2] * size[3],
+                               (size_t)size[2] * size[3], (size_t)size[3],
+                               (size_t)1};
 
-        T *in_buf = const_cast<T*>(const_cast<const T*>(
-                    context->input(0).flat<T>().data()));
-        T *op_buf = result->flat<T>().data();
+      T* in_buf = const_cast<T*>(
+          const_cast<const T*>(context->input(0).flat<T>().data()));
+      T* op_buf = result->flat<T>().data();
 
-        if (slice_dim == 1) {
-          /* data format = NCHW */
+      if (slice_dim == 1) {
+        /* data format = NCHW */
 
-          #pragma omp parallel for
-          for (size_t d0 = begin[0]; d0 < begin[0] + size[0]; d0++) {
-              T *ip  = in_buf + (d0 * in_strides[0]);
-              T *op  = op_buf + ((d0 - begin[0]) * out_strides[0]);
-            #pragma omp parallel for
-            for (size_t d1 = begin[1]; d1 < begin[1] + size[1]; d1++) {
-              T *ip1 = ip + (d1 * in_strides[1]);
-              T *op1 = op + ((d1 - begin[1]) * out_strides[1]);
-              // For NCHW, H and W will be contiguous. So we can copy
-              // both with one memcpy.
-              memcpy(static_cast<void*>(op1), static_cast<void*>(ip1),
-                     sizeof(T) * in_strides[1]);
-            }
+#pragma omp parallel for
+        for (ssize_t d0 = begin[0]; d0 < begin[0] + size[0]; d0++) {
+          T* ip = in_buf + (d0 * in_strides[0]);
+          T* op = op_buf + ((d0 - begin[0]) * out_strides[0]);
+#pragma omp parallel for
+          for (ssize_t d1 = begin[1]; d1 < begin[1] + size[1]; d1++) {
+            T* ip1 = ip + (d1 * in_strides[1]);
+            T* op1 = op + ((d1 - begin[1]) * out_strides[1]);
+            // For NCHW, H and W will be contiguous. So we can copy
+            // both with one memcpy.
+            memcpy(static_cast<void*>(op1), static_cast<void*>(ip1),
+                   sizeof(T) * in_strides[1]);
           }
-          return;
-        } else if (slice_dim == 3) {
-          /* data_format = NHWC */
-
-          #pragma omp parallel for
-          for (size_t d0 = begin[0]; d0 < begin[0] + size[0]; d0++) {
-              T *ip = in_buf + (d0 * in_strides[0]);
-              T *op = op_buf + ((d0 - begin[0]) * out_strides[0]);
-            #pragma omp parallel for
-            for (size_t d1 = begin[1]; d1 < begin[1] + size[1]; d1++) {
-              T *ip1 = ip + (d1 * in_strides[1]);
-              T *op1 = op + ((d1 - begin[1]) * out_strides[1]);
-              #pragma omp parallel for
-              for (size_t d2 = begin[2]; d2 < begin[2] + size[2]; d2++) {
-                T *ip2 = ip1 + (d2 * in_strides[2]);
-                T *ip3 = ip2 + begin[3];
-                T *op2 = op1 + ((d2 - begin[2]) * out_strides[2]);
-                T *op3 = op2;
-                memcpy(static_cast<void*>(op3), static_cast<void*>(ip3),
-                       sizeof(T) * size[3]);
-              }
-            }
-          }
-          return;
         }
-        // slice_dim is not 1 or 3, then we fallback to Eigen implementation.
+        return;
+      } else if (slice_dim == 3) {
+        /* data_format = NHWC */
+
+#pragma omp parallel for
+        for (ssize_t d0 = begin[0]; d0 < begin[0] + size[0]; d0++) {
+          T* ip = in_buf + (d0 * in_strides[0]);
+          T* op = op_buf + ((d0 - begin[0]) * out_strides[0]);
+#pragma omp parallel for
+          for (ssize_t d1 = begin[1]; d1 < begin[1] + size[1]; d1++) {
+            T* ip1 = ip + (d1 * in_strides[1]);
+            T* op1 = op + ((d1 - begin[1]) * out_strides[1]);
+#pragma omp parallel for
+            for (ssize_t d2 = begin[2]; d2 < begin[2] + size[2]; d2++) {
+              T* ip2 = ip1 + (d2 * in_strides[2]);
+              T* ip3 = ip2 + begin[3];
+              T* op2 = op1 + ((d2 - begin[2]) * out_strides[2]);
+              T* op3 = op2;
+              memcpy(static_cast<void*>(op3), static_cast<void*>(ip3),
+                     sizeof(T) * size[3]);
+            }
+          }
+        }
+        return;
+      }
+      // slice_dim is not 1 or 3, then we fallback to Eigen implementation.
     }
 
     Eigen::DSizes<Eigen::DenseIndex, NDIM> indices;
@@ -535,13 +531,13 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
 #ifdef TENSORFLOW_USE_SYCL
 // Forward declarations of the functor specializations for SYCL.
 namespace functor {
-#define DECLARE_SYCL_SPEC(T, NDIM)                                 \
-  template <>                                                      \
-  void Slice<SYCLDevice, T, NDIM>::operator()(                     \
-      const SYCLDevice& d, typename TTypes<T, NDIM>::Tensor output,\
-      typename TTypes<T, NDIM>::ConstTensor input,                 \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,       \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);        \
+#define DECLARE_SYCL_SPEC(T, NDIM)                                  \
+  template <>                                                       \
+  void Slice<SYCLDevice, T, NDIM>::operator()(                      \
+      const SYCLDevice& d, typename TTypes<T, NDIM>::Tensor output, \
+      typename TTypes<T, NDIM>::ConstTensor input,                  \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,        \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);         \
   extern template struct Slice<SYCLDevice, T, NDIM>;
 
 #define DECLARE_FOR_N(T)   \

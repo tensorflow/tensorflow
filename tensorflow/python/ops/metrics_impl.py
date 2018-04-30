@@ -33,6 +33,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -308,7 +309,7 @@ def mean(values,
       or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean is not supported when eager execution '
                        'is enabled.')
 
@@ -394,7 +395,7 @@ def accuracy(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.accuracy is not supported when eager '
                        'execution is enabled.')
 
@@ -626,10 +627,16 @@ def auc(labels,
     curve: Specifies the name of the curve to be computed, 'ROC' [default] or
       'PR' for the Precision-Recall-curve.
     name: An optional variable_scope name.
-    summation_method: Specifies the Riemann summation method used, 'trapezoidal'
-      [default] that applies the trapezoidal rule, 'minoring' that applies
-      left summation for increasing intervals and right summation for decreasing
-      intervals or 'majoring' that applies the opposite.
+    summation_method: Specifies the Riemann summation method used
+      (https://en.wikipedia.org/wiki/Riemann_sum): 'trapezoidal' [default] that
+      applies the trapezoidal rule; 'careful_interpolation', a variant of it
+      differing only by a more correct interpolation scheme for PR-AUC -
+      interpolating (true/false) positives but not the ratio that is precision;
+      'minoring' that applies left summation for increasing intervals and right
+      summation for decreasing intervals; 'majoring' that does the opposite.
+      Note that 'careful_interpolation' is strictly preferred to 'trapezoidal'
+      (to be deprecated soon) as it applies the same method for ROC, and a
+      better one (see Davis & Goadrich 2006 for details) for the PR curve.
 
   Returns:
     auc: A scalar `Tensor` representing the current area-under-curve.
@@ -644,7 +651,7 @@ def auc(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.auc is not supported when eager execution '
                        'is enabled.')
 
@@ -664,8 +671,62 @@ def auc(labels,
     # Add epsilons to avoid dividing by 0.
     epsilon = 1.0e-6
 
+    def interpolate_pr_auc(tp, fp, fn):
+      """Interpolation formula inspired by section 4 of Davis & Goadrich 2006.
+
+      Note here we derive & use a closed formula not present in the paper
+      - as follows:
+      Modeling all of TP (true positive weight),
+      FP (false positive weight) and their sum P = TP + FP (positive weight)
+      as varying linearly within each interval [A, B] between successive
+      thresholds, we get
+        Precision = (TP_A + slope * (P - P_A)) / P
+      with slope = dTP / dP = (TP_B - TP_A) / (P_B - P_A).
+      The area within the interval is thus (slope / total_pos_weight) times
+        int_A^B{Precision.dP} = int_A^B{(TP_A + slope * (P - P_A)) * dP / P}
+        int_A^B{Precision.dP} = int_A^B{slope * dP + intercept * dP / P}
+      where intercept = TP_A - slope * P_A = TP_B - slope * P_B, resulting in
+        int_A^B{Precision.dP} = TP_B - TP_A + intercept * log(P_B / P_A)
+      Bringing back the factor (slope / total_pos_weight) we'd put aside, we get
+         slope * [dTP + intercept *  log(P_B / P_A)] / total_pos_weight
+      where dTP == TP_B - TP_A.
+      Note that when P_A == 0 the above calculation simplifies into
+        int_A^B{Precision.dTP} = int_A^B{slope * dTP} = slope * (TP_B - TP_A)
+      which is really equivalent to imputing constant precision throughout the
+      first bucket having >0 true positives.
+
+      Args:
+        tp: true positive counts
+        fp: false positive counts
+        fn: false negative counts
+      Returns:
+        pr_auc: an approximation of the area under the P-R curve.
+      """
+      dtp = tp[:num_thresholds - 1] - tp[1:]
+      p = tp + fp
+      prec_slope = _safe_div(dtp, p[:num_thresholds - 1] - p[1:], 'prec_slope')
+      intercept = tp[1:] - math_ops.multiply(prec_slope, p[1:])
+      safe_p_ratio = array_ops.where(
+          math_ops.logical_and(p[:num_thresholds - 1] > 0, p[1:] > 0),
+          _safe_div(p[:num_thresholds - 1], p[1:], 'recall_relative_ratio'),
+          array_ops.ones_like(p[1:]))
+      return math_ops.reduce_sum(
+          _safe_div(
+              prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
+              tp[1:] + fn[1:],
+              name='pr_auc_increment'),
+          name='interpolate_pr_auc')
+
     def compute_auc(tp, fn, tn, fp, name):
       """Computes the roc-auc or pr-auc based on confusion counts."""
+      if curve == 'PR':
+        if summation_method == 'trapezoidal':
+          logging.warning(
+              'Trapezoidal rule is known to produce incorrect PR-AUCs; '
+              'please switch to "careful_interpolation" instead.')
+        elif summation_method == 'careful_interpolation':
+          # This one is a bit tricky and is handled separately.
+          return interpolate_pr_auc(tp, fp, fn)
       rec = math_ops.div(tp + epsilon, tp + fn + epsilon)
       if curve == 'ROC':
         fp_rate = math_ops.div(fp, fp + tn + epsilon)
@@ -675,7 +736,9 @@ def auc(labels,
         prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
         x = rec
         y = prec
-      if summation_method == 'trapezoidal':
+      if summation_method in ('trapezoidal', 'careful_interpolation'):
+        # Note that the case ('PR', 'careful_interpolation') has been handled
+        # above.
         return math_ops.reduce_sum(
             math_ops.multiply(x[:num_thresholds - 1] - x[1:],
                               (y[:num_thresholds - 1] + y[1:]) / 2.),
@@ -758,7 +821,7 @@ def mean_absolute_error(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_absolute_error is not supported '
                        'when eager execution is enabled.')
 
@@ -818,7 +881,7 @@ def mean_cosine_distance(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_cosine_distance is not supported when '
                        'eager execution is enabled.')
 
@@ -891,7 +954,7 @@ def mean_per_class_accuracy(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_per_class_accuracy is not supported '
                        'when eager execution is enabled.')
 
@@ -923,8 +986,8 @@ def mean_per_class_accuracy(labels,
         weights = array_ops.reshape(weights, [-1])
       weights = math_ops.to_float(weights)
 
-      is_correct = is_correct * weights
-      ones = ones * weights
+      is_correct *= weights
+      ones *= weights
 
     update_total_op = state_ops.scatter_add(total, labels, ones)
     update_count_op = state_ops.scatter_add(count, labels, is_correct)
@@ -996,7 +1059,7 @@ def mean_iou(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_iou is not supported when '
                        'eager execution is enabled.')
 
@@ -1098,7 +1161,7 @@ def mean_relative_error(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_relative_error is not supported when '
                        'eager execution is enabled.')
 
@@ -1165,7 +1228,7 @@ def mean_squared_error(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_squared_error is not supported when '
                        'eager execution is enabled.')
 
@@ -1223,7 +1286,7 @@ def mean_tensor(values,
       or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_tensor is not supported when '
                        'eager execution is enabled.')
 
@@ -1247,13 +1310,8 @@ def mean_tensor(values,
     with ops.control_dependencies([values]):
       update_count_op = state_ops.assign_add(count, num_values)
 
-    def compute_mean(total, count, name):
-      non_zero_count = math_ops.maximum(
-          count, array_ops.ones_like(count), name=name)
-      return math_ops.truediv(total, non_zero_count, name=name)
-
-    mean_t = compute_mean(total, count, 'value')
-    update_op = compute_mean(update_total_op, update_count_op, 'update_op')
+    mean_t = _safe_div(total, count, 'value')
+    update_op = _safe_div(update_total_op, update_count_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_t)
@@ -1309,7 +1367,7 @@ def percentage_below(values,
       or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.percentage_below is not supported when '
                        'eager execution is enabled.')
 
@@ -1402,7 +1460,7 @@ def false_negatives(labels,
       or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.false_negatives is not supported when '
                        'eager execution is enabled.')
 
@@ -1458,7 +1516,7 @@ def false_negatives_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.false_negatives_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -1512,7 +1570,7 @@ def false_positives(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.false_positives is not supported when '
                        'eager execution is enabled.')
 
@@ -1568,7 +1626,7 @@ def false_positives_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.false_positives_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -1622,7 +1680,7 @@ def true_negatives(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.true_negatives is not '
                        'supported when eager execution is enabled.')
 
@@ -1678,7 +1736,7 @@ def true_negatives_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.true_negatives_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -1732,7 +1790,7 @@ def true_positives(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.true_positives is not '
                        'supported when eager execution is enabled.')
 
@@ -1788,7 +1846,7 @@ def true_positives_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.true_positives_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -1856,7 +1914,7 @@ def precision(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.precision is not '
                        'supported when eager execution is enabled.')
 
@@ -1952,7 +2010,7 @@ def precision_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.precision_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -2028,7 +2086,7 @@ def recall(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.recall is not supported is not '
                        'supported when eager execution is enabled.')
 
@@ -2405,7 +2463,7 @@ def recall_at_k(labels,
     are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.recall_at_k is not '
                        'supported when eager execution is enabled.')
 
@@ -2554,7 +2612,7 @@ def recall_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.recall_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -2631,7 +2689,7 @@ def root_mean_squared_error(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.root_mean_squared_error is not '
                        'supported when eager execution is enabled.')
 
@@ -2712,7 +2770,7 @@ def sensitivity_at_specificity(labels,
       or `updates_collections` are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.sensitivity_at_specificity is not '
                        'supported when eager execution is enabled.')
 
@@ -3103,7 +3161,7 @@ def average_precision_at_k(labels,
     ValueError: if k is invalid.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.sparse_average_precision_at_k is not '
                        'supported when eager execution is enabled.')
 
@@ -3272,7 +3330,7 @@ def precision_at_top_k(labels,
       are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.precision_at_top_k is not '
                        'supported when eager execution is enabled.')
 
@@ -3401,7 +3459,7 @@ def precision_at_k(labels,
       are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.sparse_precision_at_k is not '
                        'supported when eager execution is enabled.')
 
@@ -3478,7 +3536,7 @@ def specificity_at_sensitivity(labels,
       or `updates_collections` are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.specificity_at_sensitivity is not '
                        'supported when eager execution is enabled.')
 

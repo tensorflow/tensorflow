@@ -21,7 +21,7 @@ limitations under the License.
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -91,7 +91,7 @@ class CopyOp : public OpKernel {
       Device* device = static_cast<Device*>(context->device());
       // Determine if the input tensor is not on CPU (e.g., on GPU).
       const bool off_host_input = device->device_type() == DEVICE_SYCL &&
-                            !context->input_alloc_attr(0).on_host();
+                                  !context->input_alloc_attr(0).on_host();
 
       if (off_host_input) {
         SYCLmemcpy(context->eigen_sycl_device(), src_tensor, copied_tensor);

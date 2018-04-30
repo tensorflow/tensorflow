@@ -140,7 +140,7 @@ class GraphMgr {
     GraphMgr* graph_mgr;
   };
 
-  const WorkerEnv* worker_env_;             // Not owned.
+  const WorkerEnv* worker_env_;  // Not owned.
   DeviceMgr* device_mgr_;
 
   CostModelManager cost_model_manager_;

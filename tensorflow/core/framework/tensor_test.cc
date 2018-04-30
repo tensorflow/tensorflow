@@ -1085,6 +1085,21 @@ class DummyCPUAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override {}
 };
 
+TEST(Tensor, SharesBufferWith) {
+  Tensor a_empty;
+  Tensor b_empty;
+  Tensor a(DT_FLOAT, TensorShape({1}));
+  Tensor b(DT_FLOAT, TensorShape({1}));
+  Tensor copy(a);
+  EXPECT_FALSE(a_empty.SharesBufferWith(a_empty));
+  EXPECT_FALSE(a_empty.SharesBufferWith(b_empty));
+  EXPECT_FALSE(a_empty.SharesBufferWith(a));
+  EXPECT_FALSE(a_empty.SharesBufferWith(copy));
+  EXPECT_TRUE(a.SharesBufferWith(a));
+  EXPECT_FALSE(a.SharesBufferWith(b));
+  EXPECT_TRUE(a.SharesBufferWith(copy));
+}
+
 TEST(Tensor, FailureToAllocate) {
   TensorShape shape({1});
   DummyCPUAllocator allocator;

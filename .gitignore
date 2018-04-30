@@ -27,6 +27,7 @@ Podfile.lock
 /tensorflow/contrib/lite/examples/ios/simple/data/*.txt
 /tensorflow/contrib/lite/examples/ios/simple/data/*.tflite
 xcuserdata/**
+/api_init_files_list.txt
 
 # Android
 .gradle

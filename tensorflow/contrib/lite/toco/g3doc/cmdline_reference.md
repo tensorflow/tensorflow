@@ -1,84 +1,47 @@
-# TensorFlow Lite Optimizing Converter command-line reference
+# TensorFlow Lite Optimizing Converter command-line glossary
 
 This page is complete reference of command-line flags. It is complemented by the
 following other documents:
 
 *   [README](../README.md)
 *   [Command-line examples](cmdline_examples.md)
+*   [Python API examples](python_api.md)
 
 Table of contents:
 
-[TOC]
+*   [High-level flags](#high-level-flags)
+*   [Model flags](#model-flags)
+*   [Transformation flags](#transformation-flags)
+*   [Logging flags](#logging-flags)
 
-## High-level overview
+## High-level flags
 
-A full list and detailed specification of all flags is given in the next
-section. For now we focus on a higher-level description of command lines:
+The following high level flags specify the location of the input and output
+files. The flag `--output_file` is always required. Additionally, either
+`--input_file` or `--savedmodel_directory` is required.
 
-```
-toco \
-  --input_format=... \
-  --output_format=... \
-  --input_file=... \
-  --output_file=... \
-  [model flags...] \
-  [transformation flags...] \
-  [logging flags...]
-```
+*   `--savedmodel_directory`. Type: string. Specifies the full path to the
+    directory containing the SavedModel.
+*   `--savedmodel_tagset`. Type: string. Default:
+    [kSavedModelTagServe](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/tag_constants.h).
+    Specifies a comma-separated set of tags identifying the MetaGraphDef within
+    the SavedModel to analyze. All tags in the tag set must be specified.
+*   `--input_file`. Type: string. Specifies the path of the input file. This may
+    be either an absolute or a relative path.
+*   `--output_file`. Type: string. Specifies the path of the output file.
 
-In other words, the converter requires at least the following mandatory flags:
-`--input_format`, `--output_format`, `--input_file`, `--output_file`. Depending
-on the input and output formats, additional flags may be allowed or mandatory:
+The following high level flags specify the types of the input and output files:
 
-*   *Model flags* provide additional information about the model stored in the
-    input file.
-    *   `--output_array` or `--output_arrays` specify which arrays in the input
-        file are to be considered the output activations.
-    *   `--input_array` or `--input_arrays` specify which arrays in the input
-        file are to be considered the input activations.
-    *   `--input_shape` or `--input_shapes` specify the shapes of the input
-        arrays.
-    *   `--input_data_type` or `--input_data_types` specify the data types of
-        input arrays, which can be used if the input file does not already
-        specify them.
-    *   `--mean_value` or `--mean_values`, and `--std_value` or `--std_values`,
-        give the dequantization parameters of the input arrays, for the case
-        when the output file will accept quantized input arrays.
-*   *Transformation flags* specify options of the transformations to be applied
-    to the graph, i.e. they specify requested properties that the output file
-    should have.
-    *   `--inference_type` specifies the type of real-numbers arrays in the
-        output file. This only affects arrays of real numbers and allows to
-        control their quantization or dequantization, effectively switching
-        between floating-point and quantized arithmetic for the inference
-        workload, as far as real numbers are concerned. Other data types are
-        unaffected (e.g. plain integers, and strings).
-    *   `--inference_input_type` is like `--inference_type` but specifically
-        controlling input arrays, separately from other arrays. If not
-        specified, then `--inference_type` is used. The use case for specifying
-        `--inference_input_type` is when one wants to perform floating-point
-        inference on a quantized input, as is common in image models operating
-        on bitmap image inputs.
-    *   Some transformation flags allow to carry on with quantization when the
-        input graph is not properly quantized: `--default_ranges_min`,
-        `--default_ranges_max`, `--drop_fake_quant`,
-        `--reorder_across_fake_quant`.
-*   *Logging flags* described below.
-
-## Command-line flags complete reference
-
-### Mandatory flags
-
-*   `--input_format`. Type: string. Specifies the format of the input file.
-    Allowed values:
+*   `--input_format`. Type: string. Default: `TENSORFLOW_GRAPHDEF`. Specifies
+    the format of the input file. Allowed values:
     *   `TENSORFLOW_GRAPHDEF` &mdash; The TensorFlow GraphDef format. Both
         binary and text proto formats are allowed.
-    *   `TFLITE` &mdash; The TensorFlow Lite flatbuffers format.
-*   `--output_format`. Type: string. Specifies the format of the output file.
-    Allowed values:
+    *   `TFLITE` &mdash; The TensorFlow Lite FlatBuffers format.
+*   `--output_format`. Type: string. Default: `TFLITE`. Specifies the format of
+    the output file. Allowed values:
     *   `TENSORFLOW_GRAPHDEF` &mdash; The TensorFlow GraphDef format. Always
         produces a file in binary (not text) proto format.
-    *   `TFLITE` &mdash; The TensorFlow Lite flatbuffers format.
+    *   `TFLITE` &mdash; The TensorFlow Lite FlatBuffers format.
         *   Whether a float or quantized TensorFlow Lite file will be produced
             depends on the `--inference_type` flag.
     *   `GRAPHVIZ_DOT` &mdash; The GraphViz `.dot` format. This asks the
@@ -95,11 +58,11 @@ on the input and output formats, additional flags may be allowed or mandatory:
             you get in your actual output format as opposed to just a merely
             plausible visualization of a model, consider using `--dump_graphviz`
             instead and keeping your true `--output_format`.
-*   `--input_file`. Type: string. Specifies the path of the input file. This may
-    be either an absolute or a relative path.
-*   `--output_file`. Type: string. Specifies the path of the output file.
 
-### Model flags
+## Model flags
+
+*Model flags* provide additional information about the model stored in the input
+file.
 
 *   `--output_array`. Type: string. Specifies a single array as the output
     activations. Incompatible with `--output_arrays`.
@@ -111,6 +74,10 @@ on the input and output formats, additional flags may be allowed or mandatory:
 *   `--input_arrays`. Type: comma-separated list of strings. Specifies a list of
     arrays as the input activations, for models with multiple inputs.
     Incompatible with `--input_array`.
+*   `--batch_size`. Type: integer. Default: 1. Specifies the batch size for the
+    model. Replaces the first dimension of an input size array if undefined. Use
+    only with SavedModels when neither `--input_shape` nor `input_shapes` flags
+    are specified. Incompatible with GraphDefs.
 
 When `--input_array` is used, the following flags are available to provide
 additional information about the single input array:
@@ -160,7 +127,11 @@ additional information about the multiple input arrays:
     the input arrays specified in `--input_arrays`, in the same order. See
     `--mean_value`, `--std_value` for details.
 
-### Transformation flags
+## Transformation flags
+
+*Transformation flags* specify options of the transformations to be applied to
+the graph, i.e. they specify requested properties that the output file should
+have.
 
 *   `--inference_type`. Type: string. Sets the type of real-number arrays in the
     output file, that is, controls the representation (quantization) of real
@@ -232,7 +203,7 @@ additional information about the multiple input arrays:
     graph transformations on them, at the cost of no longer faithfully matching
     inference and training arithmetic.
 
-### Logging flags
+## Logging flags
 
 The following are standard Google logging flags:
 

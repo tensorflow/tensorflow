@@ -206,8 +206,12 @@ int Run(int argc, char** argv) {
         "graph_path,op_log_path,run_meta_path\n");
     std::unique_ptr<GraphDef> graph(new GraphDef());
     if (!FLAGS_graph_path.empty()) {
-      TF_CHECK_OK(
-          ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false));
+      s = ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false);
+      if (!s.ok()) {
+        fprintf(stderr, "Failed to read graph_path: %s\n",
+                s.ToString().c_str());
+        return 1;
+      }
     }
 
     std::unique_ptr<OpLogProto> op_log(new OpLogProto());

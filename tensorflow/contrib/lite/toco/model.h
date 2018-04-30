@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 #define TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -23,10 +24,13 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
+#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace toco {
+
+using tflite::QuantizationParams;
 
 enum class OperatorType {
   kNone,
@@ -34,6 +38,7 @@ enum class OperatorType {
   kAdd,
   kAddN,
   kAveragePool,
+  kBatchMatMul,
   kBatchNormalization,
   kConv,
   kConcatenation,
@@ -42,6 +47,7 @@ enum class OperatorType {
   kSpaceToDepth,
   kDequantize,
   kDiv,
+  kExp,
   kExpandDims,
   kFill,
   kFloorDiv,
@@ -51,16 +57,20 @@ enum class OperatorType {
   kL2Pool,
   kLstmCell,
   kLocalResponseNormalization,
+  kLog,
   kLogistic,
   kMaxPool,
   kFakeQuant,
   kMul,
+  kRandomUniform,
   kRange,
   kRank,
   kRelu,
   kRelu1,
   kRelu6,
+  kPRelu,
   kSoftmax,
+  kLogSoftmax,
   kSub,
   kTanh,
   kTransposeConv,
@@ -110,6 +120,9 @@ enum class OperatorType {
   kTensorFlowSwitch,
   kTensorFlowTile,
   kTranspose,
+  kTopK_V2,
+  kDynamicPartition,
+  kDynamicStitch,
   // An unsupported TF operation. It's only needed to be able to represent TF
   // graph internally and is expected to be dropped by graph transformations.
   kTensorFlowUnsupported,
@@ -139,9 +152,9 @@ enum class AxesOrder {
 };
 
 // The type of the scalars in an array.
-// Note that that does not by itself tell whether the values in the array are
-// real (are literally interpreted as real numbers) or quantized (only acquire
-// a meaning as real numbers in conjunction with QuantizationParams).
+// Note that the type does not by itself tell whether the values in the array
+// are real (are literally interpreted as real numbers) or quantized (only
+// acquire a meaning as real numbers in conjunction with QuantizationParams).
 //
 // In practice though:
 //   float values are always real
@@ -155,12 +168,17 @@ enum class AxesOrder {
 // may be involved only in debug-only subgraphs that we may not be interested
 // in actually supporting).
 enum class ArrayDataType {
-  kNone,
+  kNone,  // 0
   kBool,
   kFloat,
+  kInt8,
   kUint8,
+  kInt16,  // 5
+  kUint16,
   kInt32,
+  kUint32,
   kInt64,
+  kUint64,  // 10
   kString
 };
 
@@ -180,16 +198,36 @@ struct DataTypeImpl<ArrayDataType::kFloat> {
   typedef float Type;
 };
 template <>
+struct DataTypeImpl<ArrayDataType::kInt8> {
+  typedef int8 Type;
+};
+template <>
 struct DataTypeImpl<ArrayDataType::kUint8> {
   typedef uint8 Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kInt16> {
+  typedef int16 Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kUint16> {
+  typedef uint16 Type;
 };
 template <>
 struct DataTypeImpl<ArrayDataType::kInt32> {
   typedef int32 Type;
 };
 template <>
+struct DataTypeImpl<ArrayDataType::kUint32> {
+  typedef uint32 Type;
+};
+template <>
 struct DataTypeImpl<ArrayDataType::kInt64> {
   typedef int64 Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kUint64> {
+  typedef uint64 Type;
 };
 template <>
 struct DataTypeImpl<ArrayDataType::kString> {
@@ -214,6 +252,8 @@ struct GenericBuffer {
   // in containers and have the containers call the right subclass destructor.
   virtual ~GenericBuffer() {}
 
+  virtual int Length() const = 0;
+
   const ArrayDataType type;
 
  protected:
@@ -225,6 +265,8 @@ struct GenericBuffer {
 template <ArrayDataType A>
 struct Buffer : GenericBuffer {
   Buffer() : GenericBuffer(A) {}
+
+  int Length() const override { return data.size(); }
 
   std::vector<DataType<A>> data;
 };
@@ -329,7 +371,8 @@ struct ConvOperator : Operator {
   // A dilation_rate of 0 is invalid and this field is an optional attribute.
   // Thus initializing it to 1 to allow default conv behavior when the
   // attribute is not present.
-  int dilation_rate = 1;
+  int dilation_width_factor = 1;
+  int dilation_height_factor = 1;
 };
 
 // Depthwise-separable convolution operator.
@@ -383,6 +426,7 @@ struct SpaceToDepthOperator : Operator {
 // input activations as a matrix, followed by a MatMul node.
 struct FullyConnectedOperator : Operator {
   FullyConnectedOperator() : Operator(OperatorType::kFullyConnected) {}
+  bool experimental_shuffled_weights = false;
 };
 
 // Dequantization operator, converting a quantized array of integers with
@@ -527,6 +571,18 @@ struct Relu6Operator : Operator {
   Relu6Operator() : Operator(OperatorType::kRelu6) {}
 };
 
+// PRelu
+//   f(x) = alpha * x for x < 0, f(x) = x for x >= 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: the alpha array
+//
+// Equivalent to keras.layers.PReLU.
+struct PReluOperator : Operator {
+  PReluOperator() : Operator(OperatorType::kPRelu) {}
+};
+
 // Element-wise Logistic operator:
 //   x -> Logistic(x) = 1 / (1 + exp(-x))
 //
@@ -536,6 +592,17 @@ struct Relu6Operator : Operator {
 // TensorFlow equivalent: Sigmoid
 struct LogisticOperator : Operator {
   LogisticOperator() : Operator(OperatorType::kLogistic) {}
+};
+
+// Element-wise natural log operator:
+//   x -> ln(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Log
+struct LogOperator : Operator {
+  LogOperator() : Operator(OperatorType::kLog) {}
 };
 
 // Element-wise Tanh operator:
@@ -659,8 +726,7 @@ struct L2PoolOperator : Operator {
 // The expected [min, max] range of values in a given array.
 // Used for quantization only.
 // This information typically comes from special nodes found in quantized
-// models,
-// see FakeQuantOperator, and is used during quantization to resolve
+// models, see FakeQuantOperator, and is used during quantization to resolve
 // actual quantization parameters (see QuantizationParams).
 struct MinMax {
   double min = 0.;
@@ -688,6 +754,7 @@ inline bool operator==(const MinMax& m1, const MinMax& m2) {
 struct FakeQuantOperator : Operator {
   FakeQuantOperator() : Operator(OperatorType::kFakeQuant) {}
   std::unique_ptr<MinMax> minmax;
+  int num_bits = 8;
 };
 
 // Element-wise division operator.
@@ -709,6 +776,19 @@ struct DivOperator : Operator {
 // TensorFlow equivalent: Identity
 struct TensorFlowIdentityOperator : Operator {
   TensorFlowIdentityOperator() : Operator(OperatorType::kTensorFlowIdentity) {}
+};
+
+// Batch matrix multiplication operator. This comes from the (deprecated)
+// tf.batch_matmul or a tf.matmul that has rank 3. dims(0) is the batch count
+// and it can be trivially unrolled into a series of matmuls on each element.
+//
+// Inputs:
+//   inputs[0]: required: the left-hand side matrix
+//   inputs[1]: required: the right-hand side matrix
+//
+// TensorFlow equivalent: MatMul
+struct BatchMatMulOperator : Operator {
+  BatchMatMulOperator() : Operator(OperatorType::kBatchMatMul) {}
 };
 
 // General matrix multiplication operator. We don't want to support general
@@ -766,6 +846,60 @@ struct StridedSliceOperator : Operator {
   int end_mask;
   int new_axis_mask;
   int shrink_axis_mask;
+
+  StridedSliceOperator(const StridedSliceOperator& other)
+      : Operator(OperatorType::kStridedSlice) {
+    inputs = other.inputs;
+    outputs = other.outputs;
+
+    start_indices = other.start_indices;
+    stop_indices = other.stop_indices;
+    strides = other.strides;
+
+    begin_mask = other.begin_mask;
+    ellipsis_mask = other.ellipsis_mask;
+    end_mask = other.end_mask;
+    new_axis_mask = other.new_axis_mask;
+    shrink_axis_mask = other.shrink_axis_mask;
+  }
+
+  void PadIndices(int dim_count) {
+    // Add indices and mask bits to fully include extra dimensions
+    CHECK_GE(dim_count, start_indices.size());
+    CHECK_EQ(start_indices.size(), stop_indices.size());
+    CHECK_EQ(stop_indices.size(), strides.size());
+
+    for (int i = start_indices.size(); i < dim_count; i++) {
+      start_indices.push_back(0);
+      stop_indices.push_back(0);
+      strides.push_back(1);
+      begin_mask |= 1 << i;
+      end_mask |= 1 << i;
+    }
+  }
+
+  void ReverseIndices() {
+    CHECK_EQ(start_indices.size(), stop_indices.size());
+    CHECK_EQ(stop_indices.size(), strides.size());
+
+    std::reverse(start_indices.begin(), start_indices.end());
+    std::reverse(stop_indices.begin(), stop_indices.end());
+    std::reverse(strides.begin(), strides.end());
+
+    begin_mask = toco::port::ReverseBits32(static_cast<uint32>(begin_mask)) >>
+                 (32 - start_indices.size());
+    ellipsis_mask =
+        toco::port::ReverseBits32(static_cast<uint32>(ellipsis_mask)) >>
+        (32 - start_indices.size());
+    end_mask = toco::port::ReverseBits32(static_cast<uint32>(end_mask)) >>
+               (32 - start_indices.size());
+    new_axis_mask =
+        toco::port::ReverseBits32(static_cast<uint32>(new_axis_mask)) >>
+        (32 - start_indices.size());
+    shrink_axis_mask =
+        toco::port::ReverseBits32(static_cast<uint32>(shrink_axis_mask)) >>
+        (32 - start_indices.size());
+  }
 };
 
 // Reshaping operator, reshaping its input array to a two-dimensional shape
@@ -796,19 +930,40 @@ struct SqueezeOperator : Operator {
 };
 
 // Inputs:
-//   inputs[0]: required: the input activations array
-//   inputs[1]: required: the Conv weights
-//   channel.
+//   inputs[0]: required: the output shape
+//   inputs[1]: required: the weights
+//   inputs[2]: required: the input activations array
+//   NOTE: The input activations is NOT the first input.
+//
 //
 // Outputs:
 //   outputs[0]: required: the output activations array
 //
 // TensorFlow equivalent: Conv2DBackpropInput
 struct TransposeConvOperator : Operator {
+  enum Inputs {
+    OUTPUT_SHAPE = 0,
+    WEIGHTS = 1,
+    DATA_INPUT = 2,
+  };
+
   TransposeConvOperator() : Operator(OperatorType::kTransposeConv) {}
   Padding padding;
   int stride_width = 0;
   int stride_height = 0;
+  // Dilation is possible with transpose convolution, but Tensorflow does not
+  // currently support it, so we omit it.
+};
+
+// Given a tensor input, this operation calculates element-wise exponential
+// (y = e^x).
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//
+// TensorFlow equivalent: Exp
+struct ExpOperator : Operator {
+  ExpOperator() : Operator(OperatorType::kExp) {}
 };
 
 // Given a tensor input, this operation inserts a dimension of 1 at the
@@ -858,6 +1013,13 @@ struct FloorDivOperator : Operator {
 // TensorFlow equivalent: FloorMod
 struct FloorModOperator : Operator {
   FloorModOperator() : Operator(OperatorType::kFloorMod) {}
+};
+
+struct RandomUniformOperator : Operator {
+  RandomUniformOperator() : Operator(OperatorType::kRandomUniform) {}
+  ArrayDataType dtype = ArrayDataType::kNone;
+  int64 seed;
+  int64 seed2;
 };
 
 // Creates a sequence of numbers that begins at start and extends by increments
@@ -1215,6 +1377,25 @@ struct SoftmaxOperator : Operator {
   float beta = 0.f;
 };
 
+// LogSoftmax activation function.
+//
+// Inputs:
+//   inputs[0]: required: the logits input array
+//
+// TensorFlow equivalent: LogSoftmax
+struct LogSoftmaxOperator : Operator {
+  LogSoftmaxOperator() : Operator(OperatorType::kLogSoftmax) {}
+
+  // LogSoftmax can in principal have very large negative output, depending on
+  // the input size.  However, input x_i that is less than x_max-10 is
+  // accumulated as exp(x_i-x_max), which is truncated to zero.
+  //
+  // Since we effectively disregard smallish inputs in the normalizing factor,
+  // we also drop them in the output (set to minimum output), and in doing so
+  // make better use of the quantization range / resolution.
+  static constexpr float kOutputRangeMin = -16.0;
+};
+
 // Cast operator.
 //
 // Inputs:
@@ -1272,6 +1453,8 @@ struct ArgMaxOperator : Operator {
 // TensorFlow equivalent: ResizeBilinear
 struct ResizeBilinearOperator : Operator {
   ResizeBilinearOperator() : Operator(OperatorType::kResizeBilinear) {}
+
+  bool align_corners = false;
 };
 
 // SpaceToBatchND operator. It divides spatial dimensions into a grid of
@@ -1293,8 +1476,7 @@ struct SpaceToBatchNDOperator : Operator {
 };
 
 // BatchToSpaceND operator. Rearranges data from batch into blocks of
-// spatial data. Currently, only 2-d blocks are supported. Cropping is not
-// supported, either, and the crops array should be all zero.
+// spatial data. Currently, only 2-d blocks are supported.
 //
 // Inputs:
 //   inputs[0]: required: the input array
@@ -1335,6 +1517,38 @@ struct SvdfOperator : Operator {
   int rank;
 };
 
+// TopKV2 operator.
+//
+// Inputs:
+//    input tensor and top_k scalar.
+struct TopKV2Operator : Operator {
+  TopKV2Operator() : Operator(OperatorType::kTopK_V2) {}
+};
+
+// DynamicPartition operator:
+//
+// Inputs:
+//  inputs[0]: required: data.
+//  inputs[1]: required: partitions.
+//
+// TensorFlow equivalent: DynamicPartition
+struct DynamicPartitionOperator : Operator {
+  DynamicPartitionOperator() : Operator(OperatorType::kDynamicPartition) {}
+  int num_partitions;
+};
+
+// DynamicStitch operator:
+//
+// Inputs:
+//  inputs[0,N): required: indices.
+//  inputs[N,2N): required: data.
+//
+// TensorFlow equivalent: DynamicStitch/ParallelDynamicStitch
+struct DynamicStitchOperator : Operator {
+  DynamicStitchOperator() : Operator(OperatorType::kDynamicStitch) {}
+  int num_partitions;
+};
+
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
 // of the "transient_data" workspace buffer passed to inference functions, is to
 // be used for the transient array at hand. The 'start' and 'end' values are
@@ -1347,22 +1561,6 @@ struct Alloc {
 inline bool operator<(const Alloc& a, const Alloc& b) {
   return a.start < b.start;
 }
-
-// Quantization parameters, determining the mapping of quantized values
-// to real values (i.e. determining how quantized values are mathematically
-// interpreted).
-//
-// The correspondence is as follows:
-//
-//   real_value = scale * (quantized_value - zero_point);
-//
-// In other words, zero_point designates which quantized value corresponds to
-// the real 0 value, and scale designates the difference between the real values
-// corresponding to consecutive quantized values differing by 1.
-struct QuantizationParams {
-  int32 zero_point = 0;
-  double scale = 0.;
-};
 
 class Shape {
  public:
@@ -1385,7 +1583,14 @@ class Shape {
 
   // We still have that one convenience accessor to avoid
   // the awkward double bracket issue:  shape.dims()[i].
-  int dims(int i) const { return dims_[i]; }
+  int dims(int i) const {
+    // Always check for out-of-bounds accesses, even in optimized builds where
+    // standard assertions are disabled. Out-of-bounds access here is a common
+    // occurrence.
+    CHECK_GE(i, 0);
+    CHECK_GT(dims_.size(), i);
+    return dims_[i];
+  }
 
   bool operator==(const Shape& comp) const {
     return (this->dims_ == comp.dims());
@@ -1541,7 +1746,7 @@ class Model {
 
   bool HasArray(const string& name) const { return arrays.count(name) > 0; }
   Array& GetArray(const string& name) const {
-    DCHECK(HasArray(name));
+    DCHECK(HasArray(name)) << "Array not found: " << name;
     return *arrays.at(name);
   }
   Array& GetOrCreateArray(const string& name) {

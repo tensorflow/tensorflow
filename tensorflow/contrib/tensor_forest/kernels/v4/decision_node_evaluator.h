@@ -22,7 +22,6 @@
 namespace tensorflow {
 namespace tensorforest {
 
-
 // Base class for evaluators of decision nodes that effectively copy proto
 // contents into C++ structures for faster execution.
 class DecisionNodeEvaluator {
@@ -61,7 +60,7 @@ class InequalityDecisionNodeEvaluator : public BinaryDecisionNodeEvaluator {
   bool include_equals_;
 };
 
-// Evalutor for splits with multiple weighted features.
+// Evaluator for splits with multiple weighted features.
 class ObliqueInequalityDecisionNodeEvaluator
     : public BinaryDecisionNodeEvaluator {
  public:

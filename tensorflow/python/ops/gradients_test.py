@@ -24,6 +24,8 @@ import warnings
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -31,10 +33,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
+from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
@@ -43,9 +47,11 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
@@ -661,6 +667,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     self.assertAllEqual((m, n, m, n), hess_actual.shape)
     self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
 
+
 @test_util.with_c_api
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 
@@ -753,6 +760,155 @@ class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
         r"Gradients of complex tensors must set grad_ys "
         r"\(y\.dtype = tf\.complex64\)"):
       gradients.gradients(y, x)
+
+
+class ResourceCondTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    gamma = resource_variable_ops.ResourceVariable(
+        np.random.random((3,)),
+        dtype="float32", name="gamma")
+
+    inputs = array_ops.ones(shape=(3,), dtype="float32")
+
+    def TestFn():
+      output = inputs + gamma
+      return output
+
+    training = array_ops.placeholder_with_default(True, shape=())
+    output = control_flow_ops.cond(
+        training, TestFn, lambda: inputs)
+
+    loss = output
+
+    grads = gradients.gradients(
+        loss, [gamma])
+    self.assertTrue(None not in grads)
+
+
+@test_util.with_c_api
+class CustomGradientTest(test_util.TensorFlowTestCase):
+
+  def testCustomGradientTrivial(self):
+
+    @custom_gradient.custom_gradient
+    def MyIdentity(x):
+
+      def Grad(dy):
+        return [3 * dy]
+
+      return x, Grad
+
+    with ops.Graph().as_default():
+      x = constant(3.)
+      y = MyIdentity(MyIdentity(x))
+      dy = gradients.gradients(y, x)[0]
+      with session.Session():
+        self.assertEqual(9., dy.eval())
+
+  def testCustomGradient(self):
+
+    @custom_gradient.custom_gradient
+    def MyMultiply(x1, x2):
+      result = x1 * x2
+
+      def Grad(dy):
+        # Switched the ordering here.
+        return [dy * x1, dy * x2]
+
+      return result, Grad
+
+    with ops.Graph().as_default():
+      x1 = constant(3.)
+      x2 = constant(5.)
+      y = MyMultiply(x1, x2)
+      dy = gradients.gradients(y, [x1, x2])
+      with session.Session() as sess:
+        self.assertAllEqual([3., 5.], sess.run(dy))
+
+  def testCustomGradientErrors(self):
+
+    @custom_gradient.custom_gradient
+    def F(x):
+
+      def Grad(_):
+        raise RuntimeError("x")
+
+      return x, Grad
+
+    with ops.Graph().as_default():
+      x = constant(1.0)
+      y = F(x)
+      with self.assertRaises(RuntimeError):
+        gradients.gradients(y, x)
+
+  def testCustomGradientWithVariables(self):
+
+    @custom_gradient.custom_gradient
+    def F(x):
+      out = core_layers.dense(x, 3, use_bias=False)
+
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        self.assertEqual(1, len(variables))
+        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
+        return grads[0], [array_ops.ones((4, 3))]
+
+      return out, Grad
+
+    with ops.Graph().as_default():
+      x = array_ops.ones((2, 4))
+      with variable_scope.variable_scope("f", use_resource=True) as vs:
+        y = F(x)
+        all_vars = vs.global_variables()
+        assert len(all_vars) == 1
+      grads = gradients.gradients(y, [x, all_vars[0]])
+      for g in grads:
+        self.assertTrue(g is not None)
+      with session.Session() as sess:
+        sess.run(variables.global_variables_initializer())
+        dw = sess.run(math_ops.reduce_sum(grads[1]))
+        self.assertEqual(12., dw)
+
+  def testCustomGradientWithVariablesEager(self):
+    with context.eager_mode():
+      layer = core_layers.Dense(4, use_bias=False)
+
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = layer(x)
+
+        def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+          del out_grad
+          self.assertEqual(1, len(variables))
+          return (array_ops.ones((3, 2)),
+                  [array_ops.ones((2, 4))])
+
+        return out, Grad
+
+      x = array_ops.ones((3, 2)) + 2.
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = F(x)
+      w, = layer.variables
+      dx, dw = tape.gradient(y, [x, w])
+      self.assertEqual(6., math_ops.reduce_sum(dx).numpy())
+      self.assertEqual(8., math_ops.reduce_sum(dw).numpy())
+
+  def testWithNumpyInputs(self):
+    with context.eager_mode():
+
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = x
+
+        def Grad(_):
+          return (None, None)
+
+        return out, Grad
+
+      x = np.ones((3, 2), dtype=np.float32)
+      # Smoke test to ensure numpy inputs are accepted
+      F(x)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,21 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 
 
+class LabeledTensorMock(object):
+  """Mock class emulating LabeledTensor."""
+
+  def __init__(self):
+    self.tensor = constant_op.constant([1])
+
+
+def _convert_labeled_tensor_mock_to_tensor(value, *args, **kwargs):
+  return ops.internal_convert_to_tensor(value.tensor, *args, **kwargs)
+
+
+ops.register_tensor_conversion_function(LabeledTensorMock,
+                                        _convert_labeled_tensor_mock_to_tensor)
+
+
 class ExportTest(test_util.TensorFlowTestCase):
 
   def test_serving_input_receiver_constructor(self):
@@ -134,6 +149,11 @@ class ExportTest(test_util.TensorFlowTestCase):
     receiver_tensor = array_ops.placeholder(dtypes.string)
     with self.assertRaises(ValueError):
       _ = export.ServingInputReceiver(feature, receiver_tensor)
+
+  def test_feature_labeled_tensor(self):
+    feature = LabeledTensorMock()
+    receiver_tensor = array_ops.placeholder(dtypes.string)
+    _ = export.ServingInputReceiver(feature, receiver_tensor)
 
   def test_receiver_wrong_type(self):
     feature = constant_op.constant(5)
@@ -383,6 +403,68 @@ class ExportTest(test_util.TensorFlowTestCase):
 
     self.assertTrue(int(time_1) < int(time_2))
     self.assertTrue(int(time_2) < int(time_3))
+
+
+class TensorServingReceiverTest(test_util.TensorFlowTestCase):
+
+  def test_tensor_serving_input_receiver_constructor(self):
+    features = constant_op.constant([0])
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+    r = export.TensorServingInputReceiver(features, receiver_tensors)
+    self.assertTrue(isinstance(r.features, ops.Tensor))
+    self.assertTrue(isinstance(r.receiver_tensors, dict))
+
+  def test_tensor_serving_input_receiver_sparse(self):
+    features = sparse_tensor.SparseTensor(
+        indices=[[0, 0]], values=[1], dense_shape=[1, 1])
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+    r = export.TensorServingInputReceiver(features, receiver_tensors)
+    self.assertTrue(isinstance(r.features, sparse_tensor.SparseTensor))
+    self.assertTrue(isinstance(r.receiver_tensors, dict))
+
+  def test_serving_input_receiver_features_invalid(self):
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+
+    with self.assertRaisesRegexp(ValueError, "features must be defined"):
+      export.TensorServingInputReceiver(
+          features=None,
+          receiver_tensors=receiver_tensors)
+
+    with self.assertRaisesRegexp(ValueError, "feature must be a Tensor"):
+      export.TensorServingInputReceiver(
+          features={"1": constant_op.constant([1])},
+          receiver_tensors=receiver_tensors)
+
+  def test_serving_input_receiver_receiver_tensors_invalid(self):
+    features = constant_op.constant([0])
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensors must be defined"):
+      export.TensorServingInputReceiver(
+          features=features,
+          receiver_tensors=None)
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensors keys must be strings"):
+      export.TensorServingInputReceiver(
+          features=features,
+          receiver_tensors={
+              1: array_ops.placeholder(dtypes.string, name="example0")})
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensor example1 must be a Tensor"):
+      export.TensorServingInputReceiver(
+          features=features,
+          receiver_tensors={"example1": [1]})
 
 
 if __name__ == "__main__":

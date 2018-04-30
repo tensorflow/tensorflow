@@ -77,6 +77,14 @@ class HloComputation {
       return last_added_instruction_;
     }
 
+    Status ForEachInstruction(
+        const std::function<Status(const HloInstruction*)>& func) const {
+      for (const auto& instruction : instructions_) {
+        TF_RETURN_IF_ERROR(func(instruction.get()));
+      }
+      return Status::OK();
+    }
+
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
@@ -152,20 +160,12 @@ class HloComputation {
   //   module: the module which will contain the computation. The newly created
   //     computation is *not* added to the module, however.
   //   proto: the proto to convert from.
-  //   computation_map: a map from computation name to HloComputation*. This map
+  //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed computation
   //     calls.
-  //   add_fused_computation: A function to call to add a fused
-  //     computation. Used only when the instruction is a fusion instruction.
-  //   fusion_instruction: if non-null then the newly created computation will
-  //     be constructed as a fused computation with this instruction as its
-  //     fusion parent.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       HloModule* module, const HloComputationProto& proto,
-      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
-      const std::function<void(std::unique_ptr<HloComputation>)>&
-          add_fused_computation,
-      HloInstruction* fusion_instruction = nullptr);
+      const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 
   // Gets the instructions in this computation.
   //
@@ -224,15 +224,6 @@ class HloComputation {
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
-  // Creates a fusion instruction that represents a backward convolution. This
-  // is similar to CreateFusionInstruction but takes window and conv_dnums which
-  // indicate the window and convolution dimension numbers of the backward
-  // convolution.
-  HloInstruction* CreateFusionInstructionForBackwardConvolution(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
-      HloInstruction::FusionKind fusion_kind, const Window& window,
-      const ConvolutionDimensionNumbers& conv_dnums);
-
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
   // to the computation. For array-shaped values, this method trivially returns
@@ -249,7 +240,7 @@ class HloComputation {
       ShapeTree<HloInstruction*>* copies_added = nullptr);
 
   // Computes and returns the ProgramShape of this computation (shape of
-  // parameters and result without layout).
+  // parameters and result with layout).
   ProgramShape ComputeProgramShape() const;
 
   // Return whether `*this` and `other` are functionally equivalent.
@@ -343,6 +334,15 @@ class HloComputation {
     fusion_instruction_ = fusion_instruction;
   }
 
+  // The id of this computation should be unique within the module.
+  void SetUniqueId(int64 id) {
+    CHECK_EQ(unique_id_, -1);
+    CHECK_GE(id, 0);
+    unique_id_ = id;
+  }
+
+  int64 unique_id() const { return unique_id_; }
+
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
@@ -352,10 +352,6 @@ class HloComputation {
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
-
-  // Helper for setting the parent of instructions that are added to this
-  // computation.
-  void Reparent(HloInstruction* instruction);
 
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //
@@ -374,6 +370,7 @@ class HloComputation {
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
   string name_;
+  int64 unique_id_;
   HloInstruction* root_instruction_;
 
   // If this computation is a fusion computation, this field points to the

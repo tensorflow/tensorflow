@@ -72,7 +72,7 @@ limitations under the License.
 #ifdef SWIG
 #define TF_CAPI_EXPORT
 #else
-#if defined(COMPILER_MSVC)
+#if defined(_WIN32)
 #ifdef TF_COMPILE_LIBRARY
 #define TF_CAPI_EXPORT __declspec(dllexport)
 #else
@@ -80,7 +80,7 @@ limitations under the License.
 #endif  // TF_COMPILE_LIBRARY
 #else
 #define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // COMPILER_MSVC
+#endif  // _WIN32
 #endif  // SWIG
 
 #ifdef __cplusplus
@@ -226,6 +226,10 @@ typedef struct TF_Tensor TF_Tensor;
 //      (*deallocator)(data, len, deallocator_arg)
 // Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
+//
+// May return NULL (and invoke the deallocator) if the provided data buffer
+// (data, len) is inconsistent with a tensor of the given TF_DataType
+// and the shape specified by (dima, num_dims).
 TF_CAPI_EXPORT extern TF_Tensor* TF_NewTensor(
     TF_DataType, const int64_t* dims, int num_dims, void* data, size_t len,
     void (*deallocator)(void* data, size_t len, void* arg),
@@ -1271,23 +1275,33 @@ TF_CAPI_EXPORT extern void TF_FunctionGetAttrValueProto(
 // Deleting a function does not remove it from any graphs it was copied to.
 TF_CAPI_EXPORT extern void TF_DeleteFunction(TF_Function* func);
 
+// Attempts to evaluate `output`. This will only be possible if `output` doesn't
+// depend on any graph inputs (this function is safe to call if this isn't the
+// case though).
+//
+// If the evaluation is successful, this function returns true and `output`s
+// value is returned in `result`. Otherwise returns false. An error status is
+// returned if something is wrong with the graph or input. Note that this may
+// return false even if no error status is set.
+TF_CAPI_EXPORT extern unsigned char TF_TryEvaluateConstant(TF_Graph* graph,
+                                                           TF_Output output,
+                                                           TF_Tensor** result,
+                                                           TF_Status* status);
+
 // TODO(josh11b): Register OpDef, available to all operations added
 // to this graph.
-
-// The following two may both benefit from a subgraph-definition API
-// that re-uses most of the graph-definition API.
-// TODO(andydavis): Add functions to a graph.
 
 // --------------------------------------------------------------------------
 // API for driving Graph execution.
 
 typedef struct TF_Session TF_Session;
 
-// Return a new execution session with the associated graph, or NULL on error.
+// Return a new execution session with the associated graph, or NULL on
+// error. Does not take ownership of any input parameters.
 //
-// *graph must be a valid graph (not deleted or nullptr).  This function will
-// prevent the graph from being deleted until TF_DeleteSession() is called.
-// Does not take ownership of opts.
+// *`graph` must be a valid graph (not deleted or nullptr). `graph` will be be
+// kept alive for the lifetime of the returned TF_Session. New nodes can still
+// be added to `graph` after this call.
 TF_CAPI_EXPORT extern TF_Session* TF_NewSession(TF_Graph* graph,
                                                 const TF_SessionOptions* opts,
                                                 TF_Status* status);
@@ -1482,7 +1496,8 @@ TF_CAPI_EXPORT extern int TF_DeviceListCount(const TF_DeviceList* list);
 // If index is out of bounds, an error code will be set in the status object,
 // and a null pointer will be returned.
 TF_CAPI_EXPORT extern const char* TF_DeviceListName(const TF_DeviceList* list,
-                                                    int index, TF_Status*);
+                                                    int index,
+                                                    TF_Status* status);
 
 // Retrieves the type of the device at the given index.
 //
@@ -1492,14 +1507,15 @@ TF_CAPI_EXPORT extern const char* TF_DeviceListName(const TF_DeviceList* list,
 // If index is out of bounds, an error code will be set in the status object,
 // and a null pointer will be returned.
 TF_CAPI_EXPORT extern const char* TF_DeviceListType(const TF_DeviceList* list,
-                                                    int index, TF_Status*);
+                                                    int index,
+                                                    TF_Status* status);
 
 // Retrieve the amount of memory associated with a given device.
 //
 // If index is out of bounds, an error code will be set in the status object,
 // and -1 will be returned.
 TF_CAPI_EXPORT extern int64_t TF_DeviceListMemoryBytes(
-    const TF_DeviceList* list, int index, TF_Status*);
+    const TF_DeviceList* list, int index, TF_Status* status);
 
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels

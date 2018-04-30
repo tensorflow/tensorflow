@@ -119,19 +119,20 @@ class SparseMulticlassHingeLossTest(test.TestCase):
 
   def testUnknownShape(self):
     """Result keeps same with `testZeroLossInt32Labels`"""
-    logits_np = np.array([[1.2, -1.4, -1.0],
-                          [1.4, 1.8, 4.0],
-                          [0.5, 1.8, -1.0]])
+    logits_np = np.array([[1.2, -1.4, -1.0], [1.4, 1.8, 4.0], [0.5, 1.8, -1.0]])
     labels_np = np.array([0, 2, 1], dtype=np.int32)
 
-    logits_shapes = [[3, 3],  # batch_size, num_classes
-                     [None, 3],
-                     [3, None],
-                     [None, None]]
+    logits_shapes = [
+        [3, 3],  # batch_size, num_classes
+        [None, 3],
+        [3, None],
+        [None, None]
+    ]
 
     for batch_size, num_classes in logits_shapes:
       with self.test_session():
-        logits = array_ops.placeholder(dtypes.float32, shape=(batch_size, num_classes))
+        logits = array_ops.placeholder(
+            dtypes.float32, shape=(batch_size, num_classes))
         labels = array_ops.placeholder(dtypes.int32, shape=(batch_size,))
         loss = losses.sparse_multiclass_hinge_loss(labels, logits)
         result = loss.eval(feed_dict={logits: logits_np, labels: labels_np})

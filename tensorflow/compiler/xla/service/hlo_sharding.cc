@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace xla {
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrCat;
 
 HloSharding HloSharding::AssignDevice(int64 device_id) {
@@ -57,8 +58,9 @@ string HloSharding::ToString() const {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
   } else {
-    return StrCat("{", ShapeUtil::HumanString(tile_shape_), " ",
-                  "devices=", VectorString(tile_assignment_), "}");
+    return StrCat("{", ShapeUtil::HumanString(tile_shape_), " ", "devices=[",
+                  Join(tile_assignment_.dimensions(), ","), "]",
+                  Join(tile_assignment_, ","), "}");
   }
 }
 
@@ -183,6 +185,10 @@ Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {
   // shape tree.
   ShapeTree<HloSharding> shape_tree = GetAsShapeTree(shape);
   for (const auto& index_to_sharding : shape_tree.leaves()) {
+    if (index_to_sharding.first.empty()) {
+      // An empty tuple has a ShapeTree with a single leaf at the empty index.
+      continue;
+    }
     Status status = index_to_sharding.second.ValidateNonTuple(
         ShapeUtil::GetSubshape(shape, index_to_sharding.first), num_devices);
     if (!status.ok()) {
@@ -222,7 +228,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   Status status = Status::OK();
   std::set<int64> seen_cores;
   tile_assignment_.Each(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 core) {
+      [&](tensorflow::gtl::ArraySlice<int64> indices, int32 core) {
         // Don't overwrite a bad status, so we report the first error.
         if (status.ok()) {
           if (core >= num_devices) {
@@ -250,37 +256,24 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
         ", input_shape=", ShapeUtil::HumanString(shape));
   }
 
-  // The tile shape must not be the same as the input shape without maximal_
-  // also set. If this is the case, we're not actually sharded and the correct
-  // constructor should have been used.
-  if (ShapeUtil::Equal(shape, tile_shape_)) {
+  // The correct constructor have to be used to create tile maximal shardings.
+  if (tile_assignment_.num_elements() == 1) {
     return tensorflow::errors::InvalidArgument(
-        "Tile shape is the same as the input shape. If a replicated sharding "
-        "was intended, use HloSharding::Replicated(). If a device placement "
-        "was intended, use HloSharding::AssignDevice()");
+        "Tile assignment only contains a single device. If a replicated "
+        "sharding was intended, use HloSharding::Replicated(). If a device "
+        "placement was intended, use HloSharding::AssignDevice()");
   }
 
-  // The tile shape must not be greater than the input shape in any dimension.
-  for (int64 i = 0, e = ShapeUtil::Rank(shape); i != e; ++i) {
-    auto tile_dim = tile_shape_.dimensions(i);
-    auto shape_dim = shape.dimensions(i);
-    if (tile_dim > shape_dim) {
-      return tensorflow::errors::InvalidArgument(
-          StrCat("Tile is larger than input shape (dimension ", i, ", ",
-                 tile_dim, " > ", shape_dim));
-    }
-  }
-
-  // The tile assignment tensor must be exactly dimensioned to ceil(shape[dim]
-  // tile[dim]) for every dimension contained within tile.
+  // The tile assignment tensor must contain enough element to cover the full
+  // shape with tiles of the specified size.
   for (int64 i = 0, e = tile_assignment_.dimensions().size(); i != e; ++i) {
-    int64 expected_dim =
-        CeilOfRatio(shape.dimensions(i), tile_shape_.dimensions(i));
-    if (tile_assignment_.dimensions()[i] != expected_dim) {
+    int64 total_tile_size = tile_assignment_.dim(i) * tile_shape_.dimensions(i);
+    if (shape.dimensions(i) > total_tile_size) {
       return tensorflow::errors::InvalidArgument(
-          StrCat("Tile assignment tensor has incorrect shape. Dimension ", i,
-                 " expected ", expected_dim, " but got ",
-                 tile_assignment_.dimensions()[i]));
+          StrCat("Tile assignment tensor has too few element to cover the full "
+                 "shape. Dimension ",
+                 i, ", shape ", shape.dimensions(i), ", total size ",
+                 total_tile_size));
     }
   }
 
@@ -342,6 +335,47 @@ OpSharding HloSharding::ToProto() const {
     result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
   }
   return result;
+}
+
+HloSharding HloSharding::TransformShardedTileShape(
+    const Shape& new_shape,
+    const std::function<int64(int64, int64)>& transform) const {
+  CHECK(!IsTuple());
+  if (IsTileMaximal()) {
+    return *this;
+  }
+  CHECK_EQ(ShapeUtil::Rank(new_shape), ShapeUtil::Rank(tile_shape()));
+  Shape new_tile_shape;
+  new_tile_shape.set_element_type(tile_shape().element_type());
+  for (int64 i = 0; i < ShapeUtil::Rank(new_shape); ++i) {
+    int64 dim;
+    if (tile_assignment().dim(i) == 1) {
+      dim = new_shape.dimensions(i);
+    } else if (transform) {
+      dim = transform(i, tile_shape().dimensions(i));
+    } else {
+      dim = tile_shape().dimensions(i);
+    }
+    new_tile_shape.add_dimensions(dim);
+  }
+  TF_CHECK_OK(
+      LayoutUtil::CopyLayoutBetweenShapes(tile_shape_, &new_tile_shape));
+  return HloSharding::Tile(new_tile_shape, tile_assignment());
+}
+
+HloSharding HloSharding::GetSubSharding(const Shape& shape,
+                                        const ShapeIndex& index) const {
+  CHECK(IsTuple());
+
+  ShapeTree<HloSharding> sub_shape_tree(ShapeUtil::GetSubshape(shape, index),
+                                        Replicate());
+  sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
+  return Tuple(sub_shape_tree);
+}
+
+std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {
+  out << sharding.ToString();
+  return out;
 }
 
 }  // namespace xla

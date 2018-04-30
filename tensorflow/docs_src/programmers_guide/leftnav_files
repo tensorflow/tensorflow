@@ -1,8 +1,9 @@
 index.md
 
 ### High Level APIs
-estimators.md
+eager.md
 datasets.md
+estimators.md
 
 ### Low Level APIs
 low_level_intro.md
@@ -10,7 +11,10 @@ tensors.md
 variables.md
 graphs.md
 saved_model.md
+
+### Accelerators
 using_gpu.md
+using_tpu.md
 
 ### ML Concepts
 embedding.md
@@ -19,9 +23,9 @@ embedding.md
 debugger.md
 
 ### TensorBoard
-summaries_and_tensorboard.md
-graph_viz.md
-tensorboard_histograms.md
+summaries_and_tensorboard.md: Visualizing Learning
+graph_viz.md: Graphs
+tensorboard_histograms.md: Histograms
 
 ### Misc
 version_compat.md

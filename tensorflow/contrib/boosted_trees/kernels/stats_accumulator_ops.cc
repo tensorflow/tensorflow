@@ -134,10 +134,9 @@ void SerializeScalarAccumulatorToOutput(
     OpKernelContext* context) {
   int64 num_slots = accumulator_resource.values().size();
   Tensor* partition_ids_t = nullptr;
-  OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_partition_ids", TensorShape({num_slots}),
-                               &partition_ids_t));
+  OP_REQUIRES_OK(context, context->allocate_output("output_partition_ids",
+                                                   TensorShape({num_slots}),
+                                                   &partition_ids_t));
   auto partition_ids = partition_ids_t->vec<int32>();
 
   // Feature ids tensor has ids of feature columns and their dimensions.
@@ -149,15 +148,14 @@ void SerializeScalarAccumulatorToOutput(
 
   Tensor* gradients_t = nullptr;
   OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_gradients", TensorShape({num_slots}),
-                               &gradients_t));
+      context, context->allocate_output(
+                   "output_gradients", TensorShape({num_slots}), &gradients_t));
   auto gradients = gradients_t->vec<float>();
 
   Tensor* hessians_t = nullptr;
-  OP_REQUIRES_OK(context,
-                 context->allocate_output(
-                     "output_hessians", TensorShape({num_slots}), &hessians_t));
+  OP_REQUIRES_OK(
+      context, context->allocate_output("output_hessians",
+                                        TensorShape({num_slots}), &hessians_t));
   auto hessians = hessians_t->vec<float>();
 
   int i = 0;
@@ -177,10 +175,9 @@ void SerializeTensorAccumulatorToOutput(
     OpKernelContext* context) {
   int64 num_slots = accumulator_resource.values().size();
   Tensor* partition_ids_t = nullptr;
-  OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_partition_ids", TensorShape({num_slots}),
-                               &partition_ids_t));
+  OP_REQUIRES_OK(context, context->allocate_output("output_partition_ids",
+                                                   TensorShape({num_slots}),
+                                                   &partition_ids_t));
   auto partition_ids = partition_ids_t->vec<int32>();
 
   Tensor* feature_ids_t = nullptr;
@@ -202,9 +199,8 @@ void SerializeTensorAccumulatorToOutput(
   int64 num_hessian_elements = hessian_shape.num_elements();
   hessian_shape.InsertDim(0, num_slots);
   Tensor* hessians_t = nullptr;
-  OP_REQUIRES_OK(
-      context,
-      context->allocate_output("output_hessians", hessian_shape, &hessians_t));
+  OP_REQUIRES_OK(context, context->allocate_output("output_hessians",
+                                                   hessian_shape, &hessians_t));
   auto hessians = hessians_t->flat_outer_dims<float>();
 
   int i = 0;

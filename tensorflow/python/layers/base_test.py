@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
@@ -43,13 +44,19 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.variables, [])
     self.assertEqual(layer.trainable_variables, [])
     self.assertEqual(layer.non_trainable_variables, [])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # updates, losses only supported in GRAPH mode
       self.assertEqual(layer.updates, [])
       self.assertEqual(layer.losses, [])
     self.assertEqual(layer.built, False)
     layer = base_layers.Layer(name='my_layer', trainable=False)
     self.assertEqual(layer.trainable, False)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testInt64Layer(self):
+    layer = base_layers.Layer(name='my_layer', dtype='int64')
+    layer.add_variable('my_var', [2, 2])
+    self.assertEqual(layer.name, 'my_layer')
 
   @test_util.run_in_graph_and_eager_modes()
   def testAddWeight(self):
@@ -62,7 +69,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.variables, [variable])
     self.assertEqual(layer.trainable_variables, [variable])
     self.assertEqual(layer.non_trainable_variables, [])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           layer.variables,
           ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
@@ -76,7 +83,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.variables, [variable, variable_2])
     self.assertEqual(layer.trainable_variables, [variable])
     self.assertEqual(layer.non_trainable_variables, [variable_2])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
 
@@ -93,61 +100,6 @@ class BaseLayerTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
         core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
 
-  def testGetVariable(self):
-    with self.test_session():
-
-      class MyLayer(base_layers.Layer):
-
-        def build(self, input_shape):
-          self.my_var = self.add_variable(
-              'my_var', [2, 2], initializer=init_ops.zeros_initializer())
-
-        def call(self, inputs):
-          return inputs * 2
-
-      layer = MyLayer(name='my_layer')
-      inputs = random_ops.random_uniform((5,), seed=1)
-      layer.apply(inputs)
-      layer.apply(inputs)
-      self.assertEqual([v.name for v in layer.variables],
-                       ['my_layer/my_var:0'])
-
-      # Creating a layer with no scope leads to lazy construction of
-      # the scope at apply() time.  It uses scope "<current scope>/base_name"
-      lazy_layer = MyLayer(_reuse=True)
-      with variable_scope.variable_scope('new_scope'):
-        with variable_scope.variable_scope('my_layer'):
-          variable_scope.get_variable('my_var', [2, 2])
-
-        # Smoke test: it runs.
-        lazy_layer.apply(inputs)
-        # The variables were created outside of the Layer, and
-        # reuse=True, so the Layer does not own them and they are not
-        # stored in its collection.
-        self.assertEqual(lazy_layer.variables, [])
-        self.assertEqual(lazy_layer._scope.name, 'new_scope/my_layer')
-
-      # Creating a layer with no scope leads to lazy construction of
-      # the scope at apply() time. If 'scope' argument is passed to
-      # apply(), it uses that scope when accessing variables.
-      lazy_layer = MyLayer(_reuse=True)
-      with variable_scope.variable_scope('new_scope') as new_scope:
-        variable_scope.get_variable('my_var', [2, 2])
-
-        # Smoke test: it runs.
-        lazy_layer.apply(inputs, scope=new_scope)
-        # The variables were created outside of the Layer, and
-        # reuse=True, so the Layer does not own them and they are not
-        # stored in its collection.
-        self.assertEqual(lazy_layer.variables, [])
-        self.assertEqual(lazy_layer._scope.name, 'new_scope')
-
-      # Checking for graph equality is only done in GRAPH mode.
-      with ops.Graph().as_default():
-        inputs_ng = random_ops.random_uniform((5,), seed=1)
-        with self.assertRaisesRegexp(ValueError, r'graph are not the same'):
-          layer.apply(inputs_ng)
-
   @test_util.run_in_graph_and_eager_modes()
   def testCall(self):
 
@@ -160,41 +112,9 @@ class BaseLayerTest(test.TestCase):
     inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # op is only supported in GRAPH mode
       self.assertEqual(outputs.op.name, 'my_layer/Square')
-
-  def testFirstCallCanCreateVariablesButSecondCanNotWhenBuildEmpty(self):
-    # Note that this test is only run in Graph mode since with EAGER mode we can
-    # still create a new variable on second call.
-
-    class MyLayer(base_layers.Layer):
-
-      def build(self, _):
-        # Do not mark the layer as built.
-        pass
-
-      def call(self, inputs):
-        self.my_var = self.add_variable('my_var', [2, 2])
-        if self.built:
-          # Skip creating on the first call; try to create after it's
-          # built.  This is expected to fail.
-          self.add_variable('this_will_break_on_second_call', [2, 2])
-        return inputs + math_ops.square(self.my_var)
-
-    layer = MyLayer(name='my_layer')
-    inputs = random_ops.random_uniform((2,), seed=1)
-    outputs = layer.apply(inputs)
-    self.assertEqual(layer.built, True)
-    self.assertEqual(outputs.op.name, 'my_layer/add')
-    self.assertEqual([v.name
-                      for v in layer.variables], ['my_layer/my_var:0'])
-    with self.assertRaisesRegexp(ValueError,
-                                 'my_layer/this_will_break_on_second_call'):
-      layer.apply(inputs)
-    # The list of variables hasn't changed.
-    self.assertEqual([v.name
-                      for v in layer.variables], ['my_layer/my_var:0'])
 
   @test_util.run_in_graph_and_eager_modes()
   def testDeepCopy(self):
@@ -209,7 +129,7 @@ class BaseLayerTest(test.TestCase):
     inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # op only supported in GRAPH mode.
       self.assertEqual(outputs.op.name, 'my_layer/Square')
 
@@ -279,7 +199,7 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       layer = CustomerLayer()
       with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
@@ -306,7 +226,7 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       layer = CustomerLayer()
       with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
@@ -334,7 +254,7 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       layer = CustomerLayer()
       with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
@@ -429,7 +349,7 @@ class BaseLayerTest(test.TestCase):
     layer.apply(constant_op.constant(1))
 
     # Works
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       layer.apply(array_ops.placeholder('int32'))
       layer.apply(array_ops.placeholder('int32', shape=(2, 3)))
 
@@ -452,13 +372,7 @@ class BaseLayerTest(test.TestCase):
         return {'l' + key: inputs[key] for key in inputs}
 
     layer = DictLayer()
-    if context.in_graph_mode():
-      i1 = array_ops.placeholder('int32')
-      i2 = array_ops.placeholder('float32')
-      result = layer.apply({'abel': i1, 'ogits': i2})
-      self.assertTrue(isinstance(result, dict))
-      self.assertEqual(set(['label', 'logits']), set(result.keys()))
-    else:
+    if context.executing_eagerly():
       i1 = constant_op.constant(3)
       i2 = constant_op.constant(4.0)
       result = layer.apply({'abel': i1, 'ogits': i2})
@@ -466,6 +380,12 @@ class BaseLayerTest(test.TestCase):
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
       self.assertEqual(3, result['label'].numpy())
       self.assertEqual(4.0, result['logits'].numpy())
+    else:
+      i1 = array_ops.placeholder('int32')
+      i2 = array_ops.placeholder('float32')
+      result = layer.apply({'abel': i1, 'ogits': i2})
+      self.assertTrue(isinstance(result, dict))
+      self.assertEqual(set(['label', 'logits']), set(result.keys()))
 
   def testActivityRegularizer(self):
     regularizer = math_ops.reduce_sum
@@ -554,6 +474,104 @@ class BaseLayerTest(test.TestCase):
         self.assertEqual(len(layer.variables), 1)
         self.assertEqual(len(layer.trainable_variables), 1)
         self.assertEqual(layer.variables[0].graph, outer_graph)
+
+  def testGetUpdateFor(self):
+
+    class MyLayer(base_layers.Layer):
+
+      def build(self, input_shape):
+        self.a = self.add_variable('a',
+                                   (),
+                                   dtypes.float32,
+                                   trainable=False)
+        self.b = self.add_variable('b',
+                                   (),
+                                   dtypes.float32,
+                                   trainable=False)
+        self.add_update(state_ops.assign_add(self.a, 1., name='b_update'))
+        self.built = True
+
+      def call(self, inputs):
+        self.add_update(state_ops.assign_add(self.a, inputs, name='a_update'),
+                        inputs=True)
+        return inputs + 1
+
+    layer = MyLayer()
+    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+    intermediate_inputs = inputs + 1
+    outputs = layer.apply(intermediate_inputs)
+
+    self.assertEqual(len(layer.updates), 2)
+    self.assertEqual(len(layer.get_updates_for(None)), 1)
+    self.assertEqual(len(layer.get_updates_for([inputs])), 1)
+    self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
+    self.assertEqual(len(layer.get_updates_for([outputs])), 0)
+
+    # Call same layer on new input, creating one more conditional update
+    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+    intermediate_inputs = inputs + 1
+    outputs = layer.apply(intermediate_inputs)
+
+    self.assertEqual(len(layer.updates), 3)
+    self.assertEqual(len(layer.get_updates_for(None)), 1)
+    # Check that we are successfully filtering out irrelevant updates
+    self.assertEqual(len(layer.get_updates_for([inputs])), 1)
+    self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
+    self.assertEqual(len(layer.get_updates_for([outputs])), 0)
+
+  def testGetLossesFor(self):
+
+    class MyLayer(base_layers.Layer):
+
+      def build(self, input_shape):
+        self.a = self.add_variable('a',
+                                   (),
+                                   dtypes.float32,
+                                   trainable=False)
+        self.b = self.add_variable('b',
+                                   (),
+                                   dtypes.float32,
+                                   trainable=False)
+        self.add_loss(self.a)
+        self.built = True
+
+      def call(self, inputs):
+        self.add_loss(inputs, inputs=True)
+        return inputs + 1
+
+    layer = MyLayer()
+    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+    intermediate_inputs = inputs + 1
+    outputs = layer.apply(intermediate_inputs)
+
+    self.assertEqual(len(layer.losses), 2)
+    self.assertEqual(len(layer.get_losses_for(None)), 1)
+    self.assertEqual(len(layer.get_losses_for([inputs])), 1)
+    self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
+    self.assertEqual(len(layer.get_losses_for([outputs])), 0)
+
+    # Call same layer on new input, creating one more conditional loss
+    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+    intermediate_inputs = inputs + 1
+    outputs = layer.apply(intermediate_inputs)
+
+    self.assertEqual(len(layer.losses), 3)
+    self.assertEqual(len(layer.get_losses_for(None)), 1)
+    # Check that we are successfully filtering out irrelevant losses
+    self.assertEqual(len(layer.get_losses_for([inputs])), 1)
+    self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
+    self.assertEqual(len(layer.get_losses_for([outputs])), 0)
+
+  def testLayerGraphSetInFirstApply(self):
+    with ops.Graph().as_default():
+      # Graph at construction time is ignored
+      layer = core_layers.Dense(1)
+    with ops.Graph().as_default():
+      layer.apply(constant_op.constant([[1.]]))
+      # layer is now bound to second Graph
+    with ops.Graph().as_default(), self.assertRaisesRegexp(
+        ValueError, 'Input graph and Layer graph are not the same'):
+      layer.apply(constant_op.constant([[1.]]))
 
 
 if __name__ == '__main__':

@@ -81,10 +81,8 @@ TEST(GatherOpTest, Test0DIndex) {
   m.SetInputFloat({-2.0, 0.2, 0.7, 0.8});
   m.SetPositions({1});
   m.Invoke();
-  EXPECT_THAT(m.GetOutputFloat(),
-              ElementsAreArray(ArrayFloatNear({0.7, 0.8})));
-  EXPECT_THAT(m.GetOutputShape(),
-              ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutputFloat(), ElementsAreArray(ArrayFloatNear({0.7, 0.8})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
 }
 
 TEST(GatherOpTest, Test0DIndexWith0DResult) {
@@ -94,8 +92,7 @@ TEST(GatherOpTest, Test0DIndexWith0DResult) {
   m.SetInputFloat({1.0, 2.0, 3.0});
   m.SetPositions({1});
   m.Invoke();
-  EXPECT_THAT(m.GetOutputFloat(),
-              ElementsAreArray(ArrayFloatNear({2.0})));
+  EXPECT_THAT(m.GetOutputFloat(), ElementsAreArray(ArrayFloatNear({2.0})));
   EXPECT_TRUE(m.GetOutputShape().empty());
 }
 

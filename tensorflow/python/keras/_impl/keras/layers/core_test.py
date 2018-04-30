@@ -20,11 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
-from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -52,146 +51,133 @@ class CoreLayersTest(test.TestCase):
       dropout = keras.layers.Dropout(0.5)
       self.assertEqual(True, dropout.supports_masking)
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.SpatialDropout1D,
-          kwargs={'rate': 0.5},
-          input_shape=(2, 3, 4))
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_spatial_dropout(self):
+    testing_utils.layer_test(
+        keras.layers.SpatialDropout1D,
+        kwargs={'rate': 0.5},
+        input_shape=(2, 3, 4))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.SpatialDropout2D,
-          kwargs={'rate': 0.5},
-          input_shape=(2, 3, 4, 5))
+    testing_utils.layer_test(
+        keras.layers.SpatialDropout2D,
+        kwargs={'rate': 0.5},
+        input_shape=(2, 3, 4, 5))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.SpatialDropout2D,
-          kwargs={'rate': 0.5, 'data_format': 'channels_first'},
-          input_shape=(2, 3, 4, 5))
+    testing_utils.layer_test(
+        keras.layers.SpatialDropout2D,
+        kwargs={'rate': 0.5, 'data_format': 'channels_first'},
+        input_shape=(2, 3, 4, 5))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.SpatialDropout3D,
-          kwargs={'rate': 0.5},
-          input_shape=(2, 3, 4, 4, 5))
+    testing_utils.layer_test(
+        keras.layers.SpatialDropout3D,
+        kwargs={'rate': 0.5},
+        input_shape=(2, 3, 4, 4, 5))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.SpatialDropout3D,
-          kwargs={'rate': 0.5, 'data_format': 'channels_first'},
-          input_shape=(2, 3, 4, 4, 5))
+    testing_utils.layer_test(
+        keras.layers.SpatialDropout3D,
+        kwargs={'rate': 0.5, 'data_format': 'channels_first'},
+        input_shape=(2, 3, 4, 4, 5))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_activation(self):
     # with string argument
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Activation,
-          kwargs={'activation': 'relu'},
-          input_shape=(3, 2))
+    testing_utils.layer_test(
+        keras.layers.Activation,
+        kwargs={'activation': 'relu'},
+        input_shape=(3, 2))
 
     # with function argument
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Activation,
-          kwargs={'activation': keras.backend.relu},
-          input_shape=(3, 2))
+    testing_utils.layer_test(
+        keras.layers.Activation,
+        kwargs={'activation': keras.backend.relu},
+        input_shape=(3, 2))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_reshape(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Reshape,
-          kwargs={'target_shape': (8, 1)},
-          input_shape=(3, 2, 4))
+    testing_utils.layer_test(
+        keras.layers.Reshape,
+        kwargs={'target_shape': (8, 1)},
+        input_shape=(3, 2, 4))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Reshape,
-          kwargs={'target_shape': (-1, 1)},
-          input_shape=(3, 2, 4))
+    testing_utils.layer_test(
+        keras.layers.Reshape,
+        kwargs={'target_shape': (-1, 1)},
+        input_shape=(3, 2, 4))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Reshape,
-          kwargs={'target_shape': (1, -1)},
-          input_shape=(3, 2, 4))
+    testing_utils.layer_test(
+        keras.layers.Reshape,
+        kwargs={'target_shape': (1, -1)},
+        input_shape=(3, 2, 4))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Reshape,
-          kwargs={'target_shape': (-1, 1)},
-          input_shape=(None, None, 2))
+    testing_utils.layer_test(
+        keras.layers.Reshape,
+        kwargs={'target_shape': (-1, 1)},
+        input_shape=(None, None, 2))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_permute(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
+    testing_utils.layer_test(
+        keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_flatten(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Flatten, kwargs={}, input_shape=(3, 2, 4))
+    testing_utils.layer_test(
+        keras.layers.Flatten, kwargs={}, input_shape=(3, 2, 4))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_repeat_vector(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.RepeatVector, kwargs={'n': 3}, input_shape=(3, 2))
+    testing_utils.layer_test(
+        keras.layers.RepeatVector, kwargs={'n': 3}, input_shape=(3, 2))
 
   def test_lambda(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Lambda,
-          kwargs={'function': lambda x: x + 1},
-          input_shape=(3, 2))
+    testing_utils.layer_test(
+        keras.layers.Lambda,
+        kwargs={'function': lambda x: x + 1},
+        input_shape=(3, 2))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Lambda,
-          kwargs={
-              'function': lambda x, a, b: x * a + b,
-              'arguments': {
-                  'a': 0.6,
-                  'b': 0.4
-              }
-          },
-          input_shape=(3, 2))
+    testing_utils.layer_test(
+        keras.layers.Lambda,
+        kwargs={
+            'function': lambda x, a, b: x * a + b,
+            'arguments': {
+                'a': 0.6,
+                'b': 0.4
+            }
+        },
+        input_shape=(3, 2))
 
-    with self.test_session():
-      # test serialization with function
-      def f(x):
-        return x + 1
+    # test serialization with function
+    def f(x):
+      return x + 1
 
-      ld = keras.layers.Lambda(f)
-      config = ld.get_config()
-      ld = keras.layers.deserialize({
-          'class_name': 'Lambda',
-          'config': config
-      })
+    ld = keras.layers.Lambda(f)
+    config = ld.get_config()
+    ld = keras.layers.deserialize({
+        'class_name': 'Lambda',
+        'config': config
+    })
 
-      # test with lambda
-      ld = keras.layers.Lambda(
-          lambda x: keras.backend.concatenate([keras.backend.square(x), x]))
-      config = ld.get_config()
-      ld = keras.layers.Lambda.from_config(config)
+    # test with lambda
+    ld = keras.layers.Lambda(
+        lambda x: keras.backend.concatenate([math_ops.square(x), x]))
+    config = ld.get_config()
+    ld = keras.layers.Lambda.from_config(config)
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_dense(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 2))
+    testing_utils.layer_test(
+        keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 2))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 2))
+    testing_utils.layer_test(
+        keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 2))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Dense, kwargs={'units': 3}, input_shape=(None, None, 2))
+    testing_utils.layer_test(
+        keras.layers.Dense, kwargs={'units': 3}, input_shape=(None, None, 2))
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 5, 2))
+    testing_utils.layer_test(
+        keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 5, 2))
 
-    # Test regularization
+  def test_dense_regularization(self):
     with self.test_session():
       layer = keras.layers.Dense(
           3,
@@ -202,7 +188,7 @@ class CoreLayersTest(test.TestCase):
       layer(keras.backend.variable(np.ones((2, 4))))
       self.assertEqual(3, len(layer.losses))
 
-    # Test constraints
+  def test_dense_constraints(self):
     with self.test_session():
       k_constraint = keras.constraints.max_norm(0.01)
       b_constraint = keras.constraints.max_norm(0.01)
@@ -211,12 +197,6 @@ class CoreLayersTest(test.TestCase):
       layer(keras.backend.variable(np.ones((2, 4))))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
-
-  def test_eager_dense(self):
-    with context.eager_mode():
-      l = keras.layers.Dense(units=3,
-                             kernel_initializer=init_ops.zeros_initializer())
-      self.assertAllEqual(l(constant_op.constant([[1.0]])), [[0., 0., 0.]])
 
   def test_activity_regularization(self):
     with self.test_session():
@@ -255,4 +235,3 @@ class CoreLayersTest(test.TestCase):
 
 if __name__ == '__main__':
   test.main()
-

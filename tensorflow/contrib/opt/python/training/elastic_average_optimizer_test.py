@@ -38,20 +38,20 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
   worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
-    "worker": ["localhost:%s" % port for port in worker_ports],
-    "ps": ["localhost:%s" % port for port in ps_ports]
+      "worker": ["localhost:%s" % port for port in worker_ports],
+      "ps": ["localhost:%s" % port for port in ps_ports]
   }
   cs = server_lib.ClusterSpec(cluster_dict)
 
   workers = [
-    server_lib.Server(
-      cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
-    for ix in range(num_workers)
+      server_lib.Server(
+          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
+      for ix in range(num_workers)
   ]
   ps_servers = [
-    server_lib.Server(
-      cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
-    for ix in range(num_ps)
+      server_lib.Server(
+          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
+      for ix in range(num_ps)
   ]
 
   return cluster_dict, workers, ps_servers
@@ -68,15 +68,14 @@ def _get_workers(num_workers, period, workers, moving_rate):
     is_chief = (worker_id == 0)
     with graph.as_default():
       worker_device = "/job:worker/task:%d/cpu:0" % (worker_id)
-      ea_coustom = ElasticAverageCustomGetter(
-        worker_device=worker_device)
-      with variable_scope.variable_scope('',
-                                         custom_getter=ea_coustom), ops.device(
-        device_setter.replica_device_setter(worker_device=worker_device,
-                                            ps_device="/job:ps/task:0/cpu:0",
-                                            ps_tasks=1)):
-        global_step = variables.Variable(0, name='global_step',
-                                         trainable=False)
+      ea_coustom = ElasticAverageCustomGetter(worker_device=worker_device)
+      with variable_scope.variable_scope(
+          "", custom_getter=ea_coustom), ops.device(
+              device_setter.replica_device_setter(
+                  worker_device=worker_device,
+                  ps_device="/job:ps/task:0/cpu:0",
+                  ps_tasks=1)):
+        global_step = variables.Variable(0, name="global_step", trainable=False)
         var_0 = variable_scope.get_variable(initializer=0.0, name="v0")
         var_1 = variable_scope.get_variable(initializer=1.0, name="v1")
 
@@ -86,21 +85,19 @@ def _get_workers(num_workers, period, workers, moving_rate):
 
         sgd_opt = gradient_descent.GradientDescentOptimizer(1.0)
         opt = ElasticAverageOptimizer(
-          opt=sgd_opt,
-          num_worker=num_workers,
-          moving_rate=moving_rate,
-          communication_period=period,
-          ea_custom_getter=ea_coustom
-        )
+            opt=sgd_opt,
+            num_worker=num_workers,
+            moving_rate=moving_rate,
+            communication_period=period,
+            ea_custom_getter=ea_coustom)
         train_op = [
-          opt.apply_gradients(
-            ([grads_0, var_0],
-             [grads_1, var_1]), global_step)
+            opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
+                                global_step)
         ]
         easgd_hook = opt.make_session_run_hook(is_chief, worker_id)
       # Creates MonitoredSession
-      sess = training.MonitoredTrainingSession(workers[worker_id].target,
-                                               hooks=[easgd_hook])
+      sess = training.MonitoredTrainingSession(
+          workers[worker_id].target, hooks=[easgd_hook])
 
     sessions.append(sess)
     graphs.append(graph)
@@ -110,6 +107,7 @@ def _get_workers(num_workers, period, workers, moving_rate):
 
 
 class ElasticAverageOptimizerTest(test.TestCase):
+
   def _run(self, train_op, sess):
     sess.run(train_op)
 
@@ -117,15 +115,14 @@ class ElasticAverageOptimizerTest(test.TestCase):
     num_workers = 1
     communication_period = 2
     num_ps = 1
-    cluster, workers, _ = create_local_cluster(num_workers=num_workers,
-                                               num_ps=num_ps)
+    cluster, workers, _ = create_local_cluster(
+        num_workers=num_workers, num_ps=num_ps)
 
-    sessions, graphs, train_ops = _get_workers(num_workers,
-                                               communication_period,
-                                               workers, 1.0)
+    sessions, graphs, train_ops = _get_workers(
+        num_workers, communication_period, workers, 1.0)
 
-    var_0 = graphs[0].get_tensor_by_name('v0:0')
-    var_1 = graphs[0].get_tensor_by_name('v1:0')
+    var_0 = graphs[0].get_tensor_by_name("v0:0")
+    var_1 = graphs[0].get_tensor_by_name("v1:0")
     global_step = training_util.get_global_step(graphs[0])
     var_0_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v0:0")
     var_1_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v1:0")
@@ -166,18 +163,17 @@ class ElasticAverageOptimizerTest(test.TestCase):
     num_workers = 2
     communication_period = 1
     num_ps = 2
-    cluster, workers, _ = create_local_cluster(num_workers=num_workers,
-                                               num_ps=num_ps)
+    cluster, workers, _ = create_local_cluster(
+        num_workers=num_workers, num_ps=num_ps)
 
-    sessions, graphs, train_ops = _get_workers(num_workers,
-                                               communication_period,
-                                               workers, 0.5)
+    sessions, graphs, train_ops = _get_workers(
+        num_workers, communication_period, workers, 0.5)
 
-    var_0 = graphs[0].get_tensor_by_name('v0:0')
-    var_1 = graphs[0].get_tensor_by_name('v1:0')
+    var_0 = graphs[0].get_tensor_by_name("v0:0")
+    var_1 = graphs[0].get_tensor_by_name("v1:0")
 
-    var_0_1 = graphs[1].get_tensor_by_name('v0:0')
-    var_1_1 = graphs[1].get_tensor_by_name('v1:0')
+    var_0_1 = graphs[1].get_tensor_by_name("v0:0")
+    var_1_1 = graphs[1].get_tensor_by_name("v1:0")
 
     var_0_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v0:0")
     var_1_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v1:0")
@@ -201,25 +197,24 @@ class ElasticAverageOptimizerTest(test.TestCase):
 
   def testPS2TasksWithClusterSpecClass(self):
     cluster_spec = server_lib.ClusterSpec({
-      "ps": ["ps0:2222", "ps1:2222"],
-      "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
-    ea_coustom = ElasticAverageCustomGetter(
-      worker_device="/job:worker/task:0")
+    ea_coustom = ElasticAverageCustomGetter(worker_device="/job:worker/task:0")
     from tensorflow.python.training import device_setter
     with ops.device(
         device_setter.replica_device_setter(cluster=cluster_spec,
                                             worker_device="/job:worker/task:0",
                                             ps_device="/job:ps")), \
-         variable_scope.variable_scope('', custom_getter=ea_coustom):
+         variable_scope.variable_scope("", custom_getter=ea_coustom):
       v = variable_scope.get_variable(initializer=[1, 2], name="v")
-      w = variable_scope.get_variable(initializer=[2, 1], name='w')
-      v_g, w_g = ea_coustom._global_map[v],ea_coustom._global_map[w]
+      w = variable_scope.get_variable(initializer=[2, 1], name="w")
+      v_g, w_g = ea_coustom._global_map[v], ea_coustom._global_map[w]
       self.assertDeviceEqual("/job:worker/task:0", v.device)
       self.assertDeviceEqual("job:ps/task:0", v_g.device)
       self.assertDeviceEqual("/job:worker/task:0", w.device)
       self.assertDeviceEqual("job:ps/task:1", w_g.device)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   test.main()

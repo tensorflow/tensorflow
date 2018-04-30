@@ -86,6 +86,12 @@ class ElementalIrEmitter {
   virtual llvm::Value* EmitFloatMin(llvm::Value* lhs_value,
                                     llvm::Value* rhs_value) const;
 
+  llvm::Value* EmitIntegralMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                               bool is_signed) const;
+
+  llvm::Value* EmitIntegralMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                               bool is_signed) const;
+
   virtual StatusOr<llvm::Value*> EmitErfInv(PrimitiveType prim_type,
                                             llvm::Value* value) const;
 

@@ -154,7 +154,7 @@ struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, B2S> {
 #define INSTANTIATE(NUM_BLOCK_DIMS, T)                                      \
   template struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, false>; \
   template struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, true>;  \
-/**/
+  /**/
 
 #define INSTANTIATE_FOR_T(T) \
   TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(INSTANTIATE, T)

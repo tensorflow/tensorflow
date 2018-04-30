@@ -18,12 +18,15 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_MPI
 
-#include <string>
 #include <map>
+#include <string>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
+// Skip MPI C++ bindings support, this matches the usage in other places
+#define OMPI_SKIP_MPICXX
 #include "third_party/mpi/mpi.h"
 #define MPI_CHECK(cmd)                                                \
   do {                                                                \

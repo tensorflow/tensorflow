@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/constant_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -41,8 +42,33 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+std::unique_ptr<const NodeDef> StripTensorDataFromNodeDef(
+    OpKernelConstruction* ctx) {
+#ifndef __ANDROID__
+  DCHECK_EQ(NodeDef::descriptor()->field_count(), 5)
+      << "The NodeDef format has changed, and the attr-stripping code may need "
+      << "to be updated.";
+#endif
+  const NodeDef& original = ctx->def();
+  NodeDef* ret = new NodeDef;
+  ret->set_name(original.name());
+  ret->set_op(original.op());
+  ret->set_device(original.device());
+  // Strip the "value" attr from the returned NodeDef.
+  // NOTE(mrry): The present implementation of `OpKernel::OpKernel()` only uses
+  // attrs that affect the cardinality of list-typed inputs and outputs, so it
+  // is safe to drop other attrs from the NodeDef.
+  AddNodeAttr("dtype", ctx->output_type(0), ret);
+  return std::unique_ptr<const NodeDef>(ret);
+}
+
+}  // namespace
+
 ConstantOp::ConstantOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), tensor_(ctx->output_type(0)) {
+    : OpKernel(ctx, StripTensorDataFromNodeDef(ctx)),
+      tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
@@ -76,9 +102,15 @@ REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
+REGISTER_KERNEL(GPU, qint8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
+REGISTER_KERNEL(GPU, qint16);
+REGISTER_KERNEL(GPU, quint16);
+REGISTER_KERNEL(GPU, uint32);
+REGISTER_KERNEL(GPU, qint32);
 REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, uint64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
@@ -95,9 +127,15 @@ REGISTER_SYCL_KERNEL(SYCL, float);
 REGISTER_SYCL_KERNEL(SYCL, double);
 REGISTER_SYCL_KERNEL(SYCL, uint8);
 REGISTER_SYCL_KERNEL(SYCL, int8);
+REGISTER_SYCL_KERNEL(SYCL, qint8);
 REGISTER_SYCL_KERNEL(SYCL, uint16);
 REGISTER_SYCL_KERNEL(SYCL, int16);
+REGISTER_SYCL_KERNEL(SYCL, qint16);
+REGISTER_SYCL_KERNEL(SYCL, quint16);
+REGISTER_SYCL_KERNEL(SYCL, uint32);
+REGISTER_SYCL_KERNEL(SYCL, qint32);
 REGISTER_SYCL_KERNEL(SYCL, int64);
+REGISTER_SYCL_KERNEL(SYCL, uint64);
 REGISTER_SYCL_KERNEL(SYCL, bool);
 #undef REGISTER_SYCL_KERNEL
 #endif
@@ -145,7 +183,6 @@ typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
-
 
 template <typename Device, typename T, typename Index>
 class FillOp : public OpKernel {
@@ -221,13 +258,15 @@ REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
+REGISTER_KERNEL(GPU, complex64);
+REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, bool);
-// Currently we do not support filling strings and complex64 on GPU
+// Currently we do not support filling strings on GPU
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

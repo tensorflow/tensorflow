@@ -21,6 +21,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "Checkpoint"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CheckpointSaverHook"
     mtype: "<type \'type\'>"
   }
@@ -225,6 +229,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "VocabInfo"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "WorkerSessionCreator"
     mtype: "<type \'type\'>"
   }
@@ -234,7 +242,7 @@ tf_module {
   }
   member_method {
     name: "MonitoredTrainingSession"
-    argspec: "args=[\'master\', \'is_chief\', \'checkpoint_dir\', \'scaffold\', \'hooks\', \'chief_only_hooks\', \'save_checkpoint_secs\', \'save_summaries_steps\', \'save_summaries_secs\', \'config\', \'stop_grace_period_secs\', \'log_step_count_steps\', \'max_wait_secs\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\', \'None\', \'None\', \'None\', \'600\', \'<object object instance>\', \'<object object instance>\', \'None\', \'120\', \'100\', \'7200\'], "
+    argspec: "args=[\'master\', \'is_chief\', \'checkpoint_dir\', \'scaffold\', \'hooks\', \'chief_only_hooks\', \'save_checkpoint_secs\', \'save_summaries_steps\', \'save_summaries_secs\', \'config\', \'stop_grace_period_secs\', \'log_step_count_steps\', \'max_wait_secs\', \'save_checkpoint_steps\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\', \'None\', \'None\', \'None\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'None\', \'120\', \'100\', \'7200\', \'<object object instance>\'], "
   }
   member_method {
     name: "NewCheckpointReader"
@@ -402,7 +410,7 @@ tf_module {
   }
   member_method {
     name: "sdca_optimizer"
-    argspec: "args=[\'sparse_example_indices\', \'sparse_feature_indices\', \'sparse_feature_values\', \'dense_features\', \'example_weights\', \'example_labels\', \'sparse_indices\', \'sparse_weights\', \'dense_weights\', \'example_state_data\', \'loss_type\', \'l1\', \'l2\', \'num_loss_partitions\', \'num_inner_iterations\', \'adaptative\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'sparse_example_indices\', \'sparse_feature_indices\', \'sparse_feature_values\', \'dense_features\', \'example_weights\', \'example_labels\', \'sparse_indices\', \'sparse_weights\', \'dense_weights\', \'example_state_data\', \'loss_type\', \'l1\', \'l2\', \'num_loss_partitions\', \'num_inner_iterations\', \'adaptative\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "sdca_shrink_l1"
@@ -435,6 +443,10 @@ tf_module {
   member_method {
     name: "update_checkpoint_state"
     argspec: "args=[\'save_dir\', \'model_checkpoint_path\', \'all_model_checkpoint_paths\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "warm_start"
+    argspec: "args=[\'ckpt_to_initialize_from\', \'vars_to_warm_start\', \'var_name_to_vocab_info\', \'var_name_to_prev_var_name\'], varargs=None, keywords=None, defaults=[\'.*\', \'None\', \'None\'], "
   }
   member_method {
     name: "write_graph"

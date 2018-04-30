@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Constraints: functions that impose constraints on weights values.
+# pylint: disable=invalid-name
+"""Constraints: functions that impose constraints on weight values.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -23,8 +24,11 @@ import six
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.constraints.Constraint')
 class Constraint(object):
 
   def __call__(self, w):
@@ -34,6 +38,7 @@ class Constraint(object):
     return {}
 
 
+@tf_export('keras.constraints.MaxNorm', 'keras.constraints.max_norm')
 class MaxNorm(Constraint):
   """MaxNorm weight constraint.
 
@@ -54,10 +59,6 @@ class MaxNorm(Constraint):
           to constrain the weights of each filter tensor of size
           `(rows, cols, input_depth)`.
 
-  References:
-      - [Dropout: A Simple Way to Prevent Neural Networks from Overfitting
-        Srivastava, Hinton, et al.
-        2014](http://www.cs.toronto.edu/~rsalakhu/papers/srivastava14a.pdf)
   """
 
   def __init__(self, max_value=2, axis=0):
@@ -65,24 +66,25 @@ class MaxNorm(Constraint):
     self.axis = axis
 
   def __call__(self, w):
-    norms = K.sqrt(K.sum(K.square(w), axis=self.axis, keepdims=True))
+    norms = K.sqrt(
+        math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True))
     desired = K.clip(norms, 0, self.max_value)
-    w *= (desired / (K.epsilon() + norms))
-    return w
+    return w * (desired / (K.epsilon() + norms))
 
   def get_config(self):
     return {'max_value': self.max_value, 'axis': self.axis}
 
 
+@tf_export('keras.constraints.NonNeg', 'keras.constraints.non_neg')
 class NonNeg(Constraint):
   """Constrains the weights to be non-negative.
   """
 
   def __call__(self, w):
-    w *= K.cast(w >= 0., K.floatx())
-    return w
+    return w * math_ops.cast(math_ops.greater_equal(w, 0.), K.floatx())
 
 
+@tf_export('keras.constraints.UnitNorm', 'keras.constraints.unit_norm')
 class UnitNorm(Constraint):
   """Constrains the weights incident to each hidden unit to have unit norm.
 
@@ -105,12 +107,15 @@ class UnitNorm(Constraint):
 
   def __call__(self, w):
     return w / (
-        K.epsilon() + K.sqrt(K.sum(K.square(w), axis=self.axis, keepdims=True)))
+        K.epsilon() + K.sqrt(
+            math_ops.reduce_sum(
+                math_ops.square(w), axis=self.axis, keepdims=True)))
 
   def get_config(self):
     return {'axis': self.axis}
 
 
+@tf_export('keras.constraints.MinMaxNorm', 'keras.constraints.min_max_norm')
 class MinMaxNorm(Constraint):
   """MinMaxNorm weight constraint.
 
@@ -132,7 +137,7 @@ class MinMaxNorm(Constraint):
           has shape `(input_dim, output_dim)`,
           set `axis` to `0` to constrain each weight vector
           of length `(input_dim,)`.
-          In a `Conv2D` layer with `dim_ordering="channels_last"`,
+          In a `Conv2D` layer with `data_format="channels_last"`,
           the weight tensor has shape
           `(rows, cols, input_depth, output_depth)`,
           set `axis` to `[0, 1, 2]`
@@ -147,11 +152,12 @@ class MinMaxNorm(Constraint):
     self.axis = axis
 
   def __call__(self, w):
-    norms = K.sqrt(K.sum(K.square(w), axis=self.axis, keepdims=True))
-    desired = (self.rate * K.clip(norms, self.min_value, self.max_value) +
-               (1 - self.rate) * norms)
-    w *= (desired / (K.epsilon() + norms))
-    return w
+    norms = K.sqrt(
+        math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True))
+    desired = (
+        self.rate * K.clip(norms, self.min_value, self.max_value) +
+        (1 - self.rate) * norms)
+    return w * (desired / (K.epsilon() + norms))
 
   def get_config(self):
     return {
@@ -164,19 +170,23 @@ class MinMaxNorm(Constraint):
 
 # Aliases.
 
-# pylint: disable=invalid-name
 max_norm = MaxNorm
 non_neg = NonNeg
 unit_norm = UnitNorm
 min_max_norm = MinMaxNorm
 
-# pylint: enable=invalid-name
+# Legacy aliases.
+maxnorm = max_norm
+nonneg = non_neg
+unitnorm = unit_norm
 
 
+@tf_export('keras.constraints.serialize')
 def serialize(constraint):
   return serialize_keras_object(constraint)
 
 
+@tf_export('keras.constraints.deserialize')
 def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
       config,
@@ -185,6 +195,7 @@ def deserialize(config, custom_objects=None):
       printable_module_name='constraint')
 
 
+@tf_export('keras.constraints.get')
 def get(identifier):
   if identifier is None:
     return None
@@ -196,4 +207,5 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret constraint identifier:', identifier)
+    raise ValueError('Could not interpret constraint identifier: ' +
+                     str(identifier))

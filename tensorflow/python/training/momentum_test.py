@@ -66,7 +66,7 @@ class MomentumOptimizerTest(test.TestCase):
       mom_update = mom_opt.apply_gradients(
           zip([grads0, grads1], [var0, var1]))
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -78,13 +78,13 @@ class MomentumOptimizerTest(test.TestCase):
       self.assertEquals(slot0.get_shape(), var0.get_shape())
       slot1 = mom_opt.get_slot(var1, "momentum")
       self.assertEquals(slot1.get_shape(), var1.get_shape())
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.assertFalse(slot0 in variables.trainable_variables())
         self.assertFalse(slot1 in variables.trainable_variables())
 
       # Step 1: the momentum accumulators where 0. So we should see a normal
       # update: v -= grad * learning_rate
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.evaluate(mom_update)
       # Check that the momentum accumulators have been updated.
       self.assertAllCloseAccordingToType(np.array([0.1, 0.1]),
@@ -99,10 +99,10 @@ class MomentumOptimizerTest(test.TestCase):
           np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
           self.evaluate(var1))
       # Step 2: the momentum accumulators contain the previous update.
-      if context.in_graph_mode():
-        self.evaluate(mom_update)
-      else:
+      if context.executing_eagerly():
         mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      else:
+        self.evaluate(mom_update)
       # Check that the momentum accumulators have been updated.
       self.assertAllCloseAccordingToType(
           np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
@@ -142,7 +142,7 @@ class MomentumOptimizerTest(test.TestCase):
           [1.0, 2.0], dtype=dtypes.float32, name="var0")
       var1 = resource_variable_ops.ResourceVariable(
           [3.0, 4.0], dtype=dtypes.float32, name="var1")
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         loss = lambda: math_ops.reduce_sum(var0 + var1)
       else:
         loss = math_ops.reduce_sum(var0 + var1)
@@ -157,7 +157,7 @@ class MomentumOptimizerTest(test.TestCase):
           [1.0, 2.0], dtype=dtypes.float32, name="var2")
       var3 = resource_variable_ops.ResourceVariable(
           [3.0, 4.0], dtype=dtypes.float32, name="var3")
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         loss = lambda: math_ops.reduce_sum(var2 + var3)
       else:
         loss = math_ops.reduce_sum(var2 + var3)
@@ -237,7 +237,17 @@ class MomentumOptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+      # This test invokes the ResourceSparseApplyMomentum operation, which
+      # did not have a registered GPU kernel as of April 2018. With graph
+      # execution, the placement algorithm notices this and automatically
+      # places the variable in CPU (host) memory. With eager execution,
+      # the variable would be placed in GPU memory if available, which
+      # would then conflict with the future invocation of the
+      # ResourceSparseApplyMomentum operation.
+      # To work around this discrepancy, for now we force the variable
+      # to be placed on CPU.
+      with ops.device("/cpu:0"):
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
 
       # pylint: disable=cell-var-from-loop
       def loss():
@@ -247,7 +257,7 @@ class MomentumOptimizerTest(test.TestCase):
       # pylint: enable=cell-var-from-loop
 
       opt = momentum_lib.MomentumOptimizer(learning_rate=1.0, momentum=0.0)
-      sgd_op = opt.minimize(loss if context.in_eager_mode() else loss())
+      sgd_op = opt.minimize(loss)
       self.evaluate(variables.global_variables_initializer())
       # Run 1 step of sgd
       self.evaluate(sgd_op)
@@ -256,13 +266,23 @@ class MomentumOptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testMinimizeWith2DIndiciesForEmbeddingLookup(self):
-    var0 = resource_variable_ops.ResourceVariable(array_ops.ones([2, 2]))
+    # This test invokes the ResourceSparseApplyMomentum operation, which
+    # did not have a registered GPU kernel as of April 2018. With graph
+    # execution, the placement algorithm notices this and automatically
+    # places the variable in CPU (host) memory. With eager execution,
+    # the variable would be placed in GPU memory if available, which
+    # would then conflict with the future invocation of the
+    # ResourceSparseApplyMomentum operation.
+    # To work around this discrepancy, for now we force the variable
+    # to be placed on CPU.
+    with ops.device("/cpu:0"):
+      var0 = resource_variable_ops.ResourceVariable(array_ops.ones([2, 2]))
 
     def loss():
       return math_ops.reduce_sum(embedding_ops.embedding_lookup(var0, [[1]]))
 
     opt = momentum_lib.MomentumOptimizer(learning_rate=1.0, momentum=0.0)
-    sgd_op = opt.minimize(loss if context.in_eager_mode() else loss())
+    sgd_op = opt.minimize(loss)
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))

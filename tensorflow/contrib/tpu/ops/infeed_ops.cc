@@ -41,6 +41,7 @@ REGISTER_OP("InfeedEnqueue")
     .Attr("dtype: type")
     .Attr("shape: shape = {}")
     .Attr("device_ordinal: int = -1")
+    .SetShapeFn(shape_inference::NoOutputs)
     .SetIsStateful()
     .Doc(R"doc(
 An op which feeds a single Tensor value into the computation.
@@ -58,6 +59,7 @@ REGISTER_OP("InfeedEnqueueTuple")
     .Attr("dtypes: list(type)")
     .Attr("shapes: list(shape)")
     .Attr("device_ordinal: int = -1")
+    .SetShapeFn(shape_inference::NoOutputs)
     .SetIsStateful()
     .Doc(R"doc(
 An op which feeds multiple Tensor values into the computation as an XLA tuple.

@@ -57,6 +57,7 @@ namespace xla {
   V(kCall, "call", kHloOpcodeIsVariadic)                     \
   V(kCeil, "ceil")                                           \
   V(kClamp, "clamp")                                         \
+  V(kClz, "count-leading-zeros")                             \
   V(kComplex, "complex")                                     \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)       \
   V(kConditional, "conditional")                             \
@@ -76,9 +77,11 @@ namespace xla {
   V(kFft, "fft")                                             \
   V(kFloor, "floor")                                         \
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                 \
+  V(kGather, "gather")                                       \
   V(kGe, "greater-than-or-equal-to", kHloOpcodeIsComparison) \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
+  V(kHostCompute, "host-compute")                            \
   V(kImag, "imag")                                           \
   V(kInfeed, "infeed")                                       \
   V(kIsFinite, "is-finite")                                  \

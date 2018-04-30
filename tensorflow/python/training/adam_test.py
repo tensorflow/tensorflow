@@ -184,7 +184,7 @@ class AdamOptimizerTest(test.TestCase):
           # Shouldn't return non-slot variables from other graphs.
           self.assertEqual(0, len(opt.variables()))
 
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           self.evaluate(variables.global_variables_initializer())
           # Fetch params to validate initial values
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -194,7 +194,7 @@ class AdamOptimizerTest(test.TestCase):
 
         # Run 3 steps of Adam
         for t in range(1, 4):
-          if context.in_graph_mode():
+          if not context.executing_eagerly():
             self.evaluate(update)
           elif t > 1:
             opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
@@ -319,6 +319,15 @@ class AdamOptimizerTest(test.TestCase):
         # fails.
         optimizer.apply_gradients([(grads0, var0)])
 
+  def testSlotsUniqueEager(self):
+    with context.eager_mode():
+      v1 = resource_variable_ops.ResourceVariable(1.)
+      v2 = resource_variable_ops.ResourceVariable(1.)
+      opt = adam.AdamOptimizer(1.)
+      opt.minimize(lambda: v1 + v2)
+      # There should be two non-slot variables, and two unique slot variables
+      # for v1 and v2 respectively.
+      self.assertEqual(6, len(set(opt.variables())))
 
 if __name__ == "__main__":
   test.main()

@@ -226,22 +226,24 @@ void StepStatsCollector::BuildCostModel(
       if (node) {
         for (int i = 0; i < stats.output_size(); ++i) {
           const auto& output = stats.output(i);
-          cm->RecordMaxMemorySize(node, i, Bytes(output.tensor_description()
-                                                     .allocation_description()
-                                                     .allocated_bytes()),
-                                  stats.output(i).tensor_description().shape(),
-                                  node->output_types()[i]);
-          cm->RecordAllocationId(node, i, output.tensor_description()
-                                              .allocation_description()
-                                              .allocation_id());
+          int output_slot = output.slot();
+          cm->RecordMaxMemorySize(node, output_slot,
+                                  Bytes(output.tensor_description()
+                                            .allocation_description()
+                                            .allocated_bytes()),
+                                  output.tensor_description().shape(),
+                                  node->output_types()[output_slot]);
+          cm->RecordAllocationId(node, output_slot,
+                                 output.tensor_description()
+                                     .allocation_description()
+                                     .allocation_id());
         }
         cm->RecordMemoryStats(node, stats.memory_stats());
         // Use hardware stats to record the execution time if they're available,
         // otherwise use the regular (less accurate) stats
         string node_name = dev_stats.regular_stats->node_stats(i).node_name();
-        if (dev_stats.hardware_stats &&
-            name_to_hw_node_stats.find(node_name) !=
-                name_to_hw_node_stats.end()) {
+        if (dev_stats.hardware_stats && name_to_hw_node_stats.find(node_name) !=
+                                            name_to_hw_node_stats.end()) {
           const NodeExecStats& hw_stats = name_to_hw_node_stats[node_name];
           cm->RecordMaxExecutionTime(
               node, Microseconds(hw_stats.op_end_rel_micros()));

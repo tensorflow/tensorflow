@@ -132,7 +132,7 @@ class Normal(distribution.Distribution):
       TypeError: if `loc` and `scale` have different `dtype`.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]):
+    with ops.name_scope(name, values=[loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
@@ -187,9 +187,6 @@ class Normal(distribution.Distribution):
 
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
 
   def _log_cdf(self, x):
     return special_math.log_ndtr(self._z(x))
@@ -247,7 +244,7 @@ class NormalWithSoftplusScale(Normal):
                allow_nan_stats=True,
                name="NormalWithSoftplusScale"):
     parameters = locals()
-    with ops.name_scope(name, values=[scale]):
+    with ops.name_scope(name, values=[scale]) as name:
       super(NormalWithSoftplusScale, self).__init__(
           loc=loc,
           scale=nn.softplus(scale, name="softplus_scale"),

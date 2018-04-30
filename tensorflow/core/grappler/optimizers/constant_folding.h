@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -33,11 +33,12 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
-  static NodeDef CreateNodeDef(const string& name, const TensorValue& tensor);
+  static Status CreateNodeDef(const string& name, const TensorValue& tensor,
+                              NodeDef* node);
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 
-  ConstantFolding(DeviceBase* cpu_device);
+  explicit ConstantFolding(DeviceBase* cpu_device);
   ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device);
 
   ~ConstantFolding() override {}
@@ -79,7 +80,10 @@ class ConstantFolding : public GraphOptimizer {
   bool IsZeros(const NodeDef& node) const;
   void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node,
                                     GraphDef* graph);
-  Status ReplaceOperationWithConstant(double value,
+  void ReplaceOperationWithSnapshot(int input_to_forward, NodeDef* node,
+                                    GraphDef* graph);
+  void ReplaceSubtractionFromZeroByNegation(NodeDef* node, GraphDef* graph);
+  Status ReplaceOperationWithConstant(double value, const AttrValue& dtype_attr,
                                       const TensorShapeProto& shape,
                                       NodeDef* node, GraphDef* graph);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
@@ -88,7 +92,7 @@ class ConstantFolding : public GraphOptimizer {
   bool IsSimplifiableReduction(const NodeDef& node) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
-  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties,
+  Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
                        bool use_shape_info);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
@@ -112,4 +116,4 @@ class ConstantFolding : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_

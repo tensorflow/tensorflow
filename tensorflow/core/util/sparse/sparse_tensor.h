@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/dim_comparator.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace sparse {
@@ -59,8 +59,8 @@ class SparseTensor {
         shape_(shape.begin(), shape.end()),
         order_(order.begin(), order.end()),
         dims_(GetDimsFromIx(ix)) {
-    CHECK_EQ(ix.dtype(), DT_INT64) << "indices must be type int64 but got: "
-                                   << ix.dtype();
+    CHECK_EQ(ix.dtype(), DT_INT64)
+        << "indices must be type int64 but got: " << ix.dtype();
     CHECK(TensorShapeUtils::IsVector(vals.shape()))
         << "vals must be a vec, but got: " << vals.shape().DebugString();
     CHECK_EQ(ix.shape().dim_size(0), vals.shape().dim_size(0))

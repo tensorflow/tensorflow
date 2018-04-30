@@ -428,7 +428,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
       filenames.append(fn)
-      with open(fn+".tmp", "wb") as f:
+      with open(fn + ".tmp", "wb") as f:
         f.write(b"H" * self._header_bytes)
         if num_records > 0:
           f.write(self._Record(i, 0))
@@ -437,7 +437,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
             f.write(b"G" * gap_bytes)
           f.write(self._Record(i, j))
         f.write(b"F" * self._footer_bytes)
-      with open(fn+".tmp", "rb") as f:
+      with open(fn + ".tmp", "rb") as f:
         cdata = zlib.compress(f.read())
         with open(fn, "wb") as zf:
           zf.write(cdata)
@@ -455,7 +455,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
           all_records_str = "".join([
               str(i)[0]
               for i in range(self._record_bytes + self._hop_bytes *
-                           (num_overlapped_records - 1))
+                             (num_overlapped_records - 1))
           ])
           f.write(compat.as_bytes(all_records_str))
         f.write(b"F" * self._footer_bytes)
@@ -467,7 +467,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
       fn = os.path.join(self.get_temp_dir(),
                         "fixed_length_overlapped_record.%d.txt" % i)
       filenames.append(fn)
-      with open(fn+".tmp", "wb") as f:
+      with open(fn + ".tmp", "wb") as f:
         f.write(b"H" * self._header_bytes)
         if num_overlapped_records > 0:
           all_records_str = "".join([
@@ -477,7 +477,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
           ])
           f.write(compat.as_bytes(all_records_str))
         f.write(b"F" * self._footer_bytes)
-      with open(fn+".tmp", "rb") as f:
+      with open(fn + ".tmp", "rb") as f:
         cdata = zlib.compress(f.read())
         with open(fn, "wb") as zf:
           zf.write(cdata)
@@ -509,7 +509,10 @@ class FixedLengthRecordReaderTest(test.TestCase):
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
 
-  def _TestOneEpochWithHopBytes(self, files, num_overlapped_records, encoding=None):
+  def _TestOneEpochWithHopBytes(self,
+                                files,
+                                num_overlapped_records,
+                                encoding=None):
     with self.test_session() as sess:
       reader = io_ops.FixedLengthRecordReader(
           header_bytes=self._header_bytes,
@@ -565,13 +568,15 @@ class FixedLengthRecordReaderTest(test.TestCase):
 
   def testGzipOneEpochWithHopBytes(self):
     for num_overlapped_records in [0, 2]:
-      files = self._CreateGzipOverlappedRecordFiles(num_overlapped_records, )
-      self._TestOneEpochWithHopBytes(files, num_overlapped_records, encoding="GZIP")
+      files = self._CreateGzipOverlappedRecordFiles(num_overlapped_records,)
+      self._TestOneEpochWithHopBytes(
+          files, num_overlapped_records, encoding="GZIP")
 
   def testZlibOneEpochWithHopBytes(self):
     for num_overlapped_records in [0, 2]:
       files = self._CreateZlibOverlappedRecordFiles(num_overlapped_records)
-      self._TestOneEpochWithHopBytes(files, num_overlapped_records, encoding="ZLIB")
+      self._TestOneEpochWithHopBytes(
+          files, num_overlapped_records, encoding="ZLIB")
 
 
 class TFRecordReaderTest(test.TestCase):

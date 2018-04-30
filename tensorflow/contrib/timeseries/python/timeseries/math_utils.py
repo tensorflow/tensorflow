@@ -60,7 +60,7 @@ def clip_covariance(
   # TODO(allenl): Smarter scaling here so that correlations are preserved when
   # fiddling with diagonal elements.
   diagonal = array_ops.matrix_diag_part(covariance_matrix)
-  maximum = math_ops.reduce_max(diagonal, axis=-1, keep_dims=True)
+  maximum = math_ops.reduce_max(diagonal, axis=-1, keepdims=True)
   new_diagonal = gen_math_ops.maximum(
       diagonal, maximum / maximum_variance_ratio)
   return array_ops.matrix_set_diag(
@@ -185,7 +185,7 @@ def batch_matrix_pow(matrices, powers):
                     { matmul(A, power(matmul(A, A), (p - 1) / 2)) for odd p
       power(A, 0) = I
 
-    The power(A, 0) = I case is handeled by starting with accumulator set to the
+    The power(A, 0) = I case is handled by starting with accumulator set to the
     identity matrix; matrices with zero residual powers are passed through
     unchanged.
 

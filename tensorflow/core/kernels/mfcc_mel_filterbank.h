@@ -27,10 +27,8 @@ class MfccMelFilterbank {
  public:
   MfccMelFilterbank();
   bool Initialize(int input_length,  // Number of unique FFT bins fftsize/2+1.
-                  double input_sample_rate,
-                  int output_channel_count,
-                  double lower_frequency_limit,
-                  double upper_frequency_limit);
+                  double input_sample_rate, int output_channel_count,
+                  double lower_frequency_limit, double upper_frequency_limit);
 
   // Takes a squared-magnitude spectrogram slice as input, computes a
   // triangular-mel-weighted linear-magnitude filterbank, and places the result
@@ -56,7 +54,7 @@ class MfccMelFilterbank {
   // FFT bin i contributes to the upper side of mel channel band_mapper_[i]
   std::vector<int> band_mapper_;
   int start_index_;  // Lowest FFT bin used to calculate mel spectrum.
-  int end_index_;  // Highest FFT bin used to calculate mel spectrum.
+  int end_index_;    // Highest FFT bin used to calculate mel spectrum.
 
   TF_DISALLOW_COPY_AND_ASSIGN(MfccMelFilterbank);
 };

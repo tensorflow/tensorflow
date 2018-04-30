@@ -319,14 +319,13 @@ class IsResourceInitialized : public OpKernel {
 // specified type. The type will be a part of the generated op name.
 // TODO(apassos): figure out how to get non-cpu-allocated tensors to work
 // through constant folding so this doesn't have to be marked as stateful.
-#define REGISTER_RESOURCE_HANDLE_OP(Type)                   \
-  REGISTER_OP(#Type "HandleOp")                             \
-      .Attr("container: string = ''")                       \
-      .Attr("shared_name: string = ''")                     \
-      .Output("resource: resource")                         \
-      .SetIsStateful()                                      \
-      .SetShapeFn(tensorflow::shape_inference::ScalarShape) \
-      .Doc("Creates a handle to a " #Type)
+#define REGISTER_RESOURCE_HANDLE_OP(Type) \
+  REGISTER_OP(#Type "HandleOp")           \
+      .Attr("container: string = ''")     \
+      .Attr("shared_name: string = ''")   \
+      .Output("resource: resource")       \
+      .SetIsStateful()                    \
+      .SetShapeFn(tensorflow::shape_inference::ScalarShape)
 
 // Utility op kernel to produce a handle to a resource of type T.
 template <typename T>

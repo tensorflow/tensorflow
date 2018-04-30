@@ -432,7 +432,7 @@ public class TensorTest {
     try (Tensor<Integer> t = Tensor.create(vector, Integer.class)) {
       fail("Tensor.create() should fail because it was given an array of boxed values");
     } catch (IllegalArgumentException e) {
-        // The expected exception
+      // The expected exception
     }
   }
 
@@ -534,6 +534,17 @@ public class TensorTest {
       assertEquals(src.numDimensions(), cpy.numDimensions());
       assertArrayEquals(src.shape(), cpy.shape());
       assertArrayEquals(matrix, cpy.copyTo(new float[2][3]));
+    }
+  }
+
+  @Test
+  public void gracefullyFailCreationFromNullArrayForStringTensor() {
+    // Motivated by: https://github.com/tensorflow/tensorflow/issues/17130
+    byte[][] array = new byte[1][];
+    try {
+      Tensors.create(array);
+    } catch (NullPointerException e) {
+      // expected.
     }
   }
 }

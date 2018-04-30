@@ -5,7 +5,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'logdir\', \'graph\', \'max_queue\', \'flush_secs\', \'graph_def\', \'filename_suffix\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'120\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'logdir\', \'graph\', \'max_queue\', \'flush_secs\', \'graph_def\', \'filename_suffix\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'120\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_event"

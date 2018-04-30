@@ -118,9 +118,9 @@ template <class InputDataT,
           tensorflow::errors::InvalidArgument(
               "periodic_resample expects the size of non-adjustable "
               "dimensions be at least as large as size of input tensor."
-              " Dimension ", i, " input tensor has size ",
-              input_tensor_shape.dim_size(i), ", desired shape has size ",
-              desired_shape[i], "."));
+              " Dimension ",
+              i, " input tensor has size ", input_tensor_shape.dim_size(i),
+              ", desired shape has size ", desired_shape[i], "."));
 
       // target_dimensions[i] = desired_shape(i);
       target_dimensions[i] = desired_shape[i];

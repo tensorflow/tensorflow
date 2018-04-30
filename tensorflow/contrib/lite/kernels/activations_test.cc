@@ -52,6 +52,14 @@ class BaseActivationsOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_)});
   }
 
+  BaseActivationsOpModel(BuiltinOperator type, const TensorData &input,
+                         const TensorData &output) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
+    BuildInterpreter({GetShape(input_)});
+  }
+
  protected:
   int input_;
   int output_;
@@ -141,6 +149,27 @@ TEST(FloatActivationsOpTest, Tanh) {
                                  0, -0.9999877, 0.9640275, 0.999329,    //
                                  0.99505475, -0.9640275, 1, 0.7615941,  //
                              })));
+}
+
+TEST(QuantizedActivationsOpTest, Tanh) {
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_TANH,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -8, 8},
+      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, -1, 1});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      -4, -2, 8, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0, -0.999987, 0.964027, 0.999329,     //
+                      -0.996078, -0.96402, 0.99999, 0.76159,  //
+                  },
+                  4 * (1. / 256))));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({128, 0, 251, 255, 0, 5, 255, 226}));
 }
 
 TEST(FloatActivationsOpTest, Sigmoid) {
@@ -311,6 +340,90 @@ TEST(QuantizedActivationsOpTest, Softmax2D) {
                                                  0.710949, 0.28905,   //
                                              },
                                              kQuantizedTolerance)));
+}
+
+// This contains the same test values as the Softmax test, but reference answer
+// generated via the following snippet of python:
+//   logits1 = tf.constant([[0, -6, 2, 4],[3, -2, 10, 1]], dtype=tf.float32)
+//   logits2 = tf.constant([[0,-6],[2,4],[3,-2],[10,1]], dtype=tf.float32)
+//   lsm1 = tf.nn.log_softmax(logits1)
+//   lsm2 = tf.nn.log_softmax(logits2)
+//   with tf.Session() as sess:
+//     print('lsm1', sess.run(lsm1))
+//     print('lsm2', sess.run(lsm2))
+
+TEST(FloatActivationsOpTest, LogSoftmax) {
+  FloatActivationsOpModel m(BuiltinOperator_LOG_SOFTMAX,
+                            /*input=*/{TensorType_FLOAT32, {2, 4}});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 -4.14297, -10.14297, -2.14297, -.142971,    //
+                                 -7.00104, -12.00104, -.00104087, -9.00104,  //
+                             })));
+
+  // Same input, but a different shape.
+  FloatActivationsOpModel m2(BuiltinOperator_LOG_SOFTMAX,
+                             /*input=*/{TensorType_FLOAT32, {4, 2}});
+  m2.SetInput({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                  -.00247565, -6.00247,   //
+                                  -2.12692, -.126928,     //
+                                  -.00671534, -5.00671,   //
+                                  -.000123374, -9.00012,  //
+                              })));
+}
+
+class PReluOpModel : public SingleOpModel {
+ public:
+  PReluOpModel(const TensorData& input, const TensorData& alpha) {
+    input_ = AddInput(input);
+    alpha_ = AddInput(alpha);
+    output_ = AddOutput(input);
+    SetBuiltinOp(BuiltinOperator_PRELU, BuiltinOptions_NONE, 0);
+    BuildInterpreter({GetShape(input_), GetShape(alpha_)});
+  }
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+  void SetAlpha(std::initializer_list<float> data) {
+    PopulateTensor(alpha_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int input_;
+  int alpha_;
+  int output_;
+};
+
+TEST(FloatActivationsOpTest, PRelu) {
+  PReluOpModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
+                 {TensorType_FLOAT32, {1, 1, 3}});
+
+  m.SetInput({
+      0.0f, 0.0f, 0.0f,     // Row 1, Column 1
+      1.0f, 1.0f, 1.0f,     // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,  // Row 2, Column 1
+      -2.0f, -2.0f, -2.0f,  // Row 1, Column 2
+  });
+  m.SetAlpha({0.0f, 1.0f, 2.0f});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 0.0f, 0.0f, 0.0f,    // Row 1, Column 1
+                                 1.0f, 1.0f, 1.0f,    // Row 1, Column 2
+                                 0.0f, -1.0f, -2.0f,  // Row 2, Column 1
+                                 0.0f, -2.0f, -4.0f,  // Row 1, Column 2
+                             }));
 }
 
 }  // namespace

@@ -825,17 +825,42 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
   EXPECT_THAT(c1->users(), ElementsAre(fusion));
 }
 
-// Convenience function for comparing two HloInstructions inside of
-// std::unique_ptrs.
-static bool Identical(std::unique_ptr<HloInstruction> instruction1,
-                      std::unique_ptr<HloInstruction> instruction2) {
+// Convenience function for comparing two HloInstructions.
+static bool Identical(const HloInstruction& instruction1,
+                      const HloInstruction& instruction2) {
   // Verify Identical is reflexive for both instructions.
-  EXPECT_TRUE(instruction1->Identical(*instruction1));
-  EXPECT_TRUE(instruction2->Identical(*instruction2));
+  EXPECT_TRUE(instruction1.Identical(instruction1));
+  EXPECT_TRUE(instruction2.Identical(instruction2));
 
-  bool is_equal = instruction1->Identical(*instruction2);
+  bool is_equal = instruction1.Identical(instruction2);
   // Verify Identical is symmetric.
-  EXPECT_EQ(is_equal, instruction2->Identical(*instruction1));
+  EXPECT_EQ(is_equal, instruction2.Identical(instruction1));
+  return is_equal;
+}
+
+// Convenience function for comparing two HloInstructions for structural
+// equality.
+static bool StructuralEqual(const HloInstruction& instruction1,
+                            const HloInstruction& instruction2) {
+  auto eq_operand_shapes = [](const HloInstruction* a,
+                              const HloInstruction* b) {
+    return ShapeUtil::Equal(a->shape(), b->shape());
+  };
+  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
+    return *a == *b;
+  };
+
+  // Verify Identical is reflexive for both instructions.
+  EXPECT_TRUE(
+      instruction1.Identical(instruction1, eq_operand_shapes, eq_computations));
+  EXPECT_TRUE(
+      instruction2.Identical(instruction2, eq_operand_shapes, eq_computations));
+
+  bool is_equal =
+      instruction1.Identical(instruction2, eq_operand_shapes, eq_computations);
+  // Verify Identical is symmetric.
+  EXPECT_EQ(is_equal, instruction2.Identical(instruction1, eq_operand_shapes,
+                                             eq_computations));
   return is_equal;
 }
 
@@ -858,42 +883,42 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
 
   // Operations which only depend on their operands and opcode.
   EXPECT_TRUE(
-      Identical(HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
-                HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1)));
+      Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
+                *HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1)));
   EXPECT_FALSE(
-      Identical(HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
-                HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op2)));
+      Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
+                *HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op2)));
   EXPECT_FALSE(
-      Identical(HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
-                HloInstruction::CreateUnary(shape, HloOpcode::kNegate, op1)));
+      Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
+                *HloInstruction::CreateUnary(shape, HloOpcode::kNegate, op1)));
 
   // Tuples.
-  EXPECT_TRUE(Identical(HloInstruction::CreateTuple({op1, op2}),
-                        HloInstruction::CreateTuple({op1, op2})));
-  EXPECT_FALSE(Identical(HloInstruction::CreateTuple({op1, op2}),
-                         HloInstruction::CreateTuple({op2, op1})));
+  EXPECT_TRUE(Identical(*HloInstruction::CreateTuple({op1, op2}),
+                        *HloInstruction::CreateTuple({op1, op2})));
+  EXPECT_FALSE(Identical(*HloInstruction::CreateTuple({op1, op2}),
+                         *HloInstruction::CreateTuple({op2, op1})));
 
   // Broadcasts.
-  EXPECT_TRUE(Identical(HloInstruction::CreateBroadcast(shape, op1, {0, 1}),
-                        HloInstruction::CreateBroadcast(shape, op1, {0, 1})));
-  EXPECT_FALSE(Identical(HloInstruction::CreateBroadcast(shape, op1, {0, 1}),
-                         HloInstruction::CreateBroadcast(shape, op1, {1, 0})));
+  EXPECT_TRUE(Identical(*HloInstruction::CreateBroadcast(shape, op1, {0, 1}),
+                        *HloInstruction::CreateBroadcast(shape, op1, {0, 1})));
+  EXPECT_FALSE(Identical(*HloInstruction::CreateBroadcast(shape, op1, {0, 1}),
+                         *HloInstruction::CreateBroadcast(shape, op1, {1, 0})));
   Shape bcast_shape1 = ShapeUtil::MakeShape(F32, {2, 2, 42});
   Shape bcast_shape2 = ShapeUtil::MakeShape(F32, {2, 2, 123});
   EXPECT_FALSE(
-      Identical(HloInstruction::CreateBroadcast(bcast_shape1, op1, {0, 1}),
-                HloInstruction::CreateBroadcast(bcast_shape2, op1, {0, 1})));
+      Identical(*HloInstruction::CreateBroadcast(bcast_shape1, op1, {0, 1}),
+                *HloInstruction::CreateBroadcast(bcast_shape2, op1, {0, 1})));
 
   // Binary operands.
   EXPECT_TRUE(Identical(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2)));
+      *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
+      *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2)));
   EXPECT_FALSE(Identical(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
-      HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op2, op1)));
+      *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
+      *HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op2, op1)));
   EXPECT_FALSE(Identical(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
-      HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op1, op2)));
+      *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
+      *HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op1, op2)));
 }
 
 TEST_F(HloInstructionTest, FunctionVisitor) {
@@ -1089,6 +1114,70 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
       ShapeUtil::Equal(root->operand(1)->shape(), root2->operand(1)->shape()));
   EXPECT_TRUE(ShapeUtil::Equal(root->operand(1)->operand(0)->shape(),
                                root2->operand(1)->operand(0)->shape()));
+  EXPECT_TRUE(StructuralEqual(*fusion, *fusion2));
+}
+
+TEST_F(HloInstructionTest, FusionEquality) {
+  HloModule module(TestName());
+  HloComputation::Builder builder(TestName());
+
+  // Create two fusion instructions containing a single unary operation.
+  auto parameter =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, parameter));
+  auto neg = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, parameter));
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {exp}, HloInstruction::FusionKind::kLoop);
+  auto* fusion2 = computation->CreateFusionInstruction(
+      {neg}, HloInstruction::FusionKind::kLoop);
+  EXPECT_FALSE(StructuralEqual(*fusion, *fusion2));
+
+  auto clone = fusion->Clone();
+  EXPECT_TRUE(StructuralEqual(*fusion, *clone));
+}
+
+TEST_F(HloInstructionTest, NestedFusionEquality) {
+  HloModule module(TestName());
+  HloComputation::Builder builder(TestName());
+
+  // Build a nested fusion computation.
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto a = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
+  auto b = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+  auto b_t = builder.AddInstruction(
+      HloInstruction::CreateTranspose(data_shape, b, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateDot(data_shape, a, b_t, dot_dnums));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto add_operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kAdd, dot, add_operand));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kSubtract, dot, add_operand));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kMultiply, add, sub));
+  auto computation = module.AddEntryComputation(builder.Build());
+
+  auto nested_fusion = computation->CreateFusionInstruction(
+      {dot, b_t}, HloInstruction::FusionKind::kTransposeDot);
+
+  auto fusion = computation->CreateFusionInstruction(
+      {add, nested_fusion}, HloInstruction::FusionKind::kOutput);
+  auto fusion2 = computation->CreateFusionInstruction(
+      {sub, nested_fusion}, HloInstruction::FusionKind::kOutput);
+  auto clone = fusion->Clone();
+  EXPECT_TRUE(StructuralEqual(*fusion, *clone));
+  EXPECT_FALSE(StructuralEqual(*fusion, *fusion2));
 }
 
 TEST_F(HloInstructionTest, CloneSuffixNames) {
@@ -1180,6 +1269,78 @@ TEST_F(HloInstructionTest, Stringification) {
             "%conditional = f32[5,20]{1,0} conditional(pred[] %constant, "
             "f32[5,10]{1,0} %x, f32[5,10]{1,0} %x), "
             "true_computation=%TransposeDot, false_computation=%TransposeDot");
+}
+
+TEST_F(HloInstructionTest, StringifyGather_0) {
+  Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
+  Shape gather_indices_tensor_shape =
+      ShapeUtil::MakeShape(S64, {10, 9, 8, 7, 5});
+  Shape gather_result_shape =
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26});
+
+  HloComputation::Builder builder("Gather");
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_tensor_shape, "input_tensor"));
+  HloInstruction* gather_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          1, gather_indices_tensor_shape, "gather_indices"));
+
+  HloInstruction* gather_instruction =
+      builder.AddInstruction(HloInstruction::CreateGather(
+          gather_result_shape, input, gather_indices,
+          HloInstruction::MakeGatherDimNumbers(
+              /*output_window_dims=*/{4, 5, 6, 7, 8},
+              /*elided_window_dims=*/{},
+              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+              /*index_vector_dim=*/4),
+          /*window_bounds=*/{30, 29, 28, 27, 26}));
+
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(gather_instruction->ToString(),
+            "%gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} "
+            "gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, "
+            "s64[10,9,8,7,5]{4,3,2,1,0} %gather_indices), "
+            "output_window_dims={4,5,6,7,8}, elided_window_dims={}, "
+            "gather_dims_to_operand_dims={0,1,2,3,4}, "
+            "index_vector_dim=4, window_bounds={30,29,28,27,26}");
+}
+
+TEST_F(HloInstructionTest, StringifyGather_1) {
+  Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
+  Shape gather_indices_tensor_shape =
+      ShapeUtil::MakeShape(S64, {10, 9, 5, 7, 6});
+  Shape gather_result_shape =
+      ShapeUtil::MakeShape(F32, {10, 9, 7, 6, 30, 29, 28, 27, 26});
+
+  HloComputation::Builder builder("Gather");
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_tensor_shape, "input_tensor"));
+  HloInstruction* gather_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          1, gather_indices_tensor_shape, "gather_indices"));
+
+  HloInstruction* gather_instruction =
+      builder.AddInstruction(HloInstruction::CreateGather(
+          gather_result_shape, input, gather_indices,
+          HloInstruction::MakeGatherDimNumbers(
+              /*output_window_dims=*/{4, 5, 6, 7, 8},
+              /*elided_window_dims=*/{},
+              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+              /*index_vector_dim=*/2),
+          /*window_bounds=*/{30, 29, 28, 27, 26}));
+
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(gather_instruction->ToString(),
+            "%gather = f32[10,9,7,6,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} "
+            "gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, "
+            "s64[10,9,5,7,6]{4,3,2,1,0} %gather_indices), "
+            "output_window_dims={4,5,6,7,8}, elided_window_dims={}, "
+            "gather_dims_to_operand_dims={0,1,2,3,4}, "
+            "index_vector_dim=2, window_bounds={30,29,28,27,26}");
 }
 
 }  // namespace

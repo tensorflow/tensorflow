@@ -286,7 +286,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
     TF_RETURN_IF_ERROR(out->Append(len));
     *crc32c = crc32c::Extend(*crc32c, reinterpret_cast<const char*>(&elem_size),
                              sizeof(uint64));
-    *bytes_written += sizeof(uint64);
+    *bytes_written += len.size();
 
     // Write the serialized variant.
     TF_RETURN_IF_ERROR(out->Append(elem));
@@ -913,8 +913,8 @@ Status BundleReader::LookupSlice(StringPiece full_tensor_key,
 Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
                                    const BundleEntryProto& full_tensor_entry,
                                    const TensorSlice& slice_spec, Tensor* val) {
-  using checkpoint::TensorSliceSet;
   using checkpoint::RegisterTensorSlice;
+  using checkpoint::TensorSliceSet;
   DCHECK_GE(full_tensor_entry.slices_size(), 0);
 
   const TensorShape full_shape(TensorShape(full_tensor_entry.shape()));

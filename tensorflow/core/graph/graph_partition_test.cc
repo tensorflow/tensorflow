@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -120,7 +121,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
       if (ndef.op() == "_Recv") {
         bool has_control = false;
         for (const string& input_name : ndef.input()) {
-          if (StringPiece(input_name).starts_with("^")) {
+          if (str_util::StartsWith(input_name, "^")) {
             has_control = true;
             break;
           }
@@ -128,7 +129,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
         EXPECT_TRUE(has_control);
       }
       // Must have a control loop
-      if (StringPiece(ndef.name()).starts_with("_cloop")) {
+      if (str_util::StartsWith(ndef.name(), "_cloop")) {
         if (ndef.op() == "Enter") {
           has_control_enter = true;
         }

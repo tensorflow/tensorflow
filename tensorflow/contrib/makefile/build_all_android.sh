@@ -18,7 +18,7 @@
 set -e
 
 usage() {
-  echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-Es:t:Tx:a:X]"
+  echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-Es:t:Tx:a]"
   echo "-E enable experimental hexnn ops"
   echo "-s [sub_makefiles] sub makefiles separated by white space"
   echo "-t [build_target] build target for Android makefile [default=all]"
@@ -52,7 +52,7 @@ shift $((OPTIND - 1))
 
 if [ "$ARCH" == "tegra" ]; then
     if [[ -z "${JETPACK}" ]]; then
-        export JETPACK="$HOME/JetPack_Android_3.0"
+        export JETPACK="$HOME/JetPack_Android_3.2"
     fi
     if [ ! -d ${JETPACK} ]; then
         echo "Can't find Jetpack at ${JETPACK}"

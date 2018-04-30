@@ -37,6 +37,10 @@ namespace {
 // unit normal distribution, it should almost definitely never exceed 6.
 static constexpr float kZLimit = 6.0;
 
+// As bfloat16 has much less precision, the largest z-value will should be
+// larger than float32.
+static constexpr float kZLimitBfloat16 = 20.0;
+
 // A utility function to fill the given array with samples from the given
 // distribution, using the single adapter of the underlying generator
 template <class Distribution>
@@ -45,8 +49,8 @@ void FillRandomsWithSingles(PhiloxRandom gen,
                             int64 size) {
   int granularity = Distribution::kResultElementCount;
 
-  CHECK(size % granularity == 0) << " size: " << size
-                                 << " granularity: " << granularity;
+  CHECK(size % granularity == 0)
+      << " size: " << size << " granularity: " << granularity;
 
   SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
 
@@ -93,7 +97,7 @@ bool CheckSamplesMoments(const std::vector<T>& samples,
       // mode, given the large number of samples.
       moments_data[i] += moment;
       ++moments_sample_count_data[i];
-      moment *= samples_data[index];
+      moment *= static_cast<double>(samples_data[index]);
     }
   }
 
@@ -125,7 +129,7 @@ bool CheckSamplesMoments(const std::vector<T>& samples,
     const double z_test =
         fabs((moments[i] - moments_i_mean) / sqrt(total_variance));
 
-    if (z_test > z_limit) {
+    if (z_test > static_cast<double>(z_limit)) {
       LOG(ERROR) << "failing z_test:"
                  << " moment: " << i << " stride: " << stride
                  << " z_test: " << z_test << " z_limit: " << z_limit
@@ -250,6 +254,22 @@ void RandomParametersMomentsTest(int count, int max_moments,
                                       stride, z_limit);
     ASSERT_TRUE(status) << " NormalMomentsTest failing. seed: " << seed;
   }
+}
+
+TEST(PhiloxRandomTest, UniformBfloat16MomentsTest) {
+  const std::vector<int> strides = {0, 1, 4, 17};
+  UniformMomentsTest<bfloat16>(1 << 20, 40, strides, bfloat16(kZLimitBfloat16));
+}
+
+TEST(PhiloxRandomTest, NormalBfloat16MomentsTest) {
+  const std::vector<int> strides = {0, 1, 4, 17};
+  NormalMomentsTest<bfloat16>(8 << 20, 25, strides, bfloat16(kZLimitBfloat16));
+}
+
+TEST(PhiloxRandomTest, RandomParametersBfloat16MomentsTest) {
+  const std::vector<int> strides = {0, 1, 4, 17};
+  RandomParametersMomentsTest<bfloat16>(1 << 20, 40, strides,
+                                        bfloat16(kZLimitBfloat16));
 }
 
 TEST(PhiloxRandomTest, UniformFloatMomentsTest) {

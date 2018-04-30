@@ -21,19 +21,21 @@ limitations under the License.
 namespace Eigen {
 
 /** SoftMax
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Applies a softmax
-  *
-  * The input parameter is expected to be a col-major tensor with a rank of 2 (depth and other).
-  *
-  * The result can be assigned to a tensor of rank and dimensions equal to that of the input. The result will be laid out in col-major order.
-  *
-*/
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Applies a softmax
+ *
+ * The input parameter is expected to be a col-major tensor with a rank of 2
+ * (depth and other).
+ *
+ * The result can be assigned to a tensor of rank and dimensions equal to that
+ * of the input. The result will be laid out in col-major order.
+ *
+ */
 
 namespace {
 struct SoftmaxOp {
-  SoftmaxOp(const float beta) : beta_(beta) { }
+  SoftmaxOp(const float beta) : beta_(beta) {}
 
   template <typename Input>
   typename Input::Dimensions dimensions(const Input& input) const {
@@ -41,8 +43,7 @@ struct SoftmaxOp {
   }
 
   template <typename Input, typename Output, typename Device>
-  void eval(const Input& input, Output& output, const Device& device) const
-  {
+  void eval(const Input& input, Output& output, const Device& device) const {
 #if !defined(EIGEN_HAS_INDEX_LIST)
     // nvcc doesn't support cxx11
     Eigen::array<typename internal::traits<Input>::Index, 1> depth_dim;
@@ -56,35 +57,43 @@ struct SoftmaxOp {
 #else
     // Take advantage of cxx11 to give the compiler information it can use to
     // optimize the code.
-    Eigen::IndexList<Eigen::type2index<0>> depth_dim;
-    Eigen::IndexList<int, Eigen::type2index<1>> bcast;
+    Eigen::IndexList<Eigen::type2index<0> > depth_dim;
+    Eigen::IndexList<int, Eigen::type2index<1> > bcast;
     bcast.set(0, dimensions(input)[0]);
-    Eigen::IndexList<Eigen::type2index<1>, typename internal::traits<Input>::Index> dims2d;
+    Eigen::IndexList<Eigen::type2index<1>,
+                     typename internal::traits<Input>::Index>
+        dims2d;
     dims2d.set(1, dimensions(input)[1]);
 #endif
 
-    output.device(device) = ((input - input.maximum(depth_dim).eval().reshape(dims2d).broadcast(bcast)) * beta_).exp();
-    output.device(device) = output / (output.sum(depth_dim).eval().reshape(dims2d).broadcast(bcast));
+    output.device(device) =
+        ((input -
+          input.maximum(depth_dim).eval().reshape(dims2d).broadcast(bcast)) *
+         beta_)
+            .exp();
+    output.device(device) =
+        output /
+        (output.sum(depth_dim).eval().reshape(dims2d).broadcast(bcast));
   }
 
  private:
   const float beta_;
 };
-}
-
+}  // namespace
 
 template <typename Input>
-EIGEN_ALWAYS_INLINE
-static const TensorCustomUnaryOp<const SoftmaxOp, const Input>
-SoftMax(const Input& input, const float beta)
-{
-  EIGEN_STATIC_ASSERT(internal::traits<Input>::Layout == ColMajor, YOU_MADE_A_PROGRAMMING_MISTAKE);
-  EIGEN_STATIC_ASSERT(internal::traits<Input>::NumDimensions == 2, YOU_MADE_A_PROGRAMMING_MISTAKE);
+EIGEN_ALWAYS_INLINE static const TensorCustomUnaryOp<const SoftmaxOp,
+                                                     const Input>
+SoftMax(const Input& input, const float beta) {
+  EIGEN_STATIC_ASSERT(internal::traits<Input>::Layout == ColMajor,
+                      YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT(internal::traits<Input>::NumDimensions == 2,
+                      YOU_MADE_A_PROGRAMMING_MISTAKE);
 
   const SoftmaxOp op(beta);
   return input.customOp(op);
 }
 
-} // end namespace Eigen
+}  // end namespace Eigen
 
 #endif  // TENSORFLOW_CORE_KERNELS_EIGEN_SOFTMAX_H_

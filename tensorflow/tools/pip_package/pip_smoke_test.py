@@ -58,6 +58,10 @@ BLACKLIST = [
     # contrib
     "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",
     "//tensorflow/contrib/keras:testing_utils",
+    "//tensorflow/contrib/lite/python:interpreter",
+    "//tensorflow/contrib/lite/python:interpreter_test",
+    "//tensorflow/contrib/lite/python:interpreter.py",
+    "//tensorflow/contrib/lite/python:interpreter_test.py",
     "//tensorflow/contrib/ffmpeg:test_data",
     "//tensorflow/contrib/factorization/examples:mnist",
     "//tensorflow/contrib/factorization/examples:mnist.py",
@@ -65,13 +69,13 @@ BLACKLIST = [
     "//tensorflow/contrib/framework:checkpoint_ops_testdata",
     "//tensorflow/contrib/bayesflow:reinforce_simple_example",
     "//tensorflow/contrib/bayesflow:examples/reinforce_simple/reinforce_simple_example.py",  # pylint:disable=line-too-long
-    "//tensorflow/contrib/py2tf:py2tf_internal",
     "//tensorflow/contrib/timeseries/examples:predict",
     "//tensorflow/contrib/timeseries/examples:multivariate",
     "//tensorflow/contrib/timeseries/examples:known_anomaly",
     "//tensorflow/contrib/timeseries/examples:data/period_trend.csv",  # pylint:disable=line-too-long
     "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
     "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:test_utils",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/image:sparse_image_warp_test_data",
 ]
 
 

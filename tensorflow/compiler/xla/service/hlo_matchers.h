@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 namespace testing {
@@ -56,8 +57,8 @@ class HloParameterMatcher : public HloMatcher {
 // index to match.
 class HloGetTupleElementMatcher : public HloMatcher {
  public:
-  explicit HloGetTupleElementMatcher(
-      ::testing::Matcher<const HloInstruction*> operand, int64 tuple_index)
+  HloGetTupleElementMatcher(::testing::Matcher<const HloInstruction*> operand,
+                            int64 tuple_index)
       : HloMatcher(HloOpcode::kGetTupleElement, /*operands=*/{operand}),
         tuple_index_(tuple_index) {}
 
@@ -66,6 +67,68 @@ class HloGetTupleElementMatcher : public HloMatcher {
 
  private:
   int64 tuple_index_;
+};
+
+// Custom matcher for custom-call instructions, which accepts a matcher for its
+// call target.
+class HloCustomCallMatcher : public HloMatcher {
+ public:
+  HloCustomCallMatcher(
+      ::testing::Matcher<string> call_target_matcher,
+      std::vector<::testing::Matcher<const HloInstruction*>> operands)
+      : HloMatcher(HloOpcode::kCustomCall, operands),
+        call_target_matcher_(call_target_matcher) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  ::testing::Matcher<string> call_target_matcher_;
+};
+
+class HloShapeMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloShapeMatcher(const Shape& shape) : shape_(shape) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  Shape shape_;
+};
+
+class HloShapeAndLayoutMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloShapeAndLayoutMatcher(const Shape& shape) : shape_(shape) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  Shape shape_;
+};
+
+// Verify the sharding of an instruction against the provided HloSharding. If a
+// nullopt is provided for the expected sharding then it checks that no sharding
+// is present for an instruction.
+class HloShardingMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloShardingMatcher(
+      const tensorflow::gtl::optional<HloSharding>& sharding)
+      : sharding_(sharding) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  tensorflow::gtl::optional<HloSharding> sharding_;
 };
 
 // HloInstruction* matchers for opcode and operands. Example:
@@ -94,7 +157,6 @@ HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
 HLO_MATCHER(CrossReplicaSum);
-HLO_MATCHER(CustomCall);
 HLO_MATCHER(Divide);
 HLO_MATCHER(Dot);
 HLO_MATCHER(DynamicSlice);
@@ -182,6 +244,70 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement(
 inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement() {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloMatcher(HloOpcode::kGetTupleElement, {}));
+}
+
+// - CustomCall(T, operand1, ..., operandN) matches a CustomCall with call
+//   target T and the given operands.
+//
+// - CustomCall(operand1, ..., operandN) matches any CustomCall HLO with the
+//   given operands.
+//
+// - CustomCall() matches any CustomCall HLO at all.
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
+    ::testing::Matcher<string> call_target_matcher, M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloCustomCallMatcher(
+      call_target_matcher, {operands...}));
+}
+// This overload of CustomCall(A, B, C, ...) exists iff A is not convertible to
+// ::testing::Matcher<string>.  In that case, we want to prefer the overload
+// above.
+template <typename FirstM, typename... M,
+          typename Dummy = typename std::enable_if<
+              !std::is_convertible<FirstM, ::testing::Matcher<string>>::value,
+              void>::type*>
+inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
+    FirstM operands_first, M... operands_rest) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(
+      HloOpcode::kCustomCall, {operands_first, operands_rest...}));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kCustomCall, {}));
+}
+
+// Verifies the shape or the shape and the layout of an HLO instruction against
+// the provided shape object.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
+    const class Shape& shape) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(shape));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
+    tensorflow::StringPiece shape) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(
+      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
+    const class Shape& shape) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShapeAndLayoutMatcher(shape));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
+    tensorflow::StringPiece shape) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
+      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+}
+
+// Verifies the value of the HloSharing against the provided sharding object.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
+    const HloSharding& sharding) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShardingMatcher(sharding));
+}
+// Verifies that no HloSharding is set for an HLO instruction.
+inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShardingMatcher(tensorflow::gtl::nullopt));
 }
 
 #undef HLO_MATCHER

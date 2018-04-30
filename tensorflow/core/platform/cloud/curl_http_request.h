@@ -75,6 +75,8 @@ class CurlHttpRequest : public HttpRequest {
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
   void AddAuthBearerHeader(const string& auth_token) override;
 
+  void SetRequestStats(RequestStats* stats) override;
+
   /// Makes the request a DELETE request.
   void SetDeleteRequest() override;
 
@@ -186,6 +188,8 @@ class CurlHttpRequest : public HttpRequest {
   curl_slist* curl_headers_ = nullptr;
   curl_slist* resolve_list_ = nullptr;
 
+  RequestStats* stats_ = nullptr;
+
   std::vector<char> default_response_buffer_;
 
   std::unordered_map<string, string> response_headers_;
@@ -213,6 +217,7 @@ class CurlHttpRequest : public HttpRequest {
 
   // Store the URI to help disambiguate requests when errors occur.
   string uri_;
+  RequestMethod method_ = RequestMethod::kGet;
 
   // Limit the size of a http response that is copied into an error message.
   const size_t response_to_error_limit_ = 500;
@@ -229,26 +234,28 @@ class LibCurl {
 
   virtual CURL* curl_easy_init() = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    uint64 param) = 0;
+                                    uint64 param) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    const char* param) = 0;
+                                    const char* param) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    void* param) = 0;
-  virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    size_t (*param)(void*, size_t, size_t,
-                                                    FILE*)) = 0;
+                                    void* param) TF_MUST_USE_RESULT = 0;
+  virtual CURLcode curl_easy_setopt(
+      CURL* curl, CURLoption option,
+      size_t (*param)(void*, size_t, size_t, FILE*)) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                                     size_t (*param)(const void*, size_t, size_t,
-                                                    void*)) = 0;
+                                                    void*))
+      TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(
       CURL* curl, CURLoption option,
       int (*param)(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
-                   curl_off_t ultotal, curl_off_t ulnow)) = 0;
-  virtual CURLcode curl_easy_perform(CURL* curl) = 0;
+                   curl_off_t ultotal,
+                   curl_off_t ulnow)) TF_MUST_USE_RESULT = 0;
+  virtual CURLcode curl_easy_perform(CURL* curl) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                                     uint64* value) = 0;
+                                     uint64* value) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                                     double* value) = 0;
+                                     double* value) TF_MUST_USE_RESULT = 0;
   virtual void curl_easy_cleanup(CURL* curl) = 0;
   virtual curl_slist* curl_slist_append(curl_slist* list, const char* str) = 0;
   virtual void curl_slist_free_all(curl_slist* list) = 0;
@@ -257,6 +264,17 @@ class LibCurl {
 
   virtual const char* curl_easy_strerror(CURLcode errornum) = 0;
 };
+
+Status CURLcodeToStatus(CURLcode code);
+
+#define TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(_code, ...)                    \
+  do {                                                                      \
+    if (_code != CURLE_OK) {                                                \
+      ::tensorflow::Status _status = ::tensorflow::CURLcodeToStatus(_code); \
+      ::tensorflow::errors::AppendToMessage(&_status, __VA_ARGS__);         \
+      return _status;                                                       \
+    }                                                                       \
+  } while (0)
 
 }  // namespace tensorflow
 

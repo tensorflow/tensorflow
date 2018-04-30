@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -47,8 +47,9 @@ class DiagOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& diagonal = context->input(0);
     const int num_dims = diagonal.dims();
-    OP_REQUIRES(context, 0 != num_dims, errors::InvalidArgument(
-        "Input must be at least rank 1, got 0"));
+    OP_REQUIRES(
+        context, 0 != num_dims,
+        errors::InvalidArgument("Input must be at least rank 1, got 0"));
     TensorShape out_shape;
     for (int i = 0; i < num_dims; ++i) {
       out_shape.AddDim(diagonal.dim_size(i));
@@ -60,10 +61,9 @@ class DiagOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, out_shape, &output_tensor));
     functor::DiagFunctor<Device, T> diagFunc;
-    Status s = diagFunc(context,
-                        diagonal.NumElements(),
-                        diagonal.flat<T>().data(),
-                        output_tensor->flat<T>().data());
+    Status s =
+        diagFunc(context, diagonal.NumElements(), diagonal.flat<T>().data(),
+                 output_tensor->flat<T>().data());
     OP_REQUIRES_OK(context, s);
   }
 };
@@ -82,12 +82,12 @@ class DiagPartOp : public OpKernel {
                 errors::InvalidArgument("The rank of the tensor should be \
                                          even and positive, got shape ",
                                         tensor.shape().DebugString()));
-    for (int i = 0; i < out_dims; i++){
-      OP_REQUIRES(context, tensor.dim_size(i) == tensor.dim_size(i + out_dims),
-                  errors::InvalidArgument(
-                    "Invalid shape ", tensor.shape().DebugString(),
-                    ": dimensions ", i, " and ", i + out_dims, " do not match.")
-                  );
+    for (int i = 0; i < out_dims; i++) {
+      OP_REQUIRES(
+          context, tensor.dim_size(i) == tensor.dim_size(i + out_dims),
+          errors::InvalidArgument("Invalid shape ",
+                                  tensor.shape().DebugString(), ": dimensions ",
+                                  i, " and ", i + out_dims, " do not match."));
     }
 
     TensorShape out_shape;
@@ -96,13 +96,10 @@ class DiagPartOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, out_shape, &output));
+    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
     functor::DiagPartFunctor<Device, T> diagPartFunc;
-    Status s = diagPartFunc(context,
-                            out_shape.num_elements(),
-                            tensor.flat<T>().data(),
-                            output->flat<T>().data());
+    Status s = diagPartFunc(context, out_shape.num_elements(),
+                            tensor.flat<T>().data(), output->flat<T>().data());
     OP_REQUIRES_OK(context, s);
   }
 };
@@ -129,9 +126,8 @@ class DiagPartOp : public OpKernel {
 namespace functor {
 template <typename T>
 struct DiagFunctor<CPUDevice, T> {
-  EIGEN_ALWAYS_INLINE Status
-  operator() (OpKernelContext* context, const int64 size,
-              const T* in, T* out) {
+  EIGEN_ALWAYS_INLINE Status operator()(OpKernelContext* context,
+                                        const int64 size, const T* in, T* out) {
     // This subprocess is responsible for writing values in index range
     // [start*size, limit*size)
     auto subDiag = [in, out, size](int64 start, int64 limit) {
@@ -143,17 +139,16 @@ struct DiagFunctor<CPUDevice, T> {
 
     // Here, 5 is a empirical factor of cost_per_unit.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-    Shard(worker_threads.num_threads, worker_threads.workers, size,
-        5 * size, subDiag);
+    Shard(worker_threads.num_threads, worker_threads.workers, size, 5 * size,
+          subDiag);
     return Status::OK();
   }
 };
 
 template <typename T>
 struct DiagPartFunctor<CPUDevice, T> {
-  EIGEN_ALWAYS_INLINE Status
-  operator() (OpKernelContext* context, const int64 size,
-              const T* in, T* out) {
+  EIGEN_ALWAYS_INLINE Status operator()(OpKernelContext* context,
+                                        const int64 size, const T* in, T* out) {
     // This subprocess is responsible for extracting values in index range
     // [start, limit)
     auto subDiagPart = [in, out, size](int64 start, int64 limit) {
@@ -164,13 +159,12 @@ struct DiagPartFunctor<CPUDevice, T> {
 
     // Here, 5 is a empirical factor of cost_per_unit.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-    Shard(worker_threads.num_threads, worker_threads.workers, size,
-        5, subDiagPart);
+    Shard(worker_threads.num_threads, worker_threads.workers, size, 5,
+          subDiagPart);
     return Status::OK();
   }
 };
 }  // namespace functor
-
 
 // Register the CPU kernels.
 #define REGISTER_DIAGOP(T)                                    \
@@ -250,6 +244,4 @@ TF_CALL_complex128(REGISTER_DIAGPARTOP_GPU);
 
 #endif  // GOOGLE_CUDA
 
-
 }  // namespace tensorflow
-

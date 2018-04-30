@@ -25,11 +25,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// The current implementation simply unrolls the computation along the batch
-// dimension.
 xla::StatusOr<xla::ComputationDataHandle> BatchDot(
     xla::ComputationBuilder* builder, xla::ComputationDataHandle x,
-    xla::ComputationDataHandle y, bool transpose_x, bool transpose_y) {
+    xla::ComputationDataHandle y, bool transpose_x, bool transpose_y,
+    bool conjugate_x, bool conjugate_y) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> x_shape,
                       builder->GetShape(x));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> y_shape,
@@ -89,10 +88,10 @@ xla::StatusOr<xla::ComputationDataHandle> BatchDot(
         dimensions);
   }
 
-  if (x_shape->element_type() == xla::C64 && transpose_x) {
+  if (x_shape->element_type() == xla::C64 && conjugate_x) {
     x = builder->Conj(x);
   }
-  if (y_shape->element_type() == xla::C64 && transpose_y) {
+  if (y_shape->element_type() == xla::C64 && conjugate_y) {
     y = builder->Conj(y);
   }
 

@@ -247,8 +247,9 @@ Status SingleExampleProtoToTensors(
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
       if (!types_match) {
-        return errors::InvalidArgument("Name: ", example_name, ", Feature: ",
-                                       key, ".  Data types don't match. ",
+        return errors::InvalidArgument("Name: ", example_name,
+                                       ", Feature: ", key,
+                                       ".  Data types don't match. ",
                                        "Expected type: ", DataTypeString(dtype),
                                        "  Feature is: ", ProtoDebugString(f));
       }
@@ -278,8 +279,9 @@ Status SingleExampleProtoToTensors(
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
       if (!types_match) {
-        return errors::InvalidArgument("Name: ", example_name, ", Feature: ",
-                                       key, ".  Data types don't match. ",
+        return errors::InvalidArgument("Name: ", example_name,
+                                       ", Feature: ", key,
+                                       ".  Data types don't match. ",
                                        "Expected type: ", DataTypeString(dtype),
                                        "  Feature is: ", ProtoDebugString(f));
       }

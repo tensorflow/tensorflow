@@ -27,6 +27,10 @@ limitations under the License.
 #define TFLITE_DCHECK_EQ(x, y) ((x) == (y)) ? (void)0 : assert(false)
 #endif
 
+#ifndef TFLITE_DCHECK_NE
+#define TFLITE_DCHECK_NE(x, y) ((x) != (y)) ? (void)0 : assert(false)
+#endif
+
 #ifndef TFLITE_DCHECK_GE
 #define TFLITE_DCHECK_GE(x, y) ((x) >= (y)) ? (void)0 : assert(false)
 #endif
@@ -52,6 +56,10 @@ limitations under the License.
 #define TFLITE_CHECK_EQ(x, y) ((x) == (y)) ? (void)0 : abort()
 #endif
 
+#ifndef TFLITE_CHECK_NE
+#define TFLITE_CHECK_NE(x, y) ((x) != (y)) ? (void)0 : abort()
+#endif
+
 #ifndef TFLITE_CHECK_GE
 #define TFLITE_CHECK_GE(x, y) ((x) >= (y)) ? (void)0 : abort()
 #endif
@@ -69,6 +77,7 @@ limitations under the License.
 #endif
 
 // TODO(ahentz): Clean up.
+using int8 = std::int8_t;
 using uint8 = std::uint8_t;
 using int16 = std::int16_t;
 using uint16 = std::uint16_t;

@@ -23,6 +23,20 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+REGISTER_OP("RegexReplace")
+    .Input("input: string")
+    .Input("pattern: string")
+    .Input("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
     .Output("output: int64")
@@ -109,6 +123,11 @@ REGISTER_OP("StringSplit")
       return Status::OK();
     });
 
+REGISTER_OP("StringStrip")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("EncodeBase64")
     .Input("input: string")
     .Output("output: string")
@@ -137,9 +156,9 @@ REGISTER_OP("Substr")
         DimensionHandle pos_dim = c->Dim(pos_shape, i);
         DimensionHandle len_dim = c->Dim(len_shape, i);
         if (c->Value(pos_dim) != c->Value(len_dim)) {
-          return errors::InvalidArgument("pos and len shapes must match: ",
-                                         c->DebugString(pos_shape), " vs. ",
-                                         c->DebugString(len_shape));
+          return errors::InvalidArgument(
+              "pos and len shapes must match: ", c->DebugString(pos_shape),
+              " vs. ", c->DebugString(len_shape));
         }
       }
       // c->input(0) is the ShapeHandle to input strings

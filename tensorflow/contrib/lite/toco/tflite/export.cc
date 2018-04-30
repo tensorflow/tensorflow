@@ -26,6 +26,9 @@ namespace toco {
 
 namespace tflite {
 
+using flatbuffers::FlatBufferBuilder;
+using flatbuffers::Offset;
+using flatbuffers::Vector;
 using ::tflite::Buffer;
 using ::tflite::BuiltinOperator;
 using ::tflite::BuiltinOperator_CUSTOM;
@@ -39,9 +42,6 @@ using ::tflite::Operator;
 using ::tflite::OperatorCode;
 using ::tflite::SubGraph;
 using ::tflite::Tensor;
-using flatbuffers::FlatBufferBuilder;
-using flatbuffers::Offset;
-using flatbuffers::Vector;
 
 namespace {
 
@@ -300,6 +300,17 @@ void Export(const Model& model, bool allow_custom_ops,
   std::set<string> error_summary;
   auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
                                       &builder, &error_summary);
+  const string fake_quant_operation_name = "FAKE_QUANT";
+  if (error_summary.count(fake_quant_operation_name) != 0) {
+    LOG(ERROR)
+        << fake_quant_operation_name
+        << " operation was not converted. If running quantized make sure you "
+           "are passing --inference_type=QUANTIZED_UINT8 and values for "
+           "--std_values and --mean_values.";
+    // Remove the fake quant operation from the errors, since it shouldn't
+    // be provided a custom implementation.
+    error_summary.erase(fake_quant_operation_name);
+  }
   if (!allow_custom_ops && !error_summary.empty()) {
     LOG(QFATAL) << "Some of the operators in the model are not supported by "
                    "the standard TensorFlow Lite runtime. If you have a custom "

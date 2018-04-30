@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
@@ -39,12 +40,12 @@ class NoiseLayersTest(test.TestCase):
           kwargs={'rate': 0.5},
           input_shape=(3, 2, 3))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_AlphaDropout(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.AlphaDropout,
-          kwargs={'rate': 0.2},
-          input_shape=(3, 2, 3))
+    testing_utils.layer_test(
+        keras.layers.AlphaDropout,
+        kwargs={'rate': 0.2},
+        input_shape=(3, 2, 3))
 
 
 if __name__ == '__main__':

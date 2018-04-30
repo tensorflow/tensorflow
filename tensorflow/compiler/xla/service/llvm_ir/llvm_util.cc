@@ -20,9 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -59,6 +62,16 @@ string AsString(const std::string& str) {
 
 llvm::StringRef AsStringRef(tensorflow::StringPiece str) {
   return llvm::StringRef(str.data(), str.size());
+}
+
+std::unique_ptr<llvm::Module> DropConstantInitializers(
+    const llvm::Module& module) {
+  std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
+  for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
+    global_var.setInitializer(nullptr);
+    global_var.setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);
+  }
+  return cloned_module;
 }
 
 string DumpModuleToString(const llvm::Module& module) {
@@ -94,8 +107,10 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = ir_builder->CreateFCmpUGE(lhs_value, rhs_value);
     return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
-    return EmitCallToIntrinsic(llvm::Intrinsic::maxnum, {lhs_value, rhs_value},
-                               {lhs_value->getType()}, ir_builder);
+    auto cmp_ge = ir_builder->CreateFCmpOGE(lhs_value, rhs_value);
+    auto lhs_is_nan = ir_builder->CreateFCmpUNE(lhs_value, lhs_value);
+    auto sel_lhs = ir_builder->CreateOr(cmp_ge, lhs_is_nan);
+    return ir_builder->CreateSelect(sel_lhs, lhs_value, rhs_value);
   }
 }
 
@@ -105,8 +120,10 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = ir_builder->CreateFCmpULE(lhs_value, rhs_value);
     return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
-    return EmitCallToIntrinsic(llvm::Intrinsic::minnum, {lhs_value, rhs_value},
-                               {lhs_value->getType()}, ir_builder);
+    auto cmp_le = ir_builder->CreateFCmpOLE(lhs_value, rhs_value);
+    auto lhs_is_nan = ir_builder->CreateFCmpUNE(lhs_value, lhs_value);
+    auto sel_lhs = ir_builder->CreateOr(cmp_le, lhs_is_nan);
+    return ir_builder->CreateSelect(sel_lhs, lhs_value, rhs_value);
   }
 }
 
@@ -672,6 +689,19 @@ static string GetProcessUniqueIrFileName(tensorflow::StringPiece prefix) {
   return uniquer->GetUniqueName(prefix);
 }
 
+static Status CreateAndWriteStringToFile(const string& directory_name,
+                                         const string& file_name,
+                                         const string& text) {
+  std::unique_ptr<tensorflow::WritableFile> f;
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
+  TF_RETURN_IF_ERROR(f->Append(text));
+  TF_RETURN_IF_ERROR(f->Close());
+  return Status::OK();
+}
+
 Status DumpIRToDirectory(const string& directory_name,
                          const string& hlo_module_name,
                          const llvm::Module& llvm_module, bool optimized) {
@@ -686,13 +716,17 @@ Status DumpIRToDirectory(const string& directory_name,
       directory_name,
       tensorflow::strings::StrCat(unique_and_safe_file_name, ".ll"));
 
-  std::unique_ptr<tensorflow::WritableFile> f;
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewWritableFile(ir_file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(DumpModuleToString(llvm_module)));
-  return f->Close();
+  // For some models the embedded constants can be huge, so also dump the module
+  // with the constants stripped to get IR that is easier to manipulate.
+  string ir_no_constant_initializers_file_name = tensorflow::io::JoinPath(
+      directory_name,
+      tensorflow::strings::StrCat(unique_and_safe_file_name, "-noconst.ll"));
+
+  TF_RETURN_IF_ERROR(CreateAndWriteStringToFile(
+      directory_name, ir_file_name, DumpModuleToString(llvm_module)));
+  return CreateAndWriteStringToFile(
+      directory_name, ir_no_constant_initializers_file_name,
+      DumpModuleToString(*DropConstantInitializers(llvm_module)));
 }
 
 llvm::Function* CreateFunction(llvm::FunctionType* function_type,
@@ -729,7 +763,7 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
     fake_argv_storage.push_back("");
     for (const auto& it : options) {
       // Skip options the XLA backend itself consumes.
-      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
+      if (!tensorflow::str_util::StartsWith(it.first, "xla_")) {
         if (it.second.empty()) {
           fake_argv_storage.push_back(it.first);
         } else {

@@ -37,7 +37,7 @@ py_library(
     srcs = ["parser.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_andreif_codegen"],
+    deps = ["@astor_archive//:astor"],
 )
 
 py_test(
@@ -103,10 +103,11 @@ py_test(
     data = ["//tensorflow:docs_src"],
     srcs_version = "PY2AND3",
     tags = [
-        # No reason to run sanitizers for this test.
+        # No reason to run sanitizers or fastbuild for this test.
         "noasan",
         "nomsan",
         "notsan",
+        "optonly",
     ],
     deps = [
         ":generate_lib",
@@ -141,15 +142,4 @@ py_test(
         ":py_guide_parser",
         "//tensorflow/python:client_testlib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

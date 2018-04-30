@@ -34,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 namespace {
@@ -46,12 +44,14 @@ namespace {
 class HloExecutionProfiler {
  public:
   // If profiling is enabled, start an execution timer running.
-  explicit HloExecutionProfiler(bool do_profile, HloExecutionProfile* profile,
-                                se::Stream* stream,
-                                const HloComputation* computation)
+  explicit HloExecutionProfiler(
+      bool do_profile, HloExecutionProfile* profile, se::Stream* stream,
+      const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams,
+      const HloComputation* computation)
       : do_profile_(do_profile),
         profile_(profile),
         stream_(stream),
+        sub_streams_(sub_streams),
         computation_(computation) {
     if (do_profile_) {
       clock_rate_ghz_ =
@@ -70,6 +70,7 @@ class HloExecutionProfiler {
     CHECK(!finished_execution_) << "Call FinishExecution only once!";
     finished_execution_ = true;
     if (do_profile_) {
+      stream_->ThenWaitFor(&sub_streams_);
       stream_->ThenStopTimer(execution_timer_.get());
       stream_->BlockHostUntilDone().IgnoreError();
       profile_->set_total_cycles_executed(
@@ -88,6 +89,7 @@ class HloExecutionProfiler {
   // that the hlo_instruction took to execute in the profile.
   void FinishOperation(const HloInstruction* hlo_instruction) {
     if (do_profile_) {
+      stream_->ThenWaitFor(&sub_streams_);
       stream_->ThenStopTimer(per_op_timer_.get());
       stream_->BlockHostUntilDone().IgnoreError();
       profile_->SetCyclesTakenBy(
@@ -100,6 +102,7 @@ class HloExecutionProfiler {
   double clock_rate_ghz_;
   HloExecutionProfile* profile_;
   se::Stream* stream_;
+  const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams_;
   const HloComputation* computation_;
   std::unique_ptr<se::Timer> execution_timer_;
   std::unique_ptr<se::Timer> per_op_timer_;
@@ -147,19 +150,19 @@ Status GpuExecutable::ExecuteThunks(
     LOG(WARNING) << "PROFILING: profiling is enabled";
   }
 
-  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
-                                hlo_module_->entry_computation());
-
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
-
   // Stream 0 indicates `main_stream` and substreams start from stream 1.
   std::vector<Pool<se::Stream>::SmartPtr> sub_streams;
+  sub_streams.reserve(thunk_schedule_->StreamCount() - 1);
   while (sub_streams.size() + 1 < thunk_schedule_->StreamCount()) {
     sub_streams.emplace_back();
     TF_ASSIGN_OR_RETURN(
         sub_streams.back(),
         run_options->BorrowStream(main_stream->parent()->device_ordinal()));
   }
+
+  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
+                                sub_streams, hlo_module_->entry_computation());
+  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   // The next event enqueued on stream N must not run until the thunk at
   // last_blocking_thunk_for_stream[N] completes.
@@ -247,7 +250,7 @@ Status GpuExecutable::ExecuteThunks(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -263,8 +266,21 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
       auto param_no = allocation.parameter_number();
-      buffer_allocations_builder.RegisterBuffer(
-          i, arguments[param_no]->root_buffer());
+      se::DeviceMemoryBase buffer =
+          arguments[param_no]->buffer(allocation.param_shape_index());
+
+      // All top-level buffers and sub-buffers must have an explicit, non-null
+      // pointer, except for zero-sized buffers, which may be null.
+      if (buffer.is_null() && buffer.size() > 0) {
+        return FailedPrecondition(
+            "Cannot run XLA computation because pointer to (sub-)buffer at "
+            "index %s of parameter %lld was null.  All pointers to "
+            "(sub-)buffers must not be null, unless the (sub-)buffer has zero "
+            "elements.",
+            allocation.param_shape_index().ToString().c_str(), param_no);
+      }
+
+      buffer_allocations_builder.RegisterBuffer(i, buffer);
     }
   }
   se::StreamExecutor* executor = run_options->stream()->parent();
@@ -281,13 +297,13 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
-  auto shaped_buffer = MakeUnique<ShapedBuffer>(
-      root->shape(), root->shape(), executor->platform(), device_ordinal);
+  ScopedShapedBuffer shaped_buffer(root->shape(), root->shape(),
+                                   memory_allocator, device_ordinal);
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
-  TF_RETURN_IF_ERROR(shaped_buffer->buffers().ForEachMutableElementWithStatus(
+  TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
       [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
@@ -306,7 +322,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
             this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
         CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-        perftools::gputools::DeviceMemoryBase src_base =
+        se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
         *device_memory = src_base;
@@ -319,7 +335,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
   return std::move(shaped_buffer);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.

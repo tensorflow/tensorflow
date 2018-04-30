@@ -32,9 +32,24 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationDataHandle handle;
     xla::ComputationBuilder* b = ctx->builder();
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
+    DataType type = ctx->input_type(1);
+    TensorShape var_shape;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &handle));
+
+    TensorShape alpha_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
+                errors::InvalidArgument("alpha is not a scalar: ",
+                                        alpha_shape.DebugString()));
+
+    TensorShape delta_shape = ctx->InputShape(2);
+    OP_REQUIRES(
+        ctx, var_shape.IsSameSize(delta_shape),
+        errors::InvalidArgument("var and delta do not have the same shape: ",
+                                var_shape.DebugString(), " vs ",
+                                delta_shape.DebugString()));
+
     handle = b->Sub(handle, b->Mul(ctx->Input(1), ctx->Input(2)));
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
 REGISTER_XLA_OP(
@@ -52,18 +67,10 @@ class ResourceApplyMomentum : public XlaOpKernel {
 
     DataType type = ctx->input_type(2);
 
-    DataType var_type, accum_type;
     TensorShape var_shape, accum_shape;
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &var_type, &var_shape));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetVariableTypeAndShape(1, &accum_type, &accum_shape));
-
-    OP_REQUIRES(
-        ctx, type == var_type && type == accum_type,
-        errors::InvalidArgument(
-            "Types of variable arguments to ResourceApplyMomentum must match: ",
-            DataTypeString(type), " vs. ", DataTypeString(var_type), " and ",
-            DataTypeString(accum_type)));
+    xla::ComputationDataHandle var, accum;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
                 errors::InvalidArgument(
@@ -85,10 +92,6 @@ class ResourceApplyMomentum : public XlaOpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_shape),
                 errors::InvalidArgument("momentum is not a scalar: ",
                                         momentum_shape.DebugString()));
-
-    xla::ComputationDataHandle var, accum;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &var));
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, &accum));
 
     xla::ComputationDataHandle lr = ctx->Input(2);
     xla::ComputationDataHandle grad = ctx->Input(3);
@@ -122,18 +125,10 @@ class ResourceApplyAdagrad : public XlaOpKernel {
 
     DataType type = ctx->input_type(2);
 
-    DataType var_type, accum_type;
     TensorShape var_shape, accum_shape;
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &var_type, &var_shape));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetVariableTypeAndShape(1, &accum_type, &accum_shape));
-
-    OP_REQUIRES(
-        ctx, type == var_type && type == accum_type,
-        errors::InvalidArgument(
-            "Types of variable arguments to ResourceApplyAdagrad must match: ",
-            DataTypeString(type), " vs. ", DataTypeString(var_type), " and ",
-            DataTypeString(accum_type)));
+    xla::ComputationDataHandle var, accum;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
                 errors::InvalidArgument(
@@ -151,9 +146,6 @@ class ResourceApplyAdagrad : public XlaOpKernel {
                     "var and grad do not have the same shape",
                     var_shape.DebugString(), " ", grad_shape.DebugString()));
 
-    xla::ComputationDataHandle var, accum;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &var));
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, &accum));
     xla::ComputationDataHandle lr = ctx->Input(2);
     xla::ComputationDataHandle grad = ctx->Input(3);
 
@@ -175,18 +167,11 @@ class ResourceApplyAdam : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    DataType var_type, m_type, v_type;
     TensorShape var_shape, m_shape, v_shape;
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &var_type, &var_shape));
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(1, &m_type, &m_shape));
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(2, &v_type, &v_shape));
-
-    OP_REQUIRES(
-        ctx, dtype_ == var_type && dtype_ == m_type && dtype_ == v_type,
-        errors::InvalidArgument(
-            "Types of variable arguments to ResourceApplyRMSProp must match: ",
-            DataTypeString(dtype_), " vs. ", DataTypeString(var_type), " vs. ",
-            DataTypeString(m_type), " vs. ", DataTypeString(v_type)));
+    xla::ComputationDataHandle var, m, v;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, dtype_, &m_shape, &m));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, dtype_, &v_shape, &v));
 
     TensorShape beta1_power_shape = ctx->InputShape(3);
     TensorShape beta2_power_shape = ctx->InputShape(4);
@@ -228,10 +213,6 @@ class ResourceApplyAdam : public XlaOpKernel {
                     "var and grad do not have the same shape",
                     var_shape.DebugString(), " ", grad_shape.DebugString()));
 
-    xla::ComputationDataHandle var, m, v;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &var));
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, &m));
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, &v));
     xla::ComputationDataHandle beta1_power = ctx->Input(3);
     xla::ComputationDataHandle beta2_power = ctx->Input(4);
     xla::ComputationDataHandle lr = ctx->Input(5);
@@ -278,18 +259,11 @@ class ResourceApplyRMSProp : public XlaOpKernel {
 
     DataType type = ctx->input_type(3);
 
-    DataType var_type, ms_type, mom_type;
     TensorShape var_shape, ms_shape, mom_shape;
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &var_type, &var_shape));
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(1, &ms_type, &ms_shape));
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(2, &mom_type, &mom_shape));
-
-    OP_REQUIRES(
-        ctx, type == var_type && type == ms_type && type == mom_type,
-        errors::InvalidArgument(
-            "Types of variable arguments to ResourceApplyRMSProp must match: ",
-            DataTypeString(type), " vs. ", DataTypeString(var_type), " vs. ",
-            DataTypeString(ms_type), " vs. ", DataTypeString(mom_type)));
+    xla::ComputationDataHandle var, ms, mom;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &ms_shape, &ms));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, type, &mom_shape, &mom));
 
     TensorShape lr_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
@@ -323,10 +297,6 @@ class ResourceApplyRMSProp : public XlaOpKernel {
                     "var and grad do not have the same shape",
                     var_shape.DebugString(), " ", grad_shape.DebugString()));
 
-    xla::ComputationDataHandle var, ms, mom;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &var));
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, &ms));
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, &mom));
     xla::ComputationDataHandle lr = ctx->Input(3);
     xla::ComputationDataHandle rho = ctx->Input(4);
     xla::ComputationDataHandle momentum = ctx->Input(5);
@@ -373,20 +343,11 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
                  bool has_l2_shrinkage) {
   xla::ComputationBuilder* b = ctx->builder();
 
-  DataType var_type, accum_type, linear_type;
   TensorShape var_shape, accum_shape, linear_shape;
-  OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &var_type, &var_shape));
-  OP_REQUIRES_OK(ctx,
-                 ctx->GetVariableTypeAndShape(1, &accum_type, &accum_shape));
-  OP_REQUIRES_OK(ctx,
-                 ctx->GetVariableTypeAndShape(2, &linear_type, &linear_shape));
-
-  OP_REQUIRES(
-      ctx, dtype == var_type && dtype == accum_type && dtype == linear_type,
-      errors::InvalidArgument(
-          "Types of variable arguments to ResourceApplyFtrlV2 must match: ",
-          DataTypeString(dtype), " vs. ", DataTypeString(var_type), " and ",
-          DataTypeString(accum_type), " and ", DataTypeString(linear_type)));
+  xla::ComputationDataHandle var, accum, linear;
+  OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype, &var_shape, &var));
+  OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, dtype, &accum_shape, &accum));
+  OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, dtype, &linear_shape, &linear));
 
   OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
               errors::InvalidArgument(
@@ -438,10 +399,6 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
               errors::InvalidArgument("lr_power is not a scalar: ",
                                       lr_power_shape.DebugString()));
 
-  xla::ComputationDataHandle var, accum, linear;
-  OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &var));
-  OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, &accum));
-  OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, &linear));
   xla::ComputationDataHandle grad = ctx->Input(3);
   xla::ComputationDataHandle lr = ctx->Input(4);
   xla::ComputationDataHandle l1 = ctx->Input(5);

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -42,11 +43,8 @@ limitations under the License.
 namespace tensorflow {
 
 // A few string constant used throughout this module.
-//
-// TODO(zhifengc): Dedup some of these constants into
-// framework/function.h
-static constexpr const char* const kArgOp = "_Arg";
-static constexpr const char* const kRetOp = "_Retval";
+static constexpr const char* const kArgOp = FunctionLibraryDefinition::kArgOp;
+static constexpr const char* const kRetOp = FunctionLibraryDefinition::kRetOp;
 static constexpr const char* const kGradientOp =
     FunctionLibraryDefinition::kGradientOp;
 static constexpr const char* const kNodeLabel = "Func";
@@ -97,12 +95,11 @@ static Node* AddNoOp(Graph* g) {
 
 static Node* AddIdentity(Graph* g, Endpoint input) {
   DCHECK_LT(0, input.dtype());
-  DCHECK_LT(input.dtype(), DT_FLOAT_REF);
   NodeDef ndef;
   ndef.set_name(g->NewName(kNodeLabel));
   ndef.set_op("Identity");
   ndef.add_input(input.name());
-  AddNodeAttr("T", input.dtype(), &ndef);
+  AddNodeAttr("T", BaseType(input.dtype()), &ndef);
   Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
@@ -145,6 +142,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
+                             thread::ThreadPool* default_thread_pool,
                              const OptimizerOptions& optimizer_options,
                              CustomKernelCreator custom_kernel_creator,
                              ProcessFunctionLibraryRuntime* parent);
@@ -178,10 +176,15 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   }
 
   Device* device() override { return device_; }
+  const DeviceMgr* device_mgr() const override { return device_mgr_; }
   Env* env() override { return env_; }
   int graph_def_version() override { return graph_def_version_; }
 
   string DebugString(Handle h) override;
+
+  Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+               FunctionLibraryRuntime** out_flr) override;
 
  private:
   typedef FunctionLibraryRuntimeImpl ME;
@@ -193,6 +196,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const FunctionLibraryDefinition* const base_lib_def_;
   GraphOptimizer optimizer_;
   const CustomKernelCreator custom_kernel_creator_;
+  Executor::Args::Runner default_runner_;
   const string device_name_;
 
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
@@ -205,7 +209,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item : public core::RefCounted {
-    const Graph* graph = nullptr;  // Owned by exec.
+    bool invalidated = false;
+    const Graph* graph = nullptr;                            // Owned by exec.
     const FunctionLibraryDefinition* overlay_lib = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
@@ -242,6 +247,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
+    thread::ThreadPool* default_thread_pool,
     const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent)
@@ -252,6 +258,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       base_lib_def_(lib_def),
       optimizer_(optimizer_options),
       custom_kernel_creator_(std::move(custom_kernel_creator)),
+      default_runner_(nullptr),
       device_name_(device_ == nullptr
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
                        : device_->name()),
@@ -263,18 +270,22 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
   create_kernel_ = [this](const NodeDef& ndef, OpKernel** kernel) {
     return CreateKernel(ndef, kernel);
   };
+  thread::ThreadPool* pool = nullptr;
+  if (device_ != nullptr) {
+    pool = device_->tensorflow_device_thread_pool();
+  }
+  if (pool == nullptr) {
+    pool = default_thread_pool;
+  }
+  if (pool != nullptr) {
+    default_runner_ = [pool](Executor::Args::Closure c) {
+      pool->Schedule(std::move(c));
+    };
+  }
 }
 
 FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
-  // The most common patterns of FLR usage don't require the caller to
-  // explicitly release handles. As a result, we try to unref each item until
-  // it's erased.
-  for (auto item : items_) {
-    if (item.second) {
-      while (!item.second->Unref()) {
-      }
-    }
-  }
+  for (auto p : items_) p.second->Unref();
 }
 
 // An asynchronous op kernel which executes an instantiated function
@@ -478,11 +489,32 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   InstantiateOptions options_copy(options);
   options_copy.target = device_name_;
   const string key = Canonicalize(function_name, attrs, options_copy);
-  *handle = parent_->GetHandle(key);
-  if (*handle != kInvalidHandle) {
+
+  Handle found_handle = kInvalidHandle;
+  {
     mutex_lock l(mu_);
-    items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
-    return Status::OK();
+    found_handle = parent_->GetHandle(key);
+    if (found_handle != kInvalidHandle) {
+      FunctionLibraryRuntime::LocalHandle handle_on_device =
+          parent_->GetHandleOnDevice(device_name_, found_handle);
+      if (handle_on_device == kInvalidLocalHandle) {
+        return errors::Internal("LocalHandle not found for handle ", *handle,
+                                ".");
+      }
+      auto iter = items_.find(handle_on_device);
+      if (iter == items_.end()) {
+        return errors::Internal("LocalHandle ", handle_on_device,
+                                " for handle ", found_handle,
+                                " not found in items.");
+      }
+      Item* item = iter->second;
+      if (!item->invalidated) {
+        *handle = found_handle;
+        return Status::OK();
+      }
+      // *item is invalidated. Fall through and instantiate the given
+      // function_name/attrs/option again.
+    }
   }
 
   Status s;
@@ -513,10 +545,10 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
 
   {
     mutex_lock l(mu_);
-    *handle = parent_->GetHandle(key);
-    if (*handle != kInvalidHandle) {
+    Handle found_handle_again = parent_->GetHandle(key);
+    if (found_handle_again != found_handle) {
       delete fbody;
-      items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
+      *handle = found_handle_again;
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
@@ -533,15 +565,12 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
     return parent_->ReleaseHandle(handle);
   }
-
   LocalHandle h = parent_->GetHandleOnDevice(device_name_, handle);
+  CHECK_NE(h, kInvalidLocalHandle);
   mutex_lock l(mu_);
   CHECK_EQ(1, items_.count(h));
   Item* item = items_[h];
-  if (item->Unref()) {
-    items_.erase(h);
-    TF_RETURN_IF_ERROR(parent_->RemoveHandle(handle));
-  }
+  item->invalidated = true;  // Reinstantiate later.
   return Status::OK();
 }
 
@@ -628,7 +657,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   };
   Graph* graph = g.get();
   Executor* exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g.release(), &exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &exec));
 
   {
     // Guard item since it is already inserted in items_.
@@ -702,6 +731,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   // computation is done and stored in *rets, we send the return values back
   // to the source_device (caller) so that the ProcFLR can receive them later.
   std::vector<Tensor>* remote_args = new std::vector<Tensor>;
+  item->Ref();
   ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
       source_device, target_device, "arg_", src_incarnation, args.size(),
       device_context, {}, rendezvous, remote_args,
@@ -713,6 +743,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
           s = frame->SetArgs(*remote_args);
         }
         if (!s.ok()) {
+          item->Unref();
           delete frame;
           delete remote_args;
           delete exec_args;
@@ -723,6 +754,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
             *exec_args, [item, frame, rets, done, source_device, target_device,
                          target_incarnation, rendezvous, device_context,
                          remote_args, exec_args](const Status& status) {
+              core::ScopedUnref unref(item);
               Status s = status;
               if (s.ok()) {
                 s = frame->ConsumeRetvals(rets);
@@ -762,12 +794,16 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       done(status);
     };
   }
+
+  if (run_opts.runner == nullptr) {
+    run_opts.runner = &default_runner_;
+  }
+  DCHECK(run_opts.runner != nullptr);
+
   if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
     parent_->Run(run_opts, handle, args, rets, done);
     return;
   }
-
-  DCHECK(run_opts.runner != nullptr);
 
   Executor::Args* exec_args = new Executor::Args;
   // Inherit the step_id from the caller.
@@ -804,11 +840,13 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
+  item->Ref();
   item->exec->RunAsync(
       // Executor args
       *exec_args,
       // Done callback.
       [item, frame, rets, done, exec_args](const Status& status) {
+        core::ScopedUnref unref(item);
         Status s = status;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);
@@ -853,6 +891,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     done(s);
     return;
   }
+  if (run_opts.runner == nullptr) {
+    run_opts.runner = &default_runner_;
+  }
   DCHECK(run_opts.runner != nullptr);
 
   Executor::Args* exec_args = new Executor::Args;
@@ -865,6 +906,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args->runner = *run_opts.runner;
   exec_args->call_frame = frame;
 
+  item->Ref();
   item->exec->RunAsync(
       // Executor args
       *exec_args,
@@ -873,6 +915,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
           [item, frame, exec_args](DoneCallback done,
                                    // Start unbound arguments.
                                    const Status& status) {
+            core::ScopedUnref unref(item);
             delete exec_args;
             done(status);
           },
@@ -892,6 +935,21 @@ string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
     return tensorflow::DebugString(item->graph);
   } else {
     return s.ToString();
+  }
+}
+
+Status FunctionLibraryRuntimeImpl::Clone(
+    std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+    FunctionLibraryRuntime** out_flr) {
+  TF_RETURN_IF_ERROR(
+      parent_->Clone(env_, graph_def_version_, optimizer_.options(),
+                     custom_kernel_creator_, out_lib_def, out_pflr));
+  *out_flr = (*out_pflr)->GetFLR(device_->name());
+  if (out_flr != nullptr) {
+    return Status::OK();
+  } else {
+    return errors::Internal("Cloning FunctionLibraryRuntime failed.");
   }
 }
 
@@ -926,21 +984,21 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
+    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent) {
   return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
-      device_mgr, env, device, graph_def_version, lib_def, optimizer_options,
-      std::move(custom_kernel_creator), parent));
+      device_mgr, env, device, graph_def_version, lib_def, thread_pool,
+      optimizer_options, std::move(custom_kernel_creator), parent));
 }
 
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
+    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
     ProcessFunctionLibraryRuntime* parent) {
   return NewFunctionLibraryRuntime(device_mgr, env, device, graph_def_version,
-                                   lib_def, optimizer_options,
+                                   lib_def, thread_pool, optimizer_options,
                                    GetCustomCreatorSingleton()->Get(), parent);
 }
 
@@ -1562,9 +1620,6 @@ Status FunctionDefToBodyHelper(
 
   // Call BuildControlFlowInfo to validate that this function body has
   // well-formed control flow.
-  // NOTE(skyewm): this is usually done in Partition(), but we don't partition
-  // function bodies. This should be removed if function bodies ever go through
-  // the Partition() path.
   std::vector<ControlFlowInfo> dummy;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
 

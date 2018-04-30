@@ -199,7 +199,14 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           }
         }
         ++num_outputs_consumed_;
-        return result->status;
+        if (errors::IsOutOfRange(result->status)) {
+          // `f` may deliberately raise `errors::OutOfRange` to indicate
+          // that we should terminate the iteration early.
+          *end_of_sequence = true;
+          return Status::OK();
+        } else {
+          return result->status;
+        }
       }
 
      protected:
@@ -311,7 +318,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
         // Get the next input element.
         std::vector<Tensor> input_element;
-        bool end_of_input;
+        bool end_of_input = false;
         result->status =
             input_impl_->GetNext(ctx, &input_element, &end_of_input);
         if (end_of_input) {

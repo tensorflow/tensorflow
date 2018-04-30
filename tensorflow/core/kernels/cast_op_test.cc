@@ -75,7 +75,8 @@ class CastOpTest : public OpsTestBase {
   TEST_CAST(in, int64);         \
   TEST_CAST(in, half);          \
   TEST_CAST(in, float);         \
-  TEST_CAST(in, double)
+  TEST_CAST(in, double);        \
+  TEST_CAST(in, bfloat16);
 
 TEST_ALL_CASTS_FROM(uint8)
 TEST_ALL_CASTS_FROM(uint16)
@@ -85,6 +86,7 @@ TEST_ALL_CASTS_FROM(int64)
 TEST_ALL_CASTS_FROM(half)
 TEST_ALL_CASTS_FROM(float)
 TEST_ALL_CASTS_FROM(double)
+TEST_ALL_CASTS_FROM(bfloat16)
 
 #undef TEST_ALL_CASTS_FROM
 #undef TEST_CAST
@@ -107,10 +109,10 @@ static void BM_gpu_float_int64(int iters, int num) {
   testing::UseRealTime();
 #if GOOGLE_CUDA
   test::Benchmark("gpu", Cast<float, int64>(num)).Run(iters);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
   test::Benchmark("sycl", Cast<float, int64>(num)).Run(iters);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }
 BENCHMARK(BM_gpu_float_int64)->Arg(64 << 10)->Arg(32 << 20);
 
@@ -130,10 +132,10 @@ static void BM_gpu_bool_float(int iters, int num) {
   testing::UseRealTime();
 #if GOOGLE_CUDA
   test::Benchmark("gpu", Cast<bool, float>(num)).Run(iters);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
   test::Benchmark("sycl", Cast<bool, float>(num)).Run(iters);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }
 BENCHMARK(BM_gpu_bool_float)->Arg(64 << 10)->Arg(32 << 20);
 
@@ -180,7 +182,7 @@ static void BM_gpu_float_half(int iters, int num) {
   testing::UseRealTime();
 #if GOOGLE_CUDA
   test::Benchmark("gpu", Cast<float, Eigen::half>(num)).Run(iters);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 }
 BENCHMARK(BM_gpu_float_half)->Arg(64 << 10)->Arg(32 << 20);
 
@@ -191,7 +193,7 @@ static void BM_gpu_half_float(int iters, int num) {
   testing::UseRealTime();
 #if GOOGLE_CUDA
   test::Benchmark("gpu", Cast<Eigen::half, float>(num)).Run(iters);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 }
 BENCHMARK(BM_gpu_half_float)->Arg(64 << 10)->Arg(32 << 20);
 

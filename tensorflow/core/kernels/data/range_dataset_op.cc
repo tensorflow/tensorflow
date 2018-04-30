@@ -100,7 +100,7 @@ class RangeDatasetOp : public DatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
-        Tensor value_tensor(cpu_allocator(), DT_INT64, {});
+        Tensor value_tensor(ctx->allocator({}), DT_INT64, {});
         value_tensor.scalar<int64>()() = next_;
         out_tensors->emplace_back(std::move(value_tensor));
         *end_of_sequence = false;

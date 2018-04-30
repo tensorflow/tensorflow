@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
@@ -95,6 +93,14 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
         seen_temp_buffer = true;
         buffer_allocations->temp_buffer_base_ = buffer_address;
       }
+    }
+  }
+
+  if (VLOG_IS_ON(2)) {
+    for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
+      const auto& buf = buffer_allocations->buffers_[i];
+      VLOG(2) << "Buffer " << i << " -> " << buf.opaque() << " (" << buf.size()
+              << "B)";
     }
   }
 

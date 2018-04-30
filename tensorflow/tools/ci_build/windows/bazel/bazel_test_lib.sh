@@ -120,7 +120,9 @@ function run_configure_for_gpu_build {
   export TF_CUDA_VERSION=9.0
   export CUDA_TOOLKIT_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0"
   export TF_CUDNN_VERSION=7.0
-  export CUDNN_INSTALL_PATH="C:/tools/cuda"
+  if [ -z "$CUDNN_INSTALL_PATH" ]; then
+    export CUDNN_INSTALL_PATH="C:/tools/cuda"
+  fi
   export TF_CUDA_COMPUTE_CAPABILITIES="3.7"
   if [ -z "$TF_ENABLE_XLA" ]; then
     export TF_ENABLE_XLA=0
@@ -136,6 +138,13 @@ function run_configure_for_gpu_build {
   export USE_MSVC_WRAPPER=1
 
   echo "" | ./configure
+}
+
+function set_gcs_remote_cache_options {
+  echo "build --experimental_remote_spawn_cache" >> "${TMP_BAZELRC}"
+  echo "build --experimental_remote_platform_override='properties:{name:\"build\" value:\"windows-x64\"}'" >> "${TMP_BAZELRC}"
+  echo "build --remote_http_cache=https://storage.googleapis.com/$GCS_BUCKET_NAME" >> "${TMP_BAZELRC}"
+  echo "build --google_credentials=$GOOGLE_CLOUD_CREDENTIAL" >> "${TMP_BAZELRC}"
 }
 
 function create_python_test_dir() {

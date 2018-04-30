@@ -57,7 +57,7 @@ static inline void RandomShuffle(Iter first, Iter last, const Random& uniform) {
 //     * sum(generated_diff_pooling_sequence) = input_length
 //     * Let's define floor(input_length / output_length) = K, then
 //       K <= generated_diff_pooling_sequence[i] <= K+1
-// For example, when input_length = 10, output_length = 6, the followings are
+// For example, when input_length = 10, output_length = 6, the following are
 // valid pooling sequence:
 //     * [1, 2, 2, 1, 2, 2]
 //     * [1, 1, 2, 2, 2, 2]

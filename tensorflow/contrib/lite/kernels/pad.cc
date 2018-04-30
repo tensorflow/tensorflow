@@ -51,17 +51,14 @@ struct PadContext {
 // paddings data is present.
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 PadContext* op_context) {
-  // TODO(nupurgarg): Our current implementations rely on the inputs being 4D.
-  TF_LITE_ENSURE_EQ(context, op_context->dims, 4);
-
   // Ensures the paddings array is dims x 2.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context->paddings, 0),
                     op_context->dims);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context->paddings, 1), 2);
 
   // Determines the size of the output tensor.
-  const TfLiteIntArray* input_size = op_context->input->dims;
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(op_context->dims);
+  TfLiteIntArray* input_size = op_context->input->dims;
+  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
   const int32* paddings_data = GetTensorData<int32>(op_context->paddings);
 
   for (int idx = 0; idx < op_context->dims; ++idx) {
@@ -85,11 +82,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   PadContext op_context(context, node);
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
 
-  // TODO(nupurgarg): Create wrapper functions for dynamic tensor logic.
+  // TODO(nupurgarg): Our current implementations rely on the inputs being 4D.
+  TF_LITE_ENSURE_EQ(context, op_context.dims, 4);
+
   // Exit early if paddings is a non-const tensor. Set output tensor to
   // dynamic so output size can be determined in Eval.
-  if (op_context.paddings->allocation_type != kTfLiteMmapRo) {
-    op_context.output->allocation_type = kTfLiteDynamic;
+  if (!IsConstantTensor(op_context.paddings)) {
+    SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }
   return ResizeOutputTensor(context, &op_context);
@@ -100,9 +99,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   PadContext op_context(context, node);
 
   // Resize the output tensor if the output tensor is dynamic.
-  if (op_context.output->allocation_type == kTfLiteDynamic) {
+  if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-    TfLiteTensorRealloc(op_context.output->bytes, op_context.output);
   }
 
   // TODO(nupurgarg): Change kernel implementation to take in int* instead of
@@ -121,39 +119,46 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     after_padding.push_back(paddings_data[idx * 2 + 1]);
   }
 
-#define TF_LITE_PAD(type, scalar)                                           \
+#define TF_LITE_PAD(type, scalar, pad_value)                                \
   type::Pad(GetTensorData<scalar>(op_context.input),                        \
             GetTensorDims(op_context.input), before_padding, after_padding, \
             GetTensorData<scalar>(op_context.output),                       \
-            GetTensorDims(op_context.output))
+            GetTensorDims(op_context.output), pad_value)
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, float);
+        TF_LITE_PAD(reference_ops, float, 0);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, float);
+        TF_LITE_PAD(optimized_ops, float, 0);
       }
       break;
     case kTfLiteUInt8:
+      // Quantized Pad requires that 0 is represented in the quantized range.
+      TF_LITE_ENSURE(context, op_context.output->params.zero_point >=
+                                  std::numeric_limits<uint8_t>::min());
+      TF_LITE_ENSURE(context, op_context.output->params.zero_point <=
+                                  std::numeric_limits<uint8_t>::max());
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, uint8_t);
+        TF_LITE_PAD(reference_ops, uint8_t,
+                    op_context.output->params.zero_point);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, uint8_t);
+        TF_LITE_PAD(optimized_ops, uint8_t,
+                    op_context.output->params.zero_point);
       }
       break;
     case kTfLiteInt32:
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, int32_t);
+        TF_LITE_PAD(reference_ops, int32_t, 0);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, int32_t);
+        TF_LITE_PAD(optimized_ops, int32_t, 0);
       }
       break;
     case kTfLiteInt64:
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, int64_t);
+        TF_LITE_PAD(reference_ops, int64_t, 0);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, int64_t);
+        TF_LITE_PAD(optimized_ops, int64_t, 0);
       }
       break;
     default:
@@ -178,9 +183,7 @@ TfLiteRegistration* Register_PAD_GENERIC_OPT() {
   return &r;
 }
 
-TfLiteRegistration* Register_PAD() {
-  return Register_PAD_GENERIC_OPT();
-}
+TfLiteRegistration* Register_PAD() { return Register_PAD_GENERIC_OPT(); }
 
 }  // namespace builtin
 }  // namespace ops

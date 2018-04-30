@@ -398,7 +398,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
     CHECK(success != nullptr);
     HostLapackInfo copy(context(), size(), debug_info());
     auto stream = context()->op_device_context()->stream();
-    perftools::gputools::DeviceMemoryBase wrapped_src(
+    se::DeviceMemoryBase wrapped_src(
         static_cast<void*>(const_cast<int*>(this->data())));
     *success =
         stream->ThenMemcpy(copy.mutable_data(), wrapped_src, this->bytes())

@@ -43,6 +43,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/ops/distributions",
     ],
 )
 
@@ -76,7 +77,7 @@ py_test(
 py_test(
     name = "metric_ops_test",
     srcs = ["python/ops/metric_ops_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # times out b/63678675
     deps = [
@@ -95,15 +96,4 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

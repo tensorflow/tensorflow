@@ -37,13 +37,15 @@ from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
 from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.Supervisor")
 class Supervisor(object):
   """A training helper that checkpoints models and computes summaries.
 
   This class is deprecated. Please use
-  ${tf.train.MonitoredTrainingSession} instead.
+  @{tf.train.MonitoredTrainingSession} instead.
 
   The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
   and a `SessionManager` that takes care of common needs of TensorFlow
@@ -303,7 +305,7 @@ class Supervisor(object):
     `Supervisor`s are not supported when eager execution is enabled.
     @end_compatibility
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Supervisors are compatible with eager execution.")
     # Set default values of arguments.
     if graph is None:
@@ -760,7 +762,7 @@ class Supervisor(object):
     execution is enabled, use the `tf.data` API.
     @end_compatibility
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Queues are not compatible with eager execution.")
     if queue_runners is None:
       queue_runners = self._graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS)

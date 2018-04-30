@@ -460,6 +460,8 @@ def gan_loss(
     # Auxiliary losses.
     gradient_penalty_weight=None,
     gradient_penalty_epsilon=1e-10,
+    gradient_penalty_target=1.0,
+    gradient_penalty_one_sided=False,
     mutual_information_penalty_weight=None,
     aux_cond_generator_weight=None,
     aux_cond_discriminator_weight=None,
@@ -481,6 +483,11 @@ def gan_loss(
       small positive value used by the gradient penalty function for numerical
       stability. Note some applications will need to increase this value to
       avoid NaNs.
+    gradient_penalty_target: If `gradient_penalty_weight` is not None, a Python
+      number or `Tensor` indicating the target value of gradient norm. See the
+      CIFAR10 section of https://arxiv.org/abs/1710.10196. Defaults to 1.0.
+    gradient_penalty_one_sided: If `True`, penalty proposed in
+      https://arxiv.org/abs/1709.08894 is used. Defaults to `False`.
     mutual_information_penalty_weight: If not `None`, must be a non-negative
       Python number or Tensor indicating how much to weight the mutual
       information penalty. See https://arxiv.org/abs/1606.03657 for more
@@ -539,7 +546,11 @@ def gan_loss(
   # Add optional extra losses.
   if _use_aux_loss(gradient_penalty_weight):
     gp_loss = tfgan_losses.wasserstein_gradient_penalty(
-        model, epsilon=gradient_penalty_epsilon, add_summaries=add_summaries)
+        model,
+        epsilon=gradient_penalty_epsilon,
+        target=gradient_penalty_target,
+        one_sided=gradient_penalty_one_sided,
+        add_summaries=add_summaries)
     dis_loss += gradient_penalty_weight * gp_loss
   if _use_aux_loss(mutual_information_penalty_weight):
     info_loss = tfgan_losses.mutual_information_penalty(
@@ -699,7 +710,10 @@ def gan_train_ops(
     be used to train a generator/discriminator pair.
   """
   if isinstance(model, namedtuples.CycleGANModel):
-    saved_params = locals()
+    # Get and store all arguments other than model and loss from locals.
+    # Contents of locals should not be modified, may not affect values. So make
+    # a copy. https://docs.python.org/2/library/functions.html#locals.
+    saved_params = dict(locals())
     saved_params.pop('model', None)
     saved_params.pop('loss', None)
     kwargs = saved_params.pop('kwargs', {})

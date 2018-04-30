@@ -47,8 +47,8 @@ def _get_linear_equations_tests(dtype_, use_static_shape_, shape_):
     a_np = np.dot(a_np.T, a_np)
     # jacobi preconditioner
     jacobi_np = np.zeros_like(a_np)
-    jacobi_np[range(a_np.shape[0]), range(a_np.shape[1])] = (1.0 /
-                                                             a_np.diagonal())
+    jacobi_np[range(a_np.shape[0]), range(a_np.shape[1])] = (
+        1.0 / a_np.diagonal())
     rhs_np = np.random.uniform(
         low=-1.0, high=1.0, size=shape_[0]).astype(dtype_)
     x_np = np.zeros_like(rhs_np)
@@ -66,18 +66,30 @@ def _get_linear_equations_tests(dtype_, use_static_shape_, shape_):
         x = array_ops.placeholder(dtype_)
         jacobi = array_ops.placeholder(dtype_)
       operator = util.create_operator(a)
-      preconditioners = [None, util.identity_operator(a),
-                         util.create_operator(jacobi)]
+      preconditioners = [
+          None, util.identity_operator(a),
+          util.create_operator(jacobi)
+      ]
       cg_results = []
       for preconditioner in preconditioners:
         cg_graph = linear_equations.conjugate_gradient(
-            operator, rhs, preconditioner=preconditioner,
-            x=x, tol=tol, max_iter=max_iter)
+            operator,
+            rhs,
+            preconditioner=preconditioner,
+            x=x,
+            tol=tol,
+            max_iter=max_iter)
         if use_static_shape_:
           cg_val = sess.run(cg_graph)
         else:
-          cg_val = sess.run(cg_graph, feed_dict={a: a_np, rhs: rhs_np, x: x_np,
-                                                 jacobi: jacobi_np})
+          cg_val = sess.run(
+              cg_graph,
+              feed_dict={
+                  a: a_np,
+                  rhs: rhs_np,
+                  x: x_np,
+                  jacobi: jacobi_np
+              })
         norm_r0 = np.linalg.norm(rhs_np)
         norm_r = np.linalg.norm(cg_val.r)
         self.assertLessEqual(norm_r, tol * norm_r0)

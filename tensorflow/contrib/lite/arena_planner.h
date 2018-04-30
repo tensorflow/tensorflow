@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tflite {
 
-class AllocationInfo;
+struct AllocationInfo;
 
 // A memory planner that makes all the allocations using arenas.
 //
@@ -33,7 +33,7 @@ class AllocationInfo;
 // each tensor needs to be allocated and deallocated, and preallocates all the
 // necessary memory (the PlanAllocations phase). It then assigns portions of
 // this memory buffer to each tensor (the ExecuteAllocations phase). Tensors may
-// share some of the bufer if a tensor B is to be allocated after another tensor
+// share some of the buffer if a tensor B is to be allocated after another tensor
 // A has been deallocated.
 //
 // If dynamic tensors are used the planning steps can be repeated during model

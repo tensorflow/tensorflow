@@ -16,12 +16,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import tempfile
+import time
 
 import numpy as np
 import six
 
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
@@ -29,10 +30,11 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import training_util
 
@@ -57,13 +59,7 @@ _NUMPY_NUMERIC_TYPES = {
 }
 
 
-class TargetTest(test_util.TensorFlowTestCase):
-
-  def testInvalidDirectory(self):
-    logdir = '/tmp/apath/that/doesnt/exist'
-    self.assertFalse(gfile.Exists(logdir))
-    with self.assertRaises(errors.NotFoundError):
-      summary_ops.create_file_writer(logdir, max_queue=0, name='t0')
+class EagerFileTest(test_util.TensorFlowTestCase):
 
   def testShouldRecordSummary(self):
     self.assertFalse(summary_ops.should_record_summaries())
@@ -114,6 +110,20 @@ class TargetTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
+  def testSummaryNameScope(self):
+    training_util.get_or_create_global_step()
+    logdir = tempfile.mkdtemp()
+    with summary_ops.create_file_writer(
+        logdir, max_queue=0,
+        name='t2').as_default(), summary_ops.always_record_summaries():
+
+      with ops.name_scope('scope'):
+        summary_ops.scalar('scalar', 2.0)
+
+      events = summary_test_util.events_from_logdir(logdir)
+      self.assertEqual(len(events), 2)
+      self.assertEqual(events[1].summary.value[0].tag, 'scope/scalar')
+
   def testSummaryGlobalStep(self):
     step = training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
@@ -130,21 +140,22 @@ class TargetTest(test_util.TensorFlowTestCase):
   def testMaxQueue(self):
     logs = tempfile.mkdtemp()
     with summary_ops.create_file_writer(
-        logs, max_queue=2, flush_millis=999999,
+        logs, max_queue=1, flush_millis=999999,
         name='lol').as_default(), summary_ops.always_record_summaries():
       get_total = lambda: len(summary_test_util.events_from_logdir(logs))
       # Note: First tf.Event is always file_version.
       self.assertEqual(1, get_total())
       summary_ops.scalar('scalar', 2.0, step=1)
       self.assertEqual(1, get_total())
+      # Should flush after second summary since max_queue = 1
       summary_ops.scalar('scalar', 2.0, step=2)
       self.assertEqual(3, get_total())
 
-  def testFlush(self):
+  def testFlushFunction(self):
     logs = tempfile.mkdtemp()
-    with summary_ops.create_file_writer(
-        logs, max_queue=999999, flush_millis=999999,
-        name='lol').as_default(), summary_ops.always_record_summaries():
+    writer = summary_ops.create_file_writer(
+        logs, max_queue=999999, flush_millis=999999, name='lol')
+    with writer.as_default(), summary_ops.always_record_summaries():
       get_total = lambda: len(summary_test_util.events_from_logdir(logs))
       # Note: First tf.Event is always file_version.
       self.assertEqual(1, get_total())
@@ -153,9 +164,103 @@ class TargetTest(test_util.TensorFlowTestCase):
       self.assertEqual(1, get_total())
       summary_ops.flush()
       self.assertEqual(3, get_total())
+      # Test "writer" parameter
+      summary_ops.scalar('scalar', 2.0, step=3)
+      summary_ops.flush(writer=writer)
+      self.assertEqual(4, get_total())
+      summary_ops.scalar('scalar', 2.0, step=4)
+      summary_ops.flush(writer=writer._resource)  # pylint:disable=protected-access
+      self.assertEqual(5, get_total())
+
+  def testSharedName(self):
+    logdir = self.get_temp_dir()
+    with summary_ops.always_record_summaries():
+      # Create with default shared name (should match logdir)
+      writer1 = summary_ops.create_file_writer(logdir)
+      with writer1.as_default():
+        summary_ops.scalar('one', 1.0, step=1)
+        summary_ops.flush()
+      # Create with explicit logdir shared name (should be same resource/file)
+      shared_name = 'logdir:' + logdir
+      writer2 = summary_ops.create_file_writer(logdir, name=shared_name)
+      with writer2.as_default():
+        summary_ops.scalar('two', 2.0, step=2)
+        summary_ops.flush()
+      # Create with different shared name (should be separate resource/file)
+      time.sleep(1.1)  # Ensure filename has a different timestamp
+      writer3 = summary_ops.create_file_writer(logdir, name='other')
+      with writer3.as_default():
+        summary_ops.scalar('three', 3.0, step=3)
+        summary_ops.flush()
+
+    event_files = iter(sorted(gfile.Glob(os.path.join(logdir, '*tfevents*'))))
+
+    # First file has tags "one" and "two"
+    events = iter(summary_test_util.events_from_file(next(event_files)))
+    self.assertEqual('brain.Event:2', next(events).file_version)
+    self.assertEqual('one', next(events).summary.value[0].tag)
+    self.assertEqual('two', next(events).summary.value[0].tag)
+    self.assertRaises(StopIteration, lambda: next(events))
+
+    # Second file has tag "three"
+    events = iter(summary_test_util.events_from_file(next(event_files)))
+    self.assertEqual('brain.Event:2', next(events).file_version)
+    self.assertEqual('three', next(events).summary.value[0].tag)
+    self.assertRaises(StopIteration, lambda: next(events))
+
+    # No more files
+    self.assertRaises(StopIteration, lambda: next(event_files))
+
+  def testWriterInitAndClose(self):
+    logdir = self.get_temp_dir()
+    get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
+    with summary_ops.always_record_summaries():
+      writer = summary_ops.create_file_writer(
+          logdir, max_queue=100, flush_millis=1000000)
+      self.assertEqual(1, get_total())  # file_version Event
+      # Calling init() again while writer is open has no effect
+      writer.init()
+      self.assertEqual(1, get_total())
+      try:
+        # Not using .as_default() to avoid implicit flush when exiting
+        writer.set_as_default()
+        summary_ops.scalar('one', 1.0, step=1)
+        self.assertEqual(1, get_total())
+        # Calling .close() should do an implicit flush
+        writer.close()
+        self.assertEqual(2, get_total())
+        # Calling init() on a closed writer should start a new file
+        time.sleep(1.1)  # Ensure filename has a different timestamp
+        writer.init()
+        files = sorted(gfile.Glob(os.path.join(logdir, '*tfevents*')))
+        self.assertEqual(2, len(files))
+        get_total = lambda: len(summary_test_util.events_from_file(files[1]))
+        self.assertEqual(1, get_total())  # file_version Event
+        summary_ops.scalar('two', 2.0, step=2)
+        writer.close()
+        self.assertEqual(2, get_total())
+      finally:
+        # Clean up by resetting default writer
+        summary_ops.create_file_writer(None).set_as_default()
+
+  def testWriterFlush(self):
+    logdir = self.get_temp_dir()
+    get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
+    with summary_ops.always_record_summaries():
+      writer = summary_ops.create_file_writer(
+          logdir, max_queue=100, flush_millis=1000000)
+      self.assertEqual(1, get_total())  # file_version Event
+      with writer.as_default():
+        summary_ops.scalar('one', 1.0, step=1)
+        self.assertEqual(1, get_total())
+        writer.flush()
+        self.assertEqual(2, get_total())
+        summary_ops.scalar('two', 2.0, step=2)
+      # Exiting the "as_default()" should do an implicit flush of the "two" tag
+      self.assertEqual(3, get_total())
 
 
-class DbTest(summary_test_util.SummaryDbTest):
+class EagerDbTest(summary_test_util.SummaryDbTest):
 
   def testIntegerSummaries(self):
     step = training_util.create_global_step()

@@ -44,7 +44,7 @@ namespace xla {
 // enables, for one, explicitly building a graph of HLO instructions to run.
 //
 // This can also be used to write text/file-based test cases. Note that the test
-// target is responsible for linking the needed backends. A covenient way to do
+// target is responsible for linking the needed backends. A convenient way to do
 // this is to make it an xla_test: it will generate test targets linking with
 // the respective backends, which will be used as the test backend; the
 // interpreter backend is already linked with hlo_test_base so it will be the
@@ -76,8 +76,7 @@ class HloTestBase : public ::testing::Test {
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
-  HloTestBase(::perftools::gputools::Platform* test_platform,
-              ::perftools::gputools::Platform* reference_platform);
+  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform);
 
   ~HloTestBase() override {}
 
@@ -98,14 +97,19 @@ class HloTestBase : public ::testing::Test {
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<Literal*> arguments);
 
+  // Same as above, except the module will be executed without running any HLO
+  // passes on it.
+  std::unique_ptr<Literal> ExecuteNoHloPasses(
+      std::unique_ptr<HloModule> module,
+      tensorflow::gtl::ArraySlice<Literal*> arguments);
+
   std::unique_ptr<Literal> ExecuteAndTransfer(
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<Literal*> arguments);
 
   // Executes the given hlo module on two backends and compares results.
   //
-  // 'arguments': the input of the hlo module. The LiteralPtr type accepts
-  // Literal* or std::unique_ptr<Literal>.
+  // 'arguments': the input of the hlo module.
   //
   // 'error': if has value, expects the results to be near (within the error
   // bound). Otherwise, expects the results to be equal.
@@ -114,20 +118,18 @@ class HloTestBase : public ::testing::Test {
   // backend, but it might need to be tailored so that it is able to run on the
   // reference backend. Note that the program shape of the module must not be
   // modified.
-  template <typename LiteralPtr>
   ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
       const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
-  template <typename LiteralPtr>
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
       const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
@@ -197,6 +199,15 @@ class HloTestBase : public ::testing::Test {
         ->Clear();
   }
 
+  // Gets the computation/instruction from the given module with the given name.
+  //
+  // This is useful for tests which create HLOs from a string and then want to
+  // inspect a particular computation or instruction.
+  HloComputation* FindComputation(HloModule* module,
+                                  tensorflow::StringPiece name);
+  HloInstruction* FindInstruction(HloModule* module,
+                                  tensorflow::StringPiece name);
+
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }
 
@@ -223,10 +234,9 @@ class HloTestBase : public ::testing::Test {
   // Runs the module on two platforms with or without running hlo passes and
   // compares the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
-  template <typename LiteralPtr>
   StatusOr<::testing::AssertionResult> RunAndCompareInternal(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
       const tensorflow::gtl::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
 };

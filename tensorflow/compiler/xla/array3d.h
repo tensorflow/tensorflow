@@ -57,6 +57,19 @@ class Array3D : public Array<T> {
               values)
       : Array<T>(values) {}
 
+  // Creates an array of a floating-point type (half, bfloat16, float,
+  // or double) from the given nested initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array3D(
+      std::initializer_list<std::initializer_list<std::initializer_list<T2>>>
+          values)
+      : Array<T>(values) {}
+
   int64 n1() const { return this->dim(0); }
   int64 n2() const { return this->dim(1); }
   int64 n3() const { return this->dim(2); }

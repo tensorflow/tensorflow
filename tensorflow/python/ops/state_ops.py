@@ -13,69 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Variables. See the @{$python/state_ops} guide.
-
-@@AUTO_REUSE
-@@IndexedSlices
-@@Saver
-@@Variable
-@@VariableScope
-@@all_variables
-@@assert_variables_initialized
-@@assign
-@@assign_add
-@@assign_sub
-@@constant_initializer
-@@export_meta_graph
-@@fixed_size_partitioner
-@@get_checkpoint_state
-@@get_local_variable
-@@get_variable
-@@get_variable_scope
-@@global_variables
-@@global_variables_initializer
-@@glorot_normal_initializer
-@@glorot_uniform_initializer
-@@import_meta_graph
-@@initialize_all_tables
-@@initialize_all_variables
-@@initialize_local_variables
-@@initialize_variables
-@@is_variable_initialized
-@@latest_checkpoint
-@@local_variables
-@@local_variables_initializer
-@@make_template
-@@min_max_variable_partitioner
-@@model_variables
-@@moving_average_variables
-@@no_regularizer
-@@ones_initializer
-@@orthogonal_initializer
-@@random_normal_initializer
-@@random_uniform_initializer
-@@report_uninitialized_variables
-@@scatter_add
-@@scatter_div
-@@scatter_mul
-@@scatter_nd_add
-@@scatter_nd_sub
-@@scatter_nd_update
-@@scatter_sub
-@@scatter_update
-@@sparse_mask
-@@tables_initializer
-@@trainable_variables
-@@truncated_normal_initializer
-@@uniform_unit_scaling_initializer
-@@update_checkpoint_state
-@@variable_axis_size_partitioner
-@@variable_op_scope
-@@variable_scope
-@@variables_initializer
-@@variance_scaling_initializer
-@@zeros_initializer
-"""
+"""Variables. See the @{$python/state_ops} guide."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -99,8 +37,8 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   """Deprecated. Used variable_op_v2 instead."""
   if not set_shape:
     shape = tensor_shape.unknown_shape()
-  ret = gen_state_ops._variable(shape=shape, dtype=dtype, name=name,
-                                container=container, shared_name=shared_name)
+  ret = gen_state_ops.variable(shape=shape, dtype=dtype, name=name,
+                               container=container, shared_name=shared_name)
   # TODO(mrry): Move this to where it is used, so we can get rid of this op
   #   wrapper?
   if set_shape:
@@ -127,11 +65,12 @@ def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
   Returns:
     A variable tensor.
   """
-  return gen_state_ops._variable_v2(shape=shape,
-                                    dtype=dtype,
-                                    name=name,
-                                    container=container,
-                                    shared_name=shared_name)
+  return gen_state_ops.variable_v2(
+      shape=shape,
+      dtype=dtype,
+      name=name,
+      container=container,
+      shared_name=shared_name)
 
 
 def init_variable(v, init, name="init"):
@@ -185,7 +124,7 @@ def is_variable_initialized(ref, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.is_variable_initialized(ref=ref, name=name)
   # Handle resource variables.
-  if context.in_eager_mode() or ref.op.type == "VarHandleOp":
+  if context.executing_eagerly() or ref.op.type == "VarHandleOp":
     return gen_resource_variable_ops.var_is_initialized_op(ref.handle,
                                                            name=name)
 
@@ -278,7 +217,7 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
     return gen_state_ops.assign(
         ref, value, use_locking=use_locking, name=name,
         validate_shape=validate_shape)
-  return ref.assign(value)
+  return ref.assign(value, name=name)
 
 
 @tf_export("count_up_to")
@@ -353,11 +292,9 @@ def scatter_update(ref, indices, updates, use_locking=True, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.scatter_update(ref, indices, updates,
                                         use_locking=use_locking, name=name)
-  with ops.control_dependencies(
-      [gen_resource_variable_ops.resource_scatter_update(
-          ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
-          name=name)]):
-    return ref.read_value()
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_update(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export("scatter_nd_update")
@@ -422,3 +359,55 @@ def scatter_nd_update(ref, indices, updates, use_locking=True, name=None):
       ref.handle, indices, ops.convert_to_tensor(updates, dtype=ref.dtype),
       use_locking, name)]):
     return ref.read_value()
+
+
+@tf_export("scatter_add")
+def scatter_add(ref, indices, updates, use_locking=False, name=None):
+  # pylint: disable=line-too-long
+  r"""Adds sparse updates to the variable referenced by `resource`.
+
+  This operation computes
+
+  ```python
+      # Scalar indices
+      ref[indices, ...] += updates[...]
+
+      # Vector indices (for each i)
+      ref[indices[i], ...] += updates[i, ...]
+
+      # High rank indices (for each i, ..., j)
+      ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
+  ```
+
+  This operation outputs `ref` after the update is done.
+  This makes it easier to chain operations that need to use the updated value.
+  Duplicate entries are handled correctly: if multiple `indices` reference
+  the same location, their contributions add.
+
+  Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+  <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src='https://www.tensorflow.org/images/ScatterAdd.png' alt>
+  </div>
+
+  Args:
+    ref: A `Variable`.
+    indices: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      A tensor of indices into the first dimension of `ref`.
+    updates: A `Tensor`. Must have the same type as `ref`.
+      A tensor of updated values to store in `ref`.
+    use_locking: An optional `bool`. Defaults to `True`.
+      If True, the assignment will be protected by a lock;
+      otherwise the behavior is undefined, but may exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    Same as `ref`.  Returned as a convenience for operations that want
+    to use the updated values after the update is done.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_add(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_add(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))

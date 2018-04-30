@@ -141,7 +141,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
 
             if (s.ok()) {
               // Produce the line as output.
-              Tensor line_tensor(cpu_allocator(), DT_STRING, {});
+              Tensor line_tensor(ctx->allocator({}), DT_STRING, {});
               line_tensor.scalar<string>()() = line_contents;
               out_tensors->emplace_back(std::move(line_tensor));
               *end_of_sequence = false;
@@ -384,7 +384,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
               TF_RETURN_IF_ERROR(
                   input_buffer_->ReadNBytes(dataset()->record_bytes_, &record));
               // Produce the record as output.
-              Tensor record_tensor(cpu_allocator(), DT_STRING, {});
+              Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
               record_tensor.scalar<string>()() = record;
               out_tensors->emplace_back(std::move(record_tensor));
               *end_of_sequence = false;
@@ -589,7 +589,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
         do {
           // We are currently processing a file, so try to read the next record.
           if (reader_) {
-            Tensor result_tensor(cpu_allocator(), DT_STRING, {});
+            Tensor result_tensor(ctx->allocator({}), DT_STRING, {});
             Status s = reader_->ReadRecord(&result_tensor.scalar<string>()());
             if (s.ok()) {
               out_tensors->emplace_back(std::move(result_tensor));

@@ -105,7 +105,7 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
     self.assertEqual(match_result.get_op(y1_pattern), y1.op)
     self.assertEqual(match_result.get_tensor(y1_pattern), y1)
 
-  def test_oneof_pattern(self):
+  def test_oneof_type_pattern(self):
     #   -   +
     #  / \ / \
     # x   y   z
@@ -124,6 +124,44 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
         match_result.get_op(add_or_sub_pattern)
         for match_result in matcher.match_graph(g)
     ], [plus.op, minus.op])
+
+  def test_oneof_pattern(self):
+    reshape_pattern = graph_matcher.OpTypePattern('Reshape')
+    transpose_pattern = graph_matcher.OneofPattern([
+        graph_matcher.OpTypePattern(
+            'Transpose',
+            name='transpose',
+            inputs=[
+                graph_matcher.OpTypePattern(
+                    'Slice', name='slice', inputs=[reshape_pattern, '*', '*']),
+                '*'
+            ]),
+        graph_matcher.OpTypePattern(
+            'Transpose', name='transpose', inputs=[reshape_pattern, '*'])
+    ])
+
+    matcher = graph_matcher.GraphMatcher(transpose_pattern)
+
+    g = ops.Graph()
+    with g.as_default():
+      inputs = array_ops.placeholder(dtypes.float32, shape=[6])
+      reshape = array_ops.reshape(inputs, [2, 3])
+      transpose = array_ops.transpose(reshape)
+      [match_result] = list(matcher.match_graph(g))
+      self.assertEqual(match_result.get_tensor(reshape_pattern), reshape)
+      self.assertEqual(match_result.get_tensor('slice'), None)
+      self.assertEqual(match_result.get_op('transpose'), transpose.op)
+
+    g = ops.Graph()
+    with g.as_default():
+      inputs = array_ops.placeholder(dtypes.float32, shape=[6])
+      reshape = array_ops.reshape(inputs, [2, 3])
+      slicing = array_ops.slice(reshape, [0, 0], [-1, -1])
+      transpose = array_ops.transpose(slicing)
+      [match_result] = list(matcher.match_graph(g))
+      self.assertEqual(match_result.get_tensor(reshape_pattern), reshape)
+      self.assertEqual(match_result.get_tensor('slice'), slicing)
+      self.assertEqual(match_result.get_op('transpose'), transpose.op)
 
 
 if __name__ == '__main__':

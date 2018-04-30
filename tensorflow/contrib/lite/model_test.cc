@@ -20,7 +20,6 @@ limitations under the License.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <string>
 
 #include "tensorflow/contrib/lite/model.h"
 
@@ -210,6 +209,38 @@ TEST(BasicFlatBufferModel, TestNullModel) {
   ASSERT_EQ(interpreter.get(), nullptr);
 }
 
+// Mocks the verifier by setting the result in ctor.
+class FakeVerifier : public tflite::TfLiteVerifier {
+ public:
+  explicit FakeVerifier(bool result) : result_(result) {}
+  bool Verify(const char* data, int length,
+              tflite::ErrorReporter* reporter) override {
+    return result_;
+  }
+
+ private:
+  bool result_;
+};
+
+TEST(BasicFlatBufferModel, TestWithTrueVerifier) {
+  FakeVerifier verifier(true);
+  ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin",
+      &verifier));
+}
+
+TEST(BasicFlatBufferModel, TestWithFalseVerifier) {
+  FakeVerifier verifier(false);
+  ASSERT_FALSE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin",
+      &verifier));
+}
+
+TEST(BasicFlatBufferModel, TestWithNullVerifier) {
+  ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin", nullptr));
+}
+
 struct TestErrorReporter : public ErrorReporter {
   int Report(const char* format, va_list args) override {
     calls++;
@@ -245,14 +276,6 @@ TEST(BasicFlatBufferModel, TestNullErrorReporter) {
   TrivialResolver resolver;
   InterpreterBuilder(*model, resolver)(&interpreter);
   ASSERT_NE(interpreter->Invoke(), kTfLiteOk);
-}
-
-// Test what happens if we cannot bind any of the ops.
-TEST(BasicFlatBufferModel, TestBuildModelFromCorruptedData) {
-  std::string corrupted_data = "123";
-  auto model = FlatBufferModel::BuildFromBuffer(corrupted_data.c_str(),
-                                                corrupted_data.length());
-  ASSERT_FALSE(model);
 }
 
 // Test that loading model directly from a Model flatbuffer works.

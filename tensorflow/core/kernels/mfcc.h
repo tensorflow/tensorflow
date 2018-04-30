@@ -20,18 +20,17 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/mfcc_dct.h"
 #include "tensorflow/core/kernels/mfcc_mel_filterbank.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
 class Mfcc {
  public:
   Mfcc();
-  bool Initialize(int input_length,
-                  double input_sample_rate);
+  bool Initialize(int input_length, double input_sample_rate);
 
   // Input is a single squared-magnitude spectrogram frame. The input spectrum
   // is converted to linear magnitude and weighted into bands using a

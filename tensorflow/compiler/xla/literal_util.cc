@@ -44,8 +44,16 @@ namespace {
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
-// Converts between little and big endian, assuming elements in the array are 16
-// bits long.
+// Converts between little and big endian.
+//
+// Precondition: size % 2 == 0 (elements in the array are 16 bits long)
+void ConvertEndianShort(string* bytes) {
+  CHECK_EQ(bytes->size() / 2, 0);
+  for (int64 i = 0; i < bytes->size(); i += 2) {
+    std::swap((*bytes)[i], (*bytes)[i + 1]);
+  }
+}
+
 void ConvertEndianShort(char* bytes, int64 size) {
   CHECK_EQ(size / 2, 0);
   for (int64 i = 0; i < size; i += 2) {
@@ -97,11 +105,18 @@ Literal::Literal(const Shape& shape, bool allocate_arrays)
     const Shape& subshape = piece.subshape();
     if (ShapeUtil::IsArray(subshape)) {
       if (allocate_arrays) {
-        piece.set_buffer(new char[piece.size_bytes()]);
         if (LayoutUtil::IsSparseArray(subshape)) {
+          // For sparse arrays, the buffer must be of the size of the maximum
+          // number of sparse elements possible.
+          const int64 max_sparse_elements =
+              LayoutUtil::MaxSparseElements(subshape.layout());
+          piece.set_buffer(
+              new char[max_sparse_elements * ShapeUtil::ByteSizeOfPrimitiveType(
+                                                 subshape.element_type())]);
           piece.set_sparse_indices(new SparseIndexArray(
-              LayoutUtil::MaxSparseElements(subshape.layout()),
-              ShapeUtil::Rank(subshape)));
+              max_sparse_elements, ShapeUtil::Rank(subshape)));
+        } else {
+          piece.set_buffer(new char[piece.size_bytes()]);
         }
       } else {
         piece.set_buffer(nullptr);
@@ -223,7 +238,7 @@ Status Literal::CopySliceFromInternal(
     Literal::StrideConfig stride_config(src_literal.shape(), shape(),
                                         copy_size);
 
-    auto copy_proc = [&](const std::vector<int64>& indexes) {
+    auto copy_proc = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
       // Map from multi-dimensional index, to source index.
       std::transform(indexes.begin(), indexes.end(), src_base.begin(),
                      src_indexes.begin(), std::plus<int64>());
@@ -234,7 +249,8 @@ Status Literal::CopySliceFromInternal(
       int64 src_index = linear_index(src_literal.shape(), src_indexes);
       int64 dest_index = linear_index(shape(), dest_indexes);
 
-      StridedCopy(data<NativeT>(), dest_index, stride_config.dest_stride,
+      // `this->` is needed to workaround MSVC bug: #16882
+      StridedCopy(this->data<NativeT>(), dest_index, stride_config.dest_stride,
                   src_literal.data<NativeT>(), src_index,
                   stride_config.source_stride, stride_config.minor_loop_size);
       return true;
@@ -243,6 +259,28 @@ Status Literal::CopySliceFromInternal(
     ShapeUtil::ForEachIndex(src_literal.shape(), stride_config.base,
                             stride_config.dimensions, stride_config.step,
                             copy_proc);
+  }
+  return Status::OK();
+}
+
+Status Literal::CopyElementFrom(const Literal& src_literal,
+                                tensorflow::gtl::ArraySlice<int64> src_index,
+                                tensorflow::gtl::ArraySlice<int64> dest_index) {
+  DCHECK_EQ(shape().element_type(), src_literal.shape().element_type());
+  const int64 src_linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+      src_literal.shape(), src_index);
+  const int64 dest_linear_index =
+      IndexUtil::MultidimensionalIndexToLinearIndex(shape(), dest_index);
+  const int64 primitive_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+
+  char* dest_address =
+      static_cast<char*>(untyped_data()) + dest_linear_index * primitive_size;
+  const char* source_address =
+      static_cast<const char*>(src_literal.untyped_data()) +
+      src_linear_index * primitive_size;
+  if (dest_address != source_address) {
+    memcpy(dest_address, source_address, primitive_size);
   }
   return Status::OK();
 }
@@ -342,7 +380,7 @@ Status Literal::Piece::CopyFrom(const Literal::Piece& src) {
 #undef COPY_ELEMENTS
       default:
         return Unimplemented(
-            "Unhandled primitive type %s",
+            "Copying a Literal object with element type %s is not implemented.",
             PrimitiveType_Name(subshape().element_type()).c_str());
     }
   }
@@ -490,7 +528,10 @@ Status Literal::CopySliceFrom(const Literal& src_literal,
     default:
       break;
   }
-  return Unimplemented("Unhandled primitive type %d", shape().element_type());
+  return Unimplemented(
+      "Copying a slice from a Literal object with element type %d is not "
+      "implemented.",
+      shape().element_type());
 }
 
 /* static */ Literal Literal::Zero(PrimitiveType primitive_type) {
@@ -807,9 +848,10 @@ std::unique_ptr<Literal> Literal::Slice(
   DimensionVector result_dimensions;
   for (int64 dnum = 0; dnum < ShapeUtil::Rank(shape()); ++dnum) {
     CHECK_GE(start_indices[dnum], 0);
-    CHECK_LE(limit_indices[dnum], shape().dimensions(dnum));
+    CHECK_LE(limit_indices[dnum], shape().dimensions(dnum))
+        << "dnum = " << dnum;
     int64 dimension = limit_indices[dnum] - start_indices[dnum];
-    CHECK_GT(dimension, 0);
+    CHECK_GE(dimension, 0) << "dnum = " << dnum;
     result_dimensions.push_back(dimension);
   }
   const auto result_shape =
@@ -902,7 +944,7 @@ string Literal::GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index,
     case U64:
       return StrCat(Get<uint64>(multi_index, shape_index));
     case F16:
-      return StrCat(Get<half>(multi_index, shape_index));
+      return StrCat(static_cast<float>(Get<half>(multi_index, shape_index)));
     case F32:
       return StrCat(Get<float>(multi_index, shape_index));
     case BF16:
@@ -952,7 +994,8 @@ string Literal::GetSparseElementAsString(int64 sparse_element_number,
       return StrCat(
           GetSparseElement<uint64>(sparse_element_number, shape_index));
     case F16:
-      return StrCat(GetSparseElement<half>(sparse_element_number, shape_index));
+      return StrCat(static_cast<float>(
+          GetSparseElement<half>(sparse_element_number, shape_index)));
     case F32:
       return StrCat(
           GetSparseElement<float>(sparse_element_number, shape_index));
@@ -996,6 +1039,36 @@ StatusOr<int64> Literal::GetIntegralAsS64(
   }
 }
 
+Status Literal::SetIntegralAsS64(tensorflow::gtl::ArraySlice<int64> multi_index,
+                                 int64 value) {
+  CHECK(LayoutUtil::IsDenseArray(shape()));
+  switch (shape().element_type()) {
+    case PRED:
+      Set<bool>(multi_index, value);
+      break;
+    case U8:
+      Set<uint8>(multi_index, value);
+      break;
+    case S32:
+      Set<int32>(multi_index, value);
+      break;
+    case S64:
+      Set<int64>(multi_index, value);
+      break;
+    case U32:
+      Set<uint32>(multi_index, value);
+      break;
+    case U64:
+      Set<uint64>(multi_index, value);
+      break;
+    default:
+      return FailedPrecondition(
+          "Array element type is not integral: %s",
+          PrimitiveType_Name(shape().element_type()).c_str());
+  }
+  return Status::OK();
+}
+
 tensorflow::gtl::ArraySlice<int64> Literal::GetSparseIndex(
     int64 sparse_element_number, const ShapeIndex& shape_index) const {
   const Piece& p = piece(shape_index);
@@ -1006,6 +1079,49 @@ tensorflow::gtl::ArraySlice<int64> Literal::GetSparseIndex(
 
 void Literal::SortSparseElements(const ShapeIndex& shape_index) {
   piece(shape_index).SortSparseElements();
+}
+
+Literal Literal::GetFirstScalarLiteral() const {
+  CHECK(ShapeUtil::IsArray(shape_));
+  CHECK_GT(ShapeUtil::ElementsIn(shape_), 0);
+  switch (shape_.element_type()) {
+    case PRED:
+      return std::move(*Literal::CreateR0<bool>(GetFirstElement<bool>()));
+    // 8 bit types.
+    case S8:
+      return std::move(*Literal::CreateR0<int8>(GetFirstElement<int8>()));
+    case U8:
+      return std::move(*Literal::CreateR0<uint8>(GetFirstElement<uint8>()));
+    // 16 bit types.
+    case BF16:
+      return std::move(
+          *Literal::CreateR0<bfloat16>(GetFirstElement<bfloat16>()));
+    case F16:
+      return std::move(*Literal::CreateR0<half>(GetFirstElement<half>()));
+    case S16:
+      return std::move(*Literal::CreateR0<int16>(GetFirstElement<int16>()));
+    case U16:
+      return std::move(*Literal::CreateR0<uint16>(GetFirstElement<uint16>()));
+    // 32 bit types.
+    case F32:
+      return std::move(*Literal::CreateR0<float>(GetFirstElement<float>()));
+    case S32:
+      return std::move(*Literal::CreateR0<int32>(GetFirstElement<int32>()));
+    case U32:
+      return std::move(*Literal::CreateR0<uint32>(GetFirstElement<uint32>()));
+    // 64 bit types.
+    case C64:
+      return std::move(
+          *Literal::CreateR0<complex64>(GetFirstElement<complex64>()));
+    case F64:
+      return std::move(*Literal::CreateR0<double>(GetFirstElement<double>()));
+    case S64:
+      return std::move(*Literal::CreateR0<int64>(GetFirstElement<int64>()));
+    case U64:
+      return std::move(*Literal::CreateR0<uint64>(GetFirstElement<uint64>()));
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << shape_.element_type();
+  }
 }
 
 void Literal::Piece::SortSparseElements() {
@@ -1257,11 +1373,17 @@ string Literal::ToString(bool print_layout) const {
 
 /* static */ std::unique_ptr<Literal> Literal::MakeTupleOwned(
     std::vector<std::unique_ptr<Literal>> elements) {
-  std::vector<const Literal*> element_ptrs;
+  std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (const auto& element : elements) {
-    element_ptrs.push_back(element.get());
+    element_shapes.push_back(element->shape());
   }
-  return MakeTuple(element_ptrs);
+  auto literal = MakeUnique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
+  for (int64 i = 0; i < elements.size(); ++i) {
+    TF_CHECK_OK(
+        literal->MoveFrom(std::move(*elements[i]), /*dest_shape_index=*/{i}));
+  }
+  return literal;
 }
 
 void Literal::EachCellAsString(
@@ -1278,8 +1400,9 @@ void Literal::EachCellAsString(
 }
 
 namespace {
-template <typename NativeSrcT, typename NativeDestT>
-std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
+template <typename NativeSrcT, typename NativeDestT, typename ConverterType>
+std::unique_ptr<Literal> ConvertBetweenNativeTypesWithConverter(
+    const Literal& src_literal, const ConverterType& converter) {
   CHECK(ShapeUtil::IsArray(src_literal.shape()));
   auto result_literal = MakeUnique<Literal>(ShapeUtil::ChangeElementType(
       src_literal.shape(),
@@ -1289,9 +1412,38 @@ std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
   int64 num_elements = src_literal.element_count();
 
   for (int64 i = 0; i < num_elements; ++i) {
-    dest_data[i] = static_cast<NativeDestT>(src_data[i]);
+    dest_data[i] = converter(src_data[i]);
   }
   return result_literal;
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
+  auto converter = [](NativeSrcT src) { return static_cast<NativeDestT>(src); };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT)),
+                        std::unique_ptr<Literal>>::type
+BitcastBetweenNativeTypes(const Literal& src_literal) {
+  auto converter = [](NativeSrcT src) {
+    return tensorflow::bit_cast<NativeDestT>(src);
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+// This template specialization is here to make the compiler happy. bit_cast has
+// a static check that the types are the same size. This specialization should
+// never be used because the source and destination types are checked for
+// identical sizes higher up.
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<(sizeof(NativeSrcT) != sizeof(NativeDestT)),
+                        std::unique_ptr<Literal>>::type
+BitcastBetweenNativeTypes(const Literal& src_literal) {
+  LOG(FATAL) << "Invalid bitcast between types of different sizes.";
 }
 
 template <PrimitiveType primitive_src_type>
@@ -1313,21 +1465,33 @@ std::unique_ptr<Literal> ConvertToC64(const Literal& src_literal) {
 }
 
 template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>
-std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
+std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal,
+                                             bool bitcast) {
   CHECK_EQ(primitive_src_type, src_literal.shape().element_type());
-  return ConvertBetweenNativeTypes<
-      typename primitive_util::PrimitiveTypeToNative<primitive_src_type>::type,
-      typename primitive_util::PrimitiveTypeToNative<
-          primitive_dest_type>::type>(src_literal);
+  if (bitcast) {
+    return BitcastBetweenNativeTypes<
+        typename primitive_util::PrimitiveTypeToNative<
+            primitive_src_type>::type,
+        typename primitive_util::PrimitiveTypeToNative<
+            primitive_dest_type>::type>(src_literal);
+  } else {
+    return ConvertBetweenNativeTypes<
+        typename primitive_util::PrimitiveTypeToNative<
+            primitive_src_type>::type,
+        typename primitive_util::PrimitiveTypeToNative<
+            primitive_dest_type>::type>(src_literal);
+  }
 }
 
 template <PrimitiveType primitive_src_type>
 StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
-    const Literal& src_literal, PrimitiveType primitive_dest_type) {
+    const Literal& src_literal, PrimitiveType primitive_dest_type,
+    bool bitcast) {
   switch (primitive_dest_type) {
-#define CONVERT_IF_TYPES_MATCH(type) \
-  case (type):                       \
-    return ConvertIfTypesMatch<primitive_src_type, (type)>(src_literal);
+#define CONVERT_IF_TYPES_MATCH(type)                                    \
+  case (type):                                                          \
+    return ConvertIfTypesMatch<primitive_src_type, (type)>(src_literal, \
+                                                           bitcast);
     CONVERT_IF_TYPES_MATCH(PRED)
     CONVERT_IF_TYPES_MATCH(S8)
     CONVERT_IF_TYPES_MATCH(S32)
@@ -1341,25 +1505,31 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
     CONVERT_IF_TYPES_MATCH(BF16)
 #undef CONVERT_IF_TYPES_MATCH
     case C64:
-      return ConvertToC64<primitive_src_type>(src_literal);
+      if (!bitcast) {
+        return ConvertToC64<primitive_src_type>(src_literal);
+      }
+      break;
     // Other types are not yet supported.
     default:
-      return InvalidArgument(
-          "Unimplemented: Convert from type %s to type %s",
-          PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
-          PrimitiveType_Name(primitive_dest_type).c_str());
+      break;
   }
+  return Unimplemented(
+      "Converting from type %s to type %s is not implemented.",
+      PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
+      PrimitiveType_Name(primitive_dest_type).c_str());
 }
 
-}  // namespace
-
-StatusOr<std::unique_ptr<Literal>> Literal::Convert(
-    PrimitiveType primitive_dest_type) const {
-  TF_RET_CHECK(ShapeUtil::IsArray(shape()));
-  switch (shape().element_type()) {
-#define CONVERT_IF_DEST_TYPE_MATCHES(type) \
-  case (type):                             \
-    return ConvertIfDestTypeMatches<(type)>(*this, primitive_dest_type);
+StatusOr<std::unique_ptr<Literal>> ConvertSwitch(
+    const Literal& literal, PrimitiveType primitive_dest_type, bool bitcast) {
+  TF_RET_CHECK(ShapeUtil::IsArray(literal.shape()));
+  if (literal.shape().element_type() == primitive_dest_type) {
+    return literal.CloneToUnique();
+  }
+  switch (literal.shape().element_type()) {
+#define CONVERT_IF_DEST_TYPE_MATCHES(type)                                \
+  case (type):                                                            \
+    return ConvertIfDestTypeMatches<(type)>(literal, primitive_dest_type, \
+                                            bitcast);
     CONVERT_IF_DEST_TYPE_MATCHES(PRED)
     CONVERT_IF_DEST_TYPE_MATCHES(S8)
     CONVERT_IF_DEST_TYPE_MATCHES(S32)
@@ -1374,10 +1544,60 @@ StatusOr<std::unique_ptr<Literal>> Literal::Convert(
 #undef CONVERT_IF_DEST_TYPE_MATCHES
       // Other types are not yet supported.
     default:
-      return InvalidArgument("Unimplemented: Convert from type %s to type %s",
-                             PrimitiveType_Name(shape().element_type()).c_str(),
-                             PrimitiveType_Name(primitive_dest_type).c_str());
+      return Unimplemented(
+          "%s from type %s to type %s is not implemented.",
+          (bitcast ? "Bitcast converting" : "Converting"),
+          PrimitiveType_Name(literal.shape().element_type()).c_str(),
+          PrimitiveType_Name(primitive_dest_type).c_str());
   }
+}
+
+}  // namespace
+
+StatusOr<std::unique_ptr<Literal>> Literal::Convert(
+    PrimitiveType primitive_dest_type) const {
+  return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/false);
+}
+
+StatusOr<std::unique_ptr<Literal>> Literal::BitcastConvert(
+    PrimitiveType primitive_dest_type) const {
+  if (primitive_util::BitWidth(shape().element_type()) !=
+      primitive_util::BitWidth(primitive_dest_type)) {
+    return InvalidArgument(
+        "Cannot bitcast convert from %s to %s, bit widths are different: %d != "
+        "%d",
+        PrimitiveType_Name(shape().element_type()).c_str(),
+        PrimitiveType_Name(primitive_dest_type).c_str(),
+        primitive_util::BitWidth(shape().element_type()),
+        primitive_util::BitWidth(primitive_dest_type));
+  }
+  return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/true);
+}
+
+StatusOr<std::unique_ptr<Literal>> Literal::ConvertToShape(
+    const Shape& dest_shape, bool round_f32_to_bf16) const {
+  if (!ShapeUtil::IsTuple(dest_shape)) {
+    if (round_f32_to_bf16 && shape().element_type() == F32 &&
+        dest_shape.element_type() == BF16) {
+      auto converter = [](float src) {
+        return tensorflow::bfloat16::round_to_bfloat16(src);
+      };
+      return ConvertBetweenNativeTypesWithConverter<float, bfloat16>(*this,
+                                                                     converter);
+    }
+    return Convert(dest_shape.element_type());
+  }
+  std::vector<Literal> elements;
+  for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
+    auto element = LiteralView::Create(*this, {i});
+    TF_ASSIGN_OR_RETURN(
+        auto new_element,
+        element.ConvertToShape(ShapeUtil::GetSubshape(dest_shape, {i})));
+    elements.push_back(std::move(*new_element));
+  }
+  auto converted = MakeUnique<Literal>();
+  *converted = Literal::MoveIntoTuple(&elements);
+  return std::move(converted);
 }
 
 template <typename NativeT>
@@ -1564,6 +1784,92 @@ bool Literal::IsAllComplex(complex64 value) const {
   }
 }
 
+bool Literal::IsAllFirst() const {
+  for (const auto& pair : pieces_) {
+    const Piece& piece = pair.second;
+    if (!ShapeUtil::IsArray(piece.subshape())) {
+      continue;
+    }
+
+    // Empty shapes are not all the first element since there is no first
+    // element.
+    if (ShapeUtil::HasZeroElements(piece.subshape())) {
+      return false;
+    }
+    auto piece_is_all = [&]() {
+      switch (piece.subshape().element_type()) {
+        case PRED: {
+          auto data = piece.data<bool>();
+          return AllElementsEqualValue<bool>(data, data[0]);
+        }
+        // 8 bit types
+        case S8: {
+          auto data = piece.data<int8>();
+          return AllElementsEqualValue<int8>(data, data[0]);
+        }
+        case U8: {
+          auto data = piece.data<uint8>();
+          return AllElementsEqualValue<uint8>(data, data[0]);
+        }
+        // 16 bit types
+        case BF16: {
+          auto data = piece.data<bfloat16>();
+          return AllElementsEqualValue<bfloat16>(data, data[0]);
+        }
+        case F16: {
+          auto data = piece.data<half>();
+          return AllElementsEqualValue<half>(data, data[0]);
+        }
+        case S16: {
+          auto data = piece.data<int16>();
+          return AllElementsEqualValue<int16>(data, data[0]);
+        }
+        case U16: {
+          auto data = piece.data<uint16>();
+          return AllElementsEqualValue<uint16>(data, data[0]);
+        }
+        // 32 bit types
+        case F32: {
+          auto data = piece.data<float>();
+          return AllElementsEqualValue<float>(data, data[0]);
+        }
+        case U32: {
+          auto data = piece.data<uint32>();
+          return AllElementsEqualValue<uint32>(data, data[0]);
+        }
+        case S32: {
+          auto data = piece.data<int32>();
+          return AllElementsEqualValue<int32>(data, data[0]);
+        }
+        // 64 bit types
+        case C64: {
+          auto data = piece.data<complex64>();
+          return AllElementsEqualValue<complex64>(data, data[0]);
+        }
+        case F64: {
+          auto data = piece.data<double>();
+          return AllElementsEqualValue<double>(data, data[0]);
+        }
+        case S64: {
+          auto data = piece.data<int64>();
+          return AllElementsEqualValue<int64>(data, data[0]);
+        }
+        case U64: {
+          auto data = piece.data<uint64>();
+          return AllElementsEqualValue<uint64>(data, data[0]);
+        }
+        default:
+          return false;
+      }
+    };
+
+    if (!piece_is_all()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool Literal::IsZero(tensorflow::gtl::ArraySlice<int64> indices) const {
   CHECK(ShapeUtil::IsArray(shape()));
   switch (shape().element_type()) {
@@ -1632,16 +1938,14 @@ void Literal::Piece::WriteToProto(LiteralProto* proto) const {
       *proto->mutable_f16s() = string(
           reinterpret_cast<const char*>(data<half>().data()), size_bytes());
       if (!kLittleEndian) {
-        ConvertEndianShort(const_cast<char*>(proto->mutable_f16s()->data()),
-                           proto->f16s().size());
+        ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
       *proto->mutable_bf16s() = string(
           reinterpret_cast<const char*>(data<bfloat16>().data()), size_bytes());
       if (!kLittleEndian) {
-        ConvertEndianShort(const_cast<char*>(proto->mutable_bf16s()->data()),
-                           proto->bf16s().size());
+        ConvertEndianShort(proto->mutable_bf16s());
       }
       break;
     case F32:

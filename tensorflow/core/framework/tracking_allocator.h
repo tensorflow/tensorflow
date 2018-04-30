@@ -64,9 +64,9 @@ class TrackingAllocator : public Allocator {
                     const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
-  int64 AllocationId(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
   void ClearStats() override;
 
@@ -125,7 +125,7 @@ class TrackingAllocator : public Allocator {
     size_t allocated_size;
     int64 allocation_id;
   };
-  std::unordered_map<void*, Chunk> in_use_ GUARDED_BY(mu_);
+  std::unordered_map<const void*, Chunk> in_use_ GUARDED_BY(mu_);
   int64 next_allocation_id_ GUARDED_BY(mu_);
 };
 

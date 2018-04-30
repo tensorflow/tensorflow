@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 
@@ -73,7 +74,7 @@ class GraphConstructor {
     Options(const ImportGraphDefOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(false),
           expect_device_spec(false),
-          prefix(in.prefix.empty() || StringPiece(in.prefix).ends_with("/")
+          prefix(in.prefix.empty() || str_util::EndsWith(in.prefix, "/")
                      ? in.prefix
                      : in.prefix + "/"),
           uniquify_names(in.uniquify_names),
@@ -374,15 +375,8 @@ Status GraphConstructor::EnsureNoNameCollisions() {
       return errors::InvalidArgument("Imported node name prefix '", prefix_,
                                      "' would lead to invalid node names");
     }
-    if (NameExistsInGraph(prefix_no_slash)) {
-      if (opts_.uniquify_prefix) {
-        prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
-      } else {
-        return errors::InvalidArgument("Import node name prefix '",
-                                       prefix_no_slash,
-                                       "' conflicts with "
-                                       "name already used in the graph");
-      }
+    if (NameExistsInGraph(prefix_no_slash) && opts_.uniquify_prefix) {
+      prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
     }
   }
   return Status::OK();
@@ -443,7 +437,7 @@ Status GraphConstructor::BuildNodeIndex() {
     bool in_control_dependence = false;
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name = node_def.input(i);
-      if (!input_name.empty() && input_name.starts_with("^")) {
+      if (!input_name.empty() && str_util::StartsWith(input_name, "^")) {
         in_control_dependence = true;
       } else if (in_control_dependence) {
         return errors::InvalidArgument(
@@ -491,7 +485,7 @@ Status GraphConstructor::InitFromEdges() {
       bool has_loop_back_edge = false;
       for (int i = 0; i < node_def.input_size(); ++i) {
         StringPiece input_name(node_def.input(i));
-        if (input_name.starts_with("^")) {
+        if (str_util::StartsWith(input_name, "^")) {
           num_control_edges++;
         } else {
           TensorId id(ParseTensorName(input_name));
@@ -541,7 +535,7 @@ Status GraphConstructor::ValidateColocationConstraints(
   if (iter == node_def.attr().end()) return Status::OK();
   for (const string& c : iter->second.list().s()) {
     StringPiece s(c);
-    if (s.Consume(kColocationGroupPrefix) &&
+    if (str_util::ConsumePrefix(&s, kColocationGroupPrefix) &&
         gdef_nodes_.find(s) == gdef_nodes_.end()) {
       return errors::InvalidArgument(
           "Node '", node_def.name(),
@@ -575,13 +569,22 @@ Status GraphConstructor::ValidateShape(Node* node) {
   auto* ic = refiner_->GetContext(node);
   DCHECK(ic != nullptr)
       << "ShapeRefiner::AddNode() should have created the InferenceContext";
-  if (shape_attrs.size() != node->num_outputs()) {
+  if (shape_attrs.size() < node->num_outputs()) {
     return errors::InvalidArgument(
         "Node '", node->name(), "' has ", node->num_outputs(),
         " outputs but the ", kAttrName, " attribute specifies shapes for ",
         shape_attrs.size(), " outputs");
   }
-  for (int i = 0; i < shape_attrs.size(); ++i) {
+  // NOTE(skyewm): we don't raise an error here because some users depend on
+  // this behavior, even though it's unsafe.
+  // TODO(b/74619486): raise an error.
+  if (shape_attrs.size() > node->num_outputs()) {
+    LOG(WARNING) << "Node '" << node->name() << "' has " << node->num_outputs()
+                 << " outputs but the " << kAttrName
+                 << " attribute specifies shapes for " << shape_attrs.size()
+                 << " outputs. Output shapes may be inaccurate.";
+  }
+  for (int i = 0; i < node->num_outputs(); ++i) {
     const TensorShapeProto& p = shape_attrs[i];
     shape_inference::ShapeHandle h;
     Status s = ic->MakeShapeFromShapeProto(p, &h);
@@ -663,20 +666,17 @@ Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
 void RemoveInputs(const std::vector<int>& inputs_to_remove, NodeDef* node_def,
                   std::vector<bool>* input_already_exists) {
   // Remove 'inputs_to_remove' from 'node_def'
-  // TODO(skyewm): is there a better way to do this?
-  std::vector<string> inputs;
-  inputs.reserve(node_def->input_size());
-  for (int i = 0; i < node_def->input_size(); ++i) {
-    inputs.push_back(node_def->input(i));
-  }
-  node_def->clear_input();
-  for (int i = 0, j = 0; i < inputs.size(); ++i) {
+  NodeDef copy;
+  copy.mutable_input()->Reserve(node_def->input_size() -
+                                inputs_to_remove.size());
+  for (int i = 0, j = 0; i < node_def->input_size(); ++i) {
     if (j < inputs_to_remove.size() && i == inputs_to_remove[j]) {
       ++j;
     } else {
-      node_def->add_input(inputs[i]);
+      copy.add_input()->swap(*node_def->mutable_input(i));
     }
   }
+  node_def->mutable_input()->Swap(copy.mutable_input());
   // Remove 'inputs_to_remove' from 'input_already_exists'
   for (int idx : inputs_to_remove) {
     input_already_exists->erase(input_already_exists->begin() + idx);
@@ -742,9 +742,21 @@ void GraphConstructor::AddControlDependencies(
   // dependencies
   for (const string& control_dep : opts_.control_dependencies) {
     string input = TensorId(control_dep, Graph::kControlSlot).ToString();
-    const protobuf::RepeatedPtrField<string>& inputs = node_def->input();
-    if (std::find(inputs.begin(), inputs.end(), input) != inputs.end()) {
-      // Control dependency already exists
+    bool found = false;
+    for (int i = node_def->input_size() - 1; i >= 0; --i) {
+      const string& node_input = node_def->input(i);
+      if (node_input[0] != '^') {
+        // Control inputs are at the end. Break when we reach the non-control
+        // inputs.
+        break;
+      }
+      if (node_input == input) {
+        // Control dependency already exists
+        found = true;
+        break;
+      }
+    }
+    if (found) {
       continue;
     }
     node_def->add_input(input);
@@ -758,11 +770,11 @@ void GraphConstructor::AddPrefixToNodeDef(
   node_def->set_name(strings::StrCat(prefix_, node_def->name()));
   // Update names of input nodes
   for (int i = 0; i < node_def->input_size(); ++i) {
-    StringPiece input(node_def->input(i));
     // Skip remapped inputs (which already exist in g_ and are not being
     // imported).
     if (input_already_exists[i]) continue;
-    if (input.Consume("^")) {
+    StringPiece input(node_def->input(i));
+    if (str_util::ConsumePrefix(&input, "^")) {
       node_def->set_input(i, strings::StrCat("^", prefix_, input));
     } else {
       node_def->set_input(i, strings::StrCat(prefix_, input));
@@ -774,7 +786,7 @@ void GraphConstructor::AddPrefixToNodeDef(
         node_def->mutable_attr()->at(kColocationAttrName).mutable_list();
     for (int i = 0; i < list->s_size(); ++i) {
       StringPiece v(list->s(i));
-      if (v.Consume(kColocationGroupPrefix)) {
+      if (str_util::ConsumePrefix(&v, kColocationGroupPrefix)) {
         list->set_s(i, strings::StrCat(kColocationGroupPrefix, prefix_, v));
       }
     }
@@ -817,7 +829,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
     bool updated = false;
     for (int i = 0; i < coloc_values.size(); ++i) {
       StringPiece val(coloc_values[i]);
-      if (val.Consume(kColocationGroupPrefix)) {
+      if (str_util::ConsumePrefix(&val, kColocationGroupPrefix)) {
         const auto& name_pair = uniquified_names_.find(val.ToString());
         if (name_pair == uniquified_names_.end()) continue;
         updated = true;
@@ -930,10 +942,10 @@ Status GraphConstructor::Convert() {
         }
       }
 
-      // TODO(ashankar): The line below means an additional copy of the NodeDef,
-      // which can be expensive if the NodeDef contains large tensors in it.
-      // Might make sense to change the API for ImportGraphDef to take a mutable
-      // GraphDef* and avoid the copying.
+      // TODO(ashankar): The line below means an additional copy of the
+      // NodeDef, which can be expensive if the NodeDef contains large tensors
+      // in it. Might make sense to change the API for ImportGraphDef to take
+      // a mutable GraphDef* and avoid the copying.
       imported_node_def = original_node_def;
       if (!opts_.input_map.empty()) {
         // Note that input_already_exists can shrink here
@@ -977,7 +989,7 @@ Status GraphConstructor::Convert() {
             src_node->num_outputs(), " outputs");
       }
 
-      inputs.push_back(InputInfo(id.first.ToString(), src_node, src_index));
+      inputs.emplace_back(id.first.ToString(), src_node, src_index);
     }
 
     if (has_data_back_edge && !IsMerge(*node_def)) {
@@ -990,7 +1002,10 @@ Status GraphConstructor::Convert() {
     if (opts_.importing) {
       if (!prefix_.empty()) {
         AddPrefixToNodeDef(input_already_exists, &imported_node_def);
-      } else if (opts_.uniquify_names) {
+      }
+      // Note: no need to uniquify names if the prefix already guarantees
+      // uniqueness
+      if (opts_.uniquify_names && (prefix_.empty() || !opts_.uniquify_prefix)) {
         UniquifyNames(input_already_exists, &imported_node_def);
       }
       TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&imported_node_def));
@@ -1004,8 +1019,7 @@ Status GraphConstructor::Convert() {
       if (inputs[i].node == nullptr) {
         // Record this back edge, which will be added after all nodes
         // are created.
-        back_edges_.push_back(
-            EdgeInfo(inputs[i].name, inputs[i].index, node, i));
+        back_edges_.emplace_back(inputs[i].name, inputs[i].index, node, i);
       } else if (inputs[i].index == Graph::kControlSlot) {
         g_->AddControlEdge(inputs[i].node, node);
       } else {
@@ -1013,12 +1027,7 @@ Status GraphConstructor::Convert() {
       }
     }
 
-    // Function shape inference is supported on an opt-in basis per
-    // ShapeRefiner.
-    if (refiner_->function_shape_inference_supported() ||
-        g_->flib_def().Find(node_def->name()) == nullptr) {
-      TF_RETURN_IF_ERROR(ValidateShape(node));
-    }
+    TF_RETURN_IF_ERROR(ValidateShape(node));
 
     // Update pending_count_ for outputs.
     UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
@@ -1275,7 +1284,7 @@ void CopyGraph(const Graph& src, Graph* dest) {
   dest->set_versions(src.versions());
 
   // Copy the nodes
-  std::unordered_map<Node*, Node*>
+  std::unordered_map<const Node*, Node*>
       node_map;  // "Node in src" -> "Node in *dest"
   node_map[src.source_node()] = dest->source_node();
   node_map[src.sink_node()] = dest->sink_node();

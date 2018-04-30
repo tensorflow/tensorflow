@@ -101,14 +101,8 @@ class ComputationBuilder {
   StatusOr<std::unique_ptr<Shape>> GetShape(
       const ComputationDataHandle& operand);
 
-  // Checks that the operand has the given expected shape. Returns the operand
-  // if yes, fails with a CHECK error if no.
-  ComputationDataHandle CheckShape(const ComputationDataHandle& operand,
-                                   const Shape& expected_shape);
-
-  // Checks that the lhs and rhs results have the same shape.
-  void CheckSameShape(const ComputationDataHandle& lhs,
-                      const ComputationDataHandle& rhs);
+  // Retrieves the (inferred) result for the current computation's shape.
+  StatusOr<ProgramShape> GetProgramShape();
 
   // Enqueues a constant with the value of the given literal onto the
   // computation.
@@ -195,9 +189,8 @@ class ComputationBuilder {
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);
 
   // Enqueues an operation onto the computation that collapses the operand, from
-  // minor to major order, then reshapes it into the shape with the given
-  // dimension sizes, also from major to minor. Conceptually, this is a limited
-  // form of "shape casting".
+  // first to last dimension (C order), then reshapes it to the given dimension
+  // sizes. Conceptually, this is a limited form of "shape casting".
   ComputationDataHandle Reshape(const ComputationDataHandle& operand,
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);
 
@@ -443,6 +436,16 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       const Shape& shape);
 
+  // Enqueues a pseudo-op to represent host-side computation data-dependencies.
+  // During code generation, host send and receive operations will be generated
+  // to transfer |operands| to the host and a single result of |shape| back to
+  // the device.  Host send/recv operations are emitted using |channel_name|.
+  // Dataflow dependencies and the |cost_estimate_ns| field may be used in HLO
+  // instruction scheduling.
+  ComputationDataHandle HostCompute(
+      tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
+      const string& channel_name, int64 cost_estimate_ns, const Shape& shape);
+
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
   // of the operands is a scalar, or an explicit broadcast dimension is given
@@ -497,6 +500,10 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   ComputationDataHandle Or(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
+  ComputationDataHandle Xor(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
@@ -650,6 +657,9 @@ class ComputationBuilder {
   // Enqueues a negate instruction onto the computation.
   ComputationDataHandle Neg(const ComputationDataHandle& operand);
 
+  // Enqueues a count-leading-zeros instruction onto the computation.
+  ComputationDataHandle Clz(const ComputationDataHandle& operand);
+
   // Enqueues a transpose instruction onto the computation.
   ComputationDataHandle Transpose(
       const ComputationDataHandle& operand,
@@ -704,6 +714,13 @@ class ComputationBuilder {
   ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
                                         const int exponent_bits,
                                         const int mantissa_bits);
+
+  // Enqueues a Gather node onto the computation.
+  ComputationDataHandle Gather(
+      const ComputationDataHandle& input,
+      const ComputationDataHandle& gather_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
 
   // Enqueues a Send node onto the computation, to send the given operand to
   // a Recv instruction that shares the same channel handle.
@@ -853,7 +870,7 @@ class ComputationBuilder {
                   Window* window);
 
   // Internal helper method that does the building for an arbitrary unary op.
-  ComputationDataHandle UnaryOp(UnaryOperation binop,
+  ComputationDataHandle UnaryOp(UnaryOperation unop,
                                 const ComputationDataHandle& operand);
 
   // Internal helper method that does the building for an arbitrary binary op.

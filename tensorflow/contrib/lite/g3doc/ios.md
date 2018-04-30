@@ -22,6 +22,15 @@ Then install
 brew install automake
 brew install libtool
 ```
+If you get an error where either automake or libtool install but do not link correctly, you'll first need to:
+```bash
+sudo chown -R $(whoami) /usr/local/*
+```
+Then follow the instructions to perform the linking:
+```bash
+brew link automake
+brew link libtool
+```
 
 Then you need to run a shell script to download the dependencies you need:
 

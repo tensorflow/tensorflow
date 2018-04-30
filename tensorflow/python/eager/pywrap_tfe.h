@@ -47,7 +47,33 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
 
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
+//
+// This function is not thread-safe.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
+
+// Registers e as the type of the ResourceVariable class.
+// Returns Py_None if registration succeeds, else throws a TypeError and returns
+// NULL.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
+
+// Registers e as the Exception to be raised when the conditions of
+// TFE_Py_FastPathExecute_C have not been met. When this exception is set, it
+// is a signal to the calling code that it should fall back to the safer (and
+// more complete) code path.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
+
+// Registers e as the backward_function_getter.
+// The registered function creates a backward function (a function that can
+// return the gradient of the inputs an op given the gradient of it's outputs).
+// The registered function will be passed the following arguments:
+//    op_name, attrs, num_inputs, op_inputs, op_outputs
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterBackwardFunctionGetter(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -141,11 +167,10 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
 //  Item 2: device_name: Name of the device on which to execute the operation,
 //          or NULL for automatic selection.
 //  Item 3: op_name: Name of the TensorFlow op to execute.
-//  Item 4: record_gradient_callback: Callback that records the gradient of the
-//          result.
-//          The callback takes (inputs, attrs, result) - all sequences and
-//          records the gradient.
-//  Item 5 onwards: inputs - This is a list of inputs followed by a list of
+//  Item 4: name: An optional name for the operation.
+//  Item 5: List representing all callbacks to execute after successful
+//  op execute.
+//  Item 6 onwards: inputs - This is a list of inputs followed by a list of
 //        attrs. It is not necessary for type attrs to be present.
 //
 // This is named _C since there doesn't seem to be any way to make it visible
@@ -153,19 +178,24 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
 // directive.
 PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
 
+// Record the gradient for a given op.
+PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
+                                PyObject* attrs, PyObject* results,
+                                PyObject* name);
+
 // Returns the set of variables watched by the given tape.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
-// Returns an EagerTensor of dimension [len(`tensor_list`)] containing
-// the `slice_dim`'th dimension of each tensor in `tensor_list`. In other words,
+// Returns an EagerTensor of dimension [len(`tensors`)] containing
+// the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
 // TFE_Py_TensorShapeSlice takes a slice of dimensions of tensors in
-// `tensor_list`. For example, if `tensor_list` contains tensors of with shapes
+// `tensors`. For example, if `tensors` contains tensors of with shapes
 // [1, 2, 3], [4, 5], [6, 7, 8, 9], TFE_Py_TensorShapeSlice called with
 // `slice_dim` equal to 1 will return [2, 5, 7].
 // On error, returns nullptr and sets python exception.
-// REQUIRES: `tensor_list` is a python list of EagerTensors
+// REQUIRES: `tensors` is a python list/tuple of EagerTensors
 // REQUIRES: `slice_dim` is non-negative and smaller than the rank of all
-//   tensors in `tensor_list`.
-PyObject* TFE_Py_TensorShapeSlice(PyObject* tensor_list, int slice_dim);
+//   tensors in `tensors`.
+PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

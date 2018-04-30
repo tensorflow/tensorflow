@@ -58,7 +58,7 @@ xla::ComputationDataHandle CreateExpandedZero(
 
 // Create a mask for depthwise convolution that will make a normal convolution
 // produce the same results as a depthwise convolution. For a [2, 2, 3, 2]
-// depthwise filter this returns a [2, 2, 3, 6] tesnsor
+// depthwise filter this returns a [2, 2, 3, 6] tensor
 //   1 1 0 0 0 0   1 1 0 0 0 0
 //   0 0 1 1 0 0   0 0 1 1 0 0
 //   0 0 0 0 1 1   0 0 0 0 1 1
@@ -166,6 +166,10 @@ xla::ComputationDataHandle ContractFilterForDepthwiseBackprop(
       CreateExpandedFilterMask(filter_shape, builder), filter_backprop,
       CreateExpandedZero(filter_shape, dtype, builder));
   return builder->Reshape(
+      // This reduce does not need inputs to be converted with
+      // XlaHelpers::SumAccumulationType() since the ExpandedFilterMask with
+      // ExpandedZero guarantees that only one element is non zero, so there
+      // cannot be accumulated precision error.
       builder->Reduce(masked_expanded_filter, XlaHelpers::Zero(builder, dtype),
                       *ctx->GetOrCreateAdd(dtype),
                       {expanded_filter_shape.dims() - 2}),

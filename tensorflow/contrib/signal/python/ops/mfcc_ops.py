@@ -105,4 +105,4 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
       num_mel_bins = array_ops.shape(log_mel_spectrograms)[-1]
 
     dct2 = spectral_ops.dct(log_mel_spectrograms)
-    return dct2 * math_ops.rsqrt(num_mel_bins * 2.0)
+    return dct2 * math_ops.rsqrt(math_ops.to_float(num_mel_bins) * 2.0)

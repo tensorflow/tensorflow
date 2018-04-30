@@ -31,8 +31,8 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_ke
 from tensorflow.python.keras._impl.keras.utils.io_utils import HDF5Matrix
 from tensorflow.python.keras._impl.keras.utils.layer_utils import convert_all_kernels_in_model
 from tensorflow.python.keras._impl.keras.utils.layer_utils import print_summary
+from tensorflow.python.keras._impl.keras.utils.multi_gpu_utils import multi_gpu_model
 from tensorflow.python.keras._impl.keras.utils.np_utils import normalize
 from tensorflow.python.keras._impl.keras.utils.np_utils import to_categorical
-from tensorflow.python.keras._impl.keras.utils.training_utils import multi_gpu_model
 from tensorflow.python.keras._impl.keras.utils.vis_utils import plot_model
 

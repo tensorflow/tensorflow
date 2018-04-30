@@ -21,8 +21,10 @@ from __future__ import print_function
 
 from tensorflow.core.util import event_pb2
 from tensorflow.python.lib.io import tf_record
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('train.summary_iterator')
 def summary_iterator(path):
   # pylint: disable=line-too-long
   """An iterator for reading `Event` protocol buffers from an event file.

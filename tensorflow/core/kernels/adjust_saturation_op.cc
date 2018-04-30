@@ -192,8 +192,9 @@ class AdjustSaturationOp<CPUDevice> : public AdjustSaturationOpBase {
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, channel_count,
-          kCostPerChannel, [channel_count, &input_data, &output_data, scale_h](
-                               int64 start_channel, int64 end_channel) {
+          kCostPerChannel,
+          [channel_count, &input_data, &output_data, scale_h](
+              int64 start_channel, int64 end_channel) {
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
             for (int i = start_channel; i < end_channel; i++) {

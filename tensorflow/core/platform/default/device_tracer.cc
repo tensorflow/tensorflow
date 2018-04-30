@@ -579,8 +579,10 @@ Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
   // TODO(pbar) Handle device IDs and prefix properly.
   const string prefix = "";
   const int id = 0;
-  const string stream_device = strings::StrCat(prefix, "/device:GPU:", id, "/stream:");
-  const string memcpy_device = strings::StrCat(prefix, "/device:GPU:", id, "/memcpy");
+  const string stream_device =
+      strings::StrCat(prefix, "/device:GPU:", id, "/stream:");
+  const string memcpy_device =
+      strings::StrCat(prefix, "/device:GPU:", id, "/memcpy");
 
   mutex_lock l2(trace_mu_);
   for (const auto &rec : kernel_records_) {

@@ -47,8 +47,8 @@ namespace boosted_trees {
 using boosted_trees::learner::LearnerConfig;
 using boosted_trees::learner::LearningRateConfig;
 using boosted_trees::learner::LearningRateDropoutDrivenConfig;
-using boosted_trees::models::MultipleAdditiveTrees;
 using boosted_trees::models::DecisionTreeEnsembleResource;
+using boosted_trees::models::MultipleAdditiveTrees;
 using boosted_trees::utils::DropoutUtils;
 using boosted_trees::utils::TensorUtils;
 

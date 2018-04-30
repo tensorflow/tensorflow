@@ -55,15 +55,14 @@ Status ScheduleTask(size_t task_size, BatchScheduler<FakeTask>* scheduler) {
 // use the clock to be destroyed.
 std::unique_ptr<Thread> CreateFakeClockAdvancerThread(
     test_util::FakeClockEnv* env, Notification* start, Notification* stop) {
-  return std::unique_ptr<Thread>(
-      Env::Default()->StartThread({}, "FakeClockAdvancerThread",
-                                  [env, start, stop] {
-                                    start->WaitForNotification();
-                                    while (!stop->HasBeenNotified()) {
-                                      env->AdvanceByMicroseconds(10);
-                                      Env::Default()->SleepForMicroseconds(10);
-                                    }
-                                  }));
+  return std::unique_ptr<Thread>(Env::Default()->StartThread(
+      {}, "FakeClockAdvancerThread", [env, start, stop] {
+        start->WaitForNotification();
+        while (!stop->HasBeenNotified()) {
+          env->AdvanceByMicroseconds(10);
+          Env::Default()->SleepForMicroseconds(10);
+        }
+      }));
 }
 
 TEST(SharedBatchSchedulerTest, Basic) {
@@ -258,7 +257,7 @@ TEST(SharedBatchSchedulerTest, ObeysTimeout) {
 TEST(SharedBatchSchedulerTest, ObeysTimeoutWithRealClock) {
   Notification first_batch_processed, second_batch_processed;
   auto callback = [&first_batch_processed, &second_batch_processed](
-      std::unique_ptr<Batch<FakeTask>> batch) {
+                      std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());
     if (batch->size() == 1) {
       first_batch_processed.Notify();
@@ -301,7 +300,7 @@ TEST(SharedBatchSchedulerTest,
   {
     Notification first_batch_processed, second_batch_processed;
     auto callback = [&first_batch_processed, &second_batch_processed](
-        std::unique_ptr<Batch<FakeTask>> batch) {
+                        std::unique_ptr<Batch<FakeTask>> batch) {
       ASSERT_TRUE(batch->IsClosed());
       if (batch->size() == 1) {
         first_batch_processed.Notify();
@@ -349,7 +348,7 @@ TEST(SharedBatchSchedulerTest, Fairness) {
     auto queue_0_callback = [&queue_0_first_batch_scheduled,
                              &queue_0_first_batch_proceed,
                              &queue_0_second_batch_scheduled](
-        std::unique_ptr<Batch<FakeTask>> batch) {
+                                std::unique_ptr<Batch<FakeTask>> batch) {
       if (!queue_0_first_batch_scheduled.HasBeenNotified()) {
         queue_0_first_batch_scheduled.Notify();
         queue_0_first_batch_proceed.WaitForNotification();
@@ -467,7 +466,7 @@ TEST(SharedBatchSchedulerTest, ConstMethods) {
 TEST(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
   Notification queue_0_processing, queue_0_proceed;
   auto queue_0_callback = [&queue_0_processing, &queue_0_proceed](
-      std::unique_ptr<Batch<FakeTask>> batch) {
+                              std::unique_ptr<Batch<FakeTask>> batch) {
     if (!queue_0_processing.HasBeenNotified()) {
       queue_0_processing.Notify();
       queue_0_proceed.WaitForNotification();
