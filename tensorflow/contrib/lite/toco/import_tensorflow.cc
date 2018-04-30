@@ -451,8 +451,18 @@ void ConvertConvOperator(const NodeDef& node,
   if (HasAttr(node, "dilations")) {
     const auto& dilations = GetListAttr(node, "dilations");
     CHECK_EQ(dilations.i_size(), 4);
-    CHECK_EQ(dilations.i(0), 1);
-    CHECK_EQ(dilations.i(3), 1);
+    CHECK_EQ(dilations.i(0), 1)
+        << "Can only import Conv ops with dilation along the height (1st) or "
+           "width (2nd) axis. TensorFlow op \""
+        << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
+        << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)
+        << "].";
+    CHECK_EQ(dilations.i(3), 1)
+        << "Can only import Conv ops with dilation along the height (1st) or "
+           "width (2nd) axis. TensorFlow op \""
+        << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
+        << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)
+        << "].";
     conv->dilation_height_factor = dilations.i(1);
     conv->dilation_width_factor = dilations.i(2);
   } else {
