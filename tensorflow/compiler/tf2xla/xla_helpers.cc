@@ -278,7 +278,7 @@ Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
 }
 
 DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
-  if (dtype == DT_BFLOAT16) {
+  if (dtype == DT_BFLOAT16 || dtype == DT_HALF) {
     return DT_FLOAT;
   }
   return dtype;
