@@ -458,17 +458,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "session_message",
-    srcs = ["util/session_message.cc"],
-    hdrs = ["util/session_message.h"],
-    deps = [
-        ":framework",
-        ":lib",
-        ":protos_all_cc",
-    ],
-)
-
 # Libraries that will eventually be moved into lib/core
 # Note that stringpiece_test can't be place here yet, because we are
 # required to use tf_cc_test, and that rule will change / into _
@@ -2150,7 +2139,6 @@ tf_cuda_library(
             "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
-            "util/session_message.cc",
             "util/version_info.cc",
         ],
     ) + select({
