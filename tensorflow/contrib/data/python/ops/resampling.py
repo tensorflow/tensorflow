@@ -92,15 +92,15 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
     elif prob_original_static == 0:
       return filtered_ds
     else:
-      logging.warn('class_values_ds.output_shapes: %s'% class_values_ds.output_shapes)
-      logging.warn('class_values_ds.output_types: %s'% class_values_ds.output_types)
-      logging.warn('dataset.output_shapes: %s'% dataset.output_shapes)
-      logging.warn('dataset.output_types: %s'% dataset.output_types)
-      logging.warn('filtered_ds.output_shapes: %s'% filtered_ds.output_shapes)
-      logging.warn('filtered_ds.output_types: %s'% filtered_ds.output_types)
+      logging.warn('class_values_ds.output_shapes: %s'% str(class_values_ds.output_shapes))
+      logging.warn('class_values_ds.output_types: %s'% str(class_values_ds.output_types))
+      logging.warn('dataset.output_shapes: %s'% str(dataset.output_shapes))
+      logging.warn('dataset.output_types: %s'% str(dataset.output_types))
+      logging.warn('filtered_ds.output_shapes: %s'% str(filtered_ds.output_shapes))
+      logging.warn('filtered_ds.output_types: %s'% str(filtered_ds.output_types))
       weights = prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)])
-      logging.warn('weights.output_shapes: %s'% weights.output_shapes)
-      logging.warn('weights.output_types: %s'% weights.output_types)
+      logging.warn('weights.output_shapes: %s'% str(weights.output_shapes))
+      logging.warn('weights.output_types: %s'% str(weights.output_types))
       return interleave_ops.sample_from_datasets(
           [dataset_ops.Dataset.zip((class_values_ds, dataset)), filtered_ds],
           weights=weights,
