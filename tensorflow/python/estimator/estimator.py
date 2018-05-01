@@ -400,7 +400,9 @@ class Estimator(object):
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the evaluation call.
       checkpoint_path: Path of a specific checkpoint to evaluate. If `None`, the
-        latest checkpoint in `model_dir` is used.
+        latest checkpoint in `model_dir` is used.  If there are no checkpoints
+        in `model_dir`, evaluation is run with newly initialized `Variables`
+        instead of restored from checkpoint.
       name: Name of the evaluation if user needs to run multiple evaluations on
         different data sets, such as on training data vs test data. Metrics for
         different evaluations are saved in separate folders, and appear
@@ -464,7 +466,9 @@ class Estimator(object):
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the prediction call.
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
-        latest checkpoint in `model_dir` is used.
+        latest checkpoint in `model_dir` is used.  If there are no checkpoints
+        in `model_dir`, prediction is run with newly initialized `Variables`
+        instead of restored from checkpoint.
       yield_single_examples: If False, yield the whole batch as returned by the
         `model_fn` instead of decomposing the batch into individual elements.
         This is useful if `model_fn` returns some tensors whose first dimension
@@ -487,9 +491,8 @@ class Estimator(object):
       if not checkpoint_path:
         checkpoint_path = saver.latest_checkpoint(self._model_dir)
       if not checkpoint_path:
-        raise ValueError(
-            'Could not find trained model in model_dir: {}.'.format(
-                self._model_dir))
+        logging.info('Could not find trained model in model_dir: {}, running '
+                     'initialization to predict.'.format(self._model_dir))
 
       with ops.Graph().as_default() as g:
         random_seed.set_random_seed(self._config.tf_random_seed)
@@ -1068,8 +1071,8 @@ class Estimator(object):
     if not checkpoint_path:
       latest_path = saver.latest_checkpoint(self._model_dir)
       if not latest_path:
-        raise ValueError('Could not find trained model in model_dir: {}.'.
-                         format(self._model_dir))
+        logging.info('Could not find trained model in model_dir: {}, running '
+                     'initialization to evaluate.'.format(self._model_dir))
       checkpoint_path = latest_path
 
     # Setup output directory.

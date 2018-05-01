@@ -1067,11 +1067,19 @@ class EstimatorEvaluateTest(test.TestCase):
         ValueError, 'model_fn should return an EstimatorSpec'):
       est.evaluate(dummy_input_fn, steps=1)
 
-  def test_no_trained_model(self):
-    est = estimator.Estimator(model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(
-        ValueError, 'Could not find trained model in model_dir'):
-      est.evaluate(dummy_input_fn, steps=1)
+  def test_no_checkpoint_uses_init(self):
+    def _model_fn(features, labels, mode, params):
+      del features, labels, params
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(1.),
+          eval_metric_ops={'metric': metrics_lib.mean(
+              variables.Variable(2.) + 1)})
+    est = estimator.Estimator(model_fn=_model_fn)
+    metrics = est.evaluate(dummy_input_fn, steps=1)
+    # Metric value here is set to 1 + the value of the Variable that is newly
+    # initialized (since there is no checkpoint).
+    self.assertEqual(3., metrics['metric'])
 
   def test_scores(self):
     est = estimator.Estimator(
@@ -1331,11 +1339,15 @@ class EstimatorPredictTest(test.TestCase):
     next(est.predict(_input_fn))
     self.assertEqual(1, input_fn_call_count[0])
 
-  def test_no_trained_model_in_model_dir(self):
-    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
-    with self.assertRaisesRegexp(ValueError,
-                                 'Could not find trained model in model_dir'):
-      next(est.predict(dummy_input_fn))
+  def test_no_checkpoint_uses_init(self):
+    def _model_fn(features, labels, mode, params, config):
+      del features, labels, params, config
+      x = variables.Variable([[3.]], name='x')
+      return model_fn_lib.EstimatorSpec(mode, predictions=math_ops.add(x, 1.))
+    est = estimator.Estimator(model_fn=_model_fn)
+    # Expected prediction value is 1 + the value of the Variable that is newly
+    # initialized (since there is no checkpoint).
+    self.assertEqual(4., next(est.predict(dummy_input_fn)))
 
   def test_no_trained_model_invalid_checkpoint_path(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
