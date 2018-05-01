@@ -11,8 +11,8 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "JOB_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "job"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

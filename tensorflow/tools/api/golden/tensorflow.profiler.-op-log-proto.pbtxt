@@ -11,16 +11,16 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "ID_TO_STRING_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "IdToStringEntry"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "LOG_ENTRIES_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "id_to_string"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "log_entries"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

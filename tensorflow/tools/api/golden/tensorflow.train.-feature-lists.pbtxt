@@ -11,12 +11,12 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "FEATURE_LIST_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "FeatureListEntry"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "feature_list"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

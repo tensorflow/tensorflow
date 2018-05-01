@@ -3,10 +3,6 @@ tf_class {
   is_instance: "<class \'tensorflow.core.example.feature_pb2.Feature\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
-    name: "BYTES_LIST_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
@@ -15,12 +11,16 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "FLOAT_LIST_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "bytes_list"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "INT64_LIST_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "float_list"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "int64_list"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

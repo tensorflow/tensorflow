@@ -3,48 +3,48 @@ tf_class {
   is_instance: "<class \'tensorflow.core.protobuf.config_pb2.GraphOptions\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
-    name: "BUILD_COST_MODEL_AFTER_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "BUILD_COST_MODEL_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
-  }
-  member {
-    name: "ENABLE_BFLOAT16_SENDRECV_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "ENABLE_RECV_SCHEDULING_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
   }
   member {
     name: "Extensions"
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "INFER_SHAPES_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "build_cost_model"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "OPTIMIZER_OPTIONS_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "build_cost_model_after"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "PLACE_PRUNED_GRAPH_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "enable_bfloat16_sendrecv"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "REWRITE_OPTIONS_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "enable_recv_scheduling"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "TIMELINE_STEP_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "infer_shapes"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "optimizer_options"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "place_pruned_graph"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "rewrite_options"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "timeline_step"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

@@ -3,14 +3,6 @@ tf_class {
   is_instance: "<class \'tensorflow.core.protobuf.meta_graph_pb2.MetaGraphDef\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
-    name: "ASSET_FILE_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "COLLECTION_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "CollectionDefEntry"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -23,28 +15,36 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "GRAPH_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "META_INFO_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "MetaInfoDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "SAVER_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "SIGNATURE_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "SignatureDefEntry"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "asset_file_def"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "collection_def"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "graph_def"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "meta_info_def"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "saver_def"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "signature_def"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

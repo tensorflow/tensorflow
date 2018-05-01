@@ -11,16 +11,16 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "NAME_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "TASKS_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "TasksEntry"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "tasks"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

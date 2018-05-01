@@ -11,40 +11,40 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "FILE_VERSION_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "file_version"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "GRAPH_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "graph_def"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "LOG_MESSAGE_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "log_message"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "META_GRAPH_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "meta_graph_def"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "SESSION_LOG_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "session_log"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "STEP_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "step"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "SUMMARY_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "summary"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "TAGGED_RUN_METADATA_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "tagged_run_metadata"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "WALL_TIME_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "wall_time"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

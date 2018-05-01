@@ -3,10 +3,6 @@ tf_class {
   is_instance: "<class \'tensorflow.core.protobuf.meta_graph_pb2.CooSparse\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
-    name: "DENSE_SHAPE_TENSOR_NAME_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
@@ -15,12 +11,16 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "INDICES_TENSOR_NAME_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "dense_shape_tensor_name"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member {
-    name: "VALUES_TENSOR_NAME_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "indices_tensor_name"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "values_tensor_name"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

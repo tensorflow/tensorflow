@@ -3,10 +3,6 @@ tf_class {
   is_instance: "<class \'tensorflow.core.framework.summary_pb2.PluginData\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
-    name: "CONTENT_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
@@ -15,8 +11,12 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "PLUGIN_NAME_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
+    name: "content"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+  }
+  member {
+    name: "plugin_name"
+    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"
