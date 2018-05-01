@@ -129,6 +129,16 @@ file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/contrib/tpu/proto/*.proto"
 )
 
+if(NOT WIN32)
+  file(GLOB_RECURSE tf_protos_grpc_cc_srcs RELATIVE ${tensorflow_source_dir}
+      "${tensorflow_source_dir}/tensorflow/core/debug/*.proto"
+      )
+  RELATIVE_PROTOBUF_GENERATE_GRPC_CPP(PROTO_GRPC_SRCS PROTO_GRPC_HDRS
+      ${tensorflow_source_dir} ${tf_protos_grpc_cc_srcs}
+  )
+  list(REMOVE_ITEM tf_protos_cc_srcs ${tf_protos_grpc_cc_srcs})
+endif()
+
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_protos_cc_srcs}
 )
@@ -177,12 +187,6 @@ RELATIVE_PROTOBUF_TEXT_GENERATE_CPP(PROTO_TEXT_SRCS PROTO_TEXT_HDRS
 if(WIN32)
   add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
 else()
-  file(GLOB_RECURSE tf_protos_grpc_cc_srcs RELATIVE ${tensorflow_source_dir}
-      "${tensorflow_source_dir}/tensorflow/core/debug/*.proto"
-  )
-  RELATIVE_PROTOBUF_GENERATE_GRPC_CPP(PROTO_GRPC_SRCS PROTO_GRPC_HDRS
-      ${tensorflow_source_dir} ${tf_protos_grpc_cc_srcs}
-  )
   add_library(tf_protos_cc ${PROTO_GRPC_SRCS} ${PROTO_GRPC_HDRS} ${PROTO_SRCS} ${PROTO_HDRS})
 endif()
 
