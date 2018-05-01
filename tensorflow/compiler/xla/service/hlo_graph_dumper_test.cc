@@ -131,5 +131,23 @@ TEST(HloGraphDumperTest, Constant) {
   EXPECT_THAT(graph, Not(HasSubstr("i_am_a_constant_root_instruction")));
 }
 
+TEST(HloGraphDumperTest, TupleConstant) {
+  Shape tuple_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(S32, {4, 5})});
+  HloComputation::Builder b("b");
+  auto constant = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateFromShape(tuple_shape)));
+  auto gte = b.AddInstruction(HloInstruction::CreateGetTupleElement(
+      ShapeUtil::MakeShape(F32, {3, 2}), constant, 0));
+
+  HloModuleConfig config;
+  HloModule m(TestName(), config);
+  HloComputation* root_computation = m.AddEntryComputation(b.Build(gte));
+  string graph = hlo_graph_dumper::DumpGraph(
+      *root_computation, /*label=*/"tuple_constant", DebugOptions());
+  EXPECT_THAT(graph, HasSubstr("tuple_constant"));
+  EXPECT_THAT(graph, HasSubstr("constant (f32[3,2], s32[4,5])"));
+}
+
 }  // anonymous namespace
 }  // namespace xla
