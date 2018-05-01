@@ -3,8 +3,24 @@ tf_class {
   is_instance: "<class \'tensorflow.core.protobuf.config_pb2.GPUOptions\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "ALLOCATOR_TYPE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "ALLOW_GROWTH_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "DEFERRED_DELETION_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
+  }
+  member {
+    name: "EXPERIMENTAL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "Experimental"
@@ -15,40 +31,24 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "allocator_type"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "FORCE_GPU_COMPATIBLE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "allow_growth"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "PER_PROCESS_GPU_MEMORY_FRACTION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "deferred_deletion_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "POLLING_ACTIVE_DELAY_USECS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "experimental"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "POLLING_INACTIVE_DELAY_MSECS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "force_gpu_compatible"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "per_process_gpu_memory_fraction"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "polling_active_delay_usecs"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "polling_inactive_delay_msecs"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "visible_device_list"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "VISIBLE_DEVICE_LIST_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

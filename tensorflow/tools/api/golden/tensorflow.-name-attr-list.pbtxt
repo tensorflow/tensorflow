@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.core.framework.attr_value_pb2.NameAttrList\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "ATTR_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "AttrEntry"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -15,12 +19,8 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "attr"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "name"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.core.framework.attr_value_pb2.ListValue\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "B_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
@@ -11,36 +15,32 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "b"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "FUNC_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "f"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "F_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "func"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "I_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "i"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "SHAPE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "s"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "S_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "shape"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TENSOR_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "tensor"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "type"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TYPE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

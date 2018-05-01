@@ -15,7 +15,31 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
+    name: "FILENAME_TENSOR_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "KEEP_CHECKPOINT_EVERY_N_HOURS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "LEGACY"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "MAX_TO_KEEP_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "RESTORE_OP_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "SAVE_TENSOR_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "SHARDED_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {
@@ -27,32 +51,8 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
-    name: "filename_tensor_name"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "keep_checkpoint_every_n_hours"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "max_to_keep"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "restore_op_name"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "save_tensor_name"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "sharded"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "version"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "VERSION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

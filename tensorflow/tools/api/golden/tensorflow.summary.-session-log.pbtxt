@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "CHECKPOINT_PATH_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
@@ -15,7 +19,15 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
+    name: "MSG_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "START"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "STATUS_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {
@@ -29,18 +41,6 @@ tf_class {
   member {
     name: "SessionStatus"
     mtype: "<class \'google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper\'>"
-  }
-  member {
-    name: "checkpoint_path"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "msg"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "status"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.core.protobuf.meta_graph_pb2.MetaInfoDef\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "ANY_INFO_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
@@ -11,32 +15,28 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "any_info"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "META_GRAPH_VERSION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "meta_graph_version"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "STRIPPED_DEFAULT_ATTRS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "stripped_default_attrs"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "STRIPPED_OP_LIST_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "stripped_op_list"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TAGS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "tags"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TENSORFLOW_GIT_VERSION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "tensorflow_git_version"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "tensorflow_version"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TENSORFLOW_VERSION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

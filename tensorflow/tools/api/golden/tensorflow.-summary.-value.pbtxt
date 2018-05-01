@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.core.framework.summary_pb2.Value\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "AUDIO_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
@@ -11,40 +15,36 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "audio"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "HISTO_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "histo"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "IMAGE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "image"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "METADATA_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "metadata"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "NODE_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "node_name"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "OBSOLETE_OLD_STYLE_HISTOGRAM_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "obsolete_old_style_histogram"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "SIMPLE_VALUE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "simple_value"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TAG_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "tag"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "tensor"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TENSOR_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

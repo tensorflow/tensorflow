@@ -7,24 +7,24 @@ tf_class {
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
   member {
+    name: "DISPLAY_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "Extensions"
     mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "PLUGIN_DATA_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "PluginData"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "display_name"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "plugin_data"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "summary_description"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "SUMMARY_DESCRIPTION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

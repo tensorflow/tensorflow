@@ -11,12 +11,12 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "run_metadata"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "RUN_METADATA_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "tag"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TAG_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

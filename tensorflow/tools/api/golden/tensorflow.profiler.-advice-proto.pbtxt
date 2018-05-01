@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.core.profiler.tfprof_output_pb2.AdviceProto\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "CHECKERS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "Checker"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -17,10 +21,6 @@ tf_class {
   member {
     name: "Extensions"
     mtype: "<type \'getset_descriptor\'>"
-  }
-  member {
-    name: "checkers"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

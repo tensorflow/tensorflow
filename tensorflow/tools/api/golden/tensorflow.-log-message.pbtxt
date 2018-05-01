@@ -27,8 +27,16 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "LEVEL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "Level"
     mtype: "<class \'google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper\'>"
+  }
+  member {
+    name: "MESSAGE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "UNKNOWN"
@@ -37,14 +45,6 @@ tf_class {
   member {
     name: "WARN"
     mtype: "<type \'int\'>"
-  }
-  member {
-    name: "level"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "message"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

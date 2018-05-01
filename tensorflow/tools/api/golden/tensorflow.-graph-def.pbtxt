@@ -11,20 +11,20 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "library"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "LIBRARY_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "node"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "NODE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "version"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "VERSIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "versions"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "VERSION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

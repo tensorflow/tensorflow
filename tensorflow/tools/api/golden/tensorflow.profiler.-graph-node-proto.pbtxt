@@ -3,124 +3,124 @@ tf_class {
   is_instance: "<class \'tensorflow.core.profiler.tfprof_output_pb2.GraphNodeProto\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "ACCELERATOR_EXEC_MICROS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "CHILDREN_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "CPU_EXEC_MICROS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
+  }
+  member {
+    name: "DEVICES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "EXEC_MICROS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "Extensions"
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
+    name: "FLOAT_OPS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "INPUT_SHAPES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "InputShapesEntry"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "accelerator_exec_micros"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "children"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "OUTPUT_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "cpu_exec_micros"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "PARAMETERS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "devices"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "PEAK_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "exec_micros"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "REQUESTED_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "float_ops"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "RESIDUAL_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "input_shapes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "RUN_COUNT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "name"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "SHAPES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "output_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TENSOR_VALUE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "parameters"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_ACCELERATOR_EXEC_MICROS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "peak_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_CPU_EXEC_MICROS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "requested_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_DEFINITION_COUNT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "residual_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_EXEC_MICROS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "run_count"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_FLOAT_OPS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "shapes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_OUTPUT_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "tensor_value"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_PARAMETERS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "total_accelerator_exec_micros"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_PEAK_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "total_cpu_exec_micros"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_REQUESTED_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "total_definition_count"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_RESIDUAL_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "total_exec_micros"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "total_float_ops"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "total_output_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "total_parameters"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "total_peak_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "total_requested_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "total_residual_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "total_run_count"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "TOTAL_RUN_COUNT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

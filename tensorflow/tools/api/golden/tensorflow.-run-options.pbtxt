@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.core.protobuf.config_pb2.RunOptions\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "DEBUG_OPTIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
@@ -19,7 +23,19 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "INTER_OP_THREAD_POOL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "NO_TRACE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "OUTPUT_PARTITION_GRAPHS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "REPORT_TENSOR_ALLOCATIONS_UPON_OOM_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {
@@ -27,32 +43,16 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "TIMEOUT_IN_MS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "TRACE_LEVEL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "TraceLevel"
     mtype: "<class \'google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper\'>"
-  }
-  member {
-    name: "debug_options"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "inter_op_thread_pool"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "output_partition_graphs"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "report_tensor_allocations_upon_oom"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "timeout_in_ms"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "trace_level"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
   }
   member_method {
     name: "ByteSize"

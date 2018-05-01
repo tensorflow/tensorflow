@@ -3,8 +3,24 @@ tf_class {
   is_instance: "<class \'tensorflow.core.protobuf.config_pb2.ConfigProto\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "ALLOW_SOFT_PLACEMENT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "CLUSTER_DEF_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
+  }
+  member {
+    name: "DEVICE_COUNT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "DEVICE_FILTERS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "DeviceCountEntry"
@@ -15,64 +31,48 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "allow_soft_placement"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "GPU_OPTIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "cluster_def"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "GRAPH_OPTIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "device_count"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "INTER_OP_PARALLELISM_THREADS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "device_filters"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "INTRA_OP_PARALLELISM_THREADS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "gpu_options"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "ISOLATE_SESSION_STATE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "graph_options"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "LOG_DEVICE_PLACEMENT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "inter_op_parallelism_threads"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "OPERATION_TIMEOUT_IN_MS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "intra_op_parallelism_threads"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "PLACEMENT_PERIOD_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "isolate_session_state"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "RPC_OPTIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "log_device_placement"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "SESSION_INTER_OP_THREAD_POOL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
-    name: "operation_timeout_in_ms"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "placement_period"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "rpc_options"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "session_inter_op_thread_pool"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "use_per_session_threads"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "USE_PER_SESSION_THREADS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"

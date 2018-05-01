@@ -11,8 +11,24 @@ tf_class {
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
   member {
+    name: "DO_COMMON_SUBEXPRESSION_ELIMINATION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "DO_CONSTANT_FOLDING_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "DO_FUNCTION_INLINING_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "Extensions"
     mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "GLOBAL_JIT_LEVEL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "GlobalJitLevel"
@@ -31,6 +47,10 @@ tf_class {
     mtype: "<class \'google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper\'>"
   }
   member {
+    name: "MAX_FOLDED_CONSTANT_IN_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "OFF"
     mtype: "<type \'int\'>"
   }
@@ -43,28 +63,8 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
-    name: "do_common_subexpression_elimination"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "do_constant_folding"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "do_function_inlining"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "global_jit_level"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "max_folded_constant_in_bytes"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
-  }
-  member {
-    name: "opt_level"
-    mtype: "<type \'google.protobuf.pyext._message.FieldProperty\'>"
+    name: "OPT_LEVEL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"
