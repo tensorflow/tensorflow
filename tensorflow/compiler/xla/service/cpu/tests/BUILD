@@ -124,3 +124,26 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+tf_cc_test(
+    name = "cpu_infeed_test",
+    srcs = ["cpu_infeed_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
