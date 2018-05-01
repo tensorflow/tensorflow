@@ -96,6 +96,11 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
       min = std::min(min, val);
       max = std::max(max, val);
     }
+    if (min == 0.f && max == 0.f) {
+      // Prevent downstream anger from quantized math that expects min and max
+      // to not be equal.
+      max = 1.f;
+    }
     auto& minmax = array.GetOrCreateMinMax();
     minmax.min = min;
     minmax.max = max;
