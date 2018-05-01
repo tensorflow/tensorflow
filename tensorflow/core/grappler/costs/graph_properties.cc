@@ -1074,7 +1074,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
     }
   }
 
-  GraphView graph_view(&item_.graph);
+  GraphView graph_view(const_cast<GraphDef*>(&item_.graph));
 
   // List the resources and the nodes using them. Also collect the Merge nodes,
   // fed nodes, and primary inputs.

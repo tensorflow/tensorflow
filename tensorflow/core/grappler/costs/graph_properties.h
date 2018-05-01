@@ -38,6 +38,7 @@ class TopoQueue;
 // and data type properties.
 class GraphProperties {
  public:
+  // The item must outlive the properties
   explicit GraphProperties(const GrapplerItem& item) : item_(item) {}
 
   // Infer the shapes through abstract interpretation. Feed information can be
@@ -112,7 +113,7 @@ class GraphProperties {
       int num_loops) const;
 
   // Data members
-  GrapplerItem item_;
+  const GrapplerItem& item_;
   std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
   std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
