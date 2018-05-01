@@ -349,7 +349,6 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 
   // Layout optimization
   item.graph = graph_def;
-  tensorflow::grappler::LayoutOptimizer optimizer;
   tensorflow::grappler::Cluster* cluster;
 
   // virtual cluster
@@ -417,6 +416,7 @@ tensorflow::Status ConvertAfterShapes(
   for (auto s : segments) {
     total_num_nodes_in_segments += s.first.size();
   }
+  // Cluster may not be available
   std::map<string, tensorflow::Device*> name_to_device_map;
   if (cluster) {
     for (const auto dm : cluster->GetDeviceSet()->devices()) {
@@ -454,6 +454,8 @@ tensorflow::Status ConvertAfterShapes(
         cuda_device_id = cuda_gpu_id.value();
       }
       tensorflow::GPUOptions gpuoptions;
+      // we need to us PM here since in python path there is no way to get to
+      // allocators
       auto pm = tensorflow::ProcessState::singleton();
       // this should be instantiated by now
       auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
