@@ -113,7 +113,7 @@ class SimpleGraph {
   const tensorflow::Graph* g_;
   std::vector<SimpleNode*> nodes_;
   std::vector<SimpleEdge*> edges_;
-  // edge_ids_ and node_ids_ contain freed indices.
+  // free_edge_ids_ and free_node_ids_ contain freed indices.
   std::set<int> free_edge_ids_;
   std::set<int> free_node_ids_;
 };
@@ -352,7 +352,7 @@ tensorflow::Status SegmentGraph(
     tensorflow::Graph* tf_graph,
     const std::function<bool(const tensorflow::Node*)>& candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
-  // tensorflow::DumpGraph("Pre-Segment", &graph);
+
   auto graph = std::unique_ptr<SimpleGraph>(new SimpleGraph(tf_graph));
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
