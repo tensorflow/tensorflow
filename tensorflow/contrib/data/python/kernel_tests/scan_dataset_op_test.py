@@ -168,7 +168,7 @@ class ScanDatasetTest(test.TestCase):
           scan_ops.scan(constant_op.constant(1, dtype=dtypes.int32), _scan_fn))
 
 
-class ScanDatasetSerialzationTest(
+class ScanDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def _build_dataset(self, num_elements):
