@@ -416,7 +416,7 @@ tensorflow::Status ConvertAfterShapes(
   for (auto s : segments) {
     total_num_nodes_in_segments += s.first.size();
   }
-  // Cluster may not be available
+  // We are creating the map here since cluster may not be available in all cases
   std::map<string, tensorflow::Device*> name_to_device_map;
   if (cluster) {
     for (const auto dm : cluster->GetDeviceSet()->devices()) {
