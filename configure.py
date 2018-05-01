@@ -1226,6 +1226,9 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         ask_cuda_compute_capabilities, default_cuda_compute_capabilities)
     # Check whether all capabilities from the input is valid
     all_valid = True
+    # Remove all whitespace characters before splitting the string
+    # that users may insert by accident, as this will result in error 
+    tf_cuda_compute_capabilities = ''.join(tf_cuda_compute_capabilities.split())
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
