@@ -40,17 +40,20 @@ class IGpuAllocator {
 namespace tensorflow {
 namespace tensorrt {
 class TRTCudaAllocator : public nvinfer1::IGpuAllocator {
+  // Allocator implementation that is using cuda allocator instead of device
+  // allocator in case we can't get device allocator from TF.
  public:
   TRTCudaAllocator() {}
-  virtual ~TRTCudaAllocator() {};
+  virtual ~TRTCudaAllocator(){};
   void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) override;
   void free(void* memory) override;
 };
 
 class TRTDeviceAllocator : public nvinfer1::IGpuAllocator {
+  // Allocator implementation wrapping TF device allocators.
  public:
   TRTDeviceAllocator(tensorflow::Allocator* allocator);
-  virtual ~TRTDeviceAllocator() {};
+  virtual ~TRTDeviceAllocator(){};
   void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) override;
   void free(void* memory) override;
 

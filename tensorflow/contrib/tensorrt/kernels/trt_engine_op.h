@@ -32,6 +32,7 @@ namespace tensorflow {
 namespace tensorrt {
 class Logger;
 
+//  TODO(Sami): Remove this file?
 class TRTEngineOp : public OpKernel {
  public:
   explicit TRTEngineOp(OpKernelConstruction* context);

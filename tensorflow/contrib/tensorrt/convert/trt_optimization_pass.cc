@@ -22,18 +22,19 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
 
-using tensorflow::str_util::Uppercase;
-using tensorflow::strings::StrAppend;
-using tensorflow::strings::StrCat;
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 // TODO(sami): Remove VLOG messages once the code matures
+using tensorflow::str_util::Uppercase;
+using tensorflow::strings::StrAppend;
+using tensorflow::strings::StrCat;
+
 tensorflow::Status TRTOptimizationPass::Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
-  VLOG(1) << "Called INIT for " << m_name_ << " with config = " << config;
+  VLOG(1) << "Called INIT for " << name_ << " with config = " << config;
   if (config == nullptr) {
     maximum_workspace_size_ = 2 << 30;
     return tensorflow::Status::OK();
@@ -65,10 +66,9 @@ tensorflow::Status TRTOptimizationPass::Init(
   return tensorflow::Status::OK();
 };
 
-tensorflow::Status TRTOptimizationPass::Optimize(
+void TRTOptimizationPass::PrintDebugInfo(
     tensorflow::grappler::Cluster* cluster,
-    const tensorflow::grappler::GrapplerItem& item, GraphDef* optimized_graph) {
-  VLOG(1) << "Called TRTOptimization Pass " << m_name_;
+    const tensorflow::grappler::GrapplerItem& item) {
   VLOG(1) << "Cluster = " << cluster;
   string offset("  ");
   string offset2 = StrCat(offset, offset);
@@ -77,10 +77,10 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   if (cluster) {
     VLOG(1) << offset << "type             = " << cluster->type();
     VLOG(1) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
-    const auto devNames = cluster->GetDeviceNames();
-    if (devNames.size()) {
+    const auto dev_names = cluster->GetDeviceNames();
+    if (dev_names.size()) {
       VLOG(1) << offset << " Device names:";
-      for (const auto s : devNames) {
+      for (const auto s : dev_names) {
         VLOG(1) << offset2 << s;
       }
     }
@@ -122,37 +122,14 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     }
   }
   VLOG(1) << "item: " << item.id;
-  int max_dim = -1;
   if (item.feed.size()) {
     VLOG(1) << offset << "Feeds  :";
     for (const auto& f : item.feed) {
       const auto& shape = f.second.shape();
-      if (shape.dims() > 0) {
-        if (shape.dim_size(0) > max_dim) max_dim = shape.dim_size(0);
-      }
-      VLOG(1) << offset2 << f.first << " = shaped "
-              << f.second.shape().DebugString();
+      VLOG(1) << offset2 << f.first << " = shaped " << shape.DebugString();
     }
   } else {
     VLOG(1) << offset << "No Feeds";
-  }
-  if (maximum_batch_size_ < 0) {  // automatic batch size from input
-    if (max_dim > 0) {
-      maximum_batch_size_ = max_dim;
-      VLOG(1) << "Setting maximum batch size to " << max_dim;
-    } else {
-      maximum_batch_size_ = 128;
-      LOG(WARNING) << "Maximum batch size is not set"
-                      " and can't be deduced from inputs setting it to"
-                   << maximum_batch_size_
-                   << ". Suggest configuring it from configuration parameters";
-    }
-  } else {
-    if (max_dim > maximum_batch_size_) {
-      LOG(WARNING) << "Configured batch size " << maximum_batch_size_
-                   << " is less than input batch size " << max_dim
-                   << " adjusting maximum batch size to match input batch size";
-    }
   }
   if (item.fetch.size()) {
     VLOG(1) << offset << "Fetches  :";
@@ -182,9 +159,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   } else {
     VLOG(1) << offset << "No keep ops";
   }
-  VLOG(1) << item.graph.DebugString();
-  tensorflow::grappler::GraphProperties static_graph_properties(item);
-  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
+  VLOG(3) << item.graph.DebugString();
   for (const auto dev : cluster->GetDeviceSet()->devices()) {
     const auto& pname = dev->parsed_name();
     VLOG(1) << "Device name= " << dev->name()
@@ -192,6 +167,44 @@ tensorflow::Status TRTOptimizationPass::Optimize(
             << " has_id: " << pname.has_id << " has_job: " << pname.has_job
             << "has_type: " << pname.has_type << " type =" << pname.type;
   }
+}
+
+tensorflow::Status TRTOptimizationPass::Optimize(
+    tensorflow::grappler::Cluster* cluster,
+    const tensorflow::grappler::GrapplerItem& item, GraphDef* optimized_graph) {
+  VLOG(1) << "Called TRTOptimization Pass " << name_;
+  if (VLOG_IS_ON(1)) {
+    PrintDebugInfo(cluster, item);
+  }
+  int max_dim = -1;
+  if (item.feed.size()) {
+    for (const auto& f : item.feed) {
+      const auto& shape = f.second.shape();
+      if (shape.dims() > 0) {
+        if (shape.dim_size(0) > max_dim) max_dim = shape.dim_size(0);
+      }
+    }
+  }
+  if (maximum_batch_size_ < 0) {  // automatic batch size from input
+    if (max_dim > 0) {
+      maximum_batch_size_ = max_dim;
+      VLOG(1) << "Setting maximum batch size to " << max_dim;
+    } else {
+      maximum_batch_size_ = 128;
+      LOG(WARNING) << "Maximum batch size is not set"
+                      " and can't be deduced from inputs setting it to"
+                   << maximum_batch_size_
+                   << ". Suggest configuring it from configuration parameters";
+    }
+  } else {
+    if (max_dim > maximum_batch_size_) {
+      LOG(WARNING) << "Configured batch size " << maximum_batch_size_
+                   << " is less than input batch size " << max_dim
+                   << " adjusting maximum batch size to match input batch size";
+    }
+  }
+  tensorflow::grappler::GraphProperties static_graph_properties(item);
+  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(
       item.graph, item.fetch, maximum_batch_size_, maximum_workspace_size_,
       optimized_graph, precision_mode_, minimum_segment_size_,
@@ -205,20 +218,25 @@ void TRTOptimizationPass::Feedback(
     const tensorflow::grappler::GrapplerItem& item,
     const GraphDef& optimized_graph, double result) {}
 
-using tensorflow::grappler::CustomGraphOptimizerRegistrar;
-namespace {
 
-class samiReg : public CustomGraphOptimizerRegistrar {
+
+}  // namespace convert
+}  // namespace tensorrt
+}  // namespace tensorflow
+
+class VerboseCustomGraphOptimizerRegistrar
+    : public tensorflow::grappler::CustomGraphOptimizerRegistrar {
  public:
-  samiReg(const tensorflow::grappler::CustomGraphOptimizerRegistry::Creator& cr,
-          const string& name)
-      : CustomGraphOptimizerRegistrar(cr, name) {
+  VerboseCustomGraphOptimizerRegistrar(
+      const tensorflow::grappler::CustomGraphOptimizerRegistry::Creator& cr,
+      const tensorflow::string& name)
+      : tensorflow::grappler::CustomGraphOptimizerRegistrar(cr, name) {
     VLOG(1) << "Constructing a CustomOptimizationPass registration object for "
             << name;
   }
 };
-// static CustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar([]() {
-static samiReg TRTOptimizationPass_Registrar(
+
+static VerboseCustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar(
     []() {
       VLOG(1)
           << "Instantiating CustomOptimizationPass object TensorRTOptimizer";
@@ -226,11 +244,6 @@ static samiReg TRTOptimizationPass_Registrar(
           "TensorRTOptimizer");
     },
     ("TensorRTOptimizer"));
-}  // namespace
-
-}  // namespace convert
-}  // namespace tensorrt
-}  // namespace tensorflow
 
 #endif
 #endif

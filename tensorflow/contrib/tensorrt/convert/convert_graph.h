@@ -17,9 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"

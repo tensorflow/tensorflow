@@ -15,9 +15,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
@@ -42,38 +39,23 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("input_nodes", &input_nodes_));
   OP_REQUIRES_OK(context, context->GetAttr("output_nodes", &output_nodes_));
 
-  // TODO(samikama) runtime should be taken from a resourcemanager as well.
-  // Only engine should be in the op and context and runtime should be taken
-  // from resourcemanager
-  // TODO(jie): cudaSetDevice make sure trt engine is allocated on the same
-  // gpu where the input/output is also located.
-  // int gpu_id = context->device()->tensorflow_gpu_device_info()->gpu_id;
-  // cudaSetDevice(gpu_id);
-  // int device;
-  // cudaGetDevice(&device);
-  // if (gpu_id != device) LOG(FATAL) << "set device failed!";
-
-  // TODO(samikama) runtime should be taken from a resourcemanager as well.
-  // Only engine should be in the op and context and runtime should be taken
-  // from resourcemanager
-
-  // IRuntime* infer = nvinfer1::createInferRuntime(logger);
-  // trt_engine_ptr_.reset(infer->deserializeCudaEngine(
-  //     serialized_engine.c_str(), serialized_engine.size(), nullptr));
-  // trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
-  // Runtime is safe to delete after engine creation
-  // infer->destroy();
 }
 
 void TRTEngineOp::Compute(OpKernelContext* context) {
+  // TODO(samikama) runtime should be taken from a resourcemanager as well.
+  // Only engine should be in the op and context and runtime should be taken
+  // from resourcemanager
+
   if (!trt_execution_context_ptr_) {
     IRuntime* infer = nvinfer1::createInferRuntime(logger);
 #if NV_TENSORRT_MAJOR > 3
-    tensorflow::TfGpuId tf_gpu_id(
-        context->device()->tensorflow_gpu_device_info()->gpu_id);
-    tensorflow::GPUOptions gpuoptions;
-    auto pm = tensorflow::ProcessState::singleton();
-    auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
+    auto device=context->device();
+    auto dev_allocator=device->getAllocator(tensorflow::AllocatorAttributes())
+    // tensorflow::TfGpuId tf_gpu_id(
+    //     context->device()->tensorflow_gpu_device_info()->gpu_id);
+    // tensorflow::GPUOptions gpuoptions;
+    // auto pm = tensorflow::ProcessState::singleton();
+    // auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
     if (!dev_allocator) {
       LOG(FATAL) << "Can't find device allocator for gpu device" << tf_gpu_id;
     }

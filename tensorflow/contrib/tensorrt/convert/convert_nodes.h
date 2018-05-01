@@ -22,14 +22,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
-
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -49,7 +49,7 @@ struct SubGraphParams {
       std::unordered_map<string, std::pair<int, string>>* output_edges,
       tensorflow::NodeDef* constructed_trt_node,
       int engine_precision_mode = FP32MODE, const string& device_name = "",
-      std::shared_ptr<nvinfer1::IGpuAllocator> allocator = 0,
+      std::shared_ptr<nvinfer1::IGpuAllocator> allocator = nullptr,
       int cuda_gpu_id = 0)
       : graph(inp_graph),
         subgraph_node_ids(subgraph_node_id_numbers),
